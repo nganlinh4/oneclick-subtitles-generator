@@ -87,9 +87,9 @@ const validResult = () => ({
     ],
   },
   uploadedSrtInfo: {
-    hasUploaded: true,
+    cacheId: '019ff572-2132-7ba1-9e9c-5a29894963bf',
     fileName: 'osg-installed-media-smoke.srt',
-    source: 'srt',
+    v: 2,
   },
   video: {
     currentSrc: 'http://127.0.0.1:43123/asset/01111111-2222-4333-8444-555555555555?token=' + 'a'.repeat(64),
@@ -289,6 +289,16 @@ test('rejects subtitle-only, inactive-tool, and accidental render false positive
   const applicationFailure = validResult();
   applicationFailure.errorToastMessages = ['Sanitized download failure'];
   assert.throws(() => assertMediaFlowResult(applicationFailure), /error toast/);
+
+  for (const mutation of [
+    (result) => { result.uploadedSrtInfo.v = 1; },
+    (result) => { result.uploadedSrtInfo.cacheId = PRIOR_ASSET_ID; },
+    (result) => { result.uploadedSrtInfo.extra = true; },
+  ]) {
+    const malformedProvenance = validResult();
+    mutation(malformedProvenance);
+    assert.throws(() => assertMediaFlowResult(malformedProvenance), /uploaded SRT state/);
+  }
 
   const substitutedMedia = validResult();
   substitutedMedia.playbackBytes.sha256 = 'b'.repeat(64);

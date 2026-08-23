@@ -18,6 +18,8 @@ import { completeDocumentWithResult } from '../services/gemini/consolidationServ
 import LyricsVirtualizedList from './LyricsVirtualizedList';
 import LyricsDownloadAndOutput from './LyricsDownloadAndOutput';
 import { saveCompleteDocumentResult } from './lyrics/documentProcessingResult';
+import { subtitleImportFileNameForCache } from '../platform/subtitleImportProvenance';
+import { getCurrentCacheId } from '../utils/userSubtitlesStore';
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -54,19 +56,7 @@ const LyricsDisplay = ({
 
   // Get naming information for downloads
   const getNamingInfo = () => {
-    // Get uploaded SRT info
-    let sourceSubtitleName = '';
-    try {
-      const uploadedSrtInfo = localStorage.getItem('uploaded_srt_info');
-      if (uploadedSrtInfo) {
-        const srtInfo = JSON.parse(uploadedSrtInfo);
-        if (srtInfo.hasUploaded && srtInfo.fileName) {
-          sourceSubtitleName = srtInfo.fileName;
-        }
-      }
-    } catch (error) {
-      console.error('Error parsing uploaded SRT info:', error);
-    }
+    const sourceSubtitleName = subtitleImportFileNameForCache(getCurrentCacheId());
 
     // Get video name (from uploaded file or video title)
     let videoName = '';

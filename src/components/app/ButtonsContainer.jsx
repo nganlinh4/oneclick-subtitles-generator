@@ -18,6 +18,7 @@ import { useSrtUploadState } from './utils/srtUploadState';
  */
 const ButtonsContainer = ({
   handleSrtUpload,
+  handleSrtClear,
   handleGenerateSubtitles,
   handleProcessWithOptions,
   handleCancelDownload,
@@ -33,8 +34,6 @@ const ButtonsContainer = ({
   retryingSegments,
   segmentsStatus,
   subtitlesData,
-  setSubtitlesData,
-  status,
   userProvidedSubtitles,
   selectedVideo,
   uploadedFile,
@@ -69,19 +68,15 @@ const ButtonsContainer = ({
     isVercelMode
   });
 
-  // SRT upload tracking with localStorage persistence
+  // The project handlers own durable upload/clear. This hook only presents their typed outcome.
   const {
     uploadedSrtInfo,
     handleSrtUploadWithState,
-    handleSrtClear
+    handleSrtClear: handleSrtClearWithState,
   } = useSrtUploadState({
     subtitlesData,
-    setSubtitlesData,
-    status,
-    isSrtOnlyMode,
-    isGenerating,
     handleSrtUpload,
-    handleUserSubtitlesAdd
+    handleSrtClear,
   });
 
   // Handle entrance/disappear animations for WavyProgressIndicator
@@ -113,7 +108,7 @@ const ButtonsContainer = ({
       <div style={{ flexShrink: 0 }}>
         <SrtUploadButton
           onSrtUpload={handleSrtUploadWithState}
-          onSrtClear={handleSrtClear}
+          onSrtClear={handleSrtClearWithState}
           disabled={isGenerating || isDownloading}
           hasSrtUploaded={uploadedSrtInfo.hasUploaded}
           uploadedFileName={uploadedSrtInfo.fileName}

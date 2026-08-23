@@ -4,7 +4,9 @@ import { createSubtitleHandlers } from './subtitleHandlers';
 
 const SRT = '1\n00:00:00,000 --> 00:00:01,000\nHello\n';
 
-const setup = (persistUploadedSubtitles) => {
+const setup = (persistUploadedSubtitles, clearUploadedSubtitles = vi.fn(async () => ({
+  success: true, cacheId: 'asset-a', projectId: 'project-a', subtitleCount: 0,
+}))) => {
   const state = {
     setStatus: vi.fn(),
     setSubtitlesData: vi.fn(),
@@ -18,6 +20,7 @@ const setup = (persistUploadedSubtitles) => {
     uploadedFile: { assetId: 'asset-a' },
     isSrtOnlyMode: false,
     persistUploadedSubtitles,
+    clearUploadedSubtitles,
     t: (_key, fallback) => fallback,
     ...state,
   });
@@ -35,7 +38,7 @@ describe('subtitle file import durability', () => {
     await Promise.resolve();
     expect(state.setSubtitlesData).not.toHaveBeenCalled();
     acknowledge({ success: true });
-    await pending;
+    await expect(pending).resolves.toMatchObject({ status: 'accepted' });
 
     expect(persist).toHaveBeenCalledWith([
       expect.objectContaining({ text: 'Hello', start: 0, end: 1 }),
@@ -50,6 +53,32 @@ describe('subtitle file import durability', () => {
 
     await handlers.handleSrtUpload(SRT, 'captions.srt');
 
+    expect(state.setSubtitlesData).not.toHaveBeenCalled();
+    expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('waits for exact-project clearing before withdrawing visible rows', async () => {
+    let acknowledge;
+    const clear = vi.fn(() => new Promise((resolve) => { acknowledge = resolve; }));
+    const { handlers, state } = setup(vi.fn(), clear);
+
+    const pending = handlers.handleSrtClear();
+    await Promise.resolve();
+    expect(state.setSubtitlesData).not.toHaveBeenCalled();
+    acknowledge({ success: true, cacheId: 'asset-a', projectId: 'project-a', subtitleCount: 0 });
+    await expect(pending).resolves.toMatchObject({ status: 'cleared' });
+
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(state.setSubtitlesData).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it('keeps visible rows when exact-project clearing refuses', async () => {
+    const failure = Object.assign(new Error('wrong project'), { code: 'projectScopeMismatch' });
+    const { handlers, state } = setup(vi.fn(), vi.fn(async () => { throw failure; }));
+
+    await expect(handlers.handleSrtClear()).resolves.toMatchObject({
+      status: 'refused', error: failure,
+    });
     expect(state.setSubtitlesData).not.toHaveBeenCalled();
     expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
   });

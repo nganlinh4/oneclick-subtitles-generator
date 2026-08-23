@@ -42,3 +42,31 @@ export const createImportedSubtitlePersistence = ({
 };
 
 export const persistImportedSubtitlesForActiveProject = createImportedSubtitlePersistence();
+
+export const createImportedSubtitleClear = ({
+  desktop = isDesktopRuntime,
+  readCacheId = getCurrentCacheId,
+  resolveProject = resolveProjectForCache,
+  save = saveSubtitlesToCache,
+} = {}) => async () => {
+  if (!desktop()) return Object.freeze({ status: 'deferred' });
+
+  const cacheId = readCacheId();
+  if (typeof cacheId !== 'string' || cacheId.length === 0) {
+    return Object.freeze({ status: 'deferred' });
+  }
+
+  const resolved = await resolveProject(cacheId, { create: false });
+  if (readCacheId() !== cacheId || typeof resolved?.projectId !== 'string') throw scopeFailure();
+  const result = await save(cacheId, [], { expectedProjectId: resolved.projectId });
+  requireSuccessfulSubtitleCacheSave(result);
+  if (readCacheId() !== cacheId
+      || result.cacheId !== cacheId
+      || result.projectId !== resolved.projectId
+      || result.subtitleCount !== 0) {
+    throw scopeFailure();
+  }
+  return result;
+};
+
+export const clearImportedSubtitlesForActiveProject = createImportedSubtitleClear();

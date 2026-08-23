@@ -17,9 +17,9 @@ const deferred = () => {
 };
 
 const explicitSrtInfo = Object.freeze({
-  hasUploaded: true,
+  v: 2,
+  cacheId: null,
   fileName: 'fixture.srt',
-  source: 'srt',
 });
 
 beforeEach(() => localStorage.clear());

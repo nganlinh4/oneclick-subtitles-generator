@@ -255,10 +255,10 @@ export function assertMediaFlowState(value, guardOptions) {
     && value.video.height === 360,
   'Installed media element did not decode the downloaded video metadata');
   invariant(value.subtitleMarkerVisible === true
-    && hasExactKeys(value.uploadedSrtInfo, ['fileName', 'hasUploaded', 'source'])
-    && value.uploadedSrtInfo.hasUploaded === true
-    && value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt'
-    && value.uploadedSrtInfo.source === 'srt',
+    && hasExactKeys(value.uploadedSrtInfo, ['cacheId', 'fileName', 'v'])
+    && value.uploadedSrtInfo.v === 2
+    && value.uploadedSrtInfo.cacheId === value.assetId
+    && value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt',
   'Installed media flow lost the uploaded SRT state or rendered marker');
   invariant(Array.isArray(value.errorToastMessages) && value.errorToastMessages.length === 0,
     'Installed media flow displayed an error toast');
@@ -539,16 +539,11 @@ const SRT_CLEARED_EXPRESSION = `
   );
   let info = null;
   try { info = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
-  const storedClear = info === null || (
-    info && typeof info === 'object' && !Array.isArray(info)
-      && Object.keys(info).sort().join(',') === 'fileName,hasUploaded,source'
-      && info.hasUploaded === false && info.fileName === '' && info.source === ''
-  );
   return uploadButtons.length === 1
     && !uploadButtons[0].classList.contains('has-srt-uploaded')
     && !uploadButtons[0].classList.contains('processing')
     && clearButtons.length === 0
-    && storedClear
+    && info === null
     && !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)});
 })()`;
 
@@ -604,10 +599,10 @@ const SRT_READY_EXPRESSION = (preferences) => `
     && !uploadButtons[0].disabled
     && clearButtons.length === 1 && !clearButtons[0].disabled
     && info && typeof info === 'object' && !Array.isArray(info)
-    && Object.keys(info).sort().join(',') === 'fileName,hasUploaded,source'
-    && info.hasUploaded === true
+    && Object.keys(info).sort().join(',') === 'cacheId,fileName,v'
+    && info.v === 2
+    && info.cacheId === null
     && info.fileName === 'osg-installed-media-smoke.srt'
-    && info.source === 'srt'
     && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
     && startButtons.length === 1
     && startButtons[0] instanceof HTMLButtonElement
@@ -666,10 +661,10 @@ const START_EXPRESSION = (preferences) => `
       || uploadButtons[0].disabled
       || clearButtons.length !== 1 || clearButtons[0].disabled
       || !info || typeof info !== 'object' || Array.isArray(info)
-      || Object.keys(info).sort().join(',') !== 'fileName,hasUploaded,source'
-      || info.hasUploaded !== true
+      || Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'
+      || info.v !== 2
+      || info.cacheId !== null
       || info.fileName !== 'osg-installed-media-smoke.srt'
-      || info.source !== 'srt'
       || !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
       || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)
       || buttons[0].disabled

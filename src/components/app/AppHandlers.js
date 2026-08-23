@@ -4,7 +4,10 @@ import { createSubtitleHandlers } from "./handlers/subtitleHandlers";
 import { createDownloadHandlers } from "./handlers/downloadHandlers";
 import { createProcessingHandlers } from "./handlers/processingHandlers";
 import { createSettingsHandlers } from "./handlers/settingsHandlers";
-import { persistImportedSubtitlesForActiveProject } from "../../utils/importedSubtitlePersistence";
+import {
+  clearImportedSubtitlesForActiveProject,
+  persistImportedSubtitlesForActiveProject,
+} from "../../utils/importedSubtitlePersistence";
 
 /**
  * Hook for application event handlers
@@ -56,7 +59,7 @@ export const useAppHandlers = (appState) => {
   const pendingAutoSubtitleRef = useRef(null);
 
   // Subtitle handlers (input validation + SRT/JSON upload) — self-contained.
-  const { validateInput, handleSrtUpload } = createSubtitleHandlers({
+  const { validateInput, handleSrtUpload, handleSrtClear } = createSubtitleHandlers({
     activeTab,
     selectedVideo,
     uploadedFile,
@@ -67,6 +70,7 @@ export const useAppHandlers = (appState) => {
     setDownloadProgress,
     setIsSrtOnlyMode,
     persistUploadedSubtitles: persistImportedSubtitlesForActiveProject,
+    clearUploadedSubtitles: clearImportedSubtitlesForActiveProject,
     t,
   });
 
@@ -207,6 +211,7 @@ export const useAppHandlers = (appState) => {
   return {
     validateInput,
     handleSrtUpload,
+    handleSrtClear,
     handleGenerateSubtitles,
     handleRetryGeneration,
     handleCancelDownload,

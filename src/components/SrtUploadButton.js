@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from './common/LoadingIndicator';
 import '../styles/SrtUploadButton.css';
@@ -25,63 +25,52 @@ const SrtUploadButton = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Add processing animation when file is being read
-  useEffect(() => {
-    if (isProcessing) {
-      const timer = setTimeout(() => {
-        setIsProcessing(false);
-      }, 2000); // Reset after 2 seconds
-      return () => clearTimeout(timer);
-    }
-  }, [isProcessing]);
-
   const handleButtonClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
+  const reportReadFailure = () => {
+    const message = t('errors.invalidSubtitleFile', 'Please select a valid SRT or JSON subtitle file');
+    if (window.addToast) window.addToast(message, 'error', 8000);
+  };
+
+  const readFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target.result);
+    reader.onerror = () => reject(reader.error ?? new Error('subtitleFileReadFailed'));
+    reader.onabort = () => reject(new Error('subtitleFileReadAborted'));
+    reader.readAsText(file);
+  });
+
+  const processFile = async (file) => {
+    const fileName = file?.name.toLowerCase();
+    if (!file || (!fileName.endsWith('.srt') && !fileName.endsWith('.json'))) {
+      if (file && window.addToast) {
+        window.addToast(
+          t('errors.invalidSubtitleFile', 'Please select a valid SRT or JSON subtitle file'),
+          'error',
+          8000
+        );
+      }
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const content = await readFile(file);
+      await onSrtUpload(content, file.name);
+    } catch {
+      reportReadFailure();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleFileChange = (event) => {
     const file = event.target.files[0];
-    const fileName = file?.name.toLowerCase();
-
-    if (file && (fileName.endsWith('.srt') || fileName.endsWith('.json'))) {
-      setIsProcessing(true); // Start processing animation
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target.result;
-
-        // For JSON files, validate the format
-        if (fileName.endsWith('.json')) {
-          try {
-            const jsonData = JSON.parse(content);
-            if (!Array.isArray(jsonData)) {
-              alert(t('errors.invalidJsonFile', 'JSON file must contain an array of subtitles'));
-              setIsProcessing(false);
-              return;
-            }
-            // Validate that it has the expected subtitle structure
-            if (jsonData.length > 0) {
-              const firstItem = jsonData[0];
-              if (!Object.hasOwn(firstItem, 'start') || !Object.hasOwn(firstItem, 'end') || !Object.hasOwn(firstItem, 'text')) {
-                alert(t('errors.invalidJsonStructure', 'JSON subtitles must have start, end, and text properties'));
-                setIsProcessing(false);
-                return;
-              }
-            }
-          } catch (error) {
-            alert(t('errors.invalidJsonFormat', 'Invalid JSON format'));
-            setIsProcessing(false);
-            return;
-          }
-        }
-
-        onSrtUpload(content, file.name);
-      };
-      reader.readAsText(file);
-    } else if (file) {
-      alert(t('errors.invalidSubtitleFile', 'Please select a valid SRT or JSON subtitle file'));
-    }
+    void processFile(file);
 
     // Reset the input so the same file can be selected again
     if (fileInputRef.current) {
@@ -89,9 +78,13 @@ const SrtUploadButton = ({
     }
   };
 
-  const handleClearSrt = () => {
-    if (onSrtClear) {
-      onSrtClear();
+  const handleClearSrt = async () => {
+    if (!onSrtClear) return;
+    setIsProcessing(true);
+    try {
+      await onSrtClear();
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -111,45 +104,7 @@ const SrtUploadButton = ({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      const fileName = file?.name.toLowerCase();
-
-      if (file && (fileName.endsWith('.srt') || fileName.endsWith('.json'))) {
-        setIsProcessing(true); // Start processing animation
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target.result;
-
-          // For JSON files, validate the format
-          if (fileName.endsWith('.json')) {
-            try {
-              const jsonData = JSON.parse(content);
-              if (!Array.isArray(jsonData)) {
-                alert(t('errors.invalidJsonFile', 'JSON file must contain an array of subtitles'));
-                setIsProcessing(false);
-                return;
-              }
-              // Validate that it has the expected subtitle structure
-              if (jsonData.length > 0) {
-                const firstItem = jsonData[0];
-                if (!Object.hasOwn(firstItem, 'start') || !Object.hasOwn(firstItem, 'end') || !Object.hasOwn(firstItem, 'text')) {
-                  alert(t('errors.invalidJsonStructure', 'JSON subtitles must have start, end, and text properties'));
-                  setIsProcessing(false);
-                  return;
-                }
-              }
-            } catch (error) {
-              alert(t('errors.invalidJsonFormat', 'Invalid JSON format'));
-              setIsProcessing(false);
-              return;
-            }
-          }
-
-          onSrtUpload(content, file.name);
-        };
-        reader.readAsText(file);
-      } else if (file) {
-        alert(t('errors.invalidSubtitleFile', 'Please select a valid SRT or JSON subtitle file'));
-      }
+      void processFile(file);
     }
   };
 

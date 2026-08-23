@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createImportedSubtitlePersistence } from './importedSubtitlePersistence';
+import {
+  createImportedSubtitleClear,
+  createImportedSubtitlePersistence,
+} from './importedSubtitlePersistence';
 
 const rows = [{ id: 1, start: 0, end: 1, text: 'hello' }];
 
@@ -64,5 +67,50 @@ describe('imported subtitle persistence', () => {
     });
 
     await expect(persist(rows)).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+  });
+});
+
+describe('imported subtitle clear', () => {
+  it('clears the exact active project before acknowledging the UI action', async () => {
+    const save = vi.fn(async () => ({
+      success: true, cacheId: 'asset-a', projectId: 'project-a', subtitleCount: 0,
+    }));
+    const clear = createImportedSubtitleClear({
+      desktop: () => true,
+      readCacheId: () => 'asset-a',
+      resolveProject: async () => ({ projectId: 'project-a' }),
+      save,
+    });
+
+    await expect(clear()).resolves.toMatchObject({ projectId: 'project-a', subtitleCount: 0 });
+    expect(save).toHaveBeenCalledExactlyOnceWith('asset-a', [], {
+      expectedProjectId: 'project-a',
+    });
+  });
+
+  it('defers SRT-only clearing when no native project exists', async () => {
+    const save = vi.fn();
+    const clear = createImportedSubtitleClear({
+      desktop: () => true,
+      readCacheId: () => null,
+      resolveProject: vi.fn(),
+      save,
+    });
+
+    await expect(clear()).resolves.toEqual({ status: 'deferred' });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('refuses a stale or malformed clear receipt instead of dropping visible rows', async () => {
+    const clear = createImportedSubtitleClear({
+      desktop: () => true,
+      readCacheId: () => 'asset-a',
+      resolveProject: async () => ({ projectId: 'project-a' }),
+      save: async () => ({
+        success: true, cacheId: 'asset-a', projectId: 'project-a', subtitleCount: 1,
+      }),
+    });
+
+    await expect(clear()).rejects.toMatchObject({ code: 'projectScopeMismatch' });
   });
 });

@@ -135,6 +135,7 @@ const AppLayout = ({
   const {
     validateInput,
     handleSrtUpload,
+    handleSrtClear,
     handleGenerateSubtitles,
     handleCancelDownload,
     handleTabChange,
@@ -388,6 +389,7 @@ const AppLayout = ({
           <div className="content-layout-container">
             <ButtonsContainer
               handleSrtUpload={handleSrtUpload}
+              handleSrtClear={handleSrtClear}
               handleGenerateSubtitles={handleGenerateSubtitles}
               handleProcessWithOptions={handleProcessWithOptions}
               handleCancelDownload={handleCancelDownload}
@@ -403,8 +405,6 @@ const AppLayout = ({
               retryingSegments={retryingSegments}
               segmentsStatus={segmentsStatus}
               subtitlesData={subtitlesData}
-              setSubtitlesData={setSubtitlesData}
-              status={status}
               userProvidedSubtitles={userProvidedSubtitles}
               selectedVideo={selectedVideo}
               uploadedFile={uploadedFile}

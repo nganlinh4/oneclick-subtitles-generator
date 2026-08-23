@@ -20,6 +20,7 @@ export const createSubtitleHandlers = ({
   setDownloadProgress,
   setIsSrtOnlyMode,
   persistUploadedSubtitles,
+  clearUploadedSubtitles,
   t,
 }) => {
   /**
@@ -65,14 +66,14 @@ export const createSubtitleHandlers = ({
               ),
               type: "error",
             });
-            return;
+            return Object.freeze({ status: 'refused' });
           }
         } catch (error) {
           setStatus({
             message: t("errors.invalidJsonFormat", "Invalid JSON format"),
             type: "error",
           });
-          return;
+          return Object.freeze({ status: 'refused' });
         }
       } else {
         // Parse as SRT content
@@ -87,7 +88,7 @@ export const createSubtitleHandlers = ({
           ),
           type: "error",
         });
-        return;
+        return Object.freeze({ status: 'refused' });
       }
 
       // Check if we have any video sources (including pasted URLs)
@@ -110,9 +111,9 @@ export const createSubtitleHandlers = ({
       // The editor treats incoming rows as its saved baseline. On desktop that is truthful only
       // after the exact active project has acknowledged them; otherwise Save is disabled while the
       // imported file exists solely in React memory and disappears on the next launch.
-      if (hasAnyVideoSource && typeof persistUploadedSubtitles === 'function') {
-        await persistUploadedSubtitles(parsedSubtitles);
-      }
+      const persistence = typeof persistUploadedSubtitles === 'function'
+        ? await persistUploadedSubtitles(parsedSubtitles)
+        : Object.freeze({ status: 'deferred' });
 
       if (!hasAnyVideoSource) {
         setIsSrtOnlyMode(true);
@@ -124,7 +125,7 @@ export const createSubtitleHandlers = ({
           ),
           type: "info",
         });
-        return;
+        return Object.freeze({ status: 'accepted', persistence });
       } else {
         // If we have any video source, make sure we're not in SRT-only mode
         setIsSrtOnlyMode(false);
@@ -207,21 +208,49 @@ export const createSubtitleHandlers = ({
           type: "success",
         });
       }
+      return Object.freeze({ status: 'accepted', persistence });
     } catch (error) {
-      console.error("Error parsing SRT file:", error);
+      const persistenceFailure = error?.code === 'projectScopeMismatch'
+        || error?.code === 'subtitleCacheSaveFailed';
+      console.error('Subtitle import failed:', error?.code || 'subtitleImportFailed');
       setStatus({
-        message: t(
-          "errors.srtParsingFailed",
-          "Failed to parse SRT file: {{message}}",
-          { message: error.message }
-        ),
+        message: persistenceFailure
+          ? t('subtitlesInput.saveFailed', 'The subtitles could not be saved. Please try again.')
+          : t(
+            "errors.srtParsingFailed",
+            "Failed to parse SRT file: {{message}}",
+            { message: error.message }
+          ),
         type: "error",
       });
+      return Object.freeze({ status: 'refused', error });
+    }
+  };
+
+  const handleSrtClear = async () => {
+    const hasAnyVideoSource = uploadedFile !== null || selectedVideo !== null;
+    try {
+      const persistence = typeof clearUploadedSubtitles === 'function'
+        ? await clearUploadedSubtitles()
+        : Object.freeze({ status: 'deferred' });
+      setSubtitlesData(null);
+      if (!hasAnyVideoSource) setIsSrtOnlyMode(false);
+      return Object.freeze({ status: 'cleared', persistence });
+    } catch (error) {
+      setStatus({
+        message: t(
+          'subtitlesInput.saveFailed',
+          'The subtitles could not be saved. Please try again.'
+        ),
+        type: 'error',
+      });
+      return Object.freeze({ status: 'refused', error });
     }
   };
 
   return {
     validateInput,
     handleSrtUpload,
+    handleSrtClear,
   };
 };

@@ -65,7 +65,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  '94fc247fea2048fc98a64d6ca23757544f4ca4602117d16dbd65938404ec7e8c';
+  'a630813cef95746e6fff1e177d1bd10453370309e9bfa14ad45081be93c256c7';
 const DOWNLOAD_HANDLERS_SHA256 =
   'bd50d1fd67c0f51a9f15a05a86c3c8b9856a59920e5f0e18f97f6c34b5d71f3c';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
@@ -1738,7 +1738,7 @@ function assertInstalledMediaFlowInspector(
       && cleared.includes("!uploadButtons[0].classList.contains('has-srt-uploaded')")
       && cleared.includes("!uploadButtons[0].classList.contains('processing')")
       && cleared.includes('clearButtons.length === 0')
-      && cleared.includes("info.hasUploaded === false && info.fileName === '' && info.source === ''")
+      && cleared.includes('info === null')
       && cleared.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})"),
     'Installed media-flow inspector must clear and observe absent stale SRT state before re-upload',
   );
@@ -1746,8 +1746,10 @@ function assertInstalledMediaFlowInspector(
     ready.includes("uploadButtons[0].classList.contains('has-srt-uploaded')")
       && ready.includes("!uploadButtons[0].classList.contains('processing')")
       && ready.includes('clearButtons.length === 1 && !clearButtons[0].disabled')
+      && ready.includes("Object.keys(info).sort().join(',') === 'cacheId,fileName,v'")
+      && ready.includes('info.v === 2')
+      && ready.includes('info.cacheId === null')
       && ready.includes("info.fileName === 'osg-installed-media-smoke.srt'")
-      && ready.includes("info.source === 'srt'")
       && ready.includes("document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
       && ready.includes("localStorage.getItem('auto_import_site_subtitles')")
       && ready.includes('${JSON.stringify(preferences.autoImport)}')
@@ -1800,8 +1802,10 @@ function assertInstalledMediaFlowInspector(
       && start.includes("!uploadButtons[0].classList.contains('has-srt-uploaded')")
       && start.includes("uploadButtons[0].classList.contains('processing')")
       && start.includes('clearButtons.length !== 1 || clearButtons[0].disabled')
+      && start.includes("Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'")
+      && start.includes('info.v !== 2')
+      && start.includes('info.cacheId !== null')
       && start.includes("info.fileName !== 'osg-installed-media-smoke.srt'")
-      && start.includes("info.source !== 'srt'")
       && start.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
       && start.includes('buttons.length !== 1')
       && start.includes("':scope .generate-btn.semi-auto'")
@@ -1857,6 +1861,13 @@ function assertInstalledMediaFlowInspector(
       && terminalWait.includes("{ failureCode: 'terminal-state-timeout' }")
       && (terminalWait.match(/failureCode:/g) || []).length === 1,
     'Installed media-flow inspector must bind the terminal wait to its exact fixed failure category',
+  );
+  invariant(
+    script.includes("hasExactKeys(value.uploadedSrtInfo, ['cacheId', 'fileName', 'v'])")
+      && script.includes('value.uploadedSrtInfo.v === 2')
+      && script.includes('value.uploadedSrtInfo.cacheId === value.assetId')
+      && script.includes("value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt'"),
+    'Installed media-flow inspector must bind terminal SRT provenance to the downloaded asset',
   );
   invariant(
     crypto.createHash('sha256').update(script.replace(/\r\n/g, '\n'), 'utf8').digest('hex')

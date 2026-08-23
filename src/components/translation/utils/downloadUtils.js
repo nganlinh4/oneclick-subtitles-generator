@@ -10,6 +10,8 @@ import {
   exportSubtitleArchive,
   normalizeSubtitleArchiveEntries,
 } from '../../../platform/subtitleDocumentExportService';
+import { subtitleImportFileNameForCache } from '../../../platform/subtitleImportProvenance';
+import { getCurrentCacheId } from '../../../utils/userSubtitlesStore';
 
 /**
  * Generate comprehensive filename based on priority system.
@@ -74,19 +76,7 @@ export const generateBulkFilename = (originalName, targetLanguages) => {
  * @returns {Object} - { sourceSubtitleName, videoName, targetLanguages }
  */
 export const getNamingInfo = (videoTitle, targetLanguages) => {
-  // Get uploaded SRT info
-  let sourceSubtitleName = '';
-  try {
-    const uploadedSrtInfo = localStorage.getItem('uploaded_srt_info');
-    if (uploadedSrtInfo) {
-      const srtInfo = JSON.parse(uploadedSrtInfo);
-      if (srtInfo.hasUploaded && srtInfo.fileName) {
-        sourceSubtitleName = srtInfo.fileName;
-      }
-    }
-  } catch (error) {
-    console.error('Error parsing uploaded SRT info:', error);
-  }
+  const sourceSubtitleName = subtitleImportFileNameForCache(getCurrentCacheId());
 
   return {
     sourceSubtitleName,

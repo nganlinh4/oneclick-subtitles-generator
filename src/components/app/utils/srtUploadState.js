@@ -1,174 +1,77 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
+
+import {
+  bindPendingSubtitleImportProvenance,
+  clearSubtitleImportProvenance,
+  readSubtitleImportProvenance,
+  writeSubtitleImportProvenance,
+} from '../../../platform/subtitleImportProvenance';
+import {
+  getCurrentCacheId,
+  subscribeCurrentCacheId,
+} from '../../../utils/userSubtitlesStore';
+
+const EMPTY_INFO = Object.freeze({ hasUploaded: false, fileName: '', source: '' });
+
+const uiInfo = (provenance, cacheId) => (
+  provenance !== null && provenance.cacheId === cacheId
+    ? Object.freeze({ hasUploaded: true, fileName: provenance.fileName, source: 'srt' })
+    : EMPTY_INFO
+);
 
 /**
- * Hook encapsulating uploaded-SRT tracking with localStorage persistence.
- *
- * Behavior matches the original inline implementation in ButtonsContainer.jsx
- * byte-for-byte; state/setters are threaded in via params.
+ * Track explicit user imports as presentation metadata only. Subtitle rows and clearing remain
+ * owned by the exact native project; this hook publishes a filename only after those operations
+ * return typed success. The metadata is scoped to the project alias so switching projects cannot
+ * make one project's import badge or export filename leak into another.
  */
 export const useSrtUploadState = ({
   subtitlesData,
-  setSubtitlesData,
-  status,
-  isSrtOnlyMode,
-  isGenerating,
   handleSrtUpload,
-  handleUserSubtitlesAdd
+  handleSrtClear,
 }) => {
-  // State for tracking uploaded SRT files with localStorage persistence
-  const [uploadedSrtInfo, setUploadedSrtInfo] = useState(() => {
-    try {
-      const saved = localStorage.getItem('uploaded_srt_info');
-      return saved ? JSON.parse(saved) : {
-        hasUploaded: false,
-        fileName: '',
-        source: '' // 'srt' or 'generated'
-      };
-    } catch (error) {
-      return {
-        hasUploaded: false,
-        fileName: '',
-        source: ''
-      };
+  const [uploadedSrtInfo, setUploadedSrtInfo] = useState(() => (
+    uiInfo(readSubtitleImportProvenance(), getCurrentCacheId())
+  ));
+
+  useEffect(() => subscribeCurrentCacheId((cacheId) => {
+    let provenance = readSubtitleImportProvenance();
+    if (cacheId !== null
+        && provenance?.cacheId === null
+        && Array.isArray(subtitlesData)
+        && subtitlesData.length > 0) {
+      provenance = bindPendingSubtitleImportProvenance(cacheId);
     }
-  });
-  const initialDetectionRef = useRef({
-    subtitlesData,
-    statusMessage: status?.message,
-    isSrtOnlyMode,
-    hasUploaded: uploadedSrtInfo.hasUploaded
-  });
+    setUploadedSrtInfo(uiInfo(provenance, cacheId));
+  }), [subtitlesData]);
 
-  // Persist uploadedSrtInfo to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('uploaded_srt_info', JSON.stringify(uploadedSrtInfo));
-    } catch (error) {
-      console.error('Error saving uploaded SRT info to localStorage:', error);
-    }
-  }, [uploadedSrtInfo]);
+  const handleSrtUploadWithState = async (content, fileName) => {
+    const result = await handleSrtUpload(content, fileName);
+    if (result?.status !== 'accepted') return result;
 
-  // Initialize SRT upload detection on component mount
-  useEffect(() => {
-    // On initial load, check if we should detect existing SRT data
-    const initial = initialDetectionRef.current;
-    if (initial.subtitlesData && initial.subtitlesData.length > 0 && !initial.hasUploaded) {
-      // Check multiple indicators that this might be uploaded SRT data
-      const isLikelySrtData = initial.isSrtOnlyMode ||
-                             initial.statusMessage?.includes('SRT') ||
-                             initial.statusMessage?.includes('uploaded') ||
-                             initial.statusMessage?.includes('Working with SRT only') ||
-                             // Check if subtitles have sequential IDs (typical of SRT files)
-                             (initial.subtitlesData.length > 1 && initial.subtitlesData.every((sub, index) => sub.id === index + 1));
-
-      if (isLikelySrtData) {
-        setUploadedSrtInfo({
-          hasUploaded: true,
-          fileName: 'uploaded-file.srt', // Default name since we don't know the original
-          source: 'srt'
-        });
-      }
-    }
-  }, []); // Run only once on mount
-
-  // Track when subtitles come from SRT upload vs generation
-  useEffect(() => {
-    // Check if we have subtitles and determine their source
-    if (subtitlesData && subtitlesData.length > 0) {
-      // `handleSrtUploadWithState` is the authoritative provenance boundary. Status text changes
-      // while a video or native tool is downloading must never relabel an explicitly uploaded
-      // subtitle track as generated.
-      if (uploadedSrtInfo.hasUploaded && uploadedSrtInfo.source === 'srt') return;
-
-      // Multiple ways to detect SRT upload:
-      // 1. Recent status message contains upload keywords
-      const isFromRecentSrtUpload = status?.message?.includes('uploaded') ||
-                                    status?.message?.includes('SRT') ||
-                                    status?.message?.includes('JSON');
-
-      // 2. We're in SRT-only mode (indicates subtitles without video generation)
-      const isInSrtOnlyMode = isSrtOnlyMode;
-
-      // 3. Status message indicates SRT-only mode
-      const isSrtOnlyModeStatus = status?.message?.includes('Working with SRT only') ||
-                                  status?.message?.includes('SRT only');
-
-      // 4. Check if subtitles have the structure typical of uploaded SRT files
-      // (they usually have sequential IDs and proper timing)
-      const hasSequentialIds = subtitlesData.length > 1 &&
-                               subtitlesData.every((sub, index) => sub.id === index + 1);
-
-      // 5. Check if we have subtitles but no generation activity (likely uploaded)
-      const hasSubtitlesWithoutGeneration = subtitlesData.length > 0 && !isGenerating &&
-                                           !status?.message?.includes('Processing') &&
-                                           !status?.message?.includes('Generating');
-
-      const isFromSrtUpload = isFromRecentSrtUpload || isInSrtOnlyMode || isSrtOnlyModeStatus ||
-                             (hasSubtitlesWithoutGeneration && hasSequentialIds);
-
-      if (isFromSrtUpload && !uploadedSrtInfo.hasUploaded) {
-        // This is a new SRT upload or we detected existing SRT data
-        setUploadedSrtInfo(prev => ({
-          ...prev,
-          hasUploaded: true,
-          source: 'srt'
-        }));
-      }
-    } else {
-      // An explicit upload handler may run one React turn before its parsed rows arrive. Preserve
-      // that provenance; the explicit clear handler owns clearing an uploaded track.
-      if (!(uploadedSrtInfo.hasUploaded && uploadedSrtInfo.source === 'srt')) {
-        setUploadedSrtInfo({
-          hasUploaded: false,
-          fileName: '',
-          source: ''
-        });
-      }
-    }
-  }, [subtitlesData, status, isSrtOnlyMode, isGenerating, uploadedSrtInfo.hasUploaded, uploadedSrtInfo.source]);
-
-  // Enhanced SRT upload handler
-  const handleSrtUploadWithState = (content, fileName) => {
-    setUploadedSrtInfo({
-      hasUploaded: true,
-      fileName: fileName,
-      source: 'srt'
-    });
-    handleSrtUpload(content, fileName);
+    const activeCacheId = getCurrentCacheId() ?? null;
+    const receiptCacheId = result.persistence?.cacheId;
+    if (typeof receiptCacheId === 'string' && receiptCacheId !== activeCacheId) return result;
+    const cacheId = receiptCacheId ?? activeCacheId;
+    writeSubtitleImportProvenance({ cacheId, fileName });
+    setUploadedSrtInfo(uiInfo({ cacheId, fileName }, cacheId));
+    return result;
   };
 
-  // Clear SRT handler
-  const handleSrtClear = () => {
-    const clearedInfo = {
-      hasUploaded: false,
-      fileName: '',
-      source: ''
-    };
-    setUploadedSrtInfo(clearedInfo);
+  const handleSrtClearWithState = async () => {
+    const result = await handleSrtClear();
+    if (result?.status !== 'cleared') return result;
 
-    // Clear from localStorage as well
-    try {
-      localStorage.setItem('uploaded_srt_info', JSON.stringify(clearedInfo));
-    } catch (error) {
-      console.error('Error clearing uploaded SRT info from localStorage:', error);
-    }
-
-    // Clear subtitles data - this should clear the subtitles completely
-    if (typeof handleUserSubtitlesAdd === 'function') {
-      handleUserSubtitlesAdd('');
-    }
-
-    // Also clear subtitles data directly if available
-    if (typeof setSubtitlesData === 'function') {
-      setSubtitlesData(null);
-    }
+    const expectedCacheId = result.persistence?.cacheId ?? getCurrentCacheId() ?? null;
+    clearSubtitleImportProvenance({ expectedCacheId });
+    setUploadedSrtInfo(uiInfo(readSubtitleImportProvenance(), getCurrentCacheId()));
+    return result;
   };
 
   return {
     uploadedSrtInfo,
-    setUploadedSrtInfo,
     handleSrtUploadWithState,
-    handleSrtClear
+    handleSrtClear: handleSrtClearWithState,
   };
 };
 
