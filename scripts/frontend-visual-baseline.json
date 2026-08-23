@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "106680349035a8f2f87a67c6dc24294603f99315",
+  "baselineRevision": "22097de22c730b359f391973be6febb9cc7024a8",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -7839,10 +7839,10 @@
       ]
     },
     "src/components/app/AppLayout.jsx": {
-      "hash": "c62e189c4ab763beed24f33a18ff7d4aae2b3ce0005a3c9375e726eca5bc0a72",
+      "hash": "30c6769c75860bef6b7ba7505f13bd05a9807172c375b8fcbbe4d51254195435",
       "rootCount": 1,
       "roots": [
-        "053930e7b44b21415a264f6b38531b9a5502dd0bb3a6c045b5ee5268f5a7dfcf"
+        "201c03139e47b257f2407ce81281fc51ebaab8b8ceca35e0b0e480c29f5a1beb"
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
@@ -8702,10 +8702,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "ccad1f74d088a9f83e8df3f6d677921d680f1b1cc87f1775635c9979e876563f",
+      "hash": "f274663c9ce497e8f2b86a4d2949a84199a90dc5727e8fea1f2176d67af27ecf",
       "rootCount": 1,
       "roots": [
-        "b1186e32dd995d8fe2ded8153567c96d625d099afdf6b2f02c5517e18cbcb20c"
+        "848465dfc365ded80de25321c7e2b0fa672671dd2b68ed72fa64ab943d4ef6fe"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
