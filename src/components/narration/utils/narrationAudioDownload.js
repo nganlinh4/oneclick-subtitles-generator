@@ -4,6 +4,7 @@ import {
   getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
+import { showErrorToast } from '../../../utils/toastUtils';
 
 /**
  * Export one native narration artifact through the host-owned save dialog.
@@ -16,7 +17,7 @@ export const downloadAudio = async (result, _getAudioUrl, t) => {
     }
     await downloadNativeNarration(result);
   } catch (error) {
-    alert(t(
+    showErrorToast(t(
       'narration.downloadError',
       `Error downloading audio file: ${error.message}`,
     ));

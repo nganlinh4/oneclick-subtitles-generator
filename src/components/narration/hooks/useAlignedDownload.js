@@ -6,12 +6,12 @@ import {
 } from '../../../services/alignedNarrationService';
 import { buildStrictNativeNarrationPlan } from '../../../utils/narrationAlignmentUtils';
 import { createSimpleLoadingOverlay } from '../utils/loadingOverlayFactory';
-import { showSuccessToast } from '../../../utils/toastUtils';
+import { showErrorToast, showSuccessToast, showWarningToast } from '../../../utils/toastUtils';
 
 const useAlignedDownload = ({ generationResults, getCurrentCues, t }) => {
   const downloadAlignedAudio = async () => {
     if (!generationResults?.length) {
-      alert(t('narration.noResults', 'No narration results to download'));
+      showWarningToast(t('narration.noResults', 'No narration results to download'));
       return;
     }
     const loadingOverlay = createSimpleLoadingOverlay(t(
@@ -45,7 +45,7 @@ const useAlignedDownload = ({ generationResults, getCurrentCues, t }) => {
         'Aligned narration was saved successfully.',
       ));
     } catch (error) {
-      alert(t(
+      showErrorToast(t(
         'narration.alignedDownloadFailed',
         'Error downloading aligned audio: {{error}}',
         { error: error.message },

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { addCustomSubtitlePreset, hasCustomizationChanged } from '../../utils/subtitlePresetUtils';
 import PresetNamingModal from './PresetNamingModal';
+import { showErrorToast } from '../../utils/toastUtils';
 
 const SavePresetButton = ({ customization, onChange, predefinedPresets, setCustomPresets }) => {
   const { t } = useTranslation();
@@ -33,7 +34,7 @@ const SavePresetButton = ({ customization, onChange, predefinedPresets, setCusto
       onChange({ ...customization, preset: updatedPresets[updatedPresets.length - 1].id });
     } catch (error) {
       console.error('Error saving custom preset:', error);
-      alert(t('presetButtons.saveError', 'Failed to save custom preset.'));
+      showErrorToast(t('presetButtons.saveError', 'Failed to save custom preset.'));
     } finally {
       setIsSaving(false);
     }

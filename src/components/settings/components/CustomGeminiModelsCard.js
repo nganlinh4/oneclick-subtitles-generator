@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { normalizeCustomGeminiModelId } from '../../../config/geminiModels';
+import {
+  showConfirmationToast,
+  showWarningToast,
+} from '../../../utils/toastUtils';
 import '../../../styles/settings/customGeminiModels.css';
 
 /**
@@ -21,13 +25,13 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
   const handleAddModel = () => {
     const normalizedId = normalizeCustomGeminiModelId(newModelId);
     if (!normalizedId) {
-      alert(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
+      showWarningToast(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
       return;
     }
 
     // Check if model ID already exists
     if (customGeminiModels.some(model => model.id === normalizedId)) {
-      alert(t('settings.customModels.modelExists', 'A model with this ID already exists'));
+      showWarningToast(t('settings.customModels.modelExists', 'A model with this ID already exists'));
       return;
     }
 
@@ -62,13 +66,13 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
   const handleUpdateModel = () => {
     const normalizedId = normalizeCustomGeminiModelId(newModelId);
     if (!normalizedId) {
-      alert(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
+      showWarningToast(t('settings.customModels.invalidModelId', 'Enter a Gemini model ID such as gemini-3.8-flash'));
       return;
     }
 
     // Check if new ID conflicts with existing models (excluding the one being edited)
     if (customGeminiModels.some(model => model.id === normalizedId && model.id !== editingModelId)) {
-      alert(t('settings.customModels.modelExists', 'A model with this ID already exists'));
+      showWarningToast(t('settings.customModels.modelExists', 'A model with this ID already exists'));
       return;
     }
 
@@ -90,11 +94,16 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
 
   // Handle deleting a model
   const handleDeleteModel = (modelId) => {
-    if (window.confirm(t('settings.customModels.confirmDelete', 'Are you sure you want to delete this custom model?'))) {
-      const updatedModels = customGeminiModels.filter(model => model.id !== modelId);
-      setCustomGeminiModels(updatedModels);
-      localStorage.setItem('custom_gemini_models', JSON.stringify(updatedModels));
-    }
+    showConfirmationToast({
+      message: t('settings.customModels.confirmDelete', 'Are you sure you want to delete this custom model?'),
+      confirmText: t('common.confirm', 'Confirm'),
+      key: `custom-model-delete:${modelId}`,
+      onConfirm: () => setCustomGeminiModels((currentModels) => {
+        const updatedModels = currentModels.filter((model) => model.id !== modelId);
+        localStorage.setItem('custom_gemini_models', JSON.stringify(updatedModels));
+        return updatedModels;
+      }),
+    });
   };
 
   // Handle canceling add/edit

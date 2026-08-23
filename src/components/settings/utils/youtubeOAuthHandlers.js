@@ -3,6 +3,11 @@ import {
   authorizeYouTubeNative,
   clearYouTubeOAuthNative,
 } from '../../../platform/providerService';
+import {
+  showConfirmationToast,
+  showErrorToast,
+  showWarningToast,
+} from '../../../utils/toastUtils';
 
 // Kept as a compatibility-shaped export for existing callers. Native credentials are
 // write-only drafts and are never staged in browser storage.
@@ -11,7 +16,7 @@ export const storeClientCredentials = () => false;
 // Handle YouTube OAuth authentication
 export const handleOAuthAuthentication = (youtubeClientId, youtubeClientSecret, setIsAuthenticated) => {
   if (!youtubeClientId || !youtubeClientSecret) {
-    alert(i18n.t('settings.youtubeOAuth.missingCredentials', 'Please enter both Client ID and Client Secret.'));
+    showWarningToast(i18n.t('settings.youtubeOAuth.missingCredentials', 'Please enter both Client ID and Client Secret.'));
     return false;
   }
   return authorizeYouTubeNative({
@@ -22,18 +27,20 @@ export const handleOAuthAuthentication = (youtubeClientId, youtubeClientSecret, 
     return status.authenticated;
   }).catch(() => {
     setIsAuthenticated(false);
-    alert(i18n.t('settings.youtubeOAuth.authFailed', 'YouTube authentication failed. Please try again.'));
+    showErrorToast(i18n.t('settings.youtubeOAuth.authFailed', 'YouTube authentication failed. Please try again.'));
     return false;
   });
 };
 
 // Handle clearing OAuth data
 export const handleClearOAuth = (setIsAuthenticated) => {
-  if (window.confirm(i18n.t('settings.youtubeOAuth.confirmClear', 'Are you sure you want to clear your YouTube OAuth credentials? You will need to authenticate again to use YouTube search.'))) {
-    return clearYouTubeOAuthNative().then(() => {
+  return showConfirmationToast({
+    message: i18n.t('settings.youtubeOAuth.confirmClear', 'Are you sure you want to clear your YouTube OAuth credentials? You will need to authenticate again to use YouTube search.'),
+    confirmText: i18n.t('common.confirm', 'Confirm'),
+    key: 'youtube-oauth-clear-confirmation',
+    onConfirm: () => clearYouTubeOAuthNative().then(() => {
       setIsAuthenticated(false);
       return true;
-    }).catch(() => false);
-  }
-  return false;
+    }),
+  });
 };

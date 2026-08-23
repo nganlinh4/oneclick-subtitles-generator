@@ -14,6 +14,7 @@ import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
+import { showErrorToast } from '../../utils/toastUtils';
 import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
 import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
@@ -320,7 +321,7 @@ const AppLayout = ({
           hint = t('videoRendering.hintNetworkCors', 'Network/CORS issue. Check the Network tab for the failing request and the server logs.');
         }
       }
-      alert(`${t('videoRendering.errorPrefix', 'Error: {{message}}', { message: error?.message })}${hint ? `\n\n${t('videoRendering.hintLabel', 'Hint')}: ${hint}` : ''}`);
+      showErrorToast(`${t('videoRendering.errorPrefix', 'Error: {{message}}', { message: error?.message })}${hint ? `\n\n${t('videoRendering.hintLabel', 'Hint')}: ${hint}` : ''}`);
     }
   };
 

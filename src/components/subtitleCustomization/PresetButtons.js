@@ -5,6 +5,7 @@ import PresetNamingModal from './PresetNamingModal';
 import PresetButtonsGrid from './PresetButtonsGrid';
 import { presets } from './presetDefinitions';
 import { resolvePreset, resolveCustomPreset, buildSavePayload } from './customPresetHandlers';
+import { showErrorToast } from '../../utils/toastUtils';
 
 const PresetButtons = ({ customization, onChange }) => {
   const { t } = useTranslation();
@@ -51,7 +52,7 @@ const PresetButtons = ({ customization, onChange }) => {
       onChange({ ...customization, preset: updatedPresets[updatedPresets.length - 1].id });
     } catch (error) {
       console.error('Error saving custom preset:', error);
-      alert(t('subtitleSettings.presetButtons.saveError', 'Failed to save custom preset.'));
+      showErrorToast(t('subtitleSettings.presetButtons.saveError', 'Failed to save custom preset.'));
     } finally {
       setIsSaving(false);
     }

@@ -7,6 +7,7 @@ import {
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
 import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
+import { showErrorToast } from '../../../utils/toastUtils';
 
 const getBackupName = (filename) => filename ? `backup_${filename}` : null;
 const seconds = (result) => Number(result?.durationMicros) / 1_000_000;
@@ -103,7 +104,7 @@ const useNarrationAudioSpeed = ({ generationResults, t }) => {
         timestamp: Date.now(),
       });
     } catch (error) {
-      alert(t(
+      showErrorToast(t(
         'narration.speedModificationError',
         `Error applying batch edit: ${error.message}`,
       ));
@@ -130,7 +131,7 @@ const useNarrationAudioSpeed = ({ generationResults, t }) => {
         timestamp: Date.now(),
       });
     } catch (error) {
-      alert(t(
+      showErrorToast(t(
         'narration.trimModificationError',
         `Error applying edit: ${error.message}`,
       ));

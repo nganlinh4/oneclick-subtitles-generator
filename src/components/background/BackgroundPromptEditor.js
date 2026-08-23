@@ -14,6 +14,7 @@ import {
   migrateGeminiModelId,
   normalizeImageGenerationModelId
 } from '../../config/geminiModels';
+import { showErrorToast } from '../../utils/toastUtils';
 
 const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
@@ -128,7 +129,7 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
       onClose();
     } catch (error) {
       console.error('Error saving prompts to localStorage:', error);
-      alert(t('backgroundGenerator.errorSavingPrompts', 'Error saving prompts: {{message}}', { message: error.message }));
+      showErrorToast(t('backgroundGenerator.errorSavingPrompts', 'Error saving prompts: {{message}}', { message: error.message }));
     } finally {
       setIsSaving(false);
     }

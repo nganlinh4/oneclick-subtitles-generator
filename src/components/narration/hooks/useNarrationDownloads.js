@@ -5,6 +5,7 @@ import {
 } from '../../../platform/nativeNarrationArtifacts';
 import { isNativeNarrationResult } from '../../../platform/nativeNarrationCapabilities';
 import { createLoadingOverlay } from '../utils/loadingOverlayFactory';
+import { showErrorToast, showWarningToast } from '../../../utils/toastUtils';
 
 const useNarrationDownloads = ({
   generationResults,
@@ -42,7 +43,7 @@ const useNarrationDownloads = ({
 
   const downloadAllAudio = async () => {
     if (!generationResults?.length) {
-      alert(t('narration.noResults', 'No narration results to download'));
+      showWarningToast(t('narration.noResults', 'No narration results to download'));
       return;
     }
     const loadingOverlay = createLoadingOverlay(
@@ -57,7 +58,7 @@ const useNarrationDownloads = ({
       }
       await downloadNativeNarrations(successful);
     } catch (error) {
-      alert(t(
+      showErrorToast(t(
         'narration.downloadError',
         `Error downloading audio files: ${error.message}`,
       ));

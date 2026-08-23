@@ -34,6 +34,16 @@ export default [
       'react/jsx-uses-vars': 'error',
       'react-hooks/exhaustive-deps': 'error',
       'react-hooks/rules-of-hooks': 'error',
+      'no-restricted-globals': ['error',
+        { name: 'alert', message: 'Use the non-blocking application toast surface.' },
+        { name: 'confirm', message: 'Use an application-owned confirmation surface.' },
+        { name: 'prompt', message: 'Use an application-owned input surface.' },
+      ],
+      'no-restricted-properties': ['error',
+        { object: 'window', property: 'alert', message: 'Use the non-blocking application toast surface.' },
+        { object: 'window', property: 'confirm', message: 'Use an application-owned confirmation surface.' },
+        { object: 'window', property: 'prompt', message: 'Use an application-owned input surface.' },
+      ],
       'no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         caughtErrors: 'none',
@@ -48,6 +58,10 @@ export default [
         ...globals.jest,
         vi: 'readonly',
       },
+    },
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
     },
   },
 ];

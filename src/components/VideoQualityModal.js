@@ -7,6 +7,7 @@ import WavyProgressIndicator from './common/WavyProgressIndicator';
 import { detectDarkTheme, getThemeColors } from './qualityModal/themeDetection';
 import useQualityProgressTracking from './qualityModal/useQualityProgressTracking';
 import { readDownloadCookiePreference } from '../platform/downloadCookiePreference';
+import { showWarningToast } from '../utils/toastUtils';
 
 const VideoQualityModal = ({
   isOpen,
@@ -182,7 +183,7 @@ const VideoQualityModal = ({
   const handleConfirm = async () => {
     if (selectedOption === 'redownload') {
       if (!selectedQuality) {
-        alert(t('videoQuality.selectQualityToDownload', 'Please select a quality to download'));
+        showWarningToast(t('videoQuality.selectQualityToDownload', 'Please select a quality to download'));
         return;
       }
 

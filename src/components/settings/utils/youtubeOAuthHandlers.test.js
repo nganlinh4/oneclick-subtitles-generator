@@ -23,7 +23,7 @@ vi.mock('../../../i18n/i18n', () => {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  window.alert = vi.fn();
+  window.addToast = vi.fn();
   window.open = vi.fn();
 });
 
@@ -52,11 +52,13 @@ it('starts the system-browser native OAuth flow without legacy storage or popup 
 });
 
 it('clears native OAuth only after confirmation', async () => {
-  window.confirm = vi.fn().mockReturnValue(true);
   clearYouTubeOAuthNative.mockResolvedValue(true);
   const setIsAuthenticated = vi.fn();
 
-  await expect(handleClearOAuth(setIsAuthenticated)).resolves.toBe(true);
+  expect(handleClearOAuth(setIsAuthenticated)).toBe(true);
+  expect(clearYouTubeOAuthNative).not.toHaveBeenCalled();
+  const confirmation = window.addToast.mock.calls.at(-1)[4];
+  await expect(confirmation.onClick()).resolves.toBe(true);
 
   expect(clearYouTubeOAuthNative).toHaveBeenCalledTimes(1);
   expect(setIsAuthenticated).toHaveBeenCalledWith(false);
@@ -65,6 +67,11 @@ it('clears native OAuth only after confirmation', async () => {
 it('fails closed before IPC when either credential draft is missing', () => {
   expect(handleOAuthAuthentication('client-id', '', vi.fn())).toBe(false);
   expect(authorizeYouTubeNative).not.toHaveBeenCalled();
+  expect(window.addToast).toHaveBeenCalledWith(
+    expect.stringMatching(/client id/i),
+    'warning',
+    7000
+  );
   expect(localStorage.getItem('youtube_client_id')).toBeNull();
   expect(localStorage.getItem('youtube_client_secret')).toBeNull();
 });

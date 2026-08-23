@@ -8,6 +8,7 @@ import {
 import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutubeService';
 import { downloadUrlToUserDestination } from '../../platform/userMediaExportFlow';
 import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
+import { showErrorToast } from '../../utils/toastUtils';
 import DownloadOnlyModal from '../DownloadOnlyModal';
 import {
   isValidYoutubeUrl,
@@ -258,7 +259,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
       console.error('Error downloading Douyin video:', error);
       setIsDouyinDownloading(false);
       setDouyinDownloadProgress(0);
-      alert(t('unifiedUrlInput.downloadFailed', 'Download failed: {{message}}', { message: error.message }));
+      showErrorToast(t('unifiedUrlInput.downloadFailed', 'Download failed: {{message}}', { message: error.message }));
     }
   };
 
