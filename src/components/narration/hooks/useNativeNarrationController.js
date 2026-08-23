@@ -85,10 +85,10 @@ const persistNativeResults = (
   });
 };
 
-const narrationSource = (state) => (
-  state.useGroupedSubtitles && state.groupedSubtitles?.length > 0
-    ? 'grouped'
-    : (state.subtitleSource === 'translated' ? 'translated' : 'original')
+const resultSource = (state) => (
+  ['original', 'translated', 'grouped'].includes(state.generationResultSource)
+    ? state.generationResultSource
+    : 'original'
 );
 
 const sameSubtitlePlan = (left, right) => (
@@ -219,19 +219,26 @@ const useNativeNarrationController = (state) => {
   const editInFlightRef = useRef(false);
   stateRef.current = state;
 
-  const selectedSubtitles = useCallback(() => {
+  const selectedSubtitlePlan = useCallback(() => {
     const current = stateRef.current;
     if (current.useGroupedSubtitles
         && Array.isArray(current.groupedSubtitles)
         && current.groupedSubtitles.length > 0) {
-      return current.groupedSubtitles;
+      return Object.freeze({ source: 'grouped', subtitles: current.groupedSubtitles });
     }
-    if (current.subtitleSource === 'translated'
-        && Array.isArray(current.translatedSubtitles)
-        && current.translatedSubtitles.length > 0) {
-      return current.translatedSubtitles;
+    if (current.subtitleSource === 'translated') {
+      return Object.freeze({
+        source: 'translated',
+        subtitles: Array.isArray(current.translatedSubtitles) ? current.translatedSubtitles : [],
+      });
     }
-    return current.originalSubtitles || current.subtitles || [];
+    if (current.subtitleSource === 'original') {
+      return Object.freeze({
+        source: 'original',
+        subtitles: current.originalSubtitles || current.subtitles || [],
+      });
+    }
+    return Object.freeze({ source: null, subtitles: [] });
   }, []);
 
   const run = useCallback(async (method, requestedSubtitles, { replace = true } = {}) => {
@@ -259,14 +266,16 @@ const useNativeNarrationController = (state) => {
     const requireLifecycleOwnership = () => {
       if (!ownsLifecycle()) throw speechRuntimeStopped();
     };
-    if (!current.subtitleSource) {
+    const selectedPlan = selectedSubtitlePlan();
+    if (selectedPlan.source === null) {
       current.setError(current.t(
         'narration.noSourceSelectedError',
         'Please select a subtitle source (Original or Translated)',
       ));
       return false;
     }
-    let subtitles = prepareSubtitles(requestedSubtitles || selectedSubtitles());
+    const source = selectedPlan.source;
+    const subtitles = prepareSubtitles(requestedSubtitles || selectedPlan.subtitles);
     if (subtitles.length === 0) {
       current.setError(current.t('narration.noSubtitlesError', 'No subtitles available for narration'));
       return false;
@@ -307,12 +316,6 @@ const useNativeNarrationController = (state) => {
       ));
       return false;
     }
-    subtitles = prepareSubtitles(requestedSubtitles || selectedSubtitles());
-    if (subtitles.length === 0) {
-      current.setError(current.t('narration.noSubtitlesError', 'No subtitles available for narration'));
-      return false;
-    }
-
     const authority = captureProjectAuthority();
     if (!authority) {
       current.setError(current.t(
@@ -326,6 +329,7 @@ const useNativeNarrationController = (state) => {
     };
 
     current.setIsGenerating(true);
+    current.setGenerationResultSource(source);
     current.setError('');
     current.setGenerationStatus(current.t(
       'narration.preparingGeneration',
@@ -382,7 +386,7 @@ const useNativeNarrationController = (state) => {
         subtitles,
         outcome.status === 'cancelled' ? 'cancelled' : 'synthesisFailed',
       );
-      await persistNativeResults(method, next, authority, narrationSource(current)).catch(() => {
+      await persistNativeResults(method, next, authority, source).catch(() => {
         throw narrationPersistenceFailed();
       });
       requireLifecycleOwnership();
@@ -451,7 +455,7 @@ const useNativeNarrationController = (state) => {
         error?.code || 'synthesisFailed',
       );
       current.setGenerationResults(next);
-      await persistNativeResults(method, next, authority, narrationSource(current)).catch(() => null);
+      await persistNativeResults(method, next, authority, source).catch(() => null);
       current.setError(current.t(
         'narration.generationError',
         'Error generating narration',
@@ -460,11 +464,11 @@ const useNativeNarrationController = (state) => {
     } finally {
       current.setIsGenerating(false);
     }
-  }, [native, selectedSubtitles]);
+  }, [native, selectedSubtitlePlan]);
 
   const retry = useCallback(async (method, subtitleId) => {
     const current = stateRef.current;
-    const subtitle = selectedSubtitles().find((item, index) => (
+    const subtitle = selectedSubtitlePlan().subtitles.find((item, index) => (
       idsEqual(deriveSubtitleId(item, index), subtitleId)
     ));
     if (!subtitle) return false;
@@ -475,29 +479,29 @@ const useNativeNarrationController = (state) => {
     } finally {
       current.setRetryingSubtitleId(null);
     }
-  }, [run, selectedSubtitles]);
+  }, [run, selectedSubtitlePlan]);
 
   const retryFailed = useCallback(async (method) => {
     const current = stateRef.current;
     const failedIds = new Set((current.generationResults || [])
       .filter((result) => !result.success && !result.pending)
       .map((result) => String(result.subtitle_id)));
-    const failed = selectedSubtitles().filter((subtitle, index) => (
+    const failed = selectedSubtitlePlan().subtitles.filter((subtitle, index) => (
       failedIds.has(String(deriveSubtitleId(subtitle, index)))
     ));
     return failed.length > 0 ? run(method, failed, { replace: false }) : false;
-  }, [run, selectedSubtitles]);
+  }, [run, selectedSubtitlePlan]);
 
   const generatePending = useCallback(async (method) => {
     const current = stateRef.current;
     const completed = new Set((current.generationResults || [])
       .filter((result) => result.success)
       .map((result) => String(result.subtitle_id)));
-    const pending = selectedSubtitles().filter((subtitle, index) => (
+    const pending = selectedSubtitlePlan().subtitles.filter((subtitle, index) => (
       !completed.has(String(deriveSubtitleId(subtitle, index)))
     ));
     return pending.length > 0 ? run(method, pending, { replace: false }) : false;
-  }, [run, selectedSubtitles]);
+  }, [run, selectedSubtitlePlan]);
 
   const cancel = useCallback(async (method) => {
     if (!native) return false;
@@ -508,7 +512,8 @@ const useNativeNarrationController = (state) => {
     if (!native) return undefined;
     let disposed = false;
     const current = stateRef.current;
-    const selected = prepareSubtitles(selectedSubtitles());
+    const selectedPlan = selectedSubtitlePlan();
+    const selected = prepareSubtitles(selectedPlan.subtitles);
     const authority = captureProjectAuthority();
     if (!authority) return undefined;
     Promise.resolve(restorePersistedNativeNarration({
@@ -523,6 +528,7 @@ const useNativeNarrationController = (state) => {
           || !ownsProjectAuthority(authority)
           || (latest.generationResults || []).length > 0
           || !sameSubtitlePlan(restored.subtitles, selected)) return;
+      latest.setGenerationResultSource(selectedPlan.source || 'original');
       latest.setGenerationResults(hydrateNativeNarrationResults(restored.results));
       latest.setGenerationStatus(latest.t(
         'narration.loadedFromCache',
@@ -530,7 +536,7 @@ const useNativeNarrationController = (state) => {
       ));
     }).catch(() => undefined);
     return () => { disposed = true; };
-  }, [native, selectedSubtitles]);
+  }, [native, selectedSubtitlePlan]);
 
   useEffect(() => {
     if (!native) return undefined;
@@ -578,7 +584,7 @@ const useNativeNarrationController = (state) => {
             method,
             next,
             authority,
-            narrationSource(current),
+            resultSource(current),
           );
           if (persisted === null || !ownsProjectAuthority(authority)) {
             throw narrationPersistenceFailed();

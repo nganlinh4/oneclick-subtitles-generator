@@ -18,6 +18,7 @@ const activeAuthority = () => {
  * Custom hook for managing window state objects for narration
  * @param {Object} params - Parameters
  * @param {Array} params.generationResults - Current generation results
+ * @param {string} params.generationResultSource - Source that owns the current generation results
  * @param {string} params.subtitleSource - Selected subtitle source
  * @param {string} params.narrationMethod - Selected narration method
  * @param {Array} params.originalSubtitles - Original subtitles
@@ -31,6 +32,7 @@ const activeAuthority = () => {
  */
 const useWindowStateManager = ({
   generationResults,
+  generationResultSource,
   subtitleSource,
   narrationMethod,
   originalSubtitles,
@@ -47,13 +49,15 @@ const useWindowStateManager = ({
   useEffect(() => {
     const authority = activeAuthority();
     if (authority === null || !Array.isArray(generationResults)) return;
-    const grouped = useGroupedSubtitles === true
+    const selectedSource = useGroupedSubtitles === true
       && Array.isArray(groupedSubtitles)
-      && groupedSubtitles.length > 0;
-    const source = grouped
+      && groupedSubtitles.length > 0
       ? 'grouped'
       : (subtitleSource === 'translated' ? 'translated' : 'original');
-    const cuePlan = grouped
+    const source = ['original', 'translated', 'grouped'].includes(generationResultSource)
+      ? generationResultSource
+      : 'original';
+    const cuePlan = source === 'grouped'
       ? groupedSubtitles
       : (source === 'translated' ? translatedSubtitles : originalSubtitles || subtitles || []);
     const results = narrationMethod === 'f5tts'
@@ -63,9 +67,11 @@ const useWindowStateManager = ({
       ...authority,
       source,
       results,
+      activate: source === selectedSource,
     });
   }, [
     generationResults,
+    generationResultSource,
     groupedSubtitles,
     narrationMethod,
     originalSubtitles,
@@ -119,17 +125,6 @@ const useWindowStateManager = ({
     translatedSubtitles,
     useGroupedSubtitles,
   ]);
-
-  // Save subtitle source to localStorage when it changes
-  useEffect(() => {
-    if (subtitleSource) {
-      try {
-        localStorage.setItem('subtitle_source', subtitleSource);
-      } catch (error) {
-        console.error('Error saving subtitle source to localStorage:', error);
-      }
-    }
-  }, [subtitleSource]);
 
   // Publish grouping selection through the same project/revision authority as narration results.
   useEffect(() => {

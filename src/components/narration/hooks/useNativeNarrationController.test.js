@@ -115,6 +115,8 @@ const useHarness = (overrides = {}) => {
     selectedVoice: 'Aoede',
     generationResults,
     setGenerationResults,
+    generationResultSource: 'original',
+    setGenerationResultSource: vi.fn(),
     isGenerating,
     setIsGenerating,
     generationStatus,
@@ -300,6 +302,49 @@ test('routes all five narration engines through the native job contract', async 
   });
   expect(result.current.isGenerating).toBe(false);
   expect(result.current.error).toBe('');
+});
+
+test('refuses an unavailable translated source instead of narrating original rows under its label', async () => {
+  const { result } = renderHook(() => useHarness({
+    subtitleSource: 'translated',
+    translatedSubtitles: [],
+  }));
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(runNativeNarrationJob).not.toHaveBeenCalled();
+  expect(narrationStoreMocks.saveProjectNarration).not.toHaveBeenCalled();
+  expect(result.current.error).toContain('No subtitles available');
+});
+
+test('persists translated narration only from the exact translated cue plan', async () => {
+  runNativeNarrationJob.mockResolvedValue({
+    status: 'completed',
+    results: [{
+      ...originalEditedResult,
+      text: 'bonjour',
+    }],
+  });
+  const setGenerationResultSource = vi.fn();
+  const { result } = renderHook(() => useHarness({
+    subtitleSource: 'translated',
+    translatedSubtitles: [{ id: 1, text: 'bonjour', start: 0, end: 1 }],
+    setGenerationResultSource,
+  }));
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({
+      subtitles: [expect.objectContaining({ text: 'bonjour' })],
+    }),
+    expect.any(Object),
+  );
+  expect(setGenerationResultSource).toHaveBeenCalledWith('translated');
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledWith(expect.objectContaining({
+    source: 'translated',
+    results: [expect.objectContaining({ text: 'bonjour' })],
+  }));
 });
 
 test('refuses generation before native start when there is no active durable project', async () => {

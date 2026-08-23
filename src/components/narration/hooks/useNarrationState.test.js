@@ -23,3 +23,11 @@ it('rejects unknown narration methods passed to the state setter', () => {
   expect(result.current.narrationMethod).toBe('gemini');
   expect(normalizeNarrationMethod('edge-tts')).toBe('edge-tts');
 });
+
+it('does not carry a project-dependent subtitle source through browser-global storage', () => {
+  localStorage.setItem('subtitle_source', 'translated');
+
+  const { result } = renderHook(() => useNarrationState());
+
+  expect(result.current.subtitleSource).toBe('original');
+});

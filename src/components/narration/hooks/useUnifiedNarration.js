@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import useNarrationHandlers from './useNarrationHandlers';
 import useNarrationEffects, { createSetReferenceTextWithCache } from './useNarrationEffects';
 
@@ -11,6 +11,7 @@ import useUIEffects from './useUIEffects';
 import useNarrationCache from './useNarrationCache';
 import useWindowStateManager from './useWindowStateManager';
 import useNativeNarrationController from './useNativeNarrationController';
+import { getCurrentProjectNarrationResults } from '../../../platform/projectNarrationState';
 
 /**
  * Orchestrates all narration state, the per-method generation hooks, side-effects and handlers
@@ -95,6 +96,7 @@ const useUnifiedNarration = ({
     isGenerating, setIsGenerating,
     generationStatus, setGenerationStatus,
     generationResults, setGenerationResults,
+    generationResultSource, setGenerationResultSource,
     error, setError,
     currentAudio, setCurrentAudio,
     isPlaying, setIsPlaying,
@@ -113,6 +115,34 @@ const useUnifiedNarration = ({
     // Helper functions
     updateReferenceAudio
   } = narrationState;
+
+  const hasTranslatedSubtitles = Array.isArray(translatedSubtitles)
+    && translatedSubtitles.length > 0;
+  const availableSubtitleSource = subtitleSource === 'translated' && hasTranslatedSubtitles
+    ? 'translated'
+    : 'original';
+  const selectedNarrationSource = useGroupedSubtitles
+    && Array.isArray(groupedSubtitles)
+    && groupedSubtitles.length > 0
+    ? 'grouped'
+    : availableSubtitleSource;
+  const presentedNarrationSourceRef = useRef('original');
+
+  // A source preference cannot outlive the project data that makes it valid.
+  useEffect(() => {
+    if (subtitleSource === 'translated' && !hasTranslatedSubtitles) {
+      setSubtitleSource('original');
+    }
+  }, [hasTranslatedSubtitles, setSubtitleSource, subtitleSource]);
+
+  // Switching the radio changes which project-owned result set is presented. It must never rename
+  // the rows already on screen, which is what the legacy window projection used to do.
+  useEffect(() => {
+    if (presentedNarrationSourceRef.current === selectedNarrationSource) return;
+    presentedNarrationSourceRef.current = selectedNarrationSource;
+    setGenerationResultSource(selectedNarrationSource);
+    setGenerationResults([...getCurrentProjectNarrationResults(selectedNarrationSource)]);
+  }, [selectedNarrationSource, setGenerationResultSource, setGenerationResults]);
 
   // Use availability check hook
   const { geminiUnavailableReason } = useAvailabilityCheck({
@@ -167,6 +197,7 @@ const useUnifiedNarration = ({
   // Use window state manager hook
   useWindowStateManager({
     generationResults,
+    generationResultSource,
     subtitleSource,
     narrationMethod,
     originalSubtitles,
@@ -252,8 +283,8 @@ const useUnifiedNarration = ({
       if (useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0) {
         return groupedSubtitles;
       }
-      if (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
-        return translatedSubtitles;
+      if (subtitleSource === 'translated') {
+        return Array.isArray(translatedSubtitles) ? translatedSubtitles : [];
       }
       return originalSubtitles || subtitles;
     },

@@ -135,14 +135,15 @@ const useNarrationState = (initialReferenceAudio) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
   const [generationResults, setGenerationResults] = useState([]);
+  // Result ownership is independent from the currently selected radio button. Keeping the source
+  // beside the rows prevents a source switch from relabelling already-generated audio.
+  const [generationResultSource, setGenerationResultSource] = useState('original');
   const [error, setError] = useState('');
   const [currentAudio, setCurrentAudio] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [subtitleSource, setSubtitleSource] = useState(() => {
-    // Try to load from localStorage
-    const savedSubtitleSource = localStorage.getItem('subtitle_source');
-    return savedSubtitleSource || 'original'; // Default to 'original' if not set
-  });
+  // Subtitle availability belongs to the active project. A browser-global preference can select
+  // translated rows that do not exist in the next project, so each editor session starts safely.
+  const [subtitleSource, setSubtitleSource] = useState('original');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
   const [selectedNarrationModel, setSelectedNarrationModel] = useState(() => {
@@ -357,6 +358,8 @@ const useNarrationState = (initialReferenceAudio) => {
     setGenerationStatus,
     generationResults,
     setGenerationResults,
+    generationResultSource,
+    setGenerationResultSource,
     error,
     setError,
     currentAudio,
