@@ -1,10 +1,10 @@
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { editNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
-  getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
 import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
+import { commitNativeNarrationEdit } from '../../../platform/nativeNarrationEditCommit';
 
 const getBackupName = (filename) => filename ? `backup_${filename}` : null;
 const durationSeconds = (result) => Number(result?.durationMicros) / 1_000_000;
@@ -55,12 +55,7 @@ const useGeminiAudioSpeed = ({
       normalizedEnd: end / total,
       speedFactor: Number(speed),
     });
-    window.dispatchEvent(new CustomEvent('native-narration-artifact-edited', {
-      detail: {
-        previousArtifactId: getNativeNarrationArtifactId(result),
-        result: replacement,
-      },
-    }));
+    await commitNativeNarrationEdit(result, replacement);
     const replacementDuration = durationSeconds(replacement);
     if (replacement.filename && Number.isFinite(replacementDuration)) {
       setItemDurations((previous) => ({

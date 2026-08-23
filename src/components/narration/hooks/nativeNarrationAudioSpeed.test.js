@@ -1,12 +1,16 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { editNativeNarration } from '../../../platform/nativeNarrationArtifacts';
+import { commitNativeNarrationEdit } from '../../../platform/nativeNarrationEditCommit';
 import useGeminiAudioSpeed from './useGeminiAudioSpeed';
 import useNarrationAudioSpeed from './useNarrationAudioSpeed';
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
 vi.mock('../../../platform/nativeNarrationArtifacts', () => ({
   editNativeNarration: vi.fn(),
+}));
+vi.mock('../../../platform/nativeNarrationEditCommit', () => ({
+  commitNativeNarrationEdit: vi.fn(),
 }));
 
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
@@ -36,6 +40,7 @@ describe('native immutable narration speed edits', () => {
     originalFetch = global.fetch;
     global.fetch = vi.fn();
     editNativeNarration.mockResolvedValue(edited);
+    commitNativeNarrationEdit.mockResolvedValue(edited);
   });
 
   afterEach(() => {
@@ -43,8 +48,6 @@ describe('native immutable narration speed edits', () => {
   });
 
   test('the shared result hook derives duration metadata and edits one artifact natively', async () => {
-    const editedEvent = vi.fn();
-    window.addEventListener('native-narration-artifact-edited', editedEvent);
     const { result } = renderHook(() => useNarrationAudioSpeed({
       generationResults: [narration],
       t: (_key, fallback) => fallback,
@@ -63,9 +66,8 @@ describe('native immutable narration speed edits', () => {
       normalizedEnd: 0.75,
       speedFactor: 1.25,
     });
-    expect(editedEvent).toHaveBeenCalledTimes(1);
+    expect(commitNativeNarrationEdit).toHaveBeenCalledWith(narration, edited);
     expect(global.fetch).not.toHaveBeenCalled();
-    window.removeEventListener('native-narration-artifact-edited', editedEvent);
   });
 
   test('the Gemini result hook uses the same native artifact edit contract', async () => {
@@ -95,6 +97,7 @@ describe('native immutable narration speed edits', () => {
       normalizedEnd: 0.75,
       speedFactor: 1.5,
     });
+    expect(commitNativeNarrationEdit).toHaveBeenCalledWith(narration, edited);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });

@@ -3,23 +3,14 @@ import { useCallback, useState } from 'react';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { editNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
-  getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../../platform/nativeNarrationCapabilities';
 import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
+import { commitNativeNarrationEdit } from '../../../platform/nativeNarrationEditCommit';
 import { showErrorToast } from '../../../utils/toastUtils';
 
 const getBackupName = (filename) => filename ? `backup_${filename}` : null;
 const seconds = (result) => Number(result?.durationMicros) / 1_000_000;
-
-const dispatchEdit = (previous, replacement) => {
-  window.dispatchEvent(new CustomEvent('native-narration-artifact-edited', {
-    detail: {
-      previousArtifactId: getNativeNarrationArtifactId(previous),
-      result: replacement,
-    },
-  }));
-};
 
 const resetAlignment = (name, detail) => {
   requestAlignedNarrationReset();
@@ -71,7 +62,7 @@ const useNarrationAudioSpeed = ({ generationResults, t }) => {
       normalizedEnd: end / duration,
       speedFactor: Number(speed),
     });
-    dispatchEdit(result, replacement);
+    await commitNativeNarrationEdit(result, replacement);
     const replacementDuration = seconds(replacement);
     if (replacement.filename && Number.isFinite(replacementDuration)) {
       setItemDurations((previous) => ({

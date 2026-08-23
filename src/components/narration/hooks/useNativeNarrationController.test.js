@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
 
 import { runNativeNarrationJob } from '../../../platform/nativeNarrationFlow';
+import {
+  commitNativeNarrationEdit,
+  commitNativeNarrationEdits,
+} from '../../../platform/nativeNarrationEditCommit';
 import useNativeNarrationController from './useNativeNarrationController';
 
 const checkpointMocks = vi.hoisted(() => ({
@@ -68,7 +72,8 @@ beforeEach(() => {
 });
 
 const useHarness = (overrides = {}) => {
-  const [generationResults, setGenerationResults] = useState([]);
+  const { initialGenerationResults = [], ...stateOverrides } = overrides;
+  const [generationResults, setGenerationResults] = useState(initialGenerationResults);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
   const [error, setError] = useState('');
@@ -120,10 +125,108 @@ const useHarness = (overrides = {}) => {
     setRetryingSubtitleId,
     narrationMethod: 'gtts',
     t: (_key, fallback) => fallback,
-    ...overrides,
+    ...stateOverrides,
   });
   return { controller, generationResults, isGenerating, error };
 };
+
+const originalEditedResult = {
+  subtitle_id: 1,
+  text: 'hello',
+  success: true,
+  pending: false,
+  nativeArtifactId: ARTIFACT_ID,
+  nativeFormat: 'wav',
+  durationMicros: 1_000_000,
+  filename: `osg-speech-artifact:${ARTIFACT_ID}`,
+  original_ids: [1],
+  outputIndex: 1,
+  start: 0,
+  end: 1,
+  method: 'gtts',
+};
+const editedResult = {
+  ...originalEditedResult,
+  nativeArtifactId: REFERENCE_ID,
+  durationMicros: 800_000,
+  filename: `osg-speech-artifact:${REFERENCE_ID}`,
+};
+
+test('publishes a narration edit only after the exact project record is durable', async () => {
+  let finishSave;
+  narrationStoreMocks.saveProjectNarration.mockImplementation(() => (
+    new Promise((resolve) => { finishSave = resolve; })
+  ));
+  const { result } = renderHook(() => useHarness({
+    initialGenerationResults: [originalEditedResult],
+  }));
+
+  let editCommit;
+  await act(async () => {
+    editCommit = commitNativeNarrationEdit(originalEditedResult, editedResult);
+    await vi.waitFor(() => expect(finishSave).toBeTypeOf('function'));
+  });
+  expect(result.current.generationResults).toEqual([originalEditedResult]);
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledWith({
+    projectId: PROJECT_ID,
+    expectedProjectStateVersion: 7,
+    source: 'original',
+    results: [editedResult],
+    method: 'gtts',
+  });
+
+  await act(async () => {
+    finishSave({ projectId: PROJECT_ID, projectStateVersion: 7 });
+    await expect(editCommit).resolves.toBe(editedResult);
+  });
+  expect(result.current.generationResults).toEqual([editedResult]);
+});
+
+test('keeps the prior narration visible when an edit cannot be saved', async () => {
+  narrationStoreMocks.saveProjectNarration.mockRejectedValue(new Error('sqlite unavailable'));
+  const { result } = renderHook(() => useHarness({
+    initialGenerationResults: [originalEditedResult],
+  }));
+
+  await act(async () => {
+    await expect(commitNativeNarrationEdit(originalEditedResult, editedResult))
+      .rejects.toThrow('sqlite unavailable');
+  });
+
+  expect(result.current.generationResults).toEqual([originalEditedResult]);
+});
+
+test('commits a multi-clip edit with one project write and one UI publication', async () => {
+  const secondId = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a5';
+  const secondEditedId = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a6';
+  const second = {
+    ...originalEditedResult,
+    subtitle_id: 2,
+    nativeArtifactId: secondId,
+    filename: `osg-speech-artifact:${secondId}`,
+  };
+  const secondEdited = {
+    ...second,
+    nativeArtifactId: secondEditedId,
+    filename: `osg-speech-artifact:${secondEditedId}`,
+  };
+  const { result } = renderHook(() => useHarness({
+    initialGenerationResults: [originalEditedResult, second],
+  }));
+
+  await act(async () => {
+    await expect(commitNativeNarrationEdits([
+      { previous: originalEditedResult, replacement: editedResult },
+      { previous: second, replacement: secondEdited },
+    ])).resolves.toEqual([editedResult, secondEdited]);
+  });
+
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledTimes(1);
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledWith(expect.objectContaining({
+    results: [editedResult, secondEdited],
+  }));
+  expect(result.current.generationResults).toEqual([editedResult, secondEdited]);
+});
 
 test('routes all five narration engines through the native job contract', async () => {
   runNativeNarrationJob.mockImplementation(async (request) => ({

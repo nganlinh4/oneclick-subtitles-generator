@@ -5,6 +5,8 @@ import {
   getNativeNarrationArtifactId,
   isNativeNarrationResult,
 } from '../../platform/nativeNarrationCapabilities';
+import { commitNativeNarrationEdits } from '../../platform/nativeNarrationEditCommit';
+import { showErrorToast } from '../../utils/toastUtils';
 import LiquidGlass from '../common/LiquidGlass';
 import StandardSlider from '../common/StandardSlider';
 import {
@@ -79,6 +81,7 @@ const NarrationLaneControls = ({
       const byArtifactId = new Map(narrationResults
         .filter(isNativeNarrationResult)
         .map((result) => [getNativeNarrationArtifactId(result), result]));
+      const edits = [];
       for (const segment of segments) {
         const artifactId = getNativeNarrationArtifactId(segment);
         const source = byArtifactId.get(artifactId);
@@ -88,20 +91,23 @@ const NarrationLaneControls = ({
           normalizedEnd: 1,
           speedFactor: speedForSeg(segment),
         });
-        window.dispatchEvent(new CustomEvent('native-narration-artifact-edited', {
-          detail: { previousArtifactId: artifactId, result: replacement },
-        }));
+        edits.push({ previous: source, replacement });
       }
+      await commitNativeNarrationEdits(edits);
       requestAlignedNarrationReset();
       window.dispatchEvent(new CustomEvent('narration-speed-modified', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));
       // Regenerate the aligned narration so playback uses the new speeds (same as the refresh button).
       window.dispatchEvent(new CustomEvent('request-narration-refresh', { detail: { source: 'timeline-speed', timestamp: Date.now() } }));
-    } catch {
-      // non-fatal — leave the lane as-is on failure
+    } catch (error) {
+      showErrorToast(t(
+        'narration.speedModificationError',
+        'Error applying batch edit: {{message}}',
+        { message: error?.message }
+      ));
     } finally {
       setBusy(false);
     }
-  }, [narrationSegments]);
+  }, [narrationSegments, t]);
 
   // Apply the per-line effective speeds implied by a (placement, global speed, per-line weight).
   const applyResolvedAudio = useCallback(async (starts, speed, weight) => {

@@ -1,10 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { editNativeNarration } from '../../platform/nativeNarrationArtifacts';
+import { commitNativeNarrationEdits } from '../../platform/nativeNarrationEditCommit';
 import NarrationLaneControls from './NarrationLaneControls';
 
 vi.mock('../../platform/nativeNarrationArtifacts', () => ({
   editNativeNarration: vi.fn(),
+}));
+vi.mock('../../platform/nativeNarrationEditCommit', () => ({
+  commitNativeNarrationEdits: vi.fn(),
 }));
 
 const narrationState = vi.hoisted(() => ({ results: [] }));
@@ -55,6 +59,7 @@ describe('native narration lane artifact edits', () => {
     narrationState.results = [narration];
     originalFetch = global.fetch;
     global.fetch = vi.fn();
+    commitNativeNarrationEdits.mockResolvedValue([replacement]);
   });
 
   afterEach(() => {
@@ -64,8 +69,6 @@ describe('native narration lane artifact edits', () => {
 
   test('edits the immutable artifact and publishes its replacement', async () => {
     editNativeNarration.mockResolvedValue(replacement);
-    const edited = vi.fn();
-    window.addEventListener('native-narration-artifact-edited', edited);
     renderControls();
 
     fireEvent.click(screen.getByRole('button', { name: /auto arrange/i }));
@@ -75,12 +78,12 @@ describe('native narration lane artifact edits', () => {
       normalizedEnd: 1,
       speedFactor: expect.any(Number),
     }));
-    expect(edited).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { previousArtifactId: ARTIFACT_ID, result: replacement },
-    }));
+    expect(commitNativeNarrationEdits).toHaveBeenCalledWith([{
+      previous: narration,
+      replacement,
+    }]);
     expect(requestAlignedNarrationReset).toHaveBeenCalledTimes(1);
     expect(global.fetch).not.toHaveBeenCalled();
-    window.removeEventListener('native-narration-artifact-edited', edited);
   });
 
   test.each([
@@ -88,9 +91,7 @@ describe('native narration lane artifact edits', () => {
     Object.assign(new Error('cancelled'), { name: 'AbortError' }),
   ])('does not publish or refresh after %s', async (failure) => {
     editNativeNarration.mockRejectedValue(failure);
-    const edited = vi.fn();
     const refreshed = vi.fn();
-    window.addEventListener('native-narration-artifact-edited', edited);
     window.addEventListener('request-narration-refresh', refreshed);
     renderControls();
 
@@ -98,11 +99,29 @@ describe('native narration lane artifact edits', () => {
 
     await waitFor(() => expect(editNativeNarration).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByRole('button', { name: /auto arrange/i })).toBeEnabled());
-    expect(edited).not.toHaveBeenCalled();
+    expect(commitNativeNarrationEdits).not.toHaveBeenCalled();
     expect(refreshed).not.toHaveBeenCalled();
     expect(requestAlignedNarrationReset).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
-    window.removeEventListener('native-narration-artifact-edited', edited);
+    window.removeEventListener('request-narration-refresh', refreshed);
+  });
+
+  test('does not refresh playback when the edited artifact cannot be saved', async () => {
+    editNativeNarration.mockResolvedValue(replacement);
+    commitNativeNarrationEdits.mockRejectedValue(new Error('sqlite unavailable'));
+    const refreshed = vi.fn();
+    window.addEventListener('request-narration-refresh', refreshed);
+    renderControls();
+
+    fireEvent.click(screen.getByRole('button', { name: /auto arrange/i }));
+
+    await waitFor(() => expect(commitNativeNarrationEdits).toHaveBeenCalledWith([{
+      previous: narration,
+      replacement,
+    }]));
+    await waitFor(() => expect(screen.getByRole('button', { name: /auto arrange/i })).toBeEnabled());
+    expect(refreshed).not.toHaveBeenCalled();
+    expect(requestAlignedNarrationReset).not.toHaveBeenCalled();
     window.removeEventListener('request-narration-refresh', refreshed);
   });
 });

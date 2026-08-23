@@ -17,6 +17,10 @@ import {
 } from '../../../platform/nativeNarrationFlow';
 import { getActiveProjectSnapshot } from '../../../platform/projectService';
 import { saveProjectNarration } from '../../../platform/projectNarrationStore';
+import {
+  claimNativeNarrationEditCommit,
+  NATIVE_NARRATION_EDIT_COMMIT_EVENT,
+} from '../../../platform/nativeNarrationEditCommit';
 import { requestAlignedNarrationReset } from '../../../platform/alignedNarrationSession';
 import {
   getF5TtsLanguageSupport,
@@ -212,6 +216,7 @@ const finalizeRequestedResults = (current, replacements, subtitles, fallbackCode
 const useNativeNarrationController = (state) => {
   const native = isDesktopRuntime();
   const stateRef = useRef(state);
+  const editInFlightRef = useRef(false);
   stateRef.current = state;
 
   const selectedSubtitles = useCallback(() => {
@@ -530,25 +535,63 @@ const useNativeNarrationController = (state) => {
   useEffect(() => {
     if (!native) return undefined;
     const handleEdit = (event) => {
-      const replacement = event?.detail?.result;
-      const previousId = event?.detail?.previousArtifactId;
-      if (!replacement || !previousId) return;
-      stateRef.current.setGenerationResults((results) => {
-        const authority = captureProjectAuthority();
-        const next = results.map((result) => (
-          getNativeNarrationArtifactId(result) === previousId ? replacement : result
-        ));
-        persistNativeResults(
-          replacement.method || stateRef.current.narrationMethod,
-          next,
-          authority,
-          narrationSource(stateRef.current),
-        ).catch(() => undefined);
-        return next;
+      claimNativeNarrationEditCommit(event?.detail, async (edits) => {
+        if (editInFlightRef.current) {
+          const error = new Error('Another narration edit is still being saved');
+          error.code = 'narrationEditBusy';
+          throw error;
+        }
+        editInFlightRef.current = true;
+        try {
+          const current = stateRef.current;
+          const authority = captureProjectAuthority();
+          if (!authority) throw narrationPersistenceFailed();
+          const results = Array.isArray(current.generationResults)
+            ? current.generationResults
+            : [];
+          const editsByPreviousId = new Map(edits.map((edit) => [
+            edit.previousArtifactId,
+            edit.replacement,
+          ]));
+          const replacementCounts = new Map(
+            edits.map((edit) => [edit.previousArtifactId, 0]),
+          );
+          const next = results.map((result) => {
+            const artifactId = getNativeNarrationArtifactId(result);
+            const replacement = editsByPreviousId.get(artifactId);
+            if (!replacement) return result;
+            replacementCounts.set(artifactId, replacementCounts.get(artifactId) + 1);
+            return replacement;
+          });
+          if ([...replacementCounts.values()].some((count) => count !== 1)) {
+            const error = new Error('The narration edit target changed before it could be saved');
+            error.code = 'narrationEditTargetChanged';
+            throw error;
+          }
+          const method = edits[0]?.replacement?.method || current.narrationMethod;
+          if (edits.some((edit) => (edit.replacement.method || current.narrationMethod) !== method)) {
+            const error = new Error('A narration edit transaction cannot mix generation methods');
+            error.code = 'narrationEditMethodChanged';
+            throw error;
+          }
+          const persisted = await persistNativeResults(
+            method,
+            next,
+            authority,
+            narrationSource(current),
+          );
+          if (persisted === null || !ownsProjectAuthority(authority)) {
+            throw narrationPersistenceFailed();
+          }
+          current.setGenerationResults(next);
+          return edits.map((edit) => edit.replacement);
+        } finally {
+          editInFlightRef.current = false;
+        }
       });
     };
-    window.addEventListener('native-narration-artifact-edited', handleEdit);
-    return () => window.removeEventListener('native-narration-artifact-edited', handleEdit);
+    window.addEventListener(NATIVE_NARRATION_EDIT_COMMIT_EVENT, handleEdit);
+    return () => window.removeEventListener(NATIVE_NARRATION_EDIT_COMMIT_EVENT, handleEdit);
   }, [native]);
 
   return {
