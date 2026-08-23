@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "53c6d1f33f5181504f850e3f98b0071f91f10279",
+  "baselineRevision": "106680349035a8f2f87a67c6dc24294603f99315",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -7839,10 +7839,10 @@
       ]
     },
     "src/components/app/AppLayout.jsx": {
-      "hash": "7891b874f40a1b869666428e0a47a2e868914a6b981aad5e804b1cc0f9cfdccb",
+      "hash": "c62e189c4ab763beed24f33a18ff7d4aae2b3ce0005a3c9375e726eca5bc0a72",
       "rootCount": 1,
       "roots": [
-        "5dee4e36a654fd9b5e3e44e8b0bdc5bf24a51780909b73b3e4ccc088eecfb989"
+        "053930e7b44b21415a264f6b38531b9a5502dd0bb3a6c045b5ee5268f5a7dfcf"
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
@@ -8702,10 +8702,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "52610f769b96850daaef5ce48ea39a1a1ac3fe241f5ca85125adda94a1fb21c3",
+      "hash": "ccad1f74d088a9f83e8df3f6d677921d680f1b1cc87f1775635c9979e876563f",
       "rootCount": 1,
       "roots": [
-        "6762af585d18b15a94d005a48f50703af9ce6d585641c317b69fd756ddeeb6dc"
+        "b1186e32dd995d8fe2ded8153567c96d625d099afdf6b2f02c5517e18cbcb20c"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9339,10 +9339,10 @@
       ]
     },
     "src/components/VideoRenderingSection.js": {
-      "hash": "c70639907bf908ff5c3b0d6d65e8409a87e3986e3d5b92dafa983a725c3b18e0",
+      "hash": "a256843bc90316a277013b4dd6cb10cc9b6487b32323c54aac33f1f8975187bb",
       "rootCount": 1,
       "roots": [
-        "313f9f41717eea5d0caa44f3a2b6d0c1d4ca87d2c52992b4debb35924d99620a"
+        "105be1cbfea422eb6887d15762aca70297465a124c77a363e9644820670b92db"
       ]
     },
     "src/components/VideoRenderingSection/InputSelectionRow.js": {
@@ -9353,10 +9353,10 @@
       ]
     },
     "src/components/VideoRenderingSection/PreviewCustomizationRow.js": {
-      "hash": "8df94863ee63a0dcce2f71bf039b1844f7bf04a146e0806ec1a1e55689e4004e",
+      "hash": "b8854c3c83c3b735a853eed27ad42653ae1e1b5818e59585c794503c87da13bc",
       "rootCount": 1,
       "roots": [
-        "b5bc0df56d0c5eaf29f56a203d2c3bed9f8897a9b474782a17d286624e5573ba"
+        "b9c31061f62017d036ffa54b1c0c5e056d08f970b1e8ea9c5da79e6c2b34cd06"
       ]
     },
     "src/components/VideoRenderingSection/RenderSettingsRow.js": {
