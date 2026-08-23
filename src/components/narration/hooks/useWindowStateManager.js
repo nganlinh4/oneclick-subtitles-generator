@@ -157,9 +157,6 @@ const useWindowStateManager = ({
             // Reset state
             setGroupedSubtitles(null);
             setUseGroupedSubtitles(false);
-            // Also clear global originals that some components use as fallback
-            window.originalSubtitles = [];
-            window.subtitlesData = [];
           }
         }
       } catch (e) {
@@ -169,35 +166,6 @@ const useWindowStateManager = ({
 
     window.addEventListener('subtitle-timing-changed', onTimingChanged);
     return () => window.removeEventListener('subtitle-timing-changed', onTimingChanged);
-  }, [subtitleSource, setGroupedSubtitles, setUseGroupedSubtitles]);
-
-  // Listen for translation reset to clear grouped subtitles cache
-  useEffect(() => {
-    const handleTranslationReset = () => {
-
-      // Clear the grouped subtitles state if we're using translated subtitles
-      if (subtitleSource === 'translated') {
-        setGroupedSubtitles(null);
-        setUseGroupedSubtitles(false);
-      }
-    };
-
-    const handleTranslationUpdated = (_event) => {
-      // Clear the grouped subtitles state if we're using translated subtitles
-      if (subtitleSource === 'translated') {
-        setGroupedSubtitles(null);
-        // Don't disable grouping, just clear the current grouped subtitles
-        // so they can be regenerated with the updated translations
-      }
-    };
-
-    window.addEventListener('translation-reset', handleTranslationReset);
-    window.addEventListener('translation-updated', handleTranslationUpdated);
-
-    return () => {
-      window.removeEventListener('translation-reset', handleTranslationReset);
-      window.removeEventListener('translation-updated', handleTranslationUpdated);
-    };
   }, [subtitleSource, setGroupedSubtitles, setUseGroupedSubtitles]);
 
 };

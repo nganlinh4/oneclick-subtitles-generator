@@ -225,7 +225,9 @@ const LyricsDisplay = ({
     commitRangeMove,
     cancelRangeMove,
     applyTimings
-  } = useLyricsEditor(matchedLyrics, onUpdateLyrics);
+  } = useLyricsEditor(matchedLyrics, onUpdateLyrics, {
+    hasTranslation: Array.isArray(translatedSubtitles) && translatedSubtitles.length > 0,
+  });
 
   // Find current lyric index based on time
   const currentIndex = lyrics.findIndex((lyric, index) => {

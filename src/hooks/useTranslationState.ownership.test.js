@@ -156,8 +156,6 @@ beforeEach(() => {
   mocks.revision = 0;
   mocks.hydratedRecord = null;
   mocks.bulkFiles = [];
-  window.translatedSubtitles = null;
-
   mocks.resolveIdentity.mockImplementation(async (cacheId) => {
     const projectId = mocks.projects.get(cacheId);
     if (!projectId) throw scopeError();
@@ -289,7 +287,7 @@ it('cannot publish project A after switching to B during its checkpoint', async 
   expect(mocks.translate).not.toHaveBeenCalled();
   expect(mocks.persist).not.toHaveBeenCalled();
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 });
 
@@ -343,7 +341,7 @@ it('rejects provider rows that lose the captured stable ID before persistence', 
   await expect(start(view.result)).resolves.toMatchObject({ status: 'failed' });
   expect(mocks.persist).not.toHaveBeenCalled();
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 });
 
@@ -359,11 +357,11 @@ it('detects an in-place source mutation even without a React rerender', async ()
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.persist).not.toHaveBeenCalled();
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 });
 
-it('clears a hydrated compatibility projection when an in-place source mutation is detected', async () => {
+it('clears the owned projection when an in-place source mutation is detected', async () => {
   const mutable = sourceA.map((row) => ({ ...row }));
   const durableRows = translatedRows(mutable.map((row, sourceOrder) => ({
     ...row,
@@ -376,7 +374,7 @@ it('clears a hydrated compatibility projection when an in-place source mutation 
     await fingerprintTranslationSource(mutable)
   );
   const view = await mount(mutable);
-  await waitFor(() => expect(window.translatedSubtitles).toEqual(durableRows));
+  await waitFor(() => expect(view.result.current.translatedSubtitles).toEqual(durableRows));
 
   mutable[0].text = 'Changed without render';
   let outcome;
@@ -387,7 +385,6 @@ it('clears a hydrated compatibility projection when an in-place source mutation 
   });
   expect(outcome).toEqual({ status: 'cancelled' });
 
-  expect(window.translatedSubtitles).toBeNull();
   await waitFor(() => expect(view.result.current.translatedSubtitles).toBeNull());
   expect(mocks.translate).not.toHaveBeenCalled();
   view.unmount();
@@ -418,7 +415,7 @@ it('does not publish before a deferred durable acknowledgement and rejects a pro
   const pending = start(view.result);
   await waitFor(() => expect(mocks.persist).toHaveBeenCalledTimes(1));
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
 
   act(() => {
     mocks.activeCacheId = 'cache-b';
@@ -445,7 +442,6 @@ it('unmounts after the provider response without publishing a deferred save rece
   save.resolve();
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
 });
 
 it('fails closed on durable rejection or a cloned structural receipt', async () => {
@@ -463,7 +459,7 @@ it('fails closed on durable rejection or a cloned structural receipt', async () 
   });
   await expect(start(second.result)).resolves.toMatchObject({ status: 'failed' });
   expect(second.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(second.result.current.translatedSubtitles).toBeNull();
   second.unmount();
 });
 
@@ -585,7 +581,7 @@ it('persists partial chunk terminal metadata without a success projection', asyn
 })
   );
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   expect(acknowledge).toHaveBeenCalledTimes(1);
   view.unmount();
 });
@@ -612,7 +608,7 @@ it('drops a deferred A hydration after switching to B, then isolates exact resta
   hydration.resolve(completeRecord(rows, 1, fingerprint));
   await act(async () => { await Promise.resolve(); });
   expect(onComplete).not.toHaveBeenCalledWith(rows);
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 
   mocks.activeCacheId = 'cache-a';
@@ -620,7 +616,7 @@ it('drops a deferred A hydration after switching to B, then isolates exact resta
   mocks.read.mockImplementation(async () => mocks.hydratedRecord);
   const restarted = renderHook(() => useTranslationState(sourceA, onComplete));
   await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.any(Array)));
-  expect(window.translatedSubtitles).toEqual(rows);
+  expect(restarted.result.current.translatedSubtitles).toEqual(rows);
   restarted.unmount();
 });
 
@@ -682,7 +678,7 @@ it('drops a retry response after an A-to-B project switch', async () => {
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.commitRevision).not.toHaveBeenCalled();
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 });
 
@@ -727,6 +723,6 @@ it('Stop after the provider response rejects a deferred persistence acknowledgem
   save.resolve();
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(window.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toBeNull();
   view.unmount();
 });

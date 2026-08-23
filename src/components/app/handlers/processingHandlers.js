@@ -433,11 +433,6 @@ export const createProcessingHandlers = ({
         localStorage.removeItem("subtitles_data");
         localStorage.removeItem("latest_segment_subtitles");
 
-        // Clear any window-stored subtitle data that might be cached
-        if (window.subtitlesData) {
-          window.subtitlesData = null;
-        }
-
         // Clear status to remove any success messages
         setStatus({
           message: t("output.retrying", "Retrying subtitle generation..."),

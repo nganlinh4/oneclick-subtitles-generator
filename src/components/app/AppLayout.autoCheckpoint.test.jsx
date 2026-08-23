@@ -1,10 +1,12 @@
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 
 import { checkpointBeforeUpdate } from '../../services/lifecycleOrchestrator';
 import AppLayout from './AppLayout';
 
 const mocks = vi.hoisted(() => ({
   flush: vi.fn(),
+  renderProps: vi.fn(),
+  translationProps: vi.fn(),
 }));
 
 vi.mock('../Header', () => ({ default: () => null }));
@@ -13,14 +15,24 @@ vi.mock('./ButtonsContainer', () => ({ default: () => null }));
 vi.mock('../settings/SettingsModal', () => ({ default: () => null }));
 vi.mock('../TranscriptionRulesEditor', () => ({ default: () => null }));
 vi.mock('../BackgroundImageGenerator', () => ({ default: () => null }));
-vi.mock('../VideoRenderingSection', () => ({ default: () => null }));
+vi.mock('../VideoRenderingSection', () => ({
+  default: (props) => {
+    mocks.renderProps(props);
+    return null;
+  },
+}));
 vi.mock('../VideoQualityModal', () => ({ default: () => null }));
 vi.mock('../FloatingScrollbar', () => ({ default: () => null }));
 vi.mock('../VideoProcessingOptionsModal', () => ({ default: () => null }));
 vi.mock('../BackgroundMusicSection', () => ({ default: () => null }));
 vi.mock('../previews/VideoPreview', () => ({ default: () => null }));
 vi.mock('../LyricsDisplay', () => ({ default: () => null }));
-vi.mock('../translation', () => ({ default: () => null }));
+vi.mock('../translation', () => ({
+  default: (props) => {
+    mocks.translationProps(props);
+    return null;
+  },
+}));
 vi.mock('../narration', () => ({ UnifiedNarrationSection: () => null }));
 vi.mock('../ParallelProcessingStatus', () => ({ default: () => null }));
 vi.mock('../../hooks/useVideoInfo', () => ({
@@ -145,4 +157,39 @@ test('fresh URL App layout owns a checkpoint listener before conditional output 
   }, 100)).resolves.toBeUndefined();
   expect(mocks.flush).toHaveBeenCalledTimes(1);
   unmount();
+});
+
+test('shares one translated projection with sibling render UI and clears it on source change', async () => {
+  vi.useFakeTimers();
+  mocks.renderProps.mockClear();
+  mocks.translationProps.mockClear();
+  const source = [{ id: 1, start: 0, end: 1, text: 'source' }];
+  const state = { ...appState(), subtitlesData: source };
+  const view = render(<AppLayout
+    appState={state}
+    appHandlers={appHandlers}
+    modalHandlers={modalHandlers}
+    t={(_key, fallback) => fallback}
+  />);
+
+  await act(async () => { vi.advanceTimersByTime(700); });
+  const translationOwner = mocks.translationProps.mock.calls.at(-1)?.[0];
+  expect(translationOwner?.onTranslationComplete).toEqual(expect.any(Function));
+  const translated = [{ id: 1, start: 0, end: 1, text: 'translated' }];
+  act(() => translationOwner.onTranslationComplete(translated));
+  expect(mocks.renderProps.mock.calls.at(-1)?.[0].translatedSubtitles).toEqual(translated);
+
+  view.rerender(<AppLayout
+    appState={{
+      ...state,
+      subtitlesData: [{ id: 1, start: 0, end: 1, text: 'edited source' }],
+    }}
+    appHandlers={appHandlers}
+    modalHandlers={modalHandlers}
+    t={(_key, fallback) => fallback}
+  />);
+  await act(async () => {});
+  expect(mocks.renderProps.mock.calls.at(-1)?.[0].translatedSubtitles).toBeNull();
+  view.unmount();
+  vi.useRealTimers();
 });

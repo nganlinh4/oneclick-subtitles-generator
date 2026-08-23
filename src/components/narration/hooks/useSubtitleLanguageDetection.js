@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react';
 import { detectSubtitleLanguage } from '../../../services/gemini/languageDetectionService';
 
 /**
- * Custom hook that wires up language-detection window events for subtitle sources.
+ * Custom hook that observes language-detection results for subtitle sources.
  *
- * Listens for `language-detection-status/complete/error`, `translation-complete`,
- * and `translation-reset` events and keeps the original/translated detection state
- * in sync, calling the provided setters and `onLanguageDetected` callback.
+ * Detection status is reported by the language service. Translation availability comes directly
+ * from the project-owned React projection, so it cannot race a custom completion event.
  *
  * @param {Object} params
  * @param {string} params.subtitleSource - Current subtitle source ('original'|'translated')
@@ -78,42 +77,29 @@ const useSubtitleLanguageDetection = ({
       }
     };
 
-    // Listen for translation complete event to trigger language detection
-    const handleTranslationComplete = () => {
-
-      // If the user has selected translated subtitles, re-detect the language
-      if (subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
-
-        setTranslatedLanguage(null); // Reset the language
-        detectSubtitleLanguage(translatedSubtitles, 'translated');
-      }
-    };
-
-    // Listen for translation reset event to clear translated language
-    const handleTranslationReset = () => {
-      // Just reset the translated language state, don't interfere with subtitle source
-      setTranslatedLanguage(null);
-
-      // Don't automatically switch subtitle source - let user control this manually
-      // This prevents interference with the translation reset process
-    };
-
     // Add event listeners
     window.addEventListener('language-detection-status', handleDetectionStatus);
     window.addEventListener('language-detection-complete', handleDetectionComplete);
     window.addEventListener('language-detection-error', handleDetectionError);
-    window.addEventListener('translation-complete', handleTranslationComplete);
-    window.addEventListener('translation-reset', handleTranslationReset);
 
     // Clean up event listeners
     return () => {
       window.removeEventListener('language-detection-status', handleDetectionStatus);
       window.removeEventListener('language-detection-complete', handleDetectionComplete);
       window.removeEventListener('language-detection-error', handleDetectionError);
-      window.removeEventListener('translation-complete', handleTranslationComplete);
-      window.removeEventListener('translation-reset', handleTranslationReset);
     };
-  }, [subtitleSource, onLanguageDetected, translatedSubtitles, setOriginalLanguage, setTranslatedLanguage, lastOriginalLanguageRef, lastTranslatedLanguageRef]);
+  }, [onLanguageDetected, setOriginalLanguage, setTranslatedLanguage, lastOriginalLanguageRef, lastTranslatedLanguageRef]);
+
+  useEffect(() => {
+    if (!Array.isArray(translatedSubtitles) || translatedSubtitles.length === 0) {
+      setIsDetectingTranslated(false);
+      setTranslatedLanguage(null);
+      return;
+    }
+    if (subtitleSource !== 'translated') return;
+    setTranslatedLanguage(null);
+    void detectSubtitleLanguage(translatedSubtitles, 'translated');
+  }, [subtitleSource, translatedSubtitles, setTranslatedLanguage]);
 
   return { isDetectingOriginal, isDetectingTranslated };
 };

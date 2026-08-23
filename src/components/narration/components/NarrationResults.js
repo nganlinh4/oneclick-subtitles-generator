@@ -97,13 +97,8 @@ const NarrationResults = ({
         && narrationState.groupedCues.length > 0) {
       return narrationState.groupedCues;
     }
-    // Otherwise infer from selected source using globals populated elsewhere
-    if (subtitleSource === 'translated' && typeof window !== 'undefined' && Array.isArray(window.translatedSubtitles) && window.translatedSubtitles.length > 0) {
-      return window.translatedSubtitles;
-    }
-    if (typeof window !== 'undefined') {
-      return window.originalSubtitles || window.subtitlesData || [];
-    }
+    // Every production caller supplies an explicit project-owned plan. An absent plan must remain
+    // empty rather than reaching into mutable browser globals from another project.
     return [];
   })();
 

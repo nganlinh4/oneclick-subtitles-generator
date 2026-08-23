@@ -41,13 +41,13 @@ export const resolveCurrentNarrationInputs = ({
   if (selectedSubtitles === 'translated') {
     return Object.freeze({
       results: firstArray(narrationState.resultsBySource.translated),
-      cues: firstArray(translatedSubtitles, window.translatedSubtitles),
+      cues: firstArray(translatedSubtitles),
       source: 'translated',
     });
   }
   return Object.freeze({
     results: firstArray(narrationState.resultsBySource.original, narrationResults),
-    cues: firstArray(subtitlesData, window.originalSubtitles, window.subtitlesData),
+    cues: firstArray(subtitlesData),
     source: 'original',
   });
 };

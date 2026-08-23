@@ -70,32 +70,6 @@ const boundedIntegerSetting = (key, fallback, maximum) => {
   return Number.isSafeInteger(number) && number <= maximum ? number : fallback;
 };
 
-const clearWindowTranslation = () => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.translatedSubtitles = null;
-  } catch {
-    // A compatibility projection must never control durable state.
-  }
-};
-
-const setWindowTranslation = (subtitles) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.translatedSubtitles = subtitles;
-  } catch {
-    // A compatibility projection must never turn an acknowledged run into failure.
-  }
-};
-
-const dispatchTranslationEvent = (name, detail) => {
-  try {
-    window.dispatchEvent(new CustomEvent(name, { detail }));
-  } catch {
-    // Events are compatibility projections, not persistence acknowledgements.
-  }
-};
-
 const callCompletion = (callback, subtitles) => {
   try {
     callback?.(subtitles);
@@ -250,7 +224,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     renderedScopeKeyRef.current = renderedScopeKey;
     activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation source changed'));
     hydrationControllerRef.current?.abort(createTranslationAbortError('Translation source changed'));
-    clearWindowTranslation();
   }
 
   const {
@@ -280,7 +253,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   bulkFilesRef.current = bulkFiles;
 
   const clearPublishedState = useCallback(() => {
-    clearWindowTranslation();
     setTranslatedSubtitles(null);
     setLoadedFromCache(false);
     callCompletion(completionRef.current, null);
@@ -308,7 +280,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     const unsubscribe = subscribeCurrentCacheId(() => {
       activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation project changed'));
       hydrationControllerRef.current?.abort(createTranslationAbortError('Translation project changed'));
-      clearWindowTranslation();
       clearPublishedState();
       setError('');
       setTranslationStatus('');
@@ -333,7 +304,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       mountedRef.current = false;
       activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation unmounted'));
       hydrationControllerRef.current?.abort(createTranslationAbortError('Translation unmounted'));
-      clearWindowTranslation();
       callCompletion(completionRef.current, null);
     };
   }, []);
@@ -364,7 +334,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     if (!mountedRef.current || activeLeaseRef.current !== lease || lease.controller.signal.aborted
         || cacheChanged || sourceChanged) {
       if (sourceChanged || cacheChanged) {
-        clearWindowTranslation();
         if (mountedRef.current) {
           clearPublishedState();
           setBulkTranslations([]);
@@ -386,7 +355,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     } catch (ownershipError) {
       context.lease.controller.abort(createTranslationAbortError('Translation project changed'));
       if (ownershipError?.code === 'projectScopeMismatch') {
-        clearWindowTranslation();
         if (mountedRef.current) {
           clearPublishedState();
           setBulkTranslations([]);
@@ -457,7 +425,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
 
   const publishComplete = useCallback(async (context, acknowledged, {
     loaded = false,
-    eventName = 'translation-complete',
   } = {}) => {
     const rows = acknowledged.record.baseSubtitles;
     await assertRunOwned(context);
@@ -465,17 +432,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     await assertRunOwned(context);
     setLoadedFromCache(loaded);
     await assertRunOwned(context);
-    setWindowTranslation(rows);
-    await assertRunOwned(context);
     callCompletion(completionRef.current, rows);
-    await assertRunOwned(context);
-    dispatchTranslationEvent(eventName, {
-      translatedSubtitles: rows,
-      loadedFromCache: loaded,
-      projectId: context.projectId,
-      sourceFingerprint: context.sourceFingerprint,
-      revision: acknowledged.record.revision,
-    });
     await assertRunOwned(context);
   }, [assertRunOwned]);
 
@@ -493,7 +450,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     activeLeaseRef.current = lease;
     hydrationControllerRef.current?.abort(createTranslationAbortError('New translation hydration'));
     hydrationControllerRef.current = controller;
-    clearWindowTranslation();
     const hydrationScope = { cacheId: renderedCacheId, sourcePayload: renderedSourcePayload };
     const assertHydration = async (identity = null) => {
       if (!mountedRef.current || activeLeaseRef.current !== lease || controller.signal.aborted
@@ -546,13 +502,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
             { count: record.failedChunks.length }
           ));
-          await assertRunOwned(context);
-          dispatchTranslationEvent('translation-partial', {
-            projectId: identity.projectId,
-            sourceFingerprint: fingerprint,
-            revision: record.revision,
-            failedChunks: record.failedChunks,
-          });
           await assertRunOwned(context);
           return;
         }
@@ -826,8 +775,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             partialResult.deliveries
           );
           await assertRunOwned(context);
-          clearWindowTranslation();
-          await assertRunOwned(context);
           setTranslatedSubtitles(null);
           await assertRunOwned(context);
           setTranslationStatus(t(
@@ -835,13 +782,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
             { count: acknowledged.record.failedChunks.length }
           ));
-          await assertRunOwned(context);
-          dispatchTranslationEvent('translation-partial', {
-            projectId: context.projectId,
-            sourceFingerprint: context.sourceFingerprint,
-            revision: acknowledged.record.revision,
-            failedChunks: acknowledged.record.failedChunks,
-          });
           await assertRunOwned(context);
           return {
             status: 'partial',
@@ -918,7 +858,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     if (activeLeaseRef.current?.kind === 'reset') return { status: 'busy' };
     activeLeaseRef.current?.controller.abort(createTranslationAbortError('Translation reset'));
     hydrationControllerRef.current?.abort(createTranslationAbortError('Translation reset'));
-    clearWindowTranslation();
     const controller = new AbortController();
     const lease = Object.freeze({ runId: nextRunId(), controller, kind: 'reset' });
     activeLeaseRef.current = lease;
@@ -934,11 +873,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       setError('');
       await assertRunOwned(context);
       setTranslationStatus('');
-      await assertRunOwned(context);
-      dispatchTranslationEvent('translation-reset', {
-        translatedSubtitles: null,
-        projectId: context.projectId,
-      });
       await assertRunOwned(context);
       return { status: 'cleared', receipt };
     } catch (resetError) {
@@ -1058,7 +992,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         translationResult.deliveries
       );
       await assertRunOwned(context);
-      await publishComplete(context, acknowledged, { eventName: 'translation-updated' });
+      await publishComplete(context, acknowledged);
       await assertRunOwned(context);
       setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
       await assertRunOwned(context);

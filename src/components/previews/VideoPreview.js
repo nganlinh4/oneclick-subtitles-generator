@@ -403,36 +403,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
           translatedNarrations={translatedNarrationResults}
           alignedNarrations={narrationResultsForAlignment}
           narrationCues={narrationCuesForAlignment}
-          {...(() => {
-            // Store subtitles data in window for access by other components
-            if (subtitlesArray && subtitlesArray.length > 0) {
-              window.subtitlesData = subtitlesArray;
-              // Only log in development mode
-              if (process.env.NODE_ENV === 'development' && !window._loggedSubtitlesData) {
-
-                window._loggedSubtitlesData = true;
-              }
-            }
-            // Store original subtitles (same as subtitlesArray in this context)
-            if (subtitlesArray && subtitlesArray.length > 0) {
-              window.originalSubtitles = subtitlesArray;
-              // Only log in development mode
-              if (process.env.NODE_ENV === 'development' && !window._loggedOriginalSubtitles) {
-
-                window._loggedOriginalSubtitles = true;
-              }
-            }
-            // Store translated subtitles if available
-            if (translatedSubtitles && translatedSubtitles.length > 0) {
-              window.translatedSubtitles = translatedSubtitles;
-              // Only log in development mode
-              if (process.env.NODE_ENV === 'development' && !window._loggedTranslatedSubtitles) {
-
-                window._loggedTranslatedSubtitles = true;
-              }
-            }
-            return {};
-          })()}
           getAudioUrl={(filename) => `${SERVER_URL}/narration/audio/${filename || 'test.wav'}`}
           onRenderVideo={onRenderVideo}
           volume={volume}

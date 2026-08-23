@@ -43,13 +43,14 @@ const OutputContainer = ({
   selectedSegment = null, // Currently selected segment
   isUploading = false, // Whether video is currently uploading
   isProcessingSegment = false, // Whether a segment is being processed
-  onLiveSubtitlesChange = null // Optional: report live timeline state upstream
+  onLiveSubtitlesChange = null, // Optional: report live timeline state upstream
+  translatedSubtitles = null,
+  onTranslatedSubtitlesChange = null,
 }) => {
   const { t } = useTranslation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [editedLyrics, setEditedLyrics] = useState(null);
-  const [translatedSubtitles, setTranslatedSubtitles] = useState(null);
   const [seekTime, setSeekTime] = useState(null); // Track when seeking happens
   const [referenceAudio, setReferenceAudio] = useState(null); // Reference audio for narration
   const [renderedSections, setRenderedSections] = useState({ preview: false, translation: false, narration: false }); // Track staggered rendering
@@ -354,7 +355,7 @@ const OutputContainer = ({
             <TranslationSection
               subtitles={editedLyrics || subtitlesData}
               videoTitle={selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles'}
-              onTranslationComplete={setTranslatedSubtitles}
+              onTranslationComplete={onTranslatedSubtitlesChange}
             />
           )}
 

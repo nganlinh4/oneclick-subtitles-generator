@@ -40,6 +40,7 @@ const AppLayout = ({
   // State for video rendering section
   const [videoRenderingAutoFill, setVideoRenderingAutoFill] = useState(null);
   const [actualVideoUrl, setActualVideoUrl] = useState('');
+  const [translatedSubtitles, setTranslatedSubtitles] = useState(null);
   const narrationState = useProjectNarrationState();
 
   // State for video quality modal
@@ -124,6 +125,12 @@ const AppLayout = ({
     setUploadedFileData,
     isProcessingSegment
   } = appState;
+
+  // A translation is a projection of one exact source timeline. Clear it as soon as that source
+  // changes so sibling preview/export surfaces can never observe rows from the previous revision.
+  useEffect(() => {
+    setTranslatedSubtitles(null);
+  }, [subtitlesData]);
 
   const {
     validateInput,
@@ -443,6 +450,8 @@ const AppLayout = ({
               isUploading={isUploading}
               isProcessingSegment={isProcessingSegment}
               onLiveSubtitlesChange={(live) => setSubtitlesData(live)}
+              translatedSubtitles={translatedSubtitles}
+              onTranslatedSubtitlesChange={setTranslatedSubtitles}
             />
           </div>
 
@@ -452,7 +461,7 @@ const AppLayout = ({
             uploadedFile={uploadedFile}
             actualVideoUrl={actualVideoUrl}
             subtitlesData={subtitlesData}
-            translatedSubtitles={window.translatedSubtitles}
+            translatedSubtitles={translatedSubtitles}
             narrationResults={narrationState.resultsBySource.original}
             autoFillData={videoRenderingAutoFill}
             onNativeVideoSelected={handleNativeRenderVideoSelected}

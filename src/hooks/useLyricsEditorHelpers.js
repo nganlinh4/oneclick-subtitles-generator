@@ -15,35 +15,26 @@ import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
  * @param {Function} params.setLyrics        Setter for the lyrics array.
  * @param {Function} params.onUpdateLyrics   Callback invoked with updated lyrics.
  * @param {Function} params.commitLyricsMutation Commits one logical optimistic edit.
+ * @param {boolean}  params.hasTranslation  Whether this exact editor projection has translation.
  */
 export const useLyricsEditorHelpers = ({
   lyrics,
   setLyrics,
   onUpdateLyrics,
   commitLyricsMutation,
+  hasTranslation = false,
 }) => {
   const { t } = useTranslation();
 
   // Helper function to show translation warning
   const showTranslationWarning = useCallback((message) => {
-    try {
-      // Check if there are actual translations available
-      // Use the same logic as the subtitle language selector
-      const hasTranslation = window.translatedSubtitles &&
-                            Array.isArray(window.translatedSubtitles) &&
-                            window.translatedSubtitles.length > 0;
-
-      if (hasTranslation) {
-        // Show a warning toast that translations may be outdated
-        const warningEvent = new CustomEvent('translation-warning', {
-          detail: { message }
-        });
-        window.dispatchEvent(warningEvent);
-      }
-    } catch (error) {
-      console.error('Error checking for translations:', error);
+    if (hasTranslation) {
+      const warningEvent = new CustomEvent('translation-warning', {
+        detail: { message }
+      });
+      window.dispatchEvent(warningEvent);
     }
-  }, []);
+  }, [hasTranslation]);
 
   // Clear all subtitles fully inside a time range [start, end]
   const clearSubtitlesInRange = useCallback((start, end) => {

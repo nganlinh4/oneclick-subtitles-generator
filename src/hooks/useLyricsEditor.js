@@ -5,16 +5,12 @@ import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import { useLyricsEditorHelpers } from './useLyricsEditorHelpers';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
-// Debug logging gate (enable by setting localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
-
 /**
  * Lyrics editor hook. Orchestrates the editor's core state and composes the
  * drag, history, and helper sub-hooks. The returned object is the stable public
  * API consumed across the app — keep its shape identical when refactoring.
  */
-export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
+export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation = false } = {}) => {
   const { t } = useTranslation();
   const [lyrics, setLyrics] = useState([]);
   const [originalLyrics, setOriginalLyrics] = useState([]);
@@ -74,6 +70,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
     setLyrics,
     onUpdateLyrics,
     commitLyricsMutation,
+    hasTranslation,
     isSticky,
   });
 
@@ -349,23 +346,6 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics) => {
       window.removeEventListener('redo-action', handleRedoEvent);
     };
   }, [handleRedo]);
-
-  // Add event listener for translation reset to clear window.translatedSubtitles
-  useEffect(() => {
-    const handleTranslationReset = () => {
-      // Clear the window.translatedSubtitles when translations are reset
-      if (window.translatedSubtitles) {
-        window.translatedSubtitles = null;
-        dbg('Cleared window.translatedSubtitles due to translation reset');
-      }
-    };
-
-    window.addEventListener('translation-reset', handleTranslationReset);
-
-    return () => {
-      window.removeEventListener('translation-reset', handleTranslationReset);
-    };
-  }, []);
 
   // Function to update the saved lyrics state when the user saves the subtitles
   const updateSavedLyrics = useCallback(() => {
