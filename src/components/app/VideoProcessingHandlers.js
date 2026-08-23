@@ -188,9 +188,12 @@ export const downloadAndPrepareYouTubeVideo = async (
       },
       rollbackActivation: async () => {
         if (previousMedia === null) {
-          await clearMedia().catch(() => undefined);
+          await clearMedia();
         } else {
-          await openMediaAsset(previousMedia.assetId).catch(() => undefined);
+          const restoredMedia = await openMediaAsset(previousMedia.assetId);
+          if (restoredMedia?.assetId !== previousMedia.assetId) {
+            throw new Error('The previous native media selection could not be restored.');
+          }
         }
         if (previousSession === null) forgetNativeMediaSession();
         else writeNativeMediaSession(previousSession);

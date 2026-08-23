@@ -245,9 +245,10 @@ export const createNativeUrlDownloadAdapter = ({
     const discardCandidateOnce = async (candidate) => {
       const assetId = candidateAssetId(candidate);
       if (operation.discardedCandidateIds.has(assetId)) return;
-      operation.discardedCandidateIds.add(assetId);
       try {
-        await Promise.resolve(discardCandidate(assetId));
+        const discarded = await Promise.resolve(discardCandidate(assetId));
+        if (discarded !== true) throw fixedFailure('mediaCandidateDiscardFailed');
+        operation.discardedCandidateIds.add(assetId);
       } catch {
         throw fixedFailure('mediaCandidateDiscardFailed');
       }
@@ -330,7 +331,7 @@ export const createNativeUrlDownloadAdapter = ({
               try {
                 await owner.rollbackActivation({ validateOwnership: assertOperationOwned });
               } catch {
-                // Rollback is best-effort after the authoritative binding has already withdrawn.
+                throw fixedFailure('mediaActivationRollbackFailed');
               }
             }
             throw error;
@@ -359,10 +360,15 @@ export const createNativeUrlDownloadAdapter = ({
           assetId: candidateAssetId(candidate),
           subtitle: operation.subtitle,
         });
-      } catch {
+      } catch (error) {
         try {
           await discardCandidateOnce(candidate);
-          settle({ kind: 'failed', error: fixedFailure('mediaOpenFailed') });
+          settle({
+            kind: 'failed',
+            error: error?.code === 'mediaActivationRollbackFailed'
+              ? error
+              : fixedFailure('mediaOpenFailed'),
+          });
         } catch (discardError) {
           settle({ kind: 'failed', error: discardError });
         }

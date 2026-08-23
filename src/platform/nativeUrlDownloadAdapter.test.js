@@ -322,6 +322,63 @@ it('discards a losing candidate exactly once when project claim fails', async ()
   expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
 });
 
+it('refuses a failed candidate cleanup instead of reporting the media transaction as closed', async () => {
+  const harness = createHarness();
+  harness.describeMedia.mockRejectedValueOnce(new Error('project version lost'));
+  harness.discardCandidate.mockResolvedValueOnce(false);
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/candidate-cleanup-refused',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onCompleted({
+    media: mediaCandidate(harness.assetId),
+    subtitle: null,
+  });
+
+  await expect(pending).rejects.toMatchObject({ code: 'mediaCandidateDiscardFailed' });
+  expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+});
+
+it('surfaces a failed native activation rollback after withdrawing project admission', async () => {
+  rollbackSubtitleProjectBinding.mockClear();
+  const cacheId = 'site_example_test_rollback_failure';
+  const project = { ...candidateProject(), cacheId };
+  const harness = createHarness({
+    activateProject: null,
+    resolveCandidateProject: vi.fn(async () => project),
+  });
+  const binding = Object.freeze({
+    kind: 'subtitle-project-binding',
+    cacheId,
+    projectId: project.projectId,
+    stateVersion: project.snapshot.stateVersion,
+  });
+  const rollbackActivation = vi.fn(async () => {
+    throw new Error('native session restore failed');
+  });
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/rollback-failure',
+    cookieSource: 'none',
+    validateOwnership: vi.fn(),
+    admitActivation: vi.fn(async () => binding),
+    publishActivation: vi.fn(async () => {
+      throw new Error('publication failed');
+    }),
+    rollbackActivation,
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onCompleted({
+    media: mediaCandidate(harness.assetId),
+    subtitle: null,
+  });
+
+  await expect(pending).rejects.toMatchObject({ code: 'mediaActivationRollbackFailed' });
+  expect(rollbackSubtitleProjectBinding).toHaveBeenCalledExactlyOnceWith(binding);
+  expect(rollbackActivation).toHaveBeenCalledOnce();
+  expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+});
+
 const publicationSpy = () => {
   const release = vi.fn(() => true);
   const activateProject = vi.fn(async (resolved) => Object.freeze({
