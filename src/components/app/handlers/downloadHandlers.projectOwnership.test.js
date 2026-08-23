@@ -25,6 +25,10 @@ const nativeMocks = vi.hoisted(() => ({
   session: null,
   resolveOwner: vi.fn(),
 }));
+const toastMocks = vi.hoisted(() => ({
+  showErrorToast: vi.fn(),
+  showWarningToast: vi.fn(),
+}));
 
 vi.mock('../VideoProcessingHandlers', () => ({
   downloadAndPrepareYouTubeVideo: vi.fn(),
@@ -49,6 +53,7 @@ vi.mock('../../../platform/nativeMediaOwnership', () => ({
   readNativeMediaSession: () => nativeMocks.session,
   resolveOwnedNativeMediaProject: nativeMocks.resolveOwner,
 }));
+vi.mock('../../../utils/toastUtils', () => toastMocks);
 vi.mock('../../../utils/transcriptionRulesStore', () => ({
   ...(() => {
     let current = null;
@@ -142,6 +147,8 @@ test('native auto preparation ignores forged compatibility asset mirrors', async
   downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
     localStorage.setItem('current_video_url', selectedVideo.url);
     localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
+    setRulesCacheId(cacheId);
+    setSubtitlesCacheId(cacheId);
     return media;
   });
   const controller = new AbortController();
@@ -157,6 +164,7 @@ test('native auto preparation ignores forged compatibility asset mirrors', async
   localStorage.setItem('current_file_cache_id', 'another-forged-browser-asset');
   localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
   expect(assertAutoGenerationContextCurrent(context)).toBe(context);
+  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
 });
 
 test('refreshes authoritative subtitle state when a repeated URL keeps the same alias', async () => {
@@ -283,7 +291,7 @@ test('rejects a URL auto preparation whose alias remaps while the exact cache re
   expect(state.setUploadedFileData).not.toHaveBeenCalled();
 });
 
-test('a manual cache read never publishes rows from an alias remapped during the read', async () => {
+test('a manual cache read cannot publish media after its project alias remaps', async () => {
   const media = {
     __nativeMedia: true,
     assetId: '019ffa4b-9a95-7a91-bad8-bd6144abaaeb',
@@ -309,10 +317,92 @@ test('a manual cache read never publishes rows from an alias remapped during the
   projectId = 'project-b';
   releaseCache([{ start: 0, end: 1, text: 'Wrong project' }]);
 
-  await expect(preparation).resolves.toBe(media);
+  await expect(preparation).resolves.toBeNull();
   expect(state.setSubtitlesData).not.toHaveBeenCalled();
-  expect(state.setStatus).toHaveBeenCalledWith(expect.objectContaining({ type: 'warning' }));
+  expect(state.setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'warning' }));
+  expect(state.setUploadedFileData).not.toHaveBeenCalled();
+  expect(toastMocks.showWarningToast).not.toHaveBeenCalled();
+});
+
+test('a superseded preparation cannot clear the newer media status when its cache read settles', async () => {
+  const first = {
+    __nativeMedia: true,
+    assetId: '019ffa4b-8e35-7f92-b3e3-607dd27bb261',
+    name: 'first.mp4',
+    type: 'video/mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/first?token=mock',
+  };
+  const second = {
+    ...first,
+    assetId: '019ffa4b-8e35-7f92-b3e3-607dd27bb262',
+    name: 'second.mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/second?token=mock',
+  };
+  let releaseFirstCache;
+  getCachedSubtitles
+    .mockReturnValueOnce(new Promise((resolve) => { releaseFirstCache = resolve; }))
+    .mockResolvedValueOnce(null);
+  const { state, handlers } = buildHandlers();
+
+  const stale = handlers.startBackgroundVideoProcessing(first, 'file-upload');
+  await vi.waitFor(() => expect(getCachedSubtitles).toHaveBeenCalledTimes(1));
+  await expect(handlers.startBackgroundVideoProcessing(second, 'file-upload'))
+    .resolves.toBe(second);
+  releaseFirstCache(null);
+  await expect(stale).resolves.toBeNull();
+
+  expect(state.setUploadedFileData).toHaveBeenLastCalledWith(second);
+  expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({
+    type: 'info',
+  }));
+  expect(toastMocks.showErrorToast).not.toHaveBeenCalled();
+});
+
+test('an optional cache outage warns but keeps media with verified project authority', async () => {
+  const media = {
+    __nativeMedia: true,
+    assetId: '019ffa4c-8e35-7f92-b3e3-607dd27bb263',
+    name: 'local.mp4',
+    type: 'video/mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
+  };
+  getCachedSubtitles.mockRejectedValueOnce(new Error('read unavailable'));
+  const { state, handlers } = buildHandlers();
+
+  await expect(handlers.startBackgroundVideoProcessing(media, 'file-upload'))
+    .resolves.toBe(media);
+
   expect(state.setUploadedFileData).toHaveBeenCalledWith(media);
+  expect(toastMocks.showWarningToast).toHaveBeenCalledWith(
+    'Media is ready, but saved subtitles could not be loaded.'
+  );
+  expect(toastMocks.showErrorToast).not.toHaveBeenCalled();
+});
+
+test('a project activation failure never creates a media-only editor session', async () => {
+  const media = {
+    __nativeMedia: true,
+    assetId: '019ffa4e-8e35-7f92-b3e3-607dd27bb263',
+    name: 'local.mp4',
+    type: 'video/mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
+  };
+  activateSubtitleProjectBinding.mockRejectedValueOnce(Object.assign(
+    new Error('sqlite unavailable'),
+    { code: 'subtitleProjectBindingFailed' },
+  ));
+  const { state, handlers } = buildHandlers();
+
+  await expect(handlers.startBackgroundVideoProcessing(media, 'file-upload'))
+    .resolves.toBeNull();
+
+  expect(state.setUploadedFile).not.toHaveBeenCalled();
+  expect(state.setUploadedFileData).not.toHaveBeenCalled();
+  expect(getCachedSubtitles).not.toHaveBeenCalled();
+  expect(toastMocks.showErrorToast).toHaveBeenCalledWith(
+    'Processing failed: sqlite unavailable'
+  );
+  expect(state.setStatus).toHaveBeenLastCalledWith({});
 });
 
 test('keeps a local auto cache candidate private and immutable until its owner checkpoints it', async () => {

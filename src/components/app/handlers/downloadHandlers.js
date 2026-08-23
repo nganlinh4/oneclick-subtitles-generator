@@ -25,11 +25,13 @@ import {
 import { isDesktopRuntime } from "../../../platform/desktopRuntime";
 import { readNativeMediaSession } from "../../../platform/nativeMediaOwnership";
 import { registerBrowserMediaBlob } from "../../../platform/browserMediaBlobRegistry";
+import { showErrorToast, showWarningToast } from "../../../utils/toastUtils";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 const pendingSubtitleEntries = new WeakMap();
+const activePreparationTokens = new WeakMap();
 
 const entriesForPendingRef = (pendingRef) => {
   let entries = pendingSubtitleEntries.get(pendingRef);
@@ -74,6 +76,11 @@ export const createDownloadHandlers = ({
    * Start background video processing (download/upload)
    */
   const startBackgroundVideoProcessing = async (input, inputType, autoRequest = null) => {
+    const preparationToken = Object.freeze({});
+    activePreparationTokens.set(pendingAutoSubtitleRef, preparationToken);
+    const ownsPreparation = () => (
+      activePreparationTokens.get(pendingAutoSubtitleRef) === preparationToken
+    );
     let ownedPendingToken = null;
     let ownedPendingEntries = null;
     try {
@@ -107,6 +114,7 @@ export const createDownloadHandlers = ({
         return error;
       };
       const assertPreparationOwnership = (expectedProjectId = null) => {
+        if (!ownsPreparation()) throw ownershipFailure();
         if (guardedAutoRequest) {
           assertAutoGenerationRequestActive(guardedAutoRequest);
           if (isDesktopRuntime() && expectedAssetId !== null) {
@@ -147,6 +155,17 @@ export const createDownloadHandlers = ({
         const resolved = await resolveProjectForCache(projectCacheId, { create: false });
         assertPreparationOwnership(expectedProjectId);
         if (resolved?.projectId !== expectedProjectId) throw ownershipFailure();
+      };
+      const adoptNativeProjectAuthority = async (media) => {
+        const session = readNativeMediaSession();
+        if (session === null
+            || session.assetId !== media?.assetId
+            || typeof session.cacheId !== 'string'
+            || typeof session.projectId !== 'string') throw ownershipFailure();
+        expectedAssetId = session.assetId;
+        projectCacheId = session.cacheId;
+        projectId = session.projectId;
+        await assertPreparationProjectOwnership(projectId);
       };
       assertPreparationOwnership();
 
@@ -214,16 +233,26 @@ export const createDownloadHandlers = ({
         // so this must not be hidden behind an instanceof File check.
         if (processedFile) {
           try {
-            const currentVideoUrl = localStorage.getItem("current_video_url");
+            const nativeAuthority = isDesktopRuntime()
+              && isNativeMediaDescriptor(processedFile);
+            const currentVideoUrl = nativeAuthority
+              ? input.url
+              : localStorage.getItem("current_video_url");
             if (currentVideoUrl) {
-              const urlBasedCacheId = await generateUrlBasedCacheId(
-                currentVideoUrl
-              );
-              const binding = await activateProjectCache(urlBasedCacheId);
-              projectCacheId = urlBasedCacheId;
-              projectId = binding.projectId;
-              if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
-              assertPreparationOwnership(projectId);
+              let urlBasedCacheId;
+              if (nativeAuthority) {
+                // Native download activation already committed this exact media/project pair.
+                // Rebinding it here created a second publisher and a race with newer selections.
+                await adoptNativeProjectAuthority(processedFile);
+                urlBasedCacheId = projectCacheId;
+              } else {
+                urlBasedCacheId = await generateUrlBasedCacheId(currentVideoUrl);
+                const binding = await activateProjectCache(urlBasedCacheId);
+                projectCacheId = urlBasedCacheId;
+                projectId = binding.projectId;
+                if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
+                assertPreparationOwnership(projectId);
+              }
 
               dbg(
                 "[AppHandlers] Checking for cached subtitles for downloaded video (URL-based):",
@@ -312,17 +341,16 @@ export const createDownloadHandlers = ({
           } catch (error) {
             if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)
                 || error instanceof AutoGenerationOwnershipError) throw error;
+            if (error?.code === 'projectScopeMismatch'
+                || error?.code === 'subtitleProjectBindingFailed') throw error;
             console.error(
               "[AppHandlers] Error checking cached subtitles for downloaded video:",
               error?.code || 'subtitleCacheReadFailed'
             );
-            setStatus({
-              message: t(
-                "output.subtitlesCacheLoadFailed",
-                "Media is ready, but saved subtitles could not be loaded."
-              ),
-              type: "warning",
-            });
+            showWarningToast(t(
+              "output.subtitlesCacheLoadFailed",
+              "Media is ready, but saved subtitles could not be loaded."
+            ));
           }
         }
       } else {
@@ -361,10 +389,18 @@ export const createDownloadHandlers = ({
             );
             cacheId = await generateFileCacheId(processedFile);
           }
-          const binding = await activateProjectCache(cacheId);
+          let binding = null;
+          if (nativeMedia && isDesktopRuntime()) {
+            // FileUploadInput has already committed the native selection and its project. Consume
+            // that capability instead of opening another activation transaction for the same file.
+            await adoptNativeProjectAuthority(processedFile);
+            cacheId = projectCacheId;
+          } else {
+            binding = await activateProjectCache(cacheId);
+          }
           if (sourceIdentity === null) sourceIdentity = sourceIdentityForAsset(cacheId);
           projectCacheId = cacheId;
-          projectId = binding.projectId;
+          projectId = binding?.projectId ?? projectId;
           if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
           assertPreparationOwnership(projectId);
           if (!nativeMedia) localStorage.setItem("current_file_cache_id", cacheId);
@@ -430,17 +466,16 @@ export const createDownloadHandlers = ({
         } catch (error) {
           if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)
               || error instanceof AutoGenerationOwnershipError) throw error;
+          if (error?.code === 'projectScopeMismatch'
+              || error?.code === 'subtitleProjectBindingFailed') throw error;
           console.error(
             "[AppHandlers] Error checking cached subtitles:",
             error?.code || 'subtitleCacheReadFailed'
           );
-          setStatus({
-            message: t(
-              "output.subtitlesCacheLoadFailed",
-              "Media is ready, but saved subtitles could not be loaded."
-            ),
-            type: "warning",
-          });
+          showWarningToast(t(
+            "output.subtitlesCacheLoadFailed",
+            "Media is ready, but saved subtitles could not be loaded."
+          ));
         }
       }
 
@@ -523,15 +558,19 @@ export const createDownloadHandlers = ({
           || error instanceof AutoGenerationOwnershipError) {
         throw error;
       }
+      if (error?.code === 'projectScopeMismatch') {
+        if (ownsPreparation()) {
+          setIsUploading(false);
+          setIsDownloading(false);
+          setStatus({});
+        }
+        return null;
+      }
       console.error("Error in background processing:", error);
       setIsUploading(false);
       setIsDownloading(false);
-      setStatus({
-        message: `${t("errors.processingFailed", "Processing failed")}: ${
-          error.message
-        }`,
-        type: "error",
-      });
+      setStatus({});
+      showErrorToast(`${t("errors.processingFailed", "Processing failed")}: ${error.message}`);
       return null;
     }
   };
