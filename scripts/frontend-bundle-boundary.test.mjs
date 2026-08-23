@@ -35,24 +35,35 @@ const passingBundle = () => ({
     fileName: 'assets/index.js',
     name: 'index',
     code: 'e'.repeat(1_000_000),
-    imports: ['assets/react.js', 'assets/vendor.js'],
+    imports: [
+      'assets/react.js',
+      'assets/i18n.js',
+      'assets/vendor.js',
+      'assets/narration.js',
+    ],
     isEntry: true,
   }),
   'assets/react.js': chunk({ fileName: 'assets/react.js', name: 'react', code: 'r'.repeat(100_000) }),
+  'assets/i18n.js': chunk({ fileName: 'assets/i18n.js', name: 'i18n', code: 'i'.repeat(200_000) }),
   'assets/vendor.js': chunk({ fileName: 'assets/vendor.js', name: 'vendor', code: 'v'.repeat(200_000) }),
+  'assets/narration.js': chunk({
+    fileName: 'assets/narration.js', name: 'narration', code: 'n'.repeat(200_000),
+  }),
 });
 
 test('bundle budget accepts one bounded entry with deterministic framework chunks', () => {
   assert.deepEqual(auditFrontendBundle(passingBundle()), {
     entryBytes: 1_000_000,
-    initialBytes: 1_300_000,
-    initialChunkCount: 3,
+    initialBytes: 1_700_000,
+    initialChunkCount: 5,
   });
   assert.deepEqual(
     createFrontendCodeSplitting().groups.map(({ name, priority }) => ({ name, priority })),
     [
       { name: 'react', priority: 40 },
+      { name: 'i18n', priority: 30 },
       { name: 'vendor', priority: 20 },
+      { name: 'narration', priority: 10 },
     ]
   );
 });
@@ -74,7 +85,7 @@ test('bundle budget rejects entry growth, aggregate growth, and missing boundari
 test('only reviewed ineffective dynamic imports are silenced', () => {
   const reviewed = {
     code: 'INEFFECTIVE_DYNAMIC_IMPORT',
-    id: 'C:\\repo\\src\\services\\subtitleCache.js',
+    id: 'C:\\repo\\src\\services\\alignedNarrationService.js',
   };
   assert.equal(isIntentionalAsyncBoundaryWarning(reviewed), true);
 

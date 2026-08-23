@@ -11,16 +11,13 @@ export const INTENTIONAL_ASYNC_BOUNDARIES = Object.freeze({
     'src/components/translation/utils/downloadUtils.js': 1,
   }),
   'src/services/alignedNarrationService.js': Object.freeze({
-    'src/components/VideoRenderingSection/useNarration.js': 3,
+    'src/components/VideoRenderingSection/useNarration.js': 2,
     'src/components/previews/narrationRefreshHandler.js': 1,
   }),
   'src/services/engines/GeminiAdapter.js': Object.freeze({
     'src/hooks/useSubtitles.js': 3,
     'src/hooks/useSubtitlesRetryGeneration.js': 1,
     'src/hooks/useSubtitlesSegmentRetry.js': 1,
-  }),
-  'src/services/subtitleCache.js': Object.freeze({
-    'src/components/app/ModalHandlers.js': 1,
   }),
   'src/utils/cacheUtils.js': Object.freeze({
     'src/components/app/handlers/downloadHandlers.js': 2,
@@ -50,7 +47,7 @@ export const INTENTIONAL_ASYNC_BOUNDARIES = Object.freeze({
 export const REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES = Object.freeze({
   'src/services/lifecycleOrchestrator.js': Object.freeze({
     'src/components/app/hooks/useAutoGenerateFlow.js': 1,
-    'src/hooks/runAsrGeneration.js': 2,
+    'src/hooks/runAsrGeneration.js': 1,
     'src/hooks/useSubtitles.js': 2,
     'src/hooks/useSubtitlesSegmentRetry.js': 1,
     'src/hooks/useTranslationState.js': 1,
@@ -132,9 +129,19 @@ export const createFrontendCodeSplitting = () => ({
       priority: 40,
     },
     {
+      name: 'i18n',
+      test: /src[\\/]i18n[\\/]/,
+      priority: 30,
+    },
+    {
       name: 'vendor',
       test: /node_modules[\\/]/,
       priority: 20,
+    },
+    {
+      name: 'narration',
+      test: /src[\\/]components[\\/]narration[\\/]/,
+      priority: 10,
     },
   ],
 });
@@ -161,7 +168,7 @@ export const auditFrontendBundle = (bundle) => {
     pending.push(...chunk.imports);
   }
 
-  const requiredGroups = ['react', 'vendor'];
+  const requiredGroups = ['react', 'i18n', 'vendor', 'narration'];
   for (const name of requiredGroups) {
     const chunk = chunks.find((candidate) => candidate.name === name);
     if (!chunk) fail(`required ${name} chunk is missing`);
