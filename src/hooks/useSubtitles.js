@@ -21,7 +21,10 @@ import { useQuotaCountdown } from './useQuotaCountdown';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
 import { runAsrGeneration } from './runAsrGeneration';
 import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
-import { createSegmentStreamingHandler, createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
+import {
+    createFullMediaStreamingHandler,
+    createStagedFullMediaStreamingHandler,
+} from './subtitleStreamingHandlers';
 import { fetchBrowserResource } from '../platform/browserFetch';
 import { useNativeSubtitleHydration } from './useNativeSubtitleHydration';
 import { subtitleCompletionStatus } from './subtitleCompletionStatus';
@@ -272,6 +275,7 @@ export const useSubtitles = (t) => {
             return localResult;
         }
 
+        let fullMediaStreamingHandler = null;
         try {
             // Check if this is a URL-based input (either direct URL or downloaded video)
             const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
@@ -443,21 +447,18 @@ export const useSubtitles = (t) => {
 
                 // Process the specific segment with streaming via Gemini adapter
 
-                // IMPORTANT: Use the current React state directly instead of loading from cache
-                // The save operation above should have already persisted any manual edits
-                // Loading from cache can introduce stale data if the save hasn't fully propagated
-                let currentSubtitles = [];
-
-                // Get the current subtitles from React state
-                // This ensures we're using the most up-to-date data that's currently displayed
-                await new Promise((resolve) => {
-                    setGenerationSubtitlesData(current => {
-                        currentSubtitles = current || [];
-                        debugLog('[Subtitle Generation] Using current React state for merging:', currentSubtitles.length, 'subtitles');
-                        resolve();
-                        return current; // Don't modify the state
-                    });
-                });
+                // checkpointBeforeUpdate acknowledged the latest manual edits. Read that exact
+                // native project revision back as the merge base; a React setter callback is not a
+                // transactional read and can stall or observe another project's presentation.
+                await validateDeliveryOwnership(deliveryContext);
+                const currentSubtitles = await loadExactProjectSubtitles(
+                    deliveryContext.cacheId,
+                    deliveryContext.projectId
+                );
+                if (!Array.isArray(currentSubtitles)) {
+                    throw new Error('The native subtitle project returned an invalid track.');
+                }
+                await validateDeliveryOwnership(deliveryContext);
 
                 // Log the subtitles we're about to merge with
                 debugLog('[Subtitle Generation] Current subtitles sample:',
@@ -495,7 +496,10 @@ export const useSubtitles = (t) => {
                     }),
                     {
                         onStatus: setGenerationStatus,
-                        onStreamingUpdate: createSegmentStreamingHandler(segment, setGenerationSubtitlesData),
+                        onStreamingUpdate: createStagedFullMediaStreamingHandler(
+                            setGenerationStatus,
+                            t
+                        ),
                         t
                     }
                 );
@@ -505,62 +509,19 @@ export const useSubtitles = (t) => {
                     segmentRange: `${segment.start}s - ${segment.end}s`
                 });
 
-                // CRITICAL FIX: For single segment processing, we need to MERGE with existing subtitles
-                // NOT replace the entire timeline
+                // Build the replacement from the checkpointed pre-run snapshot without publishing
+                // uncommitted provider rows. The exact-project save below owns the visible commit.
                 if (segmentSubtitles && segmentSubtitles.length > 0) {
-                    // Get current subtitles from React state (not the stale closure variable)
-                    // Use a callback to get the most up-to-date state value
-                    await new Promise((resolve) => {
-                        setGenerationSubtitlesData(current => {
-                            const currentSubtitles = current || [];
-
-                            debugLog('[DEBUG] Before merge - current subtitles:', {
-                                count: currentSubtitles.length,
-                                beforeSegment: currentSubtitles.filter(s => s.end <= segment.start).length,
-                                inSegment: currentSubtitles.filter(s => s.start < segment.end && s.end > segment.start).length,
-                                afterSegment: currentSubtitles.filter(s => s.start >= segment.end).length,
-                                segment: `${segment.start}s-${segment.end}s`
-                            });
-
-                            // Filter out existing subtitles that overlap with this segment
-                            const nonOverlappingSubtitles = currentSubtitles.filter(sub => {
-                                // Keep subtitles that are completely outside the segment boundaries
-                                return sub.end <= segment.start || sub.start >= segment.end;
-                            });
-
-                            // Merge: existing non-overlapping + new segment subtitles
-                            const mergedSubtitles = bindGeminiTranscriptionDeliveries(
-                                [...nonOverlappingSubtitles, ...segmentSubtitles]
-                                    .sort((a, b) => a.start - b.start),
-                                segmentSubtitles
-                            );
-
-                            debugLog('[Subtitle Generation] Merging single segment result:', {
-                                existingCount: currentSubtitles.length,
-                                nonOverlappingCount: nonOverlappingSubtitles.length,
-                                segmentCount: segmentSubtitles.length,
-                                finalCount: mergedSubtitles.length,
-                                segmentRange: `${segment.start}s-${segment.end}s`,
-                                removedCount: currentSubtitles.length - nonOverlappingSubtitles.length
-                            });
-
-                            // Store for use outside the callback
-                            subtitles = mergedSubtitles;
-                            resolve();
-
-                            // Return the merged result to update state
-                            return mergedSubtitles;
-                        });
-                    });
+                    const nonOverlappingSubtitles = currentSubtitles.filter(sub => (
+                        sub.end <= segment.start || sub.start >= segment.end
+                    ));
+                    subtitles = bindGeminiTranscriptionDeliveries(
+                        [...nonOverlappingSubtitles, ...segmentSubtitles]
+                            .sort((a, b) => a.start - b.start),
+                        segmentSubtitles
+                    );
                 } else {
-                    // No new subtitles from segment - get current state
-                    await new Promise((resolve) => {
-                        setGenerationSubtitlesData(current => {
-                            subtitles = current;
-                            resolve();
-                            return current; // Don't modify state
-                        });
-                    });
+                    subtitles = currentSubtitles;
                 }
 
                 debugLog('[Subtitle Generation] Using final streaming result:', {
@@ -611,6 +572,13 @@ export const useSubtitles = (t) => {
                         // Stream full video/audio unconditionally (feature parity with segment streaming)
                         const fullSegment = { start: 0, end: duration };
                         const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
+                        fullMediaStreamingHandler = nativeMediaCapability !== null
+                            ? createStagedFullMediaStreamingHandler(setGenerationStatus, t)
+                            : createFullMediaStreamingHandler(
+                                setGenerationSubtitlesData,
+                                setGenerationStatus,
+                                t
+                            );
                         // Remember source file for retries
                         currentSourceFileRef.current = input;
                         if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
@@ -633,10 +601,7 @@ export const useSubtitles = (t) => {
                             }),
                             {
                                 onStatus: setGenerationStatus,
-                                onStreamingUpdate: createFullMediaStreamingHandler(
-                                    setGenerationSubtitlesData,
-                                    setGenerationStatus
-                                ),
+                                onStreamingUpdate: fullMediaStreamingHandler,
                                 t
                             }
                         );
@@ -689,6 +654,11 @@ export const useSubtitles = (t) => {
                         const { processGeminiSegment } = await import('../services/engines/GeminiAdapter');
                         const duration = await getVideoDuration(ytFile);
                         const fullSegment = { start: 0, end: duration || 0 };
+                        fullMediaStreamingHandler = createFullMediaStreamingHandler(
+                            setGenerationSubtitlesData,
+                            setGenerationStatus,
+                            t
+                        );
                         if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
                         subtitles = await processGeminiSegment(
                             ytFile,
@@ -709,9 +679,7 @@ export const useSubtitles = (t) => {
                             }),
                             {
                                 onStatus: setGenerationStatus,
-                                onStreamingUpdate: (streamingSubtitles) => (
-                                    setGenerationSubtitlesData(streamingSubtitles)
-                                ),
+                                onStreamingUpdate: fullMediaStreamingHandler,
                                 t
                             }
                         );
@@ -828,6 +796,7 @@ export const useSubtitles = (t) => {
                 validateOwnership: validateDeliveryOwnership,
             });
             await validateDeliveryOwnership(deliveryContext);
+            fullMediaStreamingHandler?.cancel?.();
             setGenerationSubtitlesData(subtitles);
 
             // This owner is the first layer allowed to publish terminal UI. Both the status and
@@ -851,6 +820,7 @@ export const useSubtitles = (t) => {
             if (completion) return completion;
             return true;
         } catch (error) {
+            fullMediaStreamingHandler?.cancel?.();
             console.error('Error generating subtitles:', error);
             if (error?.code === 'subtitleCacheSaveFailed') {
                 setGenerationStatus({
@@ -892,6 +862,7 @@ export const useSubtitles = (t) => {
             }
             return false;
         } finally {
+            fullMediaStreamingHandler?.cancel?.();
             if (ownsPresentation()) {
                 generationPresentationOwnerRef.current = null;
                 setIsGenerating(false);

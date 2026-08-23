@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   commitDurableSubtitleCheckpoint: vi.fn(),
   publishStreamingComplete: vi.fn(),
   checkpointBeforeUpdate: vi.fn(),
+  loadExactProjectSubtitles: vi.fn(),
   loadCachedSubtitlesIfAvailable: vi.fn(),
   assertCurrent: vi.fn(),
   assertDurable: vi.fn(),
@@ -77,7 +78,7 @@ vi.mock('../platform/subtitleProjectStore', () => ({
     projectId: 'project-1',
     snapshot: { metadata: { id: 'project-1' }, stateVersion: 7 },
   })),
-  loadExactProjectSubtitles: vi.fn(async () => []),
+  loadExactProjectSubtitles: mocks.loadExactProjectSubtitles,
 }));
 vi.mock('../platform/projectService', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -164,6 +165,7 @@ beforeEach(() => {
     return context;
   });
   mocks.checkpointBeforeUpdate.mockResolvedValue(undefined);
+  mocks.loadExactProjectSubtitles.mockResolvedValue([]);
   const capability = Object.freeze({
     projectId: 'project-1',
     stateVersion: 7,
@@ -378,6 +380,126 @@ test('uses one exact-project save for non-auto full-media generation', async () 
   expect(mocks.commitDurableSubtitleCheckpoint).not.toHaveBeenCalled();
   expect(mocks.saveSubtitlesToCache).toHaveBeenCalledExactlyOnceWith('cache-1', rows, {
     expectedProjectId: 'project-1',
+  });
+});
+
+test('segment generation keeps the acknowledged timeline visible until merged rows are saved', async () => {
+  const priorRows = [
+    { id: 1, start: 0, end: 4, text: 'Before' },
+    { id: 2, start: 5, end: 7, text: 'Replace me' },
+    { id: 3, start: 9, end: 10, text: 'After' },
+  ];
+  const partialRows = [{ id: 4, start: 5, end: 6, text: 'Uncommitted partial' }];
+  const replacementRows = [{ id: 5, start: 5, end: 8, text: 'Durable replacement' }];
+  mocks.processGeminiSegment.mockImplementation(async (_media, _segment, _options, hooks) => {
+    hooks.onStreamingUpdate(partialRows, true);
+    return replacementRows;
+  });
+  let releaseSave;
+  mocks.saveSubtitlesToCache.mockReturnValue(new Promise((resolve) => { releaseSave = resolve; }));
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+  mocks.loadExactProjectSubtitles.mockResolvedValue(priorRows);
+  act(() => result.current.setSubtitlesData(priorRows));
+  let terminal;
+
+  await act(async () => {
+    terminal = result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        method: 'old',
+        model: 'gemini-3.1-flash-lite',
+        fps: 1,
+        mediaResolution: 'low',
+        segment: { start: 5, end: 8 },
+      },
+    );
+    await vi.waitFor(() => expect(mocks.saveSubtitlesToCache).toHaveBeenCalled());
+  });
+
+  expect(result.current.subtitlesData).toEqual(priorRows);
+  expect(result.current.subtitlesData).not.toContainEqual(partialRows[0]);
+  const savedRows = mocks.saveSubtitlesToCache.mock.calls[0][1];
+  expect(savedRows).toEqual([priorRows[0], replacementRows[0], priorRows[2]]);
+
+  await act(async () => {
+    releaseSave({
+      success: true,
+      cacheId: 'cache-1',
+      projectId: 'project-1',
+      subtitleCount: savedRows.length,
+    });
+    await terminal;
+  });
+
+  await expect(terminal).resolves.toBe(true);
+  expect(result.current.subtitlesData).toEqual(savedRows);
+});
+
+test('a rejected segment checkpoint leaves the prior native timeline visible', async () => {
+  const priorRows = [
+    { id: 1, start: 0, end: 4, text: 'Keep before' },
+    { id: 2, start: 5, end: 7, text: 'Keep original segment' },
+  ];
+  mocks.loadExactProjectSubtitles.mockResolvedValue(priorRows);
+  mocks.processGeminiSegment.mockImplementation(async (_media, _segment, _options, hooks) => {
+    hooks.onStreamingUpdate([{ id: 3, start: 5, end: 6, text: 'Discard partial' }], true);
+    return [{ id: 4, start: 5, end: 8, text: 'Unsaved replacement' }];
+  });
+  mocks.saveSubtitlesToCache.mockResolvedValue({
+    success: false,
+    error: Object.assign(new Error('save failed'), { code: 'subtitleCacheSaveFailed' }),
+  });
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+  act(() => result.current.setSubtitlesData(priorRows));
+
+  await act(async () => {
+    await expect(result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        method: 'old',
+        model: 'gemini-3.1-flash-lite',
+        fps: 1,
+        mediaResolution: 'low',
+        segment: { start: 5, end: 8 },
+      },
+    )).resolves.toBe(false);
+  });
+
+  expect(result.current.subtitlesData).toEqual(priorRows);
+  expect(result.current.status).toEqual({
+    message: 'Subtitles were generated, but they could not be saved.',
+    type: 'error',
+  });
+});
+
+test('segment generation refuses a malformed native merge base before provider work', async () => {
+  mocks.loadExactProjectSubtitles.mockResolvedValue(null);
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+
+  await act(async () => {
+    await expect(result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        method: 'old',
+        model: 'gemini-3.1-flash-lite',
+        fps: 1,
+        mediaResolution: 'low',
+        segment: { start: 5, end: 8 },
+      },
+    )).resolves.toBe(false);
+  });
+
+  expect(mocks.processGeminiSegment).not.toHaveBeenCalled();
+  expect(mocks.saveSubtitlesToCache).not.toHaveBeenCalled();
+  expect(result.current.status).toEqual({
+    message: 'Error: The native subtitle project returned an invalid track.',
+    type: 'error',
   });
 });
 

@@ -13,7 +13,10 @@ import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { getBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
-import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
+import {
+    createFullMediaStreamingHandler,
+    createStagedFullMediaStreamingHandler,
+} from './subtitleStreamingHandlers';
 import {
     acknowledgeGeminiTranscriptionDeliveries,
     retryPendingGeminiTranscriptionDeliveries,
@@ -74,6 +77,7 @@ export const useSubtitlesRetryGeneration = ({
         setIsGenerating(true);
         setStatus({ message: 'Retrying request to Gemini. This may take a few minutes...', type: 'loading' });
 
+        let browserStreamingHandler = null;
         try {
             let nativeMediaCapability = isDesktopRuntime()
                 ? await resolveActiveNativeMedia({
@@ -85,24 +89,11 @@ export const useSubtitlesRetryGeneration = ({
                     nativeMediaCapability = await refreshActiveNativeMedia(nativeMediaCapability);
                 }
             };
-            const browserStreamingHandler = nativeMediaCapability === null
-                ? createFullMediaStreamingHandler(setSubtitlesData, setStatus)
+            browserStreamingHandler = nativeMediaCapability === null
+                ? createFullMediaStreamingHandler(setSubtitlesData, setStatus, t)
                 : null;
-            const publishStagedStreamingProgress = (streamingSubtitles, isStreaming) => {
-                if (browserStreamingHandler !== null) {
-                    browserStreamingHandler(streamingSubtitles, isStreaming);
-                    return;
-                }
-                // Native retries replace an acknowledged Rust checkpoint. Streaming rows are
-                // uncommitted work and must not replace the visible track before the exact-project
-                // save below succeeds; publish bounded progress only.
-                if (isStreaming && Array.isArray(streamingSubtitles)) {
-                    setStatus({
-                        message: t('output.streamingProgress', 'Streaming...'),
-                        type: 'loading',
-                    });
-                }
-            };
+            const publishStagedStreamingProgress = browserStreamingHandler
+                ?? createStagedFullMediaStreamingHandler(setStatus, t);
             const cacheId = await resolveCacheIdForGeneration({
                 input,
                 inputType,
@@ -324,6 +315,7 @@ export const useSubtitlesRetryGeneration = ({
                 validateOwnership,
             });
             await validateOwnership(deliveryContext);
+            browserStreamingHandler?.cancel();
             setSubtitlesData(subtitles);
             setStatus(deliveryCommit.acknowledged
                 ? subtitleCompletionStatus(subtitles, t, { speechOnly })
@@ -336,6 +328,7 @@ export const useSubtitlesRetryGeneration = ({
                 });
             return true;
         } catch (error) {
+            browserStreamingHandler?.cancel();
             console.error('Error regenerating subtitles:', error);
 
             // Check for specific Gemini API errors
