@@ -1,7 +1,7 @@
 import { CHECKPOINT_SOURCE, EVENTS } from '../events/constants';
 import { publishSaveAfterStreaming, publishSaveBeforeUpdate, subscribe } from '../events/bus';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
-import { flushDurableLyricsHistory } from '../platform/durableLyricsHistory';
+import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
 
 // Small lifecycle orchestrator to centralize save checkpoints and streaming completion
 

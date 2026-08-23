@@ -8,6 +8,11 @@ import {
 } from './subtitleProjectStore';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
 
+export {
+  flushDurableLyricsHistory,
+  registerDurableLyricsHistoryFlusher,
+} from './durableLyricsCheckpoint';
+
 export const LYRICS_EDITOR_REVISION_PREFIX = 'OSG lyrics editor v1:';
 export const MAX_DURABLE_LYRICS_HISTORY_OPERATIONS = 16;
 export const MAX_DURABLE_LYRICS_HISTORY_STATE_BYTES = 64 * 1024 * 1024;
@@ -41,18 +46,6 @@ export const LYRICS_EDITOR_ACTIONS = Object.freeze({
 const ACTIONS = new Set(Object.values(LYRICS_EDITOR_ACTIONS));
 const reasonFor = (action) => `${LYRICS_EDITOR_REVISION_PREFIX} ${action}`;
 const EDITOR_REASONS = new Set([...ACTIONS].map(reasonFor));
-const ACTIVE_FLUSHERS = new Set();
-
-export const registerDurableLyricsHistoryFlusher = (flusher) => {
-  if (typeof flusher !== 'function') throw new TypeError('A durable history flusher is required');
-  ACTIVE_FLUSHERS.add(flusher);
-  return () => ACTIVE_FLUSHERS.delete(flusher);
-};
-
-export const flushDurableLyricsHistory = async () => {
-  await Promise.all([...ACTIVE_FLUSHERS].map((flusher) => flusher()));
-};
-
 export const isLyricsEditorRevisionReason = (value) => (
   typeof value === 'string' && EDITOR_REASONS.has(value)
 );

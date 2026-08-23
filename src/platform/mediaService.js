@@ -1,5 +1,6 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
+import { flushDurableLyricsHistory } from './durableLyricsCheckpoint';
 import {
   getActiveProjectSnapshot,
   mutateProject,
@@ -576,10 +577,22 @@ export const createMediaCandidateLifecycle = ({
   invokeCommand = invokeDesktop,
   mutate = mutateProject,
   openAsset = openMediaAsset,
+  flushSubtitleEdits = flushDurableLyricsHistory,
 } = {}) => Object.freeze({
   claim: async (rawCandidate, rawOptions) => {
     const candidate = normalizeMediaCandidate(rawCandidate);
     const options = normalizeCandidateClaimOptions(rawOptions);
+    requireActiveCandidateProject(
+      getActiveSnapshot(),
+      options,
+      options.expectedStateVersion
+    );
+    // A completed background download has no authority to advance the project underneath pending
+    // subtitle edits. Flush before the first mutation, then revalidate the exact active revision:
+    // either both state models agree, or the candidate stays disposable and the user's project is
+    // untouched. Automatic generation also checkpoints earlier, but manual/repeated downloads do
+    // not necessarily pass through that flow.
+    await flushSubtitleEdits();
     requireActiveCandidateProject(
       getActiveSnapshot(),
       options,

@@ -493,6 +493,67 @@ it('opens playback only after projectService conditionally refreshes the exact a
   expect(openAsset).toHaveBeenCalledExactlyOnceWith(candidate.asset.id);
 });
 
+it('never mutates project media when pending subtitle edits cannot be made durable', async () => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [{ id: 'subtitle-track' }],
+  };
+  const failure = Object.assign(new Error('history write failed'), {
+    code: 'historyWriteFailed',
+  });
+  const flushSubtitleEdits = vi.fn(async () => { throw failure; });
+  const mutate = vi.fn();
+  const openAsset = vi.fn();
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => source,
+    invokeCommand: vi.fn(),
+    mutate,
+    openAsset,
+    flushSubtitleEdits,
+  });
+
+  await expect(lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  })).rejects.toBe(failure);
+
+  expect(flushSubtitleEdits).toHaveBeenCalledTimes(1);
+  expect(mutate).not.toHaveBeenCalled();
+  expect(openAsset).not.toHaveBeenCalled();
+});
+
+it('revalidates active project ownership after the subtitle flush', async () => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [],
+  };
+  const winner = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 8,
+    media: source.media,
+    tracks: [],
+  };
+  let active = source;
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => active,
+    invokeCommand: vi.fn(),
+    mutate: vi.fn(),
+    openAsset: vi.fn(),
+    flushSubtitleEdits: vi.fn(async () => { active = winner; }),
+  });
+
+  await expect(lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  })).rejects.toMatchObject({ code: 'invalidMediaRequest' });
+});
+
 it.each([
   ['another project', {
     metadata: { id: '01890f39-7b62-7c4e-8c9a-000000000401', name: 'Project B' },

@@ -39,6 +39,9 @@ vi.mock('../../hooks/useNativeMediaSessionHydration', () => ({
 vi.mock('../../platform/durableLyricsHistory', () => ({
   flushDurableLyricsHistory: mocks.flush,
 }));
+vi.mock('../../platform/durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: mocks.flush,
+}));
 vi.mock('../../platform/desktopRuntime', async (importOriginal) => ({
   ...(await importOriginal()),
   isDesktopRuntime: () => true,

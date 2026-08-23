@@ -15,6 +15,10 @@ vi.mock('../platform/desktopRuntime', () => ({
   isDesktopRuntime: () => true,
 }));
 
+vi.mock('../platform/durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: mocks.flush,
+}));
+
 vi.mock('../platform/durableLyricsHistory', () => ({
   flushDurableLyricsHistory: mocks.flush,
 }));
