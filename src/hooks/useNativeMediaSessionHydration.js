@@ -11,8 +11,10 @@ import {
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
 } from '../platform/nativeMediaOwnership';
-import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
+import {
+  activateSubtitleProjectBinding,
+  isSubtitleProjectBindingReceipt,
+} from '../platform/subtitleProjectBinding';
 
 /**
  * Restore the media a previous run left active.
@@ -26,7 +28,6 @@ import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitles
 export const createNativeMediaSessionHydrator = ({
   read = getSelectedMedia,
   restore = restoreMediaAsset,
-  readStoredAssetId = () => localStorage.getItem('current_file_cache_id'),
   readSession = readNativeMediaSession,
   resolveOwner = resolveOwnedNativeMediaProject,
   activate = activateResolvedMediaProject,
@@ -34,7 +35,7 @@ export const createNativeMediaSessionHydrator = ({
   validate = isNativeMediaDescriptor,
 }) => {
   if (typeof read !== 'function' || typeof restore !== 'function'
-      || typeof readStoredAssetId !== 'function' || typeof readSession !== 'function'
+      || typeof readSession !== 'function'
       || typeof resolveOwner !== 'function' || typeof activate !== 'function'
       || typeof apply !== 'function' || typeof validate !== 'function') {
     throw new TypeError('Native media session hydration requires reviewed dependencies');
@@ -50,9 +51,7 @@ export const createNativeMediaSessionHydrator = ({
     let session;
     try {
       session = readSession();
-      // The identity key is cleared whenever the app drops its media, which disables restoration
-      // without any teardown site needing to know this hook exists.
-      if (session === null || readStoredAssetId() !== session.assetId) return false;
+      if (session === null) return false;
     } catch {
       return false;
     }
@@ -63,8 +62,7 @@ export const createNativeMediaSessionHydrator = ({
         return current !== null
           && current.assetId === session.assetId
           && current.cacheId === session.cacheId
-          && current.projectId === session.projectId
-          && readStoredAssetId() === session.assetId;
+          && current.projectId === session.projectId;
       } catch {
         return false;
       }
@@ -78,17 +76,6 @@ export const createNativeMediaSessionHydrator = ({
       return false;
     }
     if (!guard()) return false;
-
-    // The native session already holds media in this process, so no project has to be published.
-    if (media !== null) {
-      if (!isNativeMediaDescriptor(media) || media.assetId !== session.assetId) return false;
-      try {
-        apply({ media, cacheId: session.cacheId });
-      } catch {
-        return false;
-      }
-      return true;
-    }
 
     const resolved = await resolveOwner(session);
     if (!guard() || resolved === null) return false;
@@ -104,12 +91,14 @@ export const createNativeMediaSessionHydrator = ({
       return false;
     }
 
-    let restored = null;
+    let restored = media;
     let restoreFailed = false;
-    try {
-      restored = await restore(session.assetId);
-    } catch {
-      restoreFailed = true;
+    if (restored === null) {
+      try {
+        restored = await restore(session.assetId);
+      } catch {
+        restoreFailed = true;
+      }
     }
     // A lost only-if-empty race means another activation already published its own alias; adopting
     // its winner here would rebind the subtitle stores to the wrong project.
@@ -130,7 +119,12 @@ export const createNativeMediaSessionHydrator = ({
     }
 
     try {
-      apply({ media: restored, cacheId: session.cacheId });
+      await apply({
+        media: restored,
+        cacheId: session.cacheId,
+        projectId: session.projectId,
+        validateOwnership: guard,
+      });
     } catch {
       activation.release();
       return false;
@@ -152,40 +146,53 @@ export const createNativeMediaSessionHydrator = ({
 export const applyNativeMediaSession = ({
   media,
   cacheId,
+  projectId,
   setUploadedFile,
-  setRulesCacheIdImpl = setRulesCacheId,
-  setSubtitlesCacheIdImpl = setSubtitlesCacheId,
+  activateBindingImpl = activateSubtitleProjectBinding,
+  validateBindingImpl = isSubtitleProjectBindingReceipt,
+  validateOwnership = () => true,
 }) => {
   if (!isNativeMediaDescriptor(media)
       || typeof cacheId !== 'string' || cacheId.length === 0
+      || typeof projectId !== 'string' || projectId.length === 0
       || typeof setUploadedFile !== 'function'
-      || typeof setRulesCacheIdImpl !== 'function'
-      || typeof setSubtitlesCacheIdImpl !== 'function') {
+      || typeof activateBindingImpl !== 'function'
+      || typeof validateBindingImpl !== 'function'
+      || typeof validateOwnership !== 'function') {
     throw new TypeError('Native media session application requires reviewed dependencies');
   }
-
-  const previousUrl = localStorage.getItem('current_file_url');
-  if (previousUrl?.startsWith('blob:')) {
-    try {
-      URL.revokeObjectURL(previousUrl);
-    } catch {
-      // An old browser-only object URL is already inert.
-    }
-  }
-  localStorage.setItem('current_file_url', media.playbackUrl);
-  localStorage.setItem('current_file_cache_id', media.assetId);
-  // The alias, not the asset, owns the subtitles and rules: a URL download keeps them across
-  // re-downloads that mint a new asset.
-  setRulesCacheIdImpl(cacheId);
-  setSubtitlesCacheIdImpl(cacheId);
-  setUploadedFile(media);
+  return activateBindingImpl(cacheId, { expectedProjectId: projectId, create: false })
+    .then((receipt) => {
+      if (!validateBindingImpl(receipt, { cacheId, projectId })) {
+        throw new Error('The restored media subtitle project could not be verified.');
+      }
+      if (validateOwnership() !== true) {
+        throw new Error('The restored media session was superseded.');
+      }
+      // These are write-only compatibility mirrors for old UI teardown. Restoration and every
+      // product operation derive identity from the native project/session capability above.
+      const previousUrl = localStorage.getItem('current_file_url');
+      if (previousUrl?.startsWith('blob:') && previousUrl !== media.playbackUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+      localStorage.setItem('current_file_url', media.playbackUrl);
+      localStorage.setItem('current_file_cache_id', media.assetId);
+      setUploadedFile(media);
+      return receipt;
+    });
 };
 
 export const useNativeMediaSessionHydration = ({ setUploadedFile }) => {
   useEffect(() => {
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeMediaSessionHydrator({
-      apply: ({ media, cacheId }) => applyNativeMediaSession({ media, cacheId, setUploadedFile }),
+      apply: ({ media, cacheId, projectId, validateOwnership }) => applyNativeMediaSession({
+        media,
+        cacheId,
+        projectId,
+        setUploadedFile,
+        validateOwnership,
+      }),
     });
     void hydrator.hydrate();
     return () => hydrator.dispose();

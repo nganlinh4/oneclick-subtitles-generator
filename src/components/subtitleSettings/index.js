@@ -29,6 +29,8 @@ const SubtitleSettings = ({
   videoRef,
   originalNarrations = [],
   translatedNarrations = [],
+  alignedNarrations = [],
+  narrationCues = [],
   onRenderVideo,
   volume,
   setVolume
@@ -59,7 +61,13 @@ const SubtitleSettings = ({
     // Only aligned narration props we need
     isGeneratingAligned,
     alignedStatus
-  } = useNarration(videoRef, originalNarrations, translatedNarrations);
+  } = useNarration(
+    videoRef,
+    originalNarrations,
+    translatedNarrations,
+    alignedNarrations,
+    narrationCues,
+  );
 
   // Update subtitle language when translation becomes available
   useEffect(() => {

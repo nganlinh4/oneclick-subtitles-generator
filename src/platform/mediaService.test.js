@@ -26,6 +26,7 @@ vi.mock('./projectService', () => ({
   activateProjectSnapshot: vi.fn(),
   getActiveProjectSnapshot: vi.fn(),
   mutateProject: vi.fn(),
+  undoDetachedProject: vi.fn(),
 }));
 
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
@@ -458,7 +459,7 @@ it('opens playback only after projectService conditionally refreshes the exact a
   };
   const mutate = vi.fn(async (projectId, reason, mutator, options) => {
     expect(projectId).toBe(PROJECT_ID);
-    expect(reason).toBe('Replace project media with downloaded candidate');
+    expect(reason).toBe(`Replace project media with downloaded candidate ${candidate.asset.id}`);
     expect(options).toEqual({ retryOnConflict: false });
     const replacement = mutator(source);
     expect(replacement.media).toEqual([candidate.asset]);
@@ -612,6 +613,70 @@ it.each([
   await expect(claim).rejects.toMatchObject({ code: 'invalidMediaRequest' });
   expect(active).toBe(winner);
   expect(openAsset).not.toHaveBeenCalled();
+});
+
+it('never opens native media when the caller generation is superseded during project commit', async () => {
+  const candidate = validCandidate();
+  const source = {
+    metadata: { id: PROJECT_ID, name: 'Fixture' },
+    stateVersion: 7,
+    media: [validSnapshot().media],
+    tracks: [],
+  };
+  const committed = {
+    metadata: source.metadata,
+    stateVersion: 8,
+    media: [candidate.asset],
+    tracks: [],
+  };
+  let finishCommit;
+  const commitGate = new Promise((resolve) => { finishCommit = resolve; });
+  let active = source;
+  let owned = true;
+  const ownershipError = Object.assign(new Error('newer request won'), {
+    code: 'autoGenerationOwnershipLost',
+  });
+  const openAsset = vi.fn();
+  const mutate = vi.fn(async () => {
+    await commitGate;
+    active = committed;
+    return {
+      revisionId: '01890f39-7b62-7c4e-8c9a-000000000301',
+      stateVersion: 8,
+      snapshot: committed,
+    };
+  });
+  const rollbackMutation = vi.fn(async (_projectId, _reason) => {
+    active = source;
+    return source;
+  });
+  const lifecycle = createMediaCandidateLifecycle({
+    getActiveSnapshot: () => active,
+    invokeCommand: vi.fn(),
+    mutate,
+    openAsset,
+    rollbackMutation,
+  });
+
+  const claim = lifecycle.claim(candidate, {
+    expectedStateVersion: 7,
+    projectId: PROJECT_ID,
+  }, {
+    validateOwnership: () => {
+      if (!owned) throw ownershipError;
+    },
+  });
+  await vi.waitFor(() => expect(mutate).toHaveBeenCalledOnce());
+  owned = false;
+  finishCommit();
+
+  await expect(claim).rejects.toBe(ownershipError);
+  expect(openAsset).not.toHaveBeenCalled();
+  expect(rollbackMutation).toHaveBeenCalledExactlyOnceWith(
+    PROJECT_ID,
+    `Replace project media with downloaded candidate ${candidate.asset.id}`
+  );
+  expect(active).toBe(source);
 });
 
 it('does not return an opened A descriptor after B becomes active during native open', async () => {

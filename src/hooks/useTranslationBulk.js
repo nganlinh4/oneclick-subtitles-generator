@@ -2,6 +2,16 @@ import { useCallback, useRef, useState } from 'react';
 import { translateSubtitles } from '../services/geminiService';
 import { createTranslationAbortError } from '../utils/translationOwnership';
 
+const requireOwnedTranslationResult = (value) => {
+  if (!value || value.status !== 'complete'
+      || !Array.isArray(value.rows)
+      || !Array.isArray(value.deliveries)
+      || value.deliveries.some((delivery) => typeof delivery?.acknowledge !== 'function')) {
+    throw new TypeError('Bulk translation returned an invalid owned result');
+  }
+  return value;
+};
+
 /**
  * Custom hook that manages bulk (multi-file) translation state and handlers.
  * Composes into the main translation hook by receiving the parent state it needs.
@@ -94,7 +104,7 @@ export const useTranslationBulk = ({
 
         try {
           // Use the same translation settings but skip context rules
-          const result = await translateSubtitles(
+          const result = requireOwnedTranslationResult(await translateSubtitles(
             bulkFile.subtitles,
             languages.length === 1 ? languages[0] : languages,
             selectedModel,
@@ -108,14 +118,23 @@ export const useTranslationBulk = ({
             bulkFile.name, // File context for bulk translation
             false,
             ownership
-          );
+          ));
           await assertBoundary();
 
-          if (result && result.length > 0) {
+          if (result.rows.length > 0) {
             results.push({
               originalFile: bulkFile,
-              translatedSubtitles: result,
-              success: true
+              translatedSubtitles: result.rows,
+              success: true,
+              // React state is not a persistence receipt. Keep the native delivery handles alive
+              // and unacknowledged until the bulk ZIP/file writer grows an exact durable-save
+              // receipt; job-result recovery remains authoritative in the meantime.
+              delivery: Object.freeze({
+                state: result.deliveries.length === 0
+                  ? 'notRequired'
+                  : 'pendingDurableExport',
+                pending: result.deliveries,
+              }),
             });
           } else {
             results.push({
@@ -228,6 +247,10 @@ export const useTranslationBulk = ({
     bulkFilesRef,
     setBulkFiles: setOwnedBulkFiles,
     bulkTranslations,
+    pendingBulkDeliveryCount: bulkTranslations.reduce(
+      (count, translation) => count + (translation.delivery?.pending?.length ?? 0),
+      0
+    ),
     setBulkTranslations,
     isBulkTranslating,
     setIsBulkTranslating,

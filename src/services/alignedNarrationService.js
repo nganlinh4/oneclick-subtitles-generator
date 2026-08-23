@@ -1,18 +1,19 @@
-import i18n from '../i18n/i18n';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
   nativeNarrationAlignmentService,
   normalizeAlignmentRequest,
 } from '../platform/narrationAlignmentService';
-import { getNativeNarrationArtifactId } from '../platform/nativeNarrationCapabilities';
 import {
   discardRecoveredNativeJob,
+  ensureNativeJobRecoveryReady,
   forgetNativeJobId,
   listRecoveredNativeJobs,
   rememberNativeJobId,
-  startNativeJobRecovery,
 } from '../platform/jobRecoveryCoordinator';
-import { hydrateNarrationResultsForAlignment } from '../utils/narrationAlignmentUtils';
+import {
+  buildStrictNativeNarrationPlan,
+  createNativeNarrationPlanKey,
+} from '../utils/narrationAlignmentUtils';
 
 const emptyCache = () => ({
   blob: null,
@@ -23,6 +24,7 @@ const emptyCache = () => ({
   nativeArtifactId: null,
   nativePlaybackId: null,
   nativeJobId: null,
+  alignmentKey: null,
   timestamp: null,
   subtitleTimestamps: {},
 });
@@ -33,10 +35,17 @@ let playbackRate = 1;
 let volume = 1;
 let recentAlignment = null;
 
+const alignmentRecoveryError = (code, message, retryable, cause) => {
+  const error = new Error(message, cause === undefined ? undefined : { cause });
+  error.name = 'AlignmentRecoveryError';
+  error.code = code;
+  error.retryable = retryable;
+  return error;
+};
+
 const syncWindowState = () => {
   if (typeof window === 'undefined') return;
   window.alignedNarrationCache = cache;
-  window.isAlignedNarrationAvailable = Boolean(cache.url);
   window.alignedAudioElement = audioElement;
 };
 
@@ -63,11 +72,23 @@ const matchingRecentJobId = (request) => (
 );
 
 const discardUnmatchedRecoveredAlignments = async () => {
-  await startNativeJobRecovery().catch(() => undefined);
+  await ensureNativeJobRecoveryReady();
   for (const entry of listRecoveredNativeJobs('alignNarration')) {
     if (['queued', 'running', 'cancelling'].includes(entry.job.state)) {
-      await nativeNarrationAlignmentService.cancelAlignmentJob(entry.job.id)
-        .catch(() => undefined);
+      try {
+        await nativeNarrationAlignmentService.cancelAlignmentJob(entry.job.id);
+      } catch (error) {
+        if (error?.code === 'jobNotFound') {
+          discardRecoveredNativeJob(entry.job.id);
+          continue;
+        }
+        throw alignmentRecoveryError(
+          'alignmentRecoveryUnavailable',
+          'A previous narration alignment could not be cancelled',
+          true,
+          error,
+        );
+      }
     }
     discardRecoveredNativeJob(entry.job.id);
   }
@@ -124,36 +145,6 @@ const secondsToMicros = (value) => {
   return micros;
 };
 
-const createSubtitleTimestampMap = (items) => Object.fromEntries(items.map((item) => [
-  item.subtitle_id,
-  { start: item.start, end: item.end },
-]));
-
-const buildNativePayload = (generationResults) => {
-  const items = hydrateNarrationResultsForAlignment(generationResults)
-    .filter((result) => result?.success)
-    .map((result) => {
-      const artifactId = getNativeNarrationArtifactId(result);
-      if (!artifactId) {
-        throw new Error('Native narration alignment requires durable narration artifacts');
-      }
-      const start = typeof result.start === 'number' ? result.start : 0;
-      const end = typeof result.end === 'number' ? result.end : start + 5;
-      return Object.freeze({
-        subtitle_id: result.subtitle_id,
-        nativeArtifactId: artifactId,
-        start,
-        end,
-      });
-    })
-    .sort((left, right) => left.start - right.start);
-
-  return Object.freeze({
-    items: Object.freeze(items),
-    subtitleTimestamps: Object.freeze(createSubtitleTimestampMap(items)),
-  });
-};
-
 const buildNativeRequest = (items) => normalizeAlignmentRequest({
   clips: items.map((item, index) => ({
     id: `segment-${index + 1}`,
@@ -163,7 +154,7 @@ const buildNativeRequest = (items) => normalizeAlignmentRequest({
   })),
 });
 
-const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps) => {
+const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps, alignmentKey) => {
   const playable = await nativeNarrationAlignmentService.resolveAlignmentArtifact(
     result.artifact.artifactId,
   );
@@ -176,6 +167,7 @@ const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps) => {
     nativeArtifactId: result.artifact.artifactId,
     nativePlaybackId: playable.playback.id,
     nativeJobId: jobId,
+    alignmentKey,
     timestamp: Date.now(),
     subtitleTimestamps,
   });
@@ -188,32 +180,68 @@ const cacheResolvedAlignment = async (result, jobId, subtitleTimestamps) => {
   })];
 };
 
-const restoreAlignment = async (request, subtitleTimestamps) => {
+const restoreAlignment = async (request, subtitleTimestamps, alignmentKey) => {
+  await ensureNativeJobRecoveryReady();
   const jobId = matchingRecentJobId(request);
   if (!jobId) {
     await discardUnmatchedRecoveredAlignments();
     return null;
   }
+  let restored;
   try {
-    let restored = await nativeNarrationAlignmentService.getAlignmentResult(jobId);
+    restored = await nativeNarrationAlignmentService.getAlignmentResult(jobId);
     if (restored.result === null
         && ['queued', 'running', 'cancelling'].includes(restored.job.state)) {
       restored = await nativeNarrationAlignmentService.waitForAlignmentResult(jobId);
     }
     if (restored.result === null) {
+      if (['failed', 'cancelled', 'interrupted'].includes(restored.job.state)) {
+        clearRecentAlignment();
+        return null;
+      }
+      if (['queued', 'running', 'cancelling'].includes(restored.job.state)) {
+        throw alignmentRecoveryError(
+          'alignmentRecoveryPending',
+          'The previous narration alignment has not reached a terminal state',
+          true,
+        );
+      }
+      clearRecentAlignment();
+      throw alignmentRecoveryError(
+        'invalidAlignmentRecoveryResult',
+        'The previous narration alignment has no durable result',
+        false,
+      );
+    }
+    forgetNativeJobId(jobId);
+    return cacheResolvedAlignment(restored.result, jobId, subtitleTimestamps, alignmentKey);
+  } catch (error) {
+    if (error?.name === 'AlignmentRecoveryError') throw error;
+    if (['alignmentUnavailable', 'alignmentCancelled'].includes(error?.code)) {
       clearRecentAlignment();
       return null;
     }
-    forgetNativeJobId(jobId);
-    return cacheResolvedAlignment(restored.result, jobId, subtitleTimestamps);
-  } catch {
-    clearRecentAlignment();
-    return null;
+    if (['jobNotFound', 'invalidAlignmentRequest', 'invalidAlignmentResponse'].includes(error?.code)) {
+      clearRecentAlignment();
+      if (error?.code === 'jobNotFound') return null;
+      throw alignmentRecoveryError(
+        'invalidAlignmentRecoveryResult',
+        'The previous narration alignment is invalid',
+        false,
+        error,
+      );
+    }
+    throw alignmentRecoveryError(
+      'alignmentRecoveryUnavailable',
+      'The previous narration alignment could not be read',
+      true,
+      error,
+    );
   }
 };
 
-const startAlignment = async (request, onProgress, subtitleTimestamps) => {
-  const restored = await restoreAlignment(request, subtitleTimestamps);
+const startAlignment = async (request, onProgress, subtitleTimestamps, alignmentKey) => {
+  const restored = await restoreAlignment(request, subtitleTimestamps, alignmentKey);
   if (restored) {
     onProgress?.({ status: 'complete', message: 'Using cached aligned narration' });
     return restored;
@@ -239,51 +267,47 @@ const startAlignment = async (request, onProgress, subtitleTimestamps) => {
   try {
     const result = await terminal;
     forgetNativeJobId(job.id);
-    return await cacheResolvedAlignment(result, job.id, subtitleTimestamps);
+    return await cacheResolvedAlignment(result, job.id, subtitleTimestamps, alignmentKey);
   } catch (error) {
     clearRecentAlignment();
     throw error;
   }
 };
 
-export const prepareAlignedNarrationPreview = async (
-  narrationData,
-  onProgress = null,
-  subtitleTimestamps = createSubtitleTimestampMap(narrationData || []),
-) => {
-  if (!Array.isArray(narrationData) || narrationData.length === 0) {
-    return null;
+const prepareAlignedNarrationPreview = async (plan, onProgress = null) => {
+  if (!isDesktopRuntime()) {
+    throw new Error('Native narration alignment requires the desktop runtime.');
   }
-  if (!isDesktopRuntime()) return null;
+  if (!plan || !Array.isArray(plan.items) || plan.items.length === 0) {
+    throw new Error('A strict native narration alignment plan is required.');
+  }
   onProgress?.({ status: 'generating', message: 'Preparing aligned narration preview...' });
-  const request = buildNativeRequest(narrationData.map((item) => ({
-    ...item,
-    nativeArtifactId: getNativeNarrationArtifactId(item),
-  })));
-  const preview = await startAlignment(request, onProgress, subtitleTimestamps);
+  const request = buildNativeRequest(plan.items);
+  const alignmentKey = createNativeNarrationPlanKey(plan);
+  const preview = await startAlignment(
+    request,
+    onProgress,
+    plan.subtitleTimestamps,
+    alignmentKey,
+  );
   onProgress?.({ status: 'complete', message: 'Aligned narration ready' });
   return preview;
 };
 
-export const generateAlignedNarration = async (generationResults, onProgress = null) => {
-  if (!Array.isArray(generationResults) || generationResults.length === 0) {
-    return null;
-  }
-  if (!isDesktopRuntime()) return null;
+export const generateAlignedNarration = async (
+  generationResults,
+  currentCues,
+  onProgress = null,
+) => {
   try {
     onProgress?.({ status: 'preparing', message: 'Preparing aligned narration...' });
-    const { items, subtitleTimestamps } = buildNativePayload(generationResults);
-    if (items.length === 0) {
-      throw new Error(i18n.t(
-        'errors.noNarrationResults',
-        'No narration results to generate aligned audio',
-      ));
-    }
-    await prepareAlignedNarrationPreview(items, onProgress, subtitleTimestamps);
+    const plan = buildStrictNativeNarrationPlan(generationResults, currentCues);
+    if (cache.url && !cacheMatchesPlan(plan)) resetAlignedNarration();
+    await prepareAlignedNarrationPreview(plan, onProgress);
     return 'aligned-preview://timeline';
   } catch (error) {
     onProgress?.({ status: 'error', message: `Error: ${error.message}` });
-    return null;
+    throw error;
   }
 };
 
@@ -333,9 +357,19 @@ export const cleanupAlignedNarration = (
   if (!preserveCache) resetAlignedNarration();
 };
 
-export const isAlignedNarrationAvailable = () => Boolean(cache.url);
-export const getAlignedNarrationUrl = () => cache.url;
-export const getAlignedNarrationArtifactId = () => cache.nativeArtifactId;
+const cacheMatchesPlan = (plan) => (
+  Boolean(cache.url)
+  && Boolean(cache.nativeArtifactId)
+  && cache.alignmentKey === createNativeNarrationPlanKey(plan)
+);
+
+export const isAlignedNarrationAvailableForPlan = (plan) => cacheMatchesPlan(plan);
+export const getAlignedNarrationUrlForPlan = (plan) => (
+  cacheMatchesPlan(plan) ? cache.url : null
+);
+export const getAlignedNarrationArtifactIdForPlan = (plan) => (
+  cacheMatchesPlan(plan) ? cache.nativeArtifactId : null
+);
 
 if (typeof window !== 'undefined') {
   window.resetAlignedNarration = resetAlignedNarration;

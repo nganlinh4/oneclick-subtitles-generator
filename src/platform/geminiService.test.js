@@ -50,6 +50,7 @@ it('contains no direct provider transport or browser credential-storage path', (
 });
 
 it('normalizes the native request to exact Rust enum values', () => {
+  const projectId = uuidv7();
   const request = normalizeGeminiStartRequest(nativeRequest({
     thinkingLevel: 'minimal',
     mediaResolution: 'medium',
@@ -59,6 +60,8 @@ it('normalizes the native request to exact Rust enum values', () => {
       type: 'array',
       items: { type: 'object' },
     },
+    projectId,
+    expectedProjectStateVersion: 7,
   }));
 
   expect(request).toEqual(expect.objectContaining({
@@ -66,7 +69,36 @@ it('normalizes the native request to exact Rust enum values', () => {
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
     emptySpeechPolicy: 'provenSilence',
     maxOutputTokens: 8192,
+    projectId,
+    expectedProjectStateVersion: 7,
   }));
+});
+
+it('requires project ownership as one exact UUID/version pair', () => {
+  const projectId = uuidv7();
+  expect(normalizeGeminiStartRequest(nativeRequest({
+    projectId,
+    expectedProjectStateVersion: 0,
+  }))).toMatchObject({ projectId, expectedProjectStateVersion: 0 });
+
+  for (const authority of [
+    { projectId },
+    { expectedProjectStateVersion: 0 },
+    { projectId: 'not-a-project', expectedProjectStateVersion: 0 },
+    { projectId, expectedProjectStateVersion: -1 },
+    { projectId, expectedProjectStateVersion: 1.5 },
+    { projectId, expectedProjectStateVersion: Number.MAX_SAFE_INTEGER + 1 },
+  ]) {
+    expect(() => normalizeGeminiStartRequest(nativeRequest(authority)))
+      .toThrow(GeminiServiceError);
+  }
+
+  const generic = normalizeGeminiStartRequest(nativeRequest({
+    task: 'translate',
+    mediaAssetId: null,
+  }));
+  expect(generic).not.toHaveProperty('projectId');
+  expect(generic).not.toHaveProperty('expectedProjectStateVersion');
 });
 
 it('only accepts the proven-silence policy for media transcription', () => {
@@ -156,6 +188,7 @@ it('bounds prompt, output, and schema inputs before invoking native code', () =>
 
 it('passes the exact Tauri command arguments and dispatches typed Channel events', async () => {
   const initial = jobSnapshot();
+  const projectId = uuidv7();
   let channel;
   const invokeCommand = vi.fn(async (command, args) => {
     expect(command).toBe('gemini_start');
@@ -170,16 +203,24 @@ it('passes the exact Tauri command arguments and dispatches typed Channel events
     ChannelConstructor: TestChannel,
   });
 
-  await expect(service.startGeminiJob(nativeRequest(), {
+  await expect(service.startGeminiJob(nativeRequest({
+    projectId,
+    expectedProjectStateVersion: 11,
+  }), {
     onEvent,
     onChunk,
     onCompleted,
   })).resolves.toEqual(initial);
   expect(invokeCommand.mock.calls[0][1].request).not.toHaveProperty('apiKey');
+  expect(invokeCommand.mock.calls[0][1].request).toMatchObject({
+    projectId,
+    expectedProjectStateVersion: 11,
+  });
 
   channel.emit({ event: 'chunk', jobId: initial.id, text: 'hello ' });
   channel.emit({
     event: 'completed',
+    deliveryId: uuidv7(),
     job: jobSnapshot({ id: initial.id, state: 'succeeded', progress: { basisPoints: 10_000 }, sequence: 2 }),
     text: 'hello world',
     usage: {

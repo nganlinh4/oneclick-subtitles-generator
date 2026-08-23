@@ -14,7 +14,6 @@ import '../../styles/App.css';
 import '../../styles/GeminiButtonAnimations.css';
 import '../../styles/ProcessingTextAnimation.css';
 import '../../styles/SrtUploadButton.css';
-import '../../styles/VideoAnalysisModal.css';
 import '../../styles/TranscriptionRulesEditor.css';
 import '../../styles/OnboardingBanner.css';
 import '../../styles/AutoGenerate.css'; // Auto-generate button and flow styles

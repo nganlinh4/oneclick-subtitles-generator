@@ -5,6 +5,7 @@ vi.mock('./nativeGeminiJobLifecycle', () => ({
 }));
 
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
+const PROJECT_ID = '01890f39-7b62-7c4e-8c9a-000000000102';
 
 test('uses an opaque media asset with the structured analysis task', async () => {
   const run = vi.fn().mockResolvedValue({ text: '{"recommendedPreset":{}}' });
@@ -16,6 +17,8 @@ test('uses an opaque media asset with the structured analysis task', async () =>
     responseJsonSchema: { type: 'object' },
     thinkingLevel: 'minimal',
     mediaResolution: 'low',
+    projectId: PROJECT_ID,
+    expectedProjectStateVersion: 9,
   };
 
   await expect(service.run(request)).resolves.toEqual({ text: '{"recommendedPreset":{}}' });
@@ -29,6 +32,8 @@ test('uses an opaque media asset with the structured analysis task', async () =>
       maxOutputTokens: undefined,
       thinkingLevel: 'minimal',
       mediaResolution: 'low',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 9,
     },
     signal: undefined,
     onChunk: undefined,

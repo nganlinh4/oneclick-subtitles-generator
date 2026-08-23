@@ -91,6 +91,9 @@ const TAURI_NSIS_BOOTSTRAP_SCRIPT = readMutableSource(__dirname, 'prepare-tauri-
 const DESKTOP_SOURCE = readMutableSource(
   __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs',
 );
+const APP_CLOSE_SOURCE = readMutableSource(
+  __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'app_close.rs',
+);
 const CI_UPDATER_ARGUMENT_SOURCE = readMutableSource(
   __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'ci_updater_fixture.rs',
 );
@@ -2195,6 +2198,7 @@ test('updater fixture source remains compile-time isolated from production relea
   assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
   assert.doesNotThrow(() => assertDesktopCloseLifecycleSource(
     DESKTOP_SOURCE,
+    APP_CLOSE_SOURCE,
     CARGO_LOCK_SOURCE,
   ));
   assert.doesNotThrow(() => assertCiUpdaterFixtureDebugPortSource(
@@ -2306,10 +2310,22 @@ test('updater fixture source remains compile-time isolated from production relea
     ),
   ]) {
     assert.throws(
-      () => assertDesktopCloseLifecycleSource(weakenedDesktop, CARGO_LOCK_SOURCE),
+      () => assertDesktopCloseLifecycleSource(
+        weakenedDesktop,
+        APP_CLOSE_SOURCE,
+        CARGO_LOCK_SOURCE,
+      ),
       /Desktop close handler/,
     );
   }
+  assert.throws(
+    () => assertDesktopCloseLifecycleSource(
+      DESKTOP_SOURCE,
+      weaken(APP_CLOSE_SOURCE, 'state.cancel_commit(nonce);', 'let _ = nonce;'),
+      CARGO_LOCK_SOURCE,
+    ),
+    /exact reviewed one-shot state machine/,
+  );
   const driftedRuntimeLock = weaken(CARGO_LOCK_SOURCE,
     /(\[\[package]]\r?\nname = "tauri-runtime-wry"\r?\nversion = )"2\.11\.4"/,
     '$1"2.11.5"',
@@ -2320,7 +2336,11 @@ test('updater fixture source remains compile-time isolated from production relea
     'Tauri runtime lock mutation must alter Cargo.lock',
   );
   assert.throws(
-    () => assertDesktopCloseLifecycleSource(DESKTOP_SOURCE, driftedRuntimeLock),
+    () => assertDesktopCloseLifecycleSource(
+      DESKTOP_SOURCE,
+      APP_CLOSE_SOURCE,
+      driftedRuntimeLock,
+    ),
     /reviewed tauri-runtime-wry 2\.11\.4 registry package/,
   );
 });

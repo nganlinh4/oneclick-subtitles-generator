@@ -14,5 +14,6 @@
   "geminiFpsTooltip": "Gemini는 FPS가 더 높은 영상을 보내더라도 1 FPS로만 처리합니다 — 자세한 내용은 버튼을 누르세요. 최상의 품질과 FPS를 원하면 영상 렌더링을 선택하세요.",
   "noSubtitles": "표시할 자막이 없습니다.",
   "videoError": "영상 로드 오류: ${err.message}",
-  "videoNotSupported": "사용 중인 브라우저가 video 태그를 지원하지 않습니다."
+  "videoNotSupported": "사용 중인 브라우저가 video 태그를 지원하지 않습니다.",
+  "mediaNotPrepared": "미리보기를 열기 전에 이 비디오를 준비하세요."
 }

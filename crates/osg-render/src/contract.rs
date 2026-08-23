@@ -19,6 +19,9 @@ const MAX_PRESET_BYTES: usize = 128;
 pub struct RenderRequest {
     pub source_asset_id: AssetId,
     pub project_id: ProjectId,
+    pub scene_revision: u64,
+    pub selected_subtitles: RenderSubtitleSource,
+    pub selected_narration: RenderNarrationSource,
     pub narration_artifact_id: Option<Uuid>,
     pub lyrics: Vec<RenderLyric>,
     pub settings: RenderSettings,
@@ -40,6 +43,8 @@ impl RenderRequest {
             || self
                 .narration_artifact_id
                 .is_some_and(|id| id.get_version_num() != 7)
+            || (self.selected_narration == RenderNarrationSource::Generated)
+                != self.narration_artifact_id.is_some()
         {
             return Err(RenderError::InvalidRequest);
         }
@@ -105,6 +110,20 @@ impl RenderRequest {
             height: target_height,
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderSubtitleSource {
+    Original,
+    Translated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderNarrationSource {
+    None,
+    Generated,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -224,7 +243,7 @@ impl From<FrameRate> for u16 {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RenderSettings {
     pub resolution: RenderResolution,
@@ -236,7 +255,9 @@ pub struct RenderSettings {
 }
 
 impl RenderSettings {
-    fn validate(&self) -> Result<()> {
+    /// Validate settings independently of a source. Project-owned scene persistence uses this
+    /// before a video has been probed; source-duration constraints remain in `RenderRequest`.
+    pub fn validate(&self) -> Result<()> {
         if self.original_audio_volume > 100 || self.narration_volume > 100 {
             return Err(RenderError::InvalidRequest);
         }
@@ -328,7 +349,7 @@ pub enum LineBreakBehavior {
     Manual,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -392,7 +413,8 @@ pub struct SubtitleCustomization {
 }
 
 impl SubtitleCustomization {
-    fn validate(&self) -> Result<()> {
+    /// Validate the complete visual contract before it is persisted as a project scene.
+    pub fn validate(&self) -> Result<()> {
         if self.font_family.is_empty()
             || self.font_family.len() > MAX_FONT_FAMILY_BYTES
             || self.font_family.chars().any(char::is_control)
@@ -470,7 +492,7 @@ pub enum CanvasBackgroundMode {
     Blur,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CropSettings {
     pub x: f64,
@@ -491,7 +513,8 @@ pub struct CropSettings {
 }
 
 impl CropSettings {
-    fn validate(&self) -> Result<()> {
+    /// Validate crop/composition values independently of one source's dimensions.
+    pub fn validate(&self) -> Result<()> {
         let values = [self.x, self.y, self.width, self.height];
         if values.into_iter().any(|value| !value.is_finite())
             || !(-1_000.0..=1_000.0).contains(&self.x)
@@ -544,6 +567,9 @@ mod tests {
         json!({
             "sourceAssetId": AssetId::new(),
             "projectId": ProjectId::new(),
+            "sceneRevision": 0,
+            "selectedSubtitles": "original",
+            "selectedNarration": "none",
             "narrationArtifactId": null,
             "lyrics": [{"id":"cue-1","startUs":0,"endUs":2_000_000,"text":"Hello"}],
             "settings": {

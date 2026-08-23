@@ -341,14 +341,20 @@ const resultFromNative = (result, mapping, backend) => {
   });
 };
 
-const playableReference = (value) => Object.freeze({
-  nativeArtifactId: value.artifact.artifactId,
-  nativePlaybackId: value.playback.id,
-  audioUrl: value.playback.playbackUrl,
-  mimeType: value.playback.mimeType,
-  bytes: value.artifact.bytes,
-  format: value.artifact.format,
-  durationMicros: value.artifact.durationMicros,
+const playableReference = ({ reference, playable }) => Object.freeze({
+  nativeArtifactId: playable.artifact.artifactId,
+  nativePlaybackId: playable.playback.id,
+  audioUrl: playable.playback.playbackUrl,
+  mimeType: playable.playback.mimeType,
+  bytes: playable.artifact.bytes,
+  format: playable.artifact.format,
+  durationMicros: playable.artifact.durationMicros,
+  projectId: reference.projectId,
+  projectStateVersion: reference.projectStateVersion,
+  referenceVersion: reference.referenceVersion,
+  text: reference.transcript,
+  language: reference.language,
+  pendingDelivery: reference.pendingDelivery,
 });
 
 const adapterHandlerKeys = new Set([
@@ -388,34 +394,85 @@ const safelyCall = (callback, ...arguments_) => {
 export const createNativeNarrationAdapter = ({
   speech = createNativeSpeechService(),
 } = {}) => {
-  const selectReference = async (method) => {
+  const selectReference = async (rawRequest) => {
+    const {
+      method, projectId, expectedProjectStateVersion, expectedReferenceVersion,
+    } = requireRequestKeys(rawRequest, new Set([
+      'method', 'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion',
+    ]));
     const backend = requireMethod(method);
     if (backend !== 'f5Tts' && backend !== 'chatterbox') throw invalid();
-    const selected = await speech.selectSpeechReference({ backend });
+    const selected = await speech.selectSpeechReference({
+      backend,
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+      expectedReferenceVersion: requireLifecycleEpoch(expectedReferenceVersion),
+    });
     return selected === null ? null : playableReference(selected);
   };
 
   const importReference = async (rawRequest) => {
-    const { method, assetId } = requireRequestKeys(
+    const {
+      method, assetId, projectId, expectedProjectStateVersion, expectedReferenceVersion,
+    } = requireRequestKeys(
       rawRequest,
-      new Set(['method', 'assetId'])
+      new Set([
+        'method', 'assetId', 'projectId', 'expectedProjectStateVersion',
+        'expectedReferenceVersion',
+      ])
     );
     const backend = requireMethod(method);
     if (backend !== 'f5Tts' && backend !== 'chatterbox') throw invalid();
     return playableReference(await speech.importSpeechReference({
       backend,
       assetId: requireUuid(assetId, 7),
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+      expectedReferenceVersion: requireLifecycleEpoch(expectedReferenceVersion),
     }));
   };
 
   const extractReference = async (rawRequest) => {
-    const { method, startMs, endMs } = requireRequestKeys(
+    const {
+      method, startMs, endMs, projectId, expectedProjectStateVersion,
+      expectedReferenceVersion,
+    } = requireRequestKeys(
       rawRequest,
-      new Set(['method', 'startMs', 'endMs'])
+      new Set([
+        'method', 'startMs', 'endMs', 'projectId', 'expectedProjectStateVersion',
+        'expectedReferenceVersion',
+      ])
     );
     const backend = requireMethod(method);
     if (backend !== 'f5Tts' && backend !== 'chatterbox') throw invalid();
-    return playableReference(await speech.extractSpeechReference({ backend, startMs, endMs }));
+    return playableReference(await speech.extractSpeechReference({
+      backend,
+      startMs,
+      endMs,
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+      expectedReferenceVersion: requireLifecycleEpoch(expectedReferenceVersion),
+    }));
+  };
+
+  const getReference = async (projectId) => {
+    const value = await speech.getProjectSpeechReference(requireUuid(projectId, 7));
+    return value === null ? null : playableReference(value);
+  };
+
+  const commitReference = async (rawRequest) => {
+    const request = requireRequestKeys(rawRequest, new Set([
+      'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion', 'artifactId',
+      'transcript', 'language', 'deliveryJobId', 'deliveryId',
+    ]));
+    return speech.commitProjectSpeechReference(request);
+  };
+
+  const clearReference = async (rawRequest) => {
+    const request = requireRequestKeys(rawRequest, new Set([
+      'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion',
+    ]));
+    return speech.clearProjectSpeechReference(request);
   };
 
   const releasePlayback = async (value) => {
@@ -621,6 +678,9 @@ export const createNativeNarrationAdapter = ({
     selectReference,
     importReference,
     extractReference,
+    getReference,
+    commitReference,
+    clearReference,
     releasePlayback,
     resolvePlayback,
     generate,

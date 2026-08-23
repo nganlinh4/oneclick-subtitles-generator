@@ -175,13 +175,16 @@ const useUnifiedNarration = ({
     useGroupedSubtitles,
     groupedSubtitles,
     setGroupedSubtitles,
-    setIsGroupingSubtitles,
     setUseGroupedSubtitles,
     groupingIntensity
   });
 
   // Wrapper function for setReferenceText that also updates cache
-  const setReferenceTextWithCache = createSetReferenceTextWithCache({ referenceAudio, setReferenceText });
+  const setReferenceTextWithCache = createSetReferenceTextWithCache({
+    referenceAudio,
+    setReferenceAudio,
+    setReferenceText,
+  });
 
   // Update reference audio when initialReferenceAudio changes
   useEffect(() => {
@@ -339,7 +342,7 @@ const useUnifiedNarration = ({
     retryingSubtitleId,
     useGroupedSubtitles, setUseGroupedSubtitles,
     groupedSubtitles, setGroupedSubtitles,
-    isGroupingSubtitles,
+    isGroupingSubtitles, setIsGroupingSubtitles,
     groupingIntensity, setGroupingIntensity,
     selectedNarrationModel, setSelectedNarrationModel,
     setReferenceTextWithCache,

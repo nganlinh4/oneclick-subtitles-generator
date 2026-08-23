@@ -61,6 +61,9 @@ beforeEach(() => {
       text: 'Hello',
     }]),
     usage: null,
+    job: { id: 'job-native' },
+    deliveryId: 'delivery-native',
+    acknowledge: vi.fn(),
   });
   runMediaPipeline.mockResolvedValue({
     kind: 'media',
@@ -112,7 +115,13 @@ it('forwards cumulative native stream text and does not synthesize a final chunk
   runNativeGeminiTranscription.mockImplementationOnce(async ({ onChunk }) => {
     onChunk(first);
     onChunk(second);
-    return { text: `${first}${second}`, usage: null };
+    return {
+      text: `${first}${second}`,
+      usage: null,
+      job: { id: 'job-stream' },
+      deliveryId: 'delivery-stream',
+      acknowledge: vi.fn(),
+    };
   });
   const onChunk = vi.fn();
   const onComplete = vi.fn();
@@ -272,4 +281,60 @@ it('revalidates ownership after native Gemini before returning any result', asyn
   await expect(callGeminiApi(media, 'video', { autoRunContext: context }))
     .rejects.toThrow('project switched');
   expect(runNativeGeminiTranscription).toHaveBeenCalledTimes(1);
+});
+
+it('forwards exact native project admission and retains delivery ownership beside parsed rows', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  const acknowledge = vi.fn();
+  runNativeGeminiTranscription.mockResolvedValueOnce({
+    text: JSON.stringify([{
+      startTime: '00m00s000ms',
+      endTime: '00m01s000ms',
+      text: 'Hello',
+    }]),
+    usage: null,
+    job: { id: 'job-project' },
+    deliveryId: 'delivery-project',
+    acknowledge,
+  });
+
+  const subtitles = await callGeminiApi(media, 'video', {
+    projectId: '0198a8d7-dbf9-7ee0-a949-f13427fdd78a',
+    expectedProjectStateVersion: 14,
+  });
+
+  expect(runNativeGeminiTranscription).toHaveBeenCalledWith(expect.objectContaining({
+    projectId: '0198a8d7-dbf9-7ee0-a949-f13427fdd78a',
+    expectedProjectStateVersion: 14,
+  }));
+  const { getGeminiTranscriptionDeliveries } = await import('./transcriptionDelivery');
+  expect(getGeminiTranscriptionDeliveries(subtitles)).toEqual([{
+    jobId: 'job-project',
+    deliveryId: 'delivery-project',
+    acknowledge,
+  }]);
+  expect(acknowledge).not.toHaveBeenCalled();
+});
+
+it('leaves a malformed provider result pending instead of acknowledging an unparsed payload', async () => {
+  const media = Object.freeze({
+    assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+  const acknowledge = vi.fn();
+  runNativeGeminiTranscription.mockResolvedValueOnce({
+    text: '{"not":"subtitles"}',
+    usage: null,
+    job: { id: 'job-invalid' },
+    deliveryId: 'delivery-invalid',
+    acknowledge,
+  });
+
+  await expect(callGeminiApi(media, 'video')).rejects.toThrow();
+  expect(acknowledge).not.toHaveBeenCalled();
 });

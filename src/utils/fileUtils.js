@@ -1,4 +1,7 @@
-import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
 import { isDesktopRuntime } from '../platform/runtimeEnvironment';
@@ -204,18 +207,17 @@ export const fileToBase64 = toBase64;
  */
 export const extractAndDownloadAudio = async (videoPath, _filename = 'audio') => {
   try {
-    const nativeAssetId = resolveActiveNativeMediaAssetId(videoPath);
-    if (nativeAssetId === null) {
-      throw new Error('Select the media again before extracting audio.');
-    }
+    const capability = await resolveActiveNativeMedia({ candidate: videoPath });
     const result = await runMediaPipeline({
       operation: 'extractAudio',
-      assetId: nativeAssetId,
+      assetId: capability.assetId,
       format: 'mp3',
       range: null,
     });
+    await revalidateActiveNativeMedia(capability);
     if (result?.kind !== 'media') throw new Error('Audio extraction returned no media.');
     const exported = await exportMediaAsset(result.media.asset.id);
+    await revalidateActiveNativeMedia(capability);
     return exported.status === 'completed';
   } catch (error) {
     console.error('Error extracting audio:', error);

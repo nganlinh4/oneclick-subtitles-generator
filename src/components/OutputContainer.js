@@ -10,6 +10,8 @@ import ParallelProcessingStatus from './ParallelProcessingStatus';
 import { EVENTS, subscribe } from '../events/bus';
 import { hasValidDownloadedVideo } from '../utils/videoUtils';
 import { useLyricsSave } from '../hooks/useLyricsSave';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
 // BackgroundImageGenerator moved back to AppLayout
 
 const markSavedOutsideEditor = () => undefined;
@@ -146,44 +148,22 @@ const OutputContainer = ({
     setActualVideoUrl('');
     setFileType('');
 
-    // First check for uploaded file
-    const uploadedFileUrl = localStorage.getItem('current_file_url');
-    if (uploadedFileUrl) {
-      // Check if it's a blob URL and if we have an uploadedFile
-      if (uploadedFileUrl.startsWith('blob:')) {
-        // Only use blob URLs if we have an uploadedFile (indicates current session)
-        if (uploadedFile) {
-          setVideoSource(uploadedFileUrl);
-          setFileType(uploadedFile.type || '');
-        } else {
-          // No uploadedFile means this is a stale blob URL, clear it
-          localStorage.removeItem('current_file_url');
-          setVideoSource('');
-          setFileType('');
-        }
-        return;
-      } else {
-        // Non-blob URL, use it directly
-        setVideoSource(uploadedFileUrl);
-        // For non-blob URLs from localStorage, check if we have a downloaded video file
-        const downloadedFile = window.downloadedVideoFile;
-        if (downloadedFile && downloadedFile.type) {
-          setFileType(downloadedFile.type);
-        } else {
-          // Assume video if no type info available
-          setFileType('video/mp4');
-        }
-        return;
-      }
+    if (isNativeMediaDescriptor(uploadedFile)) {
+      setVideoSource(uploadedFile.playbackUrl);
+      setFileType(uploadedFile.type);
+      return undefined;
     }
 
-    // Then check for YouTube video
-    if (selectedVideo?.url) {
-      // Store the selected video URL in localStorage to maintain state
-      if (selectedVideo.source === 'youtube' || selectedVideo.source === 'douyin' || selectedVideo.source === 'all-sites') {
-        localStorage.setItem('current_video_url', selectedVideo.url);
-      }
+    // The browser build has no native playback host. A browser File gets an object URL owned by
+    // this effect and revoked on replacement; it is never persisted or reused as identity.
+    if (!isDesktopRuntime() && uploadedFile instanceof File) {
+      const objectUrl = URL.createObjectURL(uploadedFile);
+      setVideoSource(objectUrl);
+      setFileType(uploadedFile.type || '');
+      return () => URL.revokeObjectURL(objectUrl);
+    }
 
+    if (!isDesktopRuntime() && selectedVideo?.url) {
       // Special case: If we're in SRT-only mode, don't set videoSource
       if (isSrtOnlyMode) {
         setVideoSource('');
@@ -194,22 +174,13 @@ const OutputContainer = ({
       setVideoSource(selectedVideo.url);
       // For YouTube/Douyin URLs, assume video
       setFileType('video/mp4');
-      return;
-    }
-
-    // Check if we have a video URL in localStorage but no selectedVideo object
-    const videoUrl = localStorage.getItem('current_video_url');
-    if (videoUrl && !selectedVideo && !isSrtOnlyMode) {
-
-      setVideoSource(videoUrl);
-      // For URLs from localStorage, assume video
-      setFileType('video/mp4');
-      return;
+      return undefined;
     }
 
     // Clear video source if nothing is selected
     setVideoSource('');
     setFileType('');
+    return undefined;
   }, [selectedVideo, uploadedFile, isSrtOnlyMode]);
 
   // Notify parent when actualVideoUrl changes

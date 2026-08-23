@@ -12,6 +12,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "sql/0008_media_artifact_duplicate_key_repair.sql"
         )),
+        M::up(include_str!("sql/0009_job_result_deliveries.sql")),
+        M::up(include_str!("sql/0010_project_speech_references.sql")),
+        M::up(include_str!("sql/0011_project_render_scenes.sql")),
     ])
 }
 
@@ -499,7 +502,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 11);
         let claim_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM media_artifact_job_claims
@@ -512,8 +515,8 @@ mod tests {
     }
 
     #[test]
-    fn every_prior_schema_version_upgrades_to_v8_idempotently() {
-        for prior_version in 1..=7 {
+    fn every_prior_schema_version_upgrades_to_v11_idempotently() {
+        for prior_version in 1..=10 {
             let database_file = NamedTempFile::new().expect("database file");
             let database_path = database_file.path();
             {
@@ -538,7 +541,7 @@ mod tests {
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version");
-            assert_eq!(version, 8, "failed to upgrade schema v{prior_version}");
+            assert_eq!(version, 11, "failed to upgrade schema v{prior_version}");
         }
     }
 
@@ -1074,7 +1077,7 @@ mod tests {
             assert_eq!(unrelated_after, unrelated_metadata);
         }
 
-        let mut connection = Connection::open(&database_path).expect("reopen v8 database");
+        let mut connection = Connection::open(&database_path).expect("reopen v11 database");
         migrations()
             .to_latest(&mut connection)
             .expect("repeat latest after reopen");
@@ -1084,7 +1087,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 11);
         for (media_id, artifact_id) in valid_pairs {
             let claim_count: i64 = connection
                 .query_row(

@@ -177,8 +177,6 @@
   "timeoutNone": "Không giới hạn",
   "timeout10Seconds": "10 giây",
   "timeout20Seconds": "20 giây",
-  "autoSelectDefaultPreset": "Tự động chọn cài đặt mặc định khi hết thời gian",
-  "autoSelectDefaultPresetDescription": "Nếu được bật, tùy chọn 'Sử dụng Cài đặt Mặc định của Tôi' sẽ được tự động chọn trong cửa sổ Kết quả Phân tích Video khi hết thời gian. Nếu không, tùy chọn 'Sử dụng Đề xuất' sẽ được chọn.",
   "videoAnalysisCountdown": "Thời gian đếm ngược phân tích",
   "videoAnalysisCountdownDesc": "Thời gian chờ trước khi tự động lưu quy tắc phân tích.",
   "countdownNone": "Không đếm ngược (tin tưởng phân tích, không khuyến nghị)",

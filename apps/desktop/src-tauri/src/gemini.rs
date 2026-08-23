@@ -3,19 +3,21 @@ use std::time::Duration;
 use std::time::Instant;
 
 use futures_util::StreamExt;
-use osg_domain::{AssetId, JobId, JobKind, JobSnapshot, JobUpdate};
+use osg_domain::{AssetId, JobId, JobKind, JobSnapshot, JobUpdate, ProjectId};
 use osg_gemini::{
     ApiKey, GeminiClient, GenerateRequest, GenerationConfig, MediaInput, MediaResolution, Model,
     ThinkingLevel, TokenUsage, UploadRequest,
 };
 use osg_infrastructure::secrets::{CredentialId, CredentialPurpose};
+use osg_infrastructure::storage::{Database, DatabaseError, JobResultDeliveryDraft, JobResultKind};
 use osg_media::{
     CancellationToken as MediaCancellationToken, MediaInput as NativeMediaInput, RunControl,
 };
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tauri::{State, ipc::Channel};
+use uuid::Uuid;
 
 use crate::background;
 use crate::diagnostics;
@@ -78,6 +80,14 @@ pub(crate) struct GeminiStartRequest {
     response_json_schema: Option<Value>,
     media_asset_id: Option<AssetId>,
     empty_speech_policy: Option<EmptySpeechPolicy>,
+    project_id: Option<ProjectId>,
+    expected_project_state_version: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GeminiProjectAuthority {
+    project_id: ProjectId,
+    expected_state_version: u64,
 }
 
 impl GeminiStartRequest {
@@ -144,7 +154,26 @@ impl GeminiStartRequest {
                 "The empty-speech policy is only valid for media transcription.",
             ));
         }
+        if self.project_id.is_some() != self.expected_project_state_version.is_some()
+            || self
+                .expected_project_state_version
+                .is_some_and(|version| version > i64::MAX as u64)
+        {
+            return Err(CommandError::invalid_input(
+                "Gemini project ownership requires an exact project and state version.",
+            ));
+        }
         Ok(())
+    }
+
+    const fn project_authority(&self) -> Option<GeminiProjectAuthority> {
+        match (self.project_id, self.expected_project_state_version) {
+            (Some(project_id), Some(expected_state_version)) => Some(GeminiProjectAuthority {
+                project_id,
+                expected_state_version,
+            }),
+            (None | Some(_), None) | (None, Some(_)) => None,
+        }
     }
 
     fn into_native(self, media: Option<osg_gemini::UploadedFile>) -> GenerateRequest {
@@ -205,6 +234,7 @@ pub(crate) enum GeminiJobEvent {
     },
     Completed {
         job: JobSnapshot,
+        delivery_id: Uuid,
         text: String,
         usage: Option<GeminiUsage>,
     },
@@ -235,12 +265,23 @@ pub(crate) async fn gemini_start(
     on_event: Channel<GeminiJobEvent>,
 ) -> CommandResult<JobSnapshot> {
     request.validate()?;
-    let local_media = resolve_media(&state, &media_blobs, request.media_asset_id).await?;
+    let project_authority = request.project_authority();
+    verify_project_authority_async(state.database.clone(), project_authority, None).await?;
+    let local_media = resolve_media(
+        &state,
+        &media_blobs,
+        request.media_asset_id,
+        project_authority,
+    )
+    .await?;
     let jobs = Arc::clone(&state.jobs);
     let kind = request.task.job_kind();
     let task_name = request.task.diagnostic_name();
     let model_name = request.model.api_id().to_owned();
     let has_media = local_media.is_some();
+    let durable_asset_id = local_media.as_ref().and_then(LocalMedia::durable_asset_id);
+    verify_project_authority_async(state.database.clone(), project_authority, durable_asset_id)
+        .await?;
     let ticket = background::register_running(&jobs, kind).await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
@@ -257,10 +298,10 @@ pub(crate) async fn gemini_start(
     let cancellation = ticket.cancellation().clone();
     let credentials = state.credentials.clone();
     let media_engine = state.media_engine();
+    let database = state.database.clone();
 
     tauri::async_runtime::spawn(async move {
         let result = run_gemini(
-            &jobs,
             &credentials,
             request,
             local_media,
@@ -273,37 +314,68 @@ pub(crate) async fn gemini_start(
         .await;
 
         match result {
-            Ok(output) => match background::apply(&jobs, job_id, JobUpdate::Succeed).await {
-                Ok(job) => {
-                    diagnostics::record(
-                        "gemini.completed",
-                        &[
-                            ("job", job_id.to_string()),
-                            ("task", task_name.to_owned()),
-                            ("elapsedMs", elapsed_millis(started)),
-                            ("outputBytes", output.text.len().to_string()),
-                        ],
-                    );
-                    let _ = on_event.send(GeminiJobEvent::Completed {
-                        job,
-                        text: output.text,
-                        usage: output.usage,
-                    });
-                }
-                Err(error) => {
-                    diagnostics::record(
-                        "gemini.failed",
-                        &[
-                            ("job", job_id.to_string()),
-                            ("task", task_name.to_owned()),
-                            ("elapsedMs", elapsed_millis(started)),
-                            ("code", error.code().to_owned()),
-                        ],
-                    );
-                    let job = background::snapshot(&jobs, job_id).await;
+            Ok(output) => {
+                if let Err(error) =
+                    verify_project_authority_async(database, project_authority, durable_asset_id)
+                        .await
+                {
+                    let job = background::finish_failure(&jobs, job_id).await;
                     let _ = on_event.send(GeminiJobEvent::Failed { job, error });
+                    return;
                 }
-            },
+                let delivery =
+                    gemini_result_delivery(job_id, project_authority, durable_asset_id, &output);
+                let delivery = match delivery {
+                    Ok(delivery) => delivery,
+                    Err(error) => {
+                        let error = CommandError::from(error);
+                        let job = background::finish_failure(&jobs, job_id).await;
+                        let _ = on_event.send(GeminiJobEvent::Failed { job, error });
+                        return;
+                    }
+                };
+                let delivery_id = delivery.delivery_id();
+                match succeed_with_result(
+                    &jobs,
+                    job_id,
+                    delivery,
+                    project_authority,
+                    durable_asset_id,
+                )
+                .await
+                {
+                    Ok(job) => {
+                        diagnostics::record(
+                            "gemini.completed",
+                            &[
+                                ("job", job_id.to_string()),
+                                ("task", task_name.to_owned()),
+                                ("elapsedMs", elapsed_millis(started)),
+                                ("outputBytes", output.text.len().to_string()),
+                            ],
+                        );
+                        let _ = on_event.send(GeminiJobEvent::Completed {
+                            job,
+                            delivery_id,
+                            text: output.text,
+                            usage: output.usage,
+                        });
+                    }
+                    Err(error) => {
+                        diagnostics::record(
+                            "gemini.failed",
+                            &[
+                                ("job", job_id.to_string()),
+                                ("task", task_name.to_owned()),
+                                ("elapsedMs", elapsed_millis(started)),
+                                ("code", error.code().to_owned()),
+                            ],
+                        );
+                        let job = background::snapshot(&jobs, job_id).await;
+                        let _ = on_event.send(GeminiJobEvent::Failed { job, error });
+                    }
+                }
+            }
             Err(error) if cancellation.is_cancelled() => {
                 match background::finish_cancellation(&jobs, job_id).await {
                     Ok(job) => {
@@ -359,6 +431,7 @@ async fn resolve_media(
     state: &State<'_, DesktopState>,
     media_blobs: &State<'_, MediaBlobStore>,
     asset_id: Option<AssetId>,
+    project_authority: Option<GeminiProjectAuthority>,
 ) -> CommandResult<Option<LocalMedia>> {
     let Some(asset_id) = asset_id else {
         return Ok(None);
@@ -368,9 +441,15 @@ async fn resolve_media(
     }
     let database = state.database.clone();
     let media = tauri::async_runtime::spawn_blocking(move || {
-        let resolved = database
-            .resolve_media(asset_id)?
-            .ok_or_else(CommandError::media_unavailable)?;
+        let resolved = match project_authority {
+            Some(authority) => database.resolve_project_media_revision(
+                authority.project_id,
+                authority.expected_state_version,
+                asset_id,
+            )?,
+            None => database.resolve_media(asset_id)?,
+        }
+        .ok_or_else(CommandError::media_unavailable)?;
         Ok::<_, CommandError>(LocalMedia::new(
             resolved.asset().id(),
             resolved.path().to_owned(),
@@ -386,13 +465,110 @@ async fn resolve_media(
     Ok(Some(media))
 }
 
+fn verify_project_authority(
+    database: &Database,
+    authority: Option<GeminiProjectAuthority>,
+    durable_asset_id: Option<AssetId>,
+) -> CommandResult<()> {
+    let Some(authority) = authority else {
+        return Ok(());
+    };
+    let project = database
+        .load_project(authority.project_id)?
+        .ok_or(DatabaseError::ProjectNotFound(authority.project_id))?;
+    if project.state_version() != authority.expected_state_version {
+        return Err(DatabaseError::StaleProjectVersion {
+            project_id: authority.project_id,
+            expected: authority.expected_state_version,
+            actual: project.state_version(),
+        }
+        .into());
+    }
+    if let Some(asset_id) = durable_asset_id
+        && !database.project_media_is_current(
+            authority.project_id,
+            authority.expected_state_version,
+            asset_id,
+        )?
+    {
+        return Err(CommandError::media_unavailable());
+    }
+    Ok(())
+}
+
+async fn verify_project_authority_async(
+    database: Database,
+    authority: Option<GeminiProjectAuthority>,
+    durable_asset_id: Option<AssetId>,
+) -> CommandResult<()> {
+    if authority.is_none() {
+        return Ok(());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        verify_project_authority(&database, authority, durable_asset_id)
+    })
+    .await
+    .map_err(|_| CommandError::internal("the project authorization task stopped unexpectedly"))?
+}
+
+fn gemini_result_delivery(
+    job_id: JobId,
+    project_authority: Option<GeminiProjectAuthority>,
+    durable_asset_id: Option<AssetId>,
+    output: &GeminiOutput,
+) -> Result<JobResultDeliveryDraft, DatabaseError> {
+    JobResultDeliveryDraft::new(
+        job_id,
+        JobResultKind::GeminiText,
+        project_authority.map(|authority| authority.project_id),
+        durable_asset_id,
+        &json!({
+            "schemaVersion": 1,
+            "text": &output.text,
+            "usage": &output.usage,
+        }),
+    )
+}
+
+async fn succeed_with_result(
+    jobs: &background::DesktopJobs,
+    job_id: JobId,
+    delivery: JobResultDeliveryDraft,
+    project_authority: Option<GeminiProjectAuthority>,
+    durable_asset_id: Option<AssetId>,
+) -> CommandResult<JobSnapshot> {
+    let Some(authority) = project_authority else {
+        return background::succeed_with_result(jobs, job_id, delivery).await;
+    };
+    let jobs = Arc::clone(jobs);
+    tauri::async_runtime::spawn_blocking(move || {
+        jobs.apply_with_store(
+            job_id,
+            JobUpdate::Succeed,
+            |database, sequence, snapshot| {
+                database.complete_project_job_with_result(
+                    sequence,
+                    snapshot,
+                    &delivery,
+                    authority.project_id,
+                    authority.expected_state_version,
+                    durable_asset_id,
+                )
+            },
+        )
+    })
+    .await
+    .map_err(|_| CommandError::internal("the durable Gemini result task stopped unexpectedly"))?
+    .map(|ticket| ticket.snapshot().clone())
+    .map_err(Into::into)
+}
+
 #[allow(
     clippy::too_many_arguments,
     clippy::too_many_lines,
     reason = "the bounded provider run keeps speech preflight, credential, upload, streaming, cleanup, and durable job boundaries visibly ordered"
 )]
 async fn run_gemini(
-    jobs: &background::DesktopJobs,
     credentials: &osg_infrastructure::secrets::CredentialService<
         osg_infrastructure::secrets::KeyringCredentialBackend,
     >,
@@ -457,6 +633,7 @@ async fn run_gemini(
         let mut usage = None;
         let mut first_chunk = true;
         let mut next_progress_bytes = 512 * 1024;
+        let mut channel_open = true;
         while let Some(response) = stream.next().await {
             let response = response?;
             if let Some(next_usage) = &response.usage_metadata {
@@ -486,16 +663,7 @@ async fn run_gemini(
                 );
                 next_progress_bytes = next_progress_bytes.saturating_add(512 * 1024);
             }
-            if channel
-                .send(GeminiJobEvent::Chunk {
-                    job_id,
-                    text: chunk,
-                })
-                .is_err()
-            {
-                background::request_cancellation(jobs, job_id).await;
-                return Err(CommandError::channel_closed());
-            }
+            send_chunk_advisory(channel, &mut channel_open, job_id, chunk);
         }
         if text.is_empty() {
             return Err(osg_gemini::Error::NoTextOutput.into());
@@ -510,6 +678,21 @@ async fn run_gemini(
         let _ = client.delete_file(&name, &cleanup).await;
     }
     operation
+}
+
+fn send_chunk_advisory(
+    channel: &Channel<GeminiJobEvent>,
+    channel_open: &mut bool,
+    job_id: JobId,
+    text: String,
+) {
+    if *channel_open
+        && channel
+            .send(GeminiJobEvent::Chunk { job_id, text })
+            .is_err()
+    {
+        *channel_open = false;
+    }
 }
 
 async fn empty_speech_output(
@@ -599,9 +782,44 @@ fn elapsed_millis(started: Instant) -> String {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use std::{fs, sync::Arc};
 
-    use super::{EmptySpeechPolicy, GeminiJobEvent, GeminiStartRequest, GeminiTask};
+    use osg_application::{JobRegistry, ProjectSnapshot};
+    use osg_domain::{
+        JobKind, JobState, JobUpdate, MediaAsset, MediaKind, ProjectMetadata, RevisionReason,
+    };
+    use osg_infrastructure::storage::Database;
+    use serde_json::json;
+    use tauri::ipc::Channel;
+
+    use super::{
+        EmptySpeechPolicy, GeminiJobEvent, GeminiOutput, GeminiProjectAuthority,
+        GeminiStartRequest, GeminiTask, gemini_result_delivery, send_chunk_advisory,
+        verify_project_authority,
+    };
+
+    #[test]
+    fn a_closed_webview_channel_does_not_abort_gemini_result_collection() {
+        let channel = Channel::new(|_| Err(tauri::Error::FailedToReceiveMessage));
+        let mut channel_open = true;
+        send_chunk_advisory(
+            &channel,
+            &mut channel_open,
+            osg_domain::JobId::new(),
+            "result text".to_owned(),
+        );
+        assert!(!channel_open);
+
+        // Once transport closes, further chunks are deliberately ignored instead of re-sent or
+        // converted into provider cancellation. The producer can finish and publish its outbox.
+        send_chunk_advisory(
+            &channel,
+            &mut channel_open,
+            osg_domain::JobId::new(),
+            "more text".to_owned(),
+        );
+        assert!(!channel_open);
+    }
 
     #[test]
     fn tasks_map_to_their_durable_job_kinds() {
@@ -754,5 +972,217 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn project_ownership_is_an_inseparable_exact_revision_pair() {
+        let credential_id = osg_infrastructure::secrets::CredentialId::new();
+        let project_id = osg_domain::ProjectId::new();
+        let owned = serde_json::from_value::<GeminiStartRequest>(json!({
+            "credentialId": credential_id,
+            "task": "translate",
+            "model": "gemini-3.5-flash-lite",
+            "prompt": "translate",
+            "projectId": project_id,
+            "expectedProjectStateVersion": 7
+        }))
+        .expect("owned request shape");
+        assert!(owned.validate().is_ok());
+        assert_eq!(
+            owned.project_authority(),
+            Some(GeminiProjectAuthority {
+                project_id,
+                expected_state_version: 7,
+            })
+        );
+
+        for invalid in [
+            json!({
+                "credentialId": credential_id,
+                "task": "translate",
+                "model": "gemini-3.5-flash-lite",
+                "prompt": "translate",
+                "projectId": project_id
+            }),
+            json!({
+                "credentialId": credential_id,
+                "task": "translate",
+                "model": "gemini-3.5-flash-lite",
+                "prompt": "translate",
+                "expectedProjectStateVersion": 7
+            }),
+            json!({
+                "credentialId": credential_id,
+                "task": "translate",
+                "model": "gemini-3.5-flash-lite",
+                "prompt": "translate",
+                "projectId": project_id,
+                "expectedProjectStateVersion": u64::MAX
+            }),
+        ] {
+            let request = serde_json::from_value::<GeminiStartRequest>(invalid)
+                .expect("invalid authority still has a valid wire shape");
+            assert!(request.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn project_authority_rejects_stale_and_cross_project_media() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("db.sqlite3")).expect("database");
+        let media_path = directory.path().join("owned.mp4");
+        fs::write(&media_path, vec![0x45; 32 * 1024]).expect("media fixture");
+        let asset =
+            MediaAsset::new("owned.mp4", "mp4", 32 * 1024, MediaKind::Video).expect("media asset");
+        database
+            .remember_media(&asset, &media_path)
+            .expect("remember media");
+
+        let owner = ProjectMetadata::new("owner").expect("owner metadata");
+        let base = database.create_project(&owner).expect("create owner");
+        let attached = ProjectSnapshot::new(
+            owner.clone(),
+            base.state_version(),
+            vec![asset.clone()],
+            Vec::new(),
+        )
+        .expect("project snapshot");
+        let commit = database
+            .commit_project(
+                &attached,
+                &RevisionReason::new("attach media").expect("revision reason"),
+            )
+            .expect("attach media");
+        let authority = GeminiProjectAuthority {
+            project_id: owner.id(),
+            expected_state_version: commit.state_version,
+        };
+        verify_project_authority(&database, Some(authority), Some(asset.id()))
+            .expect("current owner authorizes media");
+
+        let stale = verify_project_authority(
+            &database,
+            Some(GeminiProjectAuthority {
+                expected_state_version: commit.state_version - 1,
+                ..authority
+            }),
+            Some(asset.id()),
+        )
+        .expect_err("stale revision");
+        assert_eq!(stale.code(), "staleProjectVersion");
+
+        let other = ProjectMetadata::new("other").expect("other metadata");
+        let other_snapshot = database.create_project(&other).expect("create other");
+        let cross_project = verify_project_authority(
+            &database,
+            Some(GeminiProjectAuthority {
+                project_id: other.id(),
+                expected_state_version: other_snapshot.state_version(),
+            }),
+            Some(asset.id()),
+        )
+        .expect_err("cross-project media");
+        assert_eq!(cross_project.code(), "mediaUnavailable");
+    }
+
+    #[test]
+    fn gemini_delivery_persists_its_project_owner() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("db.sqlite3")).expect("database");
+        let registry = JobRegistry::restore(Arc::new(database.clone())).expect("registry");
+        let queued = registry.register(JobKind::Translate).expect("job");
+        let job_id = queued.snapshot().id();
+        registry.apply(job_id, JobUpdate::Start).expect("start");
+        let project = ProjectMetadata::new("delivery owner").expect("project metadata");
+        let project_snapshot = database.create_project(&project).expect("create project");
+        let project_id = project.id();
+        let draft = gemini_result_delivery(
+            job_id,
+            Some(GeminiProjectAuthority {
+                project_id,
+                expected_state_version: project_snapshot.state_version(),
+            }),
+            None,
+            &GeminiOutput {
+                text: "translated".to_owned(),
+                usage: None,
+            },
+        )
+        .expect("delivery");
+        registry
+            .apply_with_store(job_id, JobUpdate::Succeed, |store, sequence, snapshot| {
+                store.complete_project_job_with_result(
+                    sequence,
+                    snapshot,
+                    &draft,
+                    project_id,
+                    project_snapshot.state_version(),
+                    None,
+                )
+            })
+            .expect("persist result");
+
+        let delivery = database
+            .claim_job_result(job_id)
+            .expect("claim")
+            .expect("delivery");
+        assert_eq!(delivery.project_id, Some(project_id));
+    }
+
+    #[test]
+    fn stale_project_rolls_back_terminal_success_and_outbox_together() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database = Database::open(directory.path().join("db.sqlite3")).expect("database");
+        let registry = JobRegistry::restore(Arc::new(database.clone())).expect("registry");
+        let queued = registry.register(JobKind::Translate).expect("job");
+        let job_id = queued.snapshot().id();
+        registry.apply(job_id, JobUpdate::Start).expect("start");
+        let project = ProjectMetadata::new("stale owner").expect("project metadata");
+        let original = database.create_project(&project).expect("create project");
+        let authority = GeminiProjectAuthority {
+            project_id: project.id(),
+            expected_state_version: original.state_version(),
+        };
+        let changed =
+            ProjectSnapshot::new(project, original.state_version(), Vec::new(), Vec::new())
+                .expect("changed snapshot");
+        database
+            .commit_project(
+                &changed,
+                &RevisionReason::new("concurrent change").expect("reason"),
+            )
+            .expect("change project");
+        let draft = gemini_result_delivery(
+            job_id,
+            Some(authority),
+            None,
+            &GeminiOutput {
+                text: "must not publish".to_owned(),
+                usage: None,
+            },
+        )
+        .expect("delivery");
+
+        let result =
+            registry.apply_with_store(job_id, JobUpdate::Succeed, |store, sequence, snapshot| {
+                store.complete_project_job_with_result(
+                    sequence,
+                    snapshot,
+                    &draft,
+                    authority.project_id,
+                    authority.expected_state_version,
+                    None,
+                )
+            });
+        assert!(result.is_err());
+        assert_eq!(
+            registry
+                .get(job_id)
+                .expect("job remains")
+                .snapshot()
+                .state(),
+            JobState::Running
+        );
+        assert!(database.claim_job_result(job_id).expect("claim").is_none());
     }
 }

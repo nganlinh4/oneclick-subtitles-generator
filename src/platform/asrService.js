@@ -408,7 +408,7 @@ export const normalizeAsrJobEvent = (value) => {
     }
     case 'completed': {
       const job = normalizeJobSnapshot(value.job);
-      if (job.state !== 'succeeded') throw invalidResponse();
+      if (job.state !== 'succeeded' || !isUuidV7(value.deliveryId)) throw invalidResponse();
       const transcription = normalizeTranscription(value.transcription);
       const timelineOffsetMs = requireResponseMilliseconds(value.timelineOffsetMs);
       if (timelineOffsetMs > Number.MAX_SAFE_INTEGER - transcription.durationMs) {
@@ -417,6 +417,7 @@ export const normalizeAsrJobEvent = (value) => {
       return Object.freeze({
         event: 'completed',
         job,
+        deliveryId: value.deliveryId,
         transcription,
         timelineOffsetMs,
       });

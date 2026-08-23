@@ -1,9 +1,20 @@
+import {
+  parseStoredSubtitleCustomization,
+} from '../subtitleCustomization/defaultCustomization';
+
 const RENDER_RESOLUTIONS = new Set(['360p', '480p', '720p', '1080p', '1440p', '4K', '8K']);
 const FRAME_RATES = new Set([24, 25, 30, 50, 60, 120]);
 const SUBTITLE_SOURCES = new Set(['original', 'translated']);
 const NARRATION_SOURCES = new Set(['none', 'generated']);
 const COLOR_PATTERN = /^(?:#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8})$/i;
 const MAX_RENDER_DURATION_SECONDS = 24 * 60 * 60;
+const LEGACY_RENDER_SCENE_KEYS = Object.freeze([
+  'videoRender_selectedSubtitles',
+  'videoRender_selectedNarration',
+  'videoRender_renderSettings',
+  'videoRender_subtitleCustomization',
+  'videoRender_cropSettings',
+]);
 
 export const DEFAULT_RENDER_SETTINGS = Object.freeze({
   resolution: '1080p',
@@ -152,4 +163,46 @@ export const storeRenderPreference = (key, value, { json = false, storage } = {}
   } catch {
     return false;
   }
+};
+
+/**
+ * Consume the one global render-scene record shipped by the browser-era app.
+ *
+ * It can be assigned to only one project because it never carried a project ID. The native scene
+ * authority calls this only for the first project whose durable scene is still at revision zero,
+ * then every legacy key is deleted before another project can observe the same values. Panel width
+ * is deliberately excluded: it is a process UI preference and remains local.
+ */
+export const consumeLegacyRenderScene = (storage) => {
+  const target = storage ?? globalThis.localStorage;
+  let present = false;
+  try {
+    present = LEGACY_RENDER_SCENE_KEYS.some((key) => target.getItem(key) !== null);
+  } catch {
+    return null;
+  }
+  if (!present) return null;
+
+  const customization = (() => {
+    try {
+      return parseStoredSubtitleCustomization(target.getItem('videoRender_subtitleCustomization'));
+    } catch {
+      return parseStoredSubtitleCustomization(null);
+    }
+  })();
+  const scene = {
+    selectedSubtitles: loadSubtitleSource(target),
+    selectedNarration: loadNarrationSource(target),
+    renderSettings: loadRenderSettings(target),
+    customization,
+    crop: loadCropSettings(target),
+  };
+  try {
+    LEGACY_RENDER_SCENE_KEYS.forEach((key) => target.removeItem(key));
+  } catch {
+    // If deletion is unavailable, refuse the import. Reusing one global scene for several projects
+    // is worse than retaining it for a later, successful bounded import.
+    return null;
+  }
+  return scene;
 };

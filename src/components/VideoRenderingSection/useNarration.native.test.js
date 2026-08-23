@@ -2,99 +2,120 @@ import { renderHook } from '@testing-library/react';
 
 import {
   generateAlignedNarration,
-  getAlignedNarrationArtifactId,
-  getAlignedNarrationUrl,
+  getAlignedNarrationArtifactIdForPlan,
+  getAlignedNarrationUrlForPlan,
 } from '../../services/alignedNarrationService.js';
-import { useNarration } from './useNarration';
+import {
+  requireGeneratedNarrationArtifact,
+  useNarration,
+} from './useNarration';
 
 vi.mock('../../services/alignedNarrationService.js', () => ({
   generateAlignedNarration: vi.fn(),
-  getAlignedNarrationArtifactId: vi.fn(),
-  getAlignedNarrationUrl: vi.fn(),
+  getAlignedNarrationArtifactIdForPlan: vi.fn(),
+  getAlignedNarrationUrlForPlan: vi.fn(),
+  resetAlignedNarration: vi.fn(),
 }));
 
+const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const nativeResult = {
   subtitle_id: 7,
   success: true,
-  nativeArtifactId: '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2',
-  start: 0,
-  end: 1,
+  nativeArtifactId: ARTIFACT_ID,
+  text: 'Current words',
 };
+const currentCues = [{ id: 7, text: 'Current words', start: 0, end: 1 }];
 
-describe('render narration native cache precedence', () => {
+const renderNarration = (overrides = {}) => renderHook(() => useNarration({
+  selectedNarration: 'generated',
+  narrationResults: [nativeResult],
+  subtitlesData: currentCues,
+  translatedSubtitles: [],
+  selectedSubtitles: 'original',
+  ...overrides,
+}));
+
+describe('render narration native plan ownership', () => {
   let originalFetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    window.isTauri = true;
-    window.alignedNarrationCache = {
-      url: 'http://localhost:3031/api/narration/audio/stale.m4a',
-    };
-    window.isAlignedNarrationAvailable = true;
+    window.originalNarrations = [];
+    window.translatedNarrations = [];
+    window.groupedNarrations = [];
+    window.groupedSubtitles = [];
+    window.useGroupedSubtitles = false;
     originalFetch = global.fetch;
     global.fetch = vi.fn();
   });
 
   afterEach(() => {
-    delete window.isTauri;
+    delete window.originalNarrations;
+    delete window.translatedNarrations;
+    delete window.groupedNarrations;
+    delete window.groupedSubtitles;
+    delete window.useGroupedSubtitles;
     delete window.alignedNarrationCache;
-    delete window.isAlignedNarrationAvailable;
     global.fetch = originalFetch;
   });
 
-  test('ignores the stale window URL and returns only newly resolved native playback', async () => {
-    getAlignedNarrationUrl
+  test('ignores a stale cache and resolves playback for the exact current plan', async () => {
+    getAlignedNarrationArtifactIdForPlan
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(ARTIFACT_ID);
+    getAlignedNarrationUrlForPlan
       .mockReturnValueOnce(null)
       .mockReturnValueOnce('http://127.0.0.1:43111/asset/native?token=scoped');
     generateAlignedNarration.mockResolvedValue('aligned-preview://timeline');
-    const { result } = renderHook(() => useNarration({
-      selectedNarration: 'generated',
-      narrationResults: [nativeResult],
-    }));
+    const { result } = renderNarration();
 
     await expect(result.current.getNarrationAudioUrl())
       .resolves.toBe('http://127.0.0.1:43111/asset/native?token=scoped');
-    expect(generateAlignedNarration).toHaveBeenCalledWith([nativeResult]);
+    expect(generateAlignedNarration).toHaveBeenCalledWith([nativeResult], currentCues);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('returns the current native cache without regenerating', async () => {
-    getAlignedNarrationUrl.mockReturnValue('http://127.0.0.1:43111/asset/current?token=scoped');
-    const { result } = renderHook(() => useNarration({
-      selectedNarration: 'generated',
-      narrationResults: [nativeResult],
-    }));
+  test('returns only an artifact and playback matched to the current plan', async () => {
+    getAlignedNarrationArtifactIdForPlan.mockReturnValue(ARTIFACT_ID);
+    getAlignedNarrationUrlForPlan.mockReturnValue('http://127.0.0.1:43111/asset/current');
+    const { result } = renderNarration();
 
-    await expect(result.current.getNarrationAudioUrl())
-      .resolves.toBe('http://127.0.0.1:43111/asset/current?token=scoped');
+    await expect(result.current.getNarrationArtifactId()).resolves.toBe(ARTIFACT_ID);
     expect(generateAlignedNarration).not.toHaveBeenCalled();
-    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test.each([
     new Error('alignment failed'),
     Object.assign(new Error('cancelled'), { name: 'AbortError' }),
-  ])('propagates %s without falling back to the stale URL', async (failure) => {
-    getAlignedNarrationUrl.mockReturnValue(null);
+  ])('propagates %s instead of silently rendering without narration', async (failure) => {
+    getAlignedNarrationArtifactIdForPlan.mockReturnValue(null);
+    getAlignedNarrationUrlForPlan.mockReturnValue(null);
     generateAlignedNarration.mockRejectedValue(failure);
-    const { result } = renderHook(() => useNarration({
-      selectedNarration: 'generated',
-      narrationResults: [nativeResult],
-    }));
+    const { result } = renderNarration();
 
-    await expect(result.current.getNarrationAudioUrl()).rejects.toBe(failure);
+    await expect(result.current.getNarrationArtifactId()).rejects.toBe(failure);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('resolves only the native artifact identity for render export', async () => {
-    getAlignedNarrationArtifactId.mockReturnValue(nativeResult.nativeArtifactId);
-    const { result } = renderHook(() => useNarration({
-      selectedNarration: 'generated',
-      narrationResults: [nativeResult],
-    }));
+  test('uses the selected translated result set rather than stale original globals', async () => {
+    window.originalNarrations = [{ ...nativeResult, text: 'stale original' }];
+    window.translatedNarrations = [nativeResult];
+    getAlignedNarrationArtifactIdForPlan.mockReturnValue(ARTIFACT_ID);
+    getAlignedNarrationUrlForPlan.mockReturnValue('http://127.0.0.1:43111/asset/current');
+    const { result } = renderNarration({
+      narrationResults: [],
+      subtitlesData: [{ ...currentCues[0], text: 'stale original' }],
+      translatedSubtitles: currentCues,
+      selectedSubtitles: 'translated',
+    });
 
-    await expect(result.current.getNarrationArtifactId())
-      .resolves.toBe(nativeResult.nativeArtifactId);
-    expect(global.fetch).not.toHaveBeenCalled();
+    await expect(result.current.getNarrationArtifactId()).resolves.toBe(ARTIFACT_ID);
+  });
+
+  test('generated selection refuses a missing aligned artifact while none stays silent', () => {
+    expect(() => requireGeneratedNarrationArtifact('generated', null)).toThrow(
+      expect.objectContaining({ code: 'narrationArtifactUnavailable' }),
+    );
+    expect(requireGeneratedNarrationArtifact('none', null)).toBeNull();
   });
 });

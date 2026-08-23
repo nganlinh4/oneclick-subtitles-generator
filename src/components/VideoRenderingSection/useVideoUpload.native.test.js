@@ -29,6 +29,45 @@ test('returns a native video selected specifically for rendering', async () => {
   expect(clear).not.toHaveBeenCalled();
 });
 
+test('does not accept a renderer video until exact-project activation finishes', async () => {
+  const selected = descriptor(SELECTED_ID);
+  let finishActivation;
+  const activate = vi.fn(() => new Promise((resolve) => { finishActivation = resolve; }));
+  let settled = false;
+  const selection = selectNativeRenderVideo({
+    getCurrent: vi.fn(async () => descriptor(PREVIOUS_ID)),
+    select: vi.fn(async () => selected),
+    restore: vi.fn(),
+    clear: vi.fn(),
+    activate,
+  }).then((value) => {
+    settled = true;
+    return value;
+  });
+
+  await vi.waitFor(() => expect(activate).toHaveBeenCalledExactlyOnceWith(selected));
+  expect(settled).toBe(false);
+  finishActivation();
+  await expect(selection).resolves.toBe(selected);
+});
+
+test('restores the prior selection when renderer-project activation is refused', async () => {
+  const selected = descriptor(SELECTED_ID);
+  const restore = vi.fn(async () => descriptor(PREVIOUS_ID));
+  const failure = Object.assign(new Error('The subtitle project could not be bound'), {
+    code: 'subtitleProjectBindingFailed',
+  });
+
+  await expect(selectNativeRenderVideo({
+    getCurrent: vi.fn(async () => descriptor(PREVIOUS_ID)),
+    select: vi.fn(async () => selected),
+    restore,
+    clear: vi.fn(),
+    activate: vi.fn().mockRejectedValue(failure),
+  })).rejects.toBe(failure);
+  expect(restore).toHaveBeenCalledExactlyOnceWith(PREVIOUS_ID);
+});
+
 test('restores the previous native selection when an audio file is chosen', async () => {
   const restore = vi.fn(async () => descriptor(PREVIOUS_ID));
   const clear = vi.fn();

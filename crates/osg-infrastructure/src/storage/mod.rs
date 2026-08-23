@@ -1,10 +1,13 @@
 mod actor;
 mod artifacts;
 mod error;
+mod job_results;
 mod jobs;
 mod legacy;
 mod media;
 mod migrations;
+mod project_render_scenes;
+mod project_speech_references;
 mod projects;
 mod track_history;
 
@@ -18,6 +21,10 @@ pub use artifacts::{
     ReconciliationReport, ResolvedArtifact,
 };
 pub use error::DatabaseError;
+pub use job_results::{
+    JobResultDelivery, JobResultDeliveryDraft, JobResultDeliveryHeader, JobResultKind,
+    MAX_JOB_RESULT_DELIVERY_BYTES, MAX_PENDING_JOB_RESULT_DELIVERIES,
+};
 pub use legacy::{
     LegacyImportCandidate, LegacyImportCounts, LegacyImportId, LegacyImportItemKey,
     LegacyImportItemKind, LegacyImportItemOutcome, LegacyImportItemState, LegacyImportSourceKind,
@@ -25,4 +32,12 @@ pub use legacy::{
 };
 pub use media::{
     PublishedMedia, ResolvedMedia, publish_durable_media, publish_durable_media_candidate,
+};
+pub use project_render_scenes::{
+    MAX_PROJECT_RENDER_SCENE_BYTES, PROJECT_RENDER_SCENE_SCHEMA_VERSION, ProjectRenderSceneRecord,
+    ProjectRenderSceneWrite,
+};
+pub use project_speech_references::{
+    MAX_REFERENCE_LANGUAGE_BYTES, MAX_REFERENCE_TRANSCRIPT_BYTES, ProjectSpeechReference,
+    ProjectSpeechReferenceWrite,
 };

@@ -6,10 +6,12 @@ import {
 } from '../../../services/subtitleCache';
 import { setCurrentCacheId as setRulesCacheId } from '../../../utils/transcriptionRulesStore';
 import {
+  getCurrentCacheId as getSubtitlesCacheId,
   refreshCurrentSubtitleProject,
   setCurrentCacheId as setSubtitlesCacheId,
 } from '../../../utils/userSubtitlesStore';
 import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
+import { activateSubtitleProjectBinding } from '../../../platform/subtitleProjectBinding';
 import {
   createAutoGenerationContext,
   createAutoGenerationRequest,
@@ -29,6 +31,9 @@ vi.mock('../../../services/subtitleCache', () => ({
 }));
 vi.mock('../../../platform/subtitleProjectStore', () => ({
   resolveProjectForCache: vi.fn(async (cacheId) => ({ projectId: `project:${cacheId}` })),
+}));
+vi.mock('../../../platform/subtitleProjectBinding', () => ({
+  activateSubtitleProjectBinding: vi.fn(),
 }));
 vi.mock('../../../utils/transcriptionRulesStore', () => ({
   ...(() => {
@@ -86,6 +91,18 @@ beforeEach(() => {
   getCachedSubtitles.mockResolvedValue(null);
   generateUrlBasedCacheId.mockResolvedValue('site_media_example_test_clip_mp4');
   isNativeMediaDescriptor.mockReturnValue(true);
+  activateSubtitleProjectBinding.mockImplementation(async (cacheId) => {
+    const wasCurrent = getSubtitlesCacheId() === cacheId;
+    setRulesCacheId(cacheId);
+    setSubtitlesCacheId(cacheId);
+    const resolved = await resolveProjectForCache(cacheId, { create: true });
+    if (wasCurrent) refreshCurrentSubtitleProject(cacheId);
+    return {
+      kind: 'subtitle-project-binding',
+      cacheId,
+      projectId: resolved.projectId,
+    };
+  });
 });
 
 test('refreshes authoritative subtitle state when a repeated URL keeps the same alias', async () => {
@@ -130,6 +147,7 @@ test('activates the URL project before reading cache or exposing prepared native
   )).resolves.toBe(media);
 
   expect(generateUrlBasedCacheId).toHaveBeenCalledWith('https://media.example.test/clip.mp4');
+  expect(activateSubtitleProjectBinding).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
   expect(setRulesCacheId).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
   expect(setSubtitlesCacheId).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
   expect(getCachedSubtitles).toHaveBeenCalledWith(

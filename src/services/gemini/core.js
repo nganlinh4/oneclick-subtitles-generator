@@ -14,6 +14,7 @@ import { createSubtitleSchema } from '../../utils/schemaUtils';
 import { parseGeminiResponse } from '../../utils/subtitle';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { getEmptySpeechPolicy, getTranscriptionPrompt } from './promptManagement';
+import { bindNativeGeminiTranscriptionDelivery } from './transcriptionDelivery';
 import {
   createRequestController,
   removeRequestController,
@@ -140,12 +141,17 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
       responseJsonSchema: createSubtitleSchema(Boolean(options.userProvidedSubtitles?.trim())),
       thinkingLevel: getThinkingBudget(model),
       mediaResolution: normalizeMediaResolution(options.mediaResolution),
+      ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
+      ...(options.expectedProjectStateVersion !== undefined
+        ? { expectedProjectStateVersion: options.expectedProjectStateVersion }
+        : {}),
       signal,
       ...(handleNativeChunk ? { onChunk: handleNativeChunk } : {}),
     });
     if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
     if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
-    return parseGeminiResponse(asLegacyGeminiResponse(result));
+    const subtitles = parseGeminiResponse(asLegacyGeminiResponse(result));
+    return bindNativeGeminiTranscriptionDelivery(subtitles, result);
   } finally {
     removeRequestController(requestId);
   }

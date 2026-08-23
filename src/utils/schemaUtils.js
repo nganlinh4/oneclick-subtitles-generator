@@ -100,73 +100,66 @@ export const createSubtitleSchema = (isUserProvided = false) => {
 };
 
 /**
- * Creates a schema for subtitle translation
- * @param {boolean} multiLanguage - Whether multiple languages are being translated
- * @returns {Object} Schema for subtitle translation
+ * Creates the provider-side half of the translation identity contract. The schema deliberately
+ * uses one shape for one or many languages; the response parser additionally verifies exact
+ * ordering, cardinality, source IDs, echoed source text, and non-blank translated text.
+ *
+ * @param {{languageIds: string[], sourceIds: string[]}} contract
+ * @returns {Object} Schema for an identity-preserving translation response
  */
-export const createTranslationSchema = (multiLanguage = false) => {
-    if (multiLanguage) {
-        return {
-            type: "object",
-            properties: {
-                translations: {
-                    type: "array",
-                    items: {
-                        type: "object",
-                        properties: {
-                            language: {
-                                type: "string",
-                                description: "Target language for this translation"
-                            },
-                            texts: {
-                                type: "array",
-                                items: {
-                                    type: "object",
-                                    properties: {
-                                        original: {
-                                            type: "string",
-                                            description: "Original text of the subtitle"
-                                        },
-                                        translated: {
-                                            type: "string",
-                                            description: "Translated text for the subtitle"
-                                        }
-                                    },
-                                    required: ["original", "translated"],
-                                    propertyOrdering: ["original", "translated"]
-                                }
-                            }
-                        },
-                        required: ["language", "texts"],
-                        propertyOrdering: ["language", "texts"]
-                    }
-                }
-            },
-            required: ["translations"],
-            propertyOrdering: ["translations"]
-        };
-    } else {
-        // Updated schema for single language translation to include original text
-        return {
+export const createTranslationSchema = ({ languageIds, sourceIds }) => ({
+    type: "object",
+    properties: {
+        schemaVersion: {
+            type: "integer",
+            enum: [1],
+        },
+        translations: {
             type: "array",
+            minItems: languageIds.length,
+            maxItems: languageIds.length,
             items: {
                 type: "object",
                 properties: {
-                    original: {
+                    languageId: {
                         type: "string",
-                        description: "Original text of the subtitle"
+                        enum: languageIds,
+                        description: "An exact requested language ID"
                     },
-                    translated: {
-                        type: "string",
-                        description: "Translated text for the subtitle"
+                    rows: {
+                        type: "array",
+                        minItems: sourceIds.length,
+                        maxItems: sourceIds.length,
+                        items: {
+                            type: "object",
+                            properties: {
+                                sourceId: {
+                                    type: "string",
+                                    enum: sourceIds,
+                                    description: "The exact source row ID"
+                                },
+                                original: {
+                                    type: "string",
+                                    description: "The exact source text, copied without changes"
+                                },
+                                translated: {
+                                    type: "string",
+                                    description: "Non-blank provider translation"
+                                }
+                            },
+                            required: ["sourceId", "original", "translated"],
+                            propertyOrdering: ["sourceId", "original", "translated"]
+                        }
                     }
                 },
-                required: ["original", "translated"],
-                propertyOrdering: ["original", "translated"]
+                required: ["languageId", "rows"],
+                propertyOrdering: ["languageId", "rows"]
             }
-        };
-    }
-};
+        }
+    },
+    required: ["schemaVersion", "translations"],
+    propertyOrdering: ["schemaVersion", "translations"]
+});
 
 /**
  * Creates a schema for document consolidation

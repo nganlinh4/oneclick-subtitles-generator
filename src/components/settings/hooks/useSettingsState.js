@@ -141,7 +141,6 @@ const useSettingsState = () => {
       const savedUseVideoAnalysis = true; // Video analysis is always enabled
       const savedVideoAnalysisModel = localStorage.getItem('video_analysis_model') || DEFAULT_ANALYSIS_MODEL_ID;
       const savedVideoAnalysisTimeout = localStorage.getItem('video_analysis_timeout') || '10'; // Default to 10 seconds timeout
-      const savedAutoSelectDefaultPreset = localStorage.getItem('auto_select_default_preset') === 'true'; // Default to false
       const savedTranscriptionPrompt = localStorage.getItem('transcription_prompt') || DEFAULT_TRANSCRIPTION_PROMPT;
       const savedUseOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
       const savedOptimizeVideos = localStorage.getItem('optimize_videos') === 'true'; // Default to false if not set
@@ -239,7 +238,6 @@ const useSettingsState = () => {
         useVideoAnalysis: savedUseVideoAnalysis,
         videoAnalysisModel: savedVideoAnalysisModel,
         videoAnalysisTimeout: savedVideoAnalysisTimeout,
-        autoSelectDefaultPreset: savedAutoSelectDefaultPreset,
         enableGeminiEffects: savedEnableGeminiEffects,
         optimizeVideos: savedOptimizeVideos,
         optimizedResolution: savedOptimizedResolution,

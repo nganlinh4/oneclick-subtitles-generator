@@ -14,6 +14,7 @@ import { installDesktopExternalLinkGuard } from './platform/externalLinkService'
 import { startNativeJobRecovery } from './platform/jobRecoveryCoordinator';
 import { installLegacyImportKeyboardAction } from './platform/legacyImportService';
 import { revealDesktopWindowWhenReady } from './platform/uiFontBootstrap';
+import { installAppCloseCheckpoint } from './platform/appCloseCheckpoint';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -58,6 +59,7 @@ const suppressResizeObserverError = () => {
 
 // Initialize error suppression
 suppressResizeObserverError();
+installAppCloseCheckpoint();
 installDesktopExternalLinkGuard();
 installLegacyImportKeyboardAction();
 startNativeJobRecovery().catch(() => undefined);
@@ -92,6 +94,7 @@ if (window.history && window.history.scrollRestoration) {
 
 // Initialize theme
 initializeTheme();
+
 // Mark Material Symbols font ready to avoid showing ligature text
 const markMaterialSymbolsReady = () => {
   const html = document.documentElement;

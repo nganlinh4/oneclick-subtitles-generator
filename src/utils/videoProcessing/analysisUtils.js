@@ -3,13 +3,14 @@
 import { analyzeVideoWithGemini } from '../../services/videoAnalysisService';
 import { PROMPT_PRESETS } from '../../services/gemini/promptManagement';
 import {
-  setTranscriptionRulesForCache,
+  commitVideoAnalysisForCache,
 } from '../transcriptionRulesStore';
 import {
   assertAutoGenerationContextCurrent,
   assertAutoGenerationContextDurable,
   isAutoGenerationContext,
 } from '../autoGenerationOwnership';
+import { getActiveProjectSnapshot } from '../../platform/projectService';
 
 const requireContext = async (context) => {
   if (!isAutoGenerationContext(context)) {
@@ -17,17 +18,6 @@ const requireContext = async (context) => {
   }
   assertAutoGenerationContextCurrent(context);
   return assertAutoGenerationContextDurable(context);
-};
-
-const persistPresentationCopy = (analysisResult) => {
-  try {
-    const encoded = JSON.stringify(analysisResult);
-    if (encoded.length <= 4 * 1024 * 1024) {
-      localStorage.setItem('video_analysis_result', encoded);
-    }
-  } catch {
-    // The durable project rules remain authoritative; this copy only restores presentation state.
-  }
 };
 
 /**
@@ -43,21 +33,29 @@ export const analyzeVideoAndWaitForUserChoice = async (
     message: t('output.analyzingVideo', 'Analyzing video content...'),
     type: 'loading',
   });
-  if (context) await assertAutoGenerationContextDurable(context);
-  const analysisResult = await analyzeVideoWithGemini(
+  await requireContext(context);
+  const activeProject = getActiveProjectSnapshot();
+  if (activeProject?.metadata?.id !== context.projectId
+      || !Number.isSafeInteger(activeProject.stateVersion)
+      || activeProject.stateVersion < 0) {
+    throw new TypeError('The captured analysis project revision is unavailable');
+  }
+  const providerResult = await analyzeVideoWithGemini(
     analysisFile,
     onStatusUpdate,
     {
       signal,
-      ...(context ? {
-        validateOwnership: () => assertAutoGenerationContextDurable(context),
-      } : {}),
+      validateOwnership: () => assertAutoGenerationContextDurable(context),
+      projectId: context.projectId,
+      expectedProjectStateVersion: activeProject.stateVersion,
     }
   );
-  if (context) await assertAutoGenerationContextDurable(context);
+  await requireContext(context);
+  const { analysisResult, delivery } = providerResult;
   const recommendedPresetId = analysisResult?.recommendedPreset?.id || 'settings';
   return {
     analysisResult,
+    delivery,
     userChoice: {
       presetId: recommendedPresetId,
       transcriptionRules: analysisResult?.transcriptionRules ?? null,
@@ -72,26 +70,41 @@ export const analyzeVideoAndWaitForUserChoice = async (
 export const commitVideoAnalysisForContext = async ({
   context,
   analysisResult,
+  delivery,
   showCountdown = true,
 }) => {
   await requireContext(context);
   const rules = analysisResult?.transcriptionRules ?? null;
-  if (rules) {
-    await setTranscriptionRulesForCache(context.cacheId, rules, {
-      expectedProjectId: context.projectId,
-    });
+  if (rules === null
+      || typeof delivery?.jobId !== 'string'
+      || typeof delivery?.deliveryId !== 'string'
+      || typeof delivery?.acknowledge !== 'function') {
+    const error = new Error('The provider analysis has no durable delivery ownership');
+    error.code = 'invalidVideoAnalysisDelivery';
+    throw error;
   }
+  const recommendedPresetId = analysisResult?.recommendedPreset?.id || 'settings';
+  await commitVideoAnalysisForCache(context.cacheId, {
+    rules,
+    analysis: {
+      schemaVersion: 1,
+      sourceIdentity: context.sourceIdentity,
+      providerJobId: delivery.jobId,
+      deliveryId: delivery.deliveryId,
+      recommendedPresetId,
+      transcriptionRules: rules,
+    },
+  }, { expectedProjectId: context.projectId });
+  await requireContext(context);
+  await delivery.acknowledge();
   await requireContext(context);
 
-  const recommendedPresetId = analysisResult?.recommendedPreset?.id || 'settings';
   localStorage.setItem('video_processing_prompt_preset', recommendedPresetId);
   sessionStorage.setItem('current_session_preset_id', recommendedPresetId);
   sessionStorage.setItem('current_session_video_fingerprint', context.sourceIdentity);
   const preset = PROMPT_PRESETS.find(({ id }) => id === recommendedPresetId);
   if (preset) sessionStorage.setItem('current_session_prompt', preset.prompt);
   else sessionStorage.removeItem('current_session_prompt');
-  persistPresentationCopy(analysisResult);
-
   await requireContext(context);
   window.dispatchEvent(new CustomEvent('openRulesEditorWithCountdown', {
     detail: {

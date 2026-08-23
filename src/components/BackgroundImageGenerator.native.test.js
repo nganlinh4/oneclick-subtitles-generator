@@ -8,7 +8,11 @@ import {
 import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { loadBackgroundImages, saveBackgroundImages } from '../utils/indexedDBUtils';
 import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
-import { generateBackgroundImage } from '../services/gemini/imageGenerationService';
+import {
+  generateBackgroundImage,
+  generateBackgroundPrompt,
+} from '../services/gemini/imageGenerationService';
+import { getActiveProjectSnapshot } from '../platform/projectService';
 import BackgroundImageGenerator from './BackgroundImageGenerator';
 
 vi.mock('react-i18next', () => ({
@@ -20,22 +24,31 @@ vi.mock('./common/CustomScrollbarTextarea', () => ({
   default: ({ value, onChange }) => <textarea value={value} onChange={onChange} />,
 }));
 vi.mock('./background/PromptAndAlbumArtSection', () => ({
-  default: ({ setCustomAlbumArt }) => (
-    <button type="button" onClick={() => setCustomAlbumArt('native-local-capability')}>
-      Select local album art
-    </button>
+  default: ({ setCustomAlbumArt, generatePrompt }) => (
+    <>
+      <button type="button" onClick={() => setCustomAlbumArt('native-local-capability')}>
+        Select local album art
+      </button>
+      <button type="button" onClick={() => generatePrompt()}>
+        Generate test prompt
+      </button>
+    </>
   ),
 }));
 vi.mock('./background/ImageGenerationSection', () => ({
-  default: ({ generatedImages, generateImage, customAlbumArt }) => (
+  default: ({ generatedImages, generateImage, customAlbumArt, generatedPrompt }) => (
     <>
       <div data-testid="generated-image-list">
         {generatedImages.map((image) => image?.nativeImage?.artifact.artifactId ?? 'placeholder')
           .join(',')}
       </div>
       <div data-testid="selected-album-art">{customAlbumArt}</div>
+      <div data-testid="generated-prompt">{generatedPrompt}</div>
       <button type="button" onClick={() => generateImage('manual prompt', 1)}>
         Generate test image
+      </button>
+      <button type="button" onClick={() => generateImage(null, 1)}>
+        Generate image from current prompt
       </button>
     </>
   ),
@@ -53,6 +66,9 @@ vi.mock('../platform/nativeGeminiImage', () => ({
   getActiveGeneratedImageProjectId: vi.fn(),
   loadNativeGeneratedImages: vi.fn(),
   releaseNativeGeneratedImagePlayback: vi.fn(),
+}));
+vi.mock('../platform/projectService', () => ({
+  getActiveProjectSnapshot: vi.fn(),
 }));
 vi.mock('../utils/userSubtitlesStore', () => ({
   subscribeCurrentCacheId: vi.fn(),
@@ -120,7 +136,15 @@ beforeEach(() => {
   loadNativeGeneratedImages.mockResolvedValue([playable]);
   releaseNativeGeneratedImagePlayback.mockResolvedValue(true);
   generateBackgroundImage.mockReset();
+  generateBackgroundPrompt.mockReset();
+  getActiveProjectSnapshot.mockReturnValue({
+    metadata: { id: PROJECT_A, name: 'Project A' },
+    stateVersion: 4,
+    media: [],
+    tracks: [],
+  });
   subscribeCurrentCacheId.mockImplementation(() => () => undefined);
+  window.addToast = vi.fn();
 });
 
 test('reopens the active project library after remount without reading or writing global IndexedDB', async () => {
@@ -248,4 +272,60 @@ test('unmount aborts an in-flight generation and releases a capability that reso
   expect(releaseNativeGeneratedImagePlayback.mock.calls.filter(
     ([image]) => image === playableLate
   )).toHaveLength(1);
+});
+
+test('acknowledges a generated prompt only after a durable native image exists', async () => {
+  const acknowledge = vi.fn().mockResolvedValue(undefined);
+  generateBackgroundPrompt.mockResolvedValue({
+    text: 'durable prompt',
+    delivery: { jobId: 'job-a', deliveryId: 'delivery-a', acknowledge },
+  });
+  generateBackgroundImage.mockResolvedValue(playableLate);
+
+  render(<BackgroundImageGenerator lyrics="lyrics" albumArt="cover" songName="song" isExpanded />);
+  await waitFor(() => expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_A));
+  screen.getByRole('button', { name: 'Generate test prompt' }).click();
+  await waitFor(() => expect(screen.getByTestId('generated-prompt')).toHaveTextContent('durable prompt'));
+  expect(generateBackgroundPrompt).toHaveBeenCalledWith('lyrics', 'song', {
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 4,
+  });
+  expect(acknowledge).not.toHaveBeenCalled();
+
+  screen.getByRole('button', { name: 'Generate image from current prompt' }).click();
+  await waitFor(() => expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_LATE));
+  expect(generateBackgroundImage).toHaveBeenCalledWith(
+    'durable prompt',
+    'cover',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+});
+
+test('keeps a prompt delivery pending when image generation fails and retries a lost ack response', async () => {
+  const acknowledge = vi.fn()
+    .mockRejectedValueOnce(new Error('ack response lost'))
+    .mockResolvedValue(undefined);
+  generateBackgroundPrompt.mockResolvedValue({
+    text: 'retryable prompt',
+    delivery: { jobId: 'job-a', deliveryId: 'delivery-a', acknowledge },
+  });
+  generateBackgroundImage
+    .mockRejectedValueOnce(new Error('image provider failed'))
+    .mockResolvedValue(playableLate);
+
+  render(<BackgroundImageGenerator lyrics="lyrics" albumArt="cover" songName="song" isExpanded />);
+  await waitFor(() => expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_A));
+  screen.getByRole('button', { name: 'Generate test prompt' }).click();
+  await waitFor(() => expect(screen.getByTestId('generated-prompt')).toHaveTextContent('retryable prompt'));
+
+  screen.getByRole('button', { name: 'Generate image from current prompt' }).click();
+  await waitFor(() => expect(generateBackgroundImage).toHaveBeenCalledTimes(1));
+  expect(acknowledge).not.toHaveBeenCalled();
+
+  screen.getByRole('button', { name: 'Generate image from current prompt' }).click();
+  await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
+  screen.getByRole('button', { name: 'Generate image from current prompt' }).click();
+  await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(2));
+  expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_LATE);
 });

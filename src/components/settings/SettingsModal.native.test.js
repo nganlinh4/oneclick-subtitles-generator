@@ -9,7 +9,10 @@ vi.mock('../../platform/credentialStateController', async (importOriginal) => ({
   ...(await importOriginal()),
   clearCredentials: vi.fn(),
 }));
-vi.mock('../../platform/mediaService', () => ({ clearMedia: vi.fn() }));
+vi.mock('../../platform/mediaService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  clearMedia: vi.fn(),
+}));
 vi.mock('../../platform/settingsService', () => ({ clearDesktopSettings: vi.fn() }));
 
 beforeEach(() => {

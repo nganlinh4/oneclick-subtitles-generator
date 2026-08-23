@@ -40,6 +40,7 @@ const ChatterboxNarrationSection = ({
   useGroupedSubtitles,
   setUseGroupedSubtitles,
   isGroupingSubtitles,
+  setIsGroupingSubtitles,
   groupedSubtitles,
   setGroupedSubtitles,
   groupingIntensity,
@@ -102,6 +103,7 @@ const ChatterboxNarrationSection = ({
         useGroupedSubtitles={useGroupedSubtitles}
         setUseGroupedSubtitles={setUseGroupedSubtitles}
         isGroupingSubtitles={isGroupingSubtitles}
+        setIsGroupingSubtitles={setIsGroupingSubtitles}
         groupedSubtitles={groupedSubtitles}
         groupingIntensity={groupingIntensity}
         setGroupingIntensity={setGroupingIntensity}

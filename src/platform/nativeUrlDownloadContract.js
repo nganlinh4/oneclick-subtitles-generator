@@ -19,6 +19,9 @@ const requestKeys = Object.freeze([
   'preferredSubtitleLanguages',
   'signal',
   'validateOwnership',
+  'admitActivation',
+  'publishActivation',
+  'rollbackActivation',
 ]);
 
 export const fixedFailure = (code = 'nativeDownloadFailed') => {

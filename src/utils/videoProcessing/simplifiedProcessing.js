@@ -7,8 +7,7 @@ import { callGeminiApiWithFilesApi, callGeminiApi } from '../../services/geminiS
 import { getVideoProcessingFps } from '../../services/configService';
 import { analyzeVideoAndWaitForUserChoice } from './analysisUtils';
 import { getCacheIdForMedia } from './cacheUtils';
-import { setCurrentCacheId as setRulesCacheId } from '../transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../userSubtitlesStore';
+import { activateSubtitleProjectBinding } from '../../platform/subtitleProjectBinding';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 
 /**
@@ -20,6 +19,11 @@ import { isDesktopRuntime } from '../../platform/desktopRuntime';
  * @returns {Promise<Array>} - Array of subtitle objects
  */
 export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, options = {}) => {
+  if (isDesktopRuntime()) {
+    throw new Error(
+      'Native Gemini transcription must run through the project-owned subtitle generation flow.'
+    );
+  }
   const { userProvidedSubtitles, customVideoMetadata } = options;
   const isAudio = mediaFile.type.startsWith('audio/');
 
@@ -27,8 +31,7 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
     // Set cache ID for the current media
     const cacheId = getCacheIdForMedia(mediaFile);
     if (cacheId) {
-      setRulesCacheId(cacheId);
-      setSubtitlesCacheId(cacheId);
+      await activateSubtitleProjectBinding(cacheId);
     }
 
     // Video analysis is always enabled
@@ -96,15 +99,7 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
 
     // Process the media file
     let subtitles;
-    if (isDesktopRuntime()) {
-      subtitles = await callGeminiApi(mediaFile, 'file-upload', {
-        userProvidedSubtitles,
-        modelId: options.modelId || options.model,
-        mediaResolution: options.mediaResolution,
-        ...(options.segmentInfo ? { segmentInfo: options.segmentInfo } : {}),
-        ...(options.runId ? { runId: options.runId } : {})
-      });
-    } else if (options.forceInline || options.inlineExtraction) {
+    if (options.forceInline || options.inlineExtraction) {
       // Inline path (no offsets). Non-streaming here to maintain simplified flow semantics.
       subtitles = await callGeminiApi(mediaFile, 'file-upload', {
         userProvidedSubtitles,

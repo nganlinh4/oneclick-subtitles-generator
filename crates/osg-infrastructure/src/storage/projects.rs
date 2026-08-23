@@ -1466,7 +1466,10 @@ mod tests {
         transaction.commit().expect("commit pre-v4 graph");
         connection
             .execute_batch(
-                "DROP TRIGGER project_media_requires_lifetime_owner;
+                "DROP TABLE project_render_scenes;
+                 DROP TABLE project_speech_references;
+                 DROP TABLE job_result_deliveries;
+                 DROP TRIGGER project_media_requires_lifetime_owner;
                  DROP TABLE media_project_owners;
                  DROP INDEX project_media_single_project_idx;
                  DROP TABLE media_artifact_job_claims;
@@ -1757,7 +1760,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 8);
+        assert_eq!(schema_version, 11);
         for revision in detached {
             let exists: bool = connection
                 .query_row(

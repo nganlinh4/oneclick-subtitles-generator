@@ -23,6 +23,13 @@ vi.mock('../services/engines/GeminiAdapter', () => ({
 vi.mock('../services/lifecycleOrchestrator', () => ({
   checkpointBeforeUpdate: mocks.checkpointBeforeUpdate,
 }));
+vi.mock('../platform/projectService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  loadProject: vi.fn(async (projectId) => ({
+    metadata: { id: projectId },
+    stateVersion: 9,
+  })),
+}));
 vi.mock('../services/subtitleCache', () => ({
   captureDurableSubtitleSegmentRevision: mocks.captureDurableSubtitleSegmentRevision,
   commitDurableSubtitleSegmentCheckpoint: mocks.commitDurableSubtitleSegmentCheckpoint,
@@ -323,6 +330,8 @@ test('direct retry streams, forwards every option and succeeds only after one br
     maxDurationPerRequest: 90,
     forceInline: true,
     signal: expect.any(AbortSignal),
+    projectId: 'project-a',
+    expectedProjectStateVersion: 9,
   }));
   expect(commitDurableSubtitleSegmentCheckpoint).toHaveBeenCalledTimes(1);
   expect(harness.getSubtitles()).toEqual([

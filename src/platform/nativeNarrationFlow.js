@@ -2,10 +2,10 @@ import { nativeNarrationAdapter } from './nativeNarrationAdapter';
 import { hydrateNativeNarrationResults } from './nativeNarrationCapabilities';
 import {
   discardRecoveredNativeJob,
+  ensureNativeJobRecoveryReady,
   forgetNativeJobId,
   listRecoveredNativeJobs,
   rememberNativeJobId,
-  startNativeJobRecovery,
 } from './jobRecoveryCoordinator';
 
 const RECONNECT_POLL_INTERVAL_MS = 500;
@@ -21,6 +21,14 @@ const activeJobs = new Map();
 const reconnectingJobs = new Map();
 let startingJobs = 0;
 
+const narrationRecoveryError = (code, message, retryable, cause) => {
+  const error = new Error(message, cause === undefined ? undefined : { cause });
+  error.name = 'NativeNarrationRecoveryError';
+  error.code = code;
+  error.retryable = retryable;
+  return error;
+};
+
 const safelyCall = (callback, ...args) => {
   if (typeof callback !== 'function') return;
   try {
@@ -32,7 +40,14 @@ const safelyCall = (callback, ...args) => {
 };
 
 export const runNativeNarrationJob = async (request, callbacks = {}, options) => {
-  await startNativeJobRecovery().catch(() => undefined);
+  await ensureNativeJobRecoveryReady();
+  if (listRecoveredNativeJobs('synthesizeNarration').length > 0) {
+    throw narrationRecoveryError(
+      'nativeNarrationRecoveryPending',
+      'A recovered narration job must be resolved before starting another one',
+      true,
+    );
+  }
   if (startingJobs > 0 || activeJobs.size > 0) {
     const error = new Error('A native narration job is already active');
     error.code = 'nativeNarrationBusy';
@@ -135,8 +150,20 @@ const reconnectRecoveredJob = async (
   { pollIntervalMs, timeoutMs },
 ) => {
   const existingJob = activeJobs.get(method);
-  if (existingJob !== undefined && existingJob !== jobId) return null;
-  if ([...activeJobs.values()].some((activeJobId) => activeJobId !== jobId)) return null;
+  if (existingJob !== undefined && existingJob !== jobId) {
+    throw narrationRecoveryError(
+      'nativeNarrationRecoveryBusy',
+      'Another narration job owns the recovery slot',
+      true,
+    );
+  }
+  if ([...activeJobs.values()].some((activeJobId) => activeJobId !== jobId)) {
+    throw narrationRecoveryError(
+      'nativeNarrationRecoveryBusy',
+      'Another narration job owns the recovery slot',
+      true,
+    );
+  }
   activeJobs.set(method, jobId);
   const deadline = Date.now() + timeoutMs;
   try {
@@ -147,7 +174,6 @@ const reconnectRecoveredJob = async (
         subtitles,
       });
       if (terminalJobStates.has(restored.job.state) || restored.job.state === 'interrupted') {
-        if (activeJobs.get(method) === jobId) activeJobs.delete(method);
         discardRecoveredNativeJob(jobId);
         return Object.freeze({
           method,
@@ -156,15 +182,42 @@ const reconnectRecoveredJob = async (
           results: hydrateNativeNarrationResults(restored.results),
         });
       }
-      if (!reconnectableJobStates.has(restored.job.state) || Date.now() >= deadline) return null;
+      if (!reconnectableJobStates.has(restored.job.state)) {
+        discardRecoveredNativeJob(jobId);
+        throw narrationRecoveryError(
+          'invalidNativeNarrationRecoveryState',
+          'The recovered narration job has an invalid state',
+          false,
+        );
+      }
+      if (Date.now() >= deadline) {
+        throw narrationRecoveryError(
+          'nativeNarrationRecoveryTimedOut',
+          'The recovered narration job is not terminal yet',
+          true,
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
   } catch (error) {
     if (unrecoverableReconnectCodes.has(error?.code)) {
-      if (activeJobs.get(method) === jobId) activeJobs.delete(method);
       discardRecoveredNativeJob(jobId);
+      throw narrationRecoveryError(
+        'invalidNativeNarrationRecovery',
+        'The recovered narration job can no longer be restored',
+        false,
+        error,
+      );
     }
-    return null;
+    if (error?.name === 'NativeNarrationRecoveryError') throw error;
+    throw narrationRecoveryError(
+      'nativeNarrationRecoveryUnavailable',
+      'The recovered narration job could not be read',
+      true,
+      error,
+    );
+  } finally {
+    if (activeJobs.get(method) === jobId) activeJobs.delete(method);
   }
 };
 
@@ -186,7 +239,7 @@ export const restorePersistedNativeNarration = async ({
       || timeoutMs > RECONNECT_TIMEOUT_MS) {
     return null;
   }
-  await startNativeJobRecovery().catch(() => undefined);
+  await ensureNativeJobRecoveryReady();
   for (const candidate of listRecoveredNativeJobs('synthesizeNarration')) {
     const jobId = candidate.job.id;
     const reconnecting = reconnectingJobs.get(jobId);

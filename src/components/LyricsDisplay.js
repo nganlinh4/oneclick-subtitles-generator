@@ -13,9 +13,11 @@ import {
   downloadTXT,
   downloadTextDocument,
 } from '../utils/fileUtils';
-import { completeDocument, summarizeDocument } from '../services/geminiService';
+import { summarizeDocument } from '../services/geminiService';
+import { completeDocumentWithResult } from '../services/gemini/consolidationService';
 import LyricsVirtualizedList from './LyricsVirtualizedList';
 import LyricsDownloadAndOutput from './LyricsDownloadAndOutput';
+import { saveCompleteDocumentResult } from './lyrics/documentProcessingResult';
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -68,15 +70,7 @@ const LyricsDisplay = ({
 
     // Get video name (from uploaded file or video title)
     let videoName = '';
-    const uploadedFileUrl = localStorage.getItem('current_file_url');
-    if (uploadedFileUrl) {
-      // For uploaded files, try to get the original file name
-      // This might be stored in the uploadedFile object or we can use videoTitle
-      videoName = videoTitle;
-    } else {
-      // For YouTube videos, use the video title
-      videoName = videoTitle;
-    }
+    videoName = videoTitle;
 
     // Get target languages
     let targetLanguages = [];
@@ -345,10 +339,31 @@ const LyricsDisplay = ({
 
     try {
       let result;
+      let documentResult;
       if (processType === 'consolidate') {
-        result = await completeDocument(textContent, model, customPrompt, splitDurationToUse);
+        documentResult = await completeDocumentWithResult(
+          textContent,
+          model,
+          customPrompt,
+          splitDurationToUse,
+        );
+        if (documentResult.status !== 'complete') {
+          const failedChunks = documentResult.failedChunkIds.join(', ');
+          setConsolidationStatus(t(
+            'consolidation.error',
+            'Error processing document: {{message}}',
+            {
+              message: documentResult.status === 'partial'
+                ? `Retry incomplete chunks: ${failedChunks}`
+                : 'No usable output was returned. Retry the document.',
+            },
+          ));
+          return documentResult;
+        }
+        result = documentResult.text;
       } else if (processType === 'summarize') {
         result = await summarizeDocument(textContent, model, customPrompt);
+        documentResult = { status: 'complete', text: result };
       }
 
       // Check if the result is JSON and extract plain text
@@ -394,20 +409,24 @@ const LyricsDisplay = ({
       const baseFilename = generateFilename(source, namingInfo);
       const processTypeSuffix = processType === 'consolidate' ? 'completed' : 'summary';
       const filename = `${baseFilename}_${processTypeSuffix}.txt`;
-      const saved = await downloadTextDocument(result, filename);
-      if (saved.status === 'saved') {
-        try {
-          window.addToast?.(
-            processType === 'consolidate'
-              ? t('output.documentCompleted', 'Document completed successfully')
-              : t('output.summaryCompleted', 'Summary completed successfully'),
-            'success',
-            3000
-          );
-        } catch (notificationError) {
-          console.error('Could not report the saved document:', notificationError);
-        }
-      }
+      const saved = await saveCompleteDocumentResult({
+        result: { ...documentResult, text: result },
+        filename,
+        save: downloadTextDocument,
+        notifySaved: () => {
+          try {
+            window.addToast?.(
+              processType === 'consolidate'
+                ? t('output.documentCompleted', 'Document completed successfully')
+                : t('output.summaryCompleted', 'Summary completed successfully'),
+              'success',
+              3000
+            );
+          } catch (notificationError) {
+            console.error('Could not report the saved document:', notificationError);
+          }
+        },
+      });
       return saved;
     } catch (error) {
       console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);

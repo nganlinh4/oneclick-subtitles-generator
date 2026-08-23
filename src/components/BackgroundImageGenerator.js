@@ -16,6 +16,7 @@ import {
   loadNativeGeneratedImages,
   releaseNativeGeneratedImagePlayback,
 } from '../platform/nativeGeminiImage';
+import { getActiveProjectSnapshot } from '../platform/projectService';
 import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 
 const nativeViewImage = (image, prompt = '') => ({
@@ -40,6 +41,32 @@ const releaseNativeImages = async (images) => {
   await Promise.allSettled(
     playables.map((playable) => releaseNativeGeneratedImagePlayback(playable))
   );
+};
+
+const capturePromptProjectAuthority = () => {
+  if (!isDesktopRuntime()) return null;
+  const snapshot = getActiveProjectSnapshot();
+  const projectId = snapshot?.metadata?.id;
+  const expectedProjectStateVersion = snapshot?.stateVersion;
+  if (typeof projectId !== 'string'
+      || !Number.isSafeInteger(expectedProjectStateVersion)
+      || expectedProjectStateVersion < 0) {
+    const error = new Error('Open a media project before generating a background prompt.');
+    error.code = 'imageProjectUnavailable';
+    throw error;
+  }
+  return Object.freeze({ projectId, expectedProjectStateVersion });
+};
+
+const assertPromptProjectAuthority = (authority) => {
+  if (authority === null) return;
+  const current = getActiveProjectSnapshot();
+  if (current?.metadata?.id !== authority.projectId
+      || current?.stateVersion !== authority.expectedProjectStateVersion) {
+    const error = new Error('The active project changed while the prompt was being generated.');
+    error.code = 'imageProjectChanged';
+    throw error;
+  }
 };
 
 /**
@@ -75,12 +102,39 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   const generationAbortRef = useRef(null);
   const nativeImagesRef = useRef([]);
   const sourceInputsRef = useRef(null);
+  const generatedPromptDeliveryRef = useRef(null);
+  const consumedPromptDeliveriesRef = useRef(new Set());
+
+  // A prompt delivery is consumed only after the native image worker has returned its durable
+  // project artifact. A lost acknowledgement response is retryable: keep the exact delivery
+  // closure and drain it again after the next durable image instead of turning a real image into a
+  // false generation failure.
+  const acknowledgeConsumedPromptDeliveries = async (delivery = null) => {
+    if (delivery !== null) consumedPromptDeliveriesRef.current.add(delivery);
+    for (const pending of [...consumedPromptDeliveriesRef.current]) {
+      try {
+        await pending.acknowledge();
+        consumedPromptDeliveriesRef.current.delete(pending);
+        if (generatedPromptDeliveryRef.current?.delivery === pending) {
+          generatedPromptDeliveryRef.current = null;
+        }
+      } catch (error) {
+        console.error('The durable background-prompt acknowledgement remains pending:', error);
+      }
+    }
+  };
+
+  const updateGeneratedPromptFromUser = (value) => {
+    generatedPromptDeliveryRef.current = null;
+    setGeneratedPrompt(value);
+  };
 
   useEffect(() => subscribeCurrentCacheId(() => {
     if (isDesktopRuntime()) {
       generationRunRef.current += 1;
       generationAbortRef.current?.abort();
       generationAbortRef.current = null;
+      generatedPromptDeliveryRef.current = null;
       setActiveProjectGeneration((generation) => generation + 1);
     }
   }), []);
@@ -166,9 +220,18 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     setIsGenerationInProgress(true); // Set generation in progress flag
 
     try {
-      const prompt = await generateBackgroundPrompt(customLyrics, customSongName || songName || 'Unknown Song');
-      setGeneratedPrompt(prompt);
-      return prompt;
+      const authority = capturePromptProjectAuthority();
+      const result = await generateBackgroundPrompt(
+        customLyrics,
+        customSongName || songName || 'Unknown Song',
+        authority ?? undefined,
+      );
+      assertPromptProjectAuthority(authority);
+      setGeneratedPrompt(result.text);
+      generatedPromptDeliveryRef.current = result.delivery === null
+        ? null
+        : Object.freeze({ text: result.text, delivery: result.delivery });
+      return result.text;
     } catch (err) {
       window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
       console.error('Error generating prompt:', err);
@@ -182,6 +245,10 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   // Generate image using Gemini
   const generateImage = async (promptToUse = null, count = null) => {
     const currentPrompt = promptToUse || generatedPrompt;
+    const promptDelivery = promptToUse === null
+      && generatedPromptDeliveryRef.current?.text === currentPrompt
+      ? generatedPromptDeliveryRef.current.delivery
+      : null;
     const imagesToGenerate = count || regularImageCount;
 
     if (!currentPrompt.trim()) {
@@ -232,6 +299,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             signal: controller.signal,
           });
           const nativeRuntime = isDesktopRuntime();
+          if (nativeRuntime && promptDelivery !== null) {
+            await acknowledgeConsumedPromptDeliveries(promptDelivery);
+          }
           if (generationRunRef.current !== run || controller.signal.aborted) {
             if (nativeRuntime) {
               await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
@@ -349,6 +419,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
       // Only reset generated content if the source content has changed
       if (previous !== null) {
+        generatedPromptDeliveryRef.current = null;
         setGeneratedPrompt('');
         setGeneratedImage('');
         // Don't reset generatedImages to preserve them across UI changes
@@ -464,7 +535,14 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           setIsGeneratingPrompt(true);
 
 
-          const uniquePrompt = await generateBackgroundPrompt(customLyrics, customSongName || songName || 'Unknown Song');
+          const authority = capturePromptProjectAuthority();
+          const promptResult = await generateBackgroundPrompt(
+            customLyrics,
+            customSongName || songName || 'Unknown Song',
+            authority ?? undefined,
+          );
+          assertPromptProjectAuthority(authority);
+          const uniquePrompt = promptResult.text;
           if (controller.signal.aborted || generationRunRef.current !== run) break;
 
           // Update the prompt in the UI for the latest generated prompt
@@ -485,6 +563,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             signal: controller.signal,
           });
           const nativeRuntime = isDesktopRuntime();
+          if (nativeRuntime && promptResult.delivery !== null) {
+            await acknowledgeConsumedPromptDeliveries(promptResult.delivery);
+          }
           if (generationRunRef.current !== run || controller.signal.aborted) {
             if (nativeRuntime) {
               await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
@@ -633,7 +714,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             setCustomSongName={setCustomSongName}
             customLyrics={customLyrics}
             generatedPrompt={generatedPrompt}
-            setGeneratedPrompt={setGeneratedPrompt}
+            setGeneratedPrompt={updateGeneratedPromptFromUser}
             customAlbumArt={customAlbumArt}
             setCustomAlbumArt={setCustomAlbumArt}
             isGeneratingPrompt={isGeneratingPrompt}

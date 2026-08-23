@@ -23,6 +23,27 @@ test('a remount preserves the URL alias instead of reactivating downloaded media
   expect(applyOwnedSession).toHaveBeenCalledExactlyOnceWith(MEDIA, SESSION);
 });
 
+test('does not report an owned session until its project-bound application finishes', async () => {
+  let release;
+  const applyOwnedSession = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+  let settled = false;
+  const pending = reconcileSelectedNativeMedia({
+    media: MEDIA,
+    activateAsLocal: vi.fn(),
+    applyOwnedSession,
+    readSession: () => SESSION,
+    resolveOwner: vi.fn(async () => ({ projectId: SESSION.projectId })),
+  }).then((value) => {
+    settled = true;
+    return value;
+  });
+
+  await vi.waitFor(() => expect(applyOwnedSession).toHaveBeenCalled());
+  expect(settled).toBe(false);
+  release();
+  await expect(pending).resolves.toBe('owned-session');
+});
+
 test('media with no durable session remains a genuine local activation', async () => {
   const activateAsLocal = vi.fn(async () => undefined);
   const applyOwnedSession = vi.fn();

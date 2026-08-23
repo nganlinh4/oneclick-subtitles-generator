@@ -3,6 +3,7 @@ use std::sync::Arc;
 use osg_application::{JobRegistry, JobTicket};
 use osg_domain::{JobId, JobKind, JobSnapshot, JobState, JobUpdate};
 use osg_infrastructure::storage::Database;
+use osg_infrastructure::storage::JobResultDeliveryDraft;
 
 use crate::error::{CommandError, CommandResult};
 
@@ -51,6 +52,25 @@ pub(crate) async fn apply_if_sequence(
     .map_err(Into::into)
 }
 
+/// Commits a terminal success and its recoverable result payload as one `SQLite` transaction.
+/// A delivery insertion failure leaves both the durable and resident job in the running state.
+pub(crate) async fn succeed_with_result(
+    jobs: &DesktopJobs,
+    id: JobId,
+    delivery: JobResultDeliveryDraft,
+) -> CommandResult<JobSnapshot> {
+    let jobs = Arc::clone(jobs);
+    tauri::async_runtime::spawn_blocking(move || {
+        jobs.apply_with_store(id, JobUpdate::Succeed, |database, sequence, snapshot| {
+            database.complete_job_with_result(sequence, snapshot, &delivery)
+        })
+    })
+    .await
+    .map_err(|_| CommandError::internal("the durable job result task stopped unexpectedly"))?
+    .map(|ticket| ticket.snapshot().clone())
+    .map_err(Into::into)
+}
+
 pub(crate) async fn snapshot(jobs: &DesktopJobs, id: JobId) -> Option<JobSnapshot> {
     let jobs = Arc::clone(jobs);
     tauri::async_runtime::spawn_blocking(move || jobs.get(id))
@@ -58,10 +78,6 @@ pub(crate) async fn snapshot(jobs: &DesktopJobs, id: JobId) -> Option<JobSnapsho
         .ok()
         .and_then(Result::ok)
         .map(|ticket| ticket.snapshot().clone())
-}
-
-pub(crate) async fn request_cancellation(jobs: &DesktopJobs, id: JobId) {
-    let _ = apply(jobs, id, JobUpdate::RequestCancellation).await;
 }
 
 pub(crate) async fn finish_cancellation(

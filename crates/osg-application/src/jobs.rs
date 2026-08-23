@@ -181,7 +181,15 @@ where
         update: JobUpdate,
     ) -> Result<JobTicket, JobRegistryError<S::Error>> {
         let managed = self.lookup(id)?;
-        let result = self.apply_to_managed(id, None, update, &managed);
+        let result = self.apply_to_managed_with(
+            id,
+            None,
+            update,
+            &managed,
+            |store, expected_sequence, candidate| {
+                store.compare_and_swap(expected_sequence, candidate)
+            },
+        );
         let terminal = managed
             .state
             .lock()
@@ -207,7 +215,15 @@ where
         update: JobUpdate,
     ) -> Result<JobTicket, JobRegistryError<S::Error>> {
         let managed = self.lookup(id)?;
-        let result = self.apply_to_managed(id, Some(expected_sequence), update, &managed);
+        let result = self.apply_to_managed_with(
+            id,
+            Some(expected_sequence),
+            update,
+            &managed,
+            |store, expected_sequence, candidate| {
+                store.compare_and_swap(expected_sequence, candidate)
+            },
+        );
         let terminal = managed
             .state
             .lock()
@@ -222,13 +238,50 @@ where
         result
     }
 
-    fn apply_to_managed(
+    /// Applies an update while allowing the store to commit additional state in the same durable
+    /// transaction as the job snapshot.
+    ///
+    /// The callback runs under the same per-job mutation lock as [`Self::apply`]. It must preserve
+    /// [`JobStore::compare_and_swap`] semantics: compare `expected_sequence`, commit `candidate`
+    /// atomically with its additional state, and return the authoritative conflict snapshot when
+    /// the comparison loses. This keeps result/outbox publication inside the job's one legal
+    /// terminal transition without exposing the registry's resident snapshot or store separately.
+    pub fn apply_with_store<F>(
+        &self,
+        id: JobId,
+        update: JobUpdate,
+        persist: F,
+    ) -> Result<JobTicket, JobRegistryError<S::Error>>
+    where
+        F: FnOnce(&S, u64, &JobSnapshot) -> Result<JobWrite, S::Error>,
+    {
+        let managed = self.lookup(id)?;
+        let result = self.apply_to_managed_with(id, None, update, &managed, persist);
+        let terminal = managed
+            .state
+            .lock()
+            .map_err(|_| JobRegistryError::Unavailable)?
+            .snapshot
+            .state()
+            .is_terminal();
+        drop(managed);
+        if terminal {
+            self.compact_terminal_residents()?;
+        }
+        result
+    }
+
+    fn apply_to_managed_with<F>(
         &self,
         id: JobId,
         caller_expected_sequence: Option<u64>,
         update: JobUpdate,
         managed: &ManagedJob,
-    ) -> Result<JobTicket, JobRegistryError<S::Error>> {
+        persist: F,
+    ) -> Result<JobTicket, JobRegistryError<S::Error>>
+    where
+        F: FnOnce(&S, u64, &JobSnapshot) -> Result<JobWrite, S::Error>,
+    {
         let mut state = managed
             .state
             .lock()
@@ -246,9 +299,7 @@ where
         let mutation = candidate.apply(update).map_err(JobRegistryError::Domain)?;
 
         if mutation == JobMutation::Changed {
-            match self
-                .store
-                .compare_and_swap(expected_sequence, &candidate)
+            match persist(&self.store, expected_sequence, &candidate)
                 .map_err(JobRegistryError::Store)?
             {
                 JobWrite::Updated => state.snapshot = candidate,

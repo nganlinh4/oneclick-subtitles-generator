@@ -31,6 +31,12 @@ import {
     isSubtitleOperationCurrent,
     releaseSubtitleProjectOperationLease,
 } from '../utils/subtitleOperationOwnership';
+import {
+    acknowledgeGeminiTranscriptionDeliveries,
+    bindGeminiTranscriptionDeliveries,
+    retryPendingGeminiTranscriptionDeliveries,
+} from '../services/gemini/transcriptionDelivery';
+import { loadProject } from '../platform/projectService';
 
 const RETRY_DELAYS = [5, 10, 15, 20, 25];
 const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024;
@@ -83,7 +89,7 @@ const normalizeSegmentRows = (rows, segment) => {
     if (normalized.length === 0) {
         throw new Error('The segment retry returned no subtitles in the selected range.');
     }
-    return normalized;
+    return bindGeminiTranscriptionDeliveries(normalized, rows);
 };
 
 const stoppedError = () => new SubtitleOperationOwnershipError('subtitleOperationAborted');
@@ -278,13 +284,34 @@ const runOwnedGeminiAttempt = async ({
         t,
     });
     await assertSubtitleOperationDurable(context);
+    const priorDeliveryRecovery = await retryPendingGeminiTranscriptionDeliveries({
+        cacheId: context.cacheId,
+        projectId: context.projectId,
+        validateOwnership: assertSubtitleOperationDurable,
+    });
+    if (!priorDeliveryRecovery.acknowledged) {
+        throw new Error('A saved Gemini transcription is still awaiting native recovery.');
+    }
+    const project = await loadProject(context.projectId);
+    await assertSubtitleOperationDurable(context);
+    if (project?.metadata?.id !== context.projectId
+        || !Number.isSafeInteger(project.stateVersion)
+        || project.stateVersion < 0) {
+        throw new SubtitleOperationOwnershipError();
+    }
     let result;
     let processError = null;
     try {
         result = await processGeminiSegment(
             sourceFile,
             context.segment,
-            { ...options, runId: context.runId, signal: context.signal },
+            {
+                ...options,
+                runId: context.runId,
+                signal: context.signal,
+                projectId: context.projectId,
+                expectedProjectStateVersion: project.stateVersion,
+            },
             {
                 onStatus: stream.onStatus,
                 onStreamingUpdate: stream.onStreamingUpdate,
@@ -463,17 +490,28 @@ export const useSubtitlesSegmentRetry = ({
                 || receipt.subtitleCount !== receipt.subtitles.length) {
                 throw new Error('The segment retry checkpoint could not be verified.');
             }
+            const committedRows = bindGeminiTranscriptionDeliveries(
+                receipt.subtitles,
+                replacement
+            );
             committed = true;
+            const deliveryCommit = await acknowledgeGeminiTranscriptionDeliveries({
+                rows: committedRows,
+                receipt,
+                context,
+                validateOwnership: assertSubtitleOperationDurable,
+            });
+            await assertSubtitleOperationDurable(context);
             if (canPresent(record, context)) {
                 const applied = await applyOwnedSubtitles({
                     context,
                     mountedRef,
                     setSubtitlesData,
-                    subtitles: receipt.subtitles,
+                    subtitles: committedRows,
                 });
                 if (applied && canPresent(record, context)) {
                     publishStreamingComplete({
-                        subtitles: receipt.subtitles,
+                        subtitles: committedRows,
                         segment,
                         runId: context.runId,
                     });
@@ -484,9 +522,15 @@ export const useSubtitlesSegmentRetry = ({
                         shortMessage: t('output.success', 'Success'),
                     }]);
                     if (canPresent(record, context)) {
-                        setStatus({
+                        setStatus(deliveryCommit.acknowledged ? {
                             message: t('output.generationSuccess', 'Subtitles updated successfully!'),
                             type: 'success',
+                        } : {
+                            message: t(
+                                'output.subtitlesDeliveryPending',
+                                'Subtitles were saved. Native result cleanup will retry automatically.'
+                            ),
+                            type: 'warning',
                         });
                     }
                 }
@@ -671,17 +715,28 @@ export const useSubtitlesSegmentRetry = ({
                     || receipt.subtitleCount !== receipt.subtitles.length) {
                     throw new Error('The segment retry checkpoint could not be verified.');
                 }
+                const committedRows = bindGeminiTranscriptionDeliveries(
+                    receipt.subtitles,
+                    replacement
+                );
                 committed = true;
+                const deliveryCommit = await acknowledgeGeminiTranscriptionDeliveries({
+                    rows: committedRows,
+                    receipt,
+                    context,
+                    validateOwnership: assertSubtitleOperationDurable,
+                });
+                await assertSubtitleOperationDurable(context);
                 if (canPresent(record, context)) {
                     const applied = await applyOwnedSubtitles({
                         context,
                         mountedRef,
                         setSubtitlesData,
-                        subtitles: receipt.subtitles,
+                        subtitles: committedRows,
                     });
                     if (applied && canPresent(record, context)) {
                         publishStreamingComplete({
-                            subtitles: receipt.subtitles,
+                            subtitles: committedRows,
                             segment,
                             runId: context.runId,
                         });
@@ -692,9 +747,15 @@ export const useSubtitlesSegmentRetry = ({
                             runId: context.runId,
                         });
                         if (canPresent(record, context)) {
-                            setStatus({
+                            setStatus(deliveryCommit.acknowledged ? {
                                 message: t('output.generationSuccess', 'Subtitles updated successfully!'),
                                 type: 'success',
+                            } : {
+                                message: t(
+                                    'output.subtitlesDeliveryPending',
+                                    'Subtitles were saved. Native result cleanup will retry automatically.'
+                                ),
+                                type: 'warning',
                             });
                         }
                     }

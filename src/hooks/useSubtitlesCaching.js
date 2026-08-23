@@ -1,8 +1,6 @@
-import { preloadYouTubeVideo } from '../utils/videoPreloader';
 import { generateFileCacheId } from '../utils/cacheUtils';
 import { getVideoDuration } from '../utils/videoProcessor';
-import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
+import { activateSubtitleProjectBinding } from '../platform/subtitleProjectBinding';
 import {
     generateUrlBasedCacheId,
     getCachedSubtitles as checkCachedSubtitles,
@@ -10,6 +8,11 @@ import {
     saveSubtitlesToCache
 } from '../services/subtitleCache';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+    refreshActiveNativeMedia,
+    resolveActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 
 // Re-export the shared cache helper so callers have a single import surface.
 export { saveSubtitlesToCache };
@@ -42,19 +45,19 @@ export const resolveCacheIdForGeneration = async ({
 }) => {
     let cacheId = null;
 
+    if (isDesktopRuntime()) {
+        const capability = await resolveActiveNativeMedia({
+            candidate: isNativeMediaDescriptor(input) ? input : null,
+        });
+        return capability.cacheId;
+    }
+
     if (inputType === 'youtube' || currentVideoUrl) {
         // Use unified URL-based caching for all video URLs
         const urlToUse = inputType === 'youtube' ? input : currentVideoUrl;
         cacheId = await generateUrlBasedCacheId(urlToUse);
 
-        // Preload YouTube videos
-        if (urlToUse && (urlToUse.includes('youtube.com') || urlToUse.includes('youtu.be'))) {
-            preloadYouTubeVideo(urlToUse);
-        }
-
-        // Set cache ID for both stores
-        setRulesCacheId(cacheId);
-        setSubtitlesCacheId(cacheId);
+        await activateSubtitleProjectBinding(cacheId);
 
     } else if (inputType === 'file-upload') {
         // For actual file uploads (not downloaded videos), use file-based cache ID
@@ -62,12 +65,7 @@ export const resolveCacheIdForGeneration = async ({
             ? input.assetId
             : await generateFileCacheId(input);
 
-        // Store the cache ID in localStorage for later use (e.g., saving edited subtitles)
-        localStorage.setItem('current_file_cache_id', cacheId);
-
-        // Set cache ID for both stores
-        setRulesCacheId(cacheId);
-        setSubtitlesCacheId(cacheId);
+        await activateSubtitleProjectBinding(cacheId);
 
 
         // Check if this is a video file and get its duration
@@ -144,8 +142,33 @@ export const loadCachedSubtitlesIfAvailable = async ({
  * videos, file-based for true uploads, saving the produced subtitles and setting
  * both rules/subtitles cache stores.
  */
-export const persistRetryResultToCache = async ({ input, inputType, subtitles }) => {
-    const currentVideoUrl = localStorage.getItem('current_video_url');
+export const persistRetryResultToCache = async ({
+    input,
+    inputType,
+    subtitles,
+    browserVideoUrl = null,
+}) => {
+    if (isDesktopRuntime()) {
+        const capability = await resolveActiveNativeMedia({
+            candidate: isNativeMediaDescriptor(input) ? input : null,
+        });
+        if (subtitles && subtitles.length > 0) {
+            const receipt = await saveSubtitlesToCache(capability.cacheId, subtitles, {
+                expectedProjectId: capability.projectId,
+            });
+            requireSuccessfulSubtitleCacheSave(receipt);
+            if (receipt.cacheId !== capability.cacheId
+                || receipt.projectId !== capability.projectId) {
+                throw new Error('The active subtitle project changed during retry persistence.');
+            }
+            await refreshActiveNativeMedia(capability);
+        }
+        return capability.cacheId;
+    }
+
+    const currentVideoUrl = inputType === 'youtube'
+        ? (typeof input === 'string' ? input : input?.url)
+        : browserVideoUrl;
     let cacheId = null;
 
     if (inputType === 'youtube' || currentVideoUrl) {
@@ -157,24 +180,19 @@ export const persistRetryResultToCache = async ({ input, inputType, subtitles })
             requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
         }
 
-        // Set cache ID for both stores
-        setRulesCacheId(cacheId);
-        setSubtitlesCacheId(cacheId);
+        await activateSubtitleProjectBinding(cacheId);
 
     } else if (inputType === 'file-upload') {
         // For actual file uploads, use file-based cache ID
         cacheId = isNativeMediaDescriptor(input)
             ? input.assetId
             : await generateFileCacheId(input);
-        localStorage.setItem('current_file_cache_id', cacheId);
-
         if (cacheId && subtitles && subtitles.length > 0) {
             requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
         }
 
-        // Set cache ID for both stores
-        setRulesCacheId(cacheId);
-        setSubtitlesCacheId(cacheId);
+        await activateSubtitleProjectBinding(cacheId);
 
     }
+    return cacheId;
 };

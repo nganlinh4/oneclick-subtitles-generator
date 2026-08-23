@@ -6,7 +6,6 @@ import useAlignedNarrationState from './useAlignedNarrationState';
 import useAlignedNarrationGeneration from './useAlignedNarrationGeneration';
 import useAlignedNarrationPlayback from './useAlignedNarrationPlayback';
 import useAlignedNarrationEvents from './useAlignedNarrationEvents';
-import * as alignedNarrationUtils from './alignedNarrationUtils';
 
 /**
  * Custom hook for managing narration playback
@@ -16,7 +15,13 @@ import * as alignedNarrationUtils from './alignedNarrationUtils';
  * @param {Array} translatedNarrations - Translated narration audio files
  * @returns {Object} - Narration state and handlers
  */
-const useNarration = (videoRef, originalNarrations = [], translatedNarrations = []) => {
+const useNarration = (
+  videoRef,
+  originalNarrations = [],
+  translatedNarrations = [],
+  alignedNarrations = [],
+  narrationCues = [],
+) => {
   // Get basic narration state
   const narrationState = useNarrationState(originalNarrations, translatedNarrations);
 
@@ -36,14 +41,17 @@ const useNarration = (videoRef, originalNarrations = [], translatedNarrations = 
   );
 
   // Always use original narrations since we removed the source selector
-  const activeNarrations = narrationState.internalOriginalNarrations;
+  const activeNarrations = alignedNarrations.length > 0
+    ? alignedNarrations
+    : narrationState.internalOriginalNarrations;
 
   // Handle aligned narration
   const alignedNarration = useAlignedNarration(
     videoRef,
     activeNarrations,
     narrationState.narrationVolume,
-    useAlignedMode
+    useAlignedMode,
+    narrationCues,
   );
 
   return {
@@ -63,8 +71,7 @@ export {
   useAlignedNarrationState,
   useAlignedNarrationGeneration,
   useAlignedNarrationPlayback,
-  useAlignedNarrationEvents,
-  alignedNarrationUtils
+  useAlignedNarrationEvents
 };
 
 export default useNarration;

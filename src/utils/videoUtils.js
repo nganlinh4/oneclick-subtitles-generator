@@ -1,6 +1,8 @@
 /**
  * Utility functions for video processing and subtitle rendering
  */
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
 
 /**
  * Helper function to draw a rounded rectangle on canvas
@@ -315,16 +317,8 @@ export const downloadVideo = (url, filename) => {
  * @returns {boolean} True if there's a valid downloaded video
  */
 export const hasValidDownloadedVideo = (uploadedFile = null) => {
-  const uploadedFileUrl = localStorage.getItem('current_file_url');
-  if (!uploadedFileUrl) return false;
-
-  // If it's a blob URL, check if we have a corresponding uploadedFile
-  // This indicates the blob was created in this session and is likely valid
-  if (uploadedFileUrl.startsWith('blob:')) {
-    return uploadedFile !== null && uploadedFile !== undefined;
-  }
-
-  return true;
+  if (isDesktopRuntime()) return isNativeMediaDescriptor(uploadedFile);
+  return typeof File !== 'undefined' && uploadedFile instanceof File;
 };
 
 /**
@@ -367,11 +361,10 @@ export const isBlobUrlValid = async (blobUrl) => {
  * This should be called on page load to clean up stale blob URLs
  */
 export const cleanupInvalidBlobUrls = () => {
-  const uploadedFileUrl = localStorage.getItem('current_file_url');
-
-  if (uploadedFileUrl && uploadedFileUrl.startsWith('blob:')) {
-    // On page load, all blob URLs from previous sessions are invalid
+  try {
+    // Compatibility cleanup only: persisted blob URLs are never read as media authority.
     localStorage.removeItem('current_file_url');
-    console.log('Cleaned up stale blob URL from localStorage');
+  } catch {
+    // Storage may be unavailable in a sandboxed browser preview.
   }
 };

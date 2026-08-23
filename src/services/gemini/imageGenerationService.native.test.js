@@ -35,7 +35,12 @@ beforeEach(() => {
   window.isTauri = true;
   localStorage.clear();
   localStorage.setItem('gemini_api_key', 'must-not-be-read-or-sent');
-  runNativeGeminiText.mockResolvedValue({ text: '  cinematic night sky  ' });
+  runNativeGeminiText.mockResolvedValue({
+    text: '  cinematic night sky  ',
+    job: { id: '01890f39-7b62-7c4e-8c9a-000000000311' },
+    deliveryId: '01890f39-7b62-7c4e-8c9a-000000000312',
+    acknowledge: vi.fn(),
+  });
   generateNativeGeminiImage.mockResolvedValue({
     image: generatedImage,
     job: { id: '01890f39-7b62-7c4e-8c9a-000000000304' },
@@ -52,14 +57,35 @@ afterAll(() => {
 
 test('generates the background prompt through the vault-backed native text job', async () => {
   const getItem = vi.spyOn(Storage.prototype, 'getItem');
-  await expect(generateBackgroundPrompt('lyrics here', 'Song')).resolves.toBe('cinematic night sky');
+  const result = await generateBackgroundPrompt('lyrics here', 'Song', {
+    projectId: '01890f39-7b62-7c4e-8c9a-000000000306',
+    expectedProjectStateVersion: 7,
+  });
+  expect(result).toEqual({
+    text: 'cinematic night sky',
+    delivery: expect.objectContaining({
+      jobId: '01890f39-7b62-7c4e-8c9a-000000000311',
+      deliveryId: '01890f39-7b62-7c4e-8c9a-000000000312',
+      acknowledge: expect.any(Function),
+    }),
+  });
+  expect(result.delivery.acknowledge).not.toHaveBeenCalled();
   expect(runNativeGeminiText).toHaveBeenCalledWith(expect.objectContaining({
     task: 'analyzeSubtitles',
     model: 'gemini-3.5-flash-lite',
     prompt: expect.stringContaining('lyrics here'),
+    projectId: '01890f39-7b62-7c4e-8c9a-000000000306',
+    expectedProjectStateVersion: 7,
   }));
   expect(getItem).not.toHaveBeenCalledWith('gemini_api_key');
   getItem.mockRestore();
+});
+
+test('refuses a native prompt result whose durable delivery identity was dropped', async () => {
+  runNativeGeminiText.mockResolvedValue({ text: 'looks plausible' });
+
+  await expect(generateBackgroundPrompt('lyrics here', 'Song'))
+    .rejects.toThrow('durable delivery identity');
 });
 
 test('passes album art as an opaque native playback capability without preparing WebView bytes', async () => {

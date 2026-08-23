@@ -2,14 +2,23 @@ import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
 import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 import { runMediaPipeline } from '../../platform/mediaPipelineService';
 import {
+  clearMedia,
   createNativeMediaDescriptor,
+  getSelectedMedia,
   isNativeMediaDescriptor,
+  openMediaAsset,
 } from '../../platform/mediaService';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
-import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
-import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
-import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
+import {
+  ensureProjectOwnsNativeMedia,
+  forgetNativeMediaSession,
+  readNativeMediaSession,
+  writeNativeMediaSession,
+} from '../../platform/nativeMediaOwnership';
+import {
+  activateSubtitleProjectBinding,
+  rollbackSubtitleProjectBinding,
+} from '../../platform/subtitleProjectBinding';
 import {
   assertAutoGenerationRequestActive,
   AutoGenerationOwnershipError,
@@ -17,7 +26,7 @@ import {
   sourceIdentityForUrl,
 } from '../../utils/autoGenerationOwnership';
 
-const downloadPresentationOwners = new WeakMap();
+let activeDownloadPresentation = null;
 
 export const ensureVideoCompatibility = async (videoFile) => {
   if (!isNativeMediaDescriptor(videoFile)) {
@@ -83,10 +92,8 @@ export const downloadAndPrepareYouTubeVideo = async (
   }
 
   const presentationToken = Object.freeze({});
-  downloadPresentationOwners.set(setIsDownloading, presentationToken);
-  const ownsPresentation = () => (
-    downloadPresentationOwners.get(setIsDownloading) === presentationToken
-  );
+  activeDownloadPresentation = presentationToken;
+  const ownsPresentation = () => activeDownloadPresentation === presentationToken;
   const present = (callback) => {
     if (!ownsPresentation()) return false;
     callback();
@@ -105,19 +112,110 @@ export const downloadAndPrepareYouTubeVideo = async (
   try {
     const expectedSourceIdentity = sourceIdentityForUrl(selectedVideo.url);
     const assertDownloadOwnership = () => {
-      if (!guardedAutoRequest) return;
-      assertAutoGenerationRequestActive(guardedAutoRequest);
-      const activeUrl = localStorage.getItem('current_video_url');
-      if (typeof activeUrl !== 'string' || `url:${activeUrl}` !== expectedSourceIdentity) {
-        throw new AutoGenerationOwnershipError();
-      }
+      if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
+      if (guardedAutoRequest) assertAutoGenerationRequestActive(guardedAutoRequest);
     };
     assertDownloadOwnership();
+    const projectCacheId = await generateUrlBasedCacheId(selectedVideo.url);
+    if (typeof projectCacheId !== 'string' || projectCacheId.length === 0) {
+      throw new Error('The downloaded media could not be bound to a subtitle project.');
+    }
+
+    let previousMedia = null;
+    let previousSession = null;
+    let previousCompatibility = null;
     const nativeMedia = await downloadNativeVideo({
       url: selectedVideo.url,
       cookieSource: getDownloadCookieSource(),
       ...(guardedAutoRequest ? { signal: guardedAutoRequest.signal } : {}),
-      ...(guardedAutoRequest ? { validateOwnership: assertDownloadOwnership } : {}),
+      validateOwnership: assertDownloadOwnership,
+      admitActivation: async ({ assetId, resolvedProject, url }, { validateOwnership }) => {
+        await validateOwnership();
+        if (sourceIdentityForUrl(url) !== expectedSourceIdentity
+            || resolvedProject?.cacheId !== projectCacheId
+            || typeof assetId !== 'string') {
+          throw new AutoGenerationOwnershipError();
+        }
+        previousMedia = await getSelectedMedia();
+        await validateOwnership();
+        previousSession = readNativeMediaSession();
+        previousCompatibility = Object.freeze({
+          fileCacheId: localStorage.getItem('current_file_cache_id'),
+          fileName: localStorage.getItem('current_file_name'),
+          fileUrl: localStorage.getItem('current_file_url'),
+          splitResult: localStorage.getItem('split_result'),
+          videoUrl: localStorage.getItem('current_video_url'),
+        });
+        let binding = null;
+        try {
+          binding = await activateSubtitleProjectBinding(projectCacheId, {
+            expectedProjectId: resolvedProject.projectId,
+            create: false,
+          });
+          await validateOwnership();
+          return binding;
+        } catch (error) {
+          if (binding !== null) rollbackSubtitleProjectBinding(binding);
+          throw error;
+        }
+      },
+      publishActivation: async (media, binding, { validateOwnership }) => {
+        await validateOwnership();
+        const ownership = await ensureProjectOwnsNativeMedia({
+          media,
+          cacheId: projectCacheId,
+          expectedProjectId: binding.projectId,
+        });
+        await validateOwnership();
+        if (ownership.projectId !== binding.projectId) {
+          throw new AutoGenerationOwnershipError();
+        }
+
+        const previousFileUrl = localStorage.getItem('current_file_url');
+        if (previousFileUrl?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(previousFileUrl);
+          } catch {
+            // A stale browser blob is already unusable and needs no further cleanup.
+          }
+        }
+        localStorage.removeItem('split_result');
+        localStorage.setItem('current_video_url', selectedVideo.url);
+        localStorage.setItem('current_file_url', media.playbackUrl);
+        localStorage.setItem('current_file_cache_id', media.assetId);
+        localStorage.setItem('current_file_name', media.name);
+        handleTabChange('file-upload', false);
+        setUploadedFile(media);
+        setIsSrtOnlyMode?.(false);
+        setDownloadProgress(100);
+        setStatus({
+          message: media.type.startsWith('audio/')
+            ? t('output.audioReady', 'Audio is ready for processing!')
+            : t('output.videoReady', 'Video is ready for processing!'),
+          type: guardedAutoRequest ? 'loading' : 'success',
+        });
+      },
+      rollbackActivation: async () => {
+        if (previousMedia === null) {
+          await clearMedia().catch(() => undefined);
+        } else {
+          await openMediaAsset(previousMedia.assetId).catch(() => undefined);
+        }
+        if (previousSession === null) forgetNativeMediaSession();
+        else writeNativeMediaSession(previousSession);
+        if (previousCompatibility !== null) {
+          for (const [key, value] of [
+            ['current_file_cache_id', previousCompatibility.fileCacheId],
+            ['current_file_name', previousCompatibility.fileName],
+            ['current_file_url', previousCompatibility.fileUrl],
+            ['split_result', previousCompatibility.splitResult],
+            ['current_video_url', previousCompatibility.videoUrl],
+          ]) {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, value);
+          }
+        }
+      },
       onStarted: (jobId) => present(() => setCurrentDownloadId(jobId)),
       onProgress: (progress) => present(() => setDownloadProgress(progress)),
       preferredSubtitleLanguages: nativeDownloadOptions.preferredSubtitleLanguages,
@@ -138,54 +236,6 @@ export const downloadAndPrepareYouTubeVideo = async (
     }
 
     assertDownloadOwnership();
-    const projectCacheId = await generateUrlBasedCacheId(selectedVideo.url);
-    if (typeof projectCacheId !== 'string' || projectCacheId.length === 0) {
-      throw new Error('The downloaded media could not be bound to a subtitle project.');
-    }
-    // Project identity must switch before React publishes the new media. This
-    // prevents analysis/editor effects from reading or clearing the previous
-    // video's rules during the render that follows setUploadedFile().
-    setRulesCacheId(projectCacheId);
-    setSubtitlesCacheId(projectCacheId);
-    const project = await resolveProjectForCache(projectCacheId, { create: true });
-    if (!project?.projectId) {
-      throw new Error('The downloaded media could not be bound to a durable subtitle project.');
-    }
-    assertDownloadOwnership();
-
-    const previousFileUrl = localStorage.getItem('current_file_url');
-    if (previousFileUrl?.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(previousFileUrl);
-      } catch {
-        // A stale browser blob is already unusable and needs no further cleanup.
-      }
-    }
-    localStorage.removeItem('split_result');
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    localStorage.setItem('current_file_url', nativeMedia.playbackUrl);
-    localStorage.setItem('current_file_cache_id', nativeMedia.assetId);
-    localStorage.setItem('current_file_name', nativeMedia.name);
-    // Remember which project owns this media so a later run can reopen it. The candidate claim has
-    // already committed the same asset, so this verifies and records without a second revision.
-    await ensureProjectOwnsNativeMedia({ media: nativeMedia, cacheId: projectCacheId });
-    assertDownloadOwnership();
-
-    if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
-    handleTabChange('file-upload', false);
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    present(() => setUploadedFile(nativeMedia));
-    present(() => setIsSrtOnlyMode?.(false));
-    present(() => setDownloadProgress(100));
-    present(() => setStatus({
-      message: nativeMedia.type.startsWith('audio/')
-        ? t('output.audioReady', 'Audio is ready for processing!')
-        : t('output.videoReady', 'Video is ready for processing!'),
-      // An automatic run has only prepared media here. Its first green
-      // terminal belongs to the subtitle owner after an exact-project durable
-      // checkpoint, not to the downloader.
-      type: guardedAutoRequest ? 'loading' : 'success',
-    }));
     return nativeMedia;
   } catch (error) {
     if (guardedAutoRequest && (
@@ -210,7 +260,7 @@ export const downloadAndPrepareYouTubeVideo = async (
     return undefined;
   } finally {
     if (ownsPresentation()) {
-      downloadPresentationOwners.delete(setIsDownloading);
+      activeDownloadPresentation = null;
       setCurrentDownloadId(null);
       setIsDownloading(false);
     }

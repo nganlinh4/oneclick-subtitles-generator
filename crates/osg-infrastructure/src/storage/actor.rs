@@ -28,9 +28,11 @@ use super::migrations::migrations;
 use super::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord,
     ArtifactRegistration, CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey,
-    CacheLeaseId, CacheWrite, ContentHash, LeasedArtifact, LegacyImportCandidate, LegacyImportId,
+    CacheLeaseId, CacheWrite, ContentHash, JobResultDelivery, JobResultDeliveryDraft,
+    JobResultDeliveryHeader, LeasedArtifact, LegacyImportCandidate, LegacyImportId,
     LegacyImportItemOutcome, LegacyImportItemState, LegacyImportSourceKind, LegacyImportSummary,
-    ReconciliationReport, ResolvedArtifact,
+    ProjectRenderSceneRecord, ProjectRenderSceneWrite, ProjectSpeechReference,
+    ProjectSpeechReferenceWrite, ReconciliationReport, ResolvedArtifact,
 };
 use crate::secrets::{CredentialId, CredentialPurpose, CredentialState, CredentialStatus};
 
@@ -40,7 +42,7 @@ const MAX_SETTINGS_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SETTINGS_BATCH_ENTRIES: usize = 4_096;
 const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
-const SCHEMA_VERSION: u32 = 8;
+const SCHEMA_VERSION: u32 = 11;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
 const MAX_MEDIA_RESOLUTION_BATCHES: usize = 64;
 const MAX_ARTIFACT_LIST_ITEMS: usize = 4_096;
@@ -275,6 +277,55 @@ enum Request {
         snapshot: JobSnapshot,
         reply: SyncSender<Result<JobWrite, DatabaseError>>,
     },
+    CompleteJobWithResult {
+        expected_sequence: u64,
+        snapshot: JobSnapshot,
+        delivery: JobResultDeliveryDraft,
+        reply: SyncSender<Result<JobWrite, DatabaseError>>,
+    },
+    CompleteProjectJobWithResult {
+        expected_sequence: u64,
+        snapshot: JobSnapshot,
+        delivery: JobResultDeliveryDraft,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        asset_id: Option<AssetId>,
+        reply: SyncSender<Result<JobWrite, DatabaseError>>,
+    },
+    ListPendingJobResults {
+        reply: SyncSender<Result<Vec<JobResultDeliveryHeader>, DatabaseError>>,
+    },
+    ClaimJobResult {
+        job_id: JobId,
+        reply: SyncSender<Result<Option<JobResultDelivery>, DatabaseError>>,
+    },
+    AcknowledgeJobResult {
+        job_id: JobId,
+        delivery_id: Uuid,
+        reply: SyncSender<Result<bool, DatabaseError>>,
+    },
+    GetProjectSpeechReference {
+        project_id: ProjectId,
+        reply: SyncSender<Result<Option<ProjectSpeechReference>, DatabaseError>>,
+    },
+    PutProjectSpeechReference {
+        write: ProjectSpeechReferenceWrite,
+        reply: SyncSender<Result<ProjectSpeechReference, DatabaseError>>,
+    },
+    DeleteProjectSpeechReference {
+        project_id: ProjectId,
+        expected_project_state_version: u64,
+        expected_reference_version: u64,
+        reply: SyncSender<Result<bool, DatabaseError>>,
+    },
+    GetProjectRenderScene {
+        project_id: ProjectId,
+        reply: SyncSender<Result<Option<ProjectRenderSceneRecord>, DatabaseError>>,
+    },
+    PutProjectRenderScene {
+        write: ProjectRenderSceneWrite,
+        reply: SyncSender<Result<ProjectRenderSceneRecord, DatabaseError>>,
+    },
     CreateProject {
         metadata: ProjectMetadata,
         reply: SyncSender<Result<ProjectSnapshot, DatabaseError>>,
@@ -406,6 +457,16 @@ impl std::fmt::Debug for Request {
             Self::GetJob { .. } => "GetJob",
             Self::ListJobs { .. } => "ListJobs",
             Self::CompareAndSwapJob { .. } => "CompareAndSwapJob",
+            Self::CompleteJobWithResult { .. } => "CompleteJobWithResult",
+            Self::CompleteProjectJobWithResult { .. } => "CompleteProjectJobWithResult",
+            Self::ListPendingJobResults { .. } => "ListPendingJobResults",
+            Self::ClaimJobResult { .. } => "ClaimJobResult",
+            Self::AcknowledgeJobResult { .. } => "AcknowledgeJobResult",
+            Self::GetProjectSpeechReference { .. } => "GetProjectSpeechReference",
+            Self::PutProjectSpeechReference { .. } => "PutProjectSpeechReference",
+            Self::DeleteProjectSpeechReference { .. } => "DeleteProjectSpeechReference",
+            Self::GetProjectRenderScene { .. } => "GetProjectRenderScene",
+            Self::PutProjectRenderScene { .. } => "PutProjectRenderScene",
             Self::CreateProject { .. } => "CreateProject",
             Self::LoadProject { .. } => "LoadProject",
             Self::ProjectHistoryStatus { .. } => "ProjectHistoryStatus",
@@ -956,6 +1017,111 @@ impl Database {
         })
     }
 
+    pub fn complete_job_with_result(
+        &self,
+        expected_sequence: u64,
+        snapshot: &JobSnapshot,
+        delivery: &JobResultDeliveryDraft,
+    ) -> Result<JobWrite, DatabaseError> {
+        self.request(|reply| Request::CompleteJobWithResult {
+            expected_sequence,
+            snapshot: snapshot.clone(),
+            delivery: delivery.clone(),
+            reply,
+        })
+    }
+
+    pub fn complete_project_job_with_result(
+        &self,
+        expected_sequence: u64,
+        snapshot: &JobSnapshot,
+        delivery: &JobResultDeliveryDraft,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        asset_id: Option<AssetId>,
+    ) -> Result<JobWrite, DatabaseError> {
+        self.request(|reply| Request::CompleteProjectJobWithResult {
+            expected_sequence,
+            snapshot: snapshot.clone(),
+            delivery: delivery.clone(),
+            project_id,
+            expected_state_version,
+            asset_id,
+            reply,
+        })
+    }
+
+    pub fn list_pending_job_results(&self) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
+        self.request(|reply| Request::ListPendingJobResults { reply })
+    }
+
+    pub fn claim_job_result(
+        &self,
+        job_id: JobId,
+    ) -> Result<Option<JobResultDelivery>, DatabaseError> {
+        self.request(|reply| Request::ClaimJobResult { job_id, reply })
+    }
+
+    pub fn acknowledge_job_result(
+        &self,
+        job_id: JobId,
+        delivery_id: Uuid,
+    ) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::AcknowledgeJobResult {
+            job_id,
+            delivery_id,
+            reply,
+        })
+    }
+
+    pub fn get_project_speech_reference(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Option<ProjectSpeechReference>, DatabaseError> {
+        self.request(|reply| Request::GetProjectSpeechReference { project_id, reply })
+    }
+
+    pub fn put_project_speech_reference(
+        &self,
+        write: &ProjectSpeechReferenceWrite,
+    ) -> Result<ProjectSpeechReference, DatabaseError> {
+        self.request(|reply| Request::PutProjectSpeechReference {
+            write: write.clone(),
+            reply,
+        })
+    }
+
+    pub fn delete_project_speech_reference(
+        &self,
+        project_id: ProjectId,
+        expected_project_state_version: u64,
+        expected_reference_version: u64,
+    ) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::DeleteProjectSpeechReference {
+            project_id,
+            expected_project_state_version,
+            expected_reference_version,
+            reply,
+        })
+    }
+
+    pub fn get_project_render_scene(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Option<ProjectRenderSceneRecord>, DatabaseError> {
+        self.request(|reply| Request::GetProjectRenderScene { project_id, reply })
+    }
+
+    pub fn put_project_render_scene(
+        &self,
+        write: &ProjectRenderSceneWrite,
+    ) -> Result<ProjectRenderSceneRecord, DatabaseError> {
+        self.request(|reply| Request::PutProjectRenderScene {
+            write: write.clone(),
+            reply,
+        })
+    }
+
     pub fn create_project(
         &self,
         metadata: &ProjectMetadata,
@@ -1493,6 +1659,86 @@ fn run_actor(
                     expected_sequence,
                     &snapshot,
                 ));
+            }
+            Request::CompleteJobWithResult {
+                expected_sequence,
+                snapshot,
+                delivery,
+                reply,
+            } => {
+                let _ = reply.send(super::job_results::complete_job_with_result(
+                    &mut connection,
+                    expected_sequence,
+                    &snapshot,
+                    &delivery,
+                ));
+            }
+            Request::CompleteProjectJobWithResult {
+                expected_sequence,
+                snapshot,
+                delivery,
+                project_id,
+                expected_state_version,
+                asset_id,
+                reply,
+            } => {
+                let _ = reply.send(super::job_results::complete_project_job_with_result(
+                    &mut connection,
+                    expected_sequence,
+                    &snapshot,
+                    &delivery,
+                    project_id,
+                    expected_state_version,
+                    asset_id,
+                ));
+            }
+            Request::ListPendingJobResults { reply } => {
+                let _ = reply.send(super::job_results::list_pending(&connection));
+            }
+            Request::ClaimJobResult { job_id, reply } => {
+                let _ = reply.send(super::job_results::claim(&connection, job_id));
+            }
+            Request::AcknowledgeJobResult {
+                job_id,
+                delivery_id,
+                reply,
+            } => {
+                let _ = reply.send(super::job_results::acknowledge(
+                    &mut connection,
+                    job_id,
+                    delivery_id,
+                ));
+            }
+            Request::GetProjectSpeechReference { project_id, reply } => {
+                let _ = reply.send(super::project_speech_references::get(
+                    &connection,
+                    project_id,
+                ));
+            }
+            Request::PutProjectSpeechReference { write, reply } => {
+                let _ = reply.send(super::project_speech_references::put(
+                    &mut connection,
+                    &write,
+                ));
+            }
+            Request::DeleteProjectSpeechReference {
+                project_id,
+                expected_project_state_version,
+                expected_reference_version,
+                reply,
+            } => {
+                let _ = reply.send(super::project_speech_references::delete(
+                    &mut connection,
+                    project_id,
+                    expected_project_state_version,
+                    expected_reference_version,
+                ));
+            }
+            Request::GetProjectRenderScene { project_id, reply } => {
+                let _ = reply.send(super::project_render_scenes::get(&connection, project_id));
+            }
+            Request::PutProjectRenderScene { write, reply } => {
+                let _ = reply.send(super::project_render_scenes::put(&mut connection, &write));
             }
             Request::CreateProject { metadata, reply } => {
                 let _ = reply.send(super::projects::create_project(&mut connection, &metadata));

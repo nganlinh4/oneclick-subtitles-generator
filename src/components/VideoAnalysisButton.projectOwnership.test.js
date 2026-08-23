@@ -5,6 +5,7 @@ import {
   setTranscriptionRulesForCache,
 } from '../utils/transcriptionRulesStore';
 import { captureActiveMediaRunContext } from '../utils/autoGenerationOwnership';
+import { showWarningToast } from '../utils/toastUtils';
 import VideoAnalysisButton from './VideoAnalysisButton';
 
 vi.mock('react-i18next', () => ({
@@ -58,6 +59,8 @@ beforeEach(() => {
     sourceIdentity: `asset:${ownedMedia.assetId}`,
     signal,
   }));
+  delete window.uploadedVideoFile;
+  delete window.downloadedVideoFile;
 });
 
 test('switching media reads the newly active project and never deletes its rules', async () => {
@@ -90,4 +93,16 @@ test('captures the active project before opening and awaits its scoped editor sa
     media: ownedMedia,
     signal: expect.any(AbortSignal),
   }));
+});
+
+test('ignores stale window-global media from a previous project', async () => {
+  getTranscriptionRulesSync.mockReturnValue(null);
+  window.uploadedVideoFile = media('stale.mp4', '019ffa3a-9a95-7a91-bad8-bd6144abaaeb');
+  window.downloadedVideoFile = media('also-stale.mp4', '019ffa3d-8e35-7f92-b3e3-607dd27bb263');
+  render(<VideoAnalysisButton />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Add analysis$/ }));
+
+  expect(captureActiveMediaRunContext).not.toHaveBeenCalled();
+  expect(showWarningToast).toHaveBeenCalledTimes(1);
 });

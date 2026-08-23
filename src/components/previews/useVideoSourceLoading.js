@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-
-import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
-import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
+import { useEffect, useRef, useState } from 'react';
 
 const isYoutubeUrl = (value) => value.includes('youtube.com') || value.includes('youtu.be');
 
@@ -33,34 +30,6 @@ const useVideoSourceLoading = ({ videoSource, t }) => {
     };
   }, []);
 
-  const processVideoUrl = useCallback(async (url, generation) => {
-    setDownloadProgress(0);
-    localStorage.setItem('current_video_url', url);
-    setIsDownloading(true);
-    try {
-      const media = await downloadNativeVideo({
-        url,
-        cookieSource: getDownloadCookieSource(),
-        onProgress: (progress) => {
-          if (loadGenerationRef.current === generation) setDownloadProgress(progress);
-        },
-      });
-      if (loadGenerationRef.current !== generation) return;
-      if (media === null) {
-        setDownloadProgress(0);
-        return;
-      }
-      setVideoUrl(media.playbackUrl);
-      setDownloadProgress(100);
-    } catch (downloadError) {
-      if (loadGenerationRef.current === generation) {
-        setError(t('preview.videoError', `Error loading video: ${downloadError.message}`));
-      }
-    } finally {
-      if (loadGenerationRef.current === generation) setIsDownloading(false);
-    }
-  }, [t]);
-
   useEffect(() => {
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
@@ -72,6 +41,10 @@ const useVideoSourceLoading = ({ videoSource, t }) => {
 
     window.originalNarrations = [];
     window.translatedNarrations = [];
+    window.groupedNarrations = [];
+    window.groupedSubtitles = [];
+    window.useGroupedSubtitles = false;
+    window.resetAlignedNarration?.();
     localStorage.removeItem('originalNarrations');
     localStorage.removeItem('translatedNarrations');
     window.dispatchEvent(new CustomEvent('narrations-updated', {
@@ -83,14 +56,21 @@ const useVideoSourceLoading = ({ videoSource, t }) => {
 
     if (!videoSource) return undefined;
     if (isYoutubeUrl(videoSource)) {
-      processVideoUrl(videoSource, generation);
+      // A preview is a consumer, never a media-activation owner. URL acquisition happens in the
+      // generation/download transaction, which publishes an opaque native playback capability
+      // only after project and store ownership are bound. Starting a second download here used to
+      // let an old preview replace the Rust-selected media behind the editor.
+      setError(t(
+        'preview.mediaNotPrepared',
+        'Prepare this video before opening its preview.'
+      ));
     } else {
       setVideoUrl(videoSource);
     }
     return () => {
       if (loadGenerationRef.current === generation) loadGenerationRef.current += 1;
     };
-  }, [processVideoUrl, videoSource]);
+  }, [t, videoSource]);
 
   return {
     videoUrl,

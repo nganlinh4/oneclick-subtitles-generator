@@ -6,14 +6,12 @@ import {
 } from "../../../services/subtitleCache";
 import {
   getCurrentCacheId as getRulesCacheId,
-  setCurrentCacheId as setRulesCacheId,
 } from "../../../utils/transcriptionRulesStore";
 import {
   getCurrentCacheId as getSubtitlesCacheId,
-  refreshCurrentSubtitleProject,
-  setCurrentCacheId as setSubtitlesCacheId,
 } from "../../../utils/userSubtitlesStore";
 import { resolveProjectForCache } from "../../../platform/subtitleProjectStore";
+import { activateSubtitleProjectBinding } from "../../../platform/subtitleProjectBinding";
 import { parseSrtContent } from "../../../utils/srtParser";
 import {
   assertAutoGenerationRequestActive,
@@ -39,17 +37,11 @@ const entriesForPendingRef = (pendingRef) => {
   return entries;
 };
 
-const activateProjectCache = (cacheId) => {
+const activateProjectCache = async (cacheId) => {
   if (typeof cacheId !== "string" || cacheId.length === 0) {
     throw new Error("The prepared media could not be bound to a subtitle project.");
   }
-  const previousCacheId = getSubtitlesCacheId();
-  setRulesCacheId(cacheId);
-  setSubtitlesCacheId(cacheId);
-  // A repeated download of the same URL owns the same durable subtitle project but advances its
-  // media revision. Identity listeners correctly stay quiet; explicitly refresh subtitle/editor
-  // state from the new authoritative snapshot before cached rows or editing can continue.
-  if (previousCacheId === cacheId) refreshCurrentSubtitleProject(cacheId);
+  return activateSubtitleProjectBinding(cacheId);
 };
 
 /**
@@ -215,10 +207,9 @@ export const createDownloadHandlers = ({
               const urlBasedCacheId = await generateUrlBasedCacheId(
                 currentVideoUrl
               );
-              activateProjectCache(urlBasedCacheId);
+              const binding = await activateProjectCache(urlBasedCacheId);
               projectCacheId = urlBasedCacheId;
-              const project = await resolveProjectForCache(urlBasedCacheId, { create: true });
-              projectId = project?.projectId ?? null;
+              projectId = binding.projectId;
               if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
               assertPreparationOwnership(projectId);
 
@@ -364,14 +355,13 @@ export const createDownloadHandlers = ({
             );
             cacheId = await generateFileCacheId(processedFile);
           }
-          activateProjectCache(cacheId);
-          localStorage.setItem("current_file_cache_id", cacheId);
+          const binding = await activateProjectCache(cacheId);
           if (sourceIdentity === null) sourceIdentity = sourceIdentityForAsset(cacheId);
           projectCacheId = cacheId;
-          const project = await resolveProjectForCache(cacheId, { create: true });
-          projectId = project?.projectId ?? null;
+          projectId = binding.projectId;
           if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
           assertPreparationOwnership(projectId);
+          localStorage.setItem("current_file_cache_id", cacheId);
 
           // Publish only after the durable project identity is active.
           setUploadedFile(processedFile);

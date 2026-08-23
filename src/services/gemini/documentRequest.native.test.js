@@ -1,4 +1,7 @@
-import { runGeminiDocumentRequest } from './documentRequest';
+import {
+  runGeminiDocumentRequest,
+  runGeminiDocumentRequestResult,
+} from './documentRequest';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
 vi.mock('../../platform/desktopRuntime', async (importOriginal) => ({
@@ -59,6 +62,74 @@ test('native document processing keeps plain-text fallback semantics', async () 
 
   await expect(runGeminiDocumentRequest(options)).resolves.toBe('A plain native response');
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('typed document processing preserves the exact native delivery without acknowledging it', async () => {
+  const acknowledge = vi.fn();
+  runNativeGeminiText.mockResolvedValue({
+    text: 'A durable native response',
+    job: { id: 'job-1' },
+    deliveryId: 'delivery-1',
+    acknowledge,
+  });
+
+  const result = await runGeminiDocumentRequestResult(options);
+
+  expect(result).toMatchObject({
+    status: 'complete',
+    text: 'A durable native response',
+    failedChunkIds: [],
+    deliveries: [{ jobId: 'job-1', deliveryId: 'delivery-1' }],
+  });
+  expect(result.deliveries[0].acknowledge).toBe(acknowledge);
+  expect(acknowledge).not.toHaveBeenCalled();
+});
+
+test('typed document processing refuses empty provider output and retains its delivery', async () => {
+  const acknowledge = vi.fn();
+  runNativeGeminiText.mockResolvedValue({
+    text: '   ',
+    job: { id: 'job-empty' },
+    deliveryId: 'delivery-empty',
+    acknowledge,
+  });
+
+  const result = await runGeminiDocumentRequestResult(options);
+
+  expect(result).toMatchObject({
+    status: 'refused',
+    code: 'emptyDocumentResult',
+    text: null,
+    retryable: true,
+    failedChunkIds: [1],
+    deliveries: [{ jobId: 'job-empty', deliveryId: 'delivery-empty' }],
+  });
+  expect(acknowledge).not.toHaveBeenCalled();
+});
+
+test('typed document processing refuses structurally empty output selected by its owner', async () => {
+  const acknowledge = vi.fn();
+  runNativeGeminiText.mockResolvedValue({
+    text: JSON.stringify({ title: '', content: '' }),
+    job: { id: 'job-empty-structured' },
+    deliveryId: 'delivery-empty-structured',
+    acknowledge,
+  });
+
+  const result = await runGeminiDocumentRequestResult({
+    ...options,
+    validateProcessedText: ({ structured }) => (
+      typeof structured?.content === 'string' && structured.content.trim().length > 0
+    ),
+  });
+
+  expect(result).toMatchObject({
+    status: 'refused',
+    code: 'emptyDocumentResult',
+    failedChunkIds: [1],
+  });
+  expect(result.deliveries[0].acknowledge).toBe(acknowledge);
+  expect(acknowledge).not.toHaveBeenCalled();
 });
 
 test('native cancellation keeps the caller-specific abort message', async () => {

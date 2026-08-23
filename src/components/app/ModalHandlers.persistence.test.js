@@ -13,7 +13,6 @@ import { useModalHandlers } from './ModalHandlers';
 vi.mock('../../services/subtitleCache', () => ({ generateUrlBasedCacheId: vi.fn() }));
 vi.mock('../../utils/transcriptionRulesStore', () => ({
   getCurrentCacheId: vi.fn(),
-  setTranscriptionRules: vi.fn(),
   setTranscriptionRulesForCache: vi.fn(),
 }));
 vi.mock('../../utils/userSubtitlesStore', () => ({
@@ -22,17 +21,16 @@ vi.mock('../../utils/userSubtitlesStore', () => ({
 }));
 vi.mock('../../platform/subtitleProjectStore', () => ({ resolveProjectForCache: vi.fn() }));
 vi.mock('../../services/videoAnalysisService', () => ({ abortVideoAnalysis: vi.fn(() => false) }));
-vi.mock('../../services/geminiService', () => ({ PROMPT_PRESETS: [] }));
-vi.mock('../../platform/mediaService', () => ({ isNativeMediaDescriptor: vi.fn(() => false) }));
+vi.mock('../../platform/mediaService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  isNativeMediaDescriptor: vi.fn(() => false),
+}));
 vi.mock('../../utils/cacheUtils', () => ({ generateFileCacheId: vi.fn() }));
 
 const CACHE = '019ffa3d-8e35-7f92-b3e3-607dd27bb263';
 const PROJECT = '019ffa3d-8e35-7f92-b3e3-607dd27bb299';
 
 const buildState = () => ({
-  setShowVideoAnalysis: vi.fn(),
-  setVideoAnalysisResult: vi.fn(),
-  videoAnalysisResult: null,
   setTranscriptionRulesState: vi.fn(),
   setShowRulesEditor: vi.fn(),
   setStatus: vi.fn(),
@@ -110,7 +108,6 @@ test('does not publish edited rules when the alias remaps after the native write
 
   expect(setTranscriptionRulesForCache).toHaveBeenCalledTimes(1);
   expect(state.setTranscriptionRulesState).not.toHaveBeenCalled();
-  expect(state.setVideoAnalysisResult).not.toHaveBeenCalled();
 });
 
 test('uses the active file project and publishes user subtitles only after persistence', async () => {

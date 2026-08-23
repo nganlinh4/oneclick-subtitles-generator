@@ -145,6 +145,7 @@ describe('the subtitle style the render tab holds', () => {
     const section = codeOf('src/components/VideoRenderingSection.js');
     expect(section).not.toContain('defaultCustomization');
     expect(section).not.toMatch(/\.\.\.\(?\s*(queueItem\?\.customization|subtitleCustomization)/);
-    expect(section).toContain('useSubtitleCustomization()');
+    expect(section).toContain('useProjectRenderScene()');
+    expect(section).toContain("updateSceneField('customization'");
   });
 });

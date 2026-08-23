@@ -7,29 +7,65 @@ import i18n from '../../i18n/i18n';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
+import {
+    acknowledgeProjectSubtitleLanguage,
+    captureProjectSubtitleLanguage,
+    loadProjectSubtitleLanguage,
+    normalizeProjectLanguageResult,
+    persistProjectSubtitleLanguage,
+} from '../../platform/projectSubtitleLanguageStore';
+
+const dispatchDetectionError = (error, source) => {
+    const message = error instanceof Error ? error.message : String(error);
+    window.dispatchEvent(new CustomEvent('language-detection-error', {
+        detail: { error: message, source }
+    }));
+};
+
+const publishDetection = (result, source) => {
+    window.dispatchEvent(new CustomEvent('language-detection-complete', {
+        detail: { result, source }
+    }));
+    return result;
+};
 
 /**
  * Detect language of text using Gemini API
  * @param {Array} subtitles - Array of subtitles to detect language from
  * @param {string} source - Source of subtitles ('original' or 'translated')
  * @param {string} model - Gemini model to use
- * @returns {Promise<Object>} - Language detection result
+ * @returns {Promise<Object|null>} - Valid language detection result, or null on refusal
  */
 export const detectSubtitleLanguage = async (subtitles, source = 'original', model = DEFAULT_FAST_TEXT_MODEL_ID) => {
-    if (!subtitles || subtitles.length === 0) {
-
-        return {
-            languageCode: 'en',
-            languageName: 'English',
-            isMultiLanguage: false,
-            secondaryLanguages: []
-        };
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+        dispatchDetectionError(new Error('No subtitles are available for language detection'), source);
+        return null;
     }
 
     try {
+        const restored = await loadProjectSubtitleLanguage({
+            sourceType: source,
+            subtitles,
+        });
+        if (restored !== null) return publishDetection(restored.result, source);
+
+        const context = await captureProjectSubtitleLanguage({
+            sourceType: source,
+            subtitles,
+        });
         // Take the first 3 subtitles for language detection
         const sampleSubtitles = subtitles.slice(0, 3);
-        const sampleText = sampleSubtitles.map(subtitle => subtitle.text).join('\n');
+        if (sampleSubtitles.some((subtitle) => (
+            !subtitle
+            || typeof subtitle !== 'object'
+            || typeof subtitle.text !== 'string'
+        ))) {
+            throw new Error('Subtitles are malformed for language detection');
+        }
+        const sampleText = sampleSubtitles.map(subtitle => subtitle.text.trim()).filter(Boolean).join('\n');
+        if (sampleText.length === 0) {
+            throw new Error('Subtitle text is empty for language detection');
+        }
 
         // Create the prompt for language detection
         const detectionPrompt = `Analyze the following text and determine its language. Identify the primary language and any secondary languages if present.
@@ -56,77 +92,35 @@ ${sampleText}
             prompt: detectionPrompt,
             responseJsonSchema: responseSchema,
             ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+            projectId: context.projectId,
+            expectedProjectStateVersion: context.projectStateVersion,
         });
-        const data = {
-            candidates: [{ content: { parts: [{ text: nativeResult.text }] } }],
-        };
-
-
-        // Extract the language detection result
-        let result;
-        try {
-            // Parse the structured output
-            if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                const parts = data.candidates[0].content.parts;
-                if (parts && parts.length > 0 && parts[0].functionCall) {
-                    result = parts[0].functionCall.args;
-
-                } else if (parts && parts.length > 0 && parts[0].text) {
-                    // Try to parse JSON from text response
-                    try {
-                        const jsonMatch = parts[0].text.match(/\{[\s\S]*\}/);
-                        if (jsonMatch) {
-                            result = JSON.parse(jsonMatch[0]);
-
-                        }
-                    } catch (e) {
-                        console.error('Error parsing JSON from text response:', e);
-                    }
-                }
-            }
-
-            // If we couldn't parse the result, use a default
-            if (!result) {
-                console.warn('Could not parse language detection result, using default');
-                result = {
-                    languageCode: 'en',
-                    languageName: 'English',
-                    isMultiLanguage: false,
-                    secondaryLanguages: []
-                };
-            }
-        } catch (error) {
-            console.error('Error extracting language detection result:', error);
-            throw error;
+        if (typeof nativeResult?.text !== 'string'
+            || typeof nativeResult?.acknowledge !== 'function'
+            || typeof nativeResult?.job?.id !== 'string'
+            || typeof nativeResult?.deliveryId !== 'string') {
+            throw new Error('Language detection returned no structured result');
         }
-
-        // Dispatch event to update UI with result
-        window.dispatchEvent(new CustomEvent('language-detection-complete', {
-            detail: {
-                result,
-                source: source
-            }
-        }));
-
-        return result;
+        let decoded;
+        try {
+            decoded = JSON.parse(nativeResult.text);
+        } catch {
+            throw new Error('Language detection returned malformed JSON');
+        }
+        const result = normalizeProjectLanguageResult(decoded);
+        const receipt = await persistProjectSubtitleLanguage(context, {
+            result,
+            job: nativeResult.job,
+            deliveryId: nativeResult.deliveryId,
+            acknowledge: nativeResult.acknowledge,
+        });
+        const record = await acknowledgeProjectSubtitleLanguage(receipt);
+        return publishDetection(record.result, source);
     } catch (error) {
         console.error('Error detecting language:', error);
 
-        // Dispatch event to update UI with error
-        window.dispatchEvent(new CustomEvent('language-detection-error', {
-            detail: {
-                error: error.message,
-                source: source
-            }
-        }));
-
-        // Return a default result
-        return {
-            languageCode: 'en',
-            languageName: 'English',
-            isMultiLanguage: false,
-            secondaryLanguages: []
-        };
+        dispatchDetectionError(error, source);
+        return null;
     }
 };
 

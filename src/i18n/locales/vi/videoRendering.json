@@ -52,6 +52,7 @@
   "cancelling": "Đang hủy render...",
   "cancelFailed": "Không thể hủy render",
   "cancelError": "Lỗi khi hủy render",
+  "recoveryUnavailable": "Tạm thời không thể khôi phục phiên render trước",
   "unknownError": "Đã xảy ra lỗi không xác định",
   "noSubtitles": "Không có phụ đề khả dụng",
   "result": "Video Đã render",
@@ -241,5 +242,6 @@
   "selectTransform": "Chọn chuyển đổi",
   "trimmingTimeline": "Cắt video",
   "validating": "Đang kiểm tra điều kiện kết xuất...",
-  "queued": "Đã xếp hàng kết xuất"
+  "queued": "Đã xếp hàng kết xuất",
+  "loadingProjectScene": "Đang tải cài đặt kết xuất của dự án này…"
 }

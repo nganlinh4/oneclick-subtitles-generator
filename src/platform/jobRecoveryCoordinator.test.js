@@ -50,6 +50,7 @@ const createHarness = ({
   knownJobs = jobs,
   storage = new MemoryStorage(),
   adapters = {},
+  pending = [],
 } = {}) => {
   const byId = new Map(knownJobs.map((snapshot) => [snapshot.id, snapshot]));
   const invokeCommand = vi.fn(async (command, args) => {
@@ -66,6 +67,7 @@ const createHarness = ({
     invokeCommand,
     isNativeRuntime: () => true,
     adapters,
+    pendingResults: vi.fn().mockResolvedValue(pending),
     releaseRenderPlayback,
     storage,
   });
@@ -73,6 +75,118 @@ const createHarness = ({
 };
 
 describe('native durable-job startup recovery', () => {
+  test('shares one in-flight attempt, caches success, and retries after unavailable recovery', async () => {
+    let releaseFirstList;
+    const invokeCommand = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirstList = resolve; }))
+      .mockResolvedValue([]);
+    const pendingResults = vi.fn().mockResolvedValue([]);
+    const coordinator = createNativeJobRecoveryCoordinator({
+      invokeCommand,
+      isNativeRuntime: () => true,
+      adapters: {},
+      pendingResults,
+      storage: new MemoryStorage(),
+    });
+
+    const first = coordinator.start();
+    const concurrent = coordinator.start();
+    expect(concurrent).toBe(first);
+    releaseFirstList([]);
+    await expect(first).resolves.toEqual({ recovered: 0, discarded: 0, unavailable: false });
+    await expect(coordinator.start()).resolves.toEqual({
+      recovered: 0,
+      discarded: 0,
+      unavailable: false,
+    });
+    expect(invokeCommand).toHaveBeenCalledTimes(1);
+
+    const retryingInvoke = vi.fn()
+      .mockRejectedValueOnce(new Error('transport closed'))
+      .mockResolvedValue([]);
+    const retrying = createNativeJobRecoveryCoordinator({
+      invokeCommand: retryingInvoke,
+      isNativeRuntime: () => true,
+      adapters: {},
+      pendingResults: vi.fn().mockResolvedValue([]),
+      storage: new MemoryStorage(),
+    });
+    await expect(retrying.ensureReady()).rejects.toMatchObject({
+      code: 'nativeJobRecoveryUnavailable',
+      retryable: true,
+      result: { unavailable: true },
+    });
+    await expect(retrying.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 0,
+      unavailable: false,
+    });
+    expect(retryingInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  test('retains remembered IDs on job_get transport errors but forgets definitive absence', async () => {
+    const render = job({ id: RENDER_ID, kind: 'renderVideo' });
+    const storage = new MemoryStorage({
+      [NATIVE_JOB_IDS_STORAGE_KEY]: JSON.stringify([RENDER_ID]),
+    });
+    const adapter = vi.fn(async () => ({ job: render, result: null }));
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'jobs_list') return [render];
+      if (command === 'job_get') throw new Error('transport closed');
+      throw new Error('unexpected');
+    });
+    const coordinator = createNativeJobRecoveryCoordinator({
+      invokeCommand,
+      isNativeRuntime: () => true,
+      adapters: { renderVideo: adapter },
+      pendingResults: vi.fn().mockResolvedValue([]),
+      storage,
+    });
+
+    await expect(coordinator.start()).resolves.toMatchObject({ unavailable: true });
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBe(JSON.stringify([RENDER_ID]));
+    expect(adapter).not.toHaveBeenCalled();
+
+    invokeCommand.mockImplementation(async (command) => {
+      if (command === 'jobs_list') return [render];
+      if (command === 'job_get') {
+        throw Object.assign(new Error('missing'), { code: 'jobNotFound' });
+      }
+      throw new Error('unexpected');
+    });
+    await expect(coordinator.start()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBeNull();
+  });
+
+  test('discovers SQLite result deliveries without localStorage and retains them on transport failure', async () => {
+    const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'asrTranscription',
+    };
+    const adapter = vi.fn().mockRejectedValue(new Error('WebView transport closed'));
+    const storage = new MemoryStorage();
+    const { coordinator } = createHarness({
+      jobs: [transcription],
+      storage,
+      adapters: { transcribe: adapter },
+      pending: [header],
+    });
+
+    await expect(coordinator.start()).resolves.toEqual({
+      recovered: 0,
+      discarded: 0,
+      unavailable: true,
+    });
+    expect(adapter).toHaveBeenCalledWith(OTHER_ID);
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBe(JSON.stringify([OTHER_ID]));
+  });
+
   test('synchronously destroys legacy payload records and persists only UUID job IDs', async () => {
     const secretPayload = JSON.stringify({
       subtitles: [{ text: 'private subtitle' }],
@@ -85,6 +199,7 @@ describe('native durable-job startup recovery', () => {
     const coordinator = createNativeJobRecoveryCoordinator({
       isNativeRuntime: () => false,
       storage,
+      pendingResults: vi.fn().mockResolvedValue([]),
     });
 
     const startup = coordinator.start();
@@ -135,8 +250,8 @@ describe('native durable-job startup recovery', () => {
 
     await expect(coordinator.start()).resolves.toEqual({
       recovered: 3,
-      discarded: 1,
-      unavailable: false,
+      discarded: 0,
+      unavailable: true,
     });
     expect(invokeCommand).toHaveBeenNthCalledWith(1, 'jobs_list', {});
     expect(invokeCommand.mock.calls.slice(1).map((call) => call[0]))
@@ -147,7 +262,7 @@ describe('native durable-job startup recovery', () => {
     expect(coordinator.list().map(({ job: snapshot }) => snapshot.id).sort())
       .toEqual([ALIGNMENT_ID, RENDER_ID, SPEECH_ID].sort());
     expect(JSON.parse(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).sort())
-      .toEqual([ALIGNMENT_ID, RENDER_ID, SPEECH_ID].sort());
+      .toEqual([ALIGNMENT_ID, OTHER_ID, RENDER_ID, SPEECH_ID].sort());
   });
 
   test('ignores unremembered interrupted history instead of resurrecting stale work', async () => {
@@ -215,6 +330,7 @@ describe('native durable-job startup recovery', () => {
         isNativeRuntime: () => true,
         adapters: { renderVideo: adapter },
         storage: new MemoryStorage(),
+        pendingResults: vi.fn().mockResolvedValue([]),
       });
       await expect(coordinator.start()).resolves.toMatchObject({ unavailable: true });
       expect(adapter).not.toHaveBeenCalled();

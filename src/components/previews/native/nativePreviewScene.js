@@ -273,6 +273,7 @@ const PROBE_CUE = Object.freeze({ id: 'probe', start: 0, end: 1, text: 'x' });
 export const previewRenderRequest = ({
   sourceAsset,
   projectId,
+  sceneRevision = 0,
   cue,
   customization,
   resolution,
@@ -286,6 +287,7 @@ export const previewRenderRequest = ({
     const built = buildNativeRenderRequest({
       sourceAsset,
       projectId,
+      sceneRevision,
       lyrics: [cue ?? PROBE_CUE],
       settings: {
         resolution, frameRate, ...PREVIEW_AUDIO, trimStart, trimEnd,

@@ -1,17 +1,24 @@
 
-import { resolveActiveNativeMediaAssetId } from '../../../platform/activeNativeMedia';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../../../platform/activeNativeMedia';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { exportMediaAsset } from '../../../platform/mediaExportService';
 import { showErrorToast } from '../../../utils/toastUtils';
 
 export const downloadPreviewMedia = async ({ videoSource, currentSource }) => {
   if (isDesktopRuntime()) {
-    const assetId = resolveActiveNativeMediaAssetId(videoSource)
-      || resolveActiveNativeMediaAssetId(currentSource);
-    if (assetId === null) {
+    const candidate = videoSource ?? currentSource;
+    let capability;
+    try {
+      capability = await resolveActiveNativeMedia({ candidate });
+    } catch {
       throw new Error('Select the media again before exporting it.');
     }
-    return exportMediaAsset(assetId);
+    const exported = await exportMediaAsset(capability.assetId);
+    await revalidateActiveNativeMedia(capability);
+    return exported;
   }
   if (!currentSource) return null;
   const link = document.createElement('a');

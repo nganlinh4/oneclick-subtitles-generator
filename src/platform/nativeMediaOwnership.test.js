@@ -137,16 +137,21 @@ it.each([
 it('attaches imported media to its alias project and remembers the association', async () => {
   const mutate = vi.fn(async () => ({ snapshot: snapshotWith([ASSET_RECORD], { stateVersion: 4 }) }));
   const rememberSession = vi.fn();
-  const resolveProject = vi.fn(async () => ({
-    cacheId: ASSET_A, projectId: PROJECT_A, snapshot: snapshotWith([]),
-  }));
+  const resolveProject = vi.fn()
+    .mockResolvedValueOnce({
+      cacheId: ASSET_A, projectId: PROJECT_A, snapshot: snapshotWith([]),
+    })
+    .mockResolvedValueOnce({
+      cacheId: ASSET_A, projectId: PROJECT_A, snapshot: snapshotWith([ASSET_RECORD]),
+    });
 
   await expect(ensureProjectOwnsNativeMedia(
     { media: MEDIA_A, cacheId: ASSET_A },
     { resolveProject, mutate, rememberSession }
   )).resolves.toEqual({ assetId: ASSET_A, cacheId: ASSET_A, projectId: PROJECT_A });
 
-  expect(resolveProject).toHaveBeenCalledExactlyOnceWith(ASSET_A, { create: true });
+  expect(resolveProject).toHaveBeenNthCalledWith(1, ASSET_A, { create: true });
+  expect(resolveProject).toHaveBeenNthCalledWith(2, ASSET_A, { create: false });
   expect(mutate).toHaveBeenCalledExactlyOnceWith(
     PROJECT_A,
     'Associate active media with its subtitle project',
@@ -172,7 +177,31 @@ it('does not commit again when the claim already attached the same asset', async
   );
 
   expect(mutate).not.toHaveBeenCalled();
+  expect(resolveProject).toHaveBeenCalledTimes(2);
   expect(rememberSession).toHaveBeenCalledOnce();
+});
+
+it('never records a session when the alias remaps during ownership publication', async () => {
+  const rememberSession = vi.fn();
+  const resolveProject = vi.fn()
+    .mockResolvedValueOnce({
+      cacheId: URL_ALIAS, projectId: PROJECT_A, snapshot: snapshotWith([ASSET_RECORD]),
+    })
+    .mockResolvedValueOnce({
+      cacheId: URL_ALIAS, projectId: PROJECT_B, snapshot: snapshotWith([ASSET_RECORD]),
+    });
+
+  await expect(ensureProjectOwnsNativeMedia({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    expectedProjectId: PROJECT_A,
+  }, {
+    resolveProject,
+    mutate: vi.fn(),
+    rememberSession,
+  })).rejects.toMatchObject({ code: 'nativeMediaOwnershipFailed' });
+
+  expect(rememberSession).not.toHaveBeenCalled();
 });
 
 it('surfaces a project conflict unchanged and remembers nothing', async () => {

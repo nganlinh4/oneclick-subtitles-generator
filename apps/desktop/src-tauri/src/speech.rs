@@ -18,7 +18,7 @@ use osg_engine_packages::{
 use osg_infrastructure::secrets::{CredentialId, CredentialPurpose};
 use osg_infrastructure::storage::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRegistration,
-    ContentHash, Database,
+    ContentHash, Database, ProjectSpeechReference, ProjectSpeechReferenceWrite,
 };
 use osg_media::{
     AudioBitrate, AudioExtractionPlan, AudioOutput, AudioSampleRate,
@@ -1199,12 +1199,18 @@ pub(crate) struct SpeechReferenceExtractRequest {
     backend: SpeechReferenceBackend,
     start_ms: u64,
     end_ms: u64,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SpeechReferenceSelectRequest {
     backend: SpeechReferenceBackend,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1212,6 +1218,36 @@ pub(crate) struct SpeechReferenceSelectRequest {
 pub(crate) struct SpeechReferenceImportRequest {
     backend: SpeechReferenceBackend,
     asset_id: AssetId,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SpeechReferenceProjectRequest {
+    project_id: ProjectId,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SpeechReferenceCommitRequest {
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
+    artifact_id: String,
+    transcript: String,
+    language: String,
+    delivery_job_id: Option<JobId>,
+    delivery_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SpeechReferenceClearRequest {
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1350,6 +1386,33 @@ pub(crate) struct SpeechArtifactDescriptor {
 pub(crate) struct SpeechPlayableArtifact {
     artifact: SpeechArtifactDescriptor,
     playback: RegisteredMedia,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechReferenceRecordResponse {
+    schema_version: u32,
+    project_id: ProjectId,
+    project_state_version: u64,
+    reference_version: u64,
+    artifact_id: String,
+    transcript: String,
+    language: String,
+    pending_delivery: Option<SpeechReferenceDeliveryResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechReferenceDeliveryResponse {
+    job_id: JobId,
+    delivery_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechReferencePlayableResponse {
+    reference: SpeechReferenceRecordResponse,
+    playable: SpeechPlayableArtifact,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -1843,7 +1906,7 @@ pub(crate) async fn speech_reference_select(
     runtime: State<'_, SpeechRuntime>,
     state: State<'_, DesktopState>,
     request: SpeechReferenceSelectRequest,
-) -> CommandResult<Option<SpeechPlayableArtifact>> {
+) -> CommandResult<Option<SpeechReferencePlayableResponse>> {
     let media_engine = state
         .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
@@ -1854,6 +1917,11 @@ pub(crate) async fn speech_reference_select(
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        require_reference_project_state(
+            &database,
+            request.project_id,
+            request.expected_project_state_version,
+        )?;
         let Some(path) = dialog_paths::pick_file(&app)? else {
             return Ok(None);
         };
@@ -1864,6 +1932,9 @@ pub(crate) async fn speech_reference_select(
                 work: &work,
                 database: &database,
                 media_server: &media_server,
+                project_id: request.project_id,
+                expected_project_state_version: request.expected_project_state_version,
+                expected_reference_version: request.expected_reference_version,
             },
             &path,
             request.backend,
@@ -1885,7 +1956,7 @@ pub(crate) async fn speech_reference_import(
     state: State<'_, DesktopState>,
     blob_store: State<'_, MediaBlobStore>,
     request: SpeechReferenceImportRequest,
-) -> CommandResult<SpeechPlayableArtifact> {
+) -> CommandResult<SpeechReferencePlayableResponse> {
     let media_engine = state
         .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
@@ -1899,6 +1970,11 @@ pub(crate) async fn speech_reference_import(
     let database = state.database.clone();
     let media_server = state.media_server.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        require_reference_project_state(
+            &database,
+            request.project_id,
+            request.expected_project_state_version,
+        )?;
         normalize_and_publish_reference(
             &ReferencePublicationContext {
                 runtime: &speech_runtime,
@@ -1906,6 +1982,9 @@ pub(crate) async fn speech_reference_import(
                 work: &work,
                 database: &database,
                 media_server: &media_server,
+                project_id: request.project_id,
+                expected_project_state_version: request.expected_project_state_version,
+                expected_reference_version: request.expected_reference_version,
             },
             imported.path(),
             request.backend,
@@ -1921,7 +2000,7 @@ pub(crate) async fn speech_reference_extract(
     runtime: State<'_, SpeechRuntime>,
     state: State<'_, DesktopState>,
     request: SpeechReferenceExtractRequest,
-) -> CommandResult<SpeechPlayableArtifact> {
+) -> CommandResult<SpeechReferencePlayableResponse> {
     let duration_ms = request
         .end_ms
         .checked_sub(request.start_ms)
@@ -1930,15 +2009,17 @@ pub(crate) async fn speech_reference_extract(
     let media_engine = state
         .media_engine()
         .ok_or_else(CommandError::media_tools_unavailable)?;
-    let media_path = state
+    let local_media = state
         .editor
         .read()
         .map_err(|_| CommandError::internal("The editing session is unavailable."))?
         .local_media
         .clone()
-        .ok_or_else(|| CommandError::invalid_input("Select media before extracting a reference."))?
-        .path()
-        .to_owned();
+        .ok_or_else(|| {
+            CommandError::invalid_input("Select media before extracting a reference.")
+        })?;
+    let media_path = local_media.path().to_owned();
+    let media_asset_id = local_media.asset_id();
     let work = runtime
         .work_directory()
         .map_err(|_| CommandError::internal("The speech work directory is unavailable."))?;
@@ -1946,6 +2027,18 @@ pub(crate) async fn speech_reference_extract(
     let media_server = state.media_server.clone();
     let speech_runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        require_reference_project_state(
+            &database,
+            request.project_id,
+            request.expected_project_state_version,
+        )?;
+        if !database.project_media_is_current(
+            request.project_id,
+            request.expected_project_state_version,
+            media_asset_id,
+        )? {
+            return Err(CommandError::media_unavailable());
+        }
         let source = MediaInput::from_native_selection(media_path)?;
         let output_path = work.path().join("reference.wav");
         let output = MediaOutput::within_root(&output_path, work.path())?;
@@ -1967,11 +2060,12 @@ pub(crate) async fn speech_reference_extract(
         media_engine.execute(&MediaOperation::AudioExtraction(plan), &control)?;
         let asset = AudioAsset::from_native_file(&output_path)
             .map_err(|error| speech_command_error(&error))?;
-        let published = publish_durable_artifact(
+        let published = publish_project_durable_artifact(
             &speech_runtime,
             &database,
+            request.project_id,
             None,
-            "speechReference",
+            &reference_artifact_kind(request.project_id),
             &output_path,
             SpeechArtifactMetadata {
                 format: SpeechArtifactFormatResponse::Wav,
@@ -1982,18 +2076,93 @@ pub(crate) async fn speech_reference_extract(
             },
         )?;
         drop(asset);
-        let playback = register_speech_playback(
+        commit_published_reference(
+            &database,
             &media_server,
-            &published.path,
-            SpeechArtifactFormatResponse::Wav,
-        )?;
-        Ok(SpeechPlayableArtifact {
-            artifact: published.descriptor,
-            playback,
-        })
+            &published,
+            request.project_id,
+            request.expected_project_state_version,
+            request.expected_reference_version,
+            String::new(),
+            "Unknown".to_owned(),
+            None,
+            None,
+        )
     })
     .await
     .map_err(|_| CommandError::internal("The reference extraction task stopped unexpectedly."))?
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn speech_reference_get(
+    state: State<'_, DesktopState>,
+    request: SpeechReferenceProjectRequest,
+) -> CommandResult<Option<SpeechReferencePlayableResponse>> {
+    let database = state.database.clone();
+    let media_server = state.media_server.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(reference) = database.get_project_speech_reference(request.project_id)? else {
+            return Ok(None);
+        };
+        resolve_reference_record(&database, &media_server, reference).map(Some)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The reference restore task stopped unexpectedly."))?
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn speech_reference_commit(
+    state: State<'_, DesktopState>,
+    request: SpeechReferenceCommitRequest,
+) -> CommandResult<SpeechReferenceRecordResponse> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let artifact_id = parse_artifact_id(&request.artifact_id)?;
+        let stored = database.put_project_speech_reference(&ProjectSpeechReferenceWrite {
+            project_id: request.project_id,
+            expected_project_state_version: request.expected_project_state_version,
+            expected_reference_version: request.expected_reference_version,
+            artifact_id,
+            transcript: request.transcript,
+            language: request.language,
+            delivery_job_id: request.delivery_job_id,
+            delivery_id: request.delivery_id,
+        })?;
+        Ok(reference_record_response(stored))
+    })
+    .await
+    .map_err(|_| CommandError::internal("The reference commit task stopped unexpectedly."))?
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn speech_reference_clear(
+    state: State<'_, DesktopState>,
+    request: SpeechReferenceClearRequest,
+) -> CommandResult<bool> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .delete_project_speech_reference(
+                request.project_id,
+                request.expected_project_state_version,
+                request.expected_reference_version,
+            )
+            .map_err(Into::into)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The reference clear task stopped unexpectedly."))?
 }
 
 #[tauri::command]
@@ -4100,12 +4269,119 @@ fn append_manifest(
     Ok(())
 }
 
+fn reference_artifact_kind(project_id: ProjectId) -> String {
+    format!("speechReference.{project_id}")
+}
+
+fn require_reference_project_state(
+    database: &Database,
+    project_id: ProjectId,
+    expected_state_version: u64,
+) -> CommandResult<()> {
+    let project = database.load_project(project_id)?.ok_or(
+        osg_infrastructure::storage::DatabaseError::ProjectNotFound(project_id),
+    )?;
+    if project.state_version() != expected_state_version {
+        return Err(
+            osg_infrastructure::storage::DatabaseError::StaleProjectVersion {
+                project_id,
+                expected: expected_state_version,
+                actual: project.state_version(),
+            }
+            .into(),
+        );
+    }
+    Ok(())
+}
+
+fn reference_record_response(reference: ProjectSpeechReference) -> SpeechReferenceRecordResponse {
+    let pending_delivery =
+        reference
+            .delivery_job_id
+            .zip(reference.delivery_id)
+            .map(|(job_id, delivery_id)| SpeechReferenceDeliveryResponse {
+                job_id,
+                delivery_id,
+            });
+    SpeechReferenceRecordResponse {
+        schema_version: 1,
+        project_id: reference.project_id,
+        project_state_version: reference.committed_project_state_version,
+        reference_version: reference.reference_version,
+        artifact_id: reference.artifact_id.to_string(),
+        transcript: reference.transcript,
+        language: reference.language,
+        pending_delivery,
+    }
+}
+
+fn resolve_reference_record(
+    database: &Database,
+    media_server: &osg_media_server::MediaServer,
+    reference: ProjectSpeechReference,
+) -> CommandResult<SpeechReferencePlayableResponse> {
+    let resolved = database
+        .resolve_artifact(reference.artifact_id)?
+        .ok_or_else(|| CommandError::invalid_input("The reference audio is unavailable."))?;
+    if resolved.record().project_id() != Some(reference.project_id)
+        || resolved.record().kind().as_str() != reference_artifact_kind(reference.project_id)
+    {
+        return Err(CommandError::invalid_input(
+            "The reference audio does not belong to this project.",
+        ));
+    }
+    let descriptor = descriptor_from_record(resolved.record())?;
+    let playback = register_speech_playback(media_server, resolved.path(), descriptor.format)?;
+    Ok(SpeechReferencePlayableResponse {
+        reference: reference_record_response(reference),
+        playable: SpeechPlayableArtifact {
+            artifact: descriptor,
+            playback,
+        },
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_published_reference(
+    database: &Database,
+    media_server: &osg_media_server::MediaServer,
+    published: &PublishedSpeechArtifact,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
+    transcript: String,
+    language: String,
+    delivery_job_id: Option<JobId>,
+    delivery_id: Option<Uuid>,
+) -> CommandResult<SpeechReferencePlayableResponse> {
+    let stored = match database.put_project_speech_reference(&ProjectSpeechReferenceWrite {
+        project_id,
+        expected_project_state_version,
+        expected_reference_version,
+        artifact_id: published.id,
+        transcript,
+        language,
+        delivery_job_id,
+        delivery_id,
+    }) {
+        Ok(stored) => stored,
+        Err(error) => {
+            rollback_published_speech_artifact(database, published)?;
+            return Err(error.into());
+        }
+    };
+    resolve_reference_record(database, media_server, stored)
+}
+
 struct ReferencePublicationContext<'a> {
     runtime: &'a SpeechRuntime,
     media_engine: &'a osg_media::MediaEngine,
     work: &'a TempDir,
     database: &'a Database,
     media_server: &'a osg_media_server::MediaServer,
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    expected_reference_version: u64,
 }
 
 fn normalize_and_publish_reference(
@@ -4113,7 +4389,7 @@ fn normalize_and_publish_reference(
     source_path: &Path,
     backend: SpeechReferenceBackend,
     source_label: &'static str,
-) -> CommandResult<SpeechPlayableArtifact> {
+) -> CommandResult<SpeechReferencePlayableResponse> {
     let mut source_file = fs::File::open(source_path)
         .map_err(|_| CommandError::invalid_input("The reference audio is unavailable."))?;
     let source_metadata = source_file
@@ -4182,11 +4458,12 @@ fn normalize_and_publish_reference(
         .execute(&MediaOperation::AudioExtraction(plan), &control)?;
     let normalized =
         AudioAsset::from_native_file(&output_path).map_err(|error| speech_command_error(&error))?;
-    let published = publish_durable_artifact(
+    let published = publish_project_durable_artifact(
         context.runtime,
         context.database,
+        context.project_id,
         None,
-        "speechReference",
+        &reference_artifact_kind(context.project_id),
         &output_path,
         SpeechArtifactMetadata {
             format: SpeechArtifactFormatResponse::Wav,
@@ -4197,15 +4474,18 @@ fn normalize_and_publish_reference(
         },
     )?;
     drop(normalized);
-    let playback = register_speech_playback(
+    commit_published_reference(
+        context.database,
         context.media_server,
-        &published.path,
-        SpeechArtifactFormatResponse::Wav,
-    )?;
-    Ok(SpeechPlayableArtifact {
-        artifact: published.descriptor,
-        playback,
-    })
+        &published,
+        context.project_id,
+        context.expected_project_state_version,
+        context.expected_reference_version,
+        String::new(),
+        "Unknown".to_owned(),
+        None,
+        None,
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -4233,6 +4513,7 @@ struct PublishedSpeechArtifact {
     id: ArtifactId,
     created: bool,
     descriptor: SpeechArtifactDescriptor,
+    #[cfg(test)]
     path: PathBuf,
 }
 
@@ -4323,7 +4604,12 @@ fn prepare_speech_artifact_publication(
         fs::symlink_metadata(source_path).map_err(|_| artifact_storage_error())?;
     let size_bytes = source_metadata.len();
     let maximum_bytes = match kind {
-        "speechReference" | "speechPreparedReference" => MAX_REFERENCE_BYTES,
+        kind if kind == "speechReference"
+            || kind == "speechPreparedReference"
+            || kind.starts_with("speechReference.") =>
+        {
+            MAX_REFERENCE_BYTES
+        }
         "narrationOutput" | "voiceConversion" | "alignedNarration" => MAX_CONVERSION_INPUT_BYTES,
         _ => return Err(artifact_storage_error()),
     };
@@ -4412,6 +4698,7 @@ fn publish_prepared_speech_artifact(
         id,
         created,
         descriptor,
+        #[cfg(test)]
         path: resolved.path().to_owned(),
     })
 }
@@ -4679,6 +4966,7 @@ fn resolve_alignment_audio(
 fn ensure_speech_artifact_kind(kind: &str, reference_only: bool) -> CommandResult<()> {
     let allowed = if reference_only {
         matches!(kind, "speechReference" | "speechPreparedReference")
+            || kind.starts_with("speechReference.")
     } else {
         matches!(
             kind,
@@ -4687,7 +4975,7 @@ fn ensure_speech_artifact_kind(kind: &str, reference_only: bool) -> CommandResul
                 | "narrationOutput"
                 | "voiceConversion"
                 | "alignedNarration"
-        )
+        ) || kind.starts_with("speechReference.")
     };
     allowed
         .then_some(())

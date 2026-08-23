@@ -10,36 +10,24 @@ vi.mock('../../platform/nativeUrlDownloadAdapter', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  downloadNativeVideo.mockResolvedValue({
-    playbackUrl: 'http://127.0.0.1/native-preview',
-  });
 });
 
-it('propagates the selected browser source into preview media loading', async () => {
-  localStorage.setItem('use_cookies_for_download', 'true');
+it.each([
+  ['cookies enabled', 'true'],
+  ['cookies disabled', 'false'],
+])('keeps URL preview loading side-effect-free when %s', async (_label, enabled) => {
+  localStorage.setItem('use_cookies_for_download', enabled);
   localStorage.setItem('download_cookie_source', 'edge');
 
-  renderHook(() => useVideoSourceLoading({
+  const { result } = renderHook(() => useVideoSourceLoading({
     videoSource: 'https://www.youtube.com/watch?v=preview',
     t: (_key, fallback) => fallback,
   }));
 
-  await waitFor(() => expect(downloadNativeVideo).toHaveBeenCalledWith(expect.objectContaining({
-    url: 'https://www.youtube.com/watch?v=preview',
-    cookieSource: 'edge',
-  })));
-});
-
-it('propagates none into preview loading when cookies are disabled', async () => {
-  localStorage.setItem('use_cookies_for_download', 'false');
-  localStorage.setItem('download_cookie_source', 'edge');
-
-  renderHook(() => useVideoSourceLoading({
-    videoSource: 'https://www.youtube.com/watch?v=disabled-preview',
-    t: (_key, fallback) => fallback,
-  }));
-
-  await waitFor(() => expect(downloadNativeVideo).toHaveBeenCalledWith(expect.objectContaining({
-    cookieSource: 'none',
-  })));
+  await waitFor(() => {
+    expect(result.current.error).toBe('Prepare this video before opening its preview.');
+  });
+  expect(result.current.videoUrl).toBe('');
+  expect(result.current.isDownloading).toBe(false);
+  expect(downloadNativeVideo).not.toHaveBeenCalled();
 });

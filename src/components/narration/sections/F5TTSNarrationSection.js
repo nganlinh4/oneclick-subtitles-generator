@@ -48,7 +48,9 @@ const F5TTSNarrationSection = ({
   useGroupedSubtitles,
   setUseGroupedSubtitles,
   isGroupingSubtitles,
+  setIsGroupingSubtitles,
   groupedSubtitles,
+  setGroupedSubtitles,
   groupingIntensity,
   setGroupingIntensity,
   selectedNarrationModel,
@@ -134,7 +136,9 @@ const F5TTSNarrationSection = ({
         useGroupedSubtitles={useGroupedSubtitles}
         setUseGroupedSubtitles={setUseGroupedSubtitles}
         isGroupingSubtitles={isGroupingSubtitles}
+        setIsGroupingSubtitles={setIsGroupingSubtitles}
         groupedSubtitles={groupedSubtitles}
+        onGroupedSubtitlesGenerated={setGroupedSubtitles}
         groupingIntensity={groupingIntensity}
         setGroupingIntensity={setGroupingIntensity}
         narrationMethod={narrationMethod}

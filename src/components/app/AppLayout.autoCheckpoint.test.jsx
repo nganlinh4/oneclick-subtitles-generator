@@ -11,7 +11,6 @@ vi.mock('../Header', () => ({ default: () => null }));
 vi.mock('../InputMethods', () => ({ default: () => null }));
 vi.mock('./ButtonsContainer', () => ({ default: () => null }));
 vi.mock('../settings/SettingsModal', () => ({ default: () => null }));
-vi.mock('../VideoAnalysisModal', () => ({ default: () => null }));
 vi.mock('../TranscriptionRulesEditor', () => ({ default: () => null }));
 vi.mock('../BackgroundImageGenerator', () => ({ default: () => null }));
 vi.mock('../VideoRenderingSection', () => ({ default: () => null }));
@@ -75,10 +74,6 @@ const appState = () => ({
   isRetrying: false,
   isSrtOnlyMode: false,
   setIsSrtOnlyMode: fn,
-  showVideoAnalysis: false,
-  setShowVideoAnalysis: fn,
-  videoAnalysisResult: null,
-  setVideoAnalysisResult: fn,
   segmentsStatus: [],
   videoSegments: [],
   showRulesEditor: false,

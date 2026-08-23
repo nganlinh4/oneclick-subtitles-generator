@@ -53,6 +53,21 @@ pub(super) fn compare_and_swap(
     expected_sequence: u64,
     snapshot: &JobSnapshot,
 ) -> Result<JobWrite, DatabaseError> {
+    compare_and_swap_with(connection, expected_sequence, snapshot, |_| Ok(()))
+}
+
+/// Commits one optimistic job successor and an additional store-owned write in the same `SQLite`
+/// transaction. The additional write runs only after the successor row was accepted; any error
+/// rolls the job transition back with it.
+pub(super) fn compare_and_swap_with<F>(
+    connection: &mut Connection,
+    expected_sequence: u64,
+    snapshot: &JobSnapshot,
+    additional_write: F,
+) -> Result<JobWrite, DatabaseError>
+where
+    F: FnOnce(&Transaction<'_>) -> Result<(), DatabaseError>,
+{
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let current =
         get_from(&transaction, snapshot.id())?.ok_or(DatabaseError::JobNotFound(snapshot.id()))?;
@@ -66,6 +81,7 @@ pub(super) fn compare_and_swap(
             .ok_or(DatabaseError::JobNotFound(snapshot.id()))?;
         return Ok(JobWrite::Conflict(actual));
     }
+    additional_write(&transaction)?;
     transaction.commit()?;
     Ok(JobWrite::Updated)
 }

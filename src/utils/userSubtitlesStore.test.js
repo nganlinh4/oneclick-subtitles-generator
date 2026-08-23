@@ -1,10 +1,12 @@
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
 import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 import {
+  bindUserSubtitlesProject,
   clearUserProvidedSubtitles,
   getCurrentCacheId,
   getUserProvidedSubtitles,
   getUserProvidedSubtitlesSync,
+  isUserSubtitlesProjectBindingReceipt,
   setCurrentCacheId,
   setUserProvidedSubtitles,
   setUserProvidedSubtitlesForCache,
@@ -167,4 +169,83 @@ it('publishes no subtitle state when the cache alias remaps after its scoped nat
   expect(published).not.toHaveBeenCalled();
   window.removeEventListener('userProvidedSubtitlesUpdated', published);
   setCurrentCacheId(null);
+});
+
+it('refuses the legacy fire-and-forget transfer for subtitles staged before media', async () => {
+  setCurrentCacheId(null);
+  patchProjectAuxiliary.mockClear();
+  await setUserProvidedSubtitles('1\n00:00:00,000 --> 00:00:01,000\nStaged');
+
+  expect(() => setCurrentCacheId('legacy-unscoped-cache')).toThrow(expect.objectContaining({
+    code: 'projectBindingRequired',
+  }));
+  expect(patchProjectAuxiliary).not.toHaveBeenCalled();
+  expect(getUserProvidedSubtitlesSync()).toContain('Staged');
+
+  await setUserProvidedSubtitles(null);
+});
+
+it('publishes staged subtitles only after an exact-project durable binding receipt', async () => {
+  setCurrentCacheId(null);
+  await setUserProvidedSubtitles('Durable SRT');
+  resolveProjectForCache.mockReset();
+  resolveProjectForCache.mockResolvedValue({ projectId: 'project-a' });
+  let releaseWrite;
+  patchProjectAuxiliary.mockReturnValueOnce(new Promise((resolve) => { releaseWrite = resolve; }));
+  const published = vi.fn();
+  window.addEventListener('userProvidedSubtitlesUpdated', published);
+
+  const pending = bindUserSubtitlesProject('cache-a', {
+    expectedProjectId: 'project-a',
+  });
+  await vi.waitFor(() => expect(patchProjectAuxiliary).toHaveBeenCalledExactlyOnceWith(
+    'cache-a',
+    { userSubtitles: 'Durable SRT' },
+    { expectedProjectId: 'project-a' }
+  ));
+  expect(published).not.toHaveBeenCalled();
+
+  releaseWrite({ userSubtitles: 'Durable SRT' });
+  const receipt = await pending;
+  expect(isUserSubtitlesProjectBindingReceipt(receipt, {
+    cacheId: 'cache-a',
+    projectId: 'project-a',
+  })).toBe(true);
+  expect(published).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    detail: {
+      subtitlesText: 'Durable SRT',
+      cacheId: 'cache-a',
+      projectId: 'project-a',
+    },
+  }));
+
+  window.removeEventListener('userProvidedSubtitlesUpdated', published);
+  setCurrentCacheId(null);
+});
+
+it('restores staged subtitles and rejects when the alias remaps after the write', async () => {
+  setCurrentCacheId(null);
+  await setUserProvidedSubtitles('Still staged');
+  resolveProjectForCache.mockReset();
+  resolveProjectForCache
+    .mockResolvedValueOnce({ projectId: 'project-a' })
+    .mockResolvedValueOnce({ projectId: 'project-b' });
+  patchProjectAuxiliary.mockResolvedValueOnce({ userSubtitles: 'Still staged' });
+  const published = vi.fn();
+  window.addEventListener('userProvidedSubtitlesUpdated', published);
+
+  await expect(bindUserSubtitlesProject('cache-remapped', {
+    expectedProjectId: 'project-a',
+  })).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+  expect(getUserProvidedSubtitlesSync()).toBe('Still staged');
+  expect(published).not.toHaveBeenCalledWith(expect.objectContaining({
+    detail: expect.objectContaining({
+      subtitlesText: 'Still staged',
+      cacheId: 'cache-remapped',
+      projectId: 'project-a',
+    }),
+  }));
+
+  window.removeEventListener('userProvidedSubtitlesUpdated', published);
+  await setUserProvidedSubtitles(null);
 });

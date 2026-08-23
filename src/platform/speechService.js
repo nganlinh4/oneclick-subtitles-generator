@@ -177,6 +177,17 @@ const hasInvalidControls = (value, allowWhitespace = false) => {
   return false;
 };
 
+const hasReferenceTextControls = (value) => {
+  for (const character of value) {
+    const point = character.codePointAt(0);
+    if ((point < 32 || point === 127)
+        && character !== '\n' && character !== '\r' && character !== '\t') {
+      return true;
+    }
+  }
+  return false;
+};
+
 const uuidHasVersion = (value, expected) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
   try {
@@ -651,6 +662,57 @@ export const normalizePlayableArtifact = (value, maximumBytes = MAX_ARTIFACT_BYT
   return Object.freeze({ artifact, playback: normalizePlayback(value.playback, artifact) });
 };
 
+const normalizeReferenceDelivery = (value) => {
+  if (value === null) return null;
+  if (!hasExactKeys(value, ['jobId', 'deliveryId'])
+      || !uuidHasVersion(value.jobId, 7)
+      || !uuidHasVersion(value.deliveryId, 7)) {
+    throw invalidResponse();
+  }
+  return Object.freeze({ jobId: value.jobId, deliveryId: value.deliveryId });
+};
+
+export const normalizeProjectSpeechReference = (value) => {
+  if (!hasExactKeys(value, [
+    'schemaVersion', 'projectId', 'projectStateVersion', 'referenceVersion', 'artifactId',
+    'transcript', 'language', 'pendingDelivery',
+  ])
+      || value.schemaVersion !== 1
+      || !uuidHasVersion(value.projectId, 7)
+      || !uuidHasVersion(value.artifactId, 7)
+      || typeof value.transcript !== 'string'
+      || utf8ByteLength(value.transcript) > 64 * 1024
+      || typeof value.language !== 'string'
+      || utf8ByteLength(value.language) < 1
+      || utf8ByteLength(value.language) > 128
+      || hasReferenceTextControls(value.transcript)
+      || hasInvalidControls(value.language)) {
+    throw invalidResponse();
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    projectId: value.projectId,
+    projectStateVersion: requireResponseInteger(
+      value.projectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+    referenceVersion: requireResponseInteger(
+      value.referenceVersion, 1, Number.MAX_SAFE_INTEGER
+    ),
+    artifactId: value.artifactId,
+    transcript: value.transcript,
+    language: value.language,
+    pendingDelivery: normalizeReferenceDelivery(value.pendingDelivery),
+  });
+};
+
+export const normalizeProjectSpeechReferencePlayable = (value) => {
+  if (!hasExactKeys(value, ['reference', 'playable'])) throw invalidResponse();
+  const reference = normalizeProjectSpeechReference(value.reference);
+  const playable = normalizePlayableArtifact(value.playable, MAX_REFERENCE_BYTES);
+  if (reference.artifactId !== playable.artifact.artifactId) throw invalidResponse();
+  return Object.freeze({ reference, playable });
+};
+
 const normalizeStoredResult = (result) => {
   if (!isPlainDataRecord(result) || !resultStatusSet.has(result.status)) throw invalidResponse();
   if (result.status === 'completed') {
@@ -817,7 +879,10 @@ const normalizeStartOptions = (options) => {
 };
 
 const normalizeReferenceExtract = (request) => {
-  if (!hasExactKeys(request, ['backend', 'startMs', 'endMs'])
+  if (!hasExactKeys(request, [
+    'backend', 'startMs', 'endMs', 'projectId', 'expectedProjectStateVersion',
+    'expectedReferenceVersion',
+  ])
       || !referenceBackendSet.has(request.backend)) {
     throw invalidRequest();
   }
@@ -825,22 +890,57 @@ const normalizeReferenceExtract = (request) => {
   const endMs = requireInteger(request.endMs, 1, MAX_TIME_MS);
   const maximum = request.backend === 'f5Tts' ? 12_000 : 60_000;
   if (endMs <= startMs || endMs - startMs > maximum) throw invalidRequest();
-  return Object.freeze({ backend: request.backend, startMs, endMs });
+  return Object.freeze({
+    backend: request.backend,
+    startMs,
+    endMs,
+    projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+    expectedReferenceVersion: requireInteger(
+      request.expectedReferenceVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+  });
 };
 
 const normalizeReferenceSelection = (request) => {
-  if (!hasExactKeys(request, ['backend']) || !referenceBackendSet.has(request.backend)) {
+  if (!hasExactKeys(request, [
+    'backend', 'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion',
+  ]) || !referenceBackendSet.has(request.backend)) {
     throw invalidRequest();
   }
-  return Object.freeze({ backend: request.backend });
+  return Object.freeze({
+    backend: request.backend,
+    projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+    expectedReferenceVersion: requireInteger(
+      request.expectedReferenceVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+  });
 };
 
 const normalizeReferenceImport = (request) => {
-  if (!hasExactKeys(request, ['backend', 'assetId'])
+  if (!hasExactKeys(request, [
+    'backend', 'assetId', 'projectId', 'expectedProjectStateVersion',
+    'expectedReferenceVersion',
+  ])
       || !referenceBackendSet.has(request.backend)) {
     throw invalidRequest();
   }
-  return Object.freeze({ backend: request.backend, assetId: requireUuid(request.assetId, 7) });
+  return Object.freeze({
+    backend: request.backend,
+    assetId: requireUuid(request.assetId, 7),
+    projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+    expectedReferenceVersion: requireInteger(
+      request.expectedReferenceVersion, 0, Number.MAX_SAFE_INTEGER
+    ),
+  });
 };
 
 const normalizeArtifactEdit = (request) => {
@@ -1286,25 +1386,98 @@ export const createNativeSpeechService = ({
     requireNativeRuntime();
     const normalized = normalizeReferenceSelection(request);
     const value = await invokeCommand('speech_reference_select', { request: normalized });
-    return value === null ? null : normalizePlayableArtifact(value, MAX_REFERENCE_BYTES);
+    return value === null ? null : normalizeProjectSpeechReferencePlayable(value);
   };
 
   const importSpeechReference = async (request) => {
     requireNativeRuntime();
     const normalized = normalizeReferenceImport(request);
-    return normalizePlayableArtifact(
+    return normalizeProjectSpeechReferencePlayable(
       await invokeCommand('speech_reference_import', { request: normalized }),
-      MAX_REFERENCE_BYTES
     );
   };
 
   const extractSpeechReference = async (request) => {
     requireNativeRuntime();
     const normalized = normalizeReferenceExtract(request);
-    return normalizePlayableArtifact(
+    return normalizeProjectSpeechReferencePlayable(
       await invokeCommand('speech_reference_extract', { request: normalized }),
-      MAX_REFERENCE_BYTES
     );
+  };
+
+  const getProjectSpeechReference = async (projectId) => {
+    requireNativeRuntime();
+    const id = requireUuid(projectId, 7);
+    const value = await invokeCommand('speech_reference_get', { request: { projectId: id } });
+    if (value === null) return null;
+    const normalized = normalizeProjectSpeechReferencePlayable(value);
+    if (normalized.reference.projectId !== id) throw invalidResponse();
+    return normalized;
+  };
+
+  const commitProjectSpeechReference = async (request) => {
+    requireNativeRuntime();
+    if (!hasExactKeys(request, [
+      'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion', 'artifactId',
+      'transcript', 'language', 'deliveryJobId', 'deliveryId',
+    ])
+        || typeof request.transcript !== 'string'
+        || utf8ByteLength(request.transcript) > 64 * 1024
+        || typeof request.language !== 'string'
+        || utf8ByteLength(request.language) < 1
+        || utf8ByteLength(request.language) > 128
+        || hasReferenceTextControls(request.transcript)
+        || hasInvalidControls(request.language)
+        || (request.deliveryJobId === null) !== (request.deliveryId === null)) {
+      throw invalidRequest();
+    }
+    const normalizedRequest = Object.freeze({
+      projectId: requireUuid(request.projectId, 7),
+      expectedProjectStateVersion: requireInteger(
+        request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+      ),
+      expectedReferenceVersion: requireInteger(
+        request.expectedReferenceVersion, 1, Number.MAX_SAFE_INTEGER
+      ),
+      artifactId: requireUuid(request.artifactId, 7),
+      transcript: request.transcript,
+      language: request.language,
+      deliveryJobId: request.deliveryJobId === null
+        ? null : requireUuid(request.deliveryJobId, 7),
+      deliveryId: request.deliveryId === null ? null : requireUuid(request.deliveryId, 7),
+    });
+    const result = normalizeProjectSpeechReference(
+      await invokeCommand('speech_reference_commit', { request: normalizedRequest })
+    );
+    if (result.projectId !== normalizedRequest.projectId
+        || result.artifactId !== normalizedRequest.artifactId
+        || result.referenceVersion !== normalizedRequest.expectedReferenceVersion + 1
+        || result.transcript !== normalizedRequest.transcript
+        || result.language !== normalizedRequest.language
+        || (result.pendingDelivery?.jobId ?? null) !== normalizedRequest.deliveryJobId
+        || (result.pendingDelivery?.deliveryId ?? null) !== normalizedRequest.deliveryId) {
+      throw invalidResponse();
+    }
+    return result;
+  };
+
+  const clearProjectSpeechReference = async (request) => {
+    requireNativeRuntime();
+    if (!hasExactKeys(request, [
+      'projectId', 'expectedProjectStateVersion', 'expectedReferenceVersion',
+    ])) throw invalidRequest();
+    const normalized = Object.freeze({
+      projectId: requireUuid(request.projectId, 7),
+      expectedProjectStateVersion: requireInteger(
+        request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+      ),
+      expectedReferenceVersion: requireInteger(
+        request.expectedReferenceVersion, 1, Number.MAX_SAFE_INTEGER
+      ),
+    });
+    const cleared = await invokeCommand('speech_reference_clear', { request: normalized });
+    if (cleared !== true) throw invalidResponse();
+    return true;
   };
 
   const startSpeechJob = async (request, handlers, options) => {
@@ -1418,6 +1591,9 @@ export const createNativeSpeechService = ({
     selectSpeechReference,
     importSpeechReference,
     extractSpeechReference,
+    getProjectSpeechReference,
+    commitProjectSpeechReference,
+    clearProjectSpeechReference,
     startSpeechJob,
     startVoiceConversionJob,
     cancelSpeechJob,
@@ -1438,6 +1614,9 @@ export const stopSpeechRuntime = speechService.stopSpeechRuntime;
 export const selectSpeechReference = speechService.selectSpeechReference;
 export const importSpeechReference = speechService.importSpeechReference;
 export const extractSpeechReference = speechService.extractSpeechReference;
+export const getProjectSpeechReference = speechService.getProjectSpeechReference;
+export const commitProjectSpeechReference = speechService.commitProjectSpeechReference;
+export const clearProjectSpeechReference = speechService.clearProjectSpeechReference;
 export const startSpeechJob = speechService.startSpeechJob;
 export const startVoiceConversionJob = speechService.startVoiceConversionJob;
 export const cancelSpeechJob = speechService.cancelSpeechJob;

@@ -13,23 +13,15 @@
  * They agreed in practice only because `parseStoredSubtitleCustomization` had already merged before
  * the state was first set, which is one decision made in two places and waiting to come apart.
  *
- * Completing at the STATE boundary is what makes one side authoritative. Everything downstream — the
- * preview, every render request, the queue item, the persisted entry — reads one complete object,
- * and there is no second place for the two to drift apart.
+ * The state authority has since moved to the native project render scene. This leaf remains only
+ * for preset compatibility: a preset may omit a field, but it must be completed before being handed
+ * to that strict project scene. It owns no React state and reads no browser storage.
  *
  * Determinism and scope: no clocks, no RNG, and nothing here validates. A bad VALUE is deliberately
  * left alone so it still reaches `normalizeCustomization` and is refused identically on both sides.
  */
 
-import { useCallback, useState } from 'react';
-
-import {
-  defaultCustomization,
-  parseStoredSubtitleCustomization,
-} from '../subtitleCustomization/defaultCustomization';
-
-/** Where the render tab's style is persisted between sessions. */
-export const SUBTITLE_CUSTOMIZATION_STORAGE_KEY = 'videoRender_subtitleCustomization';
+import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
 
 /**
  * The style with every key the render contract names, and the caller's value wherever it has one.
@@ -44,30 +36,3 @@ export const completeSubtitleCustomization = (candidate) => Object.freeze({
   ...defaultCustomization,
   ...(candidate === null || typeof candidate !== 'object' ? null : candidate),
 });
-
-/**
- * The render tab's style state, complete by construction.
- *
- * The setter takes what the customization panel hands over — `{ ...customization, ...updates }`, or
- * `{ ...preset.customization }` for a stored custom preset, which is where a key goes missing in the
- * first place — and completes it before it becomes state, so no reader has to remember to merge.
- */
-export const useSubtitleCustomization = () => {
-  const [subtitleCustomization, setStored] = useState(() => {
-    try {
-      return completeSubtitleCustomization(
-        parseStoredSubtitleCustomization(localStorage.getItem(SUBTITLE_CUSTOMIZATION_STORAGE_KEY)),
-      );
-    } catch {
-      return completeSubtitleCustomization(parseStoredSubtitleCustomization(null));
-    }
-  });
-
-  const setSubtitleCustomization = useCallback((update) => {
-    setStored((previous) => completeSubtitleCustomization(
-      typeof update === 'function' ? update(previous) : update,
-    ));
-  }, []);
-
-  return [subtitleCustomization, setSubtitleCustomization];
-};

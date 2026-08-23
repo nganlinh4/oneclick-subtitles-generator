@@ -1,10 +1,10 @@
 import { runMediaPipeline } from '../../platform/mediaPipelineService';
 import { createNativeMediaDescriptor } from '../../platform/mediaService';
+import { invokeDesktop } from '../../platform/desktopRuntime';
 import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
 import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
+import { activateSubtitleProjectBinding } from '../../platform/subtitleProjectBinding';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
-import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
 import {
   downloadAndPrepareYouTubeVideo,
   ensureVideoCompatibility,
@@ -29,6 +29,13 @@ vi.mock('../../platform/nativeMediaOwnership', () => ({
     cacheId,
     projectId: `project:${cacheId}`,
   })),
+  forgetNativeMediaSession: vi.fn(),
+  readNativeMediaSession: vi.fn(() => null),
+  writeNativeMediaSession: vi.fn(),
+}));
+vi.mock('../../platform/subtitleProjectBinding', () => ({
+  activateSubtitleProjectBinding: vi.fn(),
+  rollbackSubtitleProjectBinding: vi.fn(() => true),
 }));
 vi.mock('../../services/subtitleCache', () => ({ generateUrlBasedCacheId: vi.fn() }));
 vi.mock('../../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
@@ -50,10 +57,62 @@ const source = createNativeMediaDescriptor({
     byteLength: 4096,
   },
 });
+const sourceB = createNativeMediaDescriptor({
+  asset: {
+    id: '01890f39-7b62-7c4e-8c9a-000000000102',
+    displayName: 'newer.mp4',
+    extension: 'mp4',
+    sizeBytes: 8192,
+    kind: 'video',
+  },
+  playback: {
+    id: '550e8400-e29b-41d4-a716-446655440001',
+    playbackUrl: `http://127.0.0.1:49152/asset/550e8400-e29b-41d4-a716-446655440001?token=${'b'.repeat(64)}`,
+    mimeType: 'video/mp4',
+    byteLength: 8192,
+  },
+});
+
+const completeNativeDownloadTransaction = async (request, media = source) => {
+  const cacheId = await generateUrlBasedCacheId.mock.results.at(-1)?.value;
+  const projectId = `project:${cacheId}`;
+  const binding = await request.admitActivation({
+    assetId: media.assetId,
+    resolvedProject: {
+      cacheId,
+      projectId,
+      snapshot: {
+        metadata: { id: projectId, name: 'Downloaded media' },
+        stateVersion: 0,
+        media: [],
+        tracks: [],
+      },
+    },
+    url: request.url,
+  }, { validateOwnership: request.validateOwnership });
+  await request.publishActivation(media, binding, {
+    validateOwnership: request.validateOwnership,
+  });
+  return media;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  invokeDesktop.mockImplementation(async (command) => {
+    if (command === 'get_session_snapshot' || command === 'clear_media') {
+      return { media: null, playback: null, subtitleTrack: null };
+    }
+    throw new Error(`Unexpected desktop command: ${command}`);
+  });
+  generateUrlBasedCacheId.mockResolvedValue('reviewed');
+  downloadNativeVideo.mockImplementation(completeNativeDownloadTransaction);
+  activateSubtitleProjectBinding.mockImplementation(async (cacheId, options = {}) => ({
+    kind: 'subtitle-project-binding',
+    cacheId,
+    projectId: options.expectedProjectId ?? `project:${cacheId}`,
+    stateVersion: 0,
+  }));
 });
 
 it('prepares native playback by asset ID and returns a validated descriptor', async () => {
@@ -127,7 +186,6 @@ it('shows a localized actionable error only after the downloader retry is exhaus
 });
 
 it('activates the URL project before publishing downloaded media to React', async () => {
-  downloadNativeVideo.mockResolvedValue(source);
   generateUrlBasedCacheId.mockResolvedValue('reviewed');
   const setUploadedFile = vi.fn();
 
@@ -142,11 +200,11 @@ it('activates the URL project before publishing downloaded media to React', asyn
     vi.fn(),
   )).resolves.toBe(source);
 
-  expect(setRulesCacheId).toHaveBeenCalledWith('reviewed');
-  expect(setSubtitlesCacheId).toHaveBeenCalledWith('reviewed');
-  expect(setRulesCacheId.mock.invocationCallOrder[0])
-    .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
-  expect(setSubtitlesCacheId.mock.invocationCallOrder[0])
+  expect(activateSubtitleProjectBinding).toHaveBeenCalledExactlyOnceWith('reviewed', {
+    expectedProjectId: 'project:reviewed',
+    create: false,
+  });
+  expect(activateSubtitleProjectBinding.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
 
   // The durable asset-to-project association must land before React ever sees the media, so a
@@ -154,9 +212,65 @@ it('activates the URL project before publishing downloaded media to React', asyn
   expect(ensureProjectOwnsNativeMedia).toHaveBeenCalledExactlyOnceWith({
     media: source,
     cacheId: 'reviewed',
+    expectedProjectId: 'project:reviewed',
   });
   expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
+});
+
+it('publishes neither compatibility identity nor React media before the binding receipt', async () => {
+  generateUrlBasedCacheId.mockResolvedValue('awaited-project');
+  let releaseBinding;
+  activateSubtitleProjectBinding.mockReturnValueOnce(new Promise((resolve) => {
+    releaseBinding = resolve;
+  }));
+  const setUploadedFile = vi.fn();
+  const pending = downloadAndPrepareYouTubeVideo(
+    { url: 'https://example.test/awaited' },
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    setUploadedFile,
+    vi.fn(),
+  );
+
+  await vi.waitFor(() => expect(activateSubtitleProjectBinding).toHaveBeenCalled());
+  expect(setUploadedFile).not.toHaveBeenCalled();
+  expect(localStorage.getItem('current_file_url')).toBeNull();
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+
+  releaseBinding({
+    kind: 'subtitle-project-binding',
+    cacheId: 'awaited-project',
+    projectId: 'project:awaited-project',
+  });
+  await expect(pending).resolves.toBe(source);
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(source);
+});
+
+it('leaves the prepared media unpublished when exact-project binding fails', async () => {
+  generateUrlBasedCacheId.mockResolvedValue('failed-project');
+  activateSubtitleProjectBinding.mockRejectedValueOnce(new Error('durable binding failed'));
+  const setUploadedFile = vi.fn();
+  const setStatus = vi.fn();
+
+  await expect(downloadAndPrepareYouTubeVideo(
+    { url: 'https://example.test/failure' },
+    vi.fn(),
+    vi.fn(),
+    setStatus,
+    vi.fn(),
+    vi.fn(),
+    setUploadedFile,
+    vi.fn(),
+  )).resolves.toBeUndefined();
+
+  expect(setUploadedFile).not.toHaveBeenCalled();
+  expect(localStorage.getItem('current_file_url')).toBeNull();
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
 });
 
 it('a stale automatic download cannot clear or overwrite a newer download presentation', async () => {
@@ -218,4 +332,93 @@ it('a stale automatic download cannot clear or overwrite a newer download presen
   expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'loading' }));
   expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
   expect(setIsDownloading).toHaveBeenLastCalledWith(false);
+});
+
+it('a manual A download which finishes after B cannot bind, select, or publish A', async () => {
+  const acquisitions = [];
+  downloadNativeVideo.mockImplementation((request) => new Promise((resolve, reject) => {
+    acquisitions.push({ reject, request, resolve });
+  }));
+  generateUrlBasedCacheId.mockImplementation(async (url) => (
+    url.endsWith('/a') ? 'project-a' : 'project-b'
+  ));
+  const setIsDownloadingA = vi.fn();
+  const setIsDownloadingB = vi.fn();
+  const setDownloadProgress = vi.fn();
+  const setStatus = vi.fn();
+  const setCurrentDownloadId = vi.fn();
+  const setUploadedFile = vi.fn();
+  const commonA = [
+    setIsDownloadingA,
+    setDownloadProgress,
+    setStatus,
+    setCurrentDownloadId,
+    vi.fn(),
+    setUploadedFile,
+    vi.fn(),
+  ];
+  const commonB = [
+    setIsDownloadingB,
+    setDownloadProgress,
+    setStatus,
+    setCurrentDownloadId,
+    vi.fn(),
+    setUploadedFile,
+    vi.fn(),
+  ];
+
+  const a = downloadAndPrepareYouTubeVideo({ url: 'https://example.test/a' }, ...commonA);
+  await vi.waitFor(() => expect(acquisitions).toHaveLength(1));
+  const b = downloadAndPrepareYouTubeVideo({ url: 'https://example.test/b' }, ...commonB);
+  await vi.waitFor(() => expect(acquisitions).toHaveLength(2));
+
+  const complete = async (acquisition, media, cacheId) => {
+    try {
+      acquisition.request.validateOwnership();
+      const projectId = `project:${cacheId}`;
+      const binding = await acquisition.request.admitActivation({
+        assetId: media.assetId,
+        resolvedProject: {
+          cacheId,
+          projectId,
+          snapshot: {
+            metadata: { id: projectId, name: cacheId },
+            stateVersion: 0,
+            media: [],
+            tracks: [],
+          },
+        },
+        url: acquisition.request.url,
+      }, { validateOwnership: acquisition.request.validateOwnership });
+      await acquisition.request.publishActivation(media, binding, {
+        validateOwnership: acquisition.request.validateOwnership,
+      });
+      acquisition.resolve(media);
+    } catch (error) {
+      acquisition.reject(error);
+    }
+  };
+
+  await complete(acquisitions[0], source, 'project-a');
+  await expect(a).resolves.toBeUndefined();
+  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
+  expect(ensureProjectOwnsNativeMedia).not.toHaveBeenCalled();
+  expect(setUploadedFile).not.toHaveBeenCalled();
+
+  await complete(acquisitions[1], sourceB, 'project-b');
+  await expect(b).resolves.toBe(sourceB);
+  expect(activateSubtitleProjectBinding).toHaveBeenCalledExactlyOnceWith('project-b', {
+    expectedProjectId: 'project:project-b',
+    create: false,
+  });
+  expect(ensureProjectOwnsNativeMedia).toHaveBeenCalledExactlyOnceWith({
+    media: sourceB,
+    cacheId: 'project-b',
+    expectedProjectId: 'project:project-b',
+  });
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(sourceB);
+  expect(localStorage.getItem('current_video_url')).toBe('https://example.test/b');
+  expect(localStorage.getItem('current_file_cache_id')).toBe(sourceB.assetId);
+  expect(localStorage.getItem('current_file_url')).toBe(sourceB.playbackUrl);
+  expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'success' }));
 });

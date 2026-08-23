@@ -7,6 +7,8 @@ import {
   isAutoGenerationCompletion,
   isAutoGenerationContext,
 } from "../../../utils/autoGenerationOwnership";
+import { resolveActiveNativeMedia } from '../../../platform/activeNativeMedia';
+import { isNativeMediaDescriptor } from '../../../platform/mediaService';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -239,10 +241,31 @@ export const createProcessingHandlers = ({
     dbg("FORCE RETRY: Determining input source...");
     let input, inputType;
 
-    // Try to get input from current state or localStorage
-    // Priority: 1. Current selected video/file, 2. localStorage cached data
+    let activeMediaCapability = null;
+    if (isDesktopRuntime()) {
+      try {
+        activeMediaCapability = await resolveActiveNativeMedia({
+          candidate: isNativeMediaDescriptor(uploadedFile) ? uploadedFile : null,
+        });
+      } catch (error) {
+        // A selected remote URL may legitimately precede its download/activation. Every other
+        // desktop retry needs an exact native media capability and fails closed below.
+        if (!selectedVideo?.url) {
+          setStatus({
+            message: t('errors.noValidInput', 'Select the media again before retrying subtitle generation.'),
+            type: 'error',
+          });
+          setIsRetrying(false);
+          return false;
+        }
+      }
+    }
 
-    if (uploadedFile) {
+    if (activeMediaCapability) {
+      dbg('FORCE RETRY: Using exact active native media');
+      input = activeMediaCapability.media;
+      inputType = 'file-upload';
+    } else if (uploadedFile && !isDesktopRuntime()) {
       dbg("FORCE RETRY: Using uploaded file");
       input = uploadedFile;
       inputType = "file-upload";
@@ -254,28 +277,12 @@ export const createProcessingHandlers = ({
           ? "youtube"
           : "file-upload";
     } else {
-      // Try to get from localStorage
-      const cachedVideoUrl = localStorage.getItem("current_video_url");
-      const cachedFileUrl = localStorage.getItem("current_file_url");
-
-      if (cachedVideoUrl) {
-        dbg("FORCE RETRY: Using cached video URL");
-        // Create a video object from cached URL
-        input = { url: cachedVideoUrl };
-        inputType = "youtube";
-      } else if (cachedFileUrl) {
-        dbg("FORCE RETRY: Using cached file URL");
-        // For cached files, we'll need to use the retryGeneration function directly
-        input = null; // Will be handled by retryGeneration
-        inputType = "file-upload";
-      } else {
-        dbg(
-          "FORCE RETRY: No input source found, but proceeding anyway..."
-        );
-        // If we have subtitles data, we can still retry with the last known configuration
-        input = null;
-        inputType = "retry";
-      }
+      setStatus({
+        message: t('errors.noValidInput', 'Select the media again before retrying subtitle generation.'),
+        type: 'error',
+      });
+      setIsRetrying(false);
+      return false;
     }
 
     dbg("FORCE RETRY: Input determined:", { input, inputType });
@@ -405,7 +412,10 @@ export const createProcessingHandlers = ({
         dbg("FORCE RETRY: Deleting existing subtitle files...");
         try {
           if (isDesktopRuntime()) {
-            await clearProjectSubtitles(localStorage.getItem("current_file_cache_id"));
+            const capability = activeMediaCapability ?? await resolveActiveNativeMedia();
+            await clearProjectSubtitles(capability.cacheId, {
+              expectedProjectId: capability.projectId,
+            });
             dbg("FORCE RETRY: Subtitle files deleted successfully");
           } else {
             dbg("FORCE RETRY: Native subtitle cleanup is unavailable, continuing...");

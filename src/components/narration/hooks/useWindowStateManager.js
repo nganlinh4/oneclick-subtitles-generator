@@ -1,47 +1,6 @@
 import { useEffect } from 'react';
 import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
-
-// Constants for localStorage keys
-const GROUPED_SUBTITLES_CACHE_KEY = 'grouped_subtitles_cache';
-const CURRENT_VIDEO_ID_KEY = 'current_video_url';
-const CURRENT_FILE_ID_KEY = 'current_file_cache_id';
-const USER_DISABLED_GROUPING_KEY = 'user_disabled_grouping';
-
-/**
- * Get current media ID for caching
- * @returns {string|null} - Media ID or null if not available
- */
-const getCurrentMediaId = () => {
-  // Try YouTube URL first
-  const youtubeUrl = localStorage.getItem(CURRENT_VIDEO_ID_KEY);
-  if (youtubeUrl) {
-    return `youtube:${youtubeUrl}`;
-  }
-
-  // Try file cache ID
-  const fileId = localStorage.getItem(CURRENT_FILE_ID_KEY);
-  if (fileId) {
-    return `file:${fileId}`;
-  }
-
-  return null;
-};
-
-/**
- * Generate a hash of subtitles for cache validation
- * @param {Array} subtitles - Subtitles array
- * @returns {string} - Hash string
- */
-const generateSubtitleHash = (subtitles) => {
-  if (!subtitles || subtitles.length === 0) return '';
-
-  // Create a simple hash based on subtitle count and first/last subtitle text
-  const firstText = subtitles[0]?.text || '';
-  const lastText = subtitles[subtitles.length - 1]?.text || '';
-  const count = subtitles.length;
-
-  return `${count}-${firstText.slice(0, 20)}-${lastText.slice(0, 20)}`;
-};
+import { loadProjectSubtitleGrouping } from '../../../platform/projectSubtitleGroupingStore';
 
 /**
  * Custom hook for managing window state objects for narration
@@ -55,7 +14,6 @@ const generateSubtitleHash = (subtitles) => {
  * @param {boolean} params.useGroupedSubtitles - Whether to use grouped subtitles
  * @param {Array} params.groupedSubtitles - Grouped subtitles
  * @param {Function} params.setGroupedSubtitles - Function to set grouped subtitles
- * @param {Function} params.setIsGroupingSubtitles - Function to set grouping state
  * @param {Function} params.setUseGroupedSubtitles - Function to set use grouped subtitles state
  * @param {string} params.groupingIntensity - Grouping intensity level
  */
@@ -69,7 +27,6 @@ const useWindowStateManager = ({
   useGroupedSubtitles,
   groupedSubtitles,
   setGroupedSubtitles,
-  setIsGroupingSubtitles,
   setUseGroupedSubtitles,
   groupingIntensity
 }) => {
@@ -108,110 +65,58 @@ const useWindowStateManager = ({
     }
   }, [generationResults, subtitleSource, narrationMethod, originalSubtitles, translatedSubtitles, subtitles]);
 
-  // Save grouped subtitles to cache when they change
+  // Hydrate only an exact project/source-owned grouping. The durable store also consumes a pending
+  // native delivery left behind by a crash after commit but before acknowledgement.
   useEffect(() => {
-    if (groupedSubtitles && groupedSubtitles.length > 0) {
-      try {
-        // Get current media ID
-        const mediaId = getCurrentMediaId();
-        if (!mediaId) return;
-
-        // Get the source subtitles for hash generation
-        const sourceSubtitles = subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0
-          ? translatedSubtitles
-          : originalSubtitles || subtitles;
-
-        if (!sourceSubtitles || sourceSubtitles.length === 0) return;
-
-        // Generate a hash of the source subtitles
-        const subtitleHash = generateSubtitleHash(sourceSubtitles);
-
-        // Create cache entry
-        const cacheEntry = {
-          mediaId,
-          subtitleHash,
-          subtitleSource,
-          groupingIntensity,
-          timestamp: Date.now(),
-          groupedSubtitles: groupedSubtitles
-        };
-
-        // Save to localStorage
-        localStorage.setItem(GROUPED_SUBTITLES_CACHE_KEY, JSON.stringify(cacheEntry));
-        console.log('Saved grouped subtitles to cache:', groupedSubtitles.length, 'groups');
-
-      } catch (error) {
-        console.error('Error saving grouped subtitles to cache:', error);
-      }
-    }
-  }, [groupedSubtitles, subtitleSource, originalSubtitles, translatedSubtitles, subtitles, groupingIntensity]);
-
-  // Load grouped subtitles from cache on component mount
-  useEffect(() => {
-    // Only try to load from cache if we don't have grouped subtitles yet and we have source subtitles
-    if (groupedSubtitles && groupedSubtitles.length > 0) return;
-
-    // Don't load cache if we're dealing with translated subtitles but they're null (translation was reset)
-    if (subtitleSource === 'translated' && (!translatedSubtitles || translatedSubtitles.length === 0)) {
-      return;
-    }
-
-    // Check if user has explicitly disabled grouping for this session
-    try {
-      const userDisabledGrouping = localStorage.getItem(USER_DISABLED_GROUPING_KEY);
-      if (userDisabledGrouping === 'true') {
-        return;
-      }
-    } catch (error) {
-      console.error('Error checking user disabled grouping flag:', error);
-    }
-
-    // Get the source subtitles
-    const sourceSubtitles = subtitleSource === 'translated' && translatedSubtitles && translatedSubtitles.length > 0
+    const sourceType = subtitleSource === 'translated' ? 'translated' : 'original';
+    const sourceSubtitles = sourceType === 'translated'
       ? translatedSubtitles
       : originalSubtitles || subtitles;
-
-    if (!sourceSubtitles || sourceSubtitles.length === 0) return;
-
-    try {
-      // Get current media ID
-      const mediaId = getCurrentMediaId();
-      if (!mediaId) return;
-
-      // Get cache entry
-      const cacheEntryJson = localStorage.getItem(GROUPED_SUBTITLES_CACHE_KEY);
-      if (!cacheEntryJson) return;
-
-      const cacheEntry = JSON.parse(cacheEntryJson);
-
-      // Check if cache entry is for the current media and subtitle source
-      if (cacheEntry.mediaId !== mediaId || cacheEntry.subtitleSource !== subtitleSource) return;
-
-      // Generate hash of current subtitles and compare with cached hash
-      const currentSubtitleHash = generateSubtitleHash(sourceSubtitles);
-      if (cacheEntry.subtitleHash !== currentSubtitleHash) return;
-
-      // Check if we have grouped subtitles in cache
-      if (!cacheEntry.groupedSubtitles || !cacheEntry.groupedSubtitles.length) return;
-
-      console.log('Loading grouped subtitles from cache:', cacheEntry.groupedSubtitles.length, 'groups');
-
-      // Load the grouped subtitles
-      setGroupedSubtitles(cacheEntry.groupedSubtitles);
-
-      // Enable the grouping switch
-      setUseGroupedSubtitles(true);
-
-      // Update window objects
-      window.groupedSubtitles = cacheEntry.groupedSubtitles;
-      window.useGroupedSubtitles = true;
-
-      console.log('Successfully loaded grouped subtitles from cache and enabled grouping switch');
-
-    } catch (error) {
-      console.error('Error loading grouped subtitles from cache:', error);
+    if (!Array.isArray(sourceSubtitles) || sourceSubtitles.length === 0) {
+      setGroupedSubtitles(null);
+      setUseGroupedSubtitles(false);
+      window.groupedSubtitles = null;
+      window.useGroupedSubtitles = false;
+      return undefined;
     }
-  }, [subtitleSource, originalSubtitles, translatedSubtitles, subtitles, groupedSubtitles, setGroupedSubtitles, setUseGroupedSubtitles, useGroupedSubtitles]);
+    let disposed = false;
+    void loadProjectSubtitleGrouping({
+      sourceType,
+      subtitles: sourceSubtitles,
+      intensity: groupingIntensity,
+    }).then((loaded) => {
+      if (disposed) return;
+      if (loaded === null) {
+        setGroupedSubtitles(null);
+        setUseGroupedSubtitles(false);
+        window.groupedSubtitles = null;
+        window.useGroupedSubtitles = false;
+        return;
+      }
+      setGroupedSubtitles(loaded.groupedSubtitles);
+      setUseGroupedSubtitles(true);
+      window.groupedSubtitles = loaded.groupedSubtitles;
+      window.useGroupedSubtitles = true;
+    }).catch((error) => {
+      if (!disposed) {
+        setGroupedSubtitles(null);
+        setUseGroupedSubtitles(false);
+        window.groupedSubtitles = null;
+        window.useGroupedSubtitles = false;
+        console.error('Could not hydrate project subtitle grouping:', error);
+      }
+    });
+    return () => { disposed = true; };
+  }, [
+    groupingIntensity,
+    originalSubtitles,
+    setGroupedSubtitles,
+    setUseGroupedSubtitles,
+    subtitleSource,
+    subtitles,
+    translatedSubtitles,
+    useGroupedSubtitles,
+  ]);
 
   // Save subtitle source to localStorage when it changes
   useEffect(() => {
@@ -230,16 +135,7 @@ const useWindowStateManager = ({
     window.useGroupedSubtitles = useGroupedSubtitles;
     window.groupedSubtitles = groupedSubtitles;
 
-    // Make the setter functions available to the SubtitleSourceSelection component
-    window.setGroupedSubtitles = setGroupedSubtitles;
-    window.setIsGroupingSubtitles = setIsGroupingSubtitles;
-
-    return () => {
-      // Clean up when component unmounts
-      delete window.setGroupedSubtitles;
-      delete window.setIsGroupingSubtitles;
-    };
-  }, [useGroupedSubtitles, groupedSubtitles, setGroupedSubtitles, setIsGroupingSubtitles]);
+  }, [useGroupedSubtitles, groupedSubtitles]);
 
   // Clear grouped subtitles when the original timeline is fully cleared
   // This ensures the Narration planned list disappears when user deletes all subtitles via the timeline action
@@ -252,8 +148,6 @@ const useWindowStateManager = ({
         if (detail.action === 'clear-range' && Array.isArray(updated) && updated.length === 0) {
           // Only clear grouping when the narration source is the original subtitles
           if (subtitleSource === 'original') {
-            // Drop any cached grouping so UI doesn't restore stale groups
-            try { localStorage.removeItem('grouped_subtitles_cache'); } catch { /* Storage is best-effort. */ }
             // Reset state
             setGroupedSubtitles(null);
             setUseGroupedSubtitles(false);
@@ -278,13 +172,6 @@ const useWindowStateManager = ({
   useEffect(() => {
     const handleTranslationReset = () => {
 
-      // Clear the grouped subtitles cache from localStorage
-      try {
-        localStorage.removeItem(GROUPED_SUBTITLES_CACHE_KEY);
-      } catch (error) {
-        console.error('Error clearing grouped subtitles cache:', error);
-      }
-
       // Clear the grouped subtitles state if we're using translated subtitles
       if (subtitleSource === 'translated') {
         setGroupedSubtitles(null);
@@ -293,15 +180,6 @@ const useWindowStateManager = ({
     };
 
     const handleTranslationUpdated = (_event) => {
-      console.log('Translation updated detected, clearing grouped subtitles cache for retry');
-
-      // Clear the grouped subtitles cache since translations have changed
-      try {
-        localStorage.removeItem(GROUPED_SUBTITLES_CACHE_KEY);
-      } catch (error) {
-        console.error('Error clearing grouped subtitles cache after translation update:', error);
-      }
-
       // Clear the grouped subtitles state if we're using translated subtitles
       if (subtitleSource === 'translated') {
         setGroupedSubtitles(null);

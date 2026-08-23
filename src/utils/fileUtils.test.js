@@ -1,12 +1,16 @@
 import { toBase64, fileToBase64 } from './fileUtils';
-import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
 import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
 
 vi.mock('../platform/activeNativeMedia', () => ({
-  resolveActiveNativeMediaAssetId: vi.fn(() => null),
+  resolveActiveNativeMedia: vi.fn(),
+  revalidateActiveNativeMedia: vi.fn(),
 }));
 vi.mock('../platform/mediaPipelineService', () => ({
   runMediaPipeline: vi.fn(),
@@ -92,8 +96,9 @@ describe('subtitle document downloads', () => {
 
 describe('extractAndDownloadAudio native path', () => {
   beforeEach(() => {
-    resolveActiveNativeMediaAssetId.mockReset();
-    resolveActiveNativeMediaAssetId.mockReturnValue(null);
+    resolveActiveNativeMedia.mockReset();
+    revalidateActiveNativeMedia.mockReset();
+    revalidateActiveNativeMedia.mockImplementation(async (capability) => capability);
     runMediaPipeline.mockReset();
     exportMediaAsset.mockReset();
   });
@@ -102,7 +107,8 @@ describe('extractAndDownloadAudio native path', () => {
     const { extractAndDownloadAudio } = await import('./fileUtils');
     const assetId = '01890f39-7b62-7c4e-8c9a-000000000101';
     const playbackUrl = `http://127.0.0.1:49152/asset/550e8400-e29b-41d4-a716-446655440000?token=${'a'.repeat(64)}`;
-    resolveActiveNativeMediaAssetId.mockReturnValue(assetId);
+    const capability = Object.freeze({ assetId });
+    resolveActiveNativeMedia.mockResolvedValue(capability);
     runMediaPipeline.mockResolvedValue({
       kind: 'media',
       media: { asset: { id: '01890f39-7b62-7c4e-8c9a-000000000102' }, playback: { playbackUrl } },
@@ -118,6 +124,8 @@ describe('extractAndDownloadAudio native path', () => {
       format: 'mp3',
       range: null,
     });
+    expect(resolveActiveNativeMedia).toHaveBeenCalledWith({ candidate: playbackUrl });
+    expect(revalidateActiveNativeMedia).toHaveBeenCalledTimes(2);
     expect(exportMediaAsset).toHaveBeenCalledWith('01890f39-7b62-7c4e-8c9a-000000000102');
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

@@ -9,9 +9,11 @@
 export const createVideoAnalysisSchema = () => {
   return {
     type: "object",
+    additionalProperties: false,
     properties: {
       recommendedPreset: {
         type: "object",
+        additionalProperties: false,
         properties: {
           id: {
             type: "string",
@@ -26,6 +28,7 @@ export const createVideoAnalysisSchema = () => {
       },
       transcriptionRules: {
         type: "object",
+        additionalProperties: false,
         properties: {
           atmosphere: {
             type: "string",
@@ -45,6 +48,7 @@ export const createVideoAnalysisSchema = () => {
                   description: "Definition or explanation of the term"
                 }
               },
+              additionalProperties: false,
               required: ["term", "definition"]
             },
             description: "List of specialized terminology and proper nouns that appear in the video"
@@ -63,6 +67,7 @@ export const createVideoAnalysisSchema = () => {
                   description: "Description of the speaker's voice, role, or other identifying characteristics"
                 }
               },
+              additionalProperties: false,
               required: ["speakerId", "description"]
             },
             description: "List of speakers identified in the video"

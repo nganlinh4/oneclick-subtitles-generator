@@ -27,6 +27,7 @@ const useNarrationHandlers = ({
   videoPath,
   onReferenceAudioChange,
   generationResults,
+  getSelectedSubtitles,
   currentAudio,
   setCurrentAudio,
   setIsPlaying,
@@ -66,7 +67,11 @@ const useNarrationHandlers = ({
     setIsPlaying,
     t,
   });
-  const { downloadAlignedAudio } = useAlignedDownload({ generationResults, t });
+  const { downloadAlignedAudio } = useAlignedDownload({
+    generationResults,
+    getCurrentCues: getSelectedSubtitles,
+    t,
+  });
 
   return {
     ...audioHandlers,

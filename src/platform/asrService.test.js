@@ -46,6 +46,7 @@ const transcription = (overrides = {}) => ({
 
 const completedEvent = (id, overrides = {}) => ({
   event: 'completed',
+  deliveryId: uuidv7(),
   job: jobSnapshot({
     id,
     state: 'succeeded',

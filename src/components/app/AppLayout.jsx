@@ -1,9 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import Header from '../Header';
 import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
 import ButtonsContainer from './ButtonsContainer';
-import VideoAnalysisModal from '../VideoAnalysisModal';
 import TranscriptionRulesEditor from '../TranscriptionRulesEditor';
 import BackgroundImageGenerator from '../BackgroundImageGenerator';
 import VideoRenderingSection from '../VideoRenderingSection';
@@ -16,6 +15,7 @@ import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
+import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 
 // Settings only mount after the Header gear button flips `showSettings`, so keeping the
 // modal off the startup path costs nothing at first paint.
@@ -98,8 +98,6 @@ const AppLayout = ({
     currentDownloadId,
     isRetrying,
     isSrtOnlyMode, setIsSrtOnlyMode,
-    showVideoAnalysis, setShowVideoAnalysis,
-    videoAnalysisResult, setVideoAnalysisResult,
     segmentsStatus,
     videoSegments,
     showRulesEditor, setShowRulesEditor,
@@ -121,6 +119,7 @@ const AppLayout = ({
     selectedSegment, setSelectedSegment,
     showProcessingModal, setShowProcessingModal,
     uploadedFileData,
+    setUploadedFileData,
     isProcessingSegment
   } = appState;
 
@@ -137,23 +136,29 @@ const AppLayout = ({
   } = appHandlers;
 
   const {
-    handleUseRecommendedPreset,
-    handleUseDefaultPreset,
-    handleEditRules,
     handleSaveRules,
     handleViewRules,
     handleUserSubtitlesAdd,
     handleAbortVideoAnalysis
   } = modalHandlers;
 
-  const handleNativeRenderVideoSelected = (media) => {
+  const handleNativeRenderVideoSelected = useCallback(async (media) => {
+    const ownership = await ensureProjectOwnsNativeMedia({
+      media,
+      cacheId: media.assetId,
+    });
+    await applyNativeMediaSession({
+      media,
+      cacheId: media.assetId,
+      projectId: ownership.projectId,
+      setUploadedFile,
+    });
     localStorage.removeItem('current_video_url');
     localStorage.removeItem('split_result');
     setSelectedVideo(null);
-    appState.setUploadedFileData?.(null);
+    setUploadedFileData?.(null);
     setIsSrtOnlyMode(false);
-    applyNativeMediaSession({ media, setUploadedFile });
-  };
+  }, [setIsSrtOnlyMode, setSelectedVideo, setUploadedFile, setUploadedFileData]);
 
   // Use video info hook to track current video and available versions
   const {
@@ -479,45 +484,11 @@ const AppLayout = ({
         </Suspense>
       )}
 
-      {/* Video Analysis Modal */}
-      {/* Check if we should show the modal */}
-      {((showVideoAnalysis || localStorage.getItem('show_video_analysis') === 'true') &&
-        (videoAnalysisResult || localStorage.getItem('video_analysis_result'))) && (
-        <VideoAnalysisModal
-          isOpen={true}
-          onClose={() => {
-            // Clear localStorage flags
-            localStorage.removeItem('show_video_analysis');
-            localStorage.removeItem('video_analysis_timestamp');
-            localStorage.removeItem('video_analysis_result');
-            setShowVideoAnalysis(false);
-            setVideoAnalysisResult(null);
-            // Use default preset if user closes the modal
-            handleUseDefaultPreset();
-          }}
-          analysisResult={videoAnalysisResult}
-          onUsePreset={handleUseRecommendedPreset}
-          onUseDefaultPreset={handleUseDefaultPreset}
-          onEditRules={handleEditRules}
-        />
-      )}
-
       {/* Transcription Rules Editor */}
       {showRulesEditor && transcriptionRules && (
         <TranscriptionRulesEditor
           isOpen={showRulesEditor}
-          onClose={(action) => {
-            setShowRulesEditor(false);
-            // Reopen the video analysis modal only if it was previously open
-            if ((action === 'cancel' || action === 'save') && videoAnalysisResult) {
-              setShowVideoAnalysis(true);
-              // Set localStorage flag to ensure modal stays open
-              localStorage.setItem('show_video_analysis', 'true');
-              // If we have a video analysis result, make sure it's available
-              localStorage.setItem('video_analysis_result', JSON.stringify(videoAnalysisResult));
-              localStorage.setItem('video_analysis_timestamp', Date.now().toString());
-            }
-          }}
+          onClose={() => setShowRulesEditor(false)}
           initialRules={transcriptionRules}
           onSave={handleSaveRules}
           onChangePrompt={(preset) => {
@@ -552,14 +523,6 @@ const AppLayout = ({
           key={`${(uploadedFileData || uploadedFile)?.name || 'no-file'}-${(uploadedFileData || uploadedFile)?.size || 0}-${(uploadedFileData || uploadedFile)?.type || 'no-type'}`}
           isOpen={showProcessingModal}
           onClose={() => {
-            try {
-              const reason = sessionStorage.getItem('processing_modal_open_reason');
-              if (reason === 'retry-offline' && selectedSegment && typeof selectedSegment.start === 'number' && typeof selectedSegment.end === 'number') {
-                window.dispatchEvent(new CustomEvent('retry-offline-modal-closed', { detail: { start: selectedSegment.start, end: selectedSegment.end, confirmed: false } }));
-              }
-            } catch {
-              // Session recovery is best effort when storage is unavailable.
-            }
             setShowProcessingModal(false);
             setSelectedSegment(null);
           }}

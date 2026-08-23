@@ -11,8 +11,6 @@ export const useAppEffects = (props) => {
   const {
     setSegmentsStatus,
     setVideoSegments,
-    setShowVideoAnalysis,
-    setVideoAnalysisResult,
     setTheme,
     setShowWaveformLongVideos,
     setTimeFormat,
@@ -126,48 +124,6 @@ export const useAppEffects = (props) => {
     };
   }, [setVideoSegments]);
 
-  // Listen for video analysis events
-  useEffect(() => {
-    // Handle video analysis started
-    const handleVideoAnalysisStarted = () => {
-      // Video analysis is always enabled
-      if (localStorage.getItem('show_video_analysis') === 'true') {
-        setShowVideoAnalysis(true);
-      }
-    };
-
-    // Handle show video analysis modal event (new event from analysisUtils)
-    const handleShowVideoAnalysisModal = (event) => {
-      // This event is dispatched after analysis completes with the result
-      if (event.detail && event.detail.analysisResult) {
-        setVideoAnalysisResult(event.detail.analysisResult);
-        setShowVideoAnalysis(true);
-      }
-    };
-
-    // Handle video analysis complete
-    const handleVideoAnalysisComplete = (event) => {
-      // Video analysis is always enabled
-      if (event.detail && localStorage.getItem('show_video_analysis') === 'true') {
-        setVideoAnalysisResult(event.detail);
-        // Store current timestamp to allow for stale data detection
-        localStorage.setItem('video_analysis_timestamp', Date.now().toString());
-      }
-    };
-
-    // Add event listeners
-    window.addEventListener('videoAnalysisStarted', handleVideoAnalysisStarted);
-    window.addEventListener('showVideoAnalysisModal', handleShowVideoAnalysisModal);
-    window.addEventListener('videoAnalysisComplete', handleVideoAnalysisComplete);
-
-    // Clean up
-    return () => {
-      window.removeEventListener('videoAnalysisStarted', handleVideoAnalysisStarted);
-      window.removeEventListener('showVideoAnalysisModal', handleShowVideoAnalysisModal);
-      window.removeEventListener('videoAnalysisComplete', handleVideoAnalysisComplete);
-    };
-  }, [setShowVideoAnalysis, setVideoAnalysisResult]);
-
   // Listen for theme and settings changes from other components
   useEffect(() => {
     const handleStorageChange = (event) => {
@@ -219,54 +175,10 @@ export const useAppEffects = (props) => {
           .catch(error => console.error('Error syncing localStorage to server:', error));
       }
 
-      // Check for video analysis changes
-      if (event.key === 'show_video_analysis' || event.key === 'video_analysis_timestamp' || !event.key) {
-        const showAnalysis = localStorage.getItem('show_video_analysis') === 'true';
-        const timestamp = localStorage.getItem('video_analysis_timestamp');
-        const isProcessing = localStorage.getItem('video_processing_in_progress') === 'true';
-
-        // Check if the analysis is stale (older than 5 minutes)
-        const isStale = timestamp && (Date.now() - parseInt(timestamp, 10) > 5 * 60 * 1000);
-
-        if (isStale) {
-          // Clear stale analysis data
-          localStorage.removeItem('show_video_analysis');
-          localStorage.removeItem('video_analysis_timestamp');
-          localStorage.removeItem('video_analysis_result');
-          setShowVideoAnalysis(false);
-          setVideoAnalysisResult(null);
-          return;
-        }
-
-        // If we're already processing (after user made a choice), don't show the modal again
-        if (isProcessing) {
-          return;
-        }
-
-        if (showAnalysis && !isStale && !isProcessing) {
-          setShowVideoAnalysis(true);
-
-          // Get the analysis result from localStorage
-          try {
-            const analysisResult = JSON.parse(localStorage.getItem('video_analysis_result'));
-            if (analysisResult) {
-              setVideoAnalysisResult(analysisResult);
-            }
-          } catch (error) {
-            console.error('Error parsing video analysis result from localStorage:', error);
-            // Clear invalid data
-            localStorage.removeItem('show_video_analysis');
-            localStorage.removeItem('video_analysis_timestamp');
-            localStorage.removeItem('video_analysis_result');
-            setShowVideoAnalysis(false);
-            setVideoAnalysisResult(null);
-          }
-        }
-      }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [setTheme, setShowWaveformLongVideos, setTimeFormat, setOptimizeVideos, setOptimizedResolution, setUseOptimizedPreview, setShowVideoAnalysis, setVideoAnalysisResult]);
+  }, [setTheme, setShowWaveformLongVideos, setTimeFormat, setOptimizeVideos, setOptimizedResolution, setUseOptimizedPreview]);
 
 };

@@ -4,6 +4,11 @@ import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 import { nativeNarrationAlignmentService } from './narrationAlignmentService';
 import { getNativeRenderResult, releaseNativeRenderPlayback } from './renderService';
 import { getSpeechJobResults } from './speechService';
+import {
+  acknowledgeJobResult,
+  claimJobResult,
+  listPendingJobResults,
+} from './jobResultDeliveryService';
 
 export const NATIVE_JOB_IDS_STORAGE_KEY = 'osg.nativeJobIds.v1';
 export const LEGACY_NATIVE_JOB_STORAGE_KEYS = Object.freeze([
@@ -47,8 +52,27 @@ export const RECOVERABLE_NATIVE_JOB_KINDS = Object.freeze([
   'alignNarration',
   'renderVideo',
   'synthesizeNarration',
+  'transcribe',
+  'translate',
+  'analyzeSubtitles',
 ]);
 const recoverableKinds = new Set(RECOVERABLE_NATIVE_JOB_KINDS);
+
+export class NativeJobRecoveryUnavailableError extends Error {
+  constructor(result) {
+    super('Native job recovery is temporarily unavailable');
+    this.name = 'NativeJobRecoveryUnavailableError';
+    this.code = 'nativeJobRecoveryUnavailable';
+    this.retryable = true;
+    this.result = result;
+  }
+}
+
+const unavailableResult = (discarded = 0) => Object.freeze({
+  recovered: 0,
+  discarded,
+  unavailable: true,
+});
 
 const isPlainRecord = (value) => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -197,6 +221,9 @@ const defaultAdapters = Object.freeze({
   alignNarration: nativeNarrationAlignmentService.getAlignmentResult,
   renderVideo: getNativeRenderResult,
   synthesizeNarration: getSpeechJobResults,
+  transcribe: claimJobResult,
+  translate: claimJobResult,
+  analyzeSubtitles: claimJobResult,
 });
 
 export const createNativeJobRecoveryCoordinator = ({
@@ -204,6 +231,7 @@ export const createNativeJobRecoveryCoordinator = ({
   isNativeRuntime = isDesktopRuntime,
   adapters = defaultAdapters,
   releaseRenderPlayback = releaseNativeRenderPlayback,
+  pendingResults = () => listPendingJobResults({ invokeCommand }),
   storage: providedStorage,
 } = {}) => {
   const storage = storageOrNull(providedStorage);
@@ -258,10 +286,21 @@ export const createNativeJobRecoveryCoordinator = ({
       .sort((left, right) => right.job.id.localeCompare(left.job.id)));
   };
 
-  const recoverOne = async (jobId, listedJob, wasRemembered) => {
+  const recoverOne = async (jobId, listedJob, wasRemembered, hasPendingResult) => {
+    let rawCurrent;
+    try {
+      rawCurrent = await invokeCommand('job_get', { id: jobId });
+    } catch (error) {
+      if (error?.code === 'jobNotFound') {
+        forget(jobId);
+        return 'discarded';
+      }
+      if (wasRemembered || hasPendingResult) remember(jobId);
+      return 'unavailable';
+    }
     let current;
     try {
-      current = normalizeJob(await invokeCommand('job_get', { id: jobId }));
+      current = normalizeJob(rawCurrent);
       if (current.id !== jobId
           || (listedJob !== undefined && !sameOrNewerJob(listedJob, current))) {
         throw new Error('mismatched job');
@@ -274,7 +313,7 @@ export const createNativeJobRecoveryCoordinator = ({
       forget(current.id);
       return 'discarded';
     }
-    if (!wasRemembered && !ACTIVE_JOB_STATES.has(current.state)) return 'ignored';
+    if (!wasRemembered && !hasPendingResult && !ACTIVE_JOB_STATES.has(current.state)) return 'ignored';
     if (['failed', 'cancelled'].includes(current.state)) {
       forget(current.id);
       return 'discarded';
@@ -282,11 +321,21 @@ export const createNativeJobRecoveryCoordinator = ({
 
     const adapter = adapters[current.kind];
     if (typeof adapter !== 'function') {
-      forget(current.id);
-      return 'discarded';
+      remember(current.id);
+      return 'unavailable';
+    }
+    let value;
+    try {
+      value = await adapter(current.id);
+    } catch (error) {
+      if (error?.code === 'jobNotFound') {
+        forget(current.id);
+        return 'discarded';
+      }
+      remember(current.id);
+      return 'unavailable';
     }
     try {
-      const value = await adapter(current.id);
       const latest = responseJob(value, current);
       if (['failed', 'cancelled'].includes(latest.state)) {
         forget(latest.id);
@@ -302,56 +351,86 @@ export const createNativeJobRecoveryCoordinator = ({
     }
   };
 
-  const start = () => {
-    if (started !== null) return started;
+  const runStartAttempt = async () => {
     scrubLegacyPayloads(storage);
     const remembered = new Set(readRememberedIds(storage));
-    started = (async () => {
-      if (!isNativeRuntime()) {
-        writeRememberedIds(storage, []);
-        return Object.freeze({ recovered: 0, discarded: remembered.size, unavailable: true });
-      }
-      let jobs;
-      try {
-        jobs = normalizeJobList(await invokeCommand('jobs_list', {}));
-      } catch {
-        return Object.freeze({ recovered: 0, discarded: 0, unavailable: true });
-      }
-      const byId = new Map(jobs.map((job) => [job.id, job]));
-      const candidateIds = new Set([
-        ...remembered,
-        ...jobs.filter((job) => (
-          recoverableKinds.has(job.kind) && ACTIVE_JOB_STATES.has(job.state)
-        )).map((job) => job.id),
+    if (!isNativeRuntime()) {
+      writeRememberedIds(storage, []);
+      return unavailableResult(remembered.size);
+    }
+    let jobs;
+    let pending;
+    try {
+      [jobs, pending] = await Promise.all([
+        invokeCommand('jobs_list', {}).then(normalizeJobList),
+        pendingResults(),
       ]);
-      if (candidateIds.size > MAX_RECOVERY_CANDIDATES) {
-        return Object.freeze({ recovered: 0, discarded: 0, unavailable: true });
-      }
-      let recoveredCount = 0;
-      let discardedCount = 0;
-      for (const jobId of [...candidateIds].sort()) {
-        const listedJob = byId.get(jobId);
-        const outcome = await recoverOne(jobId, listedJob, remembered.has(jobId));
-        if (outcome === 'recovered') recoveredCount += 1;
-        if (outcome === 'discarded') discardedCount += 1;
-      }
-      return Object.freeze({
-        recovered: recoveredCount,
-        discarded: discardedCount,
-        unavailable: false,
-      });
-    })();
-    return started;
+    } catch {
+      return unavailableResult();
+    }
+    const byId = new Map(jobs.map((job) => [job.id, job]));
+    const pendingIds = new Set(pending.map(({ jobId }) => jobId));
+    const candidateIds = new Set([
+      ...remembered,
+      ...pendingIds,
+      ...jobs.filter((job) => (
+        recoverableKinds.has(job.kind) && ACTIVE_JOB_STATES.has(job.state)
+      )).map((job) => job.id),
+    ]);
+    if (candidateIds.size > MAX_RECOVERY_CANDIDATES) return unavailableResult();
+    let recoveredCount = 0;
+    let discardedCount = 0;
+    let unavailable = false;
+    for (const jobId of [...candidateIds].sort()) {
+      const listedJob = byId.get(jobId);
+      const outcome = await recoverOne(
+        jobId,
+        listedJob,
+        remembered.has(jobId),
+        pendingIds.has(jobId),
+      );
+      if (outcome === 'recovered') recoveredCount += 1;
+      if (outcome === 'discarded') discardedCount += 1;
+      if (outcome === 'unavailable') unavailable = true;
+    }
+    return Object.freeze({ recovered: recoveredCount, discarded: discardedCount, unavailable });
   };
 
-  return Object.freeze({ start, remember, forget, list, claim, discard });
+  const start = () => {
+    if (started !== null) return started;
+    const attempt = runStartAttempt().catch(() => unavailableResult());
+    started = attempt;
+    void attempt.then((result) => {
+      if (result.unavailable && started === attempt) started = null;
+    }, () => {
+      if (started === attempt) started = null;
+    });
+    return attempt;
+  };
+
+  const ensureReady = async () => {
+    const result = await start();
+    if (result.unavailable) throw new NativeJobRecoveryUnavailableError(result);
+    return result;
+  };
+
+  return Object.freeze({ start, ensureReady, remember, forget, list, claim, discard });
 };
 
 const nativeJobRecovery = createNativeJobRecoveryCoordinator();
 
 export const startNativeJobRecovery = nativeJobRecovery.start;
+export const ensureNativeJobRecoveryReady = nativeJobRecovery.ensureReady;
 export const rememberNativeJobId = nativeJobRecovery.remember;
 export const forgetNativeJobId = nativeJobRecovery.forget;
 export const listRecoveredNativeJobs = nativeJobRecovery.list;
 export const claimRecoveredNativeJob = nativeJobRecovery.claim;
 export const discardRecoveredNativeJob = nativeJobRecovery.discard;
+
+export const acknowledgeRecoveredNativeJob = async (entry) => {
+  const delivery = entry?.value?.delivery;
+  if (!entry?.job || !delivery || entry.job.id !== delivery.jobId) {
+    throw new Error('The recovered durable job result is invalid');
+  }
+  await acknowledgeJobResult(entry.job.id, delivery.deliveryId);
+};

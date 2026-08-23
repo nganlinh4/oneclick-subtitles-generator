@@ -4,7 +4,14 @@ import { downloadAndPrepareYouTubeVideo } from '../components/app/VideoProcessin
 import { createDownloadHandlers } from '../components/app/handlers/downloadHandlers';
 import { isNativeMediaDescriptor } from './mediaService';
 import { createNativeUrlDownloadAdapter } from './nativeUrlDownloadAdapter';
+import { activateResolvedMediaProject } from './mediaProjectActivation';
 import { getCachedSubtitles } from '../services/subtitleCache';
+import {
+  activateSubtitleProjectBinding,
+  rollbackSubtitleProjectBinding,
+} from './subtitleProjectBinding';
+import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
+import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
 
 vi.mock('./downloadService', () => ({
   cancelDownload: vi.fn(),
@@ -24,6 +31,15 @@ vi.mock('../services/subtitleCache', () => ({
 }));
 vi.mock('./subtitleProjectStore', () => ({
   resolveProjectForCache: vi.fn(async (cacheId) => ({ projectId: `project:${cacheId}` })),
+}));
+vi.mock('./subtitleProjectBinding', () => ({
+  activateSubtitleProjectBinding: vi.fn(),
+  isSubtitleProjectBindingReceipt: (value, scope) => (
+    value?.kind === 'subtitle-project-binding'
+    && value.cacheId === scope.cacheId
+    && value.projectId === scope.projectId
+  ),
+  rollbackSubtitleProjectBinding: vi.fn(() => true),
 }));
 vi.mock('../utils/transcriptionRulesStore', () => ({
   ...(() => {
@@ -102,6 +118,7 @@ const createHarness = (overrides = {}) => {
     discardCandidate,
     resolveCandidateProject,
     recoverDownloader,
+    activateProject: activateResolvedMediaProject,
     ...overrides,
   });
   return {
@@ -167,7 +184,8 @@ it('coalesces matching preview and processing requests and broadcasts monotonic 
   await expect(second).resolves.toBe(harness.descriptor);
   expect(harness.describeMedia).toHaveBeenCalledWith(
     { asset: { id: harness.assetId } },
-    expect.objectContaining({ expectedStateVersion: 7 })
+    expect.objectContaining({ expectedStateVersion: 7 }),
+    { validateOwnership: expect.any(Function) }
   );
   expect(harness.openAsset).not.toHaveBeenCalled();
 });
@@ -186,8 +204,107 @@ it('claims the serialized Rust candidate once and never discards the winning ass
   expect(harness.describeMedia).toHaveBeenCalledExactlyOnceWith(candidate, {
     expectedStateVersion: 7,
     projectId: expect.any(String),
-  });
+  }, { validateOwnership: expect.any(Function) });
   expect(harness.discardCandidate).not.toHaveBeenCalled();
+});
+
+it('the production adapter refuses to acquire media without a caller-owned activation transaction', async () => {
+  const harness = createHarness({ activateProject: null });
+
+  await expect(harness.adapter.downloadVideo({
+    url: 'https://example.com/unowned',
+    cookieSource: 'none',
+  })).rejects.toMatchObject({ code: 'invalidDownloadRequest' });
+
+  expect(harness.inspect).not.toHaveBeenCalled();
+  expect(harness.start).not.toHaveBeenCalled();
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+});
+
+it('a staged candidate whose owner was superseded never activates or opens native media', async () => {
+  const cacheId = 'site_example_test_staged';
+  const project = { ...candidateProject(), cacheId };
+  const harness = createHarness({
+    activateProject: null,
+    resolveCandidateProject: vi.fn(async () => project),
+  });
+  let current = true;
+  const ownershipError = Object.assign(new Error('newer media won'), {
+    code: 'autoGenerationOwnershipLost',
+  });
+  const admitActivation = vi.fn();
+  const publishActivation = vi.fn();
+  const rollbackActivation = vi.fn();
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/staged',
+    cookieSource: 'none',
+    validateOwnership: () => {
+      if (!current) throw ownershipError;
+    },
+    admitActivation,
+    publishActivation,
+    rollbackActivation,
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledOnce());
+
+  current = false;
+  harness.getHandlers().onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+
+  await expect(pending).rejects.toMatchObject({ code: 'autoGenerationOwnershipLost' });
+  await vi.waitFor(() => {
+    expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+  });
+  expect(admitActivation).not.toHaveBeenCalled();
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+  expect(publishActivation).not.toHaveBeenCalled();
+  expect(rollbackActivation).not.toHaveBeenCalled();
+});
+
+it('withdraws project/store admission and restores native state when ownership is lost in claim', async () => {
+  const cacheId = 'site_example_test_mid_claim';
+  const project = { ...candidateProject(), cacheId };
+  let finishClaim;
+  const claim = vi.fn(() => new Promise((resolve) => { finishClaim = resolve; }));
+  const harness = createHarness({
+    activateProject: null,
+    claimCandidate: claim,
+    resolveCandidateProject: vi.fn(async () => project),
+  });
+  let current = true;
+  const ownershipError = Object.assign(new Error('newer media won'), {
+    code: 'autoGenerationOwnershipLost',
+  });
+  const binding = Object.freeze({
+    kind: 'subtitle-project-binding',
+    cacheId,
+    projectId: project.projectId,
+    stateVersion: project.snapshot.stateVersion,
+  });
+  const admitActivation = vi.fn(async () => binding);
+  const publishActivation = vi.fn();
+  const rollbackActivation = vi.fn();
+  rollbackSubtitleProjectBinding.mockClear();
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/mid-claim',
+    cookieSource: 'none',
+    validateOwnership: () => {
+      if (!current) throw ownershipError;
+    },
+    admitActivation,
+    publishActivation,
+    rollbackActivation,
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledOnce());
+  harness.getHandlers().onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+  await vi.waitFor(() => expect(claim).toHaveBeenCalledOnce());
+
+  current = false;
+  finishClaim(harness.descriptor);
+
+  await expect(pending).rejects.toMatchObject({ code: 'autoGenerationOwnershipLost' });
+  await vi.waitFor(() => expect(rollbackActivation).toHaveBeenCalledOnce());
+  expect(rollbackSubtitleProjectBinding).toHaveBeenCalledExactlyOnceWith(binding);
+  expect(publishActivation).not.toHaveBeenCalled();
 });
 
 it('discards a losing candidate exactly once when project claim fails', async () => {
@@ -239,7 +356,7 @@ it('publishes the exact resolved project before claiming a downloaded candidate'
   expect(harness.describeMedia).toHaveBeenCalledExactlyOnceWith(candidate, {
     expectedStateVersion: 7,
     projectId: expect.any(String),
-  });
+  }, { validateOwnership: expect.any(Function) });
   expect(release).not.toHaveBeenCalled();
 });
 
@@ -829,6 +946,7 @@ it('re-inspects and retries one transient downloader process failure', async () 
   const onStarted = vi.fn();
   const onProgress = vi.fn();
   const adapter = createNativeUrlDownloadAdapter({
+    activateProject: activateResolvedMediaProject,
     inspect,
     start,
     cancel: vi.fn(),
@@ -1180,6 +1298,7 @@ it('starts distinct operations for the reviewed media phases on the same URL', a
   });
   const openAsset = vi.fn();
   const adapter = createNativeUrlDownloadAdapter({
+    activateProject: activateResolvedMediaProject,
     inspect,
     start,
     cancel: vi.fn(),
@@ -1281,6 +1400,15 @@ it('keeps native picker media opaque while preparing the file workflow', async (
   const createObjectUrl = vi.spyOn(URL, 'createObjectURL');
   isNativeMediaDescriptor.mockReturnValueOnce(true);
   getCachedSubtitles.mockResolvedValueOnce(null);
+  activateSubtitleProjectBinding.mockImplementationOnce(async (cacheId) => {
+    setRulesCacheId(cacheId);
+    setSubtitlesCacheId(cacheId);
+    return {
+      kind: 'subtitle-project-binding',
+      cacheId,
+      projectId: `project:${cacheId}`,
+    };
+  });
 
   const { startBackgroundVideoProcessing } = createDownloadHandlers({
     selectedVideo: null,

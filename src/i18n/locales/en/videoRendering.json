@@ -50,6 +50,7 @@
   "cancelling": "Cancelling render...",
   "cancelFailed": "Failed to cancel render",
   "cancelError": "Error cancelling render",
+  "recoveryUnavailable": "Previous render recovery is temporarily unavailable",
   "unknownError": "Unknown error occurred",
   "noSubtitles": "No subtitles available",
   "result": "Rendered Video",
@@ -186,5 +187,6 @@
   "audioChannelsLabel": "Audio channels",
   "audioSampleRateLabel": "Audio sample rate",
   "audioBitrateLabel": "Audio bitrate",
-  "containerLabel": "Container"
+  "containerLabel": "Container",
+  "loadingProjectScene": "Loading this project’s render settings…"
 }

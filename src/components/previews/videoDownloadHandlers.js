@@ -1,8 +1,13 @@
 import { renderSubtitlesToVideo, downloadVideo } from '../../utils/videoUtils';
 import { convertTimeStringToSeconds } from '../../utils/vttUtils';
 import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
+import {
+  flushProjectRenderScene,
+  updateProjectRenderScene,
+} from '../../platform/projectRenderScene';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { exportMediaAsset } from '../../platform/mediaExportService';
+import { ensureNativeJobRecoveryReady } from '../../platform/jobRecoveryCoordinator';
 import {
   buildNativeRenderRequest,
   ensureNativeRenderProject,
@@ -165,35 +170,57 @@ export const renderAndExportDesktopPreview = async ({
   videoUrl,
   videoSource,
   subtitles,
+  subtitleSource = 'original',
   subtitleSettings,
   onProgress,
 }) => {
+  await ensureNativeJobRecoveryReady();
   const sourceAsset = await resolveNativeRenderSource(videoUrl || videoSource);
+  const projectId = await ensureNativeRenderProject(sourceAsset);
+  const renderSettings = {
+    resolution: EDITOR_PREVIEW_RESOLUTION,
+    frameRate: EDITOR_PREVIEW_FRAME_RATE,
+    videoType: 'Subtitled Video',
+    originalAudioVolume: 100,
+    narrationVolume: 0,
+    trimStart: 0,
+    trimEnd: 0,
+  };
+  const customization = previewCustomizationForNativeRender(subtitleSettings);
+  const crop = {
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    aspectRatio: null,
+    canvasBgMode: 'solid',
+    canvasBgColor: '#000000',
+    canvasBgBlur: 24,
+    flipX: false,
+    flipY: false,
+  };
+  updateProjectRenderScene((previous) => ({
+    ...previous,
+    selectedSubtitles: subtitleSource,
+    selectedNarration: 'none',
+    renderSettings,
+    customization,
+    crop,
+  }));
+  const durableScene = await flushProjectRenderScene();
+  if (durableScene?.projectId !== projectId) {
+    throw new Error('The project render settings changed before export');
+  }
   const request = buildNativeRenderRequest({
     sourceAsset,
-    projectId: await ensureNativeRenderProject(sourceAsset),
+    projectId,
+    sceneRevision: durableScene.sceneRevision,
+    selectedSubtitles: durableScene.selectedSubtitles,
+    selectedNarration: durableScene.selectedNarration,
     lyrics: normalizePreviewRenderLyrics(subtitles),
-    settings: {
-      resolution: EDITOR_PREVIEW_RESOLUTION,
-      frameRate: EDITOR_PREVIEW_FRAME_RATE,
-      originalAudioVolume: 100,
-      narrationVolume: 0,
-      trimStart: 0,
-      trimEnd: 0,
-    },
-    customization: previewCustomizationForNativeRender(subtitleSettings),
-    crop: {
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 100,
-      aspectRatio: null,
-      canvasBgMode: 'solid',
-      canvasBgColor: '#000000',
-      canvasBgBlur: 24,
-      flipX: false,
-      flipY: false,
-    },
+    settings: durableScene.renderSettings,
+    customization: durableScene.customization,
+    crop: durableScene.crop,
   });
   // The glyphs this file is drawn with. The export composes them natively but never shapes them, so
   // the atlas and one laid-out run per cue are baked here and travel with the request. A font the
@@ -245,6 +272,7 @@ export const createDownloadWithSubtitlesHandler = ({
         videoUrl,
         videoSource,
         subtitles: subtitlesArray,
+        subtitleSource: 'original',
         subtitleSettings,
         onProgress: setRenderProgress,
       });
@@ -301,6 +329,7 @@ export const createDownloadWithTranslatedSubtitlesHandler = ({
         videoUrl,
         videoSource,
         subtitles: formattedSubtitles,
+        subtitleSource: 'translated',
         subtitleSettings,
         onProgress: setRenderProgress,
       });

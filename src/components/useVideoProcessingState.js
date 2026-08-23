@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showInfoToast } from '../utils/toastUtils';
 import { useEngineStatus } from '../hooks/useEngineStatus';
@@ -61,10 +61,8 @@ const useVideoProcessingState = ({
 
     // Back-compat flag for old/new methods
     const [inlineExtraction, setInlineExtraction] = useState(() => {
-        // If opened via retry, force old method immediately to avoid any flash of the new method
-        const retryMode = sessionStorage.getItem('processing_modal_open_reason') === 'retry-offline';
         const saved = localStorage.getItem('video_processing_inline_extraction');
-        return retryMode ? true : (saved === 'true');
+        return saved === 'true';
     });
 
     // The current method's descriptor + its availability, and the active local-ASR engine (the selected
@@ -251,34 +249,18 @@ const useVideoProcessingState = ({
         return saved ? parseInt(saved, 10) : 12;
     });
 
-    // Compute outside-range subtitles context (limited to nearby lines)
-    // When opened via retry-from-cache, lock certain controls and force old method
-    const [retryLock, setRetryLock] = useState(() => (sessionStorage.getItem('processing_modal_open_reason') === 'retry-offline'));
-    const openedInitRef = useRef(false);
-
-    // Initialize lock/reason exactly once per open, even under React StrictMode
-    useEffect(() => {
-        if (isOpen && !openedInitRef.current) {
-            const reason = sessionStorage.getItem('processing_modal_open_reason') || 'unknown';
-            const lock = (reason === 'retry-offline');
-            setRetryLock(lock);
-            if (lock) setInlineExtraction(true);
-            openedInitRef.current = true;
-        }
-    }, [isOpen]);
+    // The former retry-from-browser-cache mode has no native artifact owner and was removed.
+    const retryLock = false;
 
     // Only clear flags when the modal closes
     useEffect(() => {
         if (!isOpen) {
-            openedInitRef.current = false;
             try {
                 sessionStorage.removeItem('processing_modal_open_with_retry');
-                sessionStorage.removeItem('processing_modal_cached_url');
                 sessionStorage.removeItem('processing_modal_open_reason');
             } catch {
                 // Session cleanup remains best effort when storage is unavailable.
             }
-            setRetryLock(false);
         }
     }, [isOpen]);
 

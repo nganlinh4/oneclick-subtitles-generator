@@ -91,7 +91,9 @@ const SubtitleSourceSelection = ({
   useGroupedSubtitles = false,
   setUseGroupedSubtitles = () => {},
   isGroupingSubtitles = false,
+  setIsGroupingSubtitles = () => {},
   groupedSubtitles = null,
+  onGroupedSubtitlesGenerated = () => {},
   groupingIntensity = 'moderate',
   setGroupingIntensity = () => {},
   narrationMethod = 'f5tts',
@@ -126,7 +128,9 @@ const SubtitleSourceSelection = ({
     translatedLanguage,
     originalLanguage,
     groupingIntensity,
-    setUseGroupedSubtitles
+    setUseGroupedSubtitles,
+    setGroupedSubtitles: onGroupedSubtitlesGenerated,
+    setIsGroupingSubtitles,
   });
 
   // Functions to handle modal

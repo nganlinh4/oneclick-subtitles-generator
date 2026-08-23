@@ -1,6 +1,7 @@
 import { mergeSegmentSubtitles } from '../utils/subtitle/subtitleMerger';
 import { publishProcessingRanges, publishStreamingUpdate, publishStreamingComplete } from '../events/bus';
 import { processAsrSegment } from '../services/engines/AsrAdapter';
+import { acknowledgeJobResult } from '../platform/jobResultDeliveryService';
 
 /**
  * Generic local-ASR generation branch (faster-whisper, qwen3-asr, …), generalized from
@@ -25,6 +26,7 @@ export const runAsrGeneration = async ({
 }) => {
   const seg = options.segment;
   const engineName = (engine && (engine.name || engine.labelDefault || engine.id)) || 'ASR';
+  const deliveryReceipts = [];
 
   try {
     if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number') {
@@ -68,6 +70,7 @@ export const runAsrGeneration = async ({
             });
           });
         },
+        onDeliveryReceipt: (receipt) => { deliveryReceipts.push(receipt); },
         t,
       }
     );
@@ -89,6 +92,13 @@ export const runAsrGeneration = async ({
       throw new TypeError('Local ASR requires a durable subtitle publisher');
     }
     await persistSubtitles(finalSubs);
+
+    // The channel event is transport, not consumption. Only the awaited project checkpoint above
+    // transfers ownership; an acknowledgement transport failure deliberately leaves SQLite's
+    // payload pending for startup recovery instead of turning a durable edit into a false failure.
+    await Promise.allSettled(deliveryReceipts.map(({ jobId, deliveryId }) => (
+      acknowledgeJobResult(jobId, deliveryId)
+    )));
 
     try {
       publishStreamingComplete({ subtitles: filteredForSeg, segment: seg, runId });

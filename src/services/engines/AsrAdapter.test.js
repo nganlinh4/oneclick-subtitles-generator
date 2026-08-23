@@ -1,4 +1,5 @@
 import { startAsrJob } from '../../platform/asrService';
+import { ensureNativeJobRecoveryReady } from '../../platform/jobRecoveryCoordinator';
 import {
   abortAllRequests,
   setProcessingForceStopped,
@@ -8,8 +9,13 @@ import { processAsrSegment } from './AsrAdapter';
 vi.mock('../../platform/asrService', () => ({
   startAsrJob: vi.fn(),
 }));
+vi.mock('../../platform/jobRecoveryCoordinator', () => ({
+  ensureNativeJobRecoveryReady: vi.fn().mockResolvedValue({ unavailable: false }),
+}));
 
 const completedEvent = (overrides = {}) => ({
+  job: { id: '018f22ea-6f3e-7cc0-a555-333333333333' },
+  deliveryId: '018f22ea-6f3e-7cc0-a555-444444444444',
   timelineOffsetMs: 12_000,
   transcription: {
     segments: [{ startMs: 250, endMs: 1_250, text: 'native result' }],
@@ -62,6 +68,23 @@ it('uses path-free native ASR and maps millisecond results onto the global timel
   expect(abortAllRequests()).toBe(false);
 });
 
+it('does not create an ASR job until durable recovery is trustworthy', async () => {
+  const unavailable = Object.assign(new Error('recovery unavailable'), {
+    code: 'nativeJobRecoveryUnavailable',
+    retryable: true,
+  });
+  ensureNativeJobRecoveryReady.mockRejectedValueOnce(unavailable);
+
+  await expect(processAsrSegment(
+    'parakeet',
+    null,
+    { start: 0, end: 1 },
+    {},
+    {},
+  )).rejects.toBe(unavailable);
+  expect(startAsrJob).not.toHaveBeenCalled();
+});
+
 it('global cancellation rejects immediately while forwarding the AbortSignal to native cleanup', async () => {
   let nativeSignal;
   startAsrJob.mockImplementation((request, handlers, options) => {
@@ -77,6 +100,7 @@ it('global cancellation rejects immediately while forwarding the AbortSignal to 
     {},
     { onRanges }
   );
+  await Promise.resolve();
   const cancelled = pending.catch((error) => error);
   expect(startAsrJob).toHaveBeenCalledTimes(1);
   expect(abortAllRequests()).toBe(true);
@@ -105,6 +129,7 @@ it('an owning run can cancel ASR without aborting unrelated global requests', as
     { signal: owner.signal },
     {}
   );
+  await Promise.resolve();
   const cancelled = pending.catch((error) => error);
   owner.abort();
 

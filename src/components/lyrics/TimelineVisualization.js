@@ -9,10 +9,7 @@ import { centerTimelineOnTime as centerTimeOnTime } from './utils/TimelineIntera
 // Import volume visualizer
 import VolumeVisualizer from './VolumeVisualizer';
 
-import { ClearOfflineSegmentsButton } from './timelineOverlays';
-
 // Extracted timeline pieces
-import { useTimelineOfflineSegments } from './useTimelineOfflineSegments';
 import { useTimelineStreamingState } from './useTimelineStreamingState';
 import { useNarrationTimelineData } from './useNarrationTimelineData';
 import { useNarrationLaneState } from './useNarrationLaneState';
@@ -20,7 +17,6 @@ import NarrationLaneControls from './NarrationLaneControls';
 import { useTimelineRenderEffects } from './useTimelineRenderEffects';
 import { useTimelineKeyboardShortcuts } from './useTimelineKeyboardShortcuts';
 import { useTimelinePointerInteraction } from './useTimelinePointerInteraction';
-import TimelineRetryOverlay from './TimelineRetryOverlay';
 import TimelineRangeActionBar from './TimelineRangeActionBar';
 import TimelineZoomControls from './TimelineZoomControls';
 import TimelineDragHint from './TimelineDragHint';
@@ -199,23 +195,9 @@ const TimelineVisualization = ({
     const isRangeMoveDraggingRef = useRef(false);
     const moveDragOffsetPxRef = useRef(0);
 
-    // Offline segments lingering after processing (loading/clear/retry managed by hook)
-    const {
-        offlineSegments,
-        retryingOfflineKeys,
-        hoveredOfflineRange,
-        setHoveredOfflineRange,
-        clearInfoVisible,
-        handlers: { handleClearOfflineSegments, handleRetryOfflineRange }
-    } = useTimelineOfflineSegments({ onSegmentSelect, t });
-
-    // Subtle warning when user tries to drag while offline segments exist (no toast)
-    const [warnOfflineDragVisible, setWarnOfflineDragVisible] = useState(false);
-
-
-    // Handle processing animation (streaming or retry) — placed after retryingOfflineKeys to avoid TDZ
+    // Handle processing animation.
     useEffect(() => {
-        const anyProcessing = isProcessingSegment || (retryingOfflineKeys && retryingOfflineKeys.length > 0) || isStreamingActive;
+        const anyProcessing = isProcessingSegment || isStreamingActive;
         if (anyProcessing) {
             const startTime = performance.now();
             const animate = () => {
@@ -236,7 +218,7 @@ const TimelineVisualization = ({
                 cancelAnimationFrame(processingAnimationRef.current);
             }
         }
-    }, [isProcessingSegment, retryingOfflineKeys, isStreamingActive, processingAnimationRef, setAnimationTime]);
+    }, [isProcessingSegment, isStreamingActive, processingAnimationRef, setAnimationTime]);
 
 
     const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
@@ -290,45 +272,16 @@ const TimelineVisualization = ({
         const effectiveSelected = activeRange
             ? { start: activeRange.start + (rangePreviewDeltaRef.current || 0), end: activeRange.end + (rangePreviewDeltaRef.current || 0) }
             : selectedSegment;
-        // Reuse streaming parallel highlighting style by feeding offline segments
-        // Build retry key set
-        const retryKeySet = new Set(retryingOfflineKeys || []);
-        const { start: visStart, end: visEnd } = visibleTimeRange;
-
-        // Only consider offline ranges that are visible to reduce draw cost
-        const offlineVisible = (offlineSegments || []).filter(r => (r.end > visStart && r.start < visEnd));
-
-        // Determine if any animation should run (global clock)
-        const isAnimating = !!isProcessingSegment || retryKeySet.size > 0;
-
-        // Include only the retried offline ranges during animation; otherwise include all visible offline ranges as static
-        const offlineRangesForDraw = offlineVisible.map((r, idx) => {
-            const key = `${r.start}-${r.end}`;
-            const animate = retryKeySet.has(key);
-            if (isAnimating && !animate) return null; // skip static ranges during animation frames to avoid lag
-            return { start: r.start, end: r.end, index: (processingRanges?.length || 0) + idx, animate };
-        }).filter(Boolean);
-
-        // If a retry is active, show only the retried offline cut(s) as processing; otherwise use normal processingRanges
-        const combinedProcessingRanges = (retryKeySet.size > 0)
-            ? offlineRangesForDraw
-            : (Array.isArray(processingRanges) ? [...processingRanges, ...offlineRangesForDraw] : offlineRangesForDraw);
-
-        // Selected band animates only if: (a) a normal processing run is on, or (b) it exactly matches the retried range
-        const selectedIsProcessing = (retryKeySet.size > 0)
-            ? (effectiveSelected && retryKeySet.has(`${effectiveSelected.start}-${effectiveSelected.end}`))
-            : !!isProcessingSegment;
-
         const segmentData = {
             selectedSegment: effectiveSelected,
             isDraggingSegment,
             dragStartTime,
             dragCurrentTime,
-            isProcessing: isAnimating, // used by processingRanges; selected animation gated separately
-            selectedIsProcessing,
+            isProcessing: !!isProcessingSegment,
+            selectedIsProcessing: !!isProcessingSegment,
             animationTime,
             newSegments: newSegments, // Pass new segments for animation
-            processingRanges: combinedProcessingRanges
+            processingRanges: Array.isArray(processingRanges) ? processingRanges : []
         };
 
         // Subtitle band = real lyrics; narration lane = staged placement + global speed.
@@ -356,7 +309,7 @@ const TimelineVisualization = ({
         );
 
 
-    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, offlineSegments, retryingOfflineKeys, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
+    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
 
     // Render-coordination side effects (new-segment animation, resize, zoom,
     // timeline updates, playhead auto-scroll, unmount cleanup)
@@ -403,7 +356,6 @@ const TimelineVisualization = ({
         onSegmentSelect,
         duration,
         lyrics,
-        offlineSegments,
         disableAutoScroll,
         setHasDraggedInSession,
         setIsDraggingSegment,
@@ -426,14 +378,10 @@ const TimelineVisualization = ({
         onSegmentSelect,
         onClearRange,
         selectedSegment,
-        offlineSegments,
         actionBarRange,
         hiddenActionBarRange,
-        hoveredOfflineRange,
         setActionBarRange,
         setHiddenActionBarRange,
-        setHoveredOfflineRange,
-        setWarnOfflineDragVisible,
         setMoveDragOffsetPx,
         setIsDraggingSegment,
         setDragStartTime,
@@ -460,41 +408,9 @@ const TimelineVisualization = ({
                 perLineWeight={perLineWeight}
                 setPerLineWeight={setPerLineWeight}
             />
-            <ClearOfflineSegmentsButton
-                offlineSegments={offlineSegments}
-                retryingOfflineKeys={retryingOfflineKeys}
-                clearInfoVisible={clearInfoVisible}
-                handleClearOfflineSegments={handleClearOfflineSegments}
-                t={t}
-                timelineRef={timelineRef}
-            />
-
-            {/* Subtle warning when user tries to drag while offline segments exist */}
-            {warnOfflineDragVisible && (
-                <div style={{ position: 'absolute', top: 6, left: 8, zIndex: 5 }}>
-                    <span role="status" aria-live="polite" style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', borderRadius: 10, color: 'var(--md-on-surface-variant)', backgroundColor: 'var(--md-surface-variant)', border: '1px solid var(--md-outline-variant)' }}>
-                        {t('timeline.clearOfflineFirst', 'Please clear offline segments to exit this mode first')}
-                    </span>
-                </div>
-            )}
-
-            {/* Hover refresh icon (portal) at colorful bits' vertical center */}
-            {/* Retry button is rendered via a dedicated body-level layer, independent of canvas animation */}
-            <TimelineRetryOverlay
-                timelineRef={timelineRef}
-                hoveredOfflineRange={hoveredOfflineRange}
-                retryingOfflineKeys={retryingOfflineKeys}
-                handleRetryOfflineRange={handleRetryOfflineRange}
-                getTimeRange={getTimeRange}
-                panOffset={panOffset}
-                zoom={zoom}
-                lyrics={lyrics}
-            />
-
             {/* Range action header placed vertically above the timeline canvas */}
             <TimelineRangeActionBar
                 actionBarRange={actionBarRange}
-                retryingOfflineKeys={retryingOfflineKeys}
                 timelineRef={timelineRef}
                 getTimeRange={getTimeRange}
                 moveDragOffsetPx={moveDragOffsetPx}
@@ -532,10 +448,10 @@ const TimelineVisualization = ({
                         ? laneCursor
                         : isDraggingSegment
                             ? 'ew-resize'
-                            : (onSegmentSelect && offlineSegments.length === 0)
+                            : onSegmentSelect
                                 ? 'crosshair'
                                 : 'pointer',
-                    touchAction: (onSegmentSelect && offlineSegments.length === 0) ? 'none' : 'auto' // Disable touch gestures only when selection is enabled
+                    touchAction: onSegmentSelect ? 'none' : 'auto'
                 }}
             />
 

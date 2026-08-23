@@ -111,5 +111,6 @@
   "semiAutoTooltip": "Save requests and tokens because video analysis is not required",
   "parakeetTranscriptionComplete": "Parakeet transcription complete",
   "audioFpsDisabled": "FPS settings are not applicable for audio files",
-  "audioResolutionDisabled": "Resolution settings are not applicable for audio files"
+  "audioResolutionDisabled": "Resolution settings are not applicable for audio files",
+  "subtitlesDeliveryPending": "Subtitles were saved. Native result cleanup will retry automatically."
 }

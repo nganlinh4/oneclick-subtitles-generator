@@ -14,6 +14,7 @@ const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const REFERENCE_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
 const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
+const DELIVERY_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a5';
 
 const runningJob = {
   id: JOB_ID,
@@ -31,6 +32,31 @@ const artifact = {
   sampleRateHz: 24_000,
   channels: 1,
 };
+
+const referenceRecord = (overrides = {}) => ({
+  schemaVersion: 1,
+  projectId: PROJECT_ID,
+  projectStateVersion: 7,
+  referenceVersion: 1,
+  artifactId: REFERENCE_ID,
+  transcript: '',
+  language: 'Unknown',
+  pendingDelivery: null,
+  ...overrides,
+});
+
+const referencePlayable = (overrides = {}) => ({
+  reference: referenceRecord(overrides.reference),
+  playable: {
+    artifact: { ...artifact, artifactId: REFERENCE_ID },
+    playback: {
+      id: PLAYBACK_ID,
+      playbackUrl: 'http://127.0.0.1:43210/asset/tokenized',
+      mimeType: 'audio/wav',
+      byteLength: artifact.bytes,
+    },
+  },
+});
 
 describe('legacy-to-native speech settings', () => {
   test('converts F5, Chatterbox, Edge, and gTTS controls without path or process options', () => {
@@ -346,15 +372,7 @@ describe('native narration compatibility adapter', () => {
       durationMicros: 450_000,
     };
     const speech = {
-      importSpeechReference: vi.fn(async () => ({
-        artifact: { ...artifact, artifactId: REFERENCE_ID },
-        playback: {
-          id: PLAYBACK_ID,
-          playbackUrl: 'http://127.0.0.1:43210/asset/tokenized',
-          mimeType: 'audio/wav',
-          byteLength: artifact.bytes,
-        },
-      })),
+      importSpeechReference: vi.fn(async () => referencePlayable()),
       editSpeechArtifact: vi.fn(async () => editedArtifact),
       getSpeechStatus: vi.fn(),
       probeSpeechBackend: vi.fn(),
@@ -372,10 +390,16 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.importReference({
       method: 'f5tts',
       assetId: JOB_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 0,
     })).resolves.toMatchObject({ nativeArtifactId: REFERENCE_ID });
     expect(speech.importSpeechReference).toHaveBeenCalledWith({
       backend: 'f5Tts',
       assetId: JOB_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 0,
     });
     await expect(adapter.editArtifact({
       artifactId: ARTIFACT_ID,
@@ -392,6 +416,9 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.importReference({
       method: 'f5tts',
       assetId: JOB_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 0,
       filepath: 'C:/private/reference.wav',
     })).rejects.toThrow('invalid');
     await expect(adapter.editArtifact({
@@ -401,6 +428,57 @@ describe('native narration compatibility adapter', () => {
       speedFactor: 1,
       outputPath: 'C:/private/output.wav',
     })).rejects.toThrow('invalid');
+  });
+
+  test('restores and updates reference metadata through the project-owned record only', async () => {
+    const speech = {
+      getProjectSpeechReference: vi.fn(async () => referencePlayable({
+        reference: {
+          referenceVersion: 2,
+          transcript: 'spoken words',
+          language: 'English',
+          pendingDelivery: { jobId: JOB_ID, deliveryId: DELIVERY_ID },
+        },
+      })),
+      commitProjectSpeechReference: vi.fn(async (request) => referenceRecord({
+        referenceVersion: request.expectedReferenceVersion + 1,
+        transcript: request.transcript,
+        language: request.language,
+        pendingDelivery: request.deliveryJobId === null ? null : {
+          jobId: request.deliveryJobId,
+          deliveryId: request.deliveryId,
+        },
+      })),
+      clearProjectSpeechReference: vi.fn(async () => true),
+    };
+    const adapter = createNativeNarrationAdapter({ speech });
+
+    await expect(adapter.getReference(PROJECT_ID)).resolves.toMatchObject({
+      projectId: PROJECT_ID,
+      referenceVersion: 2,
+      text: 'spoken words',
+      pendingDelivery: { jobId: JOB_ID, deliveryId: DELIVERY_ID },
+    });
+    const commit = {
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 2,
+      artifactId: REFERENCE_ID,
+      transcript: 'edited words',
+      language: 'English',
+      deliveryJobId: null,
+      deliveryId: null,
+    };
+    await expect(adapter.commitReference(commit)).resolves.toMatchObject({
+      referenceVersion: 3,
+      transcript: 'edited words',
+    });
+    expect(speech.commitProjectSpeechReference).toHaveBeenCalledWith(commit);
+    await expect(adapter.clearReference({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 3,
+    })).resolves.toBe(true);
   });
 
   test('restores durable results using deterministic segment identities', async () => {

@@ -1,7 +1,14 @@
 import { streamGeminiApiWithFilesApi } from '../../services/gemini';
 import { processSegmentWithStreaming } from './processingUtils';
+import {
+  bindNativeGeminiTranscriptionDelivery,
+  getGeminiTranscriptionDeliveries,
+} from '../../services/gemini/transcriptionDelivery';
 
-vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
+vi.mock('../../platform/desktopRuntime', async (importOriginal) => ({
+  ...(await importOriginal()),
+  isDesktopRuntime: () => true,
+}));
 vi.mock('../../platform/mediaService', () => ({
   isNativeMediaDescriptor: (value) => value?.__nativeMedia === true,
 }));
@@ -21,6 +28,7 @@ it('routes native segment processing through the clipping-aware core and restore
   const onSubtitleUpdate = vi.fn();
   const setStatus = vi.fn();
   const completed = vi.fn();
+  const acknowledge = vi.fn();
   window.addEventListener('streaming-complete', completed);
   streamGeminiApiWithFilesApi.mockImplementation((
     _media, _options, onChunk, onComplete
@@ -31,10 +39,12 @@ it('routes native segment processing through the clipping-aware core and restore
     onChunk({
       accumulatedText: '[{"startTime":"00m01s000ms","endTime":"00m02s000ms","text":"relative"},{"startTime":"00m09s000ms","endTime":"00m10s000ms","text":"clamped"}]',
     });
-    onComplete([
+    const providerRows = bindNativeGeminiTranscriptionDelivery([
       { start: 1, end: 2, text: 'relative' },
       { start: 9, end: 10, text: 'clamped' },
-    ]);
+    ], { job: { id: 'job-1' }, deliveryId: 'delivery-1', acknowledge });
+    onComplete(providerRows);
+    return providerRows;
   });
 
   const result = await processSegmentWithStreaming(
@@ -66,6 +76,10 @@ it('routes native segment processing through the clipping-aware core and restore
     { start: 11, end: 12, text: 'relative' },
     { start: 19, end: 20, text: 'clamped' },
   ]);
+  expect(getGeminiTranscriptionDeliveries(result)).toEqual([
+    expect.objectContaining({ jobId: 'job-1', deliveryId: 'delivery-1' }),
+  ]);
+  expect(acknowledge).not.toHaveBeenCalled();
   expect(onSubtitleUpdate).toHaveBeenCalledWith(
     expect.arrayContaining([
       expect.objectContaining({ start: 11, end: 12, text: 'relative' }),

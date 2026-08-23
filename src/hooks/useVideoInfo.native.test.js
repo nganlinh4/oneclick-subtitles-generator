@@ -1,13 +1,25 @@
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 import { useVideoInfo } from './useVideoInfo';
 
 vi.mock('../platform/mediaPipelineService', () => ({
   inspectMediaPipelineAsset: vi.fn(),
 }));
-vi.mock('../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
-vi.mock('../platform/mediaService', () => ({
+vi.mock('../platform/activeNativeMedia', () => ({
+  resolveActiveNativeMedia: vi.fn(),
+  revalidateActiveNativeMedia: vi.fn(),
+}));
+vi.mock('../platform/desktopRuntime', () => ({
+  invokeDesktop: vi.fn(),
+  isDesktopRuntime: () => true,
+}));
+vi.mock('../platform/mediaService', async (importOriginal) => ({
+  ...(await importOriginal()),
   isNativeMediaDescriptor: (value) => value?.__nativeMedia === true,
 }));
 
@@ -22,6 +34,11 @@ const MEDIA = Object.freeze({
 beforeEach(() => {
   localStorage.clear();
   inspectMediaPipelineAsset.mockReset();
+  resolveActiveNativeMedia.mockReset();
+  revalidateActiveNativeMedia.mockReset();
+  const capability = Object.freeze({ assetId: ASSET_ID });
+  resolveActiveNativeMedia.mockResolvedValue(capability);
+  revalidateActiveNativeMedia.mockResolvedValue(capability);
   inspectMediaPipelineAsset.mockResolvedValue({
     assetId: ASSET_ID,
     durationUs: 2_000_000,

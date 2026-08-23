@@ -110,6 +110,12 @@ pub enum DatabaseError {
     JobSequenceExhausted(JobId),
     #[error("job {0} changed during startup recovery")]
     ConcurrentJobRecovery(JobId),
+    #[error("job result delivery metadata is invalid")]
+    InvalidJobResultDelivery,
+    #[error("job result delivery payload exceeds the 32 MiB storage limit")]
+    JobResultDeliveryTooLarge,
+    #[error("job {0} already owns a different result delivery")]
+    JobResultDeliveryConflict(JobId),
     #[error("the stored setting is not valid JSON: {0}")]
     InvalidStoredJson(#[from] serde_json::Error),
     #[error("the database actor thread could not be started")]
@@ -130,6 +136,28 @@ pub enum DatabaseError {
         expected: u64,
         actual: u64,
     },
+    #[error("the project-owned speech reference record is invalid")]
+    InvalidProjectSpeechReference,
+    #[error(
+        "project {project_id} speech reference changed (expected version {expected}, actual version {actual})"
+    )]
+    StaleProjectSpeechReference {
+        project_id: ProjectId,
+        expected: u64,
+        actual: u64,
+    },
+    #[error("the project-owned render scene record is invalid")]
+    InvalidProjectRenderScene,
+    #[error(
+        "project {project_id} render scene changed (expected revision {expected}, actual revision {actual})"
+    )]
+    StaleProjectRenderScene {
+        project_id: ProjectId,
+        expected: u64,
+        actual: u64,
+    },
+    #[error("project {0} has exhausted the render-scene revision range")]
+    ProjectRenderSceneVersionOverflow(ProjectId),
     #[error(
         "project {project_id} editor history changed (expected version {expected}, actual version {actual})"
     )]

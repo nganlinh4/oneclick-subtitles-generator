@@ -73,6 +73,8 @@ const requestKeys = new Set([
   'responseJsonSchema',
   'mediaAssetId',
   'emptySpeechPolicy',
+  'projectId',
+  'expectedProjectStateVersion',
 ]);
 const handlerKeys = new Set([
   'onEvent',
@@ -255,6 +257,17 @@ export const normalizeGeminiStartRequest = (request) => {
     mediaAssetId: request.mediaAssetId ?? null,
   };
   if (normalized.mediaAssetId !== null) requireUuidV7(normalized.mediaAssetId);
+  const hasProjectId = Object.hasOwn(request, 'projectId');
+  const hasProjectVersion = Object.hasOwn(request, 'expectedProjectStateVersion');
+  if (hasProjectId !== hasProjectVersion) throw invalidRequest();
+  if (hasProjectId) {
+    normalized.projectId = requireUuidV7(request.projectId);
+    if (!Number.isSafeInteger(request.expectedProjectStateVersion)
+        || request.expectedProjectStateVersion < 0) {
+      throw invalidRequest();
+    }
+    normalized.expectedProjectStateVersion = request.expectedProjectStateVersion;
+  }
   if (normalized.task === 'transcribe' && normalized.mediaAssetId === null) {
     throw invalidRequest();
   }
@@ -391,9 +404,11 @@ export const normalizeGeminiJobEvent = (value) => {
         text: requireResultText(value.text),
       });
     case 'completed':
+      if (!isUuidV7(value.deliveryId)) throw invalidResponse();
       return Object.freeze({
         event: 'completed',
         job: normalizeJobSnapshot(value.job),
+        deliveryId: value.deliveryId,
         text: requireResultText(value.text),
         usage: normalizeUsage(value.usage),
       });

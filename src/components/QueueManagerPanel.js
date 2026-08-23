@@ -35,14 +35,6 @@ const QueueManagerPanel = ({
     return document.documentElement.getAttribute('data-theme') || 'dark';
   });
 
-  // Track locally canceled items so Cancel always has immediate effect
-  const [locallyCanceled, setLocallyCanceled] = useState({});
-  const isLocallyCanceled = (id) => !!locallyCanceled[id];
-  const handleLocalCancel = (item) => {
-    setLocallyCanceled((prev) => ({ ...prev, [item.id]: true }));
-    if (onCancelItem) onCancelItem(item.id);
-  };
-
   // Track shown error toasts to avoid duplicates
   const [shownErrorToasts, setShownErrorToasts] = useState(new Set());
 
@@ -192,23 +184,18 @@ const QueueManagerPanel = ({
           </div>
         ) : (
           <div className={`queue-list ${gridLayout ? 'grid-layout' : ''}`}>
-            {queue.map((item) => {
-              const effectiveStatus = isLocallyCanceled(item.id) ? 'canceled' : item.status;
-              return (
-                <QueueItemRow
-                  key={item.id}
-                  item={item}
-                  effectiveStatus={effectiveStatus}
-                  currentQueueItem={currentQueueItem}
-                  theme={theme}
-                  onCancelItem={onCancelItem}
-                  onRemoveItem={onRemoveItem}
-                  onLocalCancel={handleLocalCancel}
-                  onPreview={handlePreview}
-                  onDownloadVideo={handleDownloadVideo}
-                />
-              );
-            })}
+            {queue.map((item) => (
+              <QueueItemRow
+                key={item.id}
+                item={item}
+                currentQueueItem={currentQueueItem}
+                theme={theme}
+                onCancelItem={onCancelItem}
+                onRemoveItem={onRemoveItem}
+                onPreview={handlePreview}
+                onDownloadVideo={handleDownloadVideo}
+              />
+            ))}
           </div>
         )}
       </div>

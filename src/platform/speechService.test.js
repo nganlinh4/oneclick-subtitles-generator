@@ -19,6 +19,8 @@ const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const EDITED_ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
 const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
+const OTHER_PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a5';
+const DELIVERY_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a6';
 const PLAYBACK_ID = '550e8400-e29b-41d4-a716-446655440000';
 const TOKEN = 'a'.repeat(64);
 
@@ -53,6 +55,23 @@ const playable = () => ({
     mimeType: 'audio/wav',
     byteLength: 4_096,
   },
+});
+
+const projectReference = (overrides = {}) => ({
+  schemaVersion: 1,
+  projectId: PROJECT_ID,
+  projectStateVersion: 7,
+  referenceVersion: 1,
+  artifactId: ARTIFACT_ID,
+  transcript: '',
+  language: 'Unknown',
+  pendingDelivery: null,
+  ...overrides,
+});
+
+const playableReference = (overrides = {}) => ({
+  reference: projectReference(overrides.reference),
+  playable: playable(),
 });
 
 const backendStatus = (backend, overrides = {}) => ({
@@ -333,7 +352,7 @@ describe('native speech response validation', () => {
 
   test('imports opaque audio assets and emits fixed-point edit requests only', async () => {
     const invokeCommand = vi.fn(async (command) => {
-      if (command === 'speech_reference_import') return playable();
+      if (command === 'speech_reference_import') return playableReference();
       if (command === 'speech_artifact_edit') {
         return { ...artifact(), artifactId: EDITED_ARTIFACT_ID, durationMicros: 500_000 };
       }
@@ -347,9 +366,21 @@ describe('native speech response validation', () => {
     await expect(service.importSpeechReference({
       backend: 'f5Tts',
       assetId: JOB_ID,
-    })).resolves.toMatchObject({ artifact: { artifactId: ARTIFACT_ID } });
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 0,
+    })).resolves.toMatchObject({
+      reference: { projectId: PROJECT_ID, referenceVersion: 1 },
+      playable: { artifact: { artifactId: ARTIFACT_ID } },
+    });
     expect(invokeCommand).toHaveBeenCalledWith('speech_reference_import', {
-      request: { backend: 'f5Tts', assetId: JOB_ID },
+      request: {
+        backend: 'f5Tts',
+        assetId: JOB_ID,
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
+        expectedReferenceVersion: 0,
+      },
     });
     await expect(service.editSpeechArtifact({
       artifactId: ARTIFACT_ID,
@@ -368,6 +399,9 @@ describe('native speech response validation', () => {
     await expect(service.importSpeechReference({
       backend: 'f5Tts',
       assetId: JOB_ID,
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 0,
       filepath: 'C:/private/reference.wav',
     })).rejects.toMatchObject({ code: 'invalidSpeechRequest' });
     await expect(service.editSpeechArtifact({
@@ -377,6 +411,70 @@ describe('native speech response validation', () => {
       speedFactor: 1,
       outputPath: 'C:/private/output.wav',
     })).rejects.toMatchObject({ code: 'invalidSpeechRequest' });
+  });
+
+  test('restores, commits, and clears only an exact project-owned reference record', async () => {
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'speech_reference_get') return playableReference();
+      if (command === 'speech_reference_commit') {
+        return projectReference({
+          referenceVersion: 2,
+          transcript: 'spoken words',
+          language: 'English',
+          pendingDelivery: { jobId: JOB_ID, deliveryId: DELIVERY_ID },
+        });
+      }
+      if (command === 'speech_reference_clear') return true;
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+    });
+
+    await expect(service.getProjectSpeechReference(PROJECT_ID)).resolves.toMatchObject({
+      reference: { projectId: PROJECT_ID, referenceVersion: 1 },
+      playable: { artifact: { artifactId: ARTIFACT_ID } },
+    });
+    const commit = {
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 1,
+      artifactId: ARTIFACT_ID,
+      transcript: 'spoken words',
+      language: 'English',
+      deliveryJobId: JOB_ID,
+      deliveryId: DELIVERY_ID,
+    };
+    await expect(service.commitProjectSpeechReference(commit)).resolves.toMatchObject({
+      referenceVersion: 2,
+      pendingDelivery: { jobId: JOB_ID, deliveryId: DELIVERY_ID },
+    });
+    await expect(service.clearProjectSpeechReference({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      expectedReferenceVersion: 2,
+    })).resolves.toBe(true);
+    expect(invokeCommand).toHaveBeenNthCalledWith(1, 'speech_reference_get', {
+      request: { projectId: PROJECT_ID },
+    });
+    expect(invokeCommand).toHaveBeenNthCalledWith(2, 'speech_reference_commit', {
+      request: commit,
+    });
+  });
+
+  test('refuses a restore response owned by another project', async () => {
+    const service = createNativeSpeechService({
+      invokeCommand: vi.fn(async () => playableReference({
+        reference: { projectId: OTHER_PROJECT_ID },
+      })),
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+    });
+    await expect(service.getProjectSpeechReference(PROJECT_ID)).rejects.toMatchObject({
+      code: 'invalidSpeechResponse',
+    });
   });
 
   test('exports only opaque artifacts and safe leaf names through native save UI', async () => {

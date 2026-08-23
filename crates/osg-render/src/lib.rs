@@ -15,8 +15,8 @@ mod error;
 
 pub use contract::{
     AnimationEasing, AnimationType, BorderStyle, CanvasBackgroundMode, CropSettings, FrameRate,
-    GradientType, LineBreakBehavior, RenderLyric, RenderPlan, RenderRequest, RenderResolution,
-    RenderSettings, SubtitleCustomization, SubtitlePosition, TextAlign, TextTransform,
-    ValidatedLyric,
+    GradientType, LineBreakBehavior, RenderLyric, RenderNarrationSource, RenderPlan, RenderRequest,
+    RenderResolution, RenderSettings, RenderSubtitleSource, SubtitleCustomization,
+    SubtitlePosition, TextAlign, TextTransform, ValidatedLyric,
 };
 pub use error::{RenderError, Result};

@@ -14,5 +14,6 @@
   "geminiFpsTooltip": "Gemini chỉ xử lý video ở 1 FPS ngay cả khi bạn gửi video có FPS cao hơn — nhấn nút để biết thêm. Chọn Kết xuất video để có chất lượng và FPS tốt nhất.",
   "noSubtitles": "Không có phụ đề để hiển thị.",
   "videoError": "Lỗi khi tải video: ${err.message}",
-  "videoNotSupported": "Trình duyệt của bạn không hỗ trợ thẻ video."
+  "videoNotSupported": "Trình duyệt của bạn không hỗ trợ thẻ video.",
+  "mediaNotPrepared": "Hãy chuẩn bị video này trước khi mở bản xem trước."
 }

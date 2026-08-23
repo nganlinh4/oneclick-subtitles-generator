@@ -21,6 +21,33 @@ let activeAnalysisController = null;
 
 // Maximum number of terminology items to keep to prevent localStorage overflow
 const MAX_TERMINOLOGY_ITEMS = 50;
+const MAX_ANALYSIS_LIST_ITEMS = 200;
+const MAX_ANALYSIS_STRING_LENGTH = 8_192;
+const VALID_PRESET_IDS = new Set([
+  'general',
+  'focus-lyrics',
+  'extract-text',
+  'describe-video',
+  'diarize-speakers',
+  'chaptering',
+  'translate-directly',
+]);
+const RULE_KEYS = new Set([
+  'atmosphere',
+  'terminology',
+  'speakerIdentification',
+  'formattingConventions',
+  'spellingAndGrammar',
+  'relationships',
+  'additionalNotes',
+]);
+
+const invalidAnalysis = () => {
+  const error = new Error('The provider returned invalid video analysis data');
+  error.name = 'VideoAnalysisError';
+  error.code = 'invalidVideoAnalysisResult';
+  return error;
+};
 
 /**
  * Abort any active video analysis request
@@ -36,62 +63,63 @@ export const abortVideoAnalysis = () => {
 };
 
 /**
- * Sanitize and limit the size of the analysis result to prevent localStorage overflow
+ * Validate and bound the exact provider result before it can become project state.
  * @param {Object} analysisResult - The raw analysis result from Gemini
  * @returns {Object} - The sanitized analysis result
  */
 const sanitizeAnalysisResult = (analysisResult) => {
-  if (!analysisResult) return null;
+  const isRecord = (value) => (
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+  );
+  const validText = (value) => (
+    typeof value === 'string'
+    && value.trim().length > 0
+    && value.length <= MAX_ANALYSIS_STRING_LENGTH
+  );
+  const validStringList = (value) => (
+    Array.isArray(value)
+    && value.length <= MAX_ANALYSIS_LIST_ITEMS
+    && value.every(validText)
+  );
+  const validObjectList = (value, keys) => (
+    Array.isArray(value)
+    && value.length <= MAX_ANALYSIS_LIST_ITEMS
+    && value.every((entry) => (
+      isRecord(entry)
+      && Object.keys(entry).length === keys.length
+      && keys.every((key) => validText(entry[key]))
+    ))
+  );
 
-  try {
-    // Create a deep copy to avoid modifying the original
-    const sanitized = JSON.parse(JSON.stringify(analysisResult));
-
-    // List of valid preset IDs
-    const validPresetIds = ['general', 'focus-lyrics', 'extract-text', 'describe-video', 'diarize-speakers', 'chaptering', 'translate-directly'];
-
-    // Ensure we have the required structure and valid preset ID
-    if (!sanitized.recommendedPreset || !sanitized.recommendedPreset.id || !validPresetIds.includes(sanitized.recommendedPreset.id)) {
-      console.warn('[VideoAnalysis] Invalid or missing preset ID:', sanitized.recommendedPreset?.id, '- defaulting to general');
-      sanitized.recommendedPreset = {
-        id: 'general',
-        reason: sanitized.recommendedPreset?.reason || 'Default preset selected due to invalid or missing recommendation'
-      };
-    }
-
-    if (!sanitized.transcriptionRules) {
-      sanitized.transcriptionRules = {};
-    }
-
-    // Limit terminology items if there are too many
-    if (sanitized.transcriptionRules.terminology &&
-        Array.isArray(sanitized.transcriptionRules.terminology) &&
-        sanitized.transcriptionRules.terminology.length > MAX_TERMINOLOGY_ITEMS) {
-
-      sanitized.transcriptionRules.terminology = sanitized.transcriptionRules.terminology.slice(0, MAX_TERMINOLOGY_ITEMS);
-
-      // Add a note about truncation
-      if (!sanitized.transcriptionRules.additionalNotes) {
-        sanitized.transcriptionRules.additionalNotes = [];
-      }
-      sanitized.transcriptionRules.additionalNotes.push(
-        `Note: The terminology list was truncated from the original analysis as it was too large.`
-      );
-    }
-
-    return sanitized;
-  } catch (error) {
-    console.error('Error sanitizing analysis result:', error);
-    return {
-      recommendedPreset: {
-        id: 'general',
-        reason: 'Default preset selected due to sanitization error'
-      },
-      transcriptionRules: {
-        additionalNotes: ['Error sanitizing analysis result. Using default settings.']
-      }
-    };
+  if (!isRecord(analysisResult)
+      || Object.keys(analysisResult).length !== 2
+      || !isRecord(analysisResult.recommendedPreset)
+      || Object.keys(analysisResult.recommendedPreset).length !== 2
+      || !VALID_PRESET_IDS.has(analysisResult.recommendedPreset.id)
+      || !validText(analysisResult.recommendedPreset.reason)
+      || !isRecord(analysisResult.transcriptionRules)
+      || Object.keys(analysisResult.transcriptionRules).some((key) => !RULE_KEYS.has(key))) {
+    throw invalidAnalysis();
   }
+
+  const rules = analysisResult.transcriptionRules;
+  if ((rules.atmosphere !== undefined && !validText(rules.atmosphere))
+      || (rules.terminology !== undefined
+        && (!Array.isArray(rules.terminology)
+          || rules.terminology.length > MAX_TERMINOLOGY_ITEMS
+          || !validObjectList(rules.terminology, ['term', 'definition'])))
+      || (rules.speakerIdentification !== undefined
+        && !validObjectList(rules.speakerIdentification, ['speakerId', 'description']))
+      || (rules.formattingConventions !== undefined
+        && !validStringList(rules.formattingConventions))
+      || (rules.spellingAndGrammar !== undefined
+        && !validStringList(rules.spellingAndGrammar))
+      || (rules.relationships !== undefined && !validStringList(rules.relationships))
+      || (rules.additionalNotes !== undefined && !validStringList(rules.additionalNotes))) {
+    throw invalidAnalysis();
+  }
+
+  return JSON.parse(JSON.stringify(analysisResult));
 };
 
 /**
@@ -103,7 +131,12 @@ const sanitizeAnalysisResult = (analysisResult) => {
 export const analyzeVideoWithGemini = async (
   videoFile,
   onStatusUpdate,
-  { signal: externalSignal, validateOwnership = null } = {}
+  {
+    signal: externalSignal,
+    validateOwnership = null,
+    projectId,
+    expectedProjectStateVersion,
+  } = {}
 ) => {
   // Create a new AbortController and store it
   const analysisController = new AbortController();
@@ -115,6 +148,13 @@ export const analyzeVideoWithGemini = async (
   try {
     const nativeRuntime = isDesktopRuntime();
     if (!nativeRuntime) throw new Error('Video analysis requires the desktop runtime');
+    if (typeof projectId !== 'string'
+        || !Number.isSafeInteger(expectedProjectStateVersion)
+        || expectedProjectStateVersion < 0) {
+      const error = new Error('Video analysis requires an exact native project revision');
+      error.code = 'videoAnalysisProjectAuthorityMissing';
+      throw error;
+    }
 
     // Get the selected model from localStorage or use the default
     const MODEL = normalizeMediaModelId(
@@ -224,54 +264,33 @@ Provide your analysis in a structured format that can be used to guide the trans
       responseJsonSchema: createVideoAnalysisSchema(),
       thinkingLevel: 'minimal',
       mediaResolution: 'low',
+      projectId,
+      expectedProjectStateVersion,
       signal,
     });
     if (validateOwnership) await validateOwnership();
-    const result = [{ text: nativeResult.text }];
-
-    // Extract analysis result from the response
+    if (typeof nativeResult?.text !== 'string'
+        || typeof nativeResult?.acknowledge !== 'function'
+        || typeof nativeResult?.job?.id !== 'string'
+        || typeof nativeResult?.deliveryId !== 'string') {
+      throw invalidAnalysis();
+    }
     let analysisResult;
-
-    // Check if result is already structured JSON (from schema response)
-    if (result && typeof result === 'object' && !Array.isArray(result)) {
-      // Result is already parsed structured JSON from the API
-      console.log('[VideoAnalysis] Received structured JSON response from API');
-      analysisResult = result;
-      console.log('[VideoAnalysis] Recommended preset:', analysisResult.recommendedPreset?.id);
+    try {
+      analysisResult = JSON.parse(nativeResult.text);
+    } catch {
+      throw invalidAnalysis();
     }
-    // Check if result is in text format that needs parsing
-    else if (result && result.length > 0 && result[0].text) {
-      // The result is in text format, needs parsing
-      const analysisText = result[0].text;
-
-      try {
-        // Try to parse as JSON if the model returned structured data
-        analysisResult = JSON.parse(analysisText);
-        console.log('[VideoAnalysis] Parsed JSON from text response');
-        console.log('[VideoAnalysis] Recommended preset:', analysisResult.recommendedPreset?.id);
-      } catch (e) {
-        // If not JSON, create a structured result from the text
-        console.log('[VideoAnalysis] Analysis result is not JSON, processing as text');
-        analysisResult = {
-          rawResponse: analysisText.substring(0, 1000),
-          recommendedPreset: {
-            id: 'general',
-            reason: 'Default preset selected - analysis returned unstructured text'
-          },
-          transcriptionRules: {
-            additionalNotes: [analysisText]
-          }
-        };
-      }
-    } else {
-      throw new Error('No analysis returned from Gemini');
-    }
-
-    // Sanitize the result to prevent localStorage overflow
     const sanitizedResult = sanitizeAnalysisResult(analysisResult);
 
-
-    return sanitizedResult;
+    return Object.freeze({
+      analysisResult: sanitizedResult,
+      delivery: Object.freeze({
+        jobId: nativeResult.job.id,
+        deliveryId: nativeResult.deliveryId,
+        acknowledge: nativeResult.acknowledge,
+      }),
+    });
   } catch (error) {
     console.error('Error analyzing video:', error);
 

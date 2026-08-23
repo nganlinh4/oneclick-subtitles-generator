@@ -30,11 +30,20 @@ export const selectNativeRenderVideo = async ({
   getCurrent = getSelectedMedia,
   restore = openMediaAsset,
   clear = clearMedia,
+  activate = async () => undefined,
 } = {}) => {
   const previous = await getCurrent();
   const selected = await select();
   if (selected === null) return null;
-  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
+  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) {
+    try {
+      await activate(selected);
+      return selected;
+    } catch (error) {
+      await rollbackNativeSelection(previous, restore, clear);
+      throw error;
+    }
+  }
 
   await rollbackNativeSelection(previous, restore, clear);
   throw new Error('Select a video file for rendering.');
@@ -45,10 +54,19 @@ export const claimNativeRenderVideo = async (offerId, {
   getCurrent = getSelectedMedia,
   restore = openMediaAsset,
   clear = clearMedia,
+  activate = async () => undefined,
 } = {}) => {
   const previous = await getCurrent();
   const selected = await claim(offerId);
-  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) return selected;
+  if (isNativeMediaDescriptor(selected) && selected.type.startsWith('video/')) {
+    try {
+      await activate(selected);
+      return selected;
+    } catch (error) {
+      await rollbackNativeSelection(previous, restore, clear);
+      throw error;
+    }
+  }
   await rollbackNativeSelection(previous, restore, clear);
   throw new Error('Drop a video file for rendering.');
 };
@@ -87,10 +105,9 @@ export const useVideoUpload = ({ onNativeVideoSelected } = {}) => {
       return;
     }
     try {
-      const media = await selectNativeRenderVideo();
+      const media = await selectNativeRenderVideo({ activate: onNativeVideoSelected });
       if (media) {
         setSelectedVideoFile(media);
-        onNativeVideoSelected?.(media);
       }
     } catch (error) {
       if (window.addToast) window.addToast(error.message, 'error', 8000);
@@ -181,11 +198,10 @@ export const useVideoUpload = ({ onNativeVideoSelected } = {}) => {
       }
       if (event.type !== 'drop' || !inside(event.position)) return;
       activeDragId = null;
-      claimNativeRenderVideo(event.offerId)
+      claimNativeRenderVideo(event.offerId, { activate: onNativeVideoSelected })
         .then((media) => {
           if (cancelled) return;
           setSelectedVideoFile(media);
-          onNativeVideoSelected?.(media);
         })
         .catch((error) => {
           if (!cancelled && window.addToast) window.addToast(error.message, 'error', 8000);

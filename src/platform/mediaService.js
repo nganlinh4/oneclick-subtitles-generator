@@ -4,6 +4,7 @@ import { flushDurableLyricsHistory } from './durableLyricsCheckpoint';
 import {
   getActiveProjectSnapshot,
   mutateProject,
+  undoDetachedProject,
 } from './projectService';
 
 const NATIVE_MEDIA_MARKER = '__nativeMedia';
@@ -538,7 +539,10 @@ const committedCandidateSnapshot = (value, options, asset) => {
       || committedAsset.kind !== asset.kind) {
     throw invalidMediaResponse();
   }
-  return commit.stateVersion;
+  return Object.freeze({
+    committed: commit.committed !== false,
+    stateVersion: commit.stateVersion,
+  });
 };
 
 const requireActiveCandidateProject = (value, options, stateVersion, asset = null) => {
@@ -577,11 +581,19 @@ export const createMediaCandidateLifecycle = ({
   invokeCommand = invokeDesktop,
   mutate = mutateProject,
   openAsset = openMediaAsset,
+  rollbackMutation = undoDetachedProject,
   flushSubtitleEdits = flushDurableLyricsHistory,
 } = {}) => Object.freeze({
-  claim: async (rawCandidate, rawOptions) => {
+  claim: async (rawCandidate, rawOptions, { validateOwnership = null } = {}) => {
     const candidate = normalizeMediaCandidate(rawCandidate);
     const options = normalizeCandidateClaimOptions(rawOptions);
+    if (validateOwnership !== null && typeof validateOwnership !== 'function') {
+      throw invalidMediaRequest();
+    }
+    const assertOwned = async () => {
+      if (validateOwnership !== null) await validateOwnership();
+    };
+    await assertOwned();
     requireActiveCandidateProject(
       getActiveSnapshot(),
       options,
@@ -593,35 +605,56 @@ export const createMediaCandidateLifecycle = ({
     // untouched. Automatic generation also checkpoints earlier, but manual/repeated downloads do
     // not necessarily pass through that flow.
     await flushSubtitleEdits();
+    await assertOwned();
     requireActiveCandidateProject(
       getActiveSnapshot(),
       options,
       options.expectedStateVersion
     );
-    const commit = await mutate(
-      options.projectId,
-      'Replace project media with downloaded candidate',
-      (project) => candidateProjectSnapshot(project, options, candidate.asset),
-      { retryOnConflict: false }
-    );
-    const committedStateVersion = committedCandidateSnapshot(commit, options, candidate.asset);
-    requireActiveCandidateProject(
-      getActiveSnapshot(),
-      options,
-      committedStateVersion,
-      candidate.asset
-    );
-    const descriptor = await openAsset(candidate.asset.id);
-    requireActiveCandidateProject(
-      getActiveSnapshot(),
-      options,
-      committedStateVersion,
-      candidate.asset
-    );
-    if (!isNativeMediaDescriptor(descriptor) || descriptor.assetId !== candidate.asset.id) {
-      throw invalidMediaResponse();
+    await assertOwned();
+    const commitReason = `Replace project media with downloaded candidate ${candidate.asset.id}`;
+    let committed = false;
+    try {
+      const commit = await mutate(
+        options.projectId,
+        commitReason,
+        (project) => candidateProjectSnapshot(project, options, candidate.asset),
+        { retryOnConflict: false }
+      );
+      const commitReceipt = committedCandidateSnapshot(commit, options, candidate.asset);
+      committed = commitReceipt.committed;
+      await assertOwned();
+      requireActiveCandidateProject(
+        getActiveSnapshot(),
+        options,
+        commitReceipt.stateVersion,
+        candidate.asset
+      );
+      await assertOwned();
+      const descriptor = await openAsset(candidate.asset.id);
+      await assertOwned();
+      requireActiveCandidateProject(
+        getActiveSnapshot(),
+        options,
+        commitReceipt.stateVersion,
+        candidate.asset
+      );
+      if (!isNativeMediaDescriptor(descriptor) || descriptor.assetId !== candidate.asset.id) {
+        throw invalidMediaResponse();
+      }
+      return descriptor;
+    } catch (error) {
+      if (committed) {
+        try {
+          // The asset ID makes this history reason acquisition-specific. If another revision has
+          // already won, the exact-reason undo refuses instead of reverting that newer work.
+          await rollbackMutation(options.projectId, commitReason);
+        } catch {
+          // Preserve the ownership/open refusal. A conflicting newer revision is authoritative.
+        }
+      }
+      throw error;
     }
-    return descriptor;
   },
   discard: async (assetId) => {
     const discarded = await invokeCommand('discard_media_candidate', {

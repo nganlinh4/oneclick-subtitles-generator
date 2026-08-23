@@ -15,9 +15,12 @@ vi.mock('./geminiService', () => ({
 const CREDENTIAL_A = '018f22ea-6f3e-7cc0-a555-111111111111';
 const CREDENTIAL_B = '018f22ea-6f3e-7cc0-a555-222222222222';
 const JOB_A = '018f22ea-6f3e-7cc0-a555-333333333333';
+const DELIVERY_A = '018f22ea-6f3e-7cc0-a555-444444444444';
+const PROJECT_A = '018f22ea-6f3e-7cc0-a555-555555555555';
 
 const completedEvent = (text = '{"ok":true}') => ({
   event: 'completed',
+  deliveryId: DELIVERY_A,
   job: {
     id: JOB_A,
     kind: 'translate',
@@ -41,6 +44,8 @@ const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } =
     return credentialIds[activeIndex] ?? null;
   });
   const cancel = vi.fn().mockResolvedValue(true);
+  const acknowledge = vi.fn().mockResolvedValue(undefined);
+  const ensureRecovery = vi.fn().mockResolvedValue({ unavailable: false });
   const start = vi.fn(startImplementation ?? (async (_request, handlers) => {
     queueMicrotask(() => handlers.onCompleted(completedEvent()));
     return {
@@ -60,12 +65,16 @@ const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } =
       rotateCredential,
       start,
       cancel,
+      acknowledge,
+      ensureRecovery,
     }),
     prepareCredentials,
     getCredentialId,
     rotateCredential,
     start,
     cancel,
+    acknowledge,
+    ensureRecovery,
   };
 };
 
@@ -79,10 +88,16 @@ const request = {
 test('uses only an opaque credential id and returns the native terminal result', async () => {
   const harness = createHarness();
 
-  await expect(harness.service.run(request)).resolves.toMatchObject({
+  const result = await harness.service.run(request);
+  expect(result).toMatchObject({
     text: '{"ok":true}',
     usage: null,
+    deliveryId: DELIVERY_A,
   });
+  expect(harness.acknowledge).not.toHaveBeenCalled();
+  await result.acknowledge();
+  await result.acknowledge();
+  expect(harness.acknowledge).toHaveBeenCalledExactlyOnceWith(JOB_A, DELIVERY_A);
   expect(harness.prepareCredentials).toHaveBeenCalledTimes(1);
   expect(harness.start).toHaveBeenCalledWith({
     ...request,
@@ -92,6 +107,56 @@ test('uses only an opaque credential id and returns the native terminal result',
     thinkingLevel: undefined,
     mediaAssetId: null,
   }, expect.any(Object));
+});
+
+test('forwards exact project ownership to the native admission boundary as one pair', async () => {
+  const harness = createHarness();
+
+  await harness.service.run({
+    ...request,
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 9,
+  });
+
+  expect(harness.start).toHaveBeenCalledWith({
+    ...request,
+    credentialId: CREDENTIAL_A,
+    systemInstruction: undefined,
+    maxOutputTokens: undefined,
+    thinkingLevel: undefined,
+    mediaAssetId: null,
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 9,
+  }, expect.any(Object));
+});
+
+test('does not prepare credentials or start Gemini while durable recovery is unavailable', async () => {
+  const harness = createHarness();
+  harness.ensureRecovery.mockRejectedValue(Object.assign(new Error('recovery unavailable'), {
+    code: 'nativeJobRecoveryUnavailable',
+    retryable: true,
+  }));
+
+  await expect(harness.service.run(request)).rejects.toMatchObject({
+    code: 'nativeJobRecoveryUnavailable',
+    retryable: true,
+  });
+  expect(harness.prepareCredentials).not.toHaveBeenCalled();
+  expect(harness.start).not.toHaveBeenCalled();
+});
+
+test('retains a result after acknowledgement transport failure and permits an exact retry', async () => {
+  const harness = createHarness();
+  harness.acknowledge
+    .mockRejectedValueOnce(new Error('WebView transport closed'))
+    .mockResolvedValueOnce(undefined);
+  const result = await harness.service.run(request);
+
+  await expect(result.acknowledge()).rejects.toThrow('WebView transport closed');
+  await expect(result.acknowledge()).resolves.toBeUndefined();
+  expect(harness.acknowledge).toHaveBeenCalledTimes(2);
+  expect(harness.acknowledge).toHaveBeenNthCalledWith(1, JOB_A, DELIVERY_A);
+  expect(harness.acknowledge).toHaveBeenNthCalledWith(2, JOB_A, DELIVERY_A);
 });
 
 test('rotates once after a rate limit and never repeats a credential', async () => {

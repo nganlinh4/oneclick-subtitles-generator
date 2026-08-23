@@ -97,7 +97,7 @@ const UnifiedNarrationSection = ({
     retryingSubtitleId,
     useGroupedSubtitles, setUseGroupedSubtitles,
     groupedSubtitles, setGroupedSubtitles,
-    isGroupingSubtitles,
+    isGroupingSubtitles, setIsGroupingSubtitles,
     groupingIntensity, setGroupingIntensity,
     selectedNarrationModel, setSelectedNarrationModel,
     setReferenceTextWithCache,
@@ -263,7 +263,9 @@ const UnifiedNarrationSection = ({
           useGroupedSubtitles={useGroupedSubtitles}
           setUseGroupedSubtitles={setUseGroupedSubtitles}
           isGroupingSubtitles={isGroupingSubtitles}
+          setIsGroupingSubtitles={setIsGroupingSubtitles}
           groupedSubtitles={groupedSubtitles}
+          setGroupedSubtitles={setGroupedSubtitles}
           groupingIntensity={groupingIntensity}
           setGroupingIntensity={setGroupingIntensity}
           selectedNarrationModel={selectedNarrationModel}
@@ -313,6 +315,7 @@ const UnifiedNarrationSection = ({
           useGroupedSubtitles={useGroupedSubtitles}
           setUseGroupedSubtitles={setUseGroupedSubtitles}
           isGroupingSubtitles={isGroupingSubtitles}
+          setIsGroupingSubtitles={setIsGroupingSubtitles}
           groupedSubtitles={groupedSubtitles}
           setGroupedSubtitles={setGroupedSubtitles}
           groupingIntensity={groupingIntensity}
@@ -356,6 +359,7 @@ const UnifiedNarrationSection = ({
           useGroupedSubtitles={useGroupedSubtitles}
           setUseGroupedSubtitles={setUseGroupedSubtitles}
           isGroupingSubtitles={isGroupingSubtitles}
+          setIsGroupingSubtitles={setIsGroupingSubtitles}
           groupedSubtitles={groupedSubtitles}
           setGroupedSubtitles={setGroupedSubtitles}
           groupingIntensity={groupingIntensity}
@@ -401,6 +405,7 @@ const UnifiedNarrationSection = ({
           useGroupedSubtitles={useGroupedSubtitles}
           setUseGroupedSubtitles={setUseGroupedSubtitles}
           isGroupingSubtitles={isGroupingSubtitles}
+          setIsGroupingSubtitles={setIsGroupingSubtitles}
           groupedSubtitles={groupedSubtitles}
           setGroupedSubtitles={setGroupedSubtitles}
           groupingIntensity={groupingIntensity}
@@ -442,6 +447,7 @@ const UnifiedNarrationSection = ({
           useGroupedSubtitles={useGroupedSubtitles}
           setUseGroupedSubtitles={setUseGroupedSubtitles}
           isGroupingSubtitles={isGroupingSubtitles}
+          setIsGroupingSubtitles={setIsGroupingSubtitles}
           groupedSubtitles={groupedSubtitles}
           setGroupedSubtitles={setGroupedSubtitles}
           groupingIntensity={groupingIntensity}

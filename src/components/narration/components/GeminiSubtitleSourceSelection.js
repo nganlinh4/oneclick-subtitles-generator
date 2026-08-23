@@ -9,6 +9,7 @@ import '../../../styles/narration/languageBadges.css';
 import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import SubtitleGroupingModal from './SubtitleGroupingModal';
 import HelpIcon from '../../common/HelpIcon';
+import { handleGroupingToggle as handleGroupingToggleHandler } from '../utils/subtitleGroupingHandlers';
 
 /**
  * Simplified subtitle source selection component for Gemini narration
@@ -46,7 +47,9 @@ const GeminiSubtitleSourceSelection = ({
   useGroupedSubtitles = false,
   setUseGroupedSubtitles = () => {},
   isGroupingSubtitles = false,
+  setIsGroupingSubtitles = () => {},
   groupedSubtitles = null,
+  onGroupedSubtitlesGenerated = () => {},
   groupingIntensity = 'moderate',
   setGroupingIntensity = () => {}
 }) => {
@@ -107,48 +110,19 @@ const GeminiSubtitleSourceSelection = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Function to handle subtitle grouping toggle
-  const handleGroupingToggle = (checked) => {
-    if (checked) {
-      // If turning on, only clear existing grouped subtitles if we want to force re-grouping
-      // Check if we already have grouped subtitles - if so, keep them
-      if (!groupedSubtitles || groupedSubtitles.length === 0) {
-        // No existing grouped subtitles, clear to force re-request to Gemini
-        if (typeof window.setGroupedSubtitles === 'function') {
-          window.setGroupedSubtitles(null);
-        }
-        window.groupedSubtitles = null;
-      }
-
-      // Clear the user disabled flag since they're turning it back on
-      try {
-        localStorage.removeItem('user_disabled_grouping');
-      } catch (error) {
-        console.error('Error clearing user disabled grouping flag:', error);
-      }
-
-      // Update the state - the useGeminiNarration hook will handle the grouping logic
-      setUseGroupedSubtitles(true);
-    } else {
-      // If turning off, clear the grouping data and update the state
-      setUseGroupedSubtitles(false);
-
-      // Clear the grouped subtitles data
-      if (typeof window.setGroupedSubtitles === 'function') {
-        window.setGroupedSubtitles(null);
-      }
-      window.groupedSubtitles = null;
-
-      // Set flag to prevent auto-loading from cache
-      try {
-        localStorage.setItem('user_disabled_grouping', 'true');
-      } catch (error) {
-        console.error('Error setting user disabled grouping flag:', error);
-      }
-    }
-  };
-
-  // We don't need to define onGroupedSubtitlesGenerated here
-  // It's passed as a prop from the parent component
+  const handleGroupingToggle = (checked) => handleGroupingToggleHandler(checked, {
+    groupedSubtitles,
+    subtitleSource,
+    hasTranslatedSubtitles: translatedSubtitles && translatedSubtitles.length > 0,
+    translatedSubtitles,
+    originalSubtitles,
+    translatedLanguage,
+    originalLanguage,
+    groupingIntensity,
+    setUseGroupedSubtitles,
+    setGroupedSubtitles: onGroupedSubtitlesGenerated,
+    setIsGroupingSubtitles,
+  });
 
   // Functions to handle modal
   const openModal = () => setIsModalOpen(true);

@@ -176,8 +176,6 @@
   "timeoutNone": "No limit",
   "timeout10Seconds": "10 seconds",
   "timeout20Seconds": "20 seconds",
-  "autoSelectDefaultPreset": "Auto-select default preset on timeout",
-  "autoSelectDefaultPresetDescription": "If enabled, the 'Use My Default Preset' option will be automatically selected in the Video Analysis Results pop-up when the timer expires. Otherwise, the 'Use Recommended' preset will be selected.",
   "videoAnalysisCountdown": "Analysis Countdown Time",
   "videoAnalysisCountdownDesc": "How long to wait before auto-saving analysis rules when using automatic generation.",
   "countdownNone": "No countdown (trust the analysis, not recommended)",

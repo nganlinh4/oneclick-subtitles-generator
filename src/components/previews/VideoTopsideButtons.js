@@ -23,6 +23,8 @@ const VideoTopsideButtons = ({
   useOptimizedPreview,
   optimizedVideoUrl,
   videoUrl,
+  narrationResults,
+  narrationCues,
 }) => {
   const { t } = useTranslation();
 
@@ -80,10 +82,12 @@ const VideoTopsideButtons = ({
               }}
               onClick={() =>
                 narrationRefreshHandler({
-                  videoRef,
-                  setIsRefreshingNarration,
-                  t,
-                })
+                   videoRef,
+                   setIsRefreshingNarration,
+                   t,
+                   generationResults: narrationResults,
+                   currentCues: narrationCues,
+                 })
               }
             />
           )}

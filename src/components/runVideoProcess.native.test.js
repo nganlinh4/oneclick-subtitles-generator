@@ -1,7 +1,8 @@
 import runVideoProcess from './runVideoProcess';
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 
-vi.mock('../platform/mediaService', () => ({
+vi.mock('../platform/mediaService', async (importOriginal) => ({
+  ...(await importOriginal()),
   isNativeMediaDescriptor: vi.fn((value) => value?.__nativeMedia === true),
 }));
 vi.mock('../platform/mediaPipelineService', () => ({

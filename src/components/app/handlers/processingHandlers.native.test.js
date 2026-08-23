@@ -1,5 +1,6 @@
 import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
 import { clearProjectSubtitles } from '../../../platform/subtitleProjectStore';
+import { resolveActiveNativeMedia } from '../../../platform/activeNativeMedia';
 import { createProcessingHandlers } from './processingHandlers';
 
 vi.mock('../../../platform/runtimeEnvironment', () => ({
@@ -8,6 +9,12 @@ vi.mock('../../../platform/runtimeEnvironment', () => ({
 vi.mock('../../../platform/subtitleProjectStore', () => ({
   clearProjectSubtitles: vi.fn(),
   resolveProjectForCache: vi.fn(),
+}));
+vi.mock('../../../platform/activeNativeMedia', () => ({
+  resolveActiveNativeMedia: vi.fn(),
+}));
+vi.mock('../../../platform/mediaService', () => ({
+  isNativeMediaDescriptor: vi.fn((value) => value?.__nativeMedia === true),
 }));
 vi.mock('../../../utils/autoGenerationOwnership', () => ({
   assertAutoGenerationContextCurrent: vi.fn((context) => context),
@@ -60,6 +67,7 @@ const buildHandlers = (overrides = {}) => {
 beforeEach(() => {
   isDesktopRuntime.mockReset();
   clearProjectSubtitles.mockReset().mockResolvedValue(true);
+  resolveActiveNativeMedia.mockReset();
   global.fetch = vi.fn();
   localStorage.clear();
   delete window.subtitlesData;
@@ -71,16 +79,21 @@ afterAll(() => {
 
 test('desktop retry clears the durable project track and never reaches legacy HTTP', async () => {
   isDesktopRuntime.mockReturnValue(true);
-  localStorage.setItem('current_file_cache_id', 'cache-id');
+  const media = Object.freeze({ __nativeMedia: true, assetId: 'asset-id' });
+  resolveActiveNativeMedia.mockResolvedValue({
+    cacheId: 'cache-id', projectId: 'project-id', media,
+  });
   const { values, handlers } = buildHandlers();
 
   await handlers.handleRetryGeneration();
 
-  expect(clearProjectSubtitles).toHaveBeenCalledWith('cache-id');
+  expect(clearProjectSubtitles).toHaveBeenCalledWith('cache-id', {
+    expectedProjectId: 'project-id',
+  });
   expect(global.fetch).not.toHaveBeenCalled();
   expect(values.retryGeneration).toHaveBeenCalledWith(
-    null,
-    'retry',
+    media,
+    'file-upload',
     { gemini: true },
     {}
   );

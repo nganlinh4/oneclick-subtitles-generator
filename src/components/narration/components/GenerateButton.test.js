@@ -21,6 +21,7 @@ const baseProps = (overrides = {}) => ({
 afterEach(() => vi.clearAllMocks());
 
 const REFERENCE_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
+const RESULT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 it('blocks generation for a method whose native runtime is not ready', () => {
   const props = baseProps({
@@ -95,4 +96,28 @@ it('shows the F5 language boundary reason and blocks generation', () => {
   const generate = screen.getByRole('button', { name: /Generate Narration/u });
   expect(generate).toBeDisabled();
   expect(generate).toHaveAttribute('title', props.generationBlockedReason);
+});
+
+it('offers aligned download only for a complete set of native artifact capabilities', () => {
+  const { rerender } = render(<GenerateButton {...baseProps({
+    generationResults: [{ subtitle_id: 1, success: true, filename: 'legacy.wav' }],
+  })} />);
+  expect(screen.getByRole('button', { name: /timeline/i })).toBeDisabled();
+
+  rerender(<GenerateButton {...baseProps({
+    generationResults: [{
+      subtitle_id: 1,
+      success: true,
+      nativeArtifactId: RESULT_ID,
+    }],
+  })} />);
+  expect(screen.getByRole('button', { name: /timeline/i })).toBeEnabled();
+
+  rerender(<GenerateButton {...baseProps({
+    generationResults: [
+      { subtitle_id: 1, success: true, nativeArtifactId: RESULT_ID },
+      { subtitle_id: 2, success: false },
+    ],
+  })} />);
+  expect(screen.getByRole('button', { name: /timeline/i })).toBeDisabled();
 });

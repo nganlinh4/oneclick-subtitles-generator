@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 
 import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
+import { acknowledgeJobResult } from '../../../platform/jobResultDeliveryService';
+import {
+  getActiveProjectSnapshot,
+  subscribeToActiveProject,
+} from '../../../platform/projectService';
 import {
   createNativeNarrationToken,
   getNativeNarrationArtifactId,
@@ -13,11 +18,6 @@ const CACHE_KEYS = Object.freeze([
   'edge_tts_narrations_cache',
   'gtts_narrations_cache',
   'gemini_narration_cache',
-]);
-const REFERENCE_KEYS = Object.freeze([
-  'reference_audio_cache',
-  'f5tts_narrations_cache',
-  'chatterbox_narrations_cache',
 ]);
 const MAX_CACHE_BYTES = 4 * 1024 * 1024;
 
@@ -87,7 +87,6 @@ const useNarrationCache = ({
   };
 
   useEffect(() => {
-    let disposed = false;
     const mediaId = getCurrentMediaId();
     if (!mediaId) return undefined;
 
@@ -111,34 +110,115 @@ const useNarrationCache = ({
       }
     }
 
-    const referenceEntry = newest(REFERENCE_KEYS.map((key) => readCache(key, mediaId)));
-    const reference = referenceEntry?.referenceAudio;
-    const artifactId = getNativeNarrationArtifactId(reference);
-    if (!artifactId) return undefined;
-    nativeNarrationAdapter.resolvePlayback(artifactId).then((playable) => {
-      if (disposed) {
-        nativeNarrationAdapter.releasePlayback(playable).catch(() => undefined);
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let sequence = 0;
+    let activeProjectId = null;
+    let activePlayback = null;
+
+    const release = (reference) => {
+      if (!reference?.nativePlaybackId) return;
+      nativeNarrationAdapter.releasePlayback(reference).catch(() => undefined);
+    };
+
+    const publish = (snapshot, reference) => {
+      const artifactId = getNativeNarrationArtifactId(reference);
+      const normalized = {
+        ...reference,
+        projectId: snapshot.metadata.id,
+        projectStateVersion: snapshot.stateVersion,
+        nativeArtifactId: artifactId,
+        filename: createNativeNarrationToken(artifactId),
+        url: reference.audioUrl,
+        text: reference.text || '',
+        language: reference.language || 'Unknown',
+        fromCache: true,
+      };
+      activePlayback = normalized;
+      current.current.setReferenceAudio(normalized);
+      current.current.setReferenceText(normalized.text);
+    };
+
+    const hydrate = async (snapshot) => {
+      const operation = ++sequence;
+      if (!snapshot?.metadata?.id) {
+        activeProjectId = null;
+        release(activePlayback);
+        activePlayback = null;
+        current.current.setReferenceAudio(null);
+        current.current.setReferenceText('');
         return;
       }
-      current.current.setReferenceAudio({
-        nativeArtifactId: artifactId,
-        nativePlaybackId: playable.nativePlaybackId,
-        filename: createNativeNarrationToken(artifactId),
-        url: playable.audioUrl,
-        audioUrl: playable.audioUrl,
-        mimeType: playable.mimeType,
-        format: playable.format,
-        durationMicros: playable.durationMicros,
-        text: typeof reference.text === 'string' ? reference.text : '',
-        language: reference.language,
-        fromCache: true,
-      });
-      current.current.setReferenceText(
-        typeof reference.text === 'string' ? reference.text : '',
-      );
-    }).catch(() => undefined);
+      if (activeProjectId === snapshot.metadata.id) {
+        current.current.setReferenceAudio((previous) => previous && ({
+          ...previous,
+          projectStateVersion: snapshot.stateVersion,
+        }));
+        return;
+      }
+      activeProjectId = snapshot.metadata.id;
+      release(activePlayback);
+      activePlayback = null;
+      current.current.setReferenceAudio(null);
+      current.current.setReferenceText('');
+      try {
+        let reference = await nativeNarrationAdapter.getReference(snapshot.metadata.id);
+        const latest = getActiveProjectSnapshot();
+        if (disposed || operation !== sequence
+            || latest?.metadata?.id !== snapshot.metadata.id) {
+          release(reference);
+          return;
+        }
+        if (reference?.pendingDelivery) {
+          try {
+            await acknowledgeJobResult(
+              reference.pendingDelivery.jobId,
+              reference.pendingDelivery.deliveryId,
+            );
+            const confirmed = getActiveProjectSnapshot();
+            if (confirmed?.metadata?.id === snapshot.metadata.id) {
+              const cleared = await nativeNarrationAdapter.commitReference({
+                projectId: snapshot.metadata.id,
+                expectedProjectStateVersion: confirmed.stateVersion,
+                expectedReferenceVersion: reference.referenceVersion,
+                artifactId: reference.nativeArtifactId,
+                transcript: reference.text,
+                language: reference.language,
+                deliveryJobId: null,
+                deliveryId: null,
+              });
+              reference = Object.freeze({
+                ...reference,
+                referenceVersion: cleared.referenceVersion,
+                pendingDelivery: null,
+              });
+            }
+          } catch {
+            // Both native records retain the exact delivery for the next hydration attempt.
+          }
+        }
+        const finalSnapshot = getActiveProjectSnapshot();
+        if (reference && finalSnapshot?.metadata?.id === snapshot.metadata.id) {
+          publish(finalSnapshot, reference);
+        } else {
+          release(reference);
+        }
+      } catch {
+        // A missing or corrupt native artifact refuses restoration without reviving legacy data.
+      }
+    };
 
-    return () => { disposed = true; };
+    void hydrate(getActiveProjectSnapshot());
+    const unsubscribe = subscribeToActiveProject((snapshot) => { void hydrate(snapshot); });
+    return () => {
+      disposed = true;
+      sequence += 1;
+      unsubscribe();
+      release(activePlayback);
+    };
   }, []);
 };
 

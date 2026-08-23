@@ -12,6 +12,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('../platform/desktopRuntime', () => ({
+  invokeDesktop: vi.fn(),
   isDesktopRuntime: () => true,
 }));
 

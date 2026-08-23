@@ -50,6 +50,9 @@ pub(crate) fn request_json() -> Value {
     json!({
         "sourceAssetId": AssetId::new(),
         "projectId": ProjectId::new(),
+        "sceneRevision": 0,
+        "selectedSubtitles": "original",
+        "selectedNarration": "none",
         "narrationArtifactId": null,
         "lyrics": [{"id":"cue-1","startUs":1_000_000,"endUs":2_000_000,"text":"A"}],
         "settings": {

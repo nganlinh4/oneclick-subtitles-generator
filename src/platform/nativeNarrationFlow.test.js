@@ -1,6 +1,7 @@
 import { nativeNarrationAdapter } from './nativeNarrationAdapter';
 import {
   discardRecoveredNativeJob,
+  ensureNativeJobRecoveryReady,
   forgetNativeJobId,
   listRecoveredNativeJobs,
   rememberNativeJobId,
@@ -22,6 +23,7 @@ vi.mock('./nativeNarrationAdapter', () => ({
 
 vi.mock('./jobRecoveryCoordinator', () => ({
   discardRecoveredNativeJob: vi.fn(),
+  ensureNativeJobRecoveryReady: vi.fn(),
   forgetNativeJobId: vi.fn(),
   listRecoveredNativeJobs: vi.fn(),
   rememberNativeJobId: vi.fn(),
@@ -44,6 +46,7 @@ describe('native narration flow ownership', () => {
     localStorage.clear();
     vi.clearAllMocks();
     startNativeJobRecovery.mockResolvedValue({ recovered: 0 });
+    ensureNativeJobRecoveryReady.mockResolvedValue({ unavailable: false });
     listRecoveredNativeJobs.mockReturnValue([]);
     rememberNativeJobId.mockReturnValue(true);
     forgetNativeJobId.mockReturnValue(true);
@@ -73,6 +76,19 @@ describe('native narration flow ownership', () => {
     handlers.onCancelled([]);
     await expect(active).resolves.toMatchObject({ status: 'cancelled', jobId: JOB_ID });
     expect(forgetNativeJobId).toHaveBeenCalledWith(JOB_ID);
+  });
+
+  test('does not admit a native job while startup recovery is unavailable', async () => {
+    ensureNativeJobRecoveryReady.mockRejectedValue(Object.assign(
+      new Error('Native job recovery is temporarily unavailable'),
+      { code: 'nativeJobRecoveryUnavailable', retryable: true },
+    ));
+
+    await expect(runNativeNarrationJob(request())).rejects.toMatchObject({
+      code: 'nativeJobRecoveryUnavailable',
+      retryable: true,
+    });
+    expect(nativeNarrationAdapter.generate).not.toHaveBeenCalled();
   });
 
   test('fails closed when the worker dies and releases the active slot', async () => {
@@ -171,7 +187,7 @@ describe('native narration flow ownership', () => {
     });
     await Promise.resolve();
     await expect(runNativeNarrationJob(request())).rejects.toMatchObject({
-      code: 'nativeNarrationBusy',
+      code: 'nativeNarrationRecoveryPending',
     });
     await expect(restored).resolves.toMatchObject({
       job: { id: JOB_ID, state: 'succeeded' },
@@ -180,6 +196,33 @@ describe('native narration flow ownership', () => {
     expect(nativeNarrationAdapter.restore).toHaveBeenCalledTimes(2);
     expect(discardRecoveredNativeJob).toHaveBeenCalledWith(JOB_ID);
     expect(localStorage.length).toBe(0);
+  });
+
+  test('retains a recovered job after transport failure and can retry without a stuck active slot', async () => {
+    listRecoveredNativeJobs.mockReturnValue([{ job: { id: JOB_ID } }]);
+    nativeNarrationAdapter.restore
+      .mockRejectedValueOnce(new Error('transport closed'))
+      .mockResolvedValueOnce({
+        job: { id: JOB_ID, state: 'succeeded' },
+        results: [{ subtitle_id: 7, success: true, pending: false }],
+      });
+    const input = {
+      method: 'gtts',
+      subtitles: [{ id: 7, text: 'restored' }],
+      pollIntervalMs: 1,
+      timeoutMs: 100,
+    };
+
+    await expect(restorePersistedNativeNarration(input)).rejects.toMatchObject({
+      code: 'nativeNarrationRecoveryUnavailable',
+      retryable: true,
+    });
+    expect(discardRecoveredNativeJob).not.toHaveBeenCalled();
+    await expect(restorePersistedNativeNarration(input)).resolves.toMatchObject({
+      job: { id: JOB_ID, state: 'succeeded' },
+    });
+    expect(nativeNarrationAdapter.restore).toHaveBeenCalledTimes(2);
+    expect(discardRecoveredNativeJob).toHaveBeenCalledWith(JOB_ID);
   });
 
   test('never resurrects a legacy localStorage request payload', async () => {

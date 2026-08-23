@@ -1,11 +1,28 @@
 import { useState, useEffect } from 'react';
+import {
+    getCurrentCacheId,
+    getTranscriptionRulesSync,
+} from '../utils/transcriptionRulesStore';
+
+export const hasMeaningfulTranscriptionRules = (rules) => (
+    rules !== null
+    && typeof rules === 'object'
+    && !Array.isArray(rules)
+    && Object.keys(rules).length > 0
+    && Object.values(rules).some((value) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'string') return value.trim() !== '';
+        if (value !== null && typeof value === 'object') return Object.keys(value).length > 0;
+        return value !== null && value !== undefined;
+    })
+);
 
 /**
  * Tracks whether saved transcription/analysis rules exist and are non-empty.
  *
- * Re-checks on mount, on the `transcriptionRulesUpdated` event, and on cross-tab
- * `storage` changes to the `transcription_rules` key. When no usable rules exist
- * it also flips the caller's "use rules" toggle off.
+ * The project-backed transcription-rules store is the sole authority. Its event carries
+ * the cache/project scope that produced the snapshot, so a late event from another media
+ * cannot enable rules for the active project.
  *
  * @param {boolean} useTranscriptionRules current toggle value
  * @param {Function} setUseTranscriptionRules toggle setter (disabled when no rules)
@@ -15,65 +32,26 @@ const useTranscriptionRulesAvailability = (useTranscriptionRules, setUseTranscri
     const [transcriptionRulesAvailable, setTranscriptionRulesAvailable] = useState(false);
 
     useEffect(() => {
-        const checkRulesAvailability = () => {
-            const transcriptionRulesStr = localStorage.getItem('transcription_rules');
-            let hasRules = false;
-
-            if (transcriptionRulesStr && transcriptionRulesStr.trim() !== '' && transcriptionRulesStr !== 'null') {
-                try {
-                    const rules = JSON.parse(transcriptionRulesStr);
-                    // Check if rules object has any meaningful content
-                    hasRules = rules && typeof rules === 'object' &&
-                        (Object.keys(rules).length > 0) &&
-                        // Make sure it's not just an empty object or only has empty arrays/strings
-                        Object.values(rules).some(value => {
-                            if (Array.isArray(value)) return value.length > 0;
-                            if (typeof value === 'string') return value.trim() !== '';
-                            if (typeof value === 'object' && value !== null) return Object.keys(value).length > 0;
-                            return value !== null && value !== undefined;
-                        });
-                } catch (e) {
-                    // If it's not valid JSON, treat as no rules
-                    hasRules = false;
-                }
-            }
-
+        const applyAvailability = (rules) => {
+            const hasRules = hasMeaningfulTranscriptionRules(rules);
             setTranscriptionRulesAvailable(hasRules);
-
-            // If rules are not available, disable the switch
             if (!hasRules && useTranscriptionRules) {
                 setUseTranscriptionRules(false);
             }
-
-            console.log('[VideoProcessingModal] Transcription rules availability:', hasRules ? 'Available' : 'Not available');
         };
 
-        // Initial check
-        checkRulesAvailability();
+        applyAvailability(getTranscriptionRulesSync());
 
-        // Listen for transcription rules changes
-        const handleRulesUpdate = () => {
-            console.log('[VideoProcessingModal] Transcription rules updated, re-checking availability');
-            checkRulesAvailability();
+        const handleRulesUpdate = (event) => {
+            if (event.detail?.cacheId !== getCurrentCacheId()) return;
+            applyAvailability(event.detail?.rules ?? null);
         };
-
-        // Listen for storage changes (when rules are cleared from other components)
-        const handleStorageChange = (event) => {
-            if (event.key === 'transcription_rules') {
-                console.log('[VideoProcessingModal] Transcription rules changed in localStorage');
-                checkRulesAvailability();
-            }
-        };
-
-        // Add event listeners
         window.addEventListener('transcriptionRulesUpdated', handleRulesUpdate);
-        window.addEventListener('storage', handleStorageChange);
 
         return () => {
             window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
-            window.removeEventListener('storage', handleStorageChange);
         };
-    }, [useTranscriptionRules]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [setUseTranscriptionRules, useTranscriptionRules]);
 
     return transcriptionRulesAvailable;
 };

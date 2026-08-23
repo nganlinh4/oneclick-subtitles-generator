@@ -1,9 +1,12 @@
 import { patchProjectAuxiliary, readProjectAuxiliary } from '../platform/projectAuxiliaryStore';
 import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 import {
+  bindTranscriptionRulesProject,
   clearTranscriptionRules,
+  commitVideoAnalysisForCache,
   getTranscriptionRules,
   getTranscriptionRulesSync,
+  isTranscriptionRulesProjectBindingReceipt,
   setCurrentCacheId,
   setTranscriptionRules,
   setTranscriptionRulesForCache,
@@ -119,4 +122,146 @@ it('publishes no rules when the cache alias remaps after its scoped native write
   expect(published).not.toHaveBeenCalled();
   window.removeEventListener('transcriptionRulesUpdated', published);
   setCurrentCacheId(null);
+});
+
+it('publishes the exact cache and project scope after a scoped native write', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockResolvedValue({ transcriptionRules: null });
+  setCurrentCacheId('scoped-rules-cache');
+  await Promise.resolve();
+  resolveProjectForCache.mockResolvedValue({ projectId: 'scoped-project' });
+  patchProjectAuxiliary.mockResolvedValue({ transcriptionRules: { atmosphere: 'quiet' } });
+  const published = vi.fn();
+  window.addEventListener('transcriptionRulesUpdated', published);
+
+  await setTranscriptionRulesForCache(
+    'scoped-rules-cache',
+    { atmosphere: 'quiet' },
+    { expectedProjectId: 'scoped-project' }
+  );
+
+  expect(published).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    detail: {
+      rules: { atmosphere: 'quiet' },
+      cacheId: 'scoped-rules-cache',
+      projectId: 'scoped-project',
+    },
+  }));
+  window.removeEventListener('transcriptionRulesUpdated', published);
+  setCurrentCacheId(null);
+});
+
+it('persists provider analysis and its rules in one exact-project write', async () => {
+  setCurrentCacheId(null);
+  readProjectAuxiliary.mockResolvedValue({ transcriptionRules: null });
+  setCurrentCacheId('analysis-cache');
+  await Promise.resolve();
+  resolveProjectForCache.mockResolvedValue({ projectId: 'analysis-project' });
+  const analysis = {
+    schemaVersion: 1,
+    sourceIdentity: 'asset:source',
+    providerJobId: '01890f39-7b62-7c4e-8c9a-000000000311',
+    deliveryId: '01890f39-7b62-7c4e-8c9a-000000000312',
+    recommendedPresetId: 'general',
+    transcriptionRules: { atmosphere: 'quiet' },
+  };
+  patchProjectAuxiliary.mockResolvedValue({
+    transcriptionRules: analysis.transcriptionRules,
+    analysis,
+  });
+
+  await expect(commitVideoAnalysisForCache(
+    'analysis-cache',
+    { rules: analysis.transcriptionRules, analysis },
+    { expectedProjectId: 'analysis-project' }
+  )).resolves.toMatchObject({
+    projectId: 'analysis-project',
+    providerJobId: analysis.providerJobId,
+    deliveryId: analysis.deliveryId,
+  });
+
+  expect(patchProjectAuxiliary).toHaveBeenCalledWith(
+    'analysis-cache',
+    {
+      transcriptionRules: analysis.transcriptionRules,
+      analysis,
+    },
+    { expectedProjectId: 'analysis-project' }
+  );
+  setCurrentCacheId(null);
+});
+
+it('refuses the legacy fire-and-forget transfer for rules staged before media', async () => {
+  setCurrentCacheId(null);
+  patchProjectAuxiliary.mockClear();
+  await setTranscriptionRules({ terminology: ['staged'] });
+
+  expect(() => setCurrentCacheId('legacy-unscoped-cache')).toThrow(expect.objectContaining({
+    code: 'projectBindingRequired',
+  }));
+  expect(patchProjectAuxiliary).not.toHaveBeenCalled();
+  expect(getTranscriptionRulesSync()).toEqual({ terminology: ['staged'] });
+
+  await setTranscriptionRules(null);
+});
+
+it('publishes staged rules only after an exact-project durable binding receipt', async () => {
+  setCurrentCacheId(null);
+  await setTranscriptionRules({ terminology: ['durable'] });
+  resolveProjectForCache.mockReset();
+  resolveProjectForCache.mockResolvedValue({ projectId: 'project-a' });
+  let releaseWrite;
+  patchProjectAuxiliary.mockReturnValueOnce(new Promise((resolve) => { releaseWrite = resolve; }));
+  const published = vi.fn();
+  window.addEventListener('transcriptionRulesUpdated', published);
+
+  const pending = bindTranscriptionRulesProject('cache-a', {
+    expectedProjectId: 'project-a',
+  });
+  await vi.waitFor(() => expect(patchProjectAuxiliary).toHaveBeenCalledExactlyOnceWith(
+    'cache-a',
+    { transcriptionRules: { terminology: ['durable'] } },
+    { expectedProjectId: 'project-a' }
+  ));
+  expect(published).not.toHaveBeenCalled();
+
+  releaseWrite({ transcriptionRules: { terminology: ['durable'] } });
+  const receipt = await pending;
+  expect(isTranscriptionRulesProjectBindingReceipt(receipt, {
+    cacheId: 'cache-a',
+    projectId: 'project-a',
+  })).toBe(true);
+  expect(published).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    detail: {
+      rules: { terminology: ['durable'] },
+      cacheId: 'cache-a',
+      projectId: 'project-a',
+    },
+  }));
+
+  window.removeEventListener('transcriptionRulesUpdated', published);
+  setCurrentCacheId(null);
+});
+
+it('restores staged rules and rejects when the alias remaps after the write', async () => {
+  setCurrentCacheId(null);
+  await setTranscriptionRules({ atmosphere: 'staged' });
+  resolveProjectForCache.mockReset();
+  resolveProjectForCache
+    .mockResolvedValueOnce({ projectId: 'project-a' })
+    .mockResolvedValueOnce({ projectId: 'project-b' });
+  patchProjectAuxiliary.mockResolvedValueOnce({ transcriptionRules: { atmosphere: 'staged' } });
+  const published = vi.fn();
+  window.addEventListener('transcriptionRulesUpdated', published);
+
+  await expect(bindTranscriptionRulesProject('cache-remapped', {
+    expectedProjectId: 'project-a',
+  })).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+  expect(getTranscriptionRulesSync()).toEqual({ atmosphere: 'staged' });
+  expect(published).not.toHaveBeenCalledWith(expect.objectContaining({
+    detail: expect.objectContaining({ cacheId: 'cache-remapped', projectId: 'project-a' }),
+  }));
+
+  window.removeEventListener('transcriptionRulesUpdated', published);
+  await setTranscriptionRules(null);
 });

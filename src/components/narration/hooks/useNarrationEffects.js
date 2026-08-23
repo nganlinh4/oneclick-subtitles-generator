@@ -1,28 +1,96 @@
 import { useEffect } from 'react';
 import { showErrorToast, showInfoToast } from '../../../utils/toastUtils';
-import { cacheReferenceAudio } from './referenceAudioCache';
+import { acknowledgeJobResult } from '../../../platform/jobResultDeliveryService';
+import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
+import { getActiveProjectSnapshot } from '../../../platform/projectService';
+
+const referenceTextTails = new Map();
 
 /**
- * Build a setReferenceText wrapper that also refreshes the reference-audio localStorage cache.
- *
- * Extracted from useUnifiedNarration to keep that orchestrator under the size budget. Reuses the
- * shared cacheReferenceAudio helper instead of re-implementing media-id resolution inline.
+ * Build a setReferenceText wrapper that serializes edits into the project-owned native record.
  *
  * @param {Object} params
  * @param {Object} params.referenceAudio - Current reference audio object (or null)
  * @param {Function} params.setReferenceText - State setter for reference text
  * @returns {Function} setReferenceTextWithCache(newText)
  */
-export const createSetReferenceTextWithCache = ({ referenceAudio, setReferenceText }) => (newText) => {
+export const createSetReferenceTextWithCache = ({
+  referenceAudio,
+  setReferenceAudio,
+  setReferenceText,
+}) => (newText) => {
   setReferenceText(newText);
-
-  // Update reference audio cache if we have reference audio
-  if (referenceAudio) {
-    cacheReferenceAudio({
-      ...referenceAudio,
-      text: newText || '',
-    }, 'reference text change');
-  }
+  if (!referenceAudio?.projectId || !referenceAudio?.nativeArtifactId
+      || !Number.isSafeInteger(referenceAudio.referenceVersion)) return Promise.resolve();
+  const text = typeof newText === 'string' ? newText : '';
+  setReferenceAudio?.((previous) => previous?.nativeArtifactId === referenceAudio.nativeArtifactId
+    ? { ...previous, text }
+    : previous);
+  const previousTail = referenceTextTails.get(referenceAudio.projectId) ?? Promise.resolve();
+  const operation = previousTail.catch(() => undefined).then(async () => {
+    const active = getActiveProjectSnapshot();
+    if (active?.metadata?.id !== referenceAudio.projectId) return;
+    let stored = await nativeNarrationAdapter.getReference(referenceAudio.projectId);
+    if (!stored || stored.nativeArtifactId !== referenceAudio.nativeArtifactId) {
+      if (stored) await nativeNarrationAdapter.releasePlayback(stored).catch(() => undefined);
+      return;
+    }
+    await nativeNarrationAdapter.releasePlayback(stored).catch(() => undefined);
+    if (stored.pendingDelivery) {
+      await acknowledgeJobResult(
+        stored.pendingDelivery.jobId,
+        stored.pendingDelivery.deliveryId,
+      );
+      const latest = getActiveProjectSnapshot();
+      if (latest?.metadata?.id !== referenceAudio.projectId) return;
+      stored = {
+        ...stored,
+        ...(await nativeNarrationAdapter.commitReference({
+          projectId: referenceAudio.projectId,
+          expectedProjectStateVersion: latest.stateVersion,
+          expectedReferenceVersion: stored.referenceVersion,
+          artifactId: stored.nativeArtifactId,
+          transcript: stored.text,
+          language: stored.language,
+          deliveryJobId: null,
+          deliveryId: null,
+        })),
+        pendingDelivery: null,
+      };
+    }
+    const latest = getActiveProjectSnapshot();
+    if (latest?.metadata?.id !== referenceAudio.projectId) return;
+    const committed = await nativeNarrationAdapter.commitReference({
+      projectId: referenceAudio.projectId,
+      expectedProjectStateVersion: latest.stateVersion,
+      expectedReferenceVersion: stored.referenceVersion,
+      artifactId: stored.nativeArtifactId,
+      transcript: text,
+      language: stored.language,
+      deliveryJobId: null,
+      deliveryId: null,
+    });
+    setReferenceAudio?.((current) => current?.nativeArtifactId === stored.nativeArtifactId
+      && current.text === text
+      ? {
+        ...current,
+        referenceVersion: committed.referenceVersion,
+        projectStateVersion: latest.stateVersion,
+        pendingDelivery: null,
+      }
+      : current);
+  });
+  referenceTextTails.set(referenceAudio.projectId, operation);
+  const cleanup = () => {
+    if (referenceTextTails.get(referenceAudio.projectId) === operation) {
+      referenceTextTails.delete(referenceAudio.projectId);
+    }
+  };
+  void operation.then(cleanup, (error) => {
+    cleanup();
+    showErrorToast(error?.message || 'The reference transcript could not be saved');
+  });
+  return operation;
 };
 
 /**

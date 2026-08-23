@@ -9,6 +9,7 @@ import {
 const recoveryMocks = vi.hoisted(() => ({
   claim: vi.fn(),
   discard: vi.fn(),
+  ensure: vi.fn(),
   forget: vi.fn(),
   list: vi.fn(),
   remember: vi.fn(),
@@ -23,6 +24,7 @@ const renderServiceMocks = vi.hoisted(() => ({
 vi.mock('../../platform/jobRecoveryCoordinator', () => ({
   claimRecoveredNativeJob: recoveryMocks.claim,
   discardRecoveredNativeJob: recoveryMocks.discard,
+  ensureNativeJobRecoveryReady: recoveryMocks.ensure,
   forgetNativeJobId: recoveryMocks.forget,
   listRecoveredNativeJobs: recoveryMocks.list,
   rememberNativeJobId: recoveryMocks.remember,
@@ -95,6 +97,7 @@ const hookProps = () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   recoveryMocks.start.mockResolvedValue({ recovered: 0, discarded: 0, unavailable: false });
+  recoveryMocks.ensure.mockResolvedValue({ recovered: 0, discarded: 0, unavailable: false });
   recoveryMocks.list.mockReturnValue([]);
   renderServiceMocks.releasePlayback.mockResolvedValue(true);
 });
@@ -241,6 +244,24 @@ describe('native render queue hydration', () => {
 });
 
 describe('native render queue lease', () => {
+  test('keeps pending work unadmitted while durable recovery is unavailable', async () => {
+    recoveryMocks.ensure.mockRejectedValue(Object.assign(new Error('recovery unavailable'), {
+      code: 'nativeJobRecoveryUnavailable',
+      retryable: true,
+    }));
+    const props = hookProps();
+    props.startRenderRef.current = vi.fn();
+    const view = renderHook(() => useRenderQueue(props));
+    act(() => view.result.current.setRenderQueue([
+      { id: 'first', status: 'pending', progress: 0 },
+    ]));
+
+    await expect(view.result.current.startNextPendingRender()).resolves.toBe(false);
+    expect(props.startRenderRef.current).not.toHaveBeenCalled();
+    expect(view.result.current.renderQueue[0]).toMatchObject({ status: 'pending' });
+    expect(props.setError).toHaveBeenCalledWith('recovery unavailable');
+  });
+
   test('admits one same-tick pump and advances pending work with a new generation', async () => {
     const resolvers = [];
     const owners = [];

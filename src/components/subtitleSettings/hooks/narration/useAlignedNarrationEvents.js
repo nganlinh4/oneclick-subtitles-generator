@@ -3,7 +3,6 @@
  */
 import { useEffect } from "react";
 // These imports are used in the commented-out code but not in the active code
-// import { createHash, getAllSubtitles, createSubtitleMap, enhanceNarrationWithTiming } from './alignedNarrationUtils';
 
 /**
  * Hook for handling aligned narration events

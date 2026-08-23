@@ -163,27 +163,14 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     };
   }, [transcriptionRules]);
 
-  // Get current video file for analysis (same logic as VideoProcessingOptionsModal)
+  // Analyze only the media descriptor owned by this mounted editor. Historical window globals
+  // were an unversioned second source of truth and could point at the previous project.
   const getCurrentVideoFile = () => {
-    // Use the same priority as VideoProcessingOptionsModal: uploadedFileData || uploadedFile
     const videoFile = uploadedFileData || uploadedFile;
 
     if (videoFile) {
       dbg('[VideoAnalysisButton] Found video file:', videoFile.name || 'unnamed file');
       return videoFile;
-    }
-
-    // Fallback: Try to get from window globals (legacy support)
-    const windowUploadedFile = window.uploadedVideoFile;
-    if (windowUploadedFile) {
-      dbg('[VideoAnalysisButton] Found video file from window.uploadedVideoFile:', windowUploadedFile.name);
-      return windowUploadedFile;
-    }
-
-    const windowDownloadedFile = window.downloadedVideoFile;
-    if (windowDownloadedFile) {
-      dbg('[VideoAnalysisButton] Found video file from window.downloadedVideoFile:', windowDownloadedFile.name);
-      return windowDownloadedFile;
     }
 
     dbg('[VideoAnalysisButton] No video file found');
@@ -230,6 +217,7 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
       await commitVideoAnalysisForContext({
         context,
         analysisResult: result.analysisResult,
+        delivery: result.delivery,
         showCountdown: true,
       });
     } catch (error) {
@@ -315,7 +303,6 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
       sessionStorage.removeItem('last_applied_recommendation');
       sessionStorage.removeItem('current_session_video_fingerprint');
       sessionStorage.removeItem('current_session_prompt');
-      localStorage.removeItem('video_analysis_result');
       if (editorContext) publishAnalysisSettled(editorContext, true);
       setEditorContext(null);
       manualEditorControllerRef.current?.abort();

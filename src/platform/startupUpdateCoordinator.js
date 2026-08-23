@@ -1,5 +1,6 @@
 import i18n from '../i18n/i18n';
 import { isDesktopRuntime } from './desktopRuntime';
+import { flushDurableLyricsHistory } from './durableLyricsCheckpoint';
 import { checkDesktopUpdate, installDesktopUpdate } from './updateService';
 
 const AVAILABLE_TOAST_KEY = 'app-update-available';
@@ -31,9 +32,15 @@ const publishStatus = (status) => {
 export const offerDesktopUpdate = (update, {
   t = i18n.t.bind(i18n),
   install = installDesktopUpdate,
+  checkpoint = flushDurableLyricsHistory,
   showToast = addToast,
 } = {}) => {
-  const beginInstall = () => beginDesktopUpdateInstall(update, { t, install, showToast });
+  const beginInstall = () => beginDesktopUpdateInstall(update, {
+    t,
+    install,
+    checkpoint,
+    showToast,
+  });
 
   showToast(
     t('settings.updateReady', 'OSG {{version}} is ready to install.', { version: update.version }),
@@ -50,6 +57,7 @@ export const offerDesktopUpdate = (update, {
 export const beginDesktopUpdateInstall = (update, {
   t = i18n.t.bind(i18n),
   install = installDesktopUpdate,
+  checkpoint = flushDurableLyricsHistory,
   showToast = addToast,
 } = {}) => {
   const controller = new AbortController();
@@ -64,31 +72,42 @@ export const beginDesktopUpdateInstall = (update, {
     INSTALL_TOAST_KEY,
     cancelButton,
   );
-  install(update.version, {
-    onProgress: ({ basisPoints }) => {
-      const percent = basisPoints === null ? null : Math.floor(basisPoints / 100);
-      showToast(
-        percent === null
-          ? t('settings.updateDownloading', 'Downloading the signed update…')
-          : t('settings.updateDownloadingPercent', 'Downloading the signed update… {{percent}}%', { percent }),
+  let stage = 'checkpoint';
+  const run = async () => {
+    // The updater can restart the process without asking the main window to close. Treat it as the
+    // same destructive boundary: no installer may start while an editor revision is only queued in
+    // the WebView's debounce/serialization chain.
+    await checkpoint();
+    stage = 'install';
+    await install(update.version, {
+      onProgress: ({ basisPoints }) => {
+        const percent = basisPoints === null ? null : Math.floor(basisPoints / 100);
+        showToast(
+          percent === null
+            ? t('settings.updateDownloading', 'Downloading the signed update…')
+            : t('settings.updateDownloadingPercent', 'Downloading the signed update… {{percent}}%', { percent }),
+          'info',
+          INSTALL_TOAST_DURATION,
+          INSTALL_TOAST_KEY,
+          cancelButton,
+        );
+      },
+      onInstalling: () => showToast(
+        t('settings.updateInstalling', 'Update verified. Starting the installer…'),
         'info',
         INSTALL_TOAST_DURATION,
         INSTALL_TOAST_KEY,
-        cancelButton,
-      );
-    },
-    onInstalling: () => showToast(
-      t('settings.updateInstalling', 'Update verified. Starting the installer…'),
-      'info',
-      INSTALL_TOAST_DURATION,
-      INSTALL_TOAST_KEY,
-      null,
-    ),
-  }, { signal: controller.signal }).catch((error) => {
+        null,
+      ),
+    }, { signal: controller.signal });
+  };
+  void run().catch((error) => {
     const cancelled = error?.code === 'updaterCancelled';
     showToast(
       cancelled
         ? t('settings.updateCancelled', 'Application update cancelled.')
+        : stage === 'checkpoint'
+          ? t('subtitlesInput.saveFailed', 'The subtitles could not be saved. Please try again.')
         : t('settings.updateInstallFailed', 'The signed update could not be installed.'),
       cancelled ? 'info' : 'error',
       cancelled ? 6000 : 8000,

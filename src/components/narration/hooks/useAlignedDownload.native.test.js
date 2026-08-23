@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { downloadNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
   generateAlignedNarration,
-  getAlignedNarrationArtifactId,
+  getAlignedNarrationArtifactIdForPlan,
 } from '../../../services/alignedNarrationService';
 import useAlignedDownload from './useAlignedDownload';
 import { showSuccessToast } from '../../../utils/toastUtils';
@@ -14,7 +14,7 @@ vi.mock('../../../platform/nativeNarrationArtifacts', () => ({
 }));
 vi.mock('../../../services/alignedNarrationService', () => ({
   generateAlignedNarration: vi.fn(),
-  getAlignedNarrationArtifactId: vi.fn(),
+  getAlignedNarrationArtifactIdForPlan: vi.fn(),
 }));
 vi.mock('../utils/loadingOverlayFactory', () => ({
   createSimpleLoadingOverlay: () => ({
@@ -31,23 +31,27 @@ test('aligned download stays on durable native speech artifacts', async () => {
   const originalFetch = global.fetch;
   global.fetch = vi.fn();
   generateAlignedNarration.mockResolvedValue('aligned-preview://timeline');
-  getAlignedNarrationArtifactId.mockReturnValue(ALIGNED_ID);
+  getAlignedNarrationArtifactIdForPlan.mockReturnValue(ALIGNED_ID);
   downloadNativeNarration.mockResolvedValue(undefined);
+  const currentCues = [{ id: 1, text: 'hello', start: 0, end: 1 }];
+  const generationResults = [{
+    subtitle_id: 1,
+    text: 'hello',
+    success: true,
+    nativeArtifactId: CLIP_ID,
+    filename: `osg-speech-artifact:${CLIP_ID}`,
+  }];
   const { result } = renderHook(() => useAlignedDownload({
-    generationResults: [{
-      subtitle_id: 1,
-      success: true,
-      nativeArtifactId: CLIP_ID,
-      filename: `osg-speech-artifact:${CLIP_ID}`,
-    }],
-    getSelectedSubtitles: () => [{ id: 1, text: 'hello', start: 0, end: 1 }],
+    generationResults,
+    getCurrentCues: () => currentCues,
     t: (_key, fallback) => fallback,
   }));
 
   await act(async () => result.current.downloadAlignedAudio());
 
   expect(generateAlignedNarration).toHaveBeenCalledWith(
-    expect.arrayContaining([expect.objectContaining({ nativeArtifactId: CLIP_ID })]),
+    generationResults,
+    currentCues,
     expect.any(Function),
   );
   expect(downloadNativeNarration).toHaveBeenCalledWith({

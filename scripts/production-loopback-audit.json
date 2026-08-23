@@ -8,11 +8,6 @@
       "path": "src/config.js",
       "disposition": "development-inspection-only",
       "reason": "Frozen compatibility signatures resolve to a non-network sentinel while every runtime operation uses typed native services."
-    },
-    {
-      "path": "src/utils/narrationServerUtils.js",
-      "disposition": "unreachable-visual-compatibility",
-      "reason": "The original protected loading-overlay render surface is retained unchanged but has no production import path."
     }
   ],
   "missingCapabilities": []

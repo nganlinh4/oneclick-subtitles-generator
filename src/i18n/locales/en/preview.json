@@ -8,5 +8,6 @@
   "downloadAudio": "Download Audio",
   "downloadingAudio": "Downloading...",
   "audioExtractionError": "Failed to extract audio from video. Please try again.",
-  "extractFrame": "Extract Frame"
+  "extractFrame": "Extract Frame",
+  "mediaNotPrepared": "Prepare this video before opening its preview."
 }

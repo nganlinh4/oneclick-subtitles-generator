@@ -7,6 +7,7 @@ import {
 import {
   claimRecoveredNativeJob,
   discardRecoveredNativeJob,
+  ensureNativeJobRecoveryReady,
   forgetNativeJobId,
   listRecoveredNativeJobs,
   rememberNativeJobId,
@@ -34,9 +35,18 @@ export const mergeNativeRenderResult = (item, response) => {
   if (['queued', 'running', 'cancelling'].includes(response.job.state)) {
     return {
       ...item,
-      status: 'processing',
+      status: response.job.state === 'cancelling' ? 'cancelling' : 'processing',
       progress: Math.round(response.job.progress.basisPoints / 100),
       nativeJobId: response.job.id,
+    };
+  }
+  if (response.job.state === 'cancelled') {
+    return {
+      ...item,
+      status: 'cancelled',
+      progress: 0,
+      nativeJobId: response.job.id,
+      error: null,
     };
   }
   return item;
@@ -149,6 +159,16 @@ export const useRenderQueue = ({
   const startNextPendingRender = async () => {
     const nextItem = renderQueueRef.current.find((item) => item.status === 'pending');
     if (!nextItem || typeof startRenderRef.current !== 'function') return false;
+    try {
+      await ensureNativeJobRecoveryReady();
+    } catch (error) {
+      setError(error.message);
+      setRenderStatus(t(
+        'videoRendering.recoveryUnavailable',
+        'Previous render recovery is temporarily unavailable',
+      ));
+      return false;
+    }
     const owner = claimRenderLease(nextItem.id);
     if (owner === null) return false;
     const startedAt = Date.now();
@@ -259,10 +279,10 @@ export const useRenderQueue = ({
           item.id === queueItem.id
             ? {
                 ...item,
-                status: 'failed',
+                status: cancelled ? 'cancelled' : 'failed',
                 progress: 0,
                 error: cancelled
-                  ? t('videoRendering.renderCancelled', 'Render was cancelled')
+                  ? null
                   : t(
                       'videoRendering.renderFailedBrowserClosed',
                       'Render failed while browser was closed'

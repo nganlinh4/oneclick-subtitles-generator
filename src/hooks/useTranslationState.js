@@ -127,6 +127,26 @@ const buildTerminal = ({
   failedChunks: failures,
 });
 
+const requireCompleteTranslationResult = (value) => {
+  if (!value || value.status !== 'complete'
+      || !Array.isArray(value.rows)
+      || !Array.isArray(value.deliveries)
+      || value.deliveries.some((delivery) => typeof delivery?.acknowledge !== 'function')) {
+    throw new TypeError('Translation returned an invalid owned result');
+  }
+  return value;
+};
+
+const acknowledgePersistedDeliveries = async (deliveries) => {
+  const outcomes = await Promise.allSettled(deliveries.map((delivery) => (
+    Promise.resolve().then(() => delivery.acknowledge())
+  )));
+  return Object.freeze({
+    attempted: outcomes.length,
+    pending: outcomes.filter((outcome) => outcome.status === 'rejected').length,
+  });
+};
+
 const languageOptionsFromChain = (chain) => {
   const languages = chain
     .filter((item) => item.type === 'language' && !item.isOriginal)
@@ -238,6 +258,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     bulkFilesRef: ownedBulkFilesRef,
     setBulkFiles,
     bulkTranslations,
+    pendingBulkDeliveryCount,
     setBulkTranslations,
     isBulkTranslating,
     setIsBulkTranslating,
@@ -582,12 +603,8 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     void checkRulesAvailability();
     const refresh = () => void checkRulesAvailability();
     window.addEventListener('transcriptionRulesUpdated', refresh);
-    window.addEventListener('videoAnalysisComplete', refresh);
-    window.addEventListener('videoAnalysisUserChoice', refresh);
     return () => {
       window.removeEventListener('transcriptionRulesUpdated', refresh);
-      window.removeEventListener('videoAnalysisComplete', refresh);
-      window.removeEventListener('videoAnalysisUserChoice', refresh);
     };
   }, []);
 
@@ -713,7 +730,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       }
       if (!hasMainSubtitles) return { status: 'complete', scope: 'bulk' };
 
-      const result = await translateSubtitles(
+      const translationResult = requireCompleteTranslationResult(await translateSubtitles(
         context.sourceSubtitles,
         languages.length === 1 ? languages[0] : languages,
         selectedModel,
@@ -729,9 +746,9 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         'main',
         false,
         ownership
-      );
+      ));
       await assertRunOwned(context);
-      if (!Array.isArray(result) || result.length === 0) {
+      if (translationResult.rows.length === 0) {
         throw new Error(t('translation.emptyResult', 'Translation returned no results'));
       }
       const terminal = buildTerminal({
@@ -740,7 +757,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         languageChain: normalizedChain,
         model: selectedModel,
         status: 'complete',
-        rows: result,
+        rows: translationResult.rows,
       });
       await assertRunOwned(context);
       assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
@@ -751,25 +768,44 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         sourceFingerprint: context.sourceFingerprint,
         status: 'complete',
       });
+      assertTranslationPersistenceReceipt(receipt, context.identity, {
+        revision: acknowledged.record.revision,
+        sourceFingerprint: context.sourceFingerprint,
+        status: 'complete',
+      });
+      await assertRunOwned(context);
+      const deliveryAcknowledgement = await acknowledgePersistedDeliveries(
+        translationResult.deliveries
+      );
+      await assertRunOwned(context);
       await publishComplete(context, acknowledged);
       await assertRunOwned(context);
       setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
       await assertRunOwned(context);
       safeSetStorage('translation_split_duration', String(splitDuration));
       await assertRunOwned(context);
-      return { status: 'complete', receipt };
+      return {
+        status: 'complete',
+        receipt,
+        pendingDeliveryCount: deliveryAcknowledgement.pending,
+      };
     } catch (translationError) {
       let terminalError = translationError;
       if (translationError instanceof PartialTranslationError && context && normalizedChain) {
         try {
           await assertRunOwned(context);
+          const partialResult = translationError.result ?? Object.freeze({
+            status: 'partial',
+            rows: translationError.completedSubtitles,
+            deliveries: Object.freeze([]),
+          });
           const terminal = buildTerminal({
             sourceFingerprint: context.sourceFingerprint,
             sourceEntryCount: context.sourceSubtitles.length,
             languageChain: normalizedChain,
             model: selectedModel,
             status: 'partial',
-            rows: translationError.completedSubtitles,
+            rows: partialResult.rows,
             failures: translationError.failedChunks,
           });
           assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
@@ -780,6 +816,15 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             sourceFingerprint: context.sourceFingerprint,
             status: 'partial',
           });
+          assertTranslationPersistenceReceipt(receipt, context.identity, {
+            revision: acknowledged.record.revision,
+            sourceFingerprint: context.sourceFingerprint,
+            status: 'partial',
+          });
+          await assertRunOwned(context);
+          const deliveryAcknowledgement = await acknowledgePersistedDeliveries(
+            partialResult.deliveries
+          );
           await assertRunOwned(context);
           clearWindowTranslation();
           await assertRunOwned(context);
@@ -798,7 +843,11 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             failedChunks: acknowledged.record.failedChunks,
           });
           await assertRunOwned(context);
-          return { status: 'partial', receipt };
+          return {
+            status: 'partial',
+            receipt,
+            pendingDeliveryCount: deliveryAcknowledgement.pending,
+          };
         } catch (partialPersistenceError) {
           terminalError = partialPersistenceError;
         }
@@ -962,7 +1011,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         },
         restTime: 0,
       };
-      const result = await translateSubtitles(
+      const translationResult = requireCompleteTranslationResult(await translateSubtitles(
         retrySource,
         options.languages.length === 1 ? options.languages[0] : options.languages,
         record.model,
@@ -976,12 +1025,12 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         'retry',
         false,
         ownership
-      );
+      ));
       await assertRunOwned(context);
-      if (!Array.isArray(result) || result.length !== requestedIds.length) {
+      if (translationResult.rows.length !== requestedIds.length) {
         throw new Error('Retry result did not match the captured original IDs');
       }
-      const replacement = new Map(result.map((row) => [row.originalId, row]));
+      const replacement = new Map(translationResult.rows.map((row) => [row.originalId, row]));
       if (replacement.size !== requestedIds.length
           || requestedIds.some((id) => !replacement.has(id))) {
         throw new Error('Retry result lost its original subtitle identity');
@@ -1004,11 +1053,20 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         sourceFingerprint: context.sourceFingerprint,
         status: 'complete',
       });
+      await assertRunOwned(context);
+      const deliveryAcknowledgement = await acknowledgePersistedDeliveries(
+        translationResult.deliveries
+      );
+      await assertRunOwned(context);
       await publishComplete(context, acknowledged, { eventName: 'translation-updated' });
       await assertRunOwned(context);
       setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
       await assertRunOwned(context);
-      return { status: 'complete', receipt };
+      return {
+        status: 'complete',
+        receipt,
+        pendingDeliveryCount: deliveryAcknowledgement.pending,
+      };
     } catch (retryError) {
       if (isAbort(retryError) || controller.signal.aborted) return { status: 'cancelled' };
       if (context) {
@@ -1080,6 +1138,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     bulkFiles,
     setBulkFiles,
     bulkTranslations,
+    pendingBulkDeliveryCount,
     setBulkTranslations,
     isBulkTranslating,
     currentBulkFileIndex,

@@ -16,7 +16,11 @@ export const getStatusIcon = (status) => {
       return (
         <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>error</span>
       );
-    case 'canceled':
+    case 'cancelling':
+      return (
+        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>hourglass_top</span>
+      );
+    case 'cancelled':
       return (
         <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>block</span>
       );
@@ -37,16 +41,12 @@ export const getStatusColor = (status) => {
       return 'var(--success-color)';
     case 'failed':
       return 'var(--error-color)';
-    case 'canceled':
+    case 'cancelled':
       return 'var(--text-secondary)';
     default:
       return 'var(--text-secondary)';
   }
 };
-
-// Compute effective status that respects local cancel regardless of server response
-export const getEffectiveStatusForItem = (item, isLocallyCanceled) =>
-  (isLocallyCanceled(item.id) ? 'canceled' : item.status);
 
 export const formatTime = (timestamp) => {
   if (!timestamp) return '';

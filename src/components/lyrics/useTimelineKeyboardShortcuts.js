@@ -18,7 +18,6 @@ export const useTimelineKeyboardShortcuts = ({
     onSegmentSelect,
     duration,
     lyrics,
-    offlineSegments,
     disableAutoScroll,
     setHasDraggedInSession,
     setIsDraggingSegment,
@@ -106,9 +105,7 @@ export const useTimelineKeyboardShortcuts = ({
                     };
 
                     // Check if there are subtitles in the range
-                    if (offlineSegments.length > 0) {
-                        // When offline cuts exist, do not trigger the range action bar or open the modal
-                    } else if (checkForSubtitles(startTime, endTime)) {
+                    if (checkForSubtitles(startTime, endTime)) {
                         // Show action bar instead of opening modal
                         setActionBarRange({ start: startTime, end: endTime });
                         setHiddenActionBarRange({ start: startTime, end: endTime });
@@ -124,5 +121,5 @@ export const useTimelineKeyboardShortcuts = ({
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [renderTimeline, onSegmentSelect, duration, lyrics, offlineSegments, timelineRef, disableAutoScroll, setHasDraggedInSession, setIsDraggingSegment, setDragStartTime, setDragCurrentTime, dragStartRef, dragCurrentRef, isDraggingRef, setActionBarRange, setHiddenActionBarRange]);
+    }, [renderTimeline, onSegmentSelect, duration, lyrics, timelineRef, disableAutoScroll, setHasDraggedInSession, setIsDraggingSegment, setDragStartTime, setDragCurrentTime, dragStartRef, dragCurrentRef, isDraggingRef, setActionBarRange, setHiddenActionBarRange]);
 };

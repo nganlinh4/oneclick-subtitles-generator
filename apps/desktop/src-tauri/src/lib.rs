@@ -1,3 +1,4 @@
+mod app_close;
 mod asr;
 mod background;
 mod cache;
@@ -17,6 +18,7 @@ mod gemini;
 mod gemini_image;
 mod glyph_atlas;
 mod image_blob;
+mod job_results;
 mod legacy_import;
 mod live_music;
 mod media_blob;
@@ -24,6 +26,7 @@ mod media_export;
 mod media_pipeline;
 mod native_drop;
 mod native_tools;
+mod project_render_scene;
 mod providers;
 mod render;
 mod speech;
@@ -40,6 +43,10 @@ use std::{
     time::Duration,
 };
 
+use app_close::{
+    AppCloseCheckpointState, app_close_checkpoint_commit, app_close_checkpoint_complete,
+    app_close_checkpoint_failed, handle_close_requested,
+};
 use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
 use commands::{
@@ -75,6 +82,7 @@ use image_blob::{
     ImageBlobStore, image_blob_import_playback, image_blob_release, image_reference_export,
     image_reference_playback_release, image_reference_select,
 };
+use job_results::{job_result_ack, job_result_claim, job_result_pending};
 use legacy_import::{
     is_project_scoped_setting_key, is_transient_setting_key, legacy_import_select,
     legacy_import_status,
@@ -103,6 +111,7 @@ use osg_infrastructure::storage::{Database, is_secret_setting_key};
 use osg_media::{BinarySearch, MediaEngine, ToolchainResolver};
 use osg_media_server::MediaServer;
 use osg_native_tools::{ExecutableRole, NativeToolId};
+use project_render_scene::{project_render_scene_get, project_render_scene_put};
 use providers::{
     genius_lyrics, youtube_oauth_authorize, youtube_oauth_cancel, youtube_oauth_clear,
     youtube_oauth_status, youtube_search, youtube_thumbnail, youtube_video_details,
@@ -114,9 +123,9 @@ use serde_json::Value;
 use speech::{
     SpeechRuntime, speech_alignment_result, speech_alignment_start, speech_artifact_edit,
     speech_artifact_export, speech_artifact_resolve, speech_job_results, speech_playback_release,
-    speech_probe, speech_reference_extract, speech_reference_import, speech_reference_select,
-    speech_runtime_stop, speech_start, speech_status, speech_voice_conversion_start,
-    speech_voice_inventory,
+    speech_probe, speech_reference_clear, speech_reference_commit, speech_reference_extract,
+    speech_reference_get, speech_reference_import, speech_reference_select, speech_runtime_stop,
+    speech_start, speech_status, speech_voice_conversion_start, speech_voice_inventory,
 };
 use speech_packages::{
     SpeechPackageRuntime, speech_package_install, speech_package_remove, speech_packages_status,
@@ -174,6 +183,7 @@ pub fn run() {
         .manage(GlyphAtlasStore::new())
         .manage(GeneratedImageRuntime::default())
         .manage(AppUpdateRuntime::default())
+        .manage(AppCloseCheckpointState::default())
         .setup(setup_app)
         .on_page_load(|webview, payload| {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Started) {
@@ -206,6 +216,9 @@ pub fn run() {
         .on_window_event(handle_application_window_event)
         .invoke_handler(tauri::generate_handler![
             app_health,
+            app_close_checkpoint_complete,
+            app_close_checkpoint_failed,
+            app_close_checkpoint_commit,
             font_readiness_retry,
             get_session_snapshot,
             select_media,
@@ -234,9 +247,14 @@ pub fn run() {
             project_redo,
             project_track_undo,
             project_track_redo,
+            project_render_scene_get,
+            project_render_scene_put,
             jobs_list,
             job_get,
             job_cancel,
+            job_result_pending,
+            job_result_claim,
+            job_result_ack,
             credential_set,
             credential_upsert,
             credential_delete,
@@ -310,6 +328,9 @@ pub fn run() {
             speech_reference_select,
             speech_reference_extract,
             speech_reference_import,
+            speech_reference_get,
+            speech_reference_commit,
+            speech_reference_clear,
             speech_start,
             speech_voice_conversion_start,
             speech_artifact_edit,
@@ -344,14 +365,14 @@ fn handle_application_run_event(_app: &tauri::AppHandle, event: &tauri::RunEvent
 
 fn handle_application_window_event(window: &Window, event: &WindowEvent) {
     handle_native_media_drop_event(window, event);
-    if is_main_window_close_request(
-        window.label(),
-        matches!(event, WindowEvent::CloseRequested { .. }),
-    ) {
+    if let WindowEvent::CloseRequested { api, .. } = event
+        && is_main_window_close_request(window.label(), true)
+    {
         // OSG has no tray/background mode. Tauri's runtime destroys an unprevented closing window
-        // and requests application exit when its window store becomes empty. Requesting exit here
-        // as well would emit a second ExitRequested event during the same native close.
+        // only after the editor has drained its durable revision queue. Rust owns the native close
+        // decision; JavaScript receives only a one-shot nonce with which to acknowledge that drain.
         diagnostics::record("app.close_requested", &[]);
+        handle_close_requested(window, api, &window.state::<AppCloseCheckpointState>());
     }
 }
 
@@ -847,10 +868,14 @@ fn prepare_speech_runtime(
     })
 }
 
-// WebView localStorage is the live preference store. SQLite is a recovery/migration seed for a
-// fresh WebView profile, not permission to overwrite changes made since the previous native sync.
-// The marker remains WebView-only because the `current_` prefix is excluded from native settings.
+// SQLite is the durable preference authority. The WebView mirrors it so legacy readers can keep
+// using localStorage while they are migrated, but a crash between the native commit and that mirror
+// update must not resurrect the stale browser value on the next launch.
+//
+// The marker remains only so upgraded installations can discard the old one-shot bootstrap state.
+// Both bookkeeping keys are WebView-only because the `current_` prefix is excluded from settings.
 const WEBVIEW_SETTINGS_BOOTSTRAP_MARKER: &str = "current_settings_bootstrap_v1";
+const WEBVIEW_NATIVE_SETTINGS_KEY_INDEX: &str = "current_native_settings_keys_v1";
 
 fn settings_initialization_script(
     settings: &BTreeMap<String, Value>,
@@ -863,8 +888,9 @@ fn settings_initialization_script(
     let serialized = serde_json::to_string(&safe_settings)?;
     let string_literal = serde_json::to_string(&serialized)?;
     let marker_literal = serde_json::to_string(WEBVIEW_SETTINGS_BOOTSTRAP_MARKER)?;
+    let index_literal = serde_json::to_string(WEBVIEW_NATIVE_SETTINGS_KEY_INDEX)?;
     Ok(format!(
-        "(() => {{ localStorage.removeItem('original_subtitles_map'); const marker = {marker_literal}; const shouldRestore = localStorage.getItem(marker) !== 'complete'; const values = JSON.parse({string_literal}); if (shouldRestore) {{ for (const [key, value] of Object.entries(values)) {{ const stored = typeof value === 'string' ? value : JSON.stringify(value); if (stored !== undefined && localStorage.getItem(key) === null) localStorage.setItem(key, stored); }} localStorage.setItem(marker, 'complete'); }} }})();"
+        "(() => {{ localStorage.removeItem('original_subtitles_map'); const marker = {marker_literal}; const indexKey = {index_literal}; const values = JSON.parse({string_literal}); let previousKeys = []; try {{ const parsed = JSON.parse(localStorage.getItem(indexKey) || '[]'); if (Array.isArray(parsed)) previousKeys = parsed.filter(key => typeof key === 'string' && /^[A-Za-z0-9._:-]{{1,128}}$/.test(key) && !key.startsWith('current_')); }} catch (_error) {{ previousKeys = []; }} const currentKeys = Object.keys(values); const currentKeySet = new Set(currentKeys); for (const key of previousKeys) {{ if (!currentKeySet.has(key)) localStorage.removeItem(key); }} for (const [key, value] of Object.entries(values)) {{ const stored = typeof value === 'string' ? value : JSON.stringify(value); if (stored !== undefined) localStorage.setItem(key, stored); }} localStorage.setItem(indexKey, JSON.stringify(currentKeys)); localStorage.removeItem(marker); }})();"
     ))
 }
 
@@ -1248,22 +1274,33 @@ mod tests {
     }
 
     #[test]
-    fn initialization_script_never_overwrites_a_newer_webview_preference() {
+    fn initialization_script_makes_native_preferences_authoritative_after_a_crash() {
         let script = settings_initialization_script(&BTreeMap::from([(
             "theme".to_owned(),
-            json!("stale-native-theme"),
+            json!("committed-native-theme"),
         )]))
         .expect("valid script");
 
         assert!(script.contains("current_settings_bootstrap_v1"));
-        assert!(script.contains("localStorage.getItem(marker) !== 'complete'"));
-        assert!(script.contains("if (shouldRestore)"));
-        assert!(script.contains("localStorage.getItem(key) === null"));
-        assert!(script.contains("localStorage.setItem(marker, 'complete')"));
+        assert!(script.contains("current_native_settings_keys_v1"));
+        assert!(script.contains("committed-native-theme"));
+        assert!(!script.contains("localStorage.getItem(key) === null"));
         assert_eq!(
             script.matches("localStorage.setItem(key, stored)").count(),
             1
         );
+        assert!(script.contains("localStorage.removeItem(marker)"));
+    }
+
+    #[test]
+    fn initialization_script_removes_only_valid_previously_native_keys() {
+        let script = settings_initialization_script(&BTreeMap::new()).expect("valid script");
+
+        assert!(script.contains("Array.isArray(parsed)"));
+        assert!(script.contains("/^[A-Za-z0-9._:-]{1,128}$/"));
+        assert!(script.contains("!key.startsWith('current_')"));
+        assert!(script.contains("if (!currentKeySet.has(key)) localStorage.removeItem(key)"));
+        assert!(script.contains("localStorage.setItem(indexKey, JSON.stringify(currentKeys))"));
     }
 
     #[test]
@@ -1297,6 +1334,7 @@ mod tests {
         assert!(!is_safe_setting_key("osg.nativeNarrationJob.v1"));
         assert!(!is_safe_setting_key("osg.nativeJobIds.v1"));
         assert!(!is_safe_setting_key("current_settings_bootstrap_v1"));
+        assert!(!is_safe_setting_key("current_native_settings_keys_v1"));
         assert!(!is_safe_setting_key("user_provided_subtitles"));
         assert!(!is_safe_setting_key("original_subtitles_map"));
         for native_owned_key in [

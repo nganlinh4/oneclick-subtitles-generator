@@ -11,18 +11,21 @@ use osg_asr::{
     SegmentationOptions, Transcription, TranscriptionOptions, TranscriptionRequest, WorkerProgram,
     catalog,
 };
-use osg_domain::{JobId, JobKind, JobSnapshot, JobState, JobUpdate};
+use osg_domain::{JobId, JobKind, JobSnapshot, JobState};
 use osg_engine_packages::{
     CancellationToken as PackageCancellationToken, EngineId as PackageEngineId,
     EnginePackageManager, InstalledRuntime, PackageError, RuntimeCoordinator,
 };
+use osg_infrastructure::storage::{JobResultDeliveryDraft, JobResultKind};
 use osg_media::{
     AudioExtractionPlan, CancellationToken as MediaCancellationToken, MediaEngine, MediaInput,
     MediaOperation, MediaOutput, MediaTimeRange, ProgressSink as MediaProgressSink,
     RunControl as MediaRunControl,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::{State, ipc::Channel};
+use uuid::Uuid;
 
 use crate::background;
 use crate::error::{CommandError, CommandResult};
@@ -660,6 +663,7 @@ pub(crate) enum AsrJobEvent {
     },
     Completed {
         job: JobSnapshot,
+        delivery_id: Uuid,
         transcription: Transcription,
         timeline_offset_ms: u64,
     },
@@ -708,6 +712,7 @@ pub(crate) async fn asr_start(
         .clone()
         .ok_or_else(|| CommandError::invalid_input("Select a media file first."))?;
     let input = MediaInput::from_native_selection(local_media.path())?;
+    let asset_id = local_media.asset_id();
     let manager = state.asr.clone();
     let service = tauri::async_runtime::spawn_blocking(move || manager.service(engine_id))
         .await
@@ -748,15 +753,12 @@ pub(crate) async fn asr_start(
         .await;
         watcher.abort();
 
-        if channel_closed.load(Ordering::Acquire) {
-            background::request_cancellation(&jobs, job_id).await;
-        }
         finish_asr(
             &jobs,
             job_id,
             result,
             requested_range.map_or(0, |range| range.timeline_offset_ms),
-            channel_closed.load(Ordering::Acquire),
+            asset_id,
             &on_event,
         )
         .await;
@@ -866,8 +868,8 @@ fn run_asr_job_blocking(execution: AsrExecution) -> CommandResult<Transcription>
 fn send_progress(
     channel: &Channel<AsrJobEvent>,
     channel_closed: &AtomicBool,
-    media_cancellation: &MediaCancellationToken,
-    asr_cancellation: &AsrCancellationToken,
+    _media_cancellation: &MediaCancellationToken,
+    _asr_cancellation: &AsrCancellationToken,
     job_id: JobId,
     phase: AsrJobPhase,
     fraction: Option<f64>,
@@ -884,8 +886,6 @@ fn send_progress(
         .is_err()
     {
         channel_closed.store(true, Ordering::Release);
-        media_cancellation.cancel();
-        asr_cancellation.cancel();
     }
 }
 
@@ -927,18 +927,40 @@ async fn finish_asr(
     job_id: JobId,
     result: CommandResult<Transcription>,
     timeline_offset_ms: u64,
-    channel_closed: bool,
+    asset_id: osg_domain::AssetId,
     channel: &Channel<AsrJobEvent>,
 ) {
     let runtime_cancelled = result
         .as_ref()
         .is_err_and(|error| error.code() == "asrCancelled");
     match result {
-        Ok(transcription) if !channel_closed => {
-            match background::apply(jobs, job_id, JobUpdate::Succeed).await {
+        Ok(transcription) => {
+            let delivery = JobResultDeliveryDraft::new(
+                job_id,
+                JobResultKind::AsrTranscription,
+                None,
+                Some(asset_id),
+                &json!({
+                    "schemaVersion": 1,
+                    "transcription": &transcription,
+                    "timelineOffsetMs": timeline_offset_ms,
+                }),
+            );
+            let delivery = match delivery {
+                Ok(delivery) => delivery,
+                Err(error) => {
+                    let error = CommandError::from(error);
+                    let job = background::finish_failure(jobs, job_id).await;
+                    let _ = channel.send(AsrJobEvent::Failed { job, error });
+                    return;
+                }
+            };
+            let delivery_id = delivery.delivery_id();
+            match background::succeed_with_result(jobs, job_id, delivery).await {
                 Ok(job) => {
                     let _ = channel.send(AsrJobEvent::Completed {
                         job,
+                        delivery_id,
                         transcription,
                         timeline_offset_ms,
                     });
@@ -950,8 +972,7 @@ async fn finish_asr(
             }
         }
         result => {
-            let cancelled = channel_closed
-                || runtime_cancelled
+            let cancelled = runtime_cancelled
                 || background::snapshot(jobs, job_id)
                     .await
                     .is_some_and(|job| matches!(job.state(), JobState::Cancelling));
@@ -966,7 +987,9 @@ async fn finish_asr(
                     }
                 }
             } else {
-                let error = result.err().unwrap_or_else(CommandError::channel_closed);
+                let error = result
+                    .err()
+                    .unwrap_or_else(|| CommandError::internal("the ASR job produced no result"));
                 let job = background::finish_failure(jobs, job_id).await;
                 let _ = channel.send(AsrJobEvent::Failed { job, error });
             }
@@ -976,16 +999,41 @@ async fn finish_asr(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, atomic::AtomicBool};
 
+    use osg_asr::CancellationToken as AsrCancellationToken;
     use osg_domain::JobId;
     use osg_engine_packages::RuntimeCoordinator as _;
+    use osg_media::CancellationToken as MediaCancellationToken;
     use serde_json::json;
+    use tauri::ipc::Channel;
 
     use super::{
         AsrEngineId, AsrJobEvent, AsrJobPhase, AsrRuntimeManager, AsrStartRequest, RequestedRange,
-        WORKER_BYTES, resolve_media_range,
+        WORKER_BYTES, resolve_media_range, send_progress,
     };
+
+    #[test]
+    fn a_closed_webview_channel_does_not_cancel_native_asr_work() {
+        let channel = Channel::new(|_| Err(tauri::Error::FailedToReceiveMessage));
+        let closed = AtomicBool::new(false);
+        let media = MediaCancellationToken::default();
+        let asr = AsrCancellationToken::default();
+
+        send_progress(
+            &channel,
+            &closed,
+            &media,
+            &asr,
+            JobId::new(),
+            AsrJobPhase::Transcribing,
+            Some(0.5),
+        );
+
+        assert!(closed.load(std::sync::atomic::Ordering::Acquire));
+        assert!(!media.is_cancelled());
+        assert!(!asr.is_cancelled());
+    }
 
     #[test]
     fn job_event_wire_fields_are_camel_case_at_the_real_rust_boundary() {

@@ -8,6 +8,8 @@ import {
   cancelGeminiJob,
   startGeminiJob,
 } from './geminiService';
+import { acknowledgeJobResult } from './jobResultDeliveryService';
+import { ensureNativeJobRecoveryReady } from './jobRecoveryCoordinator';
 
 const RETRYABLE_CREDENTIAL_CODES = new Set([
   'geminiCredentialRejected',
@@ -38,6 +40,7 @@ const runAttempt = async ({
   onStarted,
   start,
   cancel,
+  acknowledge,
 }) => {
   if (signal?.aborted) throw cancelledError();
 
@@ -85,10 +88,22 @@ const runAttempt = async ({
 
     const outcome = await terminalPromise;
     if (outcome.kind === 'completed') {
+      let acknowledgement = null;
+      let acknowledged = false;
+      const acknowledgeConsumption = () => {
+        if (acknowledged) return Promise.resolve();
+        acknowledgement ??= Promise.resolve()
+          .then(() => acknowledge(outcome.event.job.id, outcome.event.deliveryId))
+          .then(() => { acknowledged = true; })
+          .finally(() => { acknowledgement = null; });
+        return acknowledgement;
+      };
       return Object.freeze({
         text: outcome.event.text,
         usage: outcome.event.usage,
         job: outcome.event.job,
+        deliveryId: outcome.event.deliveryId,
+        acknowledge: acknowledgeConsumption,
       });
     }
     if (outcome.kind === 'cancelled') throw cancelledError();
@@ -111,8 +126,12 @@ export const createNativeGeminiJobRunner = ({
   rotateCredential = rotateGeminiCredential,
   start = startGeminiJob,
   cancel = cancelGeminiJob,
+  acknowledge = acknowledgeJobResult,
+  ensureRecovery = ensureNativeJobRecoveryReady,
 } = {}) => {
   const run = async ({ request, signal, onChunk, onStarted }) => {
+    if (signal?.aborted) throw cancelledError();
+    await ensureRecovery();
     if (signal?.aborted) throw cancelledError();
     try {
       await prepareCredentials();
@@ -150,6 +169,7 @@ export const createNativeGeminiJobRunner = ({
           onStarted,
           start,
           cancel,
+          acknowledge,
         });
       } catch (error) {
         lastError = error;

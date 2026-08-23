@@ -29,8 +29,8 @@ export const enhanceF5TTSNarrations = (narrationResults, subtitles) => {
   // Create a map of subtitles by ID for quick lookup
   const subtitleMap = {};
   subtitles.forEach(subtitle => {
-    const id = subtitle.id || subtitle.index;
-    if (id) {
+    const id = subtitle.id ?? subtitle.subtitle_id ?? subtitle.index;
+    if (id !== undefined && id !== null) {
       subtitleMap[id] = subtitle;
     }
   });
@@ -49,10 +49,6 @@ export const enhanceF5TTSNarrations = (narrationResults, subtitles) => {
       if (subtitle && typeof subtitle.start === 'number' && typeof subtitle.end === 'number') {
         enhancedResult.start = subtitle.start;
         enhancedResult.end = subtitle.end;
-      } else {
-        // If no matching subtitle or no timing information, use default values
-        enhancedResult.start = 0;
-        enhancedResult.end = 5; // Default 5 seconds duration
       }
     }
 

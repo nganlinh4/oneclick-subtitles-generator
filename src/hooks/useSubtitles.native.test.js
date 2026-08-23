@@ -3,6 +3,10 @@ import useSubtitles from './useSubtitles';
 import { callGeminiApi } from '../services/geminiService';
 import { getVideoDuration } from '../utils/videoProcessor';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
+import {
+  refreshActiveNativeMedia,
+  resolveActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 
 vi.mock('../services/geminiService', () => ({
   callGeminiApi: vi.fn(),
@@ -13,6 +17,30 @@ vi.mock('../services/engines/GeminiAdapter', () => ({ processGeminiSegment: vi.f
 vi.mock('../platform/desktopRuntime', async (importOriginal) => ({
   ...(await importOriginal()),
   isDesktopRuntime: () => true,
+}));
+vi.mock('../platform/activeNativeMedia', () => ({
+  refreshActiveNativeMedia: vi.fn(),
+  resolveActiveNativeMedia: vi.fn(),
+}));
+vi.mock('../platform/subtitleProjectStore', () => ({
+  resolveProjectForCache: vi.fn(async () => ({
+    projectId: 'project-native',
+    snapshot: { metadata: { id: 'project-native' }, stateVersion: 3 },
+  })),
+  loadExactProjectSubtitles: vi.fn(async () => []),
+}));
+vi.mock('../platform/projectService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  loadProject: vi.fn(async () => ({
+    metadata: { id: 'project-native' },
+    stateVersion: 3,
+  })),
+}));
+vi.mock('../utils/transcriptionRulesStore', () => ({
+  getCurrentCacheId: vi.fn(() => 'native-cache-id'),
+}));
+vi.mock('../utils/userSubtitlesStore', () => ({
+  getCurrentCacheId: vi.fn(() => 'native-cache-id'),
 }));
 vi.mock('./useSubtitlesCaching', () => ({
   resolveCacheIdForGeneration: vi.fn().mockResolvedValue('native-cache-id'),
@@ -51,6 +79,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   getVideoDuration.mockResolvedValue(12);
+  const capability = Object.freeze({
+    projectId: 'project-native',
+    stateVersion: 3,
+    cacheId: 'native-cache-id',
+    assetId: media.assetId,
+    media,
+  });
+  resolveActiveNativeMedia.mockResolvedValue(capability);
+  refreshActiveNativeMedia.mockResolvedValue(capability);
 });
 
 test('does not hide a native streaming failure behind a second Gemini request', async () => {

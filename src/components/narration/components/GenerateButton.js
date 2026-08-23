@@ -43,6 +43,15 @@ const GenerateButton = ({
     || referenceMissing
     || !!generationBlockedReason
     || !subtitleSource;
+  const nativeResults = Array.isArray(generationResults)
+    ? generationResults.filter((result) => (
+      result.success === true && getNativeNarrationArtifactId(result) !== null
+    ))
+    : [];
+  const hasNativeResults = nativeResults.length > 0;
+  const hasCompleteNativeResults = Array.isArray(generationResults)
+    && generationResults.length > 0
+    && nativeResults.length === generationResults.length;
   const generate = () => {
     if (!generationUnavailable) handleGenerateNarration();
   };
@@ -106,7 +115,7 @@ const GenerateButton = ({
               className="pill-button secondary download-all-btn"
               onClick={downloadAllAudio}
               title={t('narration.downloadAllTooltip', 'Download all generated audio files')}
-              disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}
+              disabled={!hasNativeResults}
             >
               <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>
                 archive
@@ -119,7 +128,7 @@ const GenerateButton = ({
               data-osg-action="download-aligned-narration"
               onClick={downloadAlignedAudio}
               title={t('narration.downloadAlignedTooltip', 'Tải xuống một tập tin thuyết minh đã sắp xếp')}
-              disabled={!generationResults || generationResults.length === 0 || !generationResults.some(r => r.success && (r.audioData || r.filename))}
+              disabled={!hasCompleteNativeResults}
             >
               <span className="material-symbols-rounded" style={{ fontSize: 18, display: 'inline-block' }}>
                 system_update_alt

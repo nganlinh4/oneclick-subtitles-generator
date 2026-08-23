@@ -11,6 +11,9 @@ let globalUserSubtitles = null;
 
 // Current cache ID for the video being processed
 let currentCacheId = null;
+let bindingEpoch = 0;
+const bindingReceipts = new WeakMap();
+const BINDING_RECEIPT_KIND = 'user-subtitles-project-binding';
 const currentCacheIdListeners = new Set();
 const currentProjectRefreshListeners = new Set();
 
@@ -18,6 +21,13 @@ const projectMismatch = () => {
   const error = new Error('The active user-subtitle project changed.');
   error.name = 'ProjectScopeMismatchError';
   error.code = 'projectScopeMismatch';
+  return error;
+};
+
+const explicitBindingRequired = () => {
+  const error = new Error('Pending user subtitles require an awaited project binding.');
+  error.name = 'ProjectBindingRequiredError';
+  error.code = 'projectBindingRequired';
   return error;
 };
 
@@ -80,31 +90,25 @@ const publishCurrentCacheId = (cacheId, previousCacheId) => {
   });
 };
 
-const publishUserSubtitles = (subtitlesText) => {
+const publishUserSubtitles = (subtitlesText, {
+  cacheId = currentCacheId,
+  projectId = null,
+} = {}) => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('userProvidedSubtitlesUpdated', {
-      detail: { subtitlesText: subtitlesText || '' }
+      detail: { subtitlesText: subtitlesText || '', cacheId, projectId }
     }));
   }
 };
 
-const hydrateProjectSubtitles = async (cacheId) => {
+const hydrateProjectSubtitles = async (cacheId, epoch = bindingEpoch) => {
   try {
     const auxiliary = await readProjectAuxiliary(cacheId);
-    if (currentCacheId !== cacheId) return;
+    if (currentCacheId !== cacheId || bindingEpoch !== epoch) return;
     globalUserSubtitles = auxiliary?.userSubtitles ?? null;
-    publishUserSubtitles(globalUserSubtitles);
+    publishUserSubtitles(globalUserSubtitles, { cacheId });
   } catch (error) {
     console.error('Error loading user-provided subtitles from the active project:', error);
-  }
-};
-
-const persistPendingProjectSubtitles = async (cacheId, subtitlesText) => {
-  try {
-    await patchProjectAuxiliary(cacheId, { userSubtitles: subtitlesText });
-    if (currentCacheId === cacheId) publishUserSubtitles(subtitlesText);
-  } catch (error) {
-    console.error('Error saving pending user-provided subtitles to the active project:', error);
   }
 };
 
@@ -115,18 +119,120 @@ const persistPendingProjectSubtitles = async (cacheId, subtitlesText) => {
 export const setCurrentCacheId = (cacheId) => {
   const previousCacheId = currentCacheId;
   const pendingSubtitles = globalUserSubtitles;
+  if (cacheId && previousCacheId === null && pendingSubtitles !== null) {
+    throw explicitBindingRequired();
+  }
+  bindingEpoch += 1;
+  const epoch = bindingEpoch;
   currentCacheId = cacheId;
   if (previousCacheId === cacheId) return;
   publishCurrentCacheId(cacheId, previousCacheId);
 
-  if (cacheId && previousCacheId === null && pendingSubtitles !== null) {
-    void persistPendingProjectSubtitles(cacheId, pendingSubtitles);
-    return;
-  }
-
   globalUserSubtitles = null;
   publishUserSubtitles('');
-  if (cacheId) void hydrateProjectSubtitles(cacheId);
+  if (cacheId) void hydrateProjectSubtitles(cacheId, epoch);
+};
+
+/** Awaited, exact-project binding used by media activation and SRT-first workflows. */
+export const bindUserSubtitlesProject = async (
+  cacheId,
+  { expectedProjectId = null } = {}
+) => {
+  if (typeof cacheId !== 'string' || cacheId.length === 0
+      || typeof expectedProjectId !== 'string' || expectedProjectId.length === 0) {
+    throw projectMismatch();
+  }
+  const previous = Object.freeze({
+    cacheId: currentCacheId,
+    subtitles: globalUserSubtitles,
+  });
+  const pendingSubtitles = previous.cacheId === null ? previous.subtitles : null;
+  bindingEpoch += 1;
+  const epoch = bindingEpoch;
+  currentCacheId = cacheId;
+  if (previous.cacheId !== cacheId) publishCurrentCacheId(cacheId, previous.cacheId);
+  if (previous.cacheId !== cacheId && pendingSubtitles === null) {
+    globalUserSubtitles = null;
+    publishUserSubtitles('');
+  }
+
+  const assertOwned = () => {
+    if (bindingEpoch !== epoch || currentCacheId !== cacheId) throw projectMismatch();
+  };
+  const restore = () => {
+    if (bindingEpoch !== epoch || currentCacheId !== cacheId) return false;
+    bindingEpoch += 1;
+    const failedCacheId = currentCacheId;
+    currentCacheId = previous.cacheId;
+    globalUserSubtitles = previous.subtitles;
+    if (failedCacheId !== previous.cacheId) {
+      publishCurrentCacheId(previous.cacheId, failedCacheId);
+    }
+    publishUserSubtitles(globalUserSubtitles);
+    return true;
+  };
+
+  try {
+    await assertProjectId(cacheId, expectedProjectId, false);
+    assertOwned();
+    let subtitles;
+    let mode;
+    if (pendingSubtitles !== null) {
+      await patchProjectAuxiliary(
+        cacheId,
+        { userSubtitles: pendingSubtitles },
+        { expectedProjectId }
+      );
+      subtitles = pendingSubtitles;
+      mode = 'persisted-staged';
+    } else {
+      const auxiliary = await readProjectAuxiliary(cacheId, { expectedProjectId });
+      subtitles = auxiliary?.userSubtitles ?? null;
+      mode = 'hydrated';
+    }
+    assertOwned();
+    await assertProjectId(cacheId, expectedProjectId, false);
+    assertOwned();
+    globalUserSubtitles = subtitles;
+    publishUserSubtitles(subtitles, { cacheId, projectId: expectedProjectId });
+    const receipt = Object.freeze({
+      kind: BINDING_RECEIPT_KIND,
+      cacheId,
+      projectId: expectedProjectId,
+      mode,
+    });
+    bindingReceipts.set(receipt, Object.freeze({ epoch, previous }));
+    return receipt;
+  } catch (error) {
+    restore();
+    throw error;
+  }
+};
+
+export const isUserSubtitlesProjectBindingReceipt = (receipt, {
+  cacheId,
+  projectId,
+} = {}) => (
+  receipt?.kind === BINDING_RECEIPT_KIND
+  && bindingReceipts.has(receipt)
+  && receipt.cacheId === cacheId
+  && receipt.projectId === projectId
+);
+
+export const rollbackUserSubtitlesProjectBinding = (receipt) => {
+  const owned = receipt && typeof receipt === 'object' ? bindingReceipts.get(receipt) : null;
+  if (!owned) return false;
+  bindingReceipts.delete(receipt);
+  if (bindingEpoch !== owned.epoch || currentCacheId !== receipt.cacheId) return false;
+  bindingEpoch += 1;
+  const failedCacheId = currentCacheId;
+  currentCacheId = owned.previous.cacheId;
+  globalUserSubtitles = owned.previous.subtitles;
+  if (failedCacheId !== owned.previous.cacheId) {
+    publishCurrentCacheId(owned.previous.cacheId, failedCacheId);
+  }
+  publishUserSubtitles(globalUserSubtitles);
+  return true;
 };
 
 /**

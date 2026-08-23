@@ -177,8 +177,6 @@
   "timeoutNone": "제한 없음",
   "timeout10Seconds": "10초",
   "timeout20Seconds": "20초",
-  "autoSelectDefaultPreset": "타임아웃 시 기본 프리셋 자동 선택",
-  "autoSelectDefaultPresetDescription": "활성화하면 타이머가 만료될 때 비디오 분석 결과 팝업에서 '내 기본 프리셋 사용' 옵션이 자동으로 선택됩니다. 그렇지 않으면 '추천 사용' 프리셋이 선택됩니다.",
   "videoAnalysisCountdown": "분석 카운트다운 시간",
   "videoAnalysisCountdownDesc": "분석 규칙을 자동 저장하기 전 대기 시간.",
   "countdownNone": "카운트다운 없음 (분석 신뢰, 권장하지 않음)",

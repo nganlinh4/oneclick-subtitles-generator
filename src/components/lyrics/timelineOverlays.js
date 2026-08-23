@@ -1,5 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useEffect, useLayoutEffect } from 'react';
 
 // Helper overlay component that follows the timeline canvas without leaking rAF
 export const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }) => {
@@ -71,36 +70,4 @@ export const OverlayFollower = ({ canvasRef, deps = [], computeStyle, children }
             </div>
         </div>
     );
-};
-
-// Separate component to prevent re-mounting of the overlay
-export const ClearOfflineSegmentsButton = ({ offlineSegments, retryingOfflineKeys, clearInfoVisible, handleClearOfflineSegments, t, timelineRef }) => {
-    const clearOfflineComputeStyle = useCallback((bounds) => ({ top: `${(bounds.top || 0) - 36}px`, left: `${(bounds.left || 0) + 8}px` }), []);
-
-    if (offlineSegments.length === 0 || retryingOfflineKeys.length > 0) return null;
-
-    const canvas = timelineRef.current;
-    if (!canvas) return null;
-
-    const overlay = (
-        <OverlayFollower canvasRef={timelineRef} computeStyle={clearOfflineComputeStyle} deps={[]}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button
-                    className="btn-base btn-tonal btn-small"
-                    onClick={(e) => { e.stopPropagation(); handleClearOfflineSegments(); }}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, minHeight: 24, padding: '0 8px', borderRadius: 12, backgroundColor: 'var(--md-surface-variant)', color: 'var(--md-on-surface-variant)', border: '1px solid var(--md-outline-variant)' }}
-                >
-                    <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'currentColor' }}>delete_sweep</span>
-                    {t('timeline.clearOfflineSegments', 'Clear offline segments')}
-                </button>
-                {clearInfoVisible && (
-                    <span role="status" aria-live="polite" style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', borderRadius: 10, color: 'var(--md-on-surface-variant)', backgroundColor: 'var(--md-surface-variant)', border: '1px solid var(--md-outline-variant)' }}>
-                        {t('timeline.offlineClearNotice', 'Cleared offline segments from UI. Files will be removed in background and may persist briefly due to OS locks.')}
-                    </span>
-                )}
-            </div>
-        </OverlayFollower>
-    );
-
-    return createPortal(overlay, document.body);
 };

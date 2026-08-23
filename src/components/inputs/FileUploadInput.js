@@ -16,8 +16,10 @@ import {
   isNativeMediaPlaybackUrl,
   selectMedia,
 } from '../../platform/mediaService';
-import { setCurrentCacheId as setRulesCacheId } from '../../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../../utils/userSubtitlesStore';
+import {
+  activateSubtitleProjectBinding,
+  clearSubtitleProjectBinding,
+} from '../../platform/subtitleProjectBinding';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/FileUploadInput.css';
 
@@ -40,7 +42,7 @@ export const reconcileSelectedNativeMedia = async ({
   if (owner === null) {
     throw new Error('The selected media subtitle project is no longer available.');
   }
-  applyOwnedSession(media, session);
+  await applyOwnedSession(media, session);
   return 'owned-session';
 };
 
@@ -134,9 +136,18 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
   // `isCurrent` is re-checked after the durable ownership commit, because that await lets a newer
   // selection supersede this one before the media is published to React.
   const activateNativeMedia = useCallback(async (media, isCurrent = () => true) => {
+    // A locally imported asset is its own subtitle alias. Binding it to that project durably is
+    // what makes it reopenable after a restart; without it the asset is unowned forever.
+    const ownership = await ensureProjectOwnsNativeMedia({ media, cacheId: media.assetId });
+    if (!isCurrent()) return;
+    await activateSubtitleProjectBinding(media.assetId, {
+      expectedProjectId: ownership.projectId,
+      create: false,
+    });
+    if (!isCurrent()) return;
+
     localStorage.removeItem('current_video_url');
     localStorage.removeItem('split_result');
-
     const previousUrl = localStorage.getItem('current_file_url');
     if (previousUrl?.startsWith('blob:')) {
       try {
@@ -145,15 +156,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
         // A stale object URL is already inert.
       }
     }
-
     localStorage.setItem('current_file_url', media.playbackUrl);
     localStorage.setItem('current_file_cache_id', media.assetId);
-    setRulesCacheId(media.assetId);
-    setSubtitlesCacheId(media.assetId);
-    // A locally imported asset is its own subtitle alias. Binding it to that project durably is
-    // what makes it reopenable after a restart; without it the asset is unowned forever.
-    await ensureProjectOwnsNativeMedia({ media, cacheId: media.assetId });
-    if (!isCurrent()) return;
 
     if (onVideoSelect) onVideoSelect(null);
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
@@ -292,13 +296,16 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
           return reconcileSelectedNativeMedia({
             media,
             activateAsLocal: (selected) => activateNativeMedia(selected, isCurrent),
-            applyOwnedSession: (selected, session) => {
+            applyOwnedSession: async (selected, session) => {
               if (!isCurrent()) return;
-              applyNativeMediaSession({
+              await applyNativeMediaSession({
                 media: selected,
                 cacheId: session.cacheId,
+                projectId: session.projectId,
                 setUploadedFile,
+                validateOwnership: isCurrent,
               });
+              if (!isCurrent()) return;
               if (onVideoSelect) onVideoSelect(null);
               if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
               if (setUploadedFileData) setUploadedFileData(null);
@@ -488,8 +495,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     setFileInfo(null);
     if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(null);
-    setRulesCacheId(null);
-    setSubtitlesCacheId(null);
+    clearSubtitleProjectBinding();
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 

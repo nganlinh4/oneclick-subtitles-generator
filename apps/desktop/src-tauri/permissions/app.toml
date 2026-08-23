@@ -1,4 +1,13 @@
 [[permission]]
+identifier = "checkpoint-app-close"
+description = "Allows the main editor to acknowledge one Rust-issued close checkpoint after its durable subtitle queue has drained."
+commands.allow = [
+  "app_close_checkpoint_complete",
+  "app_close_checkpoint_failed",
+  "app_close_checkpoint_commit",
+]
+
+[[permission]]
 identifier = "repair-managed-font"
 description = "Allows the main editor to retry installing the managed subtitle font after a failure."
 commands.allow = ["font_readiness_retry"]
@@ -64,12 +73,21 @@ commands.allow = [
   "project_redo",
   "project_track_undo",
   "project_track_redo",
+  "project_render_scene_get",
+  "project_render_scene_put",
 ]
 
 [[permission]]
 identifier = "manage-jobs"
 description = "Allows the main editor window to inspect and cancel durable background jobs."
-commands.allow = ["jobs_list", "job_get", "job_cancel"]
+commands.allow = [
+  "jobs_list",
+  "job_get",
+  "job_cancel",
+  "job_result_pending",
+  "job_result_claim",
+  "job_result_ack",
+]
 
 [[permission]]
 identifier = "manage-credentials"
@@ -212,6 +230,9 @@ commands.allow = [
   "speech_reference_select",
   "speech_reference_extract",
   "speech_reference_import",
+  "speech_reference_get",
+  "speech_reference_commit",
+  "speech_reference_clear",
   "speech_start",
   "speech_voice_conversion_start",
   "speech_artifact_edit",

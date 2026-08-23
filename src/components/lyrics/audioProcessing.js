@@ -70,13 +70,19 @@ const nativeWaveformDensity = (duration) => {
     });
 };
 
-export const processNativeWaveform = async (ctx, assetId, signal) => {
+export const processNativeWaveform = async (
+    ctx,
+    assetId,
+    signal,
+    revalidateOwnership = async () => undefined
+) => {
     const {
         currentSource, currentDuration,
         processingSourceRef, audioDataCache, dbgWave,
         setWaveformLOD, setIsProcessing, setIsProcessed, setProcessingProgress,
     } = ctx;
     let lastProgress = 0;
+    let ownershipLost = false;
     try {
         const density = nativeWaveformDensity(currentDuration);
         dbgWave('[WAVEFORM] Starting native waveform analysis for:', assetId);
@@ -95,6 +101,7 @@ export const processNativeWaveform = async (ctx, assetId, signal) => {
             },
         });
         const samples = waveformPyramidToLegacySamples(result.waveform);
+        await revalidateOwnership();
         if (samples.length === 0) {
             const error = new Error('No audio channels found in the media file');
             error.name = 'EncodingError';
@@ -112,9 +119,13 @@ export const processNativeWaveform = async (ctx, assetId, signal) => {
             dbgWave('[WAVEFORM] Native waveform analysis aborted (expected)');
             return;
         }
+        if (error?.name === 'ActiveNativeMediaError') {
+            ownershipLost = true;
+            return;
+        }
         handleProcessingError(ctx, error);
     } finally {
-        if (!signal.aborted) {
+        if (!signal.aborted && !ownershipLost) {
             setIsProcessing(false);
             setIsProcessed(true);
             if (processingSourceRef.current === currentSource) {

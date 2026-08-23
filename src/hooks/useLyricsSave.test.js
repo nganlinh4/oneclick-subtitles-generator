@@ -13,6 +13,7 @@ vi.mock('../platform/durableLyricsHistory', () => ({
 }));
 
 vi.mock('../platform/desktopRuntime', () => ({
+  invokeDesktop: vi.fn(),
   isDesktopRuntime: vi.fn(() => false),
 }));
 

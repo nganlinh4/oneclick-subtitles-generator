@@ -8,12 +8,101 @@ import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import { formatSubtitles, formatSubtitlesWithChain } from './translationChainFormatter';
-import { translateSubtitlesByChunks } from './translationChunkProcessor';
+import { PartialTranslationError, translateSubtitlesByChunks } from './translationChunkProcessor';
 import { processTranslationResponse } from './translationResponseParser';
-import { buildTranslationPrompt, buildRetryPrompt } from './translationPromptBuilder';
+import { buildTranslationPrompt } from './translationPromptBuilder';
 import { buildTranslatedSubtitles } from './translationSubtitleBuilder';
 import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
 import { createTranslationAbortError } from '../../utils/translationOwnership';
+
+const canonicalSourceId = (subtitle, index) => {
+    if (typeof subtitle?.originalId === 'string' && subtitle.originalId.length > 0) {
+        return subtitle.originalId;
+    }
+    const rawId = subtitle?.id ?? subtitle?.subtitle_id;
+    if (typeof rawId === 'string' && rawId.length > 0) return `string:${rawId}`;
+    if (Number.isSafeInteger(rawId)) return `number:${rawId}`;
+    return `ordinal:${index}`;
+};
+
+const captureSourceRows = (subtitles) => {
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+        throw new TypeError('No subtitles to translate');
+    }
+    const sourceIds = new Set();
+    return Object.freeze(subtitles.map((subtitle, index) => {
+        if (!subtitle || typeof subtitle !== 'object'
+            || typeof subtitle.text !== 'string'
+            || !Number.isFinite(subtitle.start)
+            || !Number.isFinite(subtitle.end)
+            || subtitle.start < 0
+            || subtitle.end < subtitle.start) {
+            throw new TypeError('Translation source rows are invalid');
+        }
+        const originalId = canonicalSourceId(subtitle, index);
+        if (sourceIds.has(originalId)) {
+            throw new TypeError('Translation source row IDs must be unique');
+        }
+        sourceIds.add(originalId);
+        return Object.freeze({
+            ...(subtitle.id !== undefined ? { id: subtitle.id } : {}),
+            ...(subtitle.subtitle_id !== undefined ? { subtitle_id: subtitle.subtitle_id } : {}),
+            start: subtitle.start,
+            end: subtitle.end,
+            text: subtitle.text,
+            ...(subtitle.startTime !== undefined ? { startTime: subtitle.startTime } : {}),
+            ...(subtitle.endTime !== undefined ? { endTime: subtitle.endTime } : {}),
+            originalId,
+            sourceOrder: Number.isSafeInteger(subtitle.sourceOrder)
+                ? subtitle.sourceOrder
+                : index,
+        });
+    }));
+};
+
+const requestedLanguageIds = (targetLanguage) => {
+    const values = Array.isArray(targetLanguage) ? targetLanguage : [targetLanguage];
+    const ids = values.map((value) => {
+        if (typeof value !== 'string' || value.trim().length === 0 || value !== value.trim()) {
+            throw new TypeError('Translation language IDs must be non-blank strings');
+        }
+        return value;
+    });
+    const folded = ids.map((id) => id.toLocaleLowerCase('en-US'));
+    if (new Set(folded).size !== ids.length) {
+        throw new TypeError('Translation language IDs must be unique');
+    }
+    return Object.freeze(ids);
+};
+
+const deliveryForResult = (result) => {
+    if (typeof result?.acknowledge !== 'function') return null;
+    return Object.freeze({
+        jobId: result.job?.id ?? null,
+        deliveryId: result.deliveryId ?? null,
+        acknowledge: result.acknowledge,
+    });
+};
+
+const completeTranslationResult = (rows, deliveries) => Object.freeze({
+    status: 'complete',
+    rows: Object.freeze([...rows]),
+    deliveries: Object.freeze([...deliveries]),
+});
+
+const appendIdentityContract = (prompt, languageIds, sourceRows) => `${prompt}
+
+MANDATORY IDENTITY CONTRACT (this overrides any conflicting output-format instruction above):
+- Return only one JSON object matching the supplied response schema.
+- schemaVersion must be 1.
+- Emit each requested languageId exactly once, in this exact order: ${JSON.stringify(languageIds)}.
+- For every language, emit every source row exactly once, in this exact order.
+- Copy sourceId and original exactly; never translate, normalize, omit, duplicate, or reorder them.
+- translated must contain non-blank provider-produced text. Never substitute a language label or source text for a missing translation.
+Authoritative source rows: ${JSON.stringify(sourceRows.map((row) => ({
+    sourceId: row.originalId,
+    original: row.text,
+})))}`;
 
 /**
  * Translate subtitles to different language(s) while preserving timing
@@ -31,7 +120,7 @@ import { createTranslationAbortError } from '../../utils/translationOwnership';
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false, ownership = {}) => {
+const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false, ownership = {}, inheritedDeliverySink = null) => {
     const localController = ownership.signal ? null : new AbortController();
     const signal = ownership.signal ?? localController.signal;
     const assertOwned = typeof ownership.assertOwned === 'function'
@@ -63,8 +152,18 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     };
     await assertBoundary();
 
+    const sourceSubtitles = captureSourceRows(subtitles);
+    const deliverySink = inheritedDeliverySink ?? [];
+
     // Check if we're in format mode (empty target languages array)
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
+
+    const languageIds = isFormatMode ? Object.freeze([]) : requestedLanguageIds(targetLanguage);
+    if (isFormatMode && Array.isArray(chainItems) && chainItems.some((item) => (
+        item?.type === 'language' && !item.isOriginal
+    ))) {
+        throw new TypeError('Format-only translation cannot fabricate a target-language value');
+    }
 
     // Determine if we're doing multi-language translation
     const isMultiLanguage = !isFormatMode && Array.isArray(targetLanguage) && targetLanguage.length > 0;
@@ -77,10 +176,6 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         } catch {
             // Compatibility metadata cannot own the translation run.
         }
-    }
-
-    if (!subtitles || subtitles.length === 0) {
-        throw new Error('No subtitles to translate');
     }
 
     // Get bracket style if using parentheses in single language mode and no custom style was provided
@@ -110,7 +205,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             }
         } else {
             const originalSubtitlesMap = {};
-            subtitles.forEach((sub, index) => {
+            sourceSubtitles.forEach((sub, index) => {
                 // Ensure each subtitle has a unique ID
                 const id = sub.id || index + 1;
                 // Store the subtitle with its ID and index for reference
@@ -134,16 +229,16 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
 
         // Dispatch event to update UI with status
         const message = i18n.t('translation.formattingSubtitles', 'Formatting {{count}} subtitles', {
-            count: subtitles.length
+            count: sourceSubtitles.length
         });
         await publishStatus(message);
 
         // Format the subtitles with the chain items if provided, otherwise use the specified delimiter and bracket style
         const formatted = chainItems
-            ? formatSubtitlesWithChain(subtitles, chainItems)
-            : formatSubtitles(subtitles, delimiter, useParentheses, bracketStyle);
+            ? formatSubtitlesWithChain(sourceSubtitles, chainItems)
+            : formatSubtitles(sourceSubtitles, delimiter, useParentheses, bracketStyle);
         await assertBoundary();
-        return formatted;
+        return completeTranslationResult(formatted, deliverySink);
     }
 
     // If splitDuration is specified and not 0, split subtitles into chunks based on duration
@@ -151,7 +246,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
 
         // Dispatch event to update UI with status
         const baseMessage = i18n.t('translation.splittingSubtitles', 'Splitting {{count}} subtitles into chunks of {{duration}} minutes', {
-            count: subtitles.length,
+            count: sourceSubtitles.length,
             duration: splitDuration
         });
         const message = fileContext ? `[${fileContext}] ${baseMessage}` : baseMessage;
@@ -160,7 +255,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         const restTime = Number.isSafeInteger(ownership.restTime) && ownership.restTime >= 0
             ? ownership.restTime
             : parseInt(localStorage.getItem('translation_rest_time') || '0');
-        const translateChunk = (
+        const translateChunk = async (
             chunkSubtitles,
             chunkTargetLanguage,
             chunkModel,
@@ -171,23 +266,27 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             chunkUseParentheses,
             chunkBracketStyle,
             chunkChainItems
-        ) => translateSubtitles(
-            chunkSubtitles,
-            chunkTargetLanguage,
-            chunkModel,
-            chunkPrompt,
-            chunkSplitDuration,
-            chunkIncludeRules,
-            chunkDelimiter,
-            chunkUseParentheses,
-            chunkBracketStyle,
-            chunkChainItems,
-            fileContext,
-            true,
-            ownership
-        );
+        ) => {
+            const outcome = await translateSubtitles(
+                chunkSubtitles,
+                chunkTargetLanguage,
+                chunkModel,
+                chunkPrompt,
+                chunkSplitDuration,
+                chunkIncludeRules,
+                chunkDelimiter,
+                chunkUseParentheses,
+                chunkBracketStyle,
+                chunkChainItems,
+                fileContext,
+                true,
+                ownership,
+                deliverySink
+            );
+            return outcome.rows;
+        };
         const translated = await translateSubtitlesByChunks(
-            subtitles,
+            sourceSubtitles,
             targetLanguage,
             model,
             customPrompt,
@@ -203,23 +302,27 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             { signal, assertOwned, publishStatus }
         );
         await assertBoundary();
-        return translated;
+        return completeTranslationResult(translated, deliverySink);
     }
 
-    // Format subtitles as text lines for Gemini (text only, no timestamps, no numbering)
-    const subtitleText = subtitles.map(sub => sub.text).join('\n');
+    // The exact rows are appended once in the identity contract below. Feeding them through the
+    // legacy prompt placeholder as well would duplicate the largest request payload.
+    const subtitleText = '[Use the authoritative source rows in the identity contract below.]';
 
     // Create the prompt for translation (custom/default + optional transcription rules)
-    const translationPrompt = buildTranslationPrompt({
+    const translationPrompt = appendIdentityContract(buildTranslationPrompt({
         subtitleText,
         targetLanguage,
         isMultiLanguage,
         customPrompt,
         includeRules
-    });
+    }), languageIds, sourceSubtitles);
 
     try {
-        const responseSchema = createTranslationSchema(isMultiLanguage);
+        const responseSchema = createTranslationSchema({
+            languageIds: [...languageIds],
+            sourceIds: sourceSubtitles.map((subtitle) => subtitle.originalId),
+        });
 
         const executeTranslationRequest = async (prompt) => {
             await assertBoundary();
@@ -232,6 +335,8 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                 ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
                 signal,
             });
+            const delivery = deliveryForResult(result);
+            if (delivery) deliverySink.push(delivery);
             // A provider is allowed to settle despite abort; ownership is authoritative.
             await assertBoundary();
             return {
@@ -239,66 +344,60 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             };
         };
 
-        const data = await executeTranslationRequest(translationPrompt);
-        await assertBoundary();
-
-        // Loop-invariant context shared by every response-parsing call
-        const parseContext = { isMultiLanguage, useParentheses, delimiter, bracketStyle, chainItems, subtitles };
-
-        // Process the translation response
-        let translatedTexts = [];
-        let retryCount = 0;
-        const maxRetries = 10;
-
-        // Try to process the response
-        translatedTexts = processTranslationResponse(data, parseContext);
-
-        // Check if we have the correct number of translations
-        while (translatedTexts.length !== subtitles.length && retryCount < maxRetries) {
-            console.warn(`Translation count mismatch: got ${translatedTexts.length}, expected ${subtitles.length}. Retrying (${retryCount + 1}/${maxRetries})...`);
-            retryCount++;
-
+        const parseContext = {
+            languageIds,
+            sourceRows: sourceSubtitles.map((subtitle) => Object.freeze({
+                sourceId: subtitle.originalId,
+                text: subtitle.text,
+            })),
+        };
+        const maxRetries = 2;
+        let providerResult = null;
+        let validationError = null;
+        for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+            const prompt = attempt === 0
+                ? translationPrompt
+                : appendIdentityContract(
+                    'RETRY REQUEST: The previous response violated the mandatory identity contract. Translate every authoritative source row again.',
+                    languageIds,
+                    sourceSubtitles
+                );
+            const data = await executeTranslationRequest(prompt);
+            await assertBoundary();
             try {
-                // Create a more specific retry prompt that includes the original subtitle text
-                // This ensures proper mapping between input and output
-                const retryPrompt = buildRetryPrompt({
-                    subtitles,
-                    targetLanguage,
-                    isMultiLanguage,
-                    translatedCount: translatedTexts.length
-                });
-
-                const retryData = await executeTranslationRequest(retryPrompt);
-                await assertBoundary();
-                translatedTexts = processTranslationResponse(retryData, parseContext);
-            } catch (retryError) {
-                if (signal.aborted || retryError?.name === 'AbortError'
-                    || retryError?.code === 'translationAborted') {
-                    throw createTranslationAbortError();
+                providerResult = processTranslationResponse(data, parseContext);
+                validationError = null;
+                break;
+            } catch (error) {
+                if (error?.code !== 'invalidTranslationResponse') throw error;
+                validationError = error;
+                if (attempt < maxRetries) {
+                    console.warn(`Translation identity mismatch. Retrying (${attempt + 1}/${maxRetries})...`);
                 }
-                console.error('Translation retry failed:', retryError);
-                break; // Exit the retry loop if the API call fails
             }
         }
+        if (providerResult === null) throw validationError;
 
-        // If we still don't have the right number of translations after all retries
-        if (translatedTexts.length !== subtitles.length) {
-            console.error(`Failed to get the correct number of translations after ${maxRetries} retries. Got ${translatedTexts.length}, expected ${subtitles.length}.`);
-            throw new Error(`Translation failed: received ${translatedTexts.length} translations but expected ${subtitles.length}. Please try again.`);
-        }
-
-        // Create translated subtitles by combining original timing with translated text
         const translatedSubtitles = buildTranslatedSubtitles({
-            subtitles,
-            translatedTexts,
+            subtitles: sourceSubtitles,
+            providerResult,
+            languageIds,
             chainItems,
-            targetLanguage
+            delimiter,
+            useParentheses,
+            bracketStyle,
         });
 
-
         await assertBoundary();
-        return translatedSubtitles;
+        return completeTranslationResult(translatedSubtitles, deliverySink);
     } catch (error) {
+        if (error instanceof PartialTranslationError) {
+            error.result = Object.freeze({
+                status: 'partial',
+                rows: error.completedSubtitles,
+                deliveries: Object.freeze([...deliverySink]),
+            });
+        }
         // Check if this is an AbortError
         if (error.name === 'AbortError' || error.code === 'translationAborted') {
             throw createTranslationAbortError();

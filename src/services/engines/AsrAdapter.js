@@ -1,4 +1,5 @@
 import { startAsrJob } from '../../platform/asrService';
+import { ensureNativeJobRecoveryReady } from '../../platform/jobRecoveryCoordinator';
 import {
   createRequestController,
   removeRequestController,
@@ -64,12 +65,16 @@ const runNativePart = (engineId, part, options, signal) => new Promise((resolve,
  * @param {{id:string,name?:string,labelDefault?:string,route?:string}|string} engine
  */
 export const processAsrSegment = async (engine, _inputFile, segment, options = {}, hooks = {}) => {
-  const { onStatus, onRanges, onStreamingUpdate, onMergeSegment, t } = hooks;
+  const {
+    onStatus, onRanges, onStreamingUpdate, onMergeSegment, onDeliveryReceipt, t,
+  } = hooks;
   const engineId = typeof engine === 'string' ? engine : engine.id;
   const engineName = (typeof engine === 'object' && (engine.name || engine.labelDefault)) || engineId;
   const { requestId, signal } = createRequestController(options.signal);
 
   try {
+    await ensureNativeJobRecoveryReady();
+    if (signal.aborted) throw createAbortError();
     // Split the segment into sequential windows (same slicer as Parakeet).
     const windowSec = Math.max(1, Math.floor(options.maxDurationPerRequest || 0));
     let subSegments = [segment];
@@ -113,6 +118,12 @@ export const processAsrSegment = async (engine, _inputFile, segment, options = {
         try { onStreamingUpdate(newSegmentSubs, part); } catch { /* isolate consumer callbacks */ }
       }
       if (onMergeSegment) { await onMergeSegment(part, newSegmentSubs); }
+      if (onDeliveryReceipt) {
+        await onDeliveryReceipt({
+          jobId: event.job.id,
+          deliveryId: event.deliveryId,
+        });
+      }
     }
   } finally {
     removeRequestController(requestId);

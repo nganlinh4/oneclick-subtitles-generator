@@ -1,16 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  SUBTITLE_CUSTOMIZATION_STORAGE_KEY,
-  useSubtitleCustomization,
-} from './VideoRenderingSection/subtitleCustomizationState';
-import {
-  loadCropSettings,
-  loadNarrationSource,
-  loadRenderSettings,
-  loadSubtitleSource,
-  storeRenderPreference,
-} from './VideoRenderingSection/renderPreferences';
+import { defaultProjectRenderSceneValues, useProjectRenderScene } from '../platform/projectRenderScene';
+import { completeSubtitleCustomization } from './VideoRenderingSection/subtitleCustomizationState';
 import QueueManagerPanel from './QueueManagerPanel';
 import '../styles/VideoRenderingSection.css';
 import '../styles/CollapsibleSection.css';
@@ -21,7 +12,10 @@ import '../styles/VideoRenderingControls.css';
 import '../styles/components/form-controls.css';
 import { useRenderQueue } from './VideoRenderingSection/useRenderQueue';
 import { useVideoUpload } from './VideoRenderingSection/useVideoUpload';
-import { useNarration } from './VideoRenderingSection/useNarration';
+import {
+  requireGeneratedNarrationArtifact,
+  useNarration,
+} from './VideoRenderingSection/useNarration';
 import { usePanelResize } from './VideoRenderingSection/usePanelResize';
 import { useAutoFill } from './VideoRenderingSection/useAutoFill';
 import InputSelectionRow from './VideoRenderingSection/InputSelectionRow';
@@ -67,6 +61,7 @@ const VideoRenderingSection = ({
   const [currentRenderId, setCurrentRenderId] = useState(null);
   const [abortController, setAbortController] = useState(null);
   const abortControllerRef = useRef(null);
+  const activeNativeRenderIdRef = useRef(null);
 
   // Ref for the native render preview's player surface
   const videoPlayerRef = useRef(null);
@@ -91,10 +86,54 @@ const VideoRenderingSection = ({
     handleDrop,
   } = useVideoUpload({ onNativeVideoSelected });
 
-  // Form state with localStorage persistence
-  const [selectedSubtitles, setSelectedSubtitles] = useState(loadSubtitleSource);
-  const [selectedNarration, setSelectedNarration] = useState(loadNarrationSource);
-  const [renderSettings, setRenderSettings] = useState(loadRenderSettings);
+  // One project-owned scene is the only state preview, queue admission and export may read. It is
+  // cleared synchronously during A→B activation, so the old project's style/trim never flashes or
+  // leaks into the new project's request while Rust loads the durable scene.
+  const {
+    status: renderSceneStatus,
+    scene: projectRenderScene,
+    error: renderSceneError,
+    updateScene: updateProjectRenderScene,
+    flushScene: flushProjectRenderScene,
+  } = useProjectRenderScene();
+  const fallbackScene = defaultProjectRenderSceneValues();
+  const sceneValues = projectRenderScene ?? fallbackScene;
+  const {
+    selectedSubtitles,
+    selectedNarration,
+    renderSettings,
+    customization: subtitleCustomization,
+    crop: cropSettings,
+  } = sceneValues;
+
+  const updateSceneField = useCallback((field, update) => {
+    updateProjectRenderScene((previous) => ({
+      ...previous,
+      [field]: typeof update === 'function' ? update(previous[field]) : update,
+    }));
+  }, [updateProjectRenderScene]);
+  const setSelectedSubtitles = useCallback(
+    (update) => updateSceneField('selectedSubtitles', update),
+    [updateSceneField],
+  );
+  const setSelectedNarration = useCallback(
+    (update) => updateSceneField('selectedNarration', update),
+    [updateSceneField],
+  );
+  const setRenderSettings = useCallback(
+    (update) => updateSceneField('renderSettings', update),
+    [updateSceneField],
+  );
+  const setSubtitleCustomization = useCallback(
+    (update) => updateSceneField('customization', (previous) => completeSubtitleCustomization(
+      typeof update === 'function' ? update(previous) : update,
+    )),
+    [updateSceneField],
+  );
+  const setCropSettings = useCallback(
+    (update) => updateSceneField('crop', update),
+    [updateSceneField],
+  );
 
   // *** FIX START ***
   // This effect resets the video duration state whenever a new video file is selected.
@@ -104,35 +143,28 @@ const VideoRenderingSection = ({
     setVideoDuration(0);
   }, [selectedVideoFile]); // This dependency is stable; a new file is a new object.
 
-  // This effect sets the initial trim range once the video's duration is known.
-  // It runs only when videoDuration changes from 0 to a positive number.
-  useEffect(() => {
-    if (videoDuration > 0) {
-      setRenderSettings(prev => ({
-        ...prev,
-        trimStart: 0,
-        trimEnd: videoDuration,
-      }));
-    }
-  }, [videoDuration]);
+  // A zero trim end is the durable spelling of "through the source end". The old duration effect
+  // rewrote every restored trim when metadata arrived and could even write project A's duration into
+  // project B after a switch. Only the slider needs a concrete endpoint for display; it receives a
+  // derived value below and the project scene remains untouched until the user moves it.
   // *** FIX END ***
 
-  // Complete by construction: `subtitleCustomizationState.js` merges the defaults on every write, so
-  // the preview and every render request read one object with every key the contract names. Nothing
-  // here may merge again — a second merge is a second authority.
-  const [subtitleCustomization, setSubtitleCustomization] = useSubtitleCustomization();
-  const [cropSettings, setCropSettings] = useState(loadCropSettings);
   const [, setNarrationUpdateTrigger] = useState(0);
 
   // Narration availability + aligned-audio resolver + refresh action (extracted hook)
   const {
     isRefreshingNarration,
-    currentNarrationResults,
     isAlignedNarrationAvailable,
     hasNarrationSegments,
     getNarrationArtifactId,
     handleRefreshNarration,
-  } = useNarration({ selectedNarration, narrationResults });
+  } = useNarration({
+    selectedNarration,
+    narrationResults,
+    subtitlesData,
+    translatedSubtitles,
+    selectedSubtitles,
+  });
 
   // handleStartRender is defined further down but referenced by the render-queue hook
   // (startNextPendingRender) — thread it through a ref to avoid a circular dependency.
@@ -197,57 +229,26 @@ const VideoRenderingSection = ({
     setSelectedNarration,
   });
 
-  // Save video rendering settings to localStorage whenever they change
-  useEffect(() => {
-    storeRenderPreference('videoRender_selectedSubtitles', selectedSubtitles);
-  }, [selectedSubtitles]);
-
-  useEffect(() => {
-    storeRenderPreference('videoRender_selectedNarration', selectedNarration);
-  }, [selectedNarration]);
-
-  useEffect(() => {
-    storeRenderPreference('videoRender_renderSettings', renderSettings, { json: true });
-  }, [renderSettings]);
-
-  useEffect(() => {
-    storeRenderPreference(SUBTITLE_CUSTOMIZATION_STORAGE_KEY, subtitleCustomization, { json: true });
-  }, [subtitleCustomization]);
-
-  useEffect(() => {
-    storeRenderPreference('videoRender_cropSettings', cropSettings, { json: true });
-  }, [cropSettings]);
-
   // Note: isCollapsed state is not persisted - always starts collapsed like BackgroundImageGenerator
 
   // Get current subtitles based on selection
-  const getCurrentSubtitles = () => {
-    if (selectedSubtitles === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
+  const getSubtitlesForSource = (source) => {
+    if (source === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
       return translatedSubtitles;
     }
     return subtitlesData || [];
   };
+  const getCurrentSubtitles = () => getSubtitlesForSource(selectedSubtitles);
 
   // Simple render function - allows queueing multiple renders
   const handleRender = async () => {
     setError('');
     setRenderStatus(t('videoRendering.validating', 'Checking render prerequisites...'));
     setRenderAdmissionStage('validating');
-    const lyrics = getCurrentSubtitles();
-    if (!Array.isArray(lyrics) || lyrics.length === 0) {
-      const message = t(
-        'videoRendering.noSubtitlesSelected',
-        'Add or generate subtitles before rendering.',
-      );
-      setError(message);
-      setRenderStatus(t('videoRendering.failed', 'Render failed'));
-      setRenderAdmissionStage('refused');
-      window.addToast?.(message, 'error', 8000);
-      return;
-    }
-
     let nativeSourceAsset;
     let nativeRenderRequest;
+    let durableScene;
+    let lyrics;
     try {
       setRenderAdmissionStage('runtime');
       const runtime = await getNativeRenderStatus();
@@ -263,19 +264,43 @@ const VideoRenderingSection = ({
       nativeSourceAsset = await resolveNativeRenderSource(selectedVideoFile);
       setRenderAdmissionStage('project');
       const projectId = await ensureNativeRenderProject(nativeSourceAsset);
+      durableScene = await flushProjectRenderScene();
+      if (durableScene === null
+          || durableScene.projectId !== projectId) {
+        const sceneError = new Error(
+          'The active project render settings are not ready for this video',
+        );
+        sceneError.code = 'projectRenderSceneUnavailable';
+        throw sceneError;
+      }
+      lyrics = getSubtitlesForSource(durableScene.selectedSubtitles);
+      if (!Array.isArray(lyrics) || lyrics.length === 0) {
+        const subtitleError = new Error(t(
+          'videoRendering.noSubtitlesSelected',
+          'Add or generate subtitles before rendering.',
+        ));
+        subtitleError.code = 'noSubtitlesSelected';
+        throw subtitleError;
+      }
       setRenderAdmissionStage('narration');
-      const narrationArtifactId = selectedNarration === 'generated'
-        ? await getNarrationArtifactId(selectedNarration)
-        : null;
+      const narrationArtifactId = requireGeneratedNarrationArtifact(
+        durableScene.selectedNarration,
+        durableScene.selectedNarration === 'generated'
+          ? await getNarrationArtifactId(durableScene.selectedNarration)
+          : null,
+      );
       setRenderAdmissionStage('request');
       nativeRenderRequest = buildNativeRenderRequest({
         sourceAsset: nativeSourceAsset,
         projectId,
+        sceneRevision: durableScene.sceneRevision,
+        selectedSubtitles: durableScene.selectedSubtitles,
+        selectedNarration: durableScene.selectedNarration,
         narrationArtifactId,
         lyrics,
-        settings: renderSettings,
-        customization: subtitleCustomization,
-        crop: cropSettings,
+        settings: durableScene.renderSettings,
+        customization: durableScene.customization,
+        crop: durableScene.crop,
       });
     } catch (error) {
       const message = error?.code === 'renderRuntimeUnavailable'
@@ -297,12 +322,15 @@ const VideoRenderingSection = ({
     const queueItem = {
       id: `render_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       videoFile: selectedVideoFile,
-      subtitles: selectedSubtitles,
-      settings: renderSettings,
-      customization: subtitleCustomization,
-      cropSettings: cropSettings,
+      projectId: durableScene.projectId,
+      sceneRevision: durableScene.sceneRevision,
+      scene: durableScene,
+      subtitles: durableScene.selectedSubtitles,
+      settings: durableScene.renderSettings,
+      customization: durableScene.customization,
+      cropSettings: durableScene.crop,
       lyrics,
-      narration: selectedNarration,
+      narration: durableScene.selectedNarration,
       nativeSourceAsset,
       nativeRenderRequest,
       status: 'pending',
@@ -336,29 +364,19 @@ const VideoRenderingSection = ({
       setError('');
       setRenderedVideoUrl('');
 
-      // Validate inputs
-      if (!selectedVideoFile && !queueItem?.videoFile
-          && !queueItem?.nativeSourceAsset && !queueItem?.nativeRenderRequest) {
-        throw new Error(t('videoRendering.noVideoSelected', 'Please select a video file'));
+      // Queue admission captured and durably flushed one complete project scene. Starting it may
+      // never fall back to whichever project happens to be active now: that was the A→B corruption
+      // path. A legacy/incomplete queue item is refused instead of silently rebuilt from live UI.
+      if (!queueItem.nativeSourceAsset || !queueItem.nativeRenderRequest
+          || queueItem.nativeRenderRequest.projectId !== queueItem.projectId
+          || queueItem.nativeRenderRequest.sceneRevision !== queueItem.sceneRevision) {
+        throw new Error(t(
+          'videoRendering.invalidRenderConfiguration',
+          'Check the selected video, subtitle timings, and render settings.',
+        ));
       }
-
-      const sourceAsset = queueItem?.nativeSourceAsset || await resolveNativeRenderSource(
-          queueItem?.videoFile || selectedVideoFile
-        );
-        const narrationSelection = queueItem?.narration ?? selectedNarration;
-        const nativeRequest = queueItem?.nativeRenderRequest || buildNativeRenderRequest({
-          sourceAsset,
-          projectId: await ensureNativeRenderProject(sourceAsset),
-          narrationArtifactId: narrationSelection === 'generated'
-            ? await getNarrationArtifactId(narrationSelection)
-            : null,
-          lyrics: queueItem?.lyrics || getCurrentSubtitles(),
-          settings: queueItem?.settings || renderSettings,
-          // A queue item carries the completed style it was queued with; the live state is already
-          // complete too, so neither needs merging here.
-          customization: queueItem?.customization || subtitleCustomization,
-          crop: queueItem?.cropSettings || cropSettings,
-        });
+      const sourceAsset = queueItem.nativeSourceAsset;
+      const nativeRequest = queueItem.nativeRenderRequest;
         // The glyphs the export draws with. Rust composes text but never shapes it, so the atlas
         // and one laid-out run per cue are baked and staged here, before the job exists. A font
         // this computer cannot resolve refuses by name instead of rendering in a substitute.
@@ -371,6 +389,7 @@ const VideoRenderingSection = ({
           signal: controller.signal,
           onStarted: (job) => {
             if (!ownsRenderLease(renderOwner)) return;
+            activeNativeRenderIdRef.current = job.id;
             setCurrentRenderId(job.id);
             const targetQueueItem = queueItem;
             if (targetQueueItem) {
@@ -444,7 +463,7 @@ const VideoRenderingSection = ({
         if (targetQueueItem) {
           setRenderQueue(prev => prev.map(item =>
             item.id === targetQueueItem.id
-              ? { ...item, status: 'failed', progress: 0, error: t('videoRendering.renderCancelled', 'Render was cancelled') }
+              ? { ...item, status: 'cancelled', progress: 0, error: null }
               : item
           ));
         }
@@ -463,7 +482,10 @@ const VideoRenderingSection = ({
         }
       }
     } finally {
-      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        activeNativeRenderIdRef.current = null;
+      }
     }
   };
 
@@ -471,26 +493,42 @@ const VideoRenderingSection = ({
   startRenderRef.current = handleStartRender;
 
   // Cancel rendering
-  const handleCancelRender = async () => {
-    // Update status immediately to show cancellation is in progress
-    setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
+  const handleCancelRender = async (queueItemId = null) => {
+    const activeQueueItemId = typeof currentQueueItem === 'object'
+      ? currentQueueItem?.id
+      : currentQueueItem;
+    if (queueItemId !== null && queueItemId !== activeQueueItemId) return false;
 
-    // The signal owns cancellation before and after the native job ID arrives.
+    // Before Rust admits a job, aborting the owned preparation signal is the authoritative
+    // cancellation. Once a native job ID exists, only the typed native response may change UI.
     const activeController = abortControllerRef.current || abortController;
-    if (activeController) {
+    const nativeRenderId = activeNativeRenderIdRef.current || currentRenderId;
+    if (!nativeRenderId && activeController) {
       activeController.abort();
-      return;
+      setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
+      setRenderQueue(prev => prev.map(item => (
+        item.id === activeQueueItemId ? { ...item, status: 'cancelling' } : item
+      )));
+      return true;
     }
 
-    if (!currentRenderId) {
-      return;
+    if (!nativeRenderId) {
+      return false;
     }
 
     try {
-      await cancelNativeRender(currentRenderId);
+      const accepted = await cancelNativeRender(nativeRenderId);
+      if (accepted.state === 'cancelling') {
+        setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
+        setRenderQueue(prev => prev.map(item => (
+          item.id === activeQueueItemId ? { ...item, status: 'cancelling' } : item
+        )));
+      }
+      return true;
     } catch (error) {
       console.error('Error cancelling render:', error);
       setRenderStatus(t('videoRendering.cancelError', 'Error cancelling render'));
+      return false;
     }
   };
 
@@ -573,6 +611,18 @@ const VideoRenderingSection = ({
             {t('videoRendering.helperMessage', 'Configure video rendering settings and generate your final video with subtitles and narration')}
           </p>
         </div>
+      ) : renderSceneStatus !== 'ready' ? (
+        <div
+          className={`render-admission-status ${renderSceneError ? 'error' : ''}`}
+          data-osg-render-scene={renderSceneStatus}
+          role={renderSceneError ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          {renderSceneError?.message || t(
+            'videoRendering.loadingProjectScene',
+            'Loading this project’s render settings…',
+          )}
+        </div>
       ) : (
         /* Expanded content */
         <div className="video-rendering-content">
@@ -595,7 +645,6 @@ const VideoRenderingSection = ({
             hasNarrationSegments={hasNarrationSegments}
             handleRefreshNarration={handleRefreshNarration}
             isRefreshingNarration={isRefreshingNarration}
-            currentNarrationResults={currentNarrationResults}
           />
 
           {/* Second row: Video Preview and Subtitle Customization side by side */}
@@ -619,7 +668,12 @@ const VideoRenderingSection = ({
 
 
             <TrimTimelineRow
-              renderSettings={renderSettings}
+              renderSettings={{
+                ...renderSettings,
+                trimEnd: renderSettings.trimEnd === 0 && videoDuration > 0
+                  ? videoDuration
+                  : renderSettings.trimEnd,
+              }}
               setRenderSettings={setRenderSettings}
               videoDuration={videoDuration}
               videoPlayerRef={videoPlayerRef}

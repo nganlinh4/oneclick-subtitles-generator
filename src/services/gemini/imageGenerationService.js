@@ -19,6 +19,7 @@ const placeholder = (name) => `\${${name}}`;
 const SONG_NAME_PLACEHOLDER = placeholder("songName || 'Unknown Song'");
 const LYRICS_PLACEHOLDER = placeholder('lyrics');
 const PROMPT_PLACEHOLDER = placeholder('prompt');
+const MAX_GENERATED_PROMPT_LENGTH = 64 * 1024;
 
 // Default templates (match BackgroundPromptEditor defaults).
 const DEFAULT_PROMPT_ONE = `song title: ${SONG_NAME_PLACEHOLDER}
@@ -44,7 +45,37 @@ const renderTemplate = (template, vars = {}) => {
   return out;
 };
 
-export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song') {
+const promptResult = (text, delivery = null) => Object.freeze({
+  text,
+  delivery,
+});
+
+const normalizeGeneratedPrompt = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > MAX_GENERATED_PROMPT_LENGTH) {
+    throw new Error('No prompt returned from Gemini');
+  }
+  return text;
+};
+
+const nativePromptDelivery = (result) => {
+  if (typeof result?.job?.id !== 'string'
+      || typeof result?.deliveryId !== 'string'
+      || typeof result?.acknowledge !== 'function') {
+    throw new Error('The generated prompt has no durable delivery identity');
+  }
+  return Object.freeze({
+    jobId: result.job.id,
+    deliveryId: result.deliveryId,
+    acknowledge: result.acknowledge,
+  });
+};
+
+export async function generateBackgroundPrompt(
+  lyrics,
+  songName = 'Unknown Song',
+  { projectId, expectedProjectStateVersion } = {},
+) {
   if (!lyrics || !lyrics.trim()) throw new Error('Lyrics are required');
 
   const model = migrateGeminiModelId(
@@ -59,7 +90,9 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
 
   if (!isDesktopRuntime()) {
     const { generateBrowserBackgroundPrompt } = await import('./imageGenerationBrowserService');
-    return generateBrowserBackgroundPrompt({ content, model });
+    return promptResult(normalizeGeneratedPrompt(
+      await generateBrowserBackgroundPrompt({ content, model })
+    ));
   }
 
   const thinking = getThinkingBudget(model);
@@ -67,11 +100,11 @@ export async function generateBackgroundPrompt(lyrics, songName = 'Unknown Song'
     task: 'analyzeSubtitles',
     model,
     prompt: content,
+    ...(projectId === undefined ? {} : { projectId }),
+    ...(expectedProjectStateVersion === undefined ? {} : { expectedProjectStateVersion }),
     ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
   });
-  const text = result.text?.trim();
-  if (!text) throw new Error('No prompt returned from Gemini');
-  return text;
+  return promptResult(normalizeGeneratedPrompt(result.text), nativePromptDelivery(result));
 }
 
 export async function generateBackgroundImage(prompt, albumArtUrl, { signal } = {}) {

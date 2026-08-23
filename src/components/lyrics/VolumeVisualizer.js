@@ -6,7 +6,11 @@ import {
   processAudioInSegments,
   processNativeWaveform,
 } from './audioProcessing';
-import { resolveActiveNativeMediaAssetId } from '../../platform/activeNativeMedia';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../../platform/activeNativeMedia';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import {
   renderWaveform as renderWaveformImpl,
   updateVisualization as updateVisualizationImpl,
@@ -159,12 +163,13 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
       };
 
       const processAudio = async () => {
-        const nativeAssetId = resolveActiveNativeMediaAssetId(currentSource);
-        if (nativeAssetId !== null) {
+        if (isDesktopRuntime()) {
+            const capability = await resolveActiveNativeMedia({ candidate: currentSource });
             await processNativeWaveform(
               processingCtx,
-              nativeAssetId,
-              localAbortController.signal
+              capability.assetId,
+              localAbortController.signal,
+              () => revalidateActiveNativeMedia(capability)
             );
             return;
         }
@@ -192,7 +197,12 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         }
       };
 
-      processAudio();
+      void processAudio().catch((error) => {
+        if (error?.name === 'ActiveNativeMediaError' || localAbortController.signal.aborted) return;
+        console.error('[WAVEFORM] Processing admission failed:', error);
+        setAudioError('Audio processing failed because the active media is unavailable.');
+        setIsProcessing(false);
+      });
 
       // Cleanup function
       return () => {

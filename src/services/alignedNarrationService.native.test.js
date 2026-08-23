@@ -1,6 +1,7 @@
 import { nativeNarrationAlignmentService as mockAlignment } from '../platform/narrationAlignmentService';
 import {
   discardRecoveredNativeJob,
+  ensureNativeJobRecoveryReady,
   forgetNativeJobId,
   listRecoveredNativeJobs,
   rememberNativeJobId,
@@ -8,8 +9,11 @@ import {
 } from '../platform/jobRecoveryCoordinator';
 import {
   generateAlignedNarration,
+  getAlignedNarrationArtifactIdForPlan,
+  getAlignedNarrationUrlForPlan,
   resetAlignedNarration,
 } from './alignedNarrationService';
+import { buildStrictNativeNarrationPlan } from '../utils/narrationAlignmentUtils';
 
 vi.mock('@tauri-apps/api/core', () => ({
   Channel: class MockTauriChannel {},
@@ -33,6 +37,7 @@ vi.mock('../platform/narrationAlignmentService', () => ({
 
 vi.mock('../platform/jobRecoveryCoordinator', () => ({
   discardRecoveredNativeJob: vi.fn(),
+  ensureNativeJobRecoveryReady: vi.fn(),
   forgetNativeJobId: vi.fn(),
   listRecoveredNativeJobs: vi.fn(),
   rememberNativeJobId: vi.fn(),
@@ -77,6 +82,13 @@ const generationResults = () => [{
   end: 1,
 }];
 
+const currentCues = () => [{
+  id: 7,
+  text: 'private words never cross alignment IPC',
+  start: 0,
+  end: 1,
+}];
+
 describe('aligned narration native branch', () => {
   beforeEach(() => {
     window.isTauri = true;
@@ -90,6 +102,8 @@ describe('aligned narration native branch', () => {
     mockAlignment.releaseAlignmentPlayback.mockResolvedValue(true);
     startNativeJobRecovery.mockReset();
     startNativeJobRecovery.mockResolvedValue({ recovered: 0 });
+    ensureNativeJobRecoveryReady.mockReset();
+    ensureNativeJobRecoveryReady.mockResolvedValue({ unavailable: false });
     listRecoveredNativeJobs.mockReset();
     listRecoveredNativeJobs.mockReturnValue([]);
     rememberNativeJobId.mockReset();
@@ -124,7 +138,7 @@ describe('aligned narration native branch', () => {
       return job();
     });
 
-    await expect(generateAlignedNarration(generationResults())).resolves.toBe(
+    await expect(generateAlignedNarration(generationResults(), currentCues())).resolves.toBe(
       'aligned-preview://timeline',
     );
     const request = mockAlignment.startAlignmentJob.mock.calls[0][0];
@@ -144,6 +158,15 @@ describe('aligned narration native branch', () => {
       nativePlaybackId: PLAYBACK_ID,
       nativeJobId: JOB_ID,
     });
+    const plan = buildStrictNativeNarrationPlan(generationResults(), currentCues());
+    expect(getAlignedNarrationArtifactIdForPlan(plan)).toBe(ARTIFACT_ID);
+    expect(getAlignedNarrationUrlForPlan(plan)).toContain(`/asset/${PLAYBACK_ID}`);
+    const retimed = buildStrictNativeNarrationPlan(generationResults(), [{
+      ...currentCues()[0],
+      end: 1.5,
+    }]);
+    expect(getAlignedNarrationArtifactIdForPlan(retimed)).toBeNull();
+    expect(getAlignedNarrationUrlForPlan(retimed)).toBeNull();
     expect(rememberNativeJobId).toHaveBeenCalledWith(JOB_ID);
     expect(forgetNativeJobId).toHaveBeenCalledWith(JOB_ID);
     expect(localStorage.length).toBe(0);
@@ -159,7 +182,7 @@ describe('aligned narration native branch', () => {
       }));
       return job();
     });
-    await generateAlignedNarration(generationResults());
+    await generateAlignedNarration(generationResults(), currentCues());
     mockAlignment.startAlignmentJob.mockClear();
     mockAlignment.getAlignmentResult.mockResolvedValue({
       job: job('succeeded'),
@@ -171,7 +194,7 @@ describe('aligned narration native branch', () => {
       subtitleTimestamps: {},
     };
 
-    await generateAlignedNarration(generationResults());
+    await generateAlignedNarration(generationResults(), currentCues());
     expect(mockAlignment.getAlignmentResult).toHaveBeenCalledWith(JOB_ID);
     expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
     expect(window.alignedNarrationCache.nativeArtifactId).toBe(ARTIFACT_ID);
@@ -192,11 +215,84 @@ describe('aligned narration native branch', () => {
     });
     const getItem = vi.spyOn(Storage.prototype, 'getItem');
 
-    await expect(generateAlignedNarration(generationResults())).resolves.toBe(
+    await expect(generateAlignedNarration(generationResults(), currentCues())).resolves.toBe(
       'aligned-preview://timeline',
     );
 
     expect(getItem).not.toHaveBeenCalled();
     getItem.mockRestore();
+  });
+
+  test('propagates an incomplete current plan before a native job can start', async () => {
+    await expect(generateAlignedNarration(generationResults(), [
+      ...currentCues(),
+      { id: 8, text: 'missing audio', start: 1, end: 2 },
+    ])).rejects.toMatchObject({ code: 'narrationPlanIncomplete' });
+    expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
+  });
+
+  test('fails closed before admission when recovery is unavailable', async () => {
+    ensureNativeJobRecoveryReady.mockRejectedValue(Object.assign(
+      new Error('recovery unavailable'),
+      { code: 'nativeJobRecoveryUnavailable', retryable: true },
+    ));
+
+    await expect(generateAlignedNarration(generationResults(), currentCues())).rejects
+      .toMatchObject({ code: 'nativeJobRecoveryUnavailable', retryable: true });
+    expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
+  });
+
+  test('retains an unmatched active recovery when cancellation transport is unavailable', async () => {
+    listRecoveredNativeJobs.mockReturnValue([{ job: job('running') }]);
+    mockAlignment.cancelAlignmentJob.mockRejectedValue(new Error('transport closed'));
+
+    await expect(generateAlignedNarration(generationResults(), currentCues())).rejects
+      .toMatchObject({ code: 'alignmentRecoveryUnavailable', retryable: true });
+    expect(discardRecoveredNativeJob).not.toHaveBeenCalled();
+    expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
+  });
+
+  test('retains a matching alignment across a transport failure and retries it', async () => {
+    mockAlignment.startAlignmentJob.mockImplementation(async (_request, handlers) => {
+      queueMicrotask(() => handlers.onCompleted({
+        event: 'completed',
+        job: job('succeeded'),
+        result: nativeResult(),
+      }));
+      return job();
+    });
+    await generateAlignedNarration(generationResults(), currentCues());
+    mockAlignment.startAlignmentJob.mockClear();
+    mockAlignment.getAlignmentResult
+      .mockRejectedValueOnce(new Error('transport closed'))
+      .mockResolvedValueOnce({ job: job('succeeded'), result: nativeResult() });
+
+    await expect(generateAlignedNarration(generationResults(), currentCues())).rejects
+      .toMatchObject({ code: 'alignmentRecoveryUnavailable', retryable: true });
+    await expect(generateAlignedNarration(generationResults(), currentCues())).resolves
+      .toBe('aligned-preview://timeline');
+    expect(mockAlignment.startAlignmentJob).not.toHaveBeenCalled();
+    expect(mockAlignment.getAlignmentResult).toHaveBeenCalledTimes(2);
+  });
+
+  test('forgets a definitively terminal alignment and admits one replacement', async () => {
+    mockAlignment.startAlignmentJob.mockImplementation(async (_request, handlers) => {
+      queueMicrotask(() => handlers.onCompleted({
+        event: 'completed',
+        job: job('succeeded'),
+        result: nativeResult(),
+      }));
+      return job();
+    });
+    await generateAlignedNarration(generationResults(), currentCues());
+    mockAlignment.getAlignmentResult.mockResolvedValue({ job: job('running'), result: null });
+    mockAlignment.waitForAlignmentResult.mockRejectedValue(Object.assign(
+      new Error('terminal without artifact'),
+      { code: 'alignmentUnavailable' },
+    ));
+
+    await expect(generateAlignedNarration(generationResults(), currentCues())).resolves
+      .toBe('aligned-preview://timeline');
+    expect(mockAlignment.startAlignmentJob).toHaveBeenCalledTimes(2);
   });
 });

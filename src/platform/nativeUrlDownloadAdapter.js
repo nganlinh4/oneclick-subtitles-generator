@@ -8,8 +8,11 @@ import {
   discardMediaCandidate,
   openMediaAsset,
 } from './mediaService';
-import { activateResolvedMediaProject } from './mediaProjectActivation';
 import { recoverNativeDownloaderAfterFailure } from './nativeDownloadPreflight';
+import {
+  isSubtitleProjectBindingReceipt,
+  rollbackSubtitleProjectBinding,
+} from './subtitleProjectBinding';
 import {
   abortedFailure,
   candidateAssetId,
@@ -62,17 +65,21 @@ export const createNativeUrlDownloadAdapter = ({
   claimCandidate = claimMediaCandidate,
   discardCandidate = discardMediaCandidate,
   resolveCandidateProject = resolveCandidateProjectForUrl,
-  activateProject = activateResolvedMediaProject,
+  // Kept injectable for the legacy adapter contract tests. The production singleton below passes
+  // no legacy activator, so shipping callers must provide the project-bound transaction callbacks.
+  activateProject = null,
   recoverDownloader = recoverNativeDownloaderAfterFailure,
 } = {}) => {
   const active = new Map();
   const completedAssets = createCompletedAssetCache();
-  const reopenCompletedAsset = createCompletedAssetReopener({
-    activateProject,
-    forgetCompletedAsset: completedAssets.forget,
-    openAsset,
-    resolveCandidateProject,
-  });
+  const reopenCompletedAsset = typeof activateProject === 'function'
+    ? createCompletedAssetReopener({
+      activateProject,
+      forgetCompletedAsset: completedAssets.forget,
+      openAsset,
+      resolveCandidateProject,
+    })
+    : null;
 
   const settleListener = (operation, listener, outcome, value) => {
     if (listener.settled) return;
@@ -113,18 +120,30 @@ export const createNativeUrlDownloadAdapter = ({
 
   const subscribe = (
     operation,
-    { onStarted, onProgress, onSubtitle, signalBinding, validateOwnership }
+    {
+      admitActivation,
+      onStarted,
+      onProgress,
+      onSubtitle,
+      publishActivation,
+      rollbackActivation,
+      signalBinding,
+      validateOwnership,
+    }
   ) => {
     let listener;
     const promise = new Promise((resolve, reject) => {
       listener = {
         aborted: false,
+        admitActivation,
         handleAbort: null,
         onProgress,
         onStarted,
         onSubtitle,
+        publishActivation,
         reject,
         resolve,
+        rollbackActivation,
         settlementError: null,
         settled: false,
         signalAttached: false,
@@ -242,6 +261,15 @@ export const createNativeUrlDownloadAdapter = ({
       }
     };
 
+    const transactionalOwner = () => (
+      [...operation.listeners].find((listener) => (
+        typeof listener.admitActivation === 'function'
+        && typeof listener.publishActivation === 'function'
+        && typeof listener.rollbackActivation === 'function'
+        && typeof listener.validateOwnership === 'function'
+      )) ?? null
+    );
+
     const enqueueEvent = (task) => {
       const queued = operation.eventChain.then(task);
       operation.eventChain = queued.catch(() => undefined);
@@ -262,24 +290,68 @@ export const createNativeUrlDownloadAdapter = ({
           return;
         }
         // Resolving creates the durable project on demand, so never resolve for an operation
-        // which has already lost every subscriber.
+        // which has already lost every subscriber. It is still detached: neither project
+        // publication nor native media selection may happen until the caller's admission below.
         if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
           await discardCandidateOnce(candidate);
           return;
         }
-        // projectService storage operations stay detached. Publish the exact resolved project
-        // here, revalidating ownership around the publication, because the claim below requires
-        // that project to be active before and after every native step.
-        const activation = await activateProject(
-          await resolveCandidateProject(url),
-          { validateOwnership: assertOperationOwned }
-        );
+        const resolved = await resolveCandidateProject(url);
+        await assertOperationOwned();
         let media;
-        try {
-          media = await claimCandidate(candidate, activation.claimOptions);
-        } catch (error) {
-          activation.release();
-          throw error;
+        const owner = transactionalOwner();
+        if (owner !== null) {
+          let binding = null;
+          try {
+            await assertListenerLive(owner);
+            binding = await owner.admitActivation(Object.freeze({
+              assetId: candidateAssetId(candidate),
+              resolvedProject: resolved,
+              url,
+            }), { validateOwnership: assertOperationOwned });
+            await assertOperationOwned();
+            if (!isSubtitleProjectBindingReceipt(binding, {
+              cacheId: resolved?.cacheId,
+              projectId: resolved?.projectId,
+            }) || !Number.isSafeInteger(binding.stateVersion) || binding.stateVersion < 0) {
+              throw fixedFailure('mediaCandidateProjectFailed');
+            }
+            media = await claimCandidate(candidate, {
+              expectedStateVersion: binding.stateVersion,
+              projectId: binding.projectId,
+            }, { validateOwnership: assertOperationOwned });
+            await assertOperationOwned();
+            await owner.publishActivation(media, binding, {
+              validateOwnership: assertOperationOwned,
+            });
+            await assertOperationOwned();
+          } catch (error) {
+            if (binding !== null && rollbackSubtitleProjectBinding(binding)) {
+              try {
+                await owner.rollbackActivation({ validateOwnership: assertOperationOwned });
+              } catch {
+                // Rollback is best-effort after the authoritative binding has already withdrawn.
+              }
+            }
+            throw error;
+          }
+        } else {
+          if (typeof activateProject !== 'function') {
+            throw fixedFailure('mediaActivationAdmissionRequired');
+          }
+          // Test-only compatibility for the reviewed legacy adapter contract. The shipping
+          // singleton has no activator and therefore cannot enter this branch.
+          const activation = await activateProject(resolved, {
+            validateOwnership: assertOperationOwned,
+          });
+          try {
+            media = await claimCandidate(candidate, activation.claimOptions, {
+              validateOwnership: assertOperationOwned,
+            });
+          } catch (error) {
+            activation.release();
+            throw error;
+          }
         }
         settle({
           kind: 'completed',
@@ -392,7 +464,9 @@ export const createNativeUrlDownloadAdapter = ({
         if (outcome.kind === 'orphaned') return null;
         if (outcome.kind === 'completed') {
           if (!await revalidateListeners(operation, { cancelIfEmpty: true })) return null;
-          completedAssets.remember(key, outcome.assetId, outcome.subtitle);
+          if (reopenCompletedAsset !== null) {
+            completedAssets.remember(key, outcome.assetId, outcome.subtitle);
+          }
           return outcome.media;
         }
         if (outcome.kind === 'cancelled') return null;
@@ -449,21 +523,41 @@ export const createNativeUrlDownloadAdapter = ({
         preferredSubtitleLanguages,
         signal,
         validateOwnership,
+        admitActivation,
+        publishActivation,
+        rollbackActivation,
       } = requestSnapshot;
       const normalizedUrl = normalizeUrl(url);
       const callbacks = {
+        admitActivation: normalizeCallback(admitActivation),
         onStarted: normalizeCallback(onStarted),
         onProgress: normalizeCallback(onProgress),
         onSubtitle: normalizeCallback(onSubtitle),
+        publishActivation: normalizeCallback(publishActivation),
+        rollbackActivation: normalizeCallback(rollbackActivation),
         signalBinding: snapshotSignal(signal),
         validateOwnership: normalizeCallback(validateOwnership),
       };
+      const activationCallbacks = [
+        callbacks.admitActivation,
+        callbacks.publishActivation,
+        callbacks.rollbackActivation,
+      ];
+      const suppliedActivationCallbacks = activationCallbacks.filter(
+        (callback) => typeof callback === 'function'
+      ).length;
+      if ((suppliedActivationCallbacks !== 0
+          && (suppliedActivationCallbacks !== activationCallbacks.length
+            || typeof callbacks.validateOwnership !== 'function'))
+          || (typeof activateProject !== 'function' && suppliedActivationCallbacks === 0)) {
+        throw fixedFailure('invalidDownloadRequest');
+      }
       const cookieSource = normalizeCookieSource(requestedCookieSource);
       const preferredLanguages = normalizePreferredLanguages(preferredSubtitleLanguages);
       const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);
 
-      const completed = completedAssets.read(key);
-      if (completed) {
+      const completed = reopenCompletedAsset === null ? undefined : completedAssets.read(key);
+      if (completed && reopenCompletedAsset !== null) {
         const reopened = await reopenCompletedAsset(key, normalizedUrl, completed, callbacks);
         if (reopened !== null) return reopened.media;
       }

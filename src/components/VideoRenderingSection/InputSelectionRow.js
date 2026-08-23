@@ -26,7 +26,6 @@ const InputSelectionRow = ({
   hasNarrationSegments,
   handleRefreshNarration,
   isRefreshingNarration,
-  currentNarrationResults,
 }) => {
   const { t } = useTranslation();
 
@@ -191,13 +190,11 @@ const InputSelectionRow = ({
                 type="button"
                 className="refresh-icon-button"
                 onClick={handleRefreshNarration}
-                disabled={isRefreshingNarration || !currentNarrationResults || currentNarrationResults.length === 0 || !currentNarrationResults.some(r => r.success && (r.audioData || r.filename))}
-                isPulsing={hasNarrationSegments() && !isRefreshingNarration && currentNarrationResults && currentNarrationResults.length > 0 && currentNarrationResults.some(r => r.success && (r.audioData || r.filename))}
+                disabled={isRefreshingNarration || !hasNarrationSegments()}
+                isPulsing={hasNarrationSegments() && !isRefreshingNarration}
                 title={
                   !hasNarrationSegments()
                     ? t('videoRendering.generateNarrationFirst', 'Generate narration first')
-                    : !currentNarrationResults || currentNarrationResults.length === 0 || !currentNarrationResults.some(r => r.success && (r.audioData || r.filename))
-                    ? t('videoRendering.noValidNarrationFiles', 'No valid narration files available')
                     : t('videoRendering.refreshNarration', 'Click to align narration for video rendering')
                 }
               >

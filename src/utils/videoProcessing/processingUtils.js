@@ -1,5 +1,6 @@
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
+import { bindGeminiTranscriptionDeliveries } from '../../services/gemini/transcriptionDelivery';
 
 /**
  * Legacy processing utilities for video/audio processing
@@ -82,6 +83,11 @@ const mapMediaResolution = (resolution) => {
  * This is the new segment-based processing function for the improved workflow
  */
 export const processSegmentWithFilesApi = async (file, segment, options, setStatus, t) => {
+  if (isDesktopRuntime()) {
+    throw new Error(
+      'Native Gemini segments must run through the project-owned streaming checkpoint flow.'
+    );
+  }
   try {
     const { fps, mediaResolution, model, userProvidedSubtitles } = options;
 
@@ -157,6 +163,14 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
     // Track if we've stopped early due to subtitles going past segment
     let hasStoppedEarly = false;
     let earlyStopController = null;
+    let providerResult = null;
+    let providerSettled = false;
+    let processedResult = null;
+    let processorSettled = false;
+    const resolveWhenAuthoritative = () => {
+      if (!providerSettled || !processorSettled) return;
+      resolve(bindGeminiTranscriptionDeliveries(processedResult, providerResult));
+    };
 
     // Import streaming processor
      import('../../utils/subtitle/realtimeProcessor').then(({ createRealtimeProcessor }) => {
@@ -299,7 +313,9 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             dbg(`[ProcessingUtils] Final filter: ${finalSubtitles.length} subtitles to ${filteredFinal.length} for segment ${segmentStart}-${segmentEnd}`);
             }
 
-            resolve(filteredFinal);
+            processedResult = filteredFinal;
+            processorSettled = true;
+            resolveWhenAuthoritative();
         },
         onError: (error) => {
           console.error('[ProcessingUtils] Streaming error:', error);
@@ -387,6 +403,10 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
             }
           }
         );
+      }).then((result) => {
+        providerResult = result;
+        providerSettled = true;
+        resolveWhenAuthoritative();
       }).catch(reject);
     }).catch(reject);
   });
@@ -397,6 +417,11 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
  * Extract the selected segment locally and send inline to Gemini (no offsets)
  */
 export const processSegmentWithInlineExtraction = async (file, segment, options, setStatus, t) => {
+  if (isDesktopRuntime()) {
+    throw new Error(
+      'Native Gemini segments must run through the project-owned streaming checkpoint flow.'
+    );
+  }
   try {
     const { model, userProvidedSubtitles } = options || {};
     setStatus({ message: t('processing.extractingSegment', 'Extracting selected segment locally...'), type: 'loading' });
@@ -429,7 +454,7 @@ export const processSegmentWithInlineExtraction = async (file, segment, options,
       }
     }
 
-    return adjusted;
+    return bindGeminiTranscriptionDeliveries(adjusted, rawSubtitles);
   } catch (error) {
     console.error('Error processing segment with inline extraction:', error);
     throw error;

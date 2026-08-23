@@ -134,18 +134,24 @@ describe('subtitle customization default authority', () => {
     },
   );
 
-  // This also required the WebView composition to import the default rather than declare its own
-  // fallback object. That composition is deleted, so what remains is the surviving half: the render
-  // tab still reads its persisted style through this parser, and the read lives in the state module
-  // that owns the default merge for both the preview and the export.
-  it('reads the persisted style through one parser owned by the state module', () => {
+  // Browser storage is no longer an active render authority. The parser survives only inside the
+  // bounded consume-once upgrade path, after which the keys are deleted and Rust owns the scene.
+  it('uses the persisted-style parser only for the bounded first-upgrade import', () => {
     const stateSource = readFileSync(
       resolve('src/components/VideoRenderingSection/subtitleCustomizationState.js'),
       'utf8',
     );
-    expect(stateSource).toContain('parseStoredSubtitleCustomization(');
+    const executableStateSource = stateSource.replace(/\/\*[\s\S]*?\*\//gu, '');
+    expect(executableStateSource).not.toContain('localStorage');
+    expect(executableStateSource).not.toContain('parseStoredSubtitleCustomization(');
+    const preferencesSource = readFileSync(
+      resolve('src/components/VideoRenderingSection/renderPreferences.js'),
+      'utf8',
+    );
+    expect(preferencesSource).toContain('consumeLegacyRenderScene');
+    expect(preferencesSource).toContain('parseStoredSubtitleCustomization(');
     const sectionSource = readFileSync(resolve('src/components/VideoRenderingSection.js'), 'utf8');
-    expect(sectionSource).toContain('useSubtitleCustomization()');
+    expect(sectionSource).toContain('useProjectRenderScene()');
     expect(sectionSource).not.toContain('JSON.parse(saved)');
   });
 });

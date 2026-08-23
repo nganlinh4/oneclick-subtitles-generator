@@ -5,24 +5,26 @@ import { getStatusIcon, getStatusColor, getVideoNumber, formatTime } from './que
 
 const QueueItemRow = ({
   item,
-  effectiveStatus,
   currentQueueItem,
   theme,
   onCancelItem,
   onRemoveItem,
-  onLocalCancel,
   onPreview,
   onDownloadVideo
 }) => {
   const { t } = useTranslation();
+  const status = item.status;
+  const currentQueueItemId = typeof currentQueueItem === 'object'
+    ? currentQueueItem?.id
+    : currentQueueItem;
 
   return (
     <div
-      className={`queue-item ${effectiveStatus} ${item.id === currentQueueItem ? 'current' : ''}`}
+      className={`queue-item ${status} ${item.id === currentQueueItemId ? 'current' : ''}`}
     >
       <div className="queue-item-header">
         <div className="item-info">
-          <span className="status-icon">{getStatusIcon(effectiveStatus)}</span>
+          <span className="status-icon">{getStatusIcon(status)}</span>
           <div className="item-details">
             <div className="item-title">
               {t('videoRendering.subtitledVideo', 'Subtitled Video')} #{getVideoNumber(item)}
@@ -38,19 +40,19 @@ const QueueItemRow = ({
         <div className="item-status">
           <span
             className="status-badge"
-            style={{ backgroundColor: getStatusColor(effectiveStatus) }}
+            style={{ backgroundColor: getStatusColor(status) }}
           >
-            {t(`videoRendering.${effectiveStatus}`, effectiveStatus)}
+            {t(`videoRendering.${status}`, status)}
           </span>
         </div>
       </div>
 
       {/* Revamped WavyProgressIndicator Section */}
-      {(effectiveStatus === 'processing' || effectiveStatus === 'pending') && (
+      {(['processing', 'pending', 'cancelling'].includes(status)) && (
         <div className="wavy-progress-section">
           <WavyProgressIndicator
             progress={Math.max(0, Math.min(1, (item.progress || 0) / 100))}
-            animate={effectiveStatus === 'processing'}
+            animate={status === 'processing'}
             showStopIndicator={true}
             waveSpeed={1.2}
             height={12}
@@ -60,8 +62,8 @@ const QueueItemRow = ({
               item.phase === 'chrome-download'
                 ? (theme === 'dark' ? '#2196F3' : '#1976D2')
                 : (theme === 'dark'
-                    ? (effectiveStatus === 'processing' ? '#4CAF50' : '#FFC107')
-                    : (effectiveStatus === 'processing' ? '#2E7D32' : '#F57C00')
+                    ? (status === 'processing' ? '#4CAF50' : '#FFC107')
+                    : (status === 'processing' ? '#2E7D32' : '#F57C00')
                   )
             }
             trackColor={theme === 'dark'
@@ -73,8 +75,8 @@ const QueueItemRow = ({
               item.phase === 'chrome-download'
                 ? (theme === 'dark' ? '#2196F3' : '#1976D2')
                 : (theme === 'dark'
-                    ? (effectiveStatus === 'processing' ? '#4CAF50' : '#FFC107')
-                    : (effectiveStatus === 'processing' ? '#2E7D32' : '#F57C00')
+                    ? (status === 'processing' ? '#4CAF50' : '#FFC107')
+                    : (status === 'processing' ? '#2E7D32' : '#F57C00')
                   )
             }
             style={{
@@ -82,7 +84,7 @@ const QueueItemRow = ({
             }}
           />
           <div className="progress-text">
-            {effectiveStatus === 'processing' ? (
+            {status === 'processing' ? (
               <>
                 {/* Fixed percentage container */}
                 <div className="progress-percentage-container">
@@ -168,17 +170,17 @@ const QueueItemRow = ({
         )}
 
         <div className="item-actions-right">
-          {effectiveStatus === 'processing' && onCancelItem && (
+          {status === 'processing' && onCancelItem && (
             <button
               className="cancel-btn"
-              onClick={() => onLocalCancel(item)}
+              onClick={() => onCancelItem(item.id)}
             >
               <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>cancel</span>
               {t('videoRendering.cancel', 'Cancel')}
             </button>
           )}
 
-          {effectiveStatus !== 'processing' && (
+          {!['processing', 'cancelling'].includes(status) && (
             <button
               className="remove-btn"
               onClick={() => onRemoveItem(item.id)}

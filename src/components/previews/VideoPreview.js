@@ -215,15 +215,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // Aligned-narration event wiring + audio cleanup on unmount.
   useNarrationRefreshEvents({ isRefreshingNarration, setIsRefreshingNarration });
 
-  // Let the timeline's "Pull subtitles to narration" trigger the SAME narration refresh as the
-  // top-left button. Wired here (VideoPreview is always mounted) rather than in the buttons, which
-  // unmount when the controls aren't hovered.
-  useEffect(() => {
-    const onRequest = () => narrationRefreshHandler({ videoRef, setIsRefreshingNarration, t });
-    window.addEventListener('request-narration-refresh', onRequest);
-    return () => window.removeEventListener('request-narration-refresh', onRequest);
-  }, [t]);
-
   // The 54-field customization the native compositor draws from, mapped by the SAME bridge the
   // download handler uses. There is deliberately no second mapping: if the preview and the file it
   // downloads disagreed about a style, the mapping would be the only place they could.
@@ -250,6 +241,55 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
       ? translatedSubtitlesForRender(translatedSubtitles, subtitlesArray)
       : subtitlesArray;
   }, [subtitleSettings.showTranslatedSubtitles, translatedSubtitles, subtitlesArray]);
+
+  // Narration alignment follows the same subtitle source the preview and export use. Grouped
+  // narration is its own explicit cue plan; otherwise translated and original results are never
+  // selected merely because one stale global happens to be non-empty.
+  const usesGroupedNarration = window.useGroupedSubtitles === true;
+  const usesTranslatedNarration = !usesGroupedNarration
+    && subtitleSettings.showTranslatedSubtitles
+    && Array.isArray(translatedSubtitles)
+    && translatedSubtitles.length > 0;
+  const groupedNarrationCues = Array.isArray(window.groupedSubtitles)
+    ? window.groupedSubtitles
+    : null;
+  const groupedNarrationResults = Array.isArray(window.groupedNarrations)
+    ? window.groupedNarrations
+    : null;
+  const translatedNarrationResults = Array.isArray(window.translatedNarrations)
+    ? window.translatedNarrations
+    : null;
+  const originalNarrationResults = Array.isArray(window.originalNarrations)
+    ? window.originalNarrations
+    : null;
+  const narrationCuesForAlignment = useMemo(() => (
+    usesGroupedNarration ? (groupedNarrationCues || []) : previewSubtitles
+  ), [usesGroupedNarration, groupedNarrationCues, previewSubtitles]);
+  const narrationResultsForAlignment = useMemo(() => {
+    if (usesGroupedNarration) return groupedNarrationResults || [];
+    if (usesTranslatedNarration) return translatedNarrationResults || [];
+    return originalNarrationResults || [];
+  }, [
+    usesGroupedNarration,
+    usesTranslatedNarration,
+    groupedNarrationResults,
+    translatedNarrationResults,
+    originalNarrationResults,
+  ]);
+
+  // Let the timeline's request trigger the same strict refresh as the top-left button. The explicit
+  // arrays keep this path tied to the frame the user is looking at.
+  useEffect(() => {
+    const onRequest = () => narrationRefreshHandler({
+      videoRef,
+      setIsRefreshingNarration,
+      t,
+      generationResults: narrationResultsForAlignment,
+      currentCues: narrationCuesForAlignment,
+    });
+    window.addEventListener('request-narration-refresh', onRequest);
+    return () => window.removeEventListener('request-narration-refresh', onRequest);
+  }, [t, narrationResultsForAlignment, narrationCuesForAlignment]);
 
   // The preview is a persistent display-resolution canvas. It copies the decoded `<video>` frame
   // directly and paints the exact shaped line-mask atlas native export consumes. Playback therefore
@@ -381,6 +421,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
               return [];
             }
           })()}
+          alignedNarrations={narrationResultsForAlignment}
+          narrationCues={narrationCuesForAlignment}
           {...(() => {
             // Store subtitles data in window for access by other components
             if (subtitlesArray && subtitlesArray.length > 0) {
@@ -477,6 +519,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   useOptimizedPreview={useOptimizedPreview}
                   optimizedVideoUrl={optimizedVideoUrl}
                   videoUrl={videoUrl}
+                  narrationResults={narrationResultsForAlignment}
+                  narrationCues={narrationCuesForAlignment}
                 />
 
                 <VideoPlayerElement

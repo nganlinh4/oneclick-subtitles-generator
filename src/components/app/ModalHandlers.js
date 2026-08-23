@@ -1,8 +1,6 @@
-import { PROMPT_PRESETS } from '../../services/geminiService';
 import { abortVideoAnalysis } from '../../services/videoAnalysisService';
 import {
   getCurrentCacheId as getRulesCacheId,
-  setTranscriptionRules,
   setTranscriptionRulesForCache,
 } from '../../utils/transcriptionRulesStore';
 import {
@@ -12,6 +10,12 @@ import {
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { generateFileCacheId } from '../../utils/cacheUtils';
 import { resolveProjectForCache } from '../../platform/subtitleProjectStore';
+import {
+  refreshActiveNativeMedia,
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../../platform/activeNativeMedia';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
 
 const rulesEditorContexts = new WeakMap();
 
@@ -20,9 +24,6 @@ const rulesEditorContexts = new WeakMap();
  */
 export const useModalHandlers = (appState) => {
   const {
-    setShowVideoAnalysis,
-    setVideoAnalysisResult,
-    videoAnalysisResult,
     setTranscriptionRulesState,
     setShowRulesEditor,
     setStatus,
@@ -37,139 +38,23 @@ export const useModalHandlers = (appState) => {
     rulesEditorContexts.set(setShowRulesEditor, rulesEditorContextRef);
   }
 
-  /**
-   * Handle using the recommended preset from video analysis
-   * This will use the recommended preset for the current session only,
-   * without changing the user's chosen preset in settings
-   */
-  const handleUseRecommendedPreset = (presetId) => {
-
-    // Find the preset
-    const preset = PROMPT_PRESETS.find(p => p.id === presetId);
-    if (preset) {
-      // Store the preset for the current session only
-      // Use sessionStorage instead of localStorage to avoid changing the user's settings
-      sessionStorage.setItem('current_session_prompt', preset.prompt);
-      sessionStorage.setItem('current_session_preset_id', presetId);
-
-      // Save the transcription rules
-      if (videoAnalysisResult && videoAnalysisResult.transcriptionRules) {
-        setTranscriptionRules(videoAnalysisResult.transcriptionRules);
-        setTranscriptionRulesState(videoAnalysisResult.transcriptionRules);
-      }
-
-      // Update status to indicate we're moving forward
-      setStatus({
-        message: t('output.preparingProcessing', 'Preparing video for processing...'),
-        type: 'loading'
-      });
-
-      // Dispatch event to notify videoProcessor that user has made a choice
-      const userChoiceEvent = new CustomEvent('videoAnalysisUserChoice', {
-        detail: {
-          presetId,
-          transcriptionRules: videoAnalysisResult?.transcriptionRules
-        }
-      });
-      window.dispatchEvent(userChoiceEvent);
-
-
-      // Clear the localStorage flags and set processing flag
-      localStorage.removeItem('show_video_analysis');
-      localStorage.removeItem('video_analysis_timestamp');
-      localStorage.removeItem('video_analysis_result'); // Also clear the result
-      localStorage.setItem('video_processing_in_progress', 'true'); // Set processing flag
-
-
-      // Close the modal
-      setShowVideoAnalysis(false);
-      setVideoAnalysisResult(null); // Clear the result to prevent re-showing
-
-    }
-  };
-
-  /**
-   * Handle using the default preset from settings
-   * This will use the user's chosen preset from settings
-   */
-  const handleUseDefaultPreset = () => {
-
-
-    // Clear any session-specific prompt to ensure we use the user's chosen preset
-    sessionStorage.removeItem('current_session_prompt');
-    sessionStorage.removeItem('current_session_preset_id');
-
-
-    // Update status to indicate we're moving forward
-    setStatus({
-      message: t('output.preparingProcessing', 'Preparing video for processing...'),
-      type: 'loading'
-    });
-
-    // Dispatch event to notify videoProcessor that user has made a choice
-    const userChoiceEvent = new CustomEvent('videoAnalysisUserChoice', {
-      detail: {
-        presetId: null, // Use default preset
-        transcriptionRules: videoAnalysisResult?.transcriptionRules // Still use the rules
-      }
-    });
-    window.dispatchEvent(userChoiceEvent);
-
-
-    // Save the transcription rules
-    if (videoAnalysisResult && videoAnalysisResult.transcriptionRules) {
-      setTranscriptionRules(videoAnalysisResult.transcriptionRules);
-      setTranscriptionRulesState(videoAnalysisResult.transcriptionRules);
-    }
-
-    // Clear the localStorage flags and set processing flag
-    localStorage.removeItem('show_video_analysis');
-    localStorage.removeItem('video_analysis_timestamp');
-    localStorage.removeItem('video_analysis_result'); // Also clear the result
-    localStorage.setItem('video_processing_in_progress', 'true'); // Set processing flag
-
-
-    // Close the modal
-    setShowVideoAnalysis(false);
-    setVideoAnalysisResult(null); // Clear the result to prevent re-showing
-
-  };
-
-  /**
-   * Handle editing the transcription rules
-   */
   const captureRulesEditorContext = async () => {
-    const cacheId = await getCacheIdForCurrentVideo();
+    const mediaCapability = isDesktopRuntime() ? await resolveActiveNativeMedia() : null;
+    const cacheId = mediaCapability?.cacheId ?? await getCacheIdForCurrentVideo();
     if (!cacheId
         || getRulesCacheId() !== cacheId
         || getSubtitlesCacheId() !== cacheId) {
       throw new Error('The active subtitle project changed.');
     }
-    const project = await resolveProjectForCache(cacheId, { create: true });
+    const project = await resolveProjectForCache(cacheId, { create: false });
+    if (mediaCapability) await revalidateActiveNativeMedia(mediaCapability);
     if (!project?.projectId
+        || (mediaCapability && project.projectId !== mediaCapability.projectId)
         || getRulesCacheId() !== cacheId
         || getSubtitlesCacheId() !== cacheId) {
       throw new Error('The active subtitle project changed.');
     }
-    return Object.freeze({ cacheId, projectId: project.projectId });
-  };
-
-  const handleEditRules = async (rules) => {
-    try {
-      rulesEditorContextRef.current = await captureRulesEditorContext();
-      setShowVideoAnalysis(false);
-      setTimeout(() => {
-        setTranscriptionRulesState(rules);
-        setShowRulesEditor(true);
-      }, 50);
-      return true;
-    } catch {
-      setStatus({
-        message: t('errors.activeProjectChanged', 'The active subtitle project changed.'),
-        type: 'error',
-      });
-      return false;
-    }
+    return Object.freeze({ cacheId, projectId: project.projectId, mediaCapability });
   };
 
   /**
@@ -185,6 +70,7 @@ export const useModalHandlers = (appState) => {
       expectedProjectId: context.projectId,
     });
     const projectAfterWrite = await resolveProjectForCache(context.cacheId, { create: false });
+    if (context.mediaCapability) await refreshActiveNativeMedia(context.mediaCapability);
     if (getRulesCacheId() !== context.cacheId
         || getSubtitlesCacheId() !== context.cacheId
         || projectAfterWrite?.projectId !== context.projectId) {
@@ -192,13 +78,6 @@ export const useModalHandlers = (appState) => {
     }
     setTranscriptionRulesState(editedRules);
 
-    // Update the analysis result with the edited rules
-    if (videoAnalysisResult) {
-      setVideoAnalysisResult({
-        ...videoAnalysisResult,
-        transcriptionRules: editedRules
-      });
-    }
   };
 
   /**
@@ -222,17 +101,22 @@ export const useModalHandlers = (appState) => {
    * Handle adding or updating user-provided subtitles
    */
   const handleUserSubtitlesAdd = async (subtitlesText) => {
-    const cacheId = await getCacheIdForCurrentVideo();
+    const mediaCapability = isDesktopRuntime() ? await resolveActiveNativeMedia() : null;
+    const cacheId = mediaCapability?.cacheId ?? await getCacheIdForCurrentVideo();
     if (!cacheId) throw new Error('The active subtitle project is unavailable.');
     if (getSubtitlesCacheId() !== cacheId) throw new Error('The active subtitle project changed.');
-    const project = await resolveProjectForCache(cacheId, { create: true });
-    if (!project?.projectId || getSubtitlesCacheId() !== cacheId) {
+    const project = await resolveProjectForCache(cacheId, { create: false });
+    if (mediaCapability) await revalidateActiveNativeMedia(mediaCapability);
+    if (!project?.projectId
+        || (mediaCapability && project.projectId !== mediaCapability.projectId)
+        || getSubtitlesCacheId() !== cacheId) {
       throw new Error('The active subtitle project changed.');
     }
     await setUserProvidedSubtitlesForCache(cacheId, subtitlesText, {
       expectedProjectId: project.projectId,
     });
     const projectAfterWrite = await resolveProjectForCache(cacheId, { create: false });
+    if (mediaCapability) await refreshActiveNativeMedia(mediaCapability);
     if (getSubtitlesCacheId() !== cacheId
         || projectAfterWrite?.projectId !== project.projectId) {
       throw new Error('The active subtitle project changed.');
@@ -252,18 +136,20 @@ export const useModalHandlers = (appState) => {
    * Get cache ID for the current video source using unified approach
    */
   const getCacheIdForCurrentVideo = async () => {
-    // Check for video URL first (from any source)
-    const currentVideoUrl = localStorage.getItem('current_video_url');
-    if (currentVideoUrl) {
-      // Use unified URL-based caching
-      const { generateUrlBasedCacheId } = await import('../../services/subtitleCache');
-      return await generateUrlBasedCacheId(currentVideoUrl);
+    const rulesCacheId = getRulesCacheId();
+    const subtitlesCacheId = getSubtitlesCacheId();
+    if (isDesktopRuntime()) {
+      const capability = await resolveActiveNativeMedia();
+      if ((rulesCacheId !== null && rulesCacheId !== capability.cacheId)
+          || (subtitlesCacheId !== null && subtitlesCacheId !== capability.cacheId)) {
+        return null;
+      }
+      return capability.cacheId;
     }
+    if (rulesCacheId && rulesCacheId === subtitlesCacheId) return rulesCacheId;
+    if (rulesCacheId || subtitlesCacheId) return null;
 
-    const storedCacheId = localStorage.getItem('current_file_cache_id');
-    if (typeof storedCacheId === 'string' && storedCacheId.length > 0 && storedCacheId.length <= 8_192) {
-      return storedCacheId;
-    }
+    // Browser-only compatibility is explicit input state; it never reads the desktop mirrors.
     if (isNativeMediaDescriptor(uploadedFile)) return uploadedFile.assetId;
     if (uploadedFile instanceof File) return await generateFileCacheId(uploadedFile);
     return null;
@@ -277,20 +163,11 @@ export const useModalHandlers = (appState) => {
     if (analysisAborted) {
       // If video analysis was aborted, update the status
       setStatus({ message: t('output.videoAnalysisAborted', 'Video analysis aborted'), type: 'warning' });
-      // Clear video analysis state
-      localStorage.removeItem('show_video_analysis');
-      localStorage.removeItem('video_analysis_timestamp');
-      localStorage.removeItem('video_analysis_result');
-      setShowVideoAnalysis(false);
-      setVideoAnalysisResult(null);
     }
     return analysisAborted;
   };
 
   return {
-    handleUseRecommendedPreset,
-    handleUseDefaultPreset,
-    handleEditRules,
     handleSaveRules,
     handleViewRules,
     handleUserSubtitlesAdd,

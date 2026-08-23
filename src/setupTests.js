@@ -3,10 +3,8 @@
 // Adds custom matchers like `toBeInTheDocument` / `toHaveClass`.
 import '@testing-library/jest-dom';
 
-// jsdom doesn't implement the Performance Timeline API. Some components probe the
-// navigation type (e.g. VideoAnalysisModal checks whether the page was reloaded via
-// `performance.getEntriesByType('navigation')`). Provide a no-op so rendering them in
-// tests doesn't throw "getEntriesByType is not a function".
+// jsdom doesn't implement the Performance Timeline API. Provide a no-op for components
+// which inspect navigation timing so rendering them does not throw.
 if (
   typeof window !== 'undefined' &&
   window.performance &&

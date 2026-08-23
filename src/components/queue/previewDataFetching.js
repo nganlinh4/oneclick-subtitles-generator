@@ -1,12 +1,18 @@
-import { resolveActiveNativeMediaAssetId } from '../../platform/activeNativeMedia';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../../platform/activeNativeMedia';
 import { inspectMediaPipelineAsset } from '../../platform/mediaPipelineService';
-import { getSelectedMedia } from '../../platform/mediaService';
 
 export const fetchPreviewInfo = async (url, explicitAssetId = null) => {
-  const assetId = explicitAssetId || resolveActiveNativeMediaAssetId(url);
-  if (assetId === null) return null;
+  let capability = null;
   try {
+    if (explicitAssetId === null) {
+      capability = await resolveActiveNativeMedia({ candidate: url });
+    }
+    const assetId = explicitAssetId ?? capability.assetId;
     const inspection = await inspectMediaPipelineAsset(assetId);
+    if (capability !== null) await revalidateActiveNativeMedia(capability);
     return {
       success: true,
       width: inspection.width,
@@ -29,10 +35,8 @@ export const fetchPreviewExtra = async (url, {
     return { size: sizeBytes, createdAt: null };
   }
   try {
-    const selected = await getSelectedMedia();
-    return selected?.playbackUrl === url
-      ? { size: selected.size, createdAt: null }
-      : null;
+    const capability = await resolveActiveNativeMedia({ candidate: url });
+    return { size: capability.media.size, createdAt: null };
   } catch {
     return null;
   }

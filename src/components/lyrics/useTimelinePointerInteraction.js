@@ -20,14 +20,10 @@ export const useTimelinePointerInteraction = ({
     onSegmentSelect,
     onClearRange,
     selectedSegment,
-    offlineSegments,
     actionBarRange,
     hiddenActionBarRange,
-    hoveredOfflineRange,
     setActionBarRange,
     setHiddenActionBarRange,
-    setHoveredOfflineRange,
-    setWarnOfflineDragVisible,
     setMoveDragOffsetPx,
     setIsDraggingSegment,
     setDragStartTime,
@@ -102,7 +98,7 @@ export const useTimelinePointerInteraction = ({
         // During a move-drag of the action bar, ignore canvas hover logic entirely
         if (isRangeMoveDraggingRef.current) return;
         // Check both hiddenActionBarRange and selectedSegment
-        if (!hiddenActionBarRange && !actionBarRange && !selectedSegment && (!offlineSegments || offlineSegments.length === 0)) return;
+        if (!hiddenActionBarRange && !actionBarRange && !selectedSegment) return;
 
         const canvas = timelineRef.current;
         const effectiveDuration = duration || 60;
@@ -114,19 +110,10 @@ export const useTimelinePointerInteraction = ({
         const timePerPixel = (timeRange.end - timeRange.start) / canvas.clientWidth;
         const hoverTime = Math.max(0, Math.min(effectiveDuration, timeRange.start + (relativeX * timePerPixel)));
 
-        // Track hovered offline cached range (for refresh UI)
-        if (offlineSegments && offlineSegments.length > 0) {
-            const hovered = offlineSegments.find(r => hoverTime >= r.start && hoverTime <= r.end);
-            setHoveredOfflineRange(hovered || null);
-        } else {
-            if (hoveredOfflineRange) setHoveredOfflineRange(null);
-        }
-
         // Check if hovering within the hidden action bar range
         const range = hiddenActionBarRange || actionBarRange;
         if (range && hoverTime >= range.start && hoverTime <= range.end) {
-            // Show the action bar if it was hidden (only when no offline cuts exist)
-            if (hiddenActionBarRange && !actionBarRange && offlineSegments.length === 0) {
+            if (hiddenActionBarRange && !actionBarRange) {
                 setActionBarRange(hiddenActionBarRange);
             }
         }
@@ -135,17 +122,17 @@ export const useTimelinePointerInteraction = ({
         if (selectedSegment && !actionBarRange &&
             hoverTime >= selectedSegment.start && hoverTime <= selectedSegment.end) {
             // Check if there are subtitles in this segment
-            if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end) && offlineSegments.length === 0) {
+            if (hasSubtitlesInRange(selectedSegment.start, selectedSegment.end)) {
                 // Show action bar for the selected segment
                 setActionBarRange(selectedSegment);
                 setHiddenActionBarRange(selectedSegment);
             }
         }
-    }, [hiddenActionBarRange, actionBarRange, selectedSegment, duration, getTimeRange, hasSubtitlesInRange, offlineSegments, hoveredOfflineRange, setHoveredOfflineRange, isRangeMoveDraggingRef, timelineRef, setActionBarRange, setHiddenActionBarRange]);
+    }, [hiddenActionBarRange, actionBarRange, selectedSegment, duration, getTimeRange, hasSubtitlesInRange, isRangeMoveDraggingRef, timelineRef, setActionBarRange, setHiddenActionBarRange]);
 
     // Add mouse move listener for hover detection
     useEffect(() => {
-        if (hiddenActionBarRange || actionBarRange || selectedSegment || (offlineSegments && offlineSegments.length > 0)) {
+        if (hiddenActionBarRange || actionBarRange || selectedSegment) {
             const canvas = timelineRef.current;
             if (canvas) {
                 canvas.addEventListener('mousemove', handleMouseMoveForRange);
@@ -154,7 +141,7 @@ export const useTimelinePointerInteraction = ({
                 };
             }
         }
-    }, [handleMouseMoveForRange, hiddenActionBarRange, actionBarRange, selectedSegment, offlineSegments, timelineRef]);
+    }, [handleMouseMoveForRange, hiddenActionBarRange, actionBarRange, selectedSegment, timelineRef]);
 
     // When selectedSegment changes (e.g., after subtitle generation), ensure the UI selection reflects it.
     // If a user-created actionBarRange is present, clear it and set hiddenActionBarRange to the programmatic selection
@@ -185,14 +172,12 @@ export const useTimelinePointerInteraction = ({
         const startTime = pixelToTime(clientX);
         const startX = clientX;
         let hasMoved = false;
-        let dragThreshold = isTouch ? 10 : 5; // pixels - higher threshold for touch to avoid accidental drags
-
-        let warned = false;
+        const dragThreshold = isTouch ? 10 : 5; // pixels - higher threshold for touch to avoid accidental drags
 
 
 
-        // Initialize drag state for segment selection (if enabled) - disabled when offline segments linger
-        if (onSegmentSelect && offlineSegments.length === 0) {
+        // Initialize drag state for segment selection (if enabled).
+        if (onSegmentSelect) {
             setDragStartTime(startTime);
             setDragCurrentTime(startTime);
             dragStartRef.current = startTime;
@@ -207,18 +192,6 @@ export const useTimelinePointerInteraction = ({
 
         const handlePointerMove = (moveClientX) => {
             const deltaX = Math.abs(moveClientX - startX);
-
-            // If offline cuts exist, only warn when user starts dragging; allow single-click seeking
-            if (offlineSegments.length > 0) {
-                if (deltaX > dragThreshold && !warned) {
-                    setWarnOfflineDragVisible(true);
-                    try { setTimeout(() => setWarnOfflineDragVisible(false), 3500); } catch {
-                        // Warning dismissal is best-effort during document teardown.
-                    }
-                    warned = true;
-                }
-                return;
-            }
 
             // Check if we've moved enough to consider this a drag
             if (deltaX > dragThreshold) {
@@ -257,9 +230,7 @@ export const useTimelinePointerInteraction = ({
                     // Only create segment if there's a meaningful duration (at least 1 second)
                     if (end - start >= 1) {
 
-                        if (offlineSegments.length > 0) {
-                            // When offline cuts exist, do not trigger the range action bar or open the modal
-                        } else if (hasSubtitlesInRange(start, end)) {
+                        if (hasSubtitlesInRange(start, end)) {
                             // Show action bar instead of opening modal
                             setActionBarRange({ start, end });
                             setHiddenActionBarRange({ start, end });
@@ -284,9 +255,9 @@ export const useTimelinePointerInteraction = ({
                     // Tap/click inside range - set flag to prevent hiding
                     isClickingInsideRef.current = true;
 
-                    // Ensure action bar is shown (only when no offline cuts exist)
+                    // Ensure action bar is shown for a selected range that contains subtitles.
                     if (!actionBarRange && activeRange) {
-                        if (hasSubtitlesInRange(activeRange.start, activeRange.end) && offlineSegments.length === 0) {
+                        if (hasSubtitlesInRange(activeRange.start, activeRange.end)) {
                             setActionBarRange(activeRange);
                             setHiddenActionBarRange(activeRange);
                         }

@@ -245,7 +245,8 @@ describe('the preview render request', () => {
     // The export's own shape, not a preview-shaped copy of it: the same seven fields
     // `buildNativeRenderRequest` produces for a file the user downloads.
     expect(Object.keys(render).sort()).toEqual([
-      'crop', 'customization', 'lyrics', 'narrationArtifactId', 'projectId', 'settings', 'sourceAssetId',
+      'crop', 'customization', 'lyrics', 'narrationArtifactId', 'projectId', 'sceneRevision',
+      'selectedNarration', 'selectedSubtitles', 'settings', 'sourceAssetId',
     ]);
     expect(render.lyrics).toEqual([
       { id: 'cue-0-0', startUs: 1_250_000, endUs: 2_500_000, text: 'Preview' },

@@ -2,8 +2,12 @@ import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EVENTS, publish, subscribe } from '../events/bus';
 import { CHECKPOINT_SOURCE } from '../events/constants';
-import { generateUrlBasedCacheId, saveSubtitlesToCache } from '../services/subtitleCache';
+import { saveSubtitlesToCache } from '../services/subtitleCache';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+  refreshActiveNativeMedia,
+  resolveActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 import { getCurrentCacheId as getSubtitleContextCacheId } from '../utils/userSubtitlesStore';
 import { flushDurableLyricsHistory } from '../platform/durableLyricsHistory';
 
@@ -42,19 +46,12 @@ export const useLyricsSave = ({
       }
 
       const desktopRuntime = isDesktopRuntime();
-      let cacheId = null;
+      let cacheId = getSubtitleContextCacheId();
+      let mediaCapability = null;
 
       if (desktopRuntime) {
-        cacheId = getSubtitleContextCacheId();
-      } else {
-        // Preserve the browser compatibility path until media identity is native as well.
-        const currentVideoUrl = localStorage.getItem('current_video_url');
-        const currentFileUrl = localStorage.getItem('current_file_url');
-        if (currentVideoUrl) {
-          cacheId = await generateUrlBasedCacheId(currentVideoUrl);
-        } else if (currentFileUrl) {
-          cacheId = localStorage.getItem('current_file_cache_id');
-        }
+        mediaCapability = await resolveActiveNativeMedia();
+        if (cacheId !== mediaCapability.cacheId) return false;
       }
 
       if (!cacheId) {
@@ -81,11 +78,16 @@ export const useLyricsSave = ({
       }
 
       if (desktopRuntime) {
-        const result = await saveSubtitlesToCache(cacheId, subtitlesToSave);
-        if (!result.success) {
+        const result = await saveSubtitlesToCache(cacheId, subtitlesToSave, {
+          expectedProjectId: mediaCapability.projectId,
+        });
+        if (!result.success
+            || result.cacheId !== mediaCapability.cacheId
+            || result.projectId !== mediaCapability.projectId) {
           console.error('Failed to save subtitles:', result.error);
           return false;
         }
+        await refreshActiveNativeMedia(mediaCapability);
 
         notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
         updateSavedLyrics();

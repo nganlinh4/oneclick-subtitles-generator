@@ -68,11 +68,10 @@ const spied = (value) => (
 
 const createHarness = (overrides = {}) => {
   const release = vi.fn(() => true);
-  const state = { session: sessionA(), storedAssetId: ASSET_A };
+  const state = { session: sessionA() };
   const deps = {
     read: vi.fn(async () => null),
     restore: vi.fn(async () => MEDIA_A),
-    readStoredAssetId: vi.fn(() => state.storedAssetId),
     readSession: vi.fn(() => state.session),
     resolveOwner: vi.fn(async () => resolvedProject()),
     activate: vi.fn(async () => Object.freeze({ claimOptions: {}, release })),
@@ -98,32 +97,42 @@ it('publishes the owning project and reopens the remembered asset on a fresh pro
     { validateOwnership: expect.any(Function) }
   );
   expect(harness.restore).toHaveBeenCalledExactlyOnceWith(ASSET_A);
-  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
+    validateOwnership: expect.any(Function),
+  });
   // The reopened project is the app's active project from here on.
   expect(harness.release).not.toHaveBeenCalled();
 });
 
-it('binds subtitles and rules to the alias, never to the asset ID', () => {
+it('awaits an exact-project binding receipt before publishing the restored media', async () => {
   localStorage.setItem('current_file_url', 'blob:obsolete');
   const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   const setUploadedFile = vi.fn();
-  const setRulesCacheIdImpl = vi.fn();
-  const setSubtitlesCacheIdImpl = vi.fn();
+  const receipt = Object.freeze({ cacheId: URL_ALIAS, projectId: PROJECT_A });
+  const activateBindingImpl = vi.fn(async () => receipt);
 
-  applyNativeMediaSession({
+  await applyNativeMediaSession({
     media: MEDIA_A,
     cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
     setUploadedFile,
-    setRulesCacheIdImpl,
-    setSubtitlesCacheIdImpl,
+    activateBindingImpl,
+    validateBindingImpl: (value, scope) => (
+      value === receipt && scope.cacheId === URL_ALIAS && scope.projectId === PROJECT_A
+    ),
   });
 
   expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:obsolete');
   expect(localStorage.getItem('current_file_url')).toBe(MEDIA_A.playbackUrl);
   // The identity key still holds the asset; only the project alias holds the cache ID.
   expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_A);
-  expect(setRulesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS);
-  expect(setSubtitlesCacheIdImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS);
+  expect(activateBindingImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS, {
+    expectedProjectId: PROJECT_A,
+    create: false,
+  });
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
 });
 
@@ -135,9 +144,10 @@ it.each([
   expect(() => applyNativeMediaSession({
     media: MEDIA_A,
     cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
     setUploadedFile: vi.fn(),
-    setRulesCacheIdImpl: vi.fn(),
-    setSubtitlesCacheIdImpl: vi.fn(),
+    activateBindingImpl: vi.fn(),
+    validateBindingImpl: vi.fn(),
     ...overrides,
   })).toThrow(TypeError);
 });
@@ -149,22 +159,31 @@ it('does nothing without a remembered session', async () => {
   expect(harness.restore).not.toHaveBeenCalled();
 });
 
-it('is disabled by clearing the media identity, with no teardown of its own', async () => {
+it('is disabled by clearing the durable media session, with no teardown of its own', async () => {
   const harness = createHarness();
-  harness.state.storedAssetId = null;
+  harness.state.session = null;
 
   await expect(harness.hydrator.hydrate()).resolves.toBe(false);
   expect(harness.resolveOwner).not.toHaveBeenCalled();
   expect(harness.restore).not.toHaveBeenCalled();
 });
 
-it('adopts media the native process already holds without publishing a project', async () => {
+it('adopts media the native process already holds only after publishing its owning project', async () => {
   const harness = createHarness({ read: async () => MEDIA_A });
 
   await expect(harness.hydrator.hydrate()).resolves.toBe(true);
-  expect(harness.activate).not.toHaveBeenCalled();
+  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(sessionA());
+  expect(harness.activate).toHaveBeenCalledExactlyOnceWith(
+    resolvedProject(),
+    { validateOwnership: expect.any(Function) },
+  );
   expect(harness.restore).not.toHaveBeenCalled();
-  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
+    validateOwnership: expect.any(Function),
+  });
 });
 
 it.each([
@@ -235,7 +254,7 @@ it('refuses to publish for a session that changed before the project was resolve
 
   const request = harness.hydrator.hydrate();
   await vi.waitFor(() => expect(harness.resolveOwner).toHaveBeenCalledOnce());
-  harness.state.storedAssetId = ASSET_B;
+  harness.state.session = { ...sessionA(), assetId: ASSET_B };
   pending.resolve(resolvedProject());
 
   await expect(request).resolves.toBe(false);
@@ -257,7 +276,12 @@ it('supersedes an in-flight hydration with a later one', async () => {
   await expect(latest).resolves.toBe(true);
   first.resolve(MEDIA_A);
   await expect(stale).resolves.toBe(false);
-  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: URL_ALIAS });
+  expect(harness.apply).toHaveBeenCalledExactlyOnceWith({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
+    validateOwnership: expect.any(Function),
+  });
 });
 
 it('withdraws its publication when the hook is disposed mid-reopen', async () => {
@@ -276,7 +300,6 @@ it('withdraws its publication when the hook is disposed mid-reopen', async () =>
 
 it.each([
   ['the native session read fails', { read: async () => { throw new Error('private detail'); } }],
-  ['storage is unreadable', { readStoredAssetId: () => { throw new Error('storage gone'); } }],
   ['the session pointer is unreadable', { readSession: () => { throw new Error('storage gone'); } }],
 ])('fails closed when %s', async (_label, overrides) => {
   const harness = createHarness(overrides);

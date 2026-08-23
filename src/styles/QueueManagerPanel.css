@@ -158,6 +158,15 @@
   background: var(--md-error-container);
 }
 
+.queue-item.cancelling {
+  border-color: var(--md-warning);
+  background: var(--md-warning-container);
+}
+
+.queue-item.cancelled {
+  opacity: 0.8;
+}
+
 .queue-item:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

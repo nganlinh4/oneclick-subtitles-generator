@@ -278,8 +278,8 @@ describe('native render contract', () => {
     expect(value.settings.trimEndUs).toBe(2_500_000);
     expect(JSON.stringify(value)).not.toMatch(/(?:path|base64|localhost|playbackUrl|audioUrl)/i);
     expect(Object.keys(value)).toEqual([
-      'sourceAssetId', 'projectId', 'narrationArtifactId', 'lyrics', 'settings',
-      'customization', 'crop',
+      'sourceAssetId', 'projectId', 'sceneRevision', 'selectedSubtitles', 'selectedNarration',
+      'narrationArtifactId', 'lyrics', 'settings', 'customization', 'crop',
     ]);
   });
 

@@ -1,4 +1,5 @@
 import {
+  beginDesktopUpdateInstall,
   getCachedDesktopUpdateStatus,
   offerDesktopUpdate,
   refreshDesktopUpdateCheck,
@@ -143,11 +144,12 @@ test('the explicit toast action streams progress and offers cancellation', async
   offerDesktopUpdate({ version: '1.0.1' }, {
     t,
     install,
+    checkpoint: vi.fn().mockResolvedValue(undefined),
     showToast: (...args) => toasts.push(args),
   });
   expect(toasts[0][3]).toBe('app-update-available');
   toasts[0][4].onClick();
-  expect(install).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
   const [version, handlers, options] = install.mock.calls[0];
   expect(version).toBe('1.0.1');
   handlers.onProgress({ basisPoints: 4760 });
@@ -157,4 +159,47 @@ test('the explicit toast action streams progress and offers cancellation', async
   const cancelButton = toasts.at(-1)[4];
   cancelButton.onClick();
   expect(options.signal.aborted).toBe(true);
+});
+
+test('an update cannot start until every mounted subtitle editor is durably flushed', async () => {
+  let releaseCheckpoint;
+  const checkpoint = vi.fn(() => new Promise((resolve) => {
+    releaseCheckpoint = resolve;
+  }));
+  const install = vi.fn().mockResolvedValue(undefined);
+  const showToast = vi.fn();
+
+  beginDesktopUpdateInstall({ version: '1.0.1' }, {
+    checkpoint,
+    install,
+    showToast,
+  });
+
+  expect(checkpoint).toHaveBeenCalledTimes(1);
+  expect(install).not.toHaveBeenCalled();
+  releaseCheckpoint();
+  await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+  expect(checkpoint.mock.invocationCallOrder[0])
+    .toBeLessThan(install.mock.invocationCallOrder[0]);
+});
+
+test('a failed subtitle checkpoint leaves the update unstarted and the app running', async () => {
+  const checkpoint = vi.fn().mockRejectedValue(new Error('native revision unavailable'));
+  const install = vi.fn();
+  const showToast = vi.fn();
+
+  beginDesktopUpdateInstall({ version: '1.0.1' }, {
+    checkpoint,
+    install,
+    showToast,
+  });
+
+  await vi.waitFor(() => expect(showToast).toHaveBeenLastCalledWith(
+    'The subtitles could not be saved. Please try again.',
+    'error',
+    8000,
+    'app-update-install',
+    null,
+  ));
+  expect(install).not.toHaveBeenCalled();
 });

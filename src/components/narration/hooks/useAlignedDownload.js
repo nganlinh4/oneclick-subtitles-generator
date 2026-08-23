@@ -1,14 +1,14 @@
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { downloadNativeNarration } from '../../../platform/nativeNarrationArtifacts';
-import { isNativeNarrationResult } from '../../../platform/nativeNarrationCapabilities';
 import {
   generateAlignedNarration,
-  getAlignedNarrationArtifactId,
+  getAlignedNarrationArtifactIdForPlan,
 } from '../../../services/alignedNarrationService';
+import { buildStrictNativeNarrationPlan } from '../../../utils/narrationAlignmentUtils';
 import { createSimpleLoadingOverlay } from '../utils/loadingOverlayFactory';
 import { showSuccessToast } from '../../../utils/toastUtils';
 
-const useAlignedDownload = ({ generationResults, t }) => {
+const useAlignedDownload = ({ generationResults, getCurrentCues, t }) => {
   const downloadAlignedAudio = async () => {
     if (!generationResults?.length) {
       alert(t('narration.noResults', 'No narration results to download'));
@@ -19,13 +19,12 @@ const useAlignedDownload = ({ generationResults, t }) => {
       'Preparing aligned narration download...',
     ));
     try {
-      const successful = generationResults.filter((result) => result.success);
-      if (!isDesktopRuntime()
-          || successful.length === 0
-          || !successful.every(isNativeNarrationResult)) {
+      if (!isDesktopRuntime()) {
         throw new Error('Native narration audio is unavailable');
       }
-      const generated = await generateAlignedNarration(successful, (progress) => {
+      const currentCues = getCurrentCues?.();
+      const plan = buildStrictNativeNarrationPlan(generationResults, currentCues);
+      await generateAlignedNarration(generationResults, currentCues, (progress) => {
         loadingOverlay.updateProgress({
           message: progress?.message || t(
             'narration.alignedDownloadPreparing',
@@ -33,7 +32,7 @@ const useAlignedDownload = ({ generationResults, t }) => {
           ),
         });
       });
-      const artifactId = generated && getAlignedNarrationArtifactId();
+      const artifactId = getAlignedNarrationArtifactIdForPlan(plan);
       if (!artifactId) throw new Error('Native aligned narration is unavailable');
       await downloadNativeNarration({
         success: true,

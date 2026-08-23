@@ -19,7 +19,8 @@ const useAlignedNarration = (
   videoRef,
   generationResults,
   narrationVolume,
-  useAlignedMode
+  useAlignedMode,
+  currentCues,
 ) => {
   // Use the state management hook
   const state = useAlignedNarrationState();
@@ -28,6 +29,7 @@ const useAlignedNarration = (
   const { regenerateAlignedNarration } = useAlignedNarrationGeneration({
     videoRef,
     generationResults,
+    currentCues,
     useAlignedMode,
     state
   });

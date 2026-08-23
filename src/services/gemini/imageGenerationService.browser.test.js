@@ -35,7 +35,7 @@ test('browser prompt generation uses the browser provider and never invokes nati
   }));
 
   await expect(generateBackgroundPrompt('browser lyrics', 'Browser Song'))
-    .resolves.toBe('browser prompt');
+    .resolves.toEqual({ text: 'browser prompt', delivery: null });
   expect(global.fetch).toHaveBeenCalledWith(
     expect.stringContaining('key=browser-key-1'),
     expect.objectContaining({ method: 'POST' })

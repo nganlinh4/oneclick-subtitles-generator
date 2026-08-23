@@ -119,6 +119,12 @@ const translatedRows = (input, prefix = 'T:') => input.map((row, index) => ({
   language: 'en',
 }));
 
+const translationResult = (input, prefix = 'T:', deliveries = []) => Object.freeze({
+  status: 'complete',
+  rows: translatedRows(input, prefix),
+  deliveries,
+});
+
 const deferred = () => {
   let resolve;
   let reject;
@@ -163,7 +169,7 @@ beforeEach(() => {
   });
   mocks.read.mockImplementation(async () => mocks.hydratedRecord);
   mocks.checkpoint.mockResolvedValue(undefined);
-  mocks.translate.mockImplementation(async (input) => translatedRows(input));
+  mocks.translate.mockImplementation(async (input) => translationResult(input));
   mocks.persist.mockImplementation(async (_identity, terminal) => {
     const record = { ...terminal, revision: ++mocks.revision };
     mocks.hydratedRecord = record;
@@ -296,7 +302,7 @@ it('rejects a provider response after Stop even when the provider ignores abort'
   await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
 
   act(() => view.result.current.handleCancelTranslation());
-  provider.resolve(translatedRows(mocks.translate.mock.calls[0][0]));
+  provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.persist).not.toHaveBeenCalled();
   expect(unrelated.signal.aborted).toBe(false);
@@ -316,7 +322,7 @@ it.each([
   const pending = start(view.result);
   await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
   act(() => view.rerender({ rows: changed }));
-  provider.resolve(translatedRows(mocks.translate.mock.calls[0][0]));
+  provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.persist).not.toHaveBeenCalled();
@@ -326,9 +332,13 @@ it.each([
 
 it('rejects provider rows that lose the captured stable ID before persistence', async () => {
   const view = await mount();
-  mocks.translate.mockImplementationOnce(async (input) => translatedRows(input).map(
-    (row, index) => (index === 0 ? { ...row, originalId: 'string:wrong' } : row)
-  ));
+  mocks.translate.mockImplementationOnce(async (input) => ({
+    status: 'complete',
+    rows: translatedRows(input).map(
+      (row, index) => (index === 0 ? { ...row, originalId: 'string:wrong' } : row)
+    ),
+    deliveries: [],
+  }));
 
   await expect(start(view.result)).resolves.toMatchObject({ status: 'failed' });
   expect(mocks.persist).not.toHaveBeenCalled();
@@ -345,7 +355,7 @@ it('detects an in-place source mutation even without a React rerender', async ()
   const pending = start(view.result);
   await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
   mutable[0].end = 1.5;
-  provider.resolve(translatedRows(mocks.translate.mock.calls[0][0]));
+  provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.persist).not.toHaveBeenCalled();
@@ -390,7 +400,7 @@ it('rejects the same cache string after its project alias remaps during provider
   const pending = start(view.result);
   await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
   mocks.projects.set('cache-a', 'project-remapped');
-  provider.resolve(translatedRows(mocks.translate.mock.calls[0][0]));
+  provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.persist).not.toHaveBeenCalled();
@@ -457,8 +467,87 @@ it('fails closed on durable rejection or a cloned structural receipt', async () 
   second.unmount();
 });
 
+it('acknowledges native deliveries only after the exact durable project/source receipt', async () => {
+  const view = await mount();
+  const save = deferred();
+  const acknowledge = vi.fn(async () => {});
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'T:', [
+    Object.freeze({ jobId: 'job-1', deliveryId: 'delivery-1', acknowledge }),
+  ]));
+  mocks.persist.mockImplementationOnce(async (_identity, terminal) => {
+    await save.promise;
+    return issueReceipt({ ...terminal, revision: 7 });
+  });
+
+  const pending = start(view.result);
+  await waitFor(() => expect(mocks.persist).toHaveBeenCalledTimes(1));
+  expect(acknowledge).not.toHaveBeenCalled();
+  save.resolve();
+
+  await expect(pending).resolves.toMatchObject({
+    status: 'complete',
+    pendingDeliveryCount: 0,
+  });
+  expect(mocks.assertReceipt).toHaveBeenLastCalledWith(
+    expect.any(Object),
+    expect.objectContaining({ cacheId: 'cache-a', projectId: 'project-a' }),
+    expect.objectContaining({
+      revision: 7,
+      sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      status: 'complete',
+    })
+  );
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+it('leaves every delivery pending when persistence or receipt validation refuses', async () => {
+  const persistenceFailure = await mount();
+  const firstAck = vi.fn(async () => {});
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'T:', [
+    Object.freeze({ jobId: 'job-1', deliveryId: 'delivery-1', acknowledge: firstAck }),
+  ]));
+  mocks.persist.mockRejectedValueOnce(new Error('disk full'));
+  await expect(start(persistenceFailure.result)).resolves.toMatchObject({ status: 'failed' });
+  expect(firstAck).not.toHaveBeenCalled();
+  persistenceFailure.unmount();
+
+  mocks.hydratedRecord = null;
+  const receiptFailure = await mount();
+  const secondAck = vi.fn(async () => {});
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'T:', [
+    Object.freeze({ jobId: 'job-2', deliveryId: 'delivery-2', acknowledge: secondAck }),
+  ]));
+  mocks.assertReceipt.mockImplementationOnce(() => {
+    throw new Error('wrong project receipt');
+  });
+  await expect(start(receiptFailure.result)).resolves.toMatchObject({ status: 'failed' });
+  expect(secondAck).not.toHaveBeenCalled();
+  receiptFailure.unmount();
+});
+
+it('attempts all acknowledgements after persistence and reports failed acknowledgements as pending', async () => {
+  const view = await mount();
+  const failedAck = vi.fn(async () => { throw new Error('transport unavailable'); });
+  const successfulAck = vi.fn(async () => {});
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'T:', [
+    Object.freeze({ jobId: 'job-1', deliveryId: 'delivery-1', acknowledge: failedAck }),
+    Object.freeze({ jobId: 'job-2', deliveryId: 'delivery-2', acknowledge: successfulAck }),
+  ]));
+
+  await expect(start(view.result)).resolves.toMatchObject({
+    status: 'complete',
+    pendingDeliveryCount: 1,
+  });
+  expect(failedAck).toHaveBeenCalledTimes(1);
+  expect(successfulAck).toHaveBeenCalledTimes(1);
+  expect(view.onComplete).toHaveBeenCalledWith(expect.any(Array));
+  view.unmount();
+});
+
 it('persists partial chunk terminal metadata without a success projection', async () => {
   const view = await mount();
+  const acknowledge = vi.fn(async () => {});
   const completed = [{
     id: 'a-1',
     start: 0,
@@ -468,12 +557,22 @@ it('persists partial chunk terminal metadata without a success projection', asyn
     sourceOrder: 0,
     language: 'en',
   }];
-  mocks.translate.mockRejectedValueOnce(new PartialTranslationError(completed, [{
+  const partialError = new PartialTranslationError(completed, [{
     chunkIndex: 1,
     startOrder: 1,
     endOrder: 1,
     errorCode: 'providerFailed',
-  }]));
+  }]);
+  partialError.result = Object.freeze({
+    status: 'partial',
+    rows: partialError.completedSubtitles,
+    deliveries: Object.freeze([Object.freeze({
+      jobId: 'job-partial',
+      deliveryId: 'delivery-partial',
+      acknowledge,
+    })]),
+  });
+  mocks.translate.mockRejectedValueOnce(partialError);
 
   await expect(start(view.result)).resolves.toMatchObject({ status: 'partial' });
   expect(mocks.persist).toHaveBeenCalledWith(
@@ -487,6 +586,7 @@ it('persists partial chunk terminal metadata without a success projection', asyn
   );
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
   expect(window.translatedSubtitles).toBeNull();
+  expect(acknowledge).toHaveBeenCalledTimes(1);
   view.unmount();
 });
 
@@ -537,7 +637,7 @@ it('retries by original ID and publishes only after revision commit', async () =
   const view = await mount();
   await waitFor(() => expect(view.result.current.translatedSubtitles).toEqual(sourceRows));
   view.onComplete.mockClear();
-  mocks.translate.mockImplementationOnce(async (input) => translatedRows(input, 'R:'));
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'R:'));
 
   const outcome = await view.result.current.retryMainTranslation({
     originalId: 'string:a-2',
@@ -578,7 +678,7 @@ it('drops a retry response after an A-to-B project switch', async () => {
     mocks.cacheListener?.('cache-b', 'cache-a');
     view.rerender({ rows: sourceB });
   });
-  provider.resolve(translatedRows(mocks.translate.mock.calls[0][0], 'R:'));
+  provider.resolve(translationResult(mocks.translate.mock.calls[0][0], 'R:'));
 
   await expect(pending).resolves.toEqual({ status: 'cancelled' });
   expect(mocks.commitRevision).not.toHaveBeenCalled();

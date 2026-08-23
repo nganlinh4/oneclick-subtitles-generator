@@ -168,6 +168,7 @@ const useAutoGenerateFlow = ({
         await commitVideoAnalysisForContext({
           context,
           analysisResult: analysis.analysisResult,
+          delivery: analysis.delivery,
           showCountdown: true,
         });
         await waitForAnalysisComplete(context);

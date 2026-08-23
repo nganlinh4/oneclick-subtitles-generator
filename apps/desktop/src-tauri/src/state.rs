@@ -79,6 +79,16 @@ impl LocalMedia {
     }
 
     #[must_use]
+    pub(crate) const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    #[must_use]
+    pub(crate) fn durable_asset_id(&self) -> Option<AssetId> {
+        self.ephemeral_file.is_none().then_some(self.asset_id)
+    }
+
+    #[must_use]
     pub(crate) const fn mime_type(&self) -> Option<&'static str> {
         self.mime_type
     }

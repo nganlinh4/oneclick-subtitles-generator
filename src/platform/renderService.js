@@ -106,6 +106,7 @@ const RENDER_COMMAND_CODES = new Set([
   'artifactNotReady',
   'projectNotFound',
   'staleProjectVersion',
+  'staleProjectRenderScene',
   'invalidProject',
   'projectTooLarge',
   'projectDataCorrupt',
@@ -120,6 +121,8 @@ const RENDER_PHASE_ORDER = new Map([
 ].map((phase, index) => [phase, index]));
 const RESOLUTIONS = new Set(['360p', '480p', '720p', '1080p', '1440p', '4K', '8K']);
 const FRAME_RATES = new Set([24, 25, 30, 50, 60, 120]);
+const SUBTITLE_SOURCES = new Set(['original', 'translated']);
+const NARRATION_SOURCES = new Set(['none', 'generated']);
 const AUDIO_EXTENSIONS = new Set([
   'aac', 'ac3', 'aiff', 'amr', 'ape', 'au', 'caf', 'dts', 'flac', 'm4a', 'mka', 'mp3',
   'oga', 'ogg', 'opus', 'ra', 'wav', 'weba', 'wma',
@@ -768,10 +771,21 @@ const normalizeCrop = (crop) => {
   });
 };
 
+// Project render-scene persistence deliberately reuses these exact normalizers. Exporting the
+// already-owned contract is narrower than maintaining a second settings/style/crop vocabulary in
+// the persistence bridge (the legacy implementation did exactly that and let preview and export
+// disagree).
+export const normalizeNativeRenderSettings = normalizeSettings;
+export const normalizeNativeSubtitleCustomization = normalizeCustomization;
+export const normalizeNativeRenderCrop = normalizeCrop;
+
 export const buildNativeRenderRequest = ({
   sourceAsset,
   projectId,
+  sceneRevision = 0,
   narrationArtifactId = null,
+  selectedSubtitles = 'original',
+  selectedNarration = narrationArtifactId === null ? 'none' : 'generated',
   lyrics,
   settings,
   customization,
@@ -779,12 +793,21 @@ export const buildNativeRenderRequest = ({
 }) => {
   const source = normalizeSourceAsset(sourceAsset);
   if (source.kind !== 'video') throw invalidRequest();
+  const normalizedNarrationArtifactId = narrationArtifactId === null
+    ? null
+    : requireUuid(narrationArtifactId, 7);
+  if (!SUBTITLE_SOURCES.has(selectedSubtitles)
+      || !NARRATION_SOURCES.has(selectedNarration)
+      || (selectedNarration === 'generated') !== (normalizedNarrationArtifactId !== null)) {
+    throw invalidRequest();
+  }
   return Object.freeze({
     sourceAssetId: source.id,
     projectId: requireUuid(projectId, 7),
-    narrationArtifactId: narrationArtifactId === null
-      ? null
-      : requireUuid(narrationArtifactId, 7),
+    sceneRevision: requireInteger(sceneRevision, 0, Number.MAX_SAFE_INTEGER),
+    selectedSubtitles,
+    selectedNarration,
+    narrationArtifactId: normalizedNarrationArtifactId,
     lyrics: normalizeLyrics(lyrics),
     settings: normalizeSettings(settings),
     customization: normalizeCustomization(customization),

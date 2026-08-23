@@ -1,158 +1,111 @@
 /**
- * Builds the final translated subtitle objects from the parsed translation
- * texts, preserving original timing and applying chain-based formatting when
- * chain items are provided.
+ * Combines a strictly validated provider identity envelope with captured subtitle timing.
  */
 
 import { getLanguageCode } from '../../utils/languageUtils';
+import { TranslationResponseError } from './translationResponseParser';
 
-/**
- * Apply the language chain formatting for a single subtitle.
- * @param {Object} params
- * @param {Object|string} params.translationData - Translation map or string for this subtitle
- * @param {boolean} params.isTranslationMap - Whether translationData is a per-language map
- * @param {Object} params.originalSub - The original subtitle
- * @param {string} params.finalText - The fallback/plain translated text
- * @param {Array} params.chainItems - Chain items defining the format
- * @returns {string} - The formatted text
- */
-const applyChainFormatting = ({ translationData, isTranslationMap, originalSub, finalText, chainItems }) => {
-    // If we have a translation map, use it to get translations for each language
-    if (isTranslationMap) {
+const invalidResult = () => new TranslationResponseError();
 
-        // Build the formatted text by walking through the chain
-        let formattedText = '';
-
-        for (let j = 0; j < chainItems.length; j++) {
-            const item = chainItems[j];
-
-
-            if (item.type === 'language') {
-                if (item.isOriginal) {
-                    // Add the original text
-                    formattedText += originalSub.text;
-
-                } else {
-                    // Get the language name
-                    const langName = item.value;
-
-                    // Try to find a matching language in the translation map
-                    // First try exact match, then case-insensitive match, then partial match
-                    let matchedTranslation = null;
-
-                    // Try exact match
-                    if (translationData[langName]) {
-                        matchedTranslation = translationData[langName];
-                    } else {
-                        // Try case-insensitive match
-                        const langKey = Object.keys(translationData).find(key =>
-                            key.toLowerCase() === langName.toLowerCase());
-
-                        if (langKey) {
-                            matchedTranslation = translationData[langKey];
-                        } else {
-                            // Try partial match
-                            const partialLangKey = Object.keys(translationData).find(key =>
-                                key.toLowerCase().includes(langName.toLowerCase()) ||
-                                langName.toLowerCase().includes(key.toLowerCase()));
-
-                            if (partialLangKey) {
-                                matchedTranslation = translationData[partialLangKey];
-                            }
-                        }
-                    }
-
-                    if (matchedTranslation) {
-                        formattedText += matchedTranslation;
-
-                    } else {
-                        // If no matching translation found, use the language name as placeholder
-                        formattedText += langName;
-
-                    }
-                }
-            } else if (item.type === 'delimiter') {
-                // Add the delimiter directly
-                formattedText += item.value || '';
-
-            }
-        }
-
-        return formattedText;
+const translationsForRow = (providerRow, languageIds) => {
+  if (!providerRow || !Array.isArray(providerRow.translations)
+      || providerRow.translations.length !== languageIds.length) {
+    throw invalidResult();
+  }
+  const translations = new Map();
+  providerRow.translations.forEach((entry, index) => {
+    if (entry?.languageId !== languageIds[index]
+        || typeof entry.text !== 'string'
+        || entry.text.trim().length === 0
+        || translations.has(entry.languageId)) {
+      throw invalidResult();
     }
+    translations.set(entry.languageId, entry.text);
+  });
+  return translations;
+};
 
-    // If we don't have a translation map, use the old approach with just the translated text
-    let formattedText = '';
+const formatChain = ({ chainItems, originalText, translations }) => chainItems.map((item) => {
+  if (item?.type === 'delimiter') return item.value ?? '';
+  if (item?.type !== 'language') throw invalidResult();
+  if (item.isOriginal) return originalText;
+  if (!translations.has(item.value)) throw invalidResult();
+  return translations.get(item.value);
+}).join('');
 
-    for (let j = 0; j < chainItems.length; j++) {
-        const item = chainItems[j];
-
-
-        if (item.type === 'language') {
-            if (item.isOriginal) {
-                // Add the original text
-                formattedText += originalSub.text;
-
-            } else {
-                // Add the translated text
-                formattedText += finalText;
-
-            }
-        } else if (item.type === 'delimiter') {
-            // Add the delimiter directly
-            formattedText += item.value || '';
-
-        }
-    }
-
-    return formattedText;
+const formatDefault = ({
+  languageIds,
+  translations,
+  delimiter,
+  useParentheses,
+  bracketStyle,
+}) => {
+  const texts = languageIds.map((languageId) => translations.get(languageId));
+  if (texts.length === 1) return texts[0];
+  if (texts.length === 2 && useParentheses) {
+    const open = bracketStyle?.open ?? bracketStyle?.[0] ?? '(';
+    const close = bracketStyle?.close ?? bracketStyle?.[1] ?? ')';
+    const separator = delimiter && delimiter !== ' ' ? '' : ' ';
+    return `${texts[0]}${separator}${open}${texts[1]}${close}`;
+  }
+  if (typeof delimiter !== 'string') throw invalidResult();
+  return texts.join(delimiter);
 };
 
 /**
- * Combine original subtitle timing with translated text into the final result.
  * @param {Object} params
- * @param {Array} params.subtitles - The original subtitles
- * @param {Array} params.translatedTexts - Parsed translations (strings or maps)
- * @param {Array|null} params.chainItems - Optional chain items for formatting
- * @param {string|Array} params.targetLanguage - Target language(s)
- * @returns {Array} - The translated subtitle objects
+ * @param {Array} params.subtitles Captured source subtitles
+ * @param {Object} params.providerResult Strict provider envelope
+ * @param {string[]} params.languageIds Exact requested language IDs
+ * @param {Array|null} params.chainItems Optional presentation chain
+ * @returns {readonly Object[]} Identity-preserving translated rows
  */
-const buildTranslatedSubtitles = ({ subtitles, translatedTexts, chainItems, targetLanguage }) => {
-    return subtitles.map((originalSub, index) => {
-        // Get the translated text or translation map for this subtitle
-        const translationData = translatedTexts[index];
+export const buildTranslatedSubtitles = ({
+  subtitles,
+  providerResult,
+  languageIds,
+  chainItems,
+  delimiter = ' ',
+  useParentheses = false,
+  bracketStyle = null,
+}) => {
+  if (providerResult?.schemaVersion !== 1
+      || !Array.isArray(providerResult.rows)
+      || providerResult.rows.length !== subtitles.length
+      || !Array.isArray(providerResult.languageIds)
+      || providerResult.languageIds.length !== languageIds.length
+      || providerResult.languageIds.some((languageId, index) => languageId !== languageIds[index])) {
+    throw invalidResult();
+  }
 
-        // Check if we have a translation map (from chain-based formatting) or just a string
-        const isTranslationMap = translationData && typeof translationData === 'object' && !Array.isArray(translationData);
+  return Object.freeze(subtitles.map((originalSub, index) => {
+    const providerRow = providerResult.rows[index];
+    const sourceId = originalSub.originalId;
+    if (typeof sourceId !== 'string' || providerRow?.sourceId !== sourceId) {
+      throw invalidResult();
+    }
+    const translations = translationsForRow(providerRow, languageIds);
+    const text = Array.isArray(chainItems) && chainItems.length > 0
+      ? formatChain({ chainItems, originalText: originalSub.text, translations })
+      : formatDefault({
+          languageIds,
+          translations,
+          delimiter,
+          useParentheses,
+          bracketStyle,
+        });
+    if (typeof text !== 'string' || text.trim().length === 0) throw invalidResult();
 
-        // Default to original text if no translation is available, with a warning
-        let finalText = isTranslationMap ? '' : (translationData || originalSub.text);
-
-        // Log warning if we're falling back to original text (indicates alignment issue)
-        if (!translationData) {
-            console.warn(`Translation missing for subtitle ${index + 1}: "${originalSub.text}" - using original text`);
-        }
-
-        // Apply language chain formatting if chain items are provided
-        if (chainItems && chainItems.length > 0) {
-            finalText = applyChainFormatting({ translationData, isTranslationMap, originalSub, finalText, chainItems });
-        }
-
-        return {
-            id: originalSub.id ?? originalSub.subtitle_id ?? index + 1,
-            start: originalSub.start,
-            end: originalSub.end,
-            startTime: originalSub.startTime,
-            endTime: originalSub.endTime,
-            text: finalText,
-            originalId: originalSub.originalId
-                ?? originalSub.id
-                ?? originalSub.subtitle_id
-                ?? `ordinal:${index}`,
-            sourceOrder: originalSub.sourceOrder ?? index,
-            language: Array.isArray(targetLanguage) ? getLanguageCode(targetLanguage[0]) : getLanguageCode(targetLanguage)
-        };
+    return Object.freeze({
+      id: originalSub.id ?? originalSub.subtitle_id ?? index + 1,
+      start: originalSub.start,
+      end: originalSub.end,
+      startTime: originalSub.startTime,
+      endTime: originalSub.endTime,
+      text,
+      originalId: sourceId,
+      sourceOrder: originalSub.sourceOrder ?? index,
+      language: getLanguageCode(languageIds[0]),
     });
+  }));
 };
-
-export { buildTranslatedSubtitles };

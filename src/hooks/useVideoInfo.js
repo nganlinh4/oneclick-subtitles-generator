@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
+import {
+  resolveActiveNativeMedia,
+  revalidateActiveNativeMedia,
+} from '../platform/activeNativeMedia';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
 
 export const mapNativeInspectionToVideoDimensions = (assetId, inspection) => {
   const dimensions = inspection.width !== null && inspection.height !== null
@@ -61,10 +66,12 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
       return () => { active = false; };
     }
 
-    inspectMediaPipelineAsset(uploadedFile.assetId)
-      .then((inspection) => {
+    resolveActiveNativeMedia({ candidate: uploadedFile })
+      .then(async (capability) => {
+        const inspection = await inspectMediaPipelineAsset(capability.assetId);
+        await revalidateActiveNativeMedia(capability);
         if (active) {
-          setActualDimensions(mapNativeInspectionToVideoDimensions(uploadedFile.assetId, inspection));
+          setActualDimensions(mapNativeInspectionToVideoDimensions(capability.assetId, inspection));
         }
       })
       .catch(() => {
@@ -89,29 +96,19 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
       };
     }
 
-    const originalUrl = localStorage.getItem('current_video_url');
     if (uploadedFile) {
-      const source = describeSource(originalUrl);
       return {
-        source: originalUrl ? source.source : 'upload',
-        title: originalUrl ? source.title : uploadedFile.name,
-        quality: originalUrl ? quality : actualDimensions?.quality ?? 'original',
-        isOptimized: originalUrl ? optimized : false,
-        url: originalUrl,
+        source: 'upload',
+        title: uploadedFile.name,
+        quality: actualDimensions?.quality ?? 'original',
+        isOptimized: false,
+        url: null,
       };
     }
 
-    if (originalUrl) {
-      const source = describeSource(originalUrl);
-      return {
-        ...source,
-        quality,
-        isOptimized: optimized,
-        url: originalUrl,
-      };
-    }
-
-    if (actualVideoUrl) {
+    // The browser build has no native project/media authority. Its caller must supply the URL
+    // explicitly; desktop never promotes a playback or remembered source URL into identity.
+    if (!isDesktopRuntime() && actualVideoUrl) {
       const source = describeSource(actualVideoUrl);
       return {
         ...source,

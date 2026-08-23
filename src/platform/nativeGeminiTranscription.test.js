@@ -20,6 +20,7 @@ const createHarness = () => {
   const credentialId = uuidv7();
   const assetId = uuidv7();
   const jobId = uuidv7();
+  const deliveryId = uuidv7();
   let handlers;
   const prepareCredentials = vi.fn().mockResolvedValue(undefined);
   const getCredentialId = vi.fn().mockResolvedValue(credentialId);
@@ -32,6 +33,8 @@ const createHarness = () => {
     return { id: jobId };
   });
   const cancel = vi.fn().mockResolvedValue({ id: jobId, state: 'cancelling' });
+  const acknowledge = vi.fn().mockResolvedValue(undefined);
+  const ensureRecovery = vi.fn().mockResolvedValue({ unavailable: false });
   const runner = createNativeGeminiTranscription({
     prepareCredentials,
     getCredentialId,
@@ -39,6 +42,8 @@ const createHarness = () => {
     rotateCredential,
     start,
     cancel,
+    acknowledge,
+    ensureRecovery,
   });
   const request = {
     assetId,
@@ -48,14 +53,19 @@ const createHarness = () => {
     responseJsonSchema: { type: 'array' },
     thinkingLevel: 'minimal',
     mediaResolution: 'medium',
+    projectId: uuidv7(),
+    expectedProjectStateVersion: 12,
   };
   return {
     assetId,
+    acknowledge,
     cancel,
     credentialId,
     getCredentialId,
+    ensureRecovery,
     getHandlers: () => handlers,
     jobId,
+    deliveryId,
     request,
     runner,
     start,
@@ -74,20 +84,27 @@ it('uses only opaque credential/media IDs and returns the typed completed result
     mediaAssetId: harness.assetId,
     task: 'transcribe',
     emptySpeechPolicy: 'provenSilence',
+    projectId: harness.request.projectId,
+    expectedProjectStateVersion: 12,
   }), expect.any(Object));
   expect(onStarted).toHaveBeenCalledWith(harness.jobId);
   harness.getHandlers().onChunk({ text: '[{"text":"hel' });
   harness.getHandlers().onChunk({ text: 'lo"}]' });
   harness.getHandlers().onCompleted({
     job: { id: harness.jobId, state: 'succeeded' },
+    deliveryId: harness.deliveryId,
     text: '[{"text":"hello"}]',
     usage: null,
   });
 
-  await expect(operation).resolves.toMatchObject({
+  const result = await operation;
+  expect(result).toMatchObject({
     text: '[{"text":"hello"}]',
     usage: null,
   });
+  expect(harness.acknowledge).not.toHaveBeenCalled();
+  await result.acknowledge();
+  expect(harness.acknowledge).toHaveBeenCalledWith(harness.jobId, harness.deliveryId);
   expect(onChunk.mock.calls).toEqual([["[{\"text\":\"hel"], ['lo"}]']]);
 });
 
@@ -111,6 +128,7 @@ it('never rotates credentials after exposing part of an attempt', async () => {
     rotateCredential,
     start,
     cancel: vi.fn().mockResolvedValue(undefined),
+    ensureRecovery: vi.fn().mockResolvedValue({ unavailable: false }),
   });
   const onChunk = vi.fn();
   const operation = runner.run({

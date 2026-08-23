@@ -82,6 +82,9 @@ pub(super) fn request_json() -> Value {
 const REQUEST_TEXT: &str = r##"{
   "sourceAssetId": null,
   "projectId": null,
+  "sceneRevision": 0,
+  "selectedSubtitles": "original",
+  "selectedNarration": "none",
   "narrationArtifactId": null,
   "lyrics": [{"id":"cue-1","startUs":0,"endUs":1000000,"text":"A"}],
   "settings": {

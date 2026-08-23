@@ -57,11 +57,6 @@ export const useAppState = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSrtOnlyMode, setIsSrtOnlyMode] = useState(false);
 
-  // Video analysis state
-  const [showVideoAnalysis, setShowVideoAnalysis] = useState(false);
-  const [videoAnalysisResult, setVideoAnalysisResult] = useState(null);
-  const [autoSelectDefaultPreset, setAutoSelectDefaultPreset] = useState(localStorage.getItem('auto_select_default_preset') === 'true');
-
   // Segments state
   const [segmentsStatus, setSegmentsStatus] = useState([]);
   const [videoSegments, setVideoSegments] = useState([]);
@@ -175,47 +170,11 @@ export const useAppState = () => {
     // Clean up invalid blob URLs from localStorage
     cleanupInvalidBlobUrls();
 
-    // Check if there's an active video analysis in progress
-    const showAnalysis = localStorage.getItem('show_video_analysis') === 'true';
-    const timestamp = localStorage.getItem('video_analysis_timestamp');
-
-    // Check if the analysis is stale (older than 5 minutes)
-    const isStale = timestamp && (Date.now() - parseInt(timestamp, 10) > 5 * 60 * 1000);
-
-    // Always clear video analysis data on page refresh
-    // Check if this is a page refresh using a more modern approach
-    const pageWasReloaded = window.performance &&
-      (window.performance.getEntriesByType('navigation')[0]?.type === 'reload' ||
-       document.referrer === document.location.href);
-
-    if (isStale || pageWasReloaded) {
-      // Clear analysis data
-      localStorage.removeItem('show_video_analysis');
-      localStorage.removeItem('video_analysis_timestamp');
-      localStorage.removeItem('video_analysis_result');
-      setShowVideoAnalysis(false);
-      setVideoAnalysisResult(null);
-      return;
-    }
-
-    if (showAnalysis && !isStale) {
-      setShowVideoAnalysis(true);
-
-      try {
-        const analysisResult = JSON.parse(localStorage.getItem('video_analysis_result'));
-        if (analysisResult) {
-          setVideoAnalysisResult(analysisResult);
-        }
-      } catch (error) {
-        console.error('Error parsing video analysis result from localStorage on mount:', error);
-        // Clear invalid data
-        localStorage.removeItem('show_video_analysis');
-        localStorage.removeItem('video_analysis_timestamp');
-        localStorage.removeItem('video_analysis_result');
-        setShowVideoAnalysis(false);
-        setVideoAnalysisResult(null);
-      }
-    }
+    // Purge the retired browser-era analysis modal payload. The active rules editor is opened by
+    // a project-scoped in-memory context and durable rules; no serialized UI result is restorable.
+    localStorage.removeItem('show_video_analysis');
+    localStorage.removeItem('video_analysis_timestamp');
+    localStorage.removeItem('video_analysis_result');
   }, [setStatus]);
 
   // Initialize credential availability from native, non-secret status metadata.
@@ -293,9 +252,6 @@ export const useAppState = () => {
     isAppReady,
     isRetrying, setIsRetrying,
     isSrtOnlyMode, setIsSrtOnlyMode,
-    showVideoAnalysis, setShowVideoAnalysis,
-    videoAnalysisResult, setVideoAnalysisResult,
-    autoSelectDefaultPreset, setAutoSelectDefaultPreset,
     segmentsStatus, setSegmentsStatus,
     videoSegments, setVideoSegments,
     showRulesEditor, setShowRulesEditor,

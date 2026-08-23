@@ -7,7 +7,6 @@ import { OverlayFollower } from './timelineOverlays';
 // pointerup/pointercancel so there is no leak across drags.
 const TimelineRangeActionBar = ({
     actionBarRange,
-    retryingOfflineKeys,
     timelineRef,
     getTimeRange,
     moveDragOffsetPx,
@@ -30,7 +29,7 @@ const TimelineRangeActionBar = ({
     lyrics,
     t
 }) => {
-    if (!actionBarRange || retryingOfflineKeys.length !== 0) return null;
+    if (!actionBarRange) return null;
 
     const canvas = timelineRef.current;
     const { start: visStart, end: visEnd } = getTimeRange();

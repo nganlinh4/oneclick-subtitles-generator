@@ -105,6 +105,9 @@ impl Case {
         json!({
             "sourceAssetId": ASSET_ID,
             "projectId": PROJECT_ID,
+            "sceneRevision": 0,
+            "selectedSubtitles": "original",
+            "selectedNarration": "none",
             "narrationArtifactId": null,
             "lyrics": lyrics,
             "settings": {

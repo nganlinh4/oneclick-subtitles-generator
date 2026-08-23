@@ -148,16 +148,25 @@ export const forgetNativeMediaSession = ({
  * the database does not hold. A URL download has already committed the same media through the
  * candidate claim, so this verifies and remembers without a second commit.
  */
-export const ensureProjectOwnsNativeMedia = async ({ media, cacheId }, {
+export const ensureProjectOwnsNativeMedia = async ({
+  media,
+  cacheId,
+  expectedProjectId = null,
+}, {
   resolveProject = resolveProjectForCache,
   mutate = mutateProject,
   rememberSession = writeNativeMediaSession,
 } = {}) => {
   const asset = canonicalAssetFromDescriptor(media);
-  if (!isCacheId(cacheId)) throw ownershipFailure();
+  if (!isCacheId(cacheId)
+      || (expectedProjectId !== null && !isUuidV7(expectedProjectId))) {
+    throw ownershipFailure();
+  }
 
   const resolved = await resolveProject(cacheId, { create: true });
-  if (!isUuidV7(resolved?.projectId) || !Array.isArray(resolved.snapshot?.media)) {
+  if (!isUuidV7(resolved?.projectId)
+      || (expectedProjectId !== null && resolved.projectId !== expectedProjectId)
+      || !Array.isArray(resolved.snapshot?.media)) {
     throw ownershipFailure();
   }
 
@@ -176,8 +185,18 @@ export const ensureProjectOwnsNativeMedia = async ({ media, cacheId }, {
     }
   }
 
-  rememberSession({ assetId: asset.id, cacheId, projectId: resolved.projectId });
-  return Object.freeze({ assetId: asset.id, cacheId, projectId: resolved.projectId });
+  // The alias is mutable independently of a project revision. Re-resolve after the durable check
+  // so a concurrent remap cannot receive this asset's session pointer or let an old download
+  // publish against a newly active project.
+  const authoritative = await resolveProject(cacheId, { create: false });
+  if (authoritative?.projectId !== resolved.projectId
+      || !Array.isArray(authoritative.snapshot?.media)
+      || !authoritative.snapshot.media.some((candidate) => sameAsset(candidate, asset))) {
+    throw ownershipFailure();
+  }
+
+  rememberSession({ assetId: asset.id, cacheId, projectId: authoritative.projectId });
+  return Object.freeze({ assetId: asset.id, cacheId, projectId: authoritative.projectId });
 };
 
 /**

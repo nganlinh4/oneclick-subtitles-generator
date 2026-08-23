@@ -32,8 +32,21 @@ export const isTextEnglish = (text) => {
     && ((englishWordCount / words.length) * 100 >= 30 || englishWordCount >= 2);
 };
 
-/** Transcribe an ephemeral audio blob through the native vault-backed Gemini pipeline. */
-export const transcribeAudio = async (audioBlob) => {
+/**
+ * Transcribe an ephemeral audio blob through the native vault-backed Gemini pipeline. The
+ * returned delivery remains unacknowledged until a project-owned reference record commits it.
+ */
+export const transcribeAudio = async (audioBlob, {
+  projectId,
+  expectedProjectStateVersion,
+} = {}) => {
+  if (typeof projectId !== 'string'
+      || !Number.isSafeInteger(expectedProjectStateVersion)
+      || expectedProjectStateVersion < 0) {
+    const error = new Error('An exact project revision is required for reference transcription');
+    error.code = 'referenceProjectUnavailable';
+    throw error;
+  }
   let importedAudio = null;
   try {
     importedAudio = await importAudioBlob(audioBlob);
@@ -41,6 +54,20 @@ export const transcribeAudio = async (audioBlob) => {
       assetId: importedAudio.assetId,
       model: DEFAULT_TRANSCRIPTION_MODEL_ID,
       prompt: 'Transcribe this audio. Return ONLY the transcription, no other text.',
+      projectId,
+      expectedProjectStateVersion,
+    });
+    if (typeof result?.job?.id !== 'string'
+        || typeof result?.deliveryId !== 'string'
+        || typeof result?.acknowledge !== 'function') {
+      const error = new Error('The native provider returned an invalid durable transcription');
+      error.code = 'invalidReferenceTranscription';
+      throw error;
+    }
+    const delivery = Object.freeze({
+      jobId: result.job.id,
+      deliveryId: result.deliveryId,
+      acknowledge: result.acknowledge,
     });
     const text = typeof result?.text === 'string' ? result.text.trim() : '';
     if (!text) {
@@ -49,6 +76,7 @@ export const transcribeAudio = async (audioBlob) => {
         is_english: false,
         language: 'Unknown',
         no_result: true,
+        delivery,
       };
     }
     const isEnglish = isTextEnglish(text);
@@ -56,6 +84,7 @@ export const transcribeAudio = async (audioBlob) => {
       text,
       is_english: isEnglish,
       language: isEnglish ? 'English' : 'Unknown',
+      delivery,
     };
   } finally {
     if (importedAudio !== null) {

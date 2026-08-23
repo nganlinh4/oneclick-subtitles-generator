@@ -56,6 +56,8 @@ const CI_UPDATER_WRY_DEFAULT_BROWSER_ARGUMENTS =
 const DESKTOP_CLOSE_TAURI_RUNTIME_WRY_VERSION = '2.11.4';
 const DESKTOP_CLOSE_TAURI_RUNTIME_WRY_CHECKSUM =
   '4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f';
+const DESKTOP_CLOSE_CHECKPOINT_SHA256 =
+  '2108c96feee38433f57be2e1e954148ab5666012004c5c19b920a0bf8a3644f4';
 const TAURI_NSIS_BOOTSTRAP_SHA256 =
   '930bef57b7bccd22ba36ce8a045eabdcb92b74eaeeaa0273cbb45e2a7471d41b';
 const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
@@ -65,9 +67,9 @@ const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
   '94fc247fea2048fc98a64d6ca23757544f4ca4602117d16dbd65938404ec7e8c';
 const DOWNLOAD_HANDLERS_SHA256 =
-  'a9387e1483c1523068f76f99974936ddbfbcdc4689e482cb3458f32314c4cb75';
+  'b2abeeaecc31e0ef12eb6ba9cbbe680cbb0bc6c30ce070a0d86aff5f8733055c';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
-  '5e80fe0209360aaa5d6ecbb4f3632327b38c75d7248d7e3cb7e32755337e3760';
+  'a70bb1fa637e3976f8a42811c349c62a49d783163d78f5c70616aaf36d0876c7';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -2851,6 +2853,7 @@ function assertUpdaterFixtureSource(rootDirectory) {
   const cargoLock = readText(rootDirectory, 'Cargo.lock');
   const build = readText(rootDirectory, `${TAURI_DIRECTORY}/build.rs`);
   const desktop = readText(rootDirectory, `${TAURI_DIRECTORY}/src/lib.rs`);
+  const appClose = readText(rootDirectory, `${TAURI_DIRECTORY}/src/app_close.rs`);
   const fixtureArguments = readText(
     rootDirectory,
     `${TAURI_DIRECTORY}/src/ci_updater_fixture.rs`,
@@ -2894,7 +2897,7 @@ function assertUpdaterFixtureSource(rootDirectory) {
     && updater.includes('"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"'),
   'Updater fixture endpoint must remain compile-time isolated and exact');
   assertCiUpdaterFixtureDebugPortSource(desktop, fixtureArguments, cargoLock);
-  assertDesktopCloseLifecycleSource(desktop, cargoLock);
+  assertDesktopCloseLifecycleSource(desktop, appClose, cargoLock);
   assertCiUpdaterFixtureHandoffSource(updater);
   invariant(desktop.includes('app.run(|app, event| handle_application_run_event(app, &event))')
     && desktop.includes('"app.environment"')
@@ -3011,9 +3014,9 @@ function assertCiUpdaterFixtureDebugPortSource(desktop, fixtureArguments, cargoL
   );
 }
 
-function assertDesktopCloseLifecycleSource(desktop, cargoLock) {
+function assertDesktopCloseLifecycleSource(desktop, appClose, cargoLock) {
   invariant(
-    typeof cargoLock === 'string',
+    typeof appClose === 'string' && typeof cargoLock === 'string',
     'Desktop close lifecycle must be coupled to the locked Tauri runtime',
   );
   const lockedRuntimePackages = cargoLock
@@ -3049,14 +3052,14 @@ function assertDesktopCloseLifecycleSource(desktop, cargoLock) {
     : '';
   const reviewedHandler = `fn handle_application_window_event(window: &Window, event: &WindowEvent) {
     handle_native_media_drop_event(window, event);
-    if is_main_window_close_request(
-        window.label(),
-        matches!(event, WindowEvent::CloseRequested { .. }),
-    ) {
+    if let WindowEvent::CloseRequested { api, .. } = event
+        && is_main_window_close_request(window.label(), true)
+    {
         // OSG has no tray/background mode. Tauri's runtime destroys an unprevented closing window
-        // and requests application exit when its window store becomes empty. Requesting exit here
-        // as well would emit a second ExitRequested event during the same native close.
+        // only after the editor has drained its durable revision queue. Rust owns the native close
+        // decision; JavaScript receives only a one-shot nonce with which to acknowledge that drain.
         diagnostics::record("app.close_requested", &[]);
+        handle_close_requested(window, api, &window.state::<AppCloseCheckpointState>());
     }
 }
 `;
@@ -3065,8 +3068,19 @@ function assertDesktopCloseLifecycleSource(desktop, cargoLock) {
 }
 `;
   invariant(
-    handler === reviewedHandler && classifier === reviewedClassifier,
-    'Desktop close handler must record one main-window close and defer sole-window exit to the locked Tauri runtime',
+    handler === reviewedHandler
+      && classifier === reviewedClassifier
+      && desktopSource.includes('mod app_close;')
+      && desktopSource.includes('.manage(AppCloseCheckpointState::default())')
+      && desktopSource.includes('app_close_checkpoint_complete,')
+      && desktopSource.includes('app_close_checkpoint_failed,')
+      && desktopSource.includes('app_close_checkpoint_commit,'),
+    'Desktop close handler must route one main-window close through the reviewed durable checkpoint',
+  );
+  invariant(
+    crypto.createHash('sha256').update(appClose.replace(/\r\n/g, '\n'), 'utf8').digest('hex')
+      === DESKTOP_CLOSE_CHECKPOINT_SHA256,
+    'Desktop close checkpoint must equal the exact reviewed one-shot state machine',
   );
 }
 

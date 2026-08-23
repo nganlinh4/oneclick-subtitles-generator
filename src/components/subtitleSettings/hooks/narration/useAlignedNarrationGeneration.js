@@ -4,19 +4,9 @@
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  // isAlignedNarrationAvailable is imported but not used
-  // isAlignedNarrationAvailable,
   generateAlignedNarration as generateAlignedNarrationService,
   resetAlignedAudioElement
 } from '../../../../services/alignedNarrationService';
-import {
-  // createHash is imported but not used
-  // createHash,
-  enhanceNarrationWithTiming,
-  createSubtitleMap,
-  getAllSubtitles
-} from './alignedNarrationUtils';
-import { hydrateNarrationResultsForAlignment } from '../../../../utils/narrationAlignmentUtils';
 
 /**
  * Hook for handling aligned narration generation
@@ -30,6 +20,7 @@ import { hydrateNarrationResultsForAlignment } from '../../../../utils/narration
 const useAlignedNarrationGeneration = ({
   videoRef,
   generationResults,
+  currentCues,
   useAlignedMode,
   state
 }) => {
@@ -102,34 +93,13 @@ const useAlignedNarrationGeneration = ({
 
       resetAlignedAudioElement();
 
-      // Get all subtitles from the video for timing information
-      const allSubtitles = getAllSubtitles();
-
-      // Create a map of subtitles by ID for quick lookup
-      const subtitleMap = createSubtitleMap(allSubtitles);
-
-      // Filter generation results to only include successful ones with audio files
-      // This ensures we only process narrations that actually exist
-      const availableResults = hydrateNarrationResultsForAlignment(generationResults).filter(result =>
-        result.success && (result.nativeArtifactId || result.filename || result.audioData)
+      // The service accepts only a complete native result set paired with this exact cue plan.
+      // It owns validation; this hook must not fill missing artifacts or timing from browser state.
+      await generateAlignedNarrationService(
+        generationResults,
+        currentCues,
+        setAlignedStatus,
       );
-
-      console.log(`Aligned narration: Processing ${availableResults.length} available narrations out of ${generationResults.length} total results`);
-      console.log('Available narration results:', availableResults.map(r => ({
-        subtitle_id: r.subtitle_id,
-        filename: r.filename,
-        hasAudioData: !!r.audioData,
-        original_ids: r.original_ids,
-        isGrouped: r.original_ids && r.original_ids.length > 1
-      })));
-
-      // Add timing information to each available narration result
-      const enhancedResults = enhanceNarrationWithTiming(availableResults, subtitleMap);
-
-
-
-      // Generate the aligned narration with the enhanced results
-      await generateAlignedNarrationService(enhancedResults, setAlignedStatus);
 
       // Update state
       setIsAlignedAvailable(true);
@@ -177,6 +147,7 @@ const useAlignedNarrationGeneration = ({
   }, [
     isGeneratingAligned,
     generationResults,
+    currentCues,
     setIsGeneratingAligned,
     setIsAlignedAvailable,
     setAlignedStatus,

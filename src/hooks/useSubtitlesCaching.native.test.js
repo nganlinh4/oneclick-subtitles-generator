@@ -4,12 +4,14 @@ import {
   requireSuccessfulSubtitleCacheSave,
   saveSubtitlesToCache,
 } from '../services/subtitleCache';
-import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRulesStore';
-import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
+import { activateSubtitleProjectBinding } from '../platform/subtitleProjectBinding';
+import {
+  refreshActiveNativeMedia,
+  resolveActiveNativeMedia,
+} from '../platform/activeNativeMedia';
 
 vi.mock('../utils/cacheUtils', () => ({ generateFileCacheId: vi.fn() }));
 vi.mock('../utils/videoProcessor', () => ({ getVideoDuration: vi.fn() }));
-vi.mock('../utils/videoPreloader', () => ({ preloadYouTubeVideo: vi.fn() }));
 vi.mock('../services/subtitleCache', () => ({
   generateUrlBasedCacheId: vi.fn(),
   getCachedSubtitles: vi.fn(),
@@ -20,6 +22,17 @@ vi.mock('../services/subtitleCache', () => ({
 }));
 vi.mock('../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
 vi.mock('../utils/userSubtitlesStore', () => ({ setCurrentCacheId: vi.fn() }));
+vi.mock('../platform/subtitleProjectBinding', () => ({
+  activateSubtitleProjectBinding: vi.fn(),
+}));
+vi.mock('../platform/activeNativeMedia', () => ({
+  refreshActiveNativeMedia: vi.fn(),
+  resolveActiveNativeMedia: vi.fn(),
+}));
+vi.mock('../platform/desktopRuntime', async (importOriginal) => ({
+  ...(await importOriginal()),
+  isDesktopRuntime: vi.fn(() => true),
+}));
 
 const ASSET_ID = '019ffbce-1d1a-7341-b053-f70b9af1b4f1';
 const nativeAudio = Object.freeze({
@@ -36,7 +49,21 @@ const nativeAudio = Object.freeze({
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
-  saveSubtitlesToCache.mockResolvedValue({ success: true });
+  saveSubtitlesToCache.mockResolvedValue({
+    success: true,
+    cacheId: ASSET_ID,
+    projectId: '019ffbce-1d1a-7341-b053-f70b9af1b400',
+  });
+  activateSubtitleProjectBinding.mockResolvedValue({ kind: 'subtitle-project-binding' });
+  const capability = Object.freeze({
+    assetId: ASSET_ID,
+    cacheId: ASSET_ID,
+    projectId: '019ffbce-1d1a-7341-b053-f70b9af1b400',
+    stateVersion: 1,
+    media: nativeAudio,
+  });
+  resolveActiveNativeMedia.mockResolvedValue(capability);
+  refreshActiveNativeMedia.mockResolvedValue(capability);
 });
 
 it('uses the opaque native asset ID as the generation cache key', async () => {
@@ -49,9 +76,8 @@ it('uses the opaque native asset ID as the generation cache key', async () => {
   })).resolves.toBe(ASSET_ID);
 
   expect(generateFileCacheId).not.toHaveBeenCalled();
-  expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_ID);
-  expect(setRulesCacheId).toHaveBeenCalledWith(ASSET_ID);
-  expect(setSubtitlesCacheId).toHaveBeenCalledWith(ASSET_ID);
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
 });
 
 it('uses the same opaque native asset ID when persisting retry results', async () => {
@@ -64,11 +90,15 @@ it('uses the same opaque native asset ID when persisting retry results', async (
   });
 
   expect(generateFileCacheId).not.toHaveBeenCalled();
-  expect(saveSubtitlesToCache).toHaveBeenCalledWith(ASSET_ID, subtitles);
-  expect(requireSuccessfulSubtitleCacheSave).toHaveBeenCalledWith({ success: true });
-  expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_ID);
-  expect(setRulesCacheId).toHaveBeenCalledWith(ASSET_ID);
-  expect(setSubtitlesCacheId).toHaveBeenCalledWith(ASSET_ID);
+  expect(saveSubtitlesToCache).toHaveBeenCalledWith(ASSET_ID, subtitles, {
+    expectedProjectId: '019ffbce-1d1a-7341-b053-f70b9af1b400',
+  });
+  expect(requireSuccessfulSubtitleCacheSave).toHaveBeenCalledWith(expect.objectContaining({
+    success: true,
+    cacheId: ASSET_ID,
+  }));
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
 });
 
 it('rejects retry persistence when the native project save is not durable', async () => {

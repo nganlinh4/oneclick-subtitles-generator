@@ -257,11 +257,17 @@ impl From<DatabaseError> for CommandError {
             | DatabaseError::InvalidNewJob(_)
             | DatabaseError::InvalidJobMetadata
             | DatabaseError::InvalidJobSuccessor(_)
-            | DatabaseError::JobSequenceExhausted(_)) => database_job_error(error),
+            | DatabaseError::JobSequenceExhausted(_)
+            | DatabaseError::InvalidJobResultDelivery
+            | DatabaseError::JobResultDeliveryTooLarge
+            | DatabaseError::JobResultDeliveryConflict(_)) => database_job_error(error),
             error @ (DatabaseError::ProjectAlreadyExists(_)
             | DatabaseError::ProjectNotFound(_)
             | DatabaseError::StaleProjectVersion { .. }
             | DatabaseError::StaleProjectTrackHistory { .. }
+            | DatabaseError::InvalidProjectRenderScene
+            | DatabaseError::StaleProjectRenderScene { .. }
+            | DatabaseError::ProjectRenderSceneVersionOverflow(_)
             | DatabaseError::ProjectTrackHistoryDiverged(_)
             | DatabaseError::AmbiguousProjectTrackSelector(_)
             | DatabaseError::ProjectTrackHistoryVersionOverflow(_)
@@ -412,6 +418,18 @@ fn database_job_error(error: &DatabaseError) -> CommandError {
         DatabaseError::JobSequenceExhausted(_) => {
             CommandError::fixed("jobSequenceLimit", "The job can no longer be updated.")
         }
+        DatabaseError::InvalidJobResultDelivery => CommandError::fixed(
+            "invalidJobResult",
+            "The durable job result is invalid or unavailable.",
+        ),
+        DatabaseError::JobResultDeliveryTooLarge => CommandError::fixed(
+            "jobResultTooLarge",
+            "The durable job result exceeds its storage limit.",
+        ),
+        DatabaseError::JobResultDeliveryConflict(_) => CommandError::fixed(
+            "jobResultConflict",
+            "The job already owns a different durable result.",
+        ),
         _ => unreachable!("job error classification is exhaustive"),
     }
 }
@@ -432,6 +450,14 @@ fn database_project_error(error: &DatabaseError) -> CommandError {
             "staleProjectTrackHistory",
             "The subtitle editor history changed. Reload it before saving again.",
         ),
+        DatabaseError::InvalidProjectRenderScene => CommandError::fixed(
+            "projectDataCorrupt",
+            "The stored project render scene is damaged.",
+        ),
+        DatabaseError::StaleProjectRenderScene { .. } => CommandError::fixed(
+            "staleProjectRenderScene",
+            "The project render scene changed. Reload it before rendering again.",
+        ),
         DatabaseError::ProjectTrackHistoryDiverged(_) => CommandError::fixed(
             "projectTrackHistoryDiverged",
             "The subtitle track changed outside this editor history.",
@@ -441,6 +467,7 @@ fn database_project_error(error: &DatabaseError) -> CommandError {
             "The project contains an ambiguous subtitle-track slot.",
         ),
         DatabaseError::ProjectVersionOverflow(_)
+        | DatabaseError::ProjectRenderSceneVersionOverflow(_)
         | DatabaseError::ProjectTrackHistoryVersionOverflow(_) => CommandError::fixed(
             "projectVersionLimit",
             "The project can no longer create revisions.",

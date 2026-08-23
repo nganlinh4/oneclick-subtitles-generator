@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { exportMediaAsset } from '../../platform/mediaExportService';
+import { ensureNativeJobRecoveryReady } from '../../platform/jobRecoveryCoordinator';
 import {
   buildNativeRenderRequest,
   ensureNativeRenderProject,
@@ -18,10 +19,21 @@ import {
   renderAndExportDesktopPreview,
 } from './videoDownloadHandlers';
 import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../shared/subtitle/defaultSubtitleFont';
+import {
+  flushProjectRenderScene,
+  updateProjectRenderScene,
+} from '../../platform/projectRenderScene';
 
 vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: vi.fn() }));
+vi.mock('../../platform/projectRenderScene', () => ({
+  flushProjectRenderScene: vi.fn(),
+  updateProjectRenderScene: vi.fn(),
+}));
 vi.mock('./native/exportTextStaging', () => ({ stageNativeRenderText: vi.fn() }));
 vi.mock('../../platform/mediaExportService', () => ({ exportMediaAsset: vi.fn() }));
+vi.mock('../../platform/jobRecoveryCoordinator', () => ({
+  ensureNativeJobRecoveryReady: vi.fn(),
+}));
 vi.mock('../../platform/renderService', () => ({
   buildNativeRenderRequest: vi.fn(),
   ensureNativeRenderProject: vi.fn(),
@@ -46,8 +58,26 @@ describe('desktop preview subtitle rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isDesktopRuntime.mockReturnValue(true);
+    ensureNativeJobRecoveryReady.mockResolvedValue({ unavailable: false });
     resolveNativeRenderSource.mockResolvedValue(sourceAsset);
     ensureNativeRenderProject.mockResolvedValue('019ffbea-40eb-7c3c-b2f3-214ca260a7cc');
+    updateProjectRenderScene.mockReturnValue(null);
+    flushProjectRenderScene.mockResolvedValue({
+      projectId: '019ffbea-40eb-7c3c-b2f3-214ca260a7cc',
+      sceneRevision: 4,
+      selectedSubtitles: 'original',
+      selectedNarration: 'none',
+      renderSettings: {
+        resolution: '1080p', frameRate: 30, videoType: 'Subtitled Video',
+        originalAudioVolume: 100, narrationVolume: 0, trimStart: 0, trimEnd: 0,
+      },
+      customization: previewCustomizationForNativeRender({}),
+      crop: {
+        x: 0, y: 0, width: 100, height: 100, aspectRatio: null,
+        canvasBgMode: 'solid', canvasBgColor: '#000000', canvasBgBlur: 24,
+        flipX: false, flipY: false,
+      },
+    });
     buildNativeRenderRequest.mockReturnValue(Object.freeze({ native: true }));
     stageNativeRenderText.mockResolvedValue(Object.freeze({ schemaVersion: 1, staged: true }));
     runNativeRender.mockImplementation(async (_request, handlers) => {
@@ -135,6 +165,7 @@ describe('desktop preview subtitle rendering', () => {
     expect(buildNativeRenderRequest).toHaveBeenCalledWith(expect.objectContaining({
       sourceAsset,
       projectId: '019ffbea-40eb-7c3c-b2f3-214ca260a7cc',
+      sceneRevision: 4,
       lyrics: [{ id: 0, start: 0, end: 1, text: 'Hello' }],
       settings: expect.objectContaining({
         originalAudioVolume: 100,
@@ -161,6 +192,23 @@ describe('desktop preview subtitle rendering', () => {
     expect(releaseNativeRenderPlayback).toHaveBeenCalledWith(
       '7e63a5f8-7277-45ee-a834-9fe1456aef5d'
     );
+  });
+
+  it('does not prepare or start export while durable render recovery is unavailable', async () => {
+    const unavailable = Object.assign(new Error('recovery unavailable'), {
+      code: 'nativeJobRecoveryUnavailable',
+      retryable: true,
+    });
+    ensureNativeJobRecoveryReady.mockRejectedValueOnce(unavailable);
+
+    await expect(renderAndExportDesktopPreview({
+      videoUrl: 'http://127.0.0.1/native-media',
+      subtitles: [{ start: 0, end: 1, text: 'Hello' }],
+      subtitleSettings: {},
+      onProgress: vi.fn(),
+    })).rejects.toBe(unavailable);
+    expect(resolveNativeRenderSource).not.toHaveBeenCalled();
+    expect(runNativeRender).not.toHaveBeenCalled();
   });
 
   it('releases playback when the user-facing export fails', async () => {
