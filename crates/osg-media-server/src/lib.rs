@@ -12,7 +12,7 @@ use std::net::{Ipv4Addr, Shutdown, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -28,6 +28,7 @@ use frames::FrameRegistry;
 
 const REQUEST_QUEUE_CAPACITY: usize = 64;
 const WORKER_COUNT: usize = 4;
+const MAX_CONCURRENT_SERVER_INSTANCES: usize = 8;
 const MAX_REGISTERED_ASSETS: usize = 256;
 const MAX_REGISTERED_IMAGES: usize = 64;
 /// Maximum encoded provider-image bytes retained by the process-scoped registry.
@@ -113,6 +114,39 @@ struct Inner {
     accept_thread: Mutex<Option<JoinHandle<()>>>,
     workers: Mutex<Vec<JoinHandle<()>>>,
     stopping: Arc<AtomicBool>,
+    _instance_permit: ServerInstancePermit,
+}
+
+struct ServerInstancePermit;
+
+fn server_instance_counter() -> &'static (Mutex<usize>, Condvar) {
+    static COUNTER: OnceLock<(Mutex<usize>, Condvar)> = OnceLock::new();
+    COUNTER.get_or_init(|| (Mutex::new(0), Condvar::new()))
+}
+
+fn acquire_server_instance() -> Result<ServerInstancePermit, MediaServerError> {
+    let (counter, available) = server_instance_counter();
+    let mut active = counter
+        .lock()
+        .map_err(|_| MediaServerError::RegistryUnavailable)?;
+    while *active >= MAX_CONCURRENT_SERVER_INSTANCES {
+        active = available
+            .wait(active)
+            .map_err(|_| MediaServerError::RegistryUnavailable)?;
+    }
+    *active += 1;
+    Ok(ServerInstancePermit)
+}
+
+impl Drop for ServerInstancePermit {
+    fn drop(&mut self) {
+        let (counter, available) = server_instance_counter();
+        let mut active = counter
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *active = active.saturating_sub(1);
+        available.notify_one();
+    }
 }
 
 struct ServerContext {
@@ -260,6 +294,12 @@ impl MediaServer {
             validated_origins.insert(origin);
         }
 
+        // Each server owns one accept thread and a fixed worker pool. Bound the number of live
+        // instances before acquiring a socket so concurrent test/application components cannot
+        // exhaust Windows' thread or loopback resources (WSAENOBUFS) and turn a valid start into
+        // a nondeterministic failure.
+        let instance_permit = acquire_server_instance()?;
+
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .map_err(|error| MediaServerError::Bind(error.to_string()))?;
         listener
@@ -312,6 +352,7 @@ impl MediaServer {
                 accept_thread: Mutex::new(Some(accept_thread)),
                 workers: Mutex::new(workers),
                 stopping,
+                _instance_permit: instance_permit,
             }),
         })
     }
