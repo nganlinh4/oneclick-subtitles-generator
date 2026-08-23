@@ -598,8 +598,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       // Parent teardown may make these optional setters unavailable.
     }
 
-    const savedSubtitles = localStorage.getItem('subtitles_data');
-    if (savedSubtitles && setIsSrtOnlyMode) setIsSrtOnlyMode(true);
     setIsLoading(false);
   };
 

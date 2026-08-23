@@ -3,19 +3,13 @@ import { getVideoDuration } from '../utils/videoProcessor';
 import { activateSubtitleProjectBinding } from '../platform/subtitleProjectBinding';
 import {
     generateUrlBasedCacheId,
-    getCachedSubtitles as checkCachedSubtitles,
-    requireSuccessfulSubtitleCacheSave,
-    saveSubtitlesToCache
+    getCachedSubtitles as checkCachedSubtitles
 } from '../services/subtitleCache';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
-    refreshActiveNativeMedia,
     resolveActiveNativeMedia,
 } from '../platform/activeNativeMedia';
-
-// Re-export the shared cache helper so callers have a single import surface.
-export { saveSubtitlesToCache };
 
 /**
  * Caching helpers extracted from useSubtitles.
@@ -125,66 +119,4 @@ export const loadCachedSubtitlesIfAvailable = async ({
     }
 
     return { cacheHit: false, cachedSubtitles: null };
-};
-
-/**
- * Resolve the cache ID for a retry run and persist results to cache.
- *
- * Mirrors the original inline retry caching: URL-based for YouTube/downloaded
- * videos, file-based for true uploads, saving the produced subtitles and setting
- * both rules/subtitles cache stores.
- */
-export const persistRetryResultToCache = async ({
-    input,
-    inputType,
-    subtitles,
-    browserVideoUrl = null,
-}) => {
-    if (isDesktopRuntime()) {
-        const capability = await resolveActiveNativeMedia({
-            candidate: isNativeMediaDescriptor(input) ? input : null,
-        });
-        if (subtitles && subtitles.length > 0) {
-            const receipt = await saveSubtitlesToCache(capability.cacheId, subtitles, {
-                expectedProjectId: capability.projectId,
-            });
-            requireSuccessfulSubtitleCacheSave(receipt);
-            if (receipt.cacheId !== capability.cacheId
-                || receipt.projectId !== capability.projectId) {
-                throw new Error('The active subtitle project changed during retry persistence.');
-            }
-            await refreshActiveNativeMedia(capability);
-        }
-        return capability.cacheId;
-    }
-
-    const currentVideoUrl = inputType === 'youtube'
-        ? (typeof input === 'string' ? input : input?.url)
-        : browserVideoUrl;
-    let cacheId = null;
-
-    if (inputType === 'youtube' || currentVideoUrl) {
-        // Use unified URL-based caching
-        const urlToUse = inputType === 'youtube' ? input : currentVideoUrl;
-        cacheId = await generateUrlBasedCacheId(urlToUse);
-
-        if (cacheId && subtitles && subtitles.length > 0) {
-            requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
-        }
-
-        await activateSubtitleProjectBinding(cacheId);
-
-    } else if (inputType === 'file-upload') {
-        // For actual file uploads, use file-based cache ID
-        cacheId = isNativeMediaDescriptor(input)
-            ? input.assetId
-            : await generateFileCacheId(input);
-        if (cacheId && subtitles && subtitles.length > 0) {
-            requireSuccessfulSubtitleCacheSave(await saveSubtitlesToCache(cacheId, subtitles));
-        }
-
-        await activateSubtitleProjectBinding(cacheId);
-
-    }
-    return cacheId;
 };

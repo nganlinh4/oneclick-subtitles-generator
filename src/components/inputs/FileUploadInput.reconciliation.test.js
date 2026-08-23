@@ -1,4 +1,6 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
+  default as FileUploadInput,
   reconcileSelectedNativeMedia,
   releaseSelectedNativeMedia,
 } from './FileUploadInput';
@@ -189,4 +191,28 @@ test('release does not restore old playback when a newer native selection alread
   })).resolves.toBeNull();
 
   expect(restore).toHaveBeenCalledExactlyOnceWith(RELEASE_MEDIA.assetId);
+});
+
+test('removing browser media cannot resurrect SRT-only mode from the stale global subtitle key', async () => {
+  localStorage.setItem('subtitles_data', JSON.stringify([
+    { start: 0, end: 1, text: 'belongs to an old browser session' },
+  ]));
+  const setIsSrtOnlyMode = vi.fn();
+  const setUploadedFile = vi.fn();
+  const media = new File(['fixture'], 'fixture.mp4', { type: 'video/mp4' });
+
+  render(
+    <FileUploadInput
+      uploadedFile={media}
+      setUploadedFile={setUploadedFile}
+      setIsSrtOnlyMode={setIsSrtOnlyMode}
+      isSrtOnlyMode={false}
+      subtitlesData={[]}
+    />
+  );
+
+  fireEvent.click(await screen.findByRole('button', { name: /remove/i }));
+
+  await waitFor(() => expect(setUploadedFile).toHaveBeenCalledWith(null));
+  expect(setIsSrtOnlyMode).not.toHaveBeenCalledWith(true);
 });
