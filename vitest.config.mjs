@@ -33,6 +33,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
+    // Ten concurrent jsdom/Vite workers saturate this Windows build host badly enough for
+    // otherwise sub-second tests to cross their five-second safety deadlines. Five workers ran
+    // the complete suite faster and without the cascading timeout failures.
+    maxWorkers: 5,
     setupFiles: ['./src/setupTests.js'],
     restoreMocks: false,
   },
