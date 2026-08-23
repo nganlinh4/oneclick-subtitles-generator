@@ -68,6 +68,7 @@ const jobStateSet = new Set([
 ]);
 const failureCodeSet = new Set([
   'cancelled',
+  'projectChanged',
   'invalidRequest',
   'runtimeUnavailable',
   'modelUnavailable',
@@ -369,7 +370,8 @@ export const normalizeSpeechProfile = (profile) => {
 
 export const normalizeSpeechStartRequest = (request) => {
   const allowed = new Set([
-    'projectId', 'segments', 'profile', 'referenceArtifactId', 'lifecycleEpoch',
+    'projectId', 'expectedProjectStateVersion', 'segments', 'profile',
+    'referenceArtifactId', 'lifecycleEpoch',
   ]);
   if (!hasOnlyKeys(request, allowed) || !Array.isArray(request.segments)) throw invalidRequest();
   if (request.segments.length === 0 || request.segments.length > MAX_SPEECH_SEGMENTS) {
@@ -401,6 +403,11 @@ export const normalizeSpeechStartRequest = (request) => {
   if (requiresReference !== (referenceArtifactId !== null)) throw invalidRequest();
   return Object.freeze({
     projectId: requireUuid(request.projectId, 7),
+    expectedProjectStateVersion: requireInteger(
+      request.expectedProjectStateVersion,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    ),
     segments: Object.freeze(segments),
     profile,
     referenceArtifactId,
@@ -748,12 +755,24 @@ const normalizeResultList = (results) => {
 };
 
 export const normalizeSpeechJobResults = (value) => {
-  if (!hasExactKeys(value, ['job', 'backend', 'results']) || !backendSet.has(value.backend)) {
+  if (!hasExactKeys(value, [
+    'job', 'backend', 'projectId', 'expectedProjectStateVersion', 'results',
+  ]) || !backendSet.has(value.backend)
+      || ((value.projectId === null) !== (value.expectedProjectStateVersion === null))
+      || (value.projectId !== null && !uuidHasVersion(value.projectId, 7))) {
     throw invalidResponse();
   }
   return Object.freeze({
     job: normalizeJobSnapshot(value.job),
     backend: value.backend,
+    projectId: value.projectId,
+    expectedProjectStateVersion: value.expectedProjectStateVersion === null
+      ? null
+      : requireResponseInteger(
+        value.expectedProjectStateVersion,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
     results: normalizeResultList(value.results),
   });
 };

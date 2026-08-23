@@ -9,12 +9,13 @@ import {
   initializeCredentialState,
 } from '../../../platform/credentialStateController';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { flushDurableLyricsHistory } from '../../../platform/durableLyricsCheckpoint';
 import {
   cancelNativeNarrationJob,
   restorePersistedNativeNarration,
   runNativeNarrationJob,
 } from '../../../platform/nativeNarrationFlow';
-import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
+import { getActiveProjectSnapshot } from '../../../platform/projectService';
 import {
   getF5TtsLanguageSupport,
   getNativeNarrationArtifactId,
@@ -47,10 +48,37 @@ const speechRuntimeStopped = () => Object.assign(
   { code: 'speechRuntimeStopped' },
 );
 
-const persistNativeResults = (method, results, referenceAudio = null) => {
+const activeProjectChanged = () => Object.assign(
+  new Error('The active subtitle project changed'),
+  { code: 'activeProjectChanged' },
+);
+
+const captureProjectAuthority = () => {
+  const snapshot = getActiveProjectSnapshot();
+  const projectId = snapshot?.metadata?.id;
+  const expectedProjectStateVersion = snapshot?.stateVersion;
+  if (typeof projectId !== 'string'
+      || !Number.isSafeInteger(expectedProjectStateVersion)
+      || expectedProjectStateVersion < 0) return null;
+  return Object.freeze({ projectId, expectedProjectStateVersion });
+};
+
+const ownsProjectAuthority = (authority) => {
+  const snapshot = getActiveProjectSnapshot();
+  return snapshot?.metadata?.id === authority?.projectId
+    && snapshot?.stateVersion === authority?.expectedProjectStateVersion;
+};
+
+const persistNativeResults = (
+  method,
+  results,
+  referenceAudio = null,
+  authority = null,
+  mediaId = null,
+) => {
   const key = cacheKeyByMethod[method];
-  const mediaId = getCurrentMediaId();
-  if (!key || !mediaId || !Array.isArray(results) || results.length === 0) return;
+  if (!key || !mediaId || !ownsProjectAuthority(authority)
+      || !Array.isArray(results) || results.length === 0) return;
   const narrations = hydrateNativeNarrationResults(results).map((result) => ({
     subtitle_id: result.subtitle_id,
     filename: result.filename,
@@ -264,7 +292,7 @@ const useNativeNarrationController = (state) => {
       ));
       return false;
     }
-    const subtitles = prepareSubtitles(requestedSubtitles || selectedSubtitles());
+    let subtitles = prepareSubtitles(requestedSubtitles || selectedSubtitles());
     if (subtitles.length === 0) {
       current.setError(current.t('narration.noSubtitlesError', 'No subtitles available for narration'));
       return false;
@@ -296,23 +324,33 @@ const useNativeNarrationController = (state) => {
       }
     }
 
-    const cacheId = getCurrentMediaId();
-    let projectId = null;
     try {
-      projectId = cacheId === null
-        ? null
-        : (await resolveProjectForCache(cacheId))?.projectId ?? null;
+      await flushDurableLyricsHistory();
     } catch {
-      projectId = null;
+      current.setError(current.t(
+        'errors.subtitleCheckpointFailed',
+        'The subtitle checkpoint could not be saved.',
+      ));
+      return false;
     }
-    if (!projectId) {
+    subtitles = prepareSubtitles(requestedSubtitles || selectedSubtitles());
+    if (subtitles.length === 0) {
+      current.setError(current.t('narration.noSubtitlesError', 'No subtitles available for narration'));
+      return false;
+    }
+
+    const authority = captureProjectAuthority();
+    const cacheId = getCurrentMediaId();
+    if (!authority) {
       current.setError(current.t(
         'errors.activeProjectChanged',
         'The active subtitle project changed.',
       ));
       return false;
     }
-    const ownsProjectAlias = () => getCurrentMediaId() === cacheId;
+    const requireProjectOwnership = () => {
+      if (!ownsProjectAuthority(authority)) throw activeProjectChanged();
+    };
 
     current.setIsGenerating(true);
     current.setError('');
@@ -330,15 +368,11 @@ const useNativeNarrationController = (state) => {
     try {
       const settings = await nativeMethodSettings(method, current);
       requireLifecycleOwnership();
-      const latestProject = ownsProjectAlias()
-        ? await resolveProjectForCache(cacheId)
-        : null;
-      if (latestProject?.projectId !== projectId) {
-        throw new Error('The active subtitle project changed.');
-      }
+      requireProjectOwnership();
       const request = {
         method,
-        projectId,
+        projectId: authority.projectId,
+        expectedProjectStateVersion: authority.expectedProjectStateVersion,
         lifecycleEpoch: lifecycle.epoch,
         subtitles,
         settings,
@@ -347,9 +381,9 @@ const useNativeNarrationController = (state) => {
           : null,
       };
       const updateResult = (result, progress, total) => {
-        if (!ownsLifecycle() || !ownsProjectAlias()) return;
+        if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return;
         current.setGenerationResults((previous) => mergeResults(previous, [result]));
-        if (!ownsLifecycle() || !ownsProjectAlias()) return;
+        if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return;
         current.setGenerationStatus(current.t(
           'narration.generatingProgressWithId',
           'Generated {{progress}} of {{total}} narrations (ID: {{id}})...',
@@ -358,7 +392,7 @@ const useNativeNarrationController = (state) => {
       };
       const outcome = await runNativeNarrationJob(request, {
         onProgress: ({ current: progress, total }) => {
-          if (!ownsLifecycle()) return;
+          if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return;
           current.setGenerationStatus(current.t(
             'narration.generatingNarration',
             'Generating narration {{current}} of {{total}}...',
@@ -368,20 +402,22 @@ const useNativeNarrationController = (state) => {
         onResult: updateResult,
       });
       requireLifecycleOwnership();
+      requireProjectOwnership();
       const finalized = hydrateNarrationResultsForAlignment(outcome.results);
       current.setGenerationResults((previous) => {
-        if (!ownsLifecycle()) return previous;
+        if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return previous;
         const next = finalizeRequestedResults(
           previous,
           finalized,
           subtitles,
           outcome.status === 'cancelled' ? 'cancelled' : 'synthesisFailed',
         );
-        if (!ownsLifecycle()) return previous;
-        persistNativeResults(method, next, current.referenceAudio);
+        if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return previous;
+        persistNativeResults(method, next, current.referenceAudio, authority, cacheId);
         return next;
       });
       requireLifecycleOwnership();
+      requireProjectOwnership();
       current.setGenerationStatus(outcome.status === 'cancelled'
         ? current.t('narration.generationCancelled', 'Narration generation cancelled by user')
         : current.t('narration.generationComplete', 'Narration generation complete'));
@@ -390,6 +426,25 @@ const useNativeNarrationController = (state) => {
       }
       return true;
     } catch (error) {
+      if (!ownsProjectAuthority(authority)
+          || error?.code === 'activeProjectChanged'
+          || error?.code === 'projectChanged'
+          || error?.code === 'staleProjectVersion') {
+        const latest = getActiveProjectSnapshot();
+        if (latest?.metadata?.id === authority.projectId) {
+          current.setGenerationResults((previous) => finalizeRequestedResults(
+            previous,
+            [],
+            subtitles,
+            'activeProjectChanged',
+          ));
+          current.setError(current.t(
+            'errors.activeProjectChanged',
+            'The active subtitle project changed.',
+          ));
+        }
+        return false;
+      }
       if (error?.code === 'speechRuntimeStopped') {
         current.setGenerationResults((previous) => finalizeRequestedResults(
           previous,
@@ -411,7 +466,7 @@ const useNativeNarrationController = (state) => {
           subtitles,
           error?.code || 'synthesisFailed',
         );
-        persistNativeResults(method, next, current.referenceAudio);
+        persistNativeResults(method, next, current.referenceAudio, authority, cacheId);
         return next;
       });
       current.setError(current.t(
@@ -471,13 +526,18 @@ const useNativeNarrationController = (state) => {
     let disposed = false;
     const current = stateRef.current;
     const selected = prepareSubtitles(selectedSubtitles());
+    const authority = captureProjectAuthority();
+    if (!authority) return undefined;
     Promise.resolve(restorePersistedNativeNarration({
       method: current.narrationMethod,
+      projectId: authority.projectId,
+      expectedProjectStateVersion: authority.expectedProjectStateVersion,
       subtitles: selected,
     })).then((restored) => {
       const latest = stateRef.current;
       if (disposed
           || !restored
+          || !ownsProjectAuthority(authority)
           || (latest.generationResults || []).length > 0
           || !sameSubtitlePlan(restored.subtitles, selected)) return;
       latest.setGenerationResults(hydrateNativeNarrationResults(restored.results));
@@ -496,6 +556,8 @@ const useNativeNarrationController = (state) => {
       const previousId = event?.detail?.previousArtifactId;
       if (!replacement || !previousId) return;
       stateRef.current.setGenerationResults((results) => {
+        const authority = captureProjectAuthority();
+        const mediaId = getCurrentMediaId();
         const next = results.map((result) => (
           getNativeNarrationArtifactId(result) === previousId ? replacement : result
         ));
@@ -503,6 +565,8 @@ const useNativeNarrationController = (state) => {
           replacement.method || stateRef.current.narrationMethod,
           next,
           stateRef.current.referenceAudio,
+          authority,
+          mediaId,
         );
         return next;
       });

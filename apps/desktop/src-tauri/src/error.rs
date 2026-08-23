@@ -46,6 +46,13 @@ impl CommandError {
         }
     }
 
+    pub(crate) fn stale_project_version() -> Self {
+        Self::fixed(
+            "staleProjectVersion",
+            "The project changed since it was opened. Reload it before saving again.",
+        )
+    }
+
     pub(crate) fn media_conversion_required() -> Self {
         Self {
             code: "mediaConversionRequired",

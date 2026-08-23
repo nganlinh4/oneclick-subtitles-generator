@@ -197,6 +197,29 @@ pub(super) fn complete_project_job_with_result(
     })
 }
 
+/// Commits a project-owned terminal job transition only while the exact project revision remains
+/// current. The revision check and optimistic job transition share one `IMMEDIATE` transaction.
+pub(super) fn complete_project_job(
+    connection: &mut Connection,
+    expected_sequence: u64,
+    snapshot: &JobSnapshot,
+    project_id: ProjectId,
+    expected_state_version: u64,
+) -> Result<JobWrite, DatabaseError> {
+    jobs::compare_and_swap_with(connection, expected_sequence, snapshot, |transaction| {
+        let project = super::projects::load_project(transaction, project_id)?
+            .ok_or(DatabaseError::ProjectNotFound(project_id))?;
+        if project.state_version() != expected_state_version {
+            return Err(DatabaseError::StaleProjectVersion {
+                project_id,
+                expected: expected_state_version,
+                actual: project.state_version(),
+            });
+        }
+        Ok(())
+    })
+}
+
 fn insert(
     transaction: &Transaction<'_>,
     delivery: &JobResultDeliveryDraft,

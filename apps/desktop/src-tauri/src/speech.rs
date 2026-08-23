@@ -18,7 +18,7 @@ use osg_engine_packages::{
 use osg_infrastructure::secrets::{CredentialId, CredentialPurpose};
 use osg_infrastructure::storage::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRegistration,
-    ContentHash, Database, ProjectSpeechReference, ProjectSpeechReferenceWrite,
+    ContentHash, Database, DatabaseError, ProjectSpeechReference, ProjectSpeechReferenceWrite,
 };
 use osg_media::{
     AudioBitrate, AudioExtractionPlan, AudioOutput, AudioSampleRate,
@@ -74,7 +74,7 @@ const ALIGNMENT_MANIFEST_SCHEMA_VERSION: u32 = 1;
 const MAX_F5_REFERENCE_MS: u64 = 12_000;
 const MAX_CHATTERBOX_REFERENCE_MS: u64 = 60_000;
 const MANIFEST_SCOPE: &str = "speechJobs";
-const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
 const MAX_LIFECYCLE_EPOCH: u64 = 9_007_199_254_740_991;
 const CHATTERBOX_LANGUAGES: &[&str] = &[
     "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko", "ms", "nl", "no",
@@ -1094,6 +1094,7 @@ impl From<GttsDomainRequest> for GttsDomain {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SpeechStartRequest {
     project_id: ProjectId,
+    expected_project_state_version: u64,
     segments: Vec<SpeechSegmentRequest>,
     profile: SpeechProfileRequest,
     reference_artifact_id: Option<String>,
@@ -1105,6 +1106,10 @@ impl fmt::Debug for SpeechStartRequest {
         formatter
             .debug_struct("SpeechStartRequest")
             .field("project_id", &"<opaque>")
+            .field(
+                "expected_project_state_version",
+                &self.expected_project_state_version,
+            )
             .field("segment_count", &self.segments.len())
             .field("profile", &self.profile)
             .field("lifecycle_epoch", &self.lifecycle_epoch)
@@ -1118,6 +1123,7 @@ impl fmt::Debug for SpeechStartRequest {
 
 struct ValidatedSpeechStart {
     project_id: ProjectId,
+    expected_project_state_version: u64,
     backend: SpeechBackendRequest,
     lifecycle_epoch: u64,
     requests: Vec<SynthesisRequest>,
@@ -1134,6 +1140,11 @@ impl SpeechStartRequest {
         if self.lifecycle_epoch > MAX_LIFECYCLE_EPOCH {
             return Err(SpeechError::InvalidInput(
                 "speech lifecycle epoch is invalid",
+            ));
+        }
+        if self.expected_project_state_version > i64::MAX as u64 {
+            return Err(SpeechError::InvalidInput(
+                "speech project state version is invalid",
             ));
         }
         if backend.requires_reference() != reference.is_some() {
@@ -1168,6 +1179,7 @@ impl SpeechStartRequest {
         let requests = NarrationBatch::new(requests)?.into_requests();
         Ok(ValidatedSpeechStart {
             project_id: self.project_id,
+            expected_project_state_version: self.expected_project_state_version,
             backend,
             lifecycle_epoch: self.lifecycle_epoch,
             requests,
@@ -1648,6 +1660,7 @@ fn validate_alignment_start(
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SpeechFailureCode {
     Cancelled,
+    ProjectChanged,
     InvalidRequest,
     RuntimeUnavailable,
     ModelUnavailable,
@@ -1686,6 +1699,8 @@ pub(crate) enum StoredSpeechResult {
 struct SpeechJobManifest {
     schema_version: u32,
     backend: SpeechBackendRequest,
+    project_id: Option<ProjectId>,
+    expected_project_state_version: Option<u64>,
     results: Vec<StoredSpeechResult>,
 }
 
@@ -1694,6 +1709,8 @@ struct SpeechJobManifest {
 pub(crate) struct SpeechJobResultsResponse {
     job: JobSnapshot,
     backend: SpeechBackendRequest,
+    project_id: Option<ProjectId>,
+    expected_project_state_version: Option<u64>,
     results: Vec<StoredSpeechResult>,
 }
 
@@ -2265,6 +2282,12 @@ pub(crate) async fn speech_start(
     let runtime = runtime.inner().clone();
     let requested_backend = request.profile.backend();
     let requested_epoch = request.lifecycle_epoch;
+    let expected_project_state_version = request.expected_project_state_version;
+    if expected_project_state_version > i64::MAX as u64 {
+        return Err(CommandError::invalid_input(
+            "The narration project state version is invalid.",
+        ));
+    }
     runtime
         .require_enabled_lifecycle(requested_backend, requested_epoch)
         .map_err(|error| speech_command_error(&error))?;
@@ -2272,11 +2295,11 @@ pub(crate) async fn speech_start(
     let project_id = request.project_id;
     let reference_database = state.database.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
-        if reference_database.load_project(project_id)?.is_none() {
-            return Err(CommandError::invalid_input(
-                "The narration project no longer exists.",
-            ));
-        }
+        require_reference_project_state(
+            &reference_database,
+            project_id,
+            expected_project_state_version,
+        )?;
         match reference_id.as_deref() {
             Some(id) => resolve_audio_artifact(&reference_database, id, true).map(Some),
             None => Ok(None),
@@ -2293,11 +2316,18 @@ pub(crate) async fn speech_start(
     let validated = request
         .validate(reference)
         .map_err(|error| speech_command_error(&error))?;
-    let ownership =
-        SpeechLifecycleOwnership::capture(&runtime, validated.backend, validated.lifecycle_epoch)
-            .map_err(|error| speech_command_error(&error))?;
+    let ownership = SpeechLifecycleOwnership::capture_project(
+        &runtime,
+        validated.backend,
+        validated.lifecycle_epoch,
+        validated.project_id,
+        validated.expected_project_state_version,
+    )
+    .map_err(|error| speech_command_error(&error))?;
     let jobs = Arc::clone(&state.jobs);
-    let ticket = register_owned_speech_job_with_hook(&runtime, &ownership, &jobs, || {}).await?;
+    let ticket =
+        register_owned_speech_job_with_hook(&runtime, &ownership, &state.database, &jobs, || {})
+            .await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
     initialize_registered_speech_job_with_hook(
@@ -2385,7 +2415,9 @@ pub(crate) async fn speech_voice_conversion_start(
     )
     .map_err(|error| speech_command_error(&error))?;
     let jobs = Arc::clone(&state.jobs);
-    let ticket = register_owned_speech_job_with_hook(&runtime, &ownership, &jobs, || {}).await?;
+    let ticket =
+        register_owned_speech_job_with_hook(&runtime, &ownership, &state.database, &jobs, || {})
+            .await?;
     let initial = ticket.snapshot().clone();
     let job_id = initial.id();
     initialize_registered_speech_job_with_hook(
@@ -2511,6 +2543,8 @@ pub(crate) async fn speech_job_results(
         Ok(SpeechJobResultsResponse {
             job,
             backend: manifest.backend,
+            project_id: manifest.project_id,
+            expected_project_state_version: manifest.expected_project_state_version,
             results: manifest.results,
         })
     })
@@ -2854,11 +2888,40 @@ struct SpeechBatchContext<'a> {
     channel: &'a Channel<SpeechJobEvent>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SpeechProjectAuthority {
+    project_id: ProjectId,
+    expected_state_version: u64,
+}
+
+impl SpeechProjectAuthority {
+    fn ensure_current(self, database: &Database) -> Result<(), SpeechFailureCode> {
+        let project = database
+            .load_project(self.project_id)
+            .map_err(|_| SpeechFailureCode::ArtifactStorage)?
+            .ok_or(SpeechFailureCode::ProjectChanged)?;
+        if project.state_version() != self.expected_state_version {
+            return Err(SpeechFailureCode::ProjectChanged);
+        }
+        Ok(())
+    }
+}
+
+const fn project_write_failure(error: &DatabaseError) -> SpeechFailureCode {
+    match error {
+        DatabaseError::ProjectNotFound(_) | DatabaseError::StaleProjectVersion { .. } => {
+            SpeechFailureCode::ProjectChanged
+        }
+        _ => SpeechFailureCode::ArtifactStorage,
+    }
+}
+
 #[derive(Clone)]
 struct SpeechLifecycleOwnership {
     backend: SpeechBackendRequest,
     lifecycle_epoch: u64,
     cancellation: CancellationToken,
+    project: Option<SpeechProjectAuthority>,
 }
 
 impl SpeechLifecycleOwnership {
@@ -2872,7 +2935,23 @@ impl SpeechLifecycleOwnership {
             backend,
             lifecycle_epoch,
             cancellation: CancellationToken::linked(&[lifecycle_cancellation]),
+            project: None,
         })
+    }
+
+    fn capture_project(
+        runtime: &SpeechRuntime,
+        backend: SpeechBackendRequest,
+        lifecycle_epoch: u64,
+        project_id: ProjectId,
+        expected_state_version: u64,
+    ) -> Result<Self, SpeechError> {
+        let mut ownership = Self::capture(runtime, backend, lifecycle_epoch)?;
+        ownership.project = Some(SpeechProjectAuthority {
+            project_id,
+            expected_state_version,
+        });
+        Ok(ownership)
     }
 
     fn ensure_current(&self, runtime: &SpeechRuntime) -> Result<(), SpeechFailureCode> {
@@ -2886,6 +2965,18 @@ impl SpeechLifecycleOwnership {
             return Err(SpeechFailureCode::Cancelled);
         }
         Ok(())
+    }
+
+    fn ensure_owned(
+        &self,
+        runtime: &SpeechRuntime,
+        database: &Database,
+    ) -> Result<(), SpeechFailureCode> {
+        self.ensure_current(runtime)?;
+        if let Some(project) = self.project {
+            project.ensure_current(database)?;
+        }
+        self.ensure_current(runtime)
     }
 
     fn validate_slot(&self, slot: &BackendLifecycleSlot) -> Result<(), SpeechFailureCode> {
@@ -2923,13 +3014,28 @@ impl SpeechLifecycleOwnership {
         let manifest = SpeechJobManifest {
             schema_version: MANIFEST_SCHEMA_VERSION,
             backend: self.backend,
+            project_id: self.project.map(|authority| authority.project_id),
+            expected_project_state_version: self
+                .project
+                .map(|authority| authority.expected_state_version),
             results: Vec::new(),
         };
         let value =
             serde_json::to_value(manifest).map_err(|_| SpeechFailureCode::ArtifactStorage)?;
-        database
-            .put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)
-            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+        match self.project {
+            Some(project) => database
+                .put_project_setting(
+                    MANIFEST_SCOPE,
+                    &job_id.to_string(),
+                    &value,
+                    project.project_id,
+                    project.expected_state_version,
+                )
+                .map_err(|error| project_write_failure(&error)),
+            None => database
+                .put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)
+                .map_err(|_| SpeechFailureCode::ArtifactStorage),
+        }
     }
 
     fn commit_manifest_result(
@@ -2947,8 +3053,7 @@ impl SpeechLifecycleOwnership {
             .lock()
             .map_err(|_| SpeechFailureCode::WorkerFailed)?;
         self.validate_slot(&slot)?;
-        append_manifest(database, job_id, self.backend, result)
-            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+        append_manifest(database, job_id, self.backend, self.project, result)
     }
 
     fn commit_job_progress(
@@ -2985,15 +3090,36 @@ impl SpeechLifecycleOwnership {
             .lock()
             .map_err(|_| SpeechFailureCode::WorkerFailed)?;
         self.validate_slot(&slot)?;
-        jobs.apply(job_id, JobUpdate::Succeed)
+        let ticket = match self.project {
+            Some(project) => jobs.apply_with_store(
+                job_id,
+                JobUpdate::Succeed,
+                |database, sequence, snapshot| {
+                    database.complete_project_job(
+                        sequence,
+                        snapshot,
+                        project.project_id,
+                        project.expected_state_version,
+                    )
+                },
+            ),
+            None => jobs.apply(job_id, JobUpdate::Succeed),
+        };
+        ticket
             .map(|ticket| ticket.snapshot().clone())
-            .map_err(|_| SpeechFailureCode::ArtifactStorage)
+            .map_err(|error| match error {
+                osg_application::JobRegistryError::Store(store_error) => {
+                    project_write_failure(&store_error)
+                }
+                _ => SpeechFailureCode::ArtifactStorage,
+            })
     }
 }
 
 async fn register_owned_speech_job_with_hook<F>(
     runtime: &SpeechRuntime,
     ownership: &SpeechLifecycleOwnership,
+    database: &Database,
     jobs: &background::DesktopJobs,
     after_registration: F,
 ) -> CommandResult<osg_application::JobTicket>
@@ -3002,7 +3128,7 @@ where
 {
     let ticket = background::register_running(jobs, JobKind::SynthesizeNarration).await?;
     after_registration();
-    if let Err(code) = ownership.ensure_current(runtime) {
+    if let Err(code) = ownership.ensure_owned(runtime, database) {
         background::finish_cancellation(jobs, ticket.snapshot().id()).await?;
         return Err(speech_failure_code_command_error(code));
     }
@@ -3132,7 +3258,7 @@ async fn run_speech_batch(
     mut validated: ValidatedSpeechStart,
     ownership: SpeechLifecycleOwnership,
 ) -> Result<Vec<StoredSpeechResult>, SpeechFailureCode> {
-    ownership.ensure_current(context.runtime)?;
+    ownership.ensure_owned(context.runtime, context.database)?;
     let work = context
         .runtime
         .work_directory()
@@ -3155,11 +3281,12 @@ async fn run_speech_batch(
             return Err(code);
         }
     };
+    ownership.ensure_owned(context.runtime, context.database)?;
 
     let total = validated.requests.len();
     let mut results = Vec::with_capacity(total);
     for (offset, request) in validated.requests.into_iter().enumerate() {
-        ownership.ensure_current(context.runtime)?;
+        ownership.ensure_owned(context.runtime, context.database)?;
         let index = offset + 1;
         let prepared = synthesize_segment(
             context,
@@ -3201,6 +3328,7 @@ async fn run_speech_batch(
         report_batch_progress(
             context.runtime,
             &ownership,
+            context.database,
             context.jobs,
             context.job_id,
             index,
@@ -3336,13 +3464,17 @@ async fn synthesize_segment(
     let index = run.index;
     let total = run.total;
     let progress_runtime = context.runtime.clone();
+    let progress_database = context.database.clone();
     let progress_ownership = ownership.clone();
     let worker_cancellation = ownership.cancellation.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
         let control = RunControl::new(SPEECH_TIMEOUT)?
             .with_cancellation(worker_cancellation)
             .with_progress(move |progress: &SpeechProgress| {
-                if progress_ownership.ensure_current(&progress_runtime).is_ok() {
+                if progress_ownership
+                    .ensure_owned(&progress_runtime, &progress_database)
+                    .is_ok()
+                {
                     let _ = progress_channel.send(SpeechJobEvent::Progress {
                         job_id,
                         segment_id: progress
@@ -3362,7 +3494,7 @@ async fn synthesize_segment(
     let operation = worker_join_result(context.runtime, run.backend, run.lifecycle_epoch, joined)?;
     match operation {
         Ok(artifact) => {
-            ownership.ensure_current(context.runtime)?;
+            ownership.ensure_owned(context.runtime, context.database)?;
             let database = context.database.clone();
             let runtime = context.runtime.clone();
             let commit_ownership = ownership.clone();
@@ -3446,11 +3578,13 @@ async fn commit_failed_segment(
 async fn report_batch_progress(
     runtime: &SpeechRuntime,
     ownership: &SpeechLifecycleOwnership,
+    database: &Database,
     jobs: &background::DesktopJobs,
     job_id: JobId,
     completed: usize,
     total: usize,
 ) -> Result<(), SpeechFailureCode> {
+    ownership.ensure_owned(runtime, database)?;
     if let Ok(progress) = JobProgress::from_units(
         u64::try_from(completed).unwrap_or(u64::MAX),
         u64::try_from(total).unwrap_or(u64::MAX),
@@ -3558,7 +3692,7 @@ async fn run_voice_conversion(
     let work = runtime
         .work_directory()
         .map_err(|_| SpeechFailureCode::RuntimeUnavailable)?;
-    ownership.ensure_current(runtime)?;
+    ownership.ensure_owned(runtime, database)?;
     let worker = resolve_voice_conversion_worker(runtime, ownership.lifecycle_epoch).await?;
     let request = VoiceConversionRequest::new(input, target);
     let output = SpeechOutput::within_root(
@@ -3609,7 +3743,7 @@ async fn run_voice_conversion(
             return Err(code);
         }
     };
-    ownership.ensure_current(runtime)?;
+    ownership.ensure_owned(runtime, database)?;
     let result =
         publish_voice_conversion_result(runtime, &ownership, database, artifact, job_id, channel)
             .await?;
@@ -4008,7 +4142,8 @@ const fn failure_marks_backend_unhealthy(code: SpeechFailureCode) -> bool {
 const fn batch_terminal_failure(code: SpeechFailureCode) -> bool {
     matches!(
         code,
-        SpeechFailureCode::InvalidRequest
+        SpeechFailureCode::ProjectChanged
+            | SpeechFailureCode::InvalidRequest
             | SpeechFailureCode::RuntimeUnavailable
             | SpeechFailureCode::ModelUnavailable
             | SpeechFailureCode::ProviderUnavailable
@@ -4203,7 +4338,13 @@ fn read_manifest(database: &Database, job_id: JobId) -> CommandResult<SpeechJobM
         .ok_or_else(|| CommandError::invalid_input("The speech job results are unavailable."))?;
     let manifest: SpeechJobManifest = serde_json::from_value(value)
         .map_err(|_| CommandError::internal("The stored speech job results are invalid."))?;
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION || manifest.results.len() > MAX_SEGMENTS {
+    if manifest.schema_version != MANIFEST_SCHEMA_VERSION
+        || manifest.results.len() > MAX_SEGMENTS
+        || manifest.project_id.is_some() != manifest.expected_project_state_version.is_some()
+        || manifest
+            .expected_project_state_version
+            .is_some_and(|version| version > i64::MAX as u64)
+    {
         return Err(invalid_manifest_error());
     }
     for result in &manifest.results {
@@ -4227,7 +4368,8 @@ fn read_manifest(database: &Database, job_id: JobId) -> CommandResult<SpeechJobM
                 if !matches!(
                     resolved.record().kind().as_str(),
                     "narrationOutput" | "voiceConversion"
-                ) {
+                ) || resolved.record().project_id() != manifest.project_id
+                {
                     return Err(invalid_manifest_error());
                 }
                 let stored_descriptor = descriptor_from_record(resolved.record())
@@ -4254,19 +4396,35 @@ fn append_manifest(
     database: &Database,
     job_id: JobId,
     backend: SpeechBackendRequest,
+    project: Option<SpeechProjectAuthority>,
     result: StoredSpeechResult,
-) -> CommandResult<()> {
-    let mut manifest = read_manifest(database, job_id)?;
-    if manifest.backend != backend || manifest.results.len() >= MAX_SEGMENTS {
-        return Err(CommandError::internal(
-            "The stored speech job results are inconsistent.",
-        ));
+) -> Result<(), SpeechFailureCode> {
+    let mut manifest =
+        read_manifest(database, job_id).map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    if manifest.backend != backend
+        || manifest.results.len() >= MAX_SEGMENTS
+        || manifest.project_id != project.map(|authority| authority.project_id)
+        || manifest.expected_project_state_version
+            != project.map(|authority| authority.expected_state_version)
+    {
+        return Err(SpeechFailureCode::ArtifactStorage);
     }
     manifest.results.push(result);
-    let value = serde_json::to_value(manifest)
-        .map_err(|_| CommandError::internal("The speech manifest is invalid."))?;
-    database.put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)?;
-    Ok(())
+    let value = serde_json::to_value(manifest).map_err(|_| SpeechFailureCode::ArtifactStorage)?;
+    match project {
+        Some(authority) => database
+            .put_project_setting(
+                MANIFEST_SCOPE,
+                &job_id.to_string(),
+                &value,
+                authority.project_id,
+                authority.expected_state_version,
+            )
+            .map_err(|error| project_write_failure(&error)),
+        None => database
+            .put_setting(MANIFEST_SCOPE, &job_id.to_string(), &value)
+            .map_err(|_| SpeechFailureCode::ArtifactStorage),
+    }
 }
 
 fn reference_artifact_kind(project_id: ProjectId) -> String {
@@ -4785,11 +4943,11 @@ where
     let publication = publication_gate
         .lock()
         .map_err(|_| SpeechFailureCode::WorkerFailed)?;
-    ownership.ensure_current(runtime)?;
+    ownership.ensure_owned(runtime, database)?;
     let published = publish_prepared_speech_artifact(database, prepared)
         .map_err(|_| SpeechFailureCode::ArtifactStorage)?;
     after_publish(&published);
-    if let Err(code) = ownership.ensure_current(runtime) {
+    if let Err(code) = ownership.ensure_owned(runtime, database) {
         return rollback_unowned_publication(database, &published, code);
     }
     let result = StoredSpeechResult::Completed {
@@ -5034,6 +5192,9 @@ fn speech_command_error(error: &SpeechError) -> CommandError {
 fn speech_failure_code_command_error(code: SpeechFailureCode) -> CommandError {
     let message = match code {
         SpeechFailureCode::Cancelled => "The speech operation was cancelled.",
+        SpeechFailureCode::ProjectChanged => {
+            "The narration project changed while speech was being generated."
+        }
         SpeechFailureCode::InvalidRequest => "The speech request is invalid.",
         SpeechFailureCode::RuntimeUnavailable => {
             "The selected speech runtime is not installed or is incomplete."
@@ -5050,6 +5211,7 @@ fn speech_failure_code_command_error(code: SpeechFailureCode) -> CommandError {
         SpeechFailureCode::ArtifactStorage => "The speech artifact could not be stored.",
     };
     match code {
+        SpeechFailureCode::ProjectChanged => CommandError::stale_project_version(),
         SpeechFailureCode::InvalidRequest | SpeechFailureCode::ReferenceRejected => {
             CommandError::invalid_input(message)
         }
@@ -5123,6 +5285,8 @@ mod tests {
                     &serde_json::to_value(SpeechJobManifest {
                         schema_version: MANIFEST_SCHEMA_VERSION,
                         backend,
+                        project_id: None,
+                        expected_project_state_version: None,
                         results: Vec::new(),
                     })
                     .unwrap(),
@@ -5146,11 +5310,27 @@ mod tests {
     fn completed_narration_artifact_is_bound_to_its_project() {
         let fixture = SpeechTestFixture::new();
         let backend = SpeechBackendRequest::Gtts;
-        let ownership = fixture.enable(backend);
-        let job_id = fixture.running_job(backend);
+        let lifecycle = fixture.enable(backend);
         let project_id = ProjectId::new();
         let metadata = osg_domain::ProjectMetadata::with_id(project_id, "Narration owner").unwrap();
-        fixture.database.create_project(&metadata).unwrap();
+        let project = fixture.database.create_project(&metadata).unwrap();
+        let ownership = SpeechLifecycleOwnership::capture_project(
+            &fixture.runtime,
+            backend,
+            lifecycle.lifecycle_epoch,
+            project_id,
+            project.state_version(),
+        )
+        .unwrap();
+        let job_id = fixture.registered_running_job();
+        initialize_manifest_with_hook(
+            &fixture.runtime,
+            &ownership,
+            &fixture.database,
+            job_id,
+            || {},
+        )
+        .unwrap();
         let source = fixture.directory.path().join("project-owned.wav");
         fs::write(&source, b"project-owned narration").unwrap();
 
@@ -5177,6 +5357,120 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(stored.record().project_id(), Some(project_id));
+        let manifest = read_manifest(&fixture.database, job_id).unwrap();
+        assert_eq!(manifest.project_id, Some(project_id));
+        assert_eq!(
+            manifest.expected_project_state_version,
+            Some(project.state_version())
+        );
+    }
+
+    #[test]
+    fn project_change_after_artifact_copy_rolls_back_publication_and_terminal_success() {
+        let fixture = SpeechTestFixture::new();
+        let backend = SpeechBackendRequest::Gtts;
+        let lifecycle = fixture.enable(backend);
+        let project_id = ProjectId::new();
+        let metadata =
+            osg_domain::ProjectMetadata::with_id(project_id, "Revision-bound narration").unwrap();
+        let project = fixture.database.create_project(&metadata).unwrap();
+        let ownership = SpeechLifecycleOwnership::capture_project(
+            &fixture.runtime,
+            backend,
+            lifecycle.lifecycle_epoch,
+            project_id,
+            project.state_version(),
+        )
+        .unwrap();
+        let job_id = fixture.registered_running_job();
+        initialize_manifest_with_hook(
+            &fixture.runtime,
+            &ownership,
+            &fixture.database,
+            job_id,
+            || {},
+        )
+        .unwrap();
+        let source = fixture.directory.path().join("stale-project.wav");
+        fs::write(&source, b"stale project narration").unwrap();
+        let published_id = std::cell::Cell::new(None);
+
+        let result = commit_completed_speech_source_with_hook(
+            &fixture.runtime,
+            &ownership,
+            &fixture.database,
+            &source,
+            test_artifact_metadata("staleProjectTest"),
+            Some(project_id),
+            job_id,
+            "one".to_owned(),
+            "narrationOutput",
+            |published| {
+                assert!(published.created);
+                published_id.set(Some(published.id));
+                let changed = osg_application::ProjectSnapshot::new(
+                    metadata.clone(),
+                    project.state_version(),
+                    Vec::new(),
+                    Vec::new(),
+                )
+                .unwrap();
+                fixture
+                    .database
+                    .commit_project(
+                        &changed,
+                        &osg_domain::RevisionReason::new("concurrent narration edit").unwrap(),
+                    )
+                    .unwrap();
+            },
+            |_| panic!("a stale narration result was published"),
+        );
+
+        assert_eq!(result.unwrap_err(), SpeechFailureCode::ProjectChanged);
+        assert!(
+            fixture
+                .database
+                .resolve_artifact(published_id.get().unwrap())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            read_manifest(&fixture.database, job_id)
+                .unwrap()
+                .results
+                .is_empty()
+        );
+        assert_eq!(
+            ownership
+                .commit_manifest_result(
+                    &fixture.runtime,
+                    &fixture.database,
+                    job_id,
+                    StoredSpeechResult::Failed {
+                        segment_id: "late".to_owned(),
+                        code: SpeechFailureCode::SynthesisFailed,
+                        retryable: true,
+                    },
+                )
+                .unwrap_err(),
+            SpeechFailureCode::ProjectChanged
+        );
+        assert!(
+            read_manifest(&fixture.database, job_id)
+                .unwrap()
+                .results
+                .is_empty()
+        );
+        assert_eq!(
+            ownership
+                .commit_job_success(&fixture.runtime, &fixture.jobs, job_id)
+                .unwrap_err(),
+            SpeechFailureCode::ProjectChanged
+        );
+        assert_eq!(
+            fixture.jobs.get(job_id).unwrap().snapshot().state(),
+            JobState::Running
+        );
     }
 
     struct BlockedSpeechPublication {
@@ -5268,6 +5562,7 @@ mod tests {
         let result = register_owned_speech_job_with_hook(
             &fixture.runtime,
             &ownership,
+            &fixture.database,
             &fixture.jobs,
             move || stop_runtime.shutdown(backend).unwrap(),
         )
@@ -5952,6 +6247,7 @@ mod tests {
     fn request_debug_redacts_text_and_reference_capability() {
         let request = SpeechStartRequest {
             project_id: ProjectId::new(),
+            expected_project_state_version: 0,
             segments: vec![SpeechSegmentRequest {
                 id: "one".to_owned(),
                 text: "private narration words".to_owned(),

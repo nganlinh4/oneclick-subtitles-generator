@@ -45,5 +45,6 @@
   "videoPreparationFailed": "Chuẩn bị video thất bại: {{message}}",
   "videoProcessingFailed": "Xử lý video thất bại: {{message}}",
   "asrApiError": "Lỗi API {{engine}}: {{status}} {{errorText}}",
-  "activeProjectChanged": "Dự án phụ đề đang hoạt động đã thay đổi."
+  "activeProjectChanged": "Dự án phụ đề đang hoạt động đã thay đổi.",
+  "subtitleCheckpointFailed": "Không thể lưu bản kiểm tra phụ đề. Vui lòng thử lại."
 }

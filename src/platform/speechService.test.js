@@ -146,6 +146,7 @@ describe('native speech request validation', () => {
   test('requires an opaque reference only for reference-based engines', () => {
     expect(() => normalizeSpeechStartRequest({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'f5Tts' },
@@ -153,6 +154,7 @@ describe('native speech request validation', () => {
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -165,6 +167,7 @@ describe('native speech request validation', () => {
     (projectId) => {
       expect(() => normalizeSpeechStartRequest({
         projectId,
+        expectedProjectStateVersion: 7,
         lifecycleEpoch: 0,
         segments: [{ id: 'one', text: 'hello' }],
         profile: { backend: 'gtts', language: 'en' },
@@ -175,18 +178,21 @@ describe('native speech request validation', () => {
   test('rejects duplicate IDs, controls, oversized Chatterbox text, and unknown options', () => {
     expect(() => normalizeSpeechStartRequest({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'same', text: 'a' }, { id: 'same', text: 'b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'a\u0000b' }],
       profile: { backend: 'gtts', language: 'en' },
     })).toThrow('invalid');
     expect(() => normalizeSpeechStartRequest({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'x'.repeat(301) }],
       profile: { backend: 'chatterbox' },
@@ -316,6 +322,7 @@ describe('native speech response validation', () => {
     await expect(lateInventory).rejects.toMatchObject({ code: 'speechRuntimeStopped' });
     await expect(service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 9,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'edgeTts', voice: 'en-US-AriaNeural' },
@@ -618,6 +625,7 @@ describe('native speech job lifecycle', () => {
     });
     await expect(service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'private words' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -655,6 +663,7 @@ describe('native speech job lifecycle', () => {
     });
     await service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -685,6 +694,7 @@ describe('native speech job lifecycle', () => {
     });
     await service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [
         { id: 'one', text: 'hello' },
@@ -741,6 +751,7 @@ describe('native speech job lifecycle', () => {
     });
     await service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 30,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -808,6 +819,7 @@ describe('native speech job lifecycle', () => {
     const controller = new AbortController();
     await service.startSpeechJob({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 0,
       segments: [{ id: 'one', text: 'hello' }],
       profile: { backend: 'gtts', language: 'en' },
@@ -824,6 +836,8 @@ describe('native speech job lifecycle', () => {
     const invokeCommand = vi.fn(async () => ({
       job: job('succeeded', 3, 10_000),
       backend: 'gtts',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       results: [{ status: 'completed', segmentId: 'one', artifact: artifact() }],
     }));
     const service = createNativeSpeechService({
@@ -834,6 +848,8 @@ describe('native speech job lifecycle', () => {
     await expect(service.getSpeechJobResults(JOB_ID)).resolves.toMatchObject({
       job: { id: JOB_ID, state: 'succeeded' },
       backend: 'gtts',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       results: [{ status: 'completed', segmentId: 'one' }],
     });
     expect(invokeCommand).toHaveBeenCalledWith('speech_job_results', { jobId: JOB_ID });

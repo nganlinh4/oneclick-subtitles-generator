@@ -180,6 +180,7 @@ describe('native narration compatibility adapter', () => {
     const started = await adapter.generate({
       method: 'gtts',
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 7,
       subtitles: [{
         id: 42,
@@ -202,6 +203,7 @@ describe('native narration compatibility adapter', () => {
     })]);
     expect(startSpeechJob.mock.calls[0][0]).toEqual({
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       segments: [{ id: 'segment-1', text: 'Hello' }],
       profile: { backend: 'gtts', language: 'en', domain: 'com', slow: false },
       referenceArtifactId: null,
@@ -245,6 +247,7 @@ describe('native narration compatibility adapter', () => {
     await adapter.generate({
       method: 'f5tts',
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 7,
       subtitles: [{ id: 'a', text: 'Hello' }],
       settings: { referenceText: 'Reference words' },
@@ -274,6 +277,7 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.generate({
       method: 'f5tts',
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
@@ -284,6 +288,7 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.generate({
       method: 'gtts',
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       settings: { lang: 'en' },
@@ -292,6 +297,7 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.generate({
       method: 'f5tts',
       projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       lifecycleEpoch: 7,
       subtitles: [{ id: 1, text: 'Hello' }],
       reference: {
@@ -325,6 +331,7 @@ describe('native narration compatibility adapter', () => {
       await expect(adapter.generate({
         method: 'gtts',
         projectId,
+        expectedProjectStateVersion: 7,
         lifecycleEpoch: 7,
         subtitles: [{ id: 1, text: 'Hello' }],
         settings: { lang: 'en' },
@@ -486,6 +493,8 @@ describe('native narration compatibility adapter', () => {
       getSpeechJobResults: vi.fn(async () => ({
         job: runningJob,
         backend: 'edgeTts',
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 7,
         results: [{ status: 'completed', segmentId: 'segment-2', artifact }],
       })),
       getSpeechStatus: vi.fn(),
@@ -503,10 +512,33 @@ describe('native narration compatibility adapter', () => {
     await expect(adapter.restore({
       jobId: JOB_ID,
       method: 'edge-tts',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
       subtitles: [{ id: 9, text: 'One' }, { id: 10, text: 'Two' }],
     })).resolves.toMatchObject({
       results: [{ subtitle_id: 10, text: 'Two', nativeArtifactId: ARTIFACT_ID }],
     });
+  });
+
+  test('refuses a recovered manifest from another project revision', async () => {
+    const speech = {
+      getSpeechJobResults: vi.fn(async () => ({
+        job: runningJob,
+        backend: 'edgeTts',
+        projectId: PROJECT_ID,
+        expectedProjectStateVersion: 8,
+        results: [],
+      })),
+    };
+    const adapter = createNativeNarrationAdapter({ speech });
+
+    await expect(adapter.restore({
+      jobId: JOB_ID,
+      method: 'edge-tts',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      subtitles: [{ id: 9, text: 'One' }],
+    })).rejects.toMatchObject({ code: 'invalidNarrationAdapterRequest' });
   });
 
   test('requires and forwards the Chatterbox lifecycle epoch for voice conversion', async () => {

@@ -31,9 +31,15 @@ vi.mock('./jobRecoveryCoordinator', () => ({
 }));
 
 const JOB_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a1';
+const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
+const projectAuthority = Object.freeze({
+  projectId: PROJECT_ID,
+  expectedProjectStateVersion: 7,
+});
 
 const request = () => ({
   method: 'gemini',
+  ...projectAuthority,
   subtitles: [{ id: 1, text: 'hello' }],
   settings: {
     credentialId: 'opaque-credential',
@@ -152,6 +158,7 @@ describe('native narration flow ownership', () => {
 
     await expect(restorePersistedNativeNarration({
       method: 'gtts',
+      ...projectAuthority,
       subtitles: [{ id: 7, text: 'restored' }],
     })).resolves.toMatchObject({
       method: 'gtts',
@@ -161,6 +168,7 @@ describe('native narration flow ownership', () => {
     expect(nativeNarrationAdapter.restore).toHaveBeenCalledWith({
       jobId: JOB_ID,
       method: 'gtts',
+      ...projectAuthority,
       subtitles: [{ id: 7, text: 'restored' }],
     });
     expect(discardRecoveredNativeJob).toHaveBeenCalledWith(JOB_ID);
@@ -181,6 +189,7 @@ describe('native narration flow ownership', () => {
 
     const restored = restorePersistedNativeNarration({
       method: 'gtts',
+      ...projectAuthority,
       subtitles: [{ id: 7, text: 'restored' }],
       pollIntervalMs: 1,
       timeoutMs: 100,
@@ -208,6 +217,7 @@ describe('native narration flow ownership', () => {
       });
     const input = {
       method: 'gtts',
+      ...projectAuthority,
       subtitles: [{ id: 7, text: 'restored' }],
       pollIntervalMs: 1,
       timeoutMs: 100,
@@ -236,6 +246,7 @@ describe('native narration flow ownership', () => {
 
     await expect(restorePersistedNativeNarration({
       method: 'gtts',
+      ...projectAuthority,
       subtitles: [{ id: 7, text: 'current memory only' }],
     })).resolves.toBeNull();
 

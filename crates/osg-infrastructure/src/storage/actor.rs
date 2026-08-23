@@ -114,6 +114,14 @@ enum Request {
         value_json: String,
         reply: SyncSender<Result<(), DatabaseError>>,
     },
+    PutProjectSetting {
+        scope: String,
+        key: String,
+        value_json: String,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
     PutSettings {
         scope: String,
         entries: Vec<(String, String)>,
@@ -292,6 +300,13 @@ enum Request {
         asset_id: Option<AssetId>,
         reply: SyncSender<Result<JobWrite, DatabaseError>>,
     },
+    CompleteProjectJob {
+        expected_sequence: u64,
+        snapshot: JobSnapshot,
+        project_id: ProjectId,
+        expected_state_version: u64,
+        reply: SyncSender<Result<JobWrite, DatabaseError>>,
+    },
     ListPendingJobResults {
         reply: SyncSender<Result<Vec<JobResultDeliveryHeader>, DatabaseError>>,
     },
@@ -421,6 +436,7 @@ impl std::fmt::Debug for Request {
             Self::GetSetting { .. } => "GetSetting",
             Self::ListSettings { .. } => "ListSettings",
             Self::PutSetting { .. } => "PutSetting",
+            Self::PutProjectSetting { .. } => "PutProjectSetting",
             Self::PutSettings { .. } => "PutSettings",
             Self::DeleteSetting { .. } => "DeleteSetting",
             Self::DeleteSettings { .. } => "DeleteSettings",
@@ -459,6 +475,7 @@ impl std::fmt::Debug for Request {
             Self::CompareAndSwapJob { .. } => "CompareAndSwapJob",
             Self::CompleteJobWithResult { .. } => "CompleteJobWithResult",
             Self::CompleteProjectJobWithResult { .. } => "CompleteProjectJobWithResult",
+            Self::CompleteProjectJob { .. } => "CompleteProjectJob",
             Self::ListPendingJobResults { .. } => "ListPendingJobResults",
             Self::ClaimJobResult { .. } => "ClaimJobResult",
             Self::AcknowledgeJobResult { .. } => "AcknowledgeJobResult",
@@ -560,6 +577,33 @@ impl Database {
             scope: scope.to_owned(),
             key: key.to_owned(),
             value_json,
+            reply,
+        })
+    }
+
+    /// Stores a project-owned setting only while the exact project revision is current.
+    ///
+    /// The revision check and setting write share one `IMMEDIATE` transaction, so a project
+    /// commit cannot slip between authorization and publication.
+    pub fn put_project_setting(
+        &self,
+        scope: &str,
+        key: &str,
+        value: &Value,
+        project_id: ProjectId,
+        expected_state_version: u64,
+    ) -> Result<(), DatabaseError> {
+        validate_setting_key(scope, key)?;
+        let value_json = serde_json::to_string(value)?;
+        if value_json.len() > MAX_SETTING_BYTES {
+            return Err(DatabaseError::SettingTooLarge);
+        }
+        self.request(|reply| Request::PutProjectSetting {
+            scope: scope.to_owned(),
+            key: key.to_owned(),
+            value_json,
+            project_id,
+            expected_state_version,
             reply,
         })
     }
@@ -1051,6 +1095,23 @@ impl Database {
         })
     }
 
+    /// Commits a terminal job transition only while its exact project revision is current.
+    pub fn complete_project_job(
+        &self,
+        expected_sequence: u64,
+        snapshot: &JobSnapshot,
+        project_id: ProjectId,
+        expected_state_version: u64,
+    ) -> Result<JobWrite, DatabaseError> {
+        self.request(|reply| Request::CompleteProjectJob {
+            expected_sequence,
+            snapshot: snapshot.clone(),
+            project_id,
+            expected_state_version,
+            reply,
+        })
+    }
+
     pub fn list_pending_job_results(&self) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
         self.request(|reply| Request::ListPendingJobResults { reply })
     }
@@ -1439,6 +1500,23 @@ fn run_actor(
             } => {
                 let _ = reply.send(put_setting(&mut connection, &scope, &key, &value_json));
             }
+            Request::PutProjectSetting {
+                scope,
+                key,
+                value_json,
+                project_id,
+                expected_state_version,
+                reply,
+            } => {
+                let _ = reply.send(put_project_setting(
+                    &mut connection,
+                    &scope,
+                    &key,
+                    &value_json,
+                    project_id,
+                    expected_state_version,
+                ));
+            }
             Request::PutSettings {
                 scope,
                 entries,
@@ -1690,6 +1768,21 @@ fn run_actor(
                     project_id,
                     expected_state_version,
                     asset_id,
+                ));
+            }
+            Request::CompleteProjectJob {
+                expected_sequence,
+                snapshot,
+                project_id,
+                expected_state_version,
+                reply,
+            } => {
+                let _ = reply.send(super::job_results::complete_project_job(
+                    &mut connection,
+                    expected_sequence,
+                    &snapshot,
+                    project_id,
+                    expected_state_version,
                 ));
             }
             Request::ListPendingJobResults { reply } => {
@@ -2260,6 +2353,37 @@ fn put_setting(
     value_json: &str,
 ) -> Result<(), DatabaseError> {
     let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO app_settings(scope, key, value_json, updated_at_ms)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(scope, key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at_ms = excluded.updated_at_ms",
+        params![scope, key, value_json, now_ms()],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+fn put_project_setting(
+    connection: &mut Connection,
+    scope: &str,
+    key: &str,
+    value_json: &str,
+    project_id: ProjectId,
+    expected_state_version: u64,
+) -> Result<(), DatabaseError> {
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let project = super::projects::load_project(&transaction, project_id)?
+        .ok_or(DatabaseError::ProjectNotFound(project_id))?;
+    if project.state_version() != expected_state_version {
+        return Err(DatabaseError::StaleProjectVersion {
+            project_id,
+            expected: expected_state_version,
+            actual: project.state_version(),
+        });
+    }
     transaction.execute(
         "INSERT INTO app_settings(scope, key, value_json, updated_at_ms)
          VALUES (?1, ?2, ?3, ?4)

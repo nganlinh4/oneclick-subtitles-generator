@@ -495,12 +495,18 @@ export const createNativeNarrationAdapter = ({
   const generate = async (rawRequest, rawCallbacks, options) => {
     const requestValue = requireRequestKeys(
       rawRequest,
-      new Set(['method', 'projectId', 'lifecycleEpoch', 'subtitles', 'settings', 'reference']),
-      new Set(['method', 'projectId', 'lifecycleEpoch', 'subtitles'])
+      new Set([
+        'method', 'projectId', 'expectedProjectStateVersion', 'lifecycleEpoch',
+        'subtitles', 'settings', 'reference',
+      ]),
+      new Set([
+        'method', 'projectId', 'expectedProjectStateVersion', 'lifecycleEpoch', 'subtitles',
+      ])
     );
     const {
       method,
       projectId,
+      expectedProjectStateVersion,
       lifecycleEpoch,
       subtitles,
       settings = {},
@@ -547,6 +553,7 @@ export const createNativeNarrationAdapter = ({
     };
     const request = normalizeSpeechStartRequest({
       projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
       segments: mappings.map(({ nativeId, text }) => ({ id: nativeId, text })),
       profile,
       referenceArtifactId: usesReference
@@ -575,21 +582,37 @@ export const createNativeNarrationAdapter = ({
   };
 
   const restore = async (rawRequest) => {
-    const { jobId, method, subtitles } = requireRequestKeys(
+    const {
+      jobId, method, projectId, expectedProjectStateVersion, subtitles,
+    } = requireRequestKeys(
       rawRequest,
-      new Set(['jobId', 'method', 'subtitles'])
+      new Set(['jobId', 'method', 'projectId', 'expectedProjectStateVersion', 'subtitles']),
+      new Set(['jobId', 'method', 'projectId', 'expectedProjectStateVersion', 'subtitles'])
     );
     const backend = requireMethod(method);
+    const authority = Object.freeze({
+      projectId: requireUuid(projectId, 7),
+      expectedProjectStateVersion: requireLifecycleEpoch(expectedProjectStateVersion),
+    });
     const mappings = normalizeSubtitles(subtitles);
     const byNativeId = new Map(mappings.map((mapping) => [mapping.nativeId, mapping]));
     const restored = await speech.getSpeechJobResults(jobId);
-    if (restored.backend !== backend) throw invalid();
+    if (restored.backend !== backend
+        || restored.projectId !== authority.projectId
+        || restored.expectedProjectStateVersion !== authority.expectedProjectStateVersion) {
+      throw invalid();
+    }
     const results = restored.results.map((result) => {
       const mapping = byNativeId.get(result.segmentId);
       if (mapping === undefined) throw invalid();
       return resultFromNative(result, mapping, backend);
     });
-    return Object.freeze({ job: restored.job, results: Object.freeze(results) });
+    return Object.freeze({
+      job: restored.job,
+      projectId: authority.projectId,
+      expectedProjectStateVersion: authority.expectedProjectStateVersion,
+      results: Object.freeze(results),
+    });
   };
 
   const convertVoice = async (rawRequest, callbacks, options) => {

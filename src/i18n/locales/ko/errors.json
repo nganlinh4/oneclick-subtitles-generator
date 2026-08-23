@@ -45,5 +45,6 @@
   "videoPreparationFailed": "영상 준비에 실패했습니다: {{message}}",
   "videoProcessingFailed": "영상 처리에 실패했습니다: {{message}}",
   "asrApiError": "{{engine}} API 오류: {{status}} {{errorText}}",
-  "activeProjectChanged": "활성 자막 프로젝트가 변경되었습니다."
+  "activeProjectChanged": "활성 자막 프로젝트가 변경되었습니다.",
+  "subtitleCheckpointFailed": "자막 체크포인트를 저장하지 못했습니다. 다시 시도해 주세요."
 }

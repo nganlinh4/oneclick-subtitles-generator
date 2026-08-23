@@ -4,21 +4,28 @@ import { act, renderHook } from '@testing-library/react';
 import { runNativeNarrationJob } from '../../../platform/nativeNarrationFlow';
 import useNativeNarrationController from './useNativeNarrationController';
 
+const checkpointMocks = vi.hoisted(() => ({
+  flushDurableLyricsHistory: vi.fn(),
+}));
+
 const speechMocks = vi.hoisted(() => ({
   getSpeechLifecycleSnapshot: vi.fn(),
 }));
 const projectMocks = vi.hoisted(() => ({
-  resolveProjectForCache: vi.fn(),
+  getActiveProjectSnapshot: vi.fn(),
 }));
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
+vi.mock('../../../platform/durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: checkpointMocks.flushDurableLyricsHistory,
+}));
 vi.mock('../../../platform/nativeNarrationFlow', () => ({
   cancelNativeNarrationJob: vi.fn(),
   restorePersistedNativeNarration: vi.fn(async () => null),
   runNativeNarrationJob: vi.fn(),
 }));
-vi.mock('../../../platform/subtitleProjectStore', () => ({
-  resolveProjectForCache: projectMocks.resolveProjectForCache,
+vi.mock('../../../platform/projectService', () => ({
+  getActiveProjectSnapshot: projectMocks.getActiveProjectSnapshot,
 }));
 vi.mock('../../../platform/credentialStateController', () => ({
   getActiveGeminiCredentialId: () => 'opaque-credential-id',
@@ -41,9 +48,12 @@ beforeEach(() => {
     enabled: true,
     warm: true,
   });
-  projectMocks.resolveProjectForCache.mockResolvedValue({
-    cacheId: 'test-media',
-    projectId: PROJECT_ID,
+  checkpointMocks.flushDurableLyricsHistory.mockResolvedValue(undefined);
+  projectMocks.getActiveProjectSnapshot.mockReturnValue({
+    metadata: { id: PROJECT_ID, name: 'Narration test' },
+    stateVersion: 7,
+    media: [],
+    tracks: [],
   });
 });
 
@@ -148,6 +158,8 @@ test('routes all five narration engines through the native job contract', async 
     .toEqual([7, 7, 7, 7, 7]);
   expect(runNativeNarrationJob.mock.calls.map(([request]) => request.projectId))
     .toEqual([PROJECT_ID, PROJECT_ID, PROJECT_ID, PROJECT_ID, PROJECT_ID]);
+  expect(runNativeNarrationJob.mock.calls.map(([request]) => request.expectedProjectStateVersion))
+    .toEqual([7, 7, 7, 7, 7]);
   expect(runNativeNarrationJob.mock.calls[0][0]).toMatchObject({
     reference: { nativeArtifactId: REFERENCE_ID },
     settings: { modelId: 'f5tts-v1-base', language: 'en' },
@@ -170,7 +182,7 @@ test('routes all five narration engines through the native job contract', async 
 });
 
 test('refuses generation before native start when there is no active durable project', async () => {
-  projectMocks.resolveProjectForCache.mockResolvedValue(null);
+  projectMocks.getActiveProjectSnapshot.mockReturnValue(null);
   const { result } = renderHook(() => useHarness());
 
   await act(async () => result.current.controller.handleGTTSNarration());
@@ -178,6 +190,42 @@ test('refuses generation before native start when there is no active durable pro
   expect(runNativeNarrationJob).not.toHaveBeenCalled();
   expect(result.current.error).toContain('active subtitle project changed');
   expect(result.current.isGenerating).toBe(false);
+});
+
+test('refuses generation when pending subtitle edits cannot reach the durable checkpoint', async () => {
+  checkpointMocks.flushDurableLyricsHistory.mockRejectedValue(new Error('sqlite write failed'));
+  const { result } = renderHook(() => useHarness());
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(runNativeNarrationJob).not.toHaveBeenCalled();
+  expect(result.current.error).toContain('checkpoint could not be saved');
+  expect(result.current.isGenerating).toBe(false);
+});
+
+test('captures the project revision produced by the subtitle checkpoint, not the stale pre-flush one', async () => {
+  let project = {
+    metadata: { id: PROJECT_ID, name: 'Narration test' },
+    stateVersion: 7,
+    media: [],
+    tracks: [],
+  };
+  projectMocks.getActiveProjectSnapshot.mockImplementation(() => project);
+  checkpointMocks.flushDurableLyricsHistory.mockImplementation(async () => {
+    project = { ...project, stateVersion: 8 };
+  });
+  runNativeNarrationJob.mockResolvedValue({ status: 'completed', results: [] });
+  const { result } = renderHook(() => useHarness());
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 8,
+    }),
+    expect.any(Object),
+  );
 });
 
 test.each([
@@ -293,5 +341,67 @@ test('does not publish or persist a completed result after Stop and restart chan
   expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
   expect(stored).not.toHaveBeenCalled();
   expect(result.current.error).toContain('not ready');
+  stored.mockRestore();
+});
+
+test('does not publish or persist a completed result after the same project advances a revision', async () => {
+  let project = {
+    metadata: { id: PROJECT_ID, name: 'Narration test' },
+    stateVersion: 7,
+    media: [],
+    tracks: [],
+  };
+  projectMocks.getActiveProjectSnapshot.mockImplementation(() => project);
+  let resolveJob;
+  let callbacks;
+  runNativeNarrationJob.mockImplementation((_request, handlers) => {
+    callbacks = handlers;
+    return new Promise((resolve) => { resolveJob = resolve; });
+  });
+  const stored = vi.spyOn(Storage.prototype, 'setItem');
+  const { result } = renderHook(() => useHarness());
+
+  let generation;
+  await act(async () => {
+    generation = result.current.controller.handleGTTSNarration();
+    await vi.waitFor(() => expect(resolveJob).toBeTypeOf('function'));
+  });
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+    }),
+    expect.any(Object),
+  );
+  project = { ...project, stateVersion: 8 };
+  const completed = {
+    subtitle_id: 1,
+    text: 'hello',
+    success: true,
+    pending: false,
+    nativeArtifactId: ARTIFACT_ID,
+    nativeFormat: 'wav',
+    durationMicros: 1_000_000,
+    filename: `osg-speech-artifact:${ARTIFACT_ID}`,
+    original_ids: [1],
+    outputIndex: 1,
+    start: 0,
+    end: 1,
+    method: 'gtts',
+  };
+  callbacks.onProgress({ current: 1, total: 1 });
+  callbacks.onResult(completed, 1, 1);
+  resolveJob({ status: 'completed', results: [completed] });
+
+  await act(async () => {
+    await expect(generation).resolves.toBe(false);
+  });
+
+  expect(result.current.generationResults).toEqual([
+    expect.objectContaining({ success: false, pending: false, errorCode: 'activeProjectChanged' }),
+  ]);
+  expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
+  expect(stored).not.toHaveBeenCalled();
+  expect(result.current.error).toContain('active subtitle project changed');
   stored.mockRestore();
 });

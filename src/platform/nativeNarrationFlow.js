@@ -146,7 +146,7 @@ export const cancelNativeNarrationJob = async (method) => {
 };
 
 const reconnectRecoveredJob = async (
-  { jobId, method, subtitles },
+  { jobId, method, projectId, expectedProjectStateVersion, subtitles },
   { pollIntervalMs, timeoutMs },
 ) => {
   const existingJob = activeJobs.get(method);
@@ -171,12 +171,16 @@ const reconnectRecoveredJob = async (
       const restored = await nativeNarrationAdapter.restore({
         jobId,
         method,
+        projectId,
+        expectedProjectStateVersion,
         subtitles,
       });
       if (terminalJobStates.has(restored.job.state) || restored.job.state === 'interrupted') {
         discardRecoveredNativeJob(jobId);
         return Object.freeze({
           method,
+          projectId,
+          expectedProjectStateVersion,
           subtitles: Object.freeze(subtitles.map((subtitle) => Object.freeze({ ...subtitle }))),
           job: restored.job,
           results: hydrateNativeNarrationResults(restored.results),
@@ -223,11 +227,17 @@ const reconnectRecoveredJob = async (
 
 export const restorePersistedNativeNarration = async ({
   method,
+  projectId,
+  expectedProjectStateVersion,
   subtitles,
   pollIntervalMs = RECONNECT_POLL_INTERVAL_MS,
   timeoutMs = RECONNECT_TIMEOUT_MS,
 } = {}) => {
   if (typeof method !== 'string'
+      || typeof projectId !== 'string'
+      || !Number.isSafeInteger(expectedProjectStateVersion)
+      || expectedProjectStateVersion < 0
+      || expectedProjectStateVersion > Number.MAX_SAFE_INTEGER
       || !Array.isArray(subtitles)
       || subtitles.length < 1
       || subtitles.length > 1_000
@@ -245,7 +255,7 @@ export const restorePersistedNativeNarration = async ({
     const reconnecting = reconnectingJobs.get(jobId);
     if (reconnecting !== undefined) return reconnecting;
     const promise = reconnectRecoveredJob(
-      { jobId, method, subtitles },
+      { jobId, method, projectId, expectedProjectStateVersion, subtitles },
       { pollIntervalMs, timeoutMs },
     );
     reconnectingJobs.set(jobId, promise);
