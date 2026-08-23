@@ -223,24 +223,6 @@ export const setTranscriptionRules = async (rules) => {
 };
 
 /**
- * Get global transcription rules
- * @returns {Object} Transcription rules
- */
-export const getTranscriptionRules = async () => {
-  // If rules are in memory, return them
-  if (globalTranscriptionRules !== null) {
-    return globalTranscriptionRules;
-  }
-
-  const requestedCacheId = currentCacheId;
-  if (!requestedCacheId) return null;
-  const auxiliary = await readProjectAuxiliary(requestedCacheId);
-  if (currentCacheId !== requestedCacheId) return globalTranscriptionRules;
-  globalTranscriptionRules = auxiliary?.transcriptionRules ?? null;
-  return globalTranscriptionRules;
-};
-
-/**
  * Get transcription rules synchronously (for components that can't use async/await)
  * @returns {Object} Hydrated transcription rules from memory
  */

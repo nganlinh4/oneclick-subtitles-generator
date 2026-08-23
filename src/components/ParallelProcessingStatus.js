@@ -41,8 +41,8 @@ const ParallelProcessingStatus = ({
     const checkRulesAvailability = async () => {
       try {
         // Dynamically import to avoid circular dependencies
-        const { getTranscriptionRules } = await import('../utils/transcriptionRulesStore');
-        const rules = getTranscriptionRules();
+        const { getTranscriptionRulesSync } = await import('../utils/transcriptionRulesStore');
+        const rules = getTranscriptionRulesSync();
         setRulesAvailable(!!rules);
       } catch (error) {
         console.error('Error checking transcription rules availability:', error);

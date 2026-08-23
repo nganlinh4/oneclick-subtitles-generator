@@ -5,7 +5,7 @@
  */
 
 import { getDefaultTranslationPrompt } from './promptManagement';
-import { getTranscriptionRules } from '../../utils/transcriptionRulesStore';
+import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
 
 /**
  * Append transcription rules (from video analysis) as IMPORTANT CONTEXT to a prompt.
@@ -14,7 +14,7 @@ import { getTranscriptionRules } from '../../utils/transcriptionRulesStore';
  */
 const appendTranscriptionRules = (prompt) => {
     try {
-        const transcriptionRules = getTranscriptionRules();
+        const transcriptionRules = getTranscriptionRulesSync();
 
         if (transcriptionRules && Object.keys(transcriptionRules).length > 0) {
 

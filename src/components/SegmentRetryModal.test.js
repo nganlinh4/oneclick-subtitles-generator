@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { getTranscriptionRulesSync } from '../utils/transcriptionRulesStore';
 import ParallelProcessingStatus from './ParallelProcessingStatus';
 import SegmentRetryModal from './SegmentRetryModal';
 
@@ -11,7 +12,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 vi.mock('../utils/transcriptionRulesStore', () => ({
-  getTranscriptionRules: () => null,
+  getTranscriptionRulesSync: vi.fn(),
 }));
 
 const segments = [{ start: 5, end: 8, status: 'error' }];
@@ -36,6 +37,27 @@ beforeEach(() => {
   vi.useRealTimers();
   localStorage.clear();
   window.addToast = vi.fn();
+  getTranscriptionRulesSync.mockReturnValue(null);
+});
+
+test('shows the rules action only when hydrated rules actually exist', async () => {
+  const onViewRules = vi.fn();
+  getTranscriptionRulesSync.mockReturnValue({ atmosphere: 'studio interview' });
+  render(
+    <ParallelProcessingStatus
+      segments={segments}
+      overallStatus=""
+      statusType=""
+      onRetrySegment={vi.fn()}
+      onRetryWithModel={vi.fn()}
+      retryingSegments={[]}
+      onViewRules={onViewRules}
+    />
+  );
+
+  const action = await screen.findByRole('button', { name: /view rules/i });
+  fireEvent.click(action);
+  expect(onViewRules).toHaveBeenCalledTimes(1);
 });
 
 test('removes DOM-save and timeout success and locks every modal exit while retry is pending', async () => {

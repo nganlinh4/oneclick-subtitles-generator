@@ -4,7 +4,6 @@ import {
   bindTranscriptionRulesProject,
   clearTranscriptionRules,
   commitVideoAnalysisForCache,
-  getTranscriptionRules,
   getTranscriptionRulesSync,
   isTranscriptionRulesProjectBindingReceipt,
   setCurrentCacheId,
@@ -28,7 +27,7 @@ it('hydrates and persists transcription rules through native project auxiliary s
   const storageSet = vi.spyOn(Storage.prototype, 'setItem');
 
   setCurrentCacheId('cache-id');
-  await expect(getTranscriptionRules()).resolves.toEqual(persisted);
+  await vi.waitFor(() => expect(getTranscriptionRulesSync()).toEqual(persisted));
   expect(getTranscriptionRulesSync()).toEqual(persisted);
 
   await setTranscriptionRules(edited);
@@ -48,13 +47,9 @@ it('hydrates and persists transcription rules through native project auxiliary s
   storageSet.mockRestore();
 });
 
-it('clears media A rules synchronously and ignores its stale direct read after switching to B', async () => {
+it('clears media A rules synchronously and ignores its stale hydration after switching to B', async () => {
   setCurrentCacheId(null);
   readProjectAuxiliary.mockReset();
-  readProjectAuxiliary.mockResolvedValueOnce({ transcriptionRules: null });
-  setCurrentCacheId('asset-a');
-  await Promise.resolve();
-
   const oldRead = {};
   oldRead.promise = new Promise((resolve) => { oldRead.resolve = resolve; });
   const newHydration = {};
@@ -62,17 +57,18 @@ it('clears media A rules synchronously and ignores its stale direct read after s
   readProjectAuxiliary
     .mockReturnValueOnce(oldRead.promise)
     .mockReturnValueOnce(newHydration.promise);
-  const stale = getTranscriptionRules();
   const updates = [];
   const onUpdate = (event) => updates.push(event.detail.rules);
   window.addEventListener('transcriptionRulesUpdated', onUpdate);
 
+  setCurrentCacheId('asset-a');
   setCurrentCacheId('asset-b');
   expect(updates.at(-1)).toBeNull();
   expect(getTranscriptionRulesSync()).toBeNull();
 
   oldRead.resolve({ transcriptionRules: { media: 'A' } });
-  await expect(stale).resolves.toBeNull();
+  await oldRead.promise;
+  await Promise.resolve();
   expect(getTranscriptionRulesSync()).toBeNull();
 
   newHydration.resolve({ transcriptionRules: { media: 'B' } });
@@ -90,7 +86,7 @@ it('rolls back the in-memory rules when native project persistence fails', async
   readProjectAuxiliary.mockReset();
   readProjectAuxiliary.mockResolvedValue({ transcriptionRules: { atmosphere: 'saved' } });
   setCurrentCacheId('rollback-rules');
-  await expect(getTranscriptionRules()).resolves.toEqual({ atmosphere: 'saved' });
+  await vi.waitFor(() => expect(getTranscriptionRulesSync()).toEqual({ atmosphere: 'saved' }));
 
   patchProjectAuxiliary.mockRejectedValueOnce(new Error('native write failed'));
   await expect(setTranscriptionRules({ atmosphere: 'unsaved' }))
