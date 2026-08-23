@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "07c2f74ccfe6857f8d5c6bfb11d28c1158f653f5",
+  "baselineRevision": "53c6d1f33f5181504f850e3f98b0071f91f10279",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -2854,7 +2854,7 @@
       ]
     },
     "src/i18n/locales/ko/errors.json": {
-      "hash": "523349db95a6ba7e75e72ea42c40a5c9ec1b92f772fde70327e63b4c1fee72b7",
+      "hash": "1911c44b49d637a5b214ea850b89edac596d65d98682ea4394ac1aad1052f5cb",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -2893,6 +2893,7 @@
         "segmentRetryFailed",
         "somethingWentWrong",
         "srtParsingFailed",
+        "subtitleCheckpointFailed",
         "tokenLimitExceeded",
         "tokenLimitExceededCounts",
         "unexpectedErrorReload",
@@ -5458,7 +5459,7 @@
       ]
     },
     "src/i18n/locales/vi/errors.json": {
-      "hash": "b132e1344828a2f50da7c0a54c3074e28c8f86892ae4bd59b716d36d51a6f1ce",
+      "hash": "b8f8d1d3ee5fdc8f1921abe7c282252f80a7ae5fc06568f080f11c62619b35bd",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -5497,6 +5498,7 @@
         "segmentRetryFailed",
         "somethingWentWrong",
         "srtParsingFailed",
+        "subtitleCheckpointFailed",
         "tokenLimitExceeded",
         "tokenLimitExceededCounts",
         "unexpectedErrorReload",
@@ -8389,10 +8391,10 @@
       ]
     },
     "src/components/narration/components/GeminiNarrationResults.js": {
-      "hash": "8c55bfdc5a397b02d95c69d2edf0b594de7d13e4b260a5ad99316feb69765692",
+      "hash": "7b893f7b796627e6664a8983163898a97063030afb679636325be73d8e493190",
       "rootCount": 1,
       "roots": [
-        "97aba1ef1d7d19616638808a9c38355ddb850119b952714a0698f24698e1e4ec"
+        "3eb64e0c7564d0b2a588bc349e87268887ed2f1ed445dff1bb91f8871af3eff8"
       ]
     },
     "src/components/narration/components/GeminiResultRow.js": {
