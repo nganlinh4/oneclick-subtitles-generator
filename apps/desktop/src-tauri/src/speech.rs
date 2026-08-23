@@ -71,6 +71,8 @@ const MAX_ALIGNMENT_DURATION_MICROS: u64 = 4 * 60 * 60 * 1_000_000;
 const ALIGNMENT_TIMEOUT: Duration = Duration::from_hours(2);
 const ALIGNMENT_MANIFEST_SCOPE: &str = "speechAlignmentJobs";
 const ALIGNMENT_MANIFEST_SCHEMA_VERSION: u32 = 2;
+const PROJECT_NARRATION_SCOPE: &str = "projectNarration";
+const PROJECT_NARRATION_SCHEMA_VERSION: u32 = 1;
 const MAX_F5_REFERENCE_MS: u64 = 12_000;
 const MAX_CHATTERBOX_REFERENCE_MS: u64 = 60_000;
 const MANIFEST_SCOPE: &str = "speechJobs";
@@ -1415,6 +1417,89 @@ pub(crate) struct SpeechArtifactEditResponse {
     artifact: SpeechArtifactDescriptor,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(untagged)]
+enum SpeechNarrationCueId {
+    Number(i64),
+    Text(String),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SpeechNarrationSource {
+    Original,
+    Translated,
+    Grouped,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SpeechProjectNarrationResultRequest {
+    subtitle_id: SpeechNarrationCueId,
+    text: String,
+    artifact_id: String,
+    method: String,
+    output_index: Option<u32>,
+    original_ids: Vec<SpeechNarrationCueId>,
+    start_micros: u64,
+    end_micros: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SpeechProjectNarrationPutRequest {
+    project_id: ProjectId,
+    expected_project_state_version: u64,
+    source: SpeechNarrationSource,
+    results: Vec<SpeechProjectNarrationResultRequest>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredProjectNarrationResult {
+    subtitle_id: SpeechNarrationCueId,
+    text: String,
+    artifact_id: String,
+    method: String,
+    output_index: Option<u32>,
+    original_ids: Vec<SpeechNarrationCueId>,
+    start_micros: u64,
+    end_micros: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredProjectNarration {
+    schema_version: u32,
+    project_id: ProjectId,
+    project_state_version: u64,
+    source: SpeechNarrationSource,
+    results: Vec<StoredProjectNarrationResult>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechProjectNarrationResultResponse {
+    subtitle_id: SpeechNarrationCueId,
+    text: String,
+    artifact: SpeechArtifactDescriptor,
+    method: String,
+    output_index: Option<u32>,
+    original_ids: Vec<SpeechNarrationCueId>,
+    start_micros: u64,
+    end_micros: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpeechProjectNarrationResponse {
+    schema_version: u32,
+    project_id: ProjectId,
+    project_state_version: u64,
+    source: SpeechNarrationSource,
+    results: Vec<SpeechProjectNarrationResultResponse>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpeechPlayableArtifact {
@@ -2362,6 +2447,254 @@ fn edit_project_speech_artifact(
         expected_project_state_version: request.expected_project_state_version,
         artifact: published.descriptor,
     })
+}
+
+fn validate_narration_cue_id(id: &SpeechNarrationCueId) -> bool {
+    match id {
+        SpeechNarrationCueId::Number(value) => value.unsigned_abs() <= 9_007_199_254_740_991,
+        SpeechNarrationCueId::Text(value) => {
+            !value.is_empty()
+                && value.chars().count() <= 256
+                && !value.chars().any(char::is_control)
+        }
+    }
+}
+
+fn validate_project_narration_result(
+    database: &Database,
+    project_id: ProjectId,
+    request: SpeechProjectNarrationResultRequest,
+) -> CommandResult<StoredProjectNarrationResult> {
+    if !validate_narration_cue_id(&request.subtitle_id)
+        || request.text.is_empty()
+        || request.text.chars().count() > MAX_SEGMENT_TEXT_CHARACTERS
+        || !matches!(
+            request.method.as_str(),
+            "f5tts" | "chatterbox" | "edge-tts" | "gtts" | "gemini"
+        )
+        || request.original_ids.is_empty()
+        || request.original_ids.len() > MAX_SEGMENTS
+        || request
+            .original_ids
+            .iter()
+            .any(|id| !validate_narration_cue_id(id))
+        || request.end_micros <= request.start_micros
+        || request.end_micros > MAX_ALIGNMENT_DURATION_MICROS
+    {
+        return Err(CommandError::invalid_input(
+            "The project narration record is invalid.",
+        ));
+    }
+    let artifact_id = parse_artifact_id(&request.artifact_id)?;
+    let resolved = database
+        .resolve_artifact(artifact_id)?
+        .ok_or_else(|| CommandError::invalid_input("The narration audio is unavailable."))?;
+    if resolved.record().project_id() != Some(project_id)
+        || !matches!(
+            resolved.record().kind().as_str(),
+            "narrationOutput" | "voiceConversion"
+        )
+    {
+        return Err(CommandError::invalid_input(
+            "The narration audio does not belong to this project.",
+        ));
+    }
+    descriptor_from_record(resolved.record())?;
+    Ok(StoredProjectNarrationResult {
+        subtitle_id: request.subtitle_id,
+        text: request.text,
+        artifact_id: artifact_id.to_string(),
+        method: request.method,
+        output_index: request.output_index,
+        original_ids: request.original_ids,
+        start_micros: request.start_micros,
+        end_micros: request.end_micros,
+    })
+}
+
+fn project_narration_response(
+    database: &Database,
+    stored: StoredProjectNarration,
+) -> CommandResult<SpeechProjectNarrationResponse> {
+    let mut text_bytes = 0_usize;
+    let mut cue_ids = HashSet::with_capacity(stored.results.len());
+    let mut artifact_ids = HashSet::with_capacity(stored.results.len());
+    let mut results = Vec::with_capacity(stored.results.len());
+    for result in stored.results {
+        text_bytes = text_bytes
+            .checked_add(result.text.len())
+            .filter(|bytes| *bytes <= MAX_BATCH_TEXT_BYTES)
+            .ok_or_else(|| CommandError::internal("The stored project narration is invalid."))?;
+        if !validate_narration_cue_id(&result.subtitle_id)
+            || result.text.is_empty()
+            || result.text.chars().count() > MAX_SEGMENT_TEXT_CHARACTERS
+            || !matches!(
+                result.method.as_str(),
+                "f5tts" | "chatterbox" | "edge-tts" | "gtts" | "gemini"
+            )
+            || result.original_ids.is_empty()
+            || result.original_ids.len() > MAX_SEGMENTS
+            || result
+                .original_ids
+                .iter()
+                .any(|id| !validate_narration_cue_id(id))
+            || result.end_micros <= result.start_micros
+            || result.end_micros > MAX_ALIGNMENT_DURATION_MICROS
+            || !cue_ids.insert(result.subtitle_id.clone())
+            || !artifact_ids.insert(result.artifact_id.clone())
+        {
+            return Err(CommandError::internal(
+                "The stored project narration is invalid.",
+            ));
+        }
+        let artifact_id = parse_artifact_id(&result.artifact_id)
+            .map_err(|_| CommandError::internal("The stored project narration is invalid."))?;
+        let resolved = database
+            .resolve_artifact(artifact_id)?
+            .ok_or_else(|| CommandError::internal("The stored project narration is invalid."))?;
+        if resolved.record().project_id() != Some(stored.project_id)
+            || !matches!(
+                resolved.record().kind().as_str(),
+                "narrationOutput" | "voiceConversion"
+            )
+        {
+            return Err(CommandError::internal(
+                "The stored project narration is invalid.",
+            ));
+        }
+        results.push(SpeechProjectNarrationResultResponse {
+            subtitle_id: result.subtitle_id,
+            text: result.text,
+            artifact: descriptor_from_record(resolved.record())?,
+            method: result.method,
+            output_index: result.output_index,
+            original_ids: result.original_ids,
+            start_micros: result.start_micros,
+            end_micros: result.end_micros,
+        });
+    }
+    Ok(SpeechProjectNarrationResponse {
+        schema_version: stored.schema_version,
+        project_id: stored.project_id,
+        project_state_version: stored.project_state_version,
+        source: stored.source,
+        results,
+    })
+}
+
+fn put_project_narration(
+    database: &Database,
+    request: SpeechProjectNarrationPutRequest,
+) -> CommandResult<SpeechProjectNarrationResponse> {
+    if request.expected_project_state_version > i64::MAX as u64
+        || request.results.len() > MAX_SEGMENTS
+    {
+        return Err(CommandError::invalid_input(
+            "The project narration record is invalid.",
+        ));
+    }
+    require_reference_project_state(
+        database,
+        request.project_id,
+        request.expected_project_state_version,
+    )?;
+    let mut text_bytes = 0_usize;
+    let mut cue_ids = HashSet::with_capacity(request.results.len());
+    let mut artifact_ids = HashSet::with_capacity(request.results.len());
+    let mut results = Vec::with_capacity(request.results.len());
+    for result in request.results {
+        text_bytes = text_bytes
+            .checked_add(result.text.len())
+            .filter(|bytes| *bytes <= MAX_BATCH_TEXT_BYTES)
+            .ok_or_else(|| {
+                CommandError::invalid_input("The project narration record is too large.")
+            })?;
+        let result = validate_project_narration_result(database, request.project_id, result)?;
+        if !cue_ids.insert(result.subtitle_id.clone())
+            || !artifact_ids.insert(result.artifact_id.clone())
+        {
+            return Err(CommandError::invalid_input(
+                "The project narration record contains duplicate results.",
+            ));
+        }
+        results.push(result);
+    }
+    let stored = StoredProjectNarration {
+        schema_version: PROJECT_NARRATION_SCHEMA_VERSION,
+        project_id: request.project_id,
+        project_state_version: request.expected_project_state_version,
+        source: request.source,
+        results,
+    };
+    let value = serde_json::to_value(&stored)
+        .map_err(|_| CommandError::internal("The project narration record is invalid."))?;
+    database.put_project_setting(
+        PROJECT_NARRATION_SCOPE,
+        &request.project_id.to_string(),
+        &value,
+        request.project_id,
+        request.expected_project_state_version,
+    )?;
+    project_narration_response(database, stored)
+}
+
+fn get_project_narration(
+    database: &Database,
+    project_id: ProjectId,
+) -> CommandResult<Option<SpeechProjectNarrationResponse>> {
+    let Some(project) = database.load_project(project_id)? else {
+        return Err(CommandError::invalid_input(
+            "The subtitle project is unavailable.",
+        ));
+    };
+    let Some(value) = database.get_setting(PROJECT_NARRATION_SCOPE, &project_id.to_string())?
+    else {
+        return Ok(None);
+    };
+    let stored: StoredProjectNarration = serde_json::from_value(value)
+        .map_err(|_| CommandError::internal("The stored project narration is invalid."))?;
+    if stored.schema_version != PROJECT_NARRATION_SCHEMA_VERSION
+        || stored.project_id != project_id
+        || stored.results.len() > MAX_SEGMENTS
+    {
+        return Err(CommandError::internal(
+            "The stored project narration is invalid.",
+        ));
+    }
+    if stored.project_state_version != project.state_version() {
+        return Ok(None);
+    }
+    project_narration_response(database, stored).map(Some)
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State values as owned command extractors"
+)]
+pub(crate) async fn speech_project_narration_put(
+    state: State<'_, DesktopState>,
+    request: SpeechProjectNarrationPutRequest,
+) -> CommandResult<SpeechProjectNarrationResponse> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || put_project_narration(&database, request))
+        .await
+        .map_err(|_| CommandError::internal("The project narration task stopped unexpectedly."))?
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State values as owned command extractors"
+)]
+pub(crate) async fn speech_project_narration_get(
+    state: State<'_, DesktopState>,
+    project_id: ProjectId,
+) -> CommandResult<Option<SpeechProjectNarrationResponse>> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || get_project_narration(&database, project_id))
+        .await
+        .map_err(|_| CommandError::internal("The project narration task stopped unexpectedly."))?
 }
 
 #[tauri::command]
@@ -5547,6 +5880,231 @@ mod tests {
         database
             .commit_project(&changed, &osg_domain::RevisionReason::new(reason).unwrap())
             .unwrap();
+    }
+
+    fn publish_project_narration_test_artifact(
+        fixture: &SpeechTestFixture,
+        project_id: ProjectId,
+        name: &str,
+    ) -> String {
+        let source = fixture.directory.path().join(format!("{name}.wav"));
+        fs::write(&source, format!("project narration artifact {name}")).unwrap();
+        publish_project_durable_artifact(
+            &fixture.runtime,
+            &fixture.database,
+            project_id,
+            None,
+            "narrationOutput",
+            &source,
+            test_artifact_metadata("projectNarrationTest"),
+        )
+        .unwrap()
+        .descriptor
+        .artifact_id
+    }
+
+    fn project_narration_result(
+        subtitle_id: i64,
+        artifact_id: String,
+    ) -> SpeechProjectNarrationResultRequest {
+        SpeechProjectNarrationResultRequest {
+            subtitle_id: SpeechNarrationCueId::Number(subtitle_id),
+            text: format!("Narration {subtitle_id}"),
+            artifact_id,
+            method: "gtts".to_owned(),
+            output_index: Some(u32::try_from(subtitle_id).unwrap()),
+            original_ids: vec![SpeechNarrationCueId::Number(subtitle_id)],
+            start_micros: u64::try_from(subtitle_id).unwrap() * 1_000_000,
+            end_micros: u64::try_from(subtitle_id + 1).unwrap() * 1_000_000,
+        }
+    }
+
+    #[test]
+    fn project_narration_survives_reopen_and_becomes_inert_after_revision() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = standalone_runtime(&directory);
+        let database_path = directory.path().join("project-narration.sqlite3");
+        let database = Database::open(&database_path).unwrap();
+        let project_id = ProjectId::new();
+        let project = database
+            .create_project(
+                &osg_domain::ProjectMetadata::with_id(project_id, "Narration project").unwrap(),
+            )
+            .unwrap();
+        let source = directory.path().join("narration.wav");
+        fs::write(&source, b"durable project narration").unwrap();
+        let artifact_id = publish_project_durable_artifact(
+            &runtime,
+            &database,
+            project_id,
+            None,
+            "narrationOutput",
+            &source,
+            test_artifact_metadata("projectNarrationReopenTest"),
+        )
+        .unwrap()
+        .descriptor
+        .artifact_id;
+        let response = put_project_narration(
+            &database,
+            SpeechProjectNarrationPutRequest {
+                project_id,
+                expected_project_state_version: project.state_version(),
+                source: SpeechNarrationSource::Original,
+                results: vec![project_narration_result(1, artifact_id.clone())],
+            },
+        )
+        .unwrap();
+        assert_eq!(response.project_id, project_id);
+        assert_eq!(response.project_state_version, project.state_version());
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].artifact.artifact_id, artifact_id);
+        drop(database);
+
+        let reopened = Database::open(&database_path).unwrap();
+        let restored = get_project_narration(&reopened, project_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.source, SpeechNarrationSource::Original);
+        assert_eq!(restored.results.len(), 1);
+        let current = reopened.load_project(project_id).unwrap().unwrap();
+        commit_empty_project_revision(&reopened, &current, "invalidate narration");
+        assert!(
+            get_project_narration(&reopened, project_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn project_narration_rejects_stale_cross_project_and_duplicate_writes_atomically() {
+        let fixture = SpeechTestFixture::new();
+        let project_a = ProjectId::new();
+        let project_b = ProjectId::new();
+        let snapshot_a = fixture
+            .database
+            .create_project(&osg_domain::ProjectMetadata::with_id(project_a, "Project A").unwrap())
+            .unwrap();
+        fixture
+            .database
+            .create_project(&osg_domain::ProjectMetadata::with_id(project_b, "Project B").unwrap())
+            .unwrap();
+        let artifact_a = publish_project_narration_test_artifact(&fixture, project_a, "project-a");
+        let artifact_b = publish_project_narration_test_artifact(&fixture, project_b, "project-b");
+        put_project_narration(
+            &fixture.database,
+            SpeechProjectNarrationPutRequest {
+                project_id: project_a,
+                expected_project_state_version: snapshot_a.state_version(),
+                source: SpeechNarrationSource::Original,
+                results: vec![project_narration_result(1, artifact_a.clone())],
+            },
+        )
+        .unwrap();
+        let before = fixture
+            .database
+            .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+            .unwrap();
+
+        assert!(
+            put_project_narration(
+                &fixture.database,
+                SpeechProjectNarrationPutRequest {
+                    project_id: project_a,
+                    expected_project_state_version: snapshot_a.state_version(),
+                    source: SpeechNarrationSource::Translated,
+                    results: vec![project_narration_result(2, artifact_b)],
+                },
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fixture
+                .database
+                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .unwrap(),
+            before
+        );
+
+        assert!(
+            put_project_narration(
+                &fixture.database,
+                SpeechProjectNarrationPutRequest {
+                    project_id: project_a,
+                    expected_project_state_version: snapshot_a.state_version(),
+                    source: SpeechNarrationSource::Grouped,
+                    results: vec![
+                        project_narration_result(2, artifact_a.clone()),
+                        project_narration_result(2, artifact_a),
+                    ],
+                },
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fixture
+                .database
+                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .unwrap(),
+            before
+        );
+
+        commit_empty_project_revision(&fixture.database, &snapshot_a, "stale write");
+        assert!(
+            put_project_narration(
+                &fixture.database,
+                SpeechProjectNarrationPutRequest {
+                    project_id: project_a,
+                    expected_project_state_version: snapshot_a.state_version(),
+                    source: SpeechNarrationSource::Original,
+                    results: Vec::new(),
+                },
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fixture
+                .database
+                .get_setting(PROJECT_NARRATION_SCOPE, &project_a.to_string())
+                .unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn project_narration_refuses_malformed_current_storage() {
+        let fixture = SpeechTestFixture::new();
+        let project_id = ProjectId::new();
+        fixture
+            .database
+            .create_project(
+                &osg_domain::ProjectMetadata::with_id(project_id, "Corrupt narration").unwrap(),
+            )
+            .unwrap();
+        fixture
+            .database
+            .put_setting(
+                PROJECT_NARRATION_SCOPE,
+                &project_id.to_string(),
+                &serde_json::json!({
+                    "schemaVersion": PROJECT_NARRATION_SCHEMA_VERSION,
+                    "projectId": project_id,
+                    "projectStateVersion": 0,
+                    "source": "original",
+                    "results": [{
+                        "subtitleId": 1,
+                        "text": "bad timing",
+                        "artifactId": "not-an-artifact",
+                        "method": "gtts",
+                        "outputIndex": 0,
+                        "originalIds": [1],
+                        "startMicros": 2,
+                        "endMicros": 1
+                    }]
+                }),
+            )
+            .unwrap();
+        assert!(get_project_narration(&fixture.database, project_id).is_err());
     }
 
     #[test]

@@ -10,53 +10,7 @@ import {
   createNativeNarrationToken,
   getNativeNarrationArtifactId,
 } from '../../../platform/nativeNarrationCapabilities';
-import { getCurrentMediaId } from './referenceAudioCache';
-
-const CACHE_KEYS = Object.freeze([
-  'f5tts_narrations_cache',
-  'chatterbox_narrations_cache',
-  'edge_tts_narrations_cache',
-  'gtts_narrations_cache',
-  'gemini_narration_cache',
-]);
-const MAX_CACHE_BYTES = 4 * 1024 * 1024;
-
-const readCache = (key, mediaId) => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw || raw.length > MAX_CACHE_BYTES) return null;
-    const value = JSON.parse(raw);
-    return value?.mediaId === mediaId && Number.isSafeInteger(value.timestamp)
-      ? value
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-const sanitizeNarration = (result) => {
-  const artifactId = getNativeNarrationArtifactId(result);
-  if (!artifactId || !result || typeof result !== 'object') return null;
-  return {
-    subtitle_id: result.subtitle_id,
-    filename: createNativeNarrationToken(artifactId),
-    nativeArtifactId: artifactId,
-    nativeFormat: result.nativeFormat,
-    durationMicros: result.durationMicros,
-    success: result.success === true,
-    pending: result.pending === true,
-    text: typeof result.text === 'string' ? result.text : '',
-    method: result.method,
-    outputIndex: result.outputIndex,
-    original_ids: Array.isArray(result.original_ids) ? [...result.original_ids] : undefined,
-    start: result.start,
-    end: result.end,
-  };
-};
-
-const newest = (entries) => entries
-  .filter(Boolean)
-  .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
+import { loadProjectNarration } from '../../../platform/projectNarrationStore';
 
 const useNarrationCache = ({
   generationResults,
@@ -87,30 +41,35 @@ const useNarrationCache = ({
   };
 
   useEffect(() => {
-    const mediaId = getCurrentMediaId();
-    if (!mediaId) return undefined;
-
-    const narrationEntry = newest(CACHE_KEYS.map((key) => readCache(key, mediaId)));
-    const narrations = Array.isArray(narrationEntry?.narrations)
-      ? narrationEntry.narrations.map(sanitizeNarration).filter(Boolean)
-      : [];
-    if (narrations.length > 0 && current.current.generationResults.length === 0) {
-      current.current.setGenerationResults(narrations);
-      current.current.setGenerationStatus(current.current.t(
-        'narration.loadedFromCache',
-        'Loaded narrations from previous session',
-      ));
-      const grouped = narrations.some((result) => result.original_ids?.length > 1);
-      window.useGroupedSubtitles = grouped;
-      if (grouped) window.groupedNarrations = [...narrations];
-      else if (current.current.subtitleSource === 'translated') {
-        window.translatedNarrations = [...narrations];
-      } else {
-        window.originalNarrations = [...narrations];
+    let disposed = false;
+    let sequence = 0;
+    const hydrate = async (snapshot) => {
+      const operation = ++sequence;
+      const projectId = snapshot?.metadata?.id;
+      if (!projectId) return;
+      try {
+        const stored = await loadProjectNarration(projectId);
+        const latest = getActiveProjectSnapshot();
+        if (disposed || operation !== sequence || stored === null
+            || latest?.metadata?.id !== stored.projectId
+            || latest.stateVersion !== stored.projectStateVersion
+            || current.current.generationResults.length > 0) return;
+        current.current.setGenerationResults(stored.results);
+        current.current.setGenerationStatus(current.current.t(
+          'narration.loadedFromCache',
+          'Loaded narrations from previous session',
+        ));
+      } catch {
+        // Corrupt or stale native records never revive browser cache data.
       }
-    }
-
-    return undefined;
+    };
+    void hydrate(getActiveProjectSnapshot());
+    const unsubscribe = subscribeToActiveProject((snapshot) => { void hydrate(snapshot); });
+    return () => {
+      disposed = true;
+      sequence += 1;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

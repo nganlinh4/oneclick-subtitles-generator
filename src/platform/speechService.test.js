@@ -74,6 +74,24 @@ const playableReference = (overrides = {}) => ({
   playable: playable(),
 });
 
+const projectNarration = (overrides = {}) => ({
+  schemaVersion: 1,
+  projectId: PROJECT_ID,
+  projectStateVersion: 7,
+  source: 'original',
+  results: [{
+    subtitleId: 1,
+    text: 'spoken words',
+    artifact: artifact(),
+    method: 'gtts',
+    outputIndex: 0,
+    originalIds: [1],
+    startMicros: 0,
+    endMicros: 1_000_000,
+  }],
+  ...overrides,
+});
+
 const backendStatus = (backend, overrides = {}) => ({
   backend,
   epoch: 0,
@@ -496,6 +514,99 @@ describe('native speech response validation', () => {
       isNativeRuntime: () => true,
     });
     await expect(service.getProjectSpeechReference(PROJECT_ID)).rejects.toMatchObject({
+      code: 'invalidSpeechResponse',
+    });
+  });
+
+  test('stores and restores exact revision-owned narration without browser-shaped fields', async () => {
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'speech_project_narration_put'
+          || command === 'speech_project_narration_get') return projectNarration();
+      throw new Error('unexpected command');
+    });
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+    });
+    const request = {
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      source: 'original',
+      results: [{
+        subtitleId: 1,
+        text: 'spoken words',
+        artifactId: ARTIFACT_ID,
+        method: 'gtts',
+        outputIndex: 0,
+        originalIds: [1],
+        startMicros: 0,
+        endMicros: 1_000_000,
+      }],
+    };
+
+    await expect(service.putProjectNarration(request)).resolves.toEqual(projectNarration());
+    await expect(service.getProjectNarration(PROJECT_ID)).resolves.toEqual(projectNarration());
+    expect(invokeCommand).toHaveBeenNthCalledWith(1, 'speech_project_narration_put', {
+      request,
+    });
+    expect(invokeCommand).toHaveBeenNthCalledWith(2, 'speech_project_narration_get', {
+      projectId: PROJECT_ID,
+    });
+    expect(JSON.stringify(invokeCommand.mock.calls)).not.toMatch(
+      /(?:localStorage|audioData|playbackUrl|[A-Za-z]:[\\/])/u
+    );
+  });
+
+  test('refuses duplicate, overlong, or rewritten narration records at the bridge', async () => {
+    const invokeCommand = vi.fn(async () => projectNarration({
+      results: [{
+        ...projectNarration().results[0],
+        text: 'native rewrote the request',
+      }],
+    }));
+    const service = createNativeSpeechService({
+      invokeCommand,
+      ChannelConstructor: FakeChannel,
+      isNativeRuntime: () => true,
+    });
+    const result = {
+      subtitleId: 1,
+      text: 'spoken words',
+      artifactId: ARTIFACT_ID,
+      method: 'gtts',
+      outputIndex: 0,
+      originalIds: [1],
+      startMicros: 0,
+      endMicros: 1_000_000,
+    };
+    const request = {
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      source: 'original',
+      results: [result],
+    };
+    await expect(service.putProjectNarration(request)).rejects.toMatchObject({
+      code: 'invalidSpeechResponse',
+    });
+
+    await expect(service.putProjectNarration({
+      ...request,
+      results: [result, { ...result }],
+    })).rejects.toMatchObject({ code: 'invalidSpeechRequest' });
+    await expect(service.putProjectNarration({
+      ...request,
+      results: [{ ...result, endMicros: (4 * 60 * 60 * 1_000_000) + 1 }],
+    })).rejects.toMatchObject({ code: 'invalidSpeechRequest' });
+    expect(invokeCommand).toHaveBeenCalledTimes(1);
+
+    invokeCommand.mockResolvedValueOnce(projectNarration({
+      results: [
+        projectNarration().results[0],
+        { ...projectNarration().results[0], artifact: { ...artifact(), artifactId: EDITED_ARTIFACT_ID } },
+      ],
+    }));
+    await expect(service.getProjectNarration(PROJECT_ID)).rejects.toMatchObject({
       code: 'invalidSpeechResponse',
     });
   });

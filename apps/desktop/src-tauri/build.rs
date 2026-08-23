@@ -118,6 +118,8 @@ const COMMANDS: &[&str] = &[
     "speech_start",
     "speech_voice_conversion_start",
     "speech_artifact_edit",
+    "speech_project_narration_put",
+    "speech_project_narration_get",
     "speech_artifact_export",
     "speech_job_results",
     "speech_alignment_start",

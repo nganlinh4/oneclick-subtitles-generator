@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { generateSubtitleHash } from '../../../utils/subtitle/subtitleHash';
-import { getCurrentMediaId } from '../../../utils/mediaId';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
-import LoadingIndicator from '../../common/LoadingIndicator';
 import '../../../styles/narration/speedControlSlider.css';
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
@@ -16,9 +13,6 @@ import GeminiResultRow from './GeminiResultRow';
 import { playAudio as playAudioImpl, downloadAudio as downloadAudioImpl } from '../utils/geminiAudioControls';
 import useGeminiAudioSpeed from '../hooks/useGeminiAudioSpeed';
 import { releaseNativeNarrationPlayback } from '../../../platform/nativeNarrationArtifacts';
-
-// Constants for localStorage keys
-const NARRATION_CACHE_KEY = 'gemini_narration_cache';
 
 /**
  * Component for displaying Gemini narration results with audio playback
@@ -49,7 +43,6 @@ const GeminiNarrationResults = ({
   const audioRef = useRef(null);
   const listRef = useRef(null);
   const rowHeights = useRef({});
-  const [loadedFromCache, setLoadedFromCache] = useState(false);
   // Track processed count during streaming speed modify to drive progress UI
   const processedCountRef = useRef(0);
   // Track unique items seen in progress stream to derive current count when server doesn't send 'processed'
@@ -228,110 +221,7 @@ const GeminiNarrationResults = ({
       listRef.current.resetAfterIndex(0);
     }
 
-    // Save narrations to cache when they change
-    if (generationResults && generationResults.length > 0) {
-      try {
-        // Get current media ID
-        const mediaId = getCurrentMediaId();
-        if (!mediaId) return;
-
-        // Generate a hash of the subtitles
-        const subtitleHash = generateSubtitleHash(generationResults);
-
-        // Create cache entry with only essential data
-        const essentialNarrations = generationResults.map(result => ({
-          subtitle_id: result.subtitle_id,
-          filename: result.filename,
-          nativeArtifactId: result.nativeArtifactId,
-          nativeFormat: result.nativeFormat,
-          durationMicros: result.durationMicros,
-          success: result.success,
-          pending: result.pending,
-          text: result.text,
-          method: result.method,
-          outputIndex: result.outputIndex,
-          original_ids: result.original_ids,
-          start: result.start,
-          end: result.end,
-        }));
-
-        const cacheEntry = {
-          mediaId,
-          subtitleHash,
-          timestamp: Date.now(),
-          narrations: essentialNarrations
-        };
-
-        // Save to localStorage
-        localStorage.setItem(NARRATION_CACHE_KEY, JSON.stringify(cacheEntry));
-
-      } catch (error) {
-        console.error('Error saving narrations to cache:', error);
-      }
-    }
   }, [generationResults]);
-
-  // Load narrations from cache on component mount
-  useEffect(() => {
-    // Only try to load from cache if we don't have results yet
-    if (generationResults && generationResults.length > 0) return;
-
-    try {
-      // Get current media ID
-      const mediaId = getCurrentMediaId();
-      if (!mediaId) return;
-
-      // Get cache entry
-      const cacheEntryJson = localStorage.getItem(NARRATION_CACHE_KEY);
-      if (!cacheEntryJson) return;
-
-      const cacheEntry = JSON.parse(cacheEntryJson);
-
-      // Check if cache entry is for the current media
-      if (cacheEntry.mediaId !== mediaId) return;
-
-      // Check if we have narrations
-      if (!cacheEntry.narrations || !cacheEntry.narrations.length) return;
-
-
-
-      // Set loading state first
-      setLoadedFromCache(true);
-
-      // Use a small timeout to ensure the loading state is rendered
-      setTimeout(() => {
-        // Dispatch an event to notify other components about the loaded narrations
-        const event = new CustomEvent('narrations-loaded-from-cache', {
-          detail: {
-            narrations: cacheEntry.narrations,
-            timestamp: Date.now()
-          }
-        });
-        window.dispatchEvent(event);
-      }, 100);
-    } catch (error) {
-      console.error('Error loading narrations from cache:', error);
-    }
-  }, [generationResults]);
-
-  // Listen for narrations-updated event to update the component
-  useEffect(() => {
-    const handleNarrationsUpdated = (event) => {
-      if (event.detail && event.detail.narrations && event.detail.fromCache) {
-
-        // Reset loading state since we now have the narrations
-        setLoadedFromCache(false);
-      }
-    };
-
-    // Add event listener
-    window.addEventListener('narrations-updated', handleNarrationsUpdated);
-
-    // Clean up
-    return () => {
-      window.removeEventListener('narrations-updated', handleNarrationsUpdated);
-    };
-  }, []);
 
   // Show toasts for failed narration items
   useEffect(() => {
@@ -347,14 +237,6 @@ const GeminiNarrationResults = ({
       });
     }
   }, [generationResults, shownErrorToasts, t]);
-
-  // Show a loading message while waiting for narrations to load
-  useEffect(() => {
-    // If we have loaded from cache but don't have results yet, show a loading message
-    if (loadedFromCache && (!generationResults || generationResults.length === 0)) {
-      // The surrounding results section owns the loading presentation.
-    }
-  }, [loadedFromCache, generationResults]);
 
   return (
     <div className="results-section">
@@ -443,23 +325,9 @@ const GeminiNarrationResults = ({
 
       <div className="results-list">
         {(!displayedResults || displayedResults.length === 0) && !hasGenerationError ? (
-          loadedFromCache ? (
-            // Show loading indicator when loading from cache
-            <div className="loading-from-cache-message">
-              <LoadingIndicator
-                theme="dark"
-                showContainer={false}
-                size={24}
-                className="cache-loading-indicator"
-              />
-              {t('narration.loadingFromCache', 'Loading narrations from previous session...')}
-            </div>
-          ) : (
-            // Show waiting message when no results and not loading from cache
-            <div className="no-results-message">
-              {t('narration.waitingForResults', 'Waiting for narration results...')}
-            </div>
-          )
+          <div className="no-results-message">
+            {t('narration.waitingForResults', 'Waiting for narration results...')}
+          </div>
         ) : (
           // Use virtualized list for better performance with large datasets
           <List

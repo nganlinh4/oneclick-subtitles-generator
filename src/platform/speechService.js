@@ -1034,6 +1034,120 @@ const normalizeArtifactExport = (request) => {
   });
 };
 
+const projectNarrationSources = new Set(['original', 'translated', 'grouped']);
+const projectNarrationMethods = new Set(['f5tts', 'chatterbox', 'edge-tts', 'gtts', 'gemini']);
+const MAX_PROJECT_NARRATION_MICROS = 4 * 60 * 60 * 1_000_000;
+
+const narrationCueKey = (value) => `${typeof value}:${String(value)}`;
+
+const normalizeNarrationCueId = (value, response = false) => {
+  if ((typeof value === 'number' && Number.isSafeInteger(value))
+      || (typeof value === 'string'
+        && value.length > 0
+        && [...value].length <= 256
+        && ![...value].some((character) => {
+          const point = character.codePointAt(0);
+          return point < 32 || point === 127;
+        }))) return value;
+  throw response ? invalidResponse() : invalidRequest();
+};
+
+const normalizeProjectNarrationResultRequest = (result) => {
+  if (!hasExactKeys(result, [
+    'subtitleId', 'text', 'artifactId', 'method', 'outputIndex', 'originalIds',
+    'startMicros', 'endMicros',
+  ])
+      || typeof result.text !== 'string'
+      || result.text.length === 0
+      || utf8ByteLength(result.text) > MAX_SEGMENT_TEXT_BYTES
+      || !projectNarrationMethods.has(result.method)
+      || !Array.isArray(result.originalIds)
+      || result.originalIds.length === 0
+      || result.originalIds.length > MAX_SPEECH_SEGMENTS) {
+    throw invalidRequest();
+  }
+  const startMicros = requireInteger(result.startMicros, 0, MAX_PROJECT_NARRATION_MICROS);
+  const endMicros = requireInteger(result.endMicros, 1, MAX_PROJECT_NARRATION_MICROS);
+  if (endMicros <= startMicros) throw invalidRequest();
+  return Object.freeze({
+    subtitleId: normalizeNarrationCueId(result.subtitleId),
+    text: result.text,
+    artifactId: requireUuid(result.artifactId, 7),
+    method: result.method,
+    outputIndex: result.outputIndex === null
+      ? null : requireInteger(result.outputIndex, 0, MAX_SPEECH_SEGMENTS - 1),
+    originalIds: Object.freeze(result.originalIds.map((id) => normalizeNarrationCueId(id))),
+    startMicros,
+    endMicros,
+  });
+};
+
+const normalizeProjectNarrationResponse = (value) => {
+  if (!hasExactKeys(value, [
+    'schemaVersion', 'projectId', 'projectStateVersion', 'source', 'results',
+  ])
+      || value.schemaVersion !== 1
+      || !projectNarrationSources.has(value.source)
+      || !Array.isArray(value.results)
+      || value.results.length > MAX_SPEECH_SEGMENTS) {
+    throw invalidResponse();
+  }
+  const projectId = requireUuid(value.projectId, 7, true);
+  const projectStateVersion = requireResponseInteger(
+    value.projectStateVersion, 0, Number.MAX_SAFE_INTEGER
+  );
+  const cueIds = new Set();
+  const artifactIds = new Set();
+  const results = value.results.map((result) => {
+    if (!hasExactKeys(result, [
+      'subtitleId', 'text', 'artifact', 'method', 'outputIndex', 'originalIds',
+      'startMicros', 'endMicros',
+    ])
+        || typeof result.text !== 'string'
+        || result.text.length === 0
+        || utf8ByteLength(result.text) > MAX_SEGMENT_TEXT_BYTES
+        || !projectNarrationMethods.has(result.method)
+        || !Array.isArray(result.originalIds)
+        || result.originalIds.length === 0
+        || result.originalIds.length > MAX_SPEECH_SEGMENTS) {
+      throw invalidResponse();
+    }
+    const subtitleId = normalizeNarrationCueId(result.subtitleId, true);
+    const artifact = normalizeSpeechArtifact(result.artifact);
+    const startMicros = requireResponseInteger(
+      result.startMicros, 0, MAX_PROJECT_NARRATION_MICROS
+    );
+    const endMicros = requireResponseInteger(
+      result.endMicros, 1, MAX_PROJECT_NARRATION_MICROS
+    );
+    if (endMicros <= startMicros) throw invalidResponse();
+    const cueKey = narrationCueKey(subtitleId);
+    if (cueIds.has(cueKey) || artifactIds.has(artifact.artifactId)) throw invalidResponse();
+    cueIds.add(cueKey);
+    artifactIds.add(artifact.artifactId);
+    return Object.freeze({
+      subtitleId,
+      text: result.text,
+      artifact,
+      method: result.method,
+      outputIndex: result.outputIndex === null
+        ? null : requireResponseInteger(result.outputIndex, 0, MAX_SPEECH_SEGMENTS - 1),
+      originalIds: Object.freeze(
+        result.originalIds.map((id) => normalizeNarrationCueId(id, true))
+      ),
+      startMicros,
+      endMicros,
+    });
+  });
+  return Object.freeze({
+    schemaVersion: 1,
+    projectId,
+    projectStateVersion,
+    source: value.source,
+    results: Object.freeze(results),
+  });
+};
+
 const normalizeVoiceConversionRequest = (request) => {
   if (!hasExactKeys(request, [
     'inputArtifactId', 'targetVoiceArtifactId', 'lifecycleEpoch',
@@ -1606,6 +1720,68 @@ export const createNativeSpeechService = ({
     });
   };
 
+  const putProjectNarration = async (request) => {
+    requireNativeRuntime();
+    if (!hasExactKeys(request, [
+      'projectId', 'expectedProjectStateVersion', 'source', 'results',
+    ])
+        || !projectNarrationSources.has(request.source)
+        || !Array.isArray(request.results)
+        || request.results.length > MAX_SPEECH_SEGMENTS) {
+      throw invalidRequest();
+    }
+    const normalized = Object.freeze({
+      projectId: requireUuid(request.projectId, 7),
+      expectedProjectStateVersion: requireInteger(
+        request.expectedProjectStateVersion, 0, Number.MAX_SAFE_INTEGER
+      ),
+      source: request.source,
+      results: Object.freeze(request.results.map(normalizeProjectNarrationResultRequest)),
+    });
+    const cueIds = new Set();
+    const artifactIds = new Set();
+    for (const result of normalized.results) {
+      const cueKey = narrationCueKey(result.subtitleId);
+      if (cueIds.has(cueKey) || artifactIds.has(result.artifactId)) throw invalidRequest();
+      cueIds.add(cueKey);
+      artifactIds.add(result.artifactId);
+    }
+    const stored = normalizeProjectNarrationResponse(
+      await invokeCommand('speech_project_narration_put', { request: normalized })
+    );
+    if (stored.projectId !== normalized.projectId
+        || stored.projectStateVersion !== normalized.expectedProjectStateVersion
+        || stored.source !== normalized.source
+        || stored.results.length !== normalized.results.length) {
+      throw invalidResponse();
+    }
+    stored.results.forEach((result, index) => {
+      const requested = normalized.results[index];
+      if (!Object.is(result.subtitleId, requested.subtitleId)
+          || result.text !== requested.text
+          || result.artifact.artifactId !== requested.artifactId
+          || result.method !== requested.method
+          || result.outputIndex !== requested.outputIndex
+          || result.startMicros !== requested.startMicros
+          || result.endMicros !== requested.endMicros
+          || result.originalIds.length !== requested.originalIds.length
+          || result.originalIds.some((id, originalIndex) => (
+            !Object.is(id, requested.originalIds[originalIndex])
+          ))) throw invalidResponse();
+    });
+    return stored;
+  };
+
+  const getProjectNarration = async (projectId) => {
+    requireNativeRuntime();
+    const id = requireUuid(projectId, 7);
+    const value = await invokeCommand('speech_project_narration_get', { projectId: id });
+    if (value === null) return null;
+    const stored = normalizeProjectNarrationResponse(value);
+    if (stored.projectId !== id) throw invalidResponse();
+    return stored;
+  };
+
   const exportSpeechArtifacts = async (request) => {
     requireNativeRuntime();
     const saved = await invokeCommand('speech_artifact_export', {
@@ -1635,6 +1811,8 @@ export const createNativeSpeechService = ({
     resolveSpeechArtifact,
     releaseSpeechPlayback,
     editSpeechArtifact,
+    putProjectNarration,
+    getProjectNarration,
     exportSpeechArtifacts,
   });
 };
@@ -1658,4 +1836,6 @@ export const getSpeechJobResults = speechService.getSpeechJobResults;
 export const resolveSpeechArtifact = speechService.resolveSpeechArtifact;
 export const releaseSpeechPlayback = speechService.releaseSpeechPlayback;
 export const editSpeechArtifact = speechService.editSpeechArtifact;
+export const putProjectNarration = speechService.putProjectNarration;
+export const getProjectNarration = speechService.getProjectNarration;
 export const exportSpeechArtifacts = speechService.exportSpeechArtifacts;

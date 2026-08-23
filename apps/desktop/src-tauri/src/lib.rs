@@ -123,7 +123,8 @@ use serde_json::Value;
 use speech::{
     SpeechRuntime, speech_alignment_result, speech_alignment_start, speech_artifact_edit,
     speech_artifact_export, speech_artifact_resolve, speech_job_results, speech_playback_release,
-    speech_probe, speech_reference_clear, speech_reference_commit, speech_reference_extract,
+    speech_probe, speech_project_narration_get, speech_project_narration_put,
+    speech_reference_clear, speech_reference_commit, speech_reference_extract,
     speech_reference_get, speech_reference_import, speech_reference_select, speech_runtime_stop,
     speech_start, speech_status, speech_voice_conversion_start, speech_voice_inventory,
 };
@@ -334,6 +335,8 @@ pub fn run() {
             speech_start,
             speech_voice_conversion_start,
             speech_artifact_edit,
+            speech_project_narration_put,
+            speech_project_narration_get,
             speech_artifact_export,
             speech_job_results,
             speech_alignment_start,
