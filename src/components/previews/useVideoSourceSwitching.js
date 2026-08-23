@@ -2,6 +2,10 @@ import { useEffect } from 'react';
 import { isLoopbackServiceUrl } from '../../platform/browserOnlyService';
 import { isNativeMediaPlaybackUrl } from '../../platform/mediaService';
 import { fetchBrowserResource } from '../../platform/browserFetch';
+import {
+  forgetBrowserMediaBlob,
+  registerBrowserMediaBlob,
+} from '../../platform/browserMediaBlobRegistry';
 import { dbg } from './videoPreviewDebug';
 
 /**
@@ -74,13 +78,11 @@ const useVideoSourceSwitching = ({
         const blob = await resp.blob();
         const objectUrl = URL.createObjectURL(blob);
         localStorage.setItem('current_file_url', objectUrl);
-        // Expose blob in a global map keyed by its object URL for downstream reuse
-        if (!window.__videoBlobMap) window.__videoBlobMap = {};
-        window.__videoBlobMap[objectUrl] = blob;
+        registerBrowserMediaBlob(objectUrl, blob);
         // Keep track of last blob to revoke later when replaced
         if (lastBlobUrlRef.current && lastBlobUrlRef.current.startsWith('blob:')) {
           try { URL.revokeObjectURL(lastBlobUrlRef.current); } catch { /* URL may already be revoked. */ }
-          try { if (window.__videoBlobMap) delete window.__videoBlobMap[lastBlobUrlRef.current]; } catch { /* Cleanup is best-effort. */ }
+          forgetBrowserMediaBlob(lastBlobUrlRef.current);
         }
         lastBlobUrlRef.current = objectUrl;
         // Notify consumers to switch to blob (acts like uploaded)

@@ -1,6 +1,11 @@
 import { getCurrentCacheId as getRulesCacheId } from './transcriptionRulesStore';
 import { getCurrentCacheId as getSubtitlesCacheId } from './userSubtitlesStore';
 import { resolveProjectForCache } from '../platform/subtitleProjectStore';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+  readNativeMediaSession,
+  resolveOwnedNativeMediaProject,
+} from '../platform/nativeMediaOwnership';
 
 const CONTEXT_KIND = 'subtitle-operation-context';
 const LEASE_KIND = 'subtitle-project-operation-lease';
@@ -54,7 +59,20 @@ const requireController = (value) => {
   return value;
 };
 
-const currentSourceCapture = () => {
+const currentSourceCapture = (cacheId, projectId = null) => {
+  if (isDesktopRuntime()) {
+    const session = readNativeMediaSession();
+    if (session === null
+        || session.cacheId !== cacheId
+        || (projectId !== null && session.projectId !== projectId)) {
+      throw new SubtitleOperationOwnershipError();
+    }
+    return Object.freeze({
+      sourceIdentity: `asset:${session.assetId}`,
+      assetId: session.assetId,
+      projectId: session.projectId,
+    });
+  }
   const url = requireText(readStorage('current_video_url'));
   const assetId = requireText(readStorage('current_file_cache_id'));
   if (url && assetId) {
@@ -66,14 +84,20 @@ const currentSourceCapture = () => {
   throw new SubtitleOperationOwnershipError();
 };
 
-const assertLiveIdentity = ({ cacheId, sourceIdentity, assetId, signal }, { allowAborted = false } = {}) => {
+const assertLiveIdentity = ({
+  cacheId,
+  projectId = null,
+  sourceIdentity,
+  assetId,
+  signal,
+}, { allowAborted = false } = {}) => {
   if (!allowAborted && signal.aborted) {
     throw new SubtitleOperationOwnershipError('subtitleOperationAborted');
   }
   if (getRulesCacheId() !== cacheId || getSubtitlesCacheId() !== cacheId) {
     throw new SubtitleOperationOwnershipError();
   }
-  const current = currentSourceCapture();
+  const current = currentSourceCapture(cacheId, projectId ?? null);
   if (current.sourceIdentity !== sourceIdentity || current.assetId !== assetId) {
     throw new SubtitleOperationOwnershipError();
   }
@@ -92,7 +116,8 @@ export const captureSubtitleOperationContext = async ({
   if (!cacheId || getSubtitlesCacheId() !== cacheId) {
     throw new SubtitleOperationOwnershipError();
   }
-  const { sourceIdentity, assetId } = currentSourceCapture();
+  const source = currentSourceCapture(cacheId);
+  const { sourceIdentity, assetId } = source;
   const key = `${cacheId}\u0000${sourceIdentity}\u0000${normalizedSegment.start}\u0000${normalizedSegment.end}`;
   if (activeOperations.has(key)) {
     throw new SubtitleOperationOwnershipError('subtitleOperationAlreadyActive');
@@ -108,9 +133,16 @@ export const captureSubtitleOperationContext = async ({
   };
   try {
     assertLiveIdentity(provisional);
-    const project = await resolveProjectForCache(cacheId, { create: true });
+    const project = isDesktopRuntime()
+      ? await resolveOwnedNativeMediaProject({
+        assetId: source.assetId,
+        cacheId,
+        projectId: source.projectId,
+      })
+      : await resolveProjectForCache(cacheId, { create: true });
     assertLiveIdentity(provisional);
-    if (!requireText(project?.projectId)) {
+    if (!requireText(project?.projectId)
+        || (source.projectId !== undefined && source.projectId !== project.projectId)) {
       throw new SubtitleOperationOwnershipError();
     }
     const context = Object.freeze({
@@ -153,6 +185,15 @@ export const isSubtitleOperationCurrent = (context, options = {}) => {
 
 export const assertSubtitleOperationDurable = async (context, options = {}) => {
   assertSubtitleOperationCurrent(context, options);
+  if (isDesktopRuntime()) {
+    const session = readNativeMediaSession();
+    const project = session === null ? null : await resolveOwnedNativeMediaProject(session);
+    assertSubtitleOperationCurrent(context, options);
+    if (!project?.projectId || project.projectId !== context.projectId) {
+      throw new SubtitleOperationOwnershipError();
+    }
+    return context;
+  }
   const project = await resolveProjectForCache(context.cacheId, { create: false });
   assertSubtitleOperationCurrent(context, options);
   if (!project?.projectId || project.projectId !== context.projectId) {

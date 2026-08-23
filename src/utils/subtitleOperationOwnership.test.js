@@ -3,6 +3,9 @@ const mocks = vi.hoisted(() => ({
   subtitlesCacheId: 'cache-a',
   projectId: 'project-a',
   resolveProjectForCache: vi.fn(),
+  desktop: false,
+  nativeSession: null,
+  resolveOwnedNativeMediaProject: vi.fn(),
 }));
 
 vi.mock('./transcriptionRulesStore', () => ({
@@ -13,6 +16,13 @@ vi.mock('./userSubtitlesStore', () => ({
 }));
 vi.mock('../platform/subtitleProjectStore', () => ({
   resolveProjectForCache: mocks.resolveProjectForCache,
+}));
+vi.mock('../platform/desktopRuntime', () => ({
+  isDesktopRuntime: () => mocks.desktop,
+}));
+vi.mock('../platform/nativeMediaOwnership', () => ({
+  readNativeMediaSession: () => mocks.nativeSession,
+  resolveOwnedNativeMediaProject: mocks.resolveOwnedNativeMediaProject,
 }));
 
 import {
@@ -39,9 +49,40 @@ beforeEach(() => {
   mocks.rulesCacheId = 'cache-a';
   mocks.subtitlesCacheId = 'cache-a';
   mocks.projectId = 'project-a';
+  mocks.desktop = false;
+  mocks.nativeSession = null;
+  mocks.resolveOwnedNativeMediaProject.mockReset();
+  mocks.resolveOwnedNativeMediaProject.mockResolvedValue({ projectId: 'project-a' });
   mocks.resolveProjectForCache.mockImplementation(async () => ({
     projectId: mocks.projectId,
   }));
+});
+
+test('desktop retry ownership follows the native session tuple, not browser mirrors', async () => {
+  mocks.desktop = true;
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-a',
+    cacheId: 'cache-a',
+    projectId: 'project-a',
+  });
+  const context = await capture();
+
+  expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledExactlyOnceWith(mocks.nativeSession);
+  expect(mocks.resolveProjectForCache).not.toHaveBeenCalled();
+
+  localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
+  localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
+  expect(assertSubtitleOperationCurrent(context)).toBe(context);
+  await expect(assertSubtitleOperationDurable(context)).resolves.toBe(context);
+  expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledWith(mocks.nativeSession);
+
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-a',
+    cacheId: 'cache-b',
+    projectId: 'project-a',
+  });
+  expect(() => assertSubtitleOperationCurrent(context)).toThrow(SubtitleOperationOwnershipError);
+  finishSubtitleOperationContext(context);
 });
 
 test('captures an immutable run and rejects a same-project same-segment duplicate', async () => {

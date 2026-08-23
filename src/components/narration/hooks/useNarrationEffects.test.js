@@ -7,8 +7,6 @@ vi.mock('../../../utils/toastUtils', () => ({
   showErrorToast: vi.fn(),
   showInfoToast: vi.fn(),
 }));
-vi.mock('./referenceAudioCache', () => ({ cacheReferenceAudio: vi.fn() }));
-
 test('narration progress replaces one keyed toast instead of stacking per cue', () => {
   const base = {
     narrationMethod: 'gtts',

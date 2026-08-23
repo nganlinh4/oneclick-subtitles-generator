@@ -13,11 +13,18 @@ import {
 import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
 import { activateSubtitleProjectBinding } from '../../../platform/subtitleProjectBinding';
 import {
+  assertAutoGenerationContextCurrent,
   createAutoGenerationContext,
   createAutoGenerationRequest,
   getAutoGenerationCacheCandidate,
 } from '../../../utils/autoGenerationOwnership';
 import { createDownloadHandlers } from './downloadHandlers';
+
+const nativeMocks = vi.hoisted(() => ({
+  desktop: false,
+  session: null,
+  resolveOwner: vi.fn(),
+}));
 
 vi.mock('../VideoProcessingHandlers', () => ({
   downloadAndPrepareYouTubeVideo: vi.fn(),
@@ -34,6 +41,13 @@ vi.mock('../../../platform/subtitleProjectStore', () => ({
 }));
 vi.mock('../../../platform/subtitleProjectBinding', () => ({
   activateSubtitleProjectBinding: vi.fn(),
+}));
+vi.mock('../../../platform/desktopRuntime', () => ({
+  isDesktopRuntime: () => nativeMocks.desktop,
+}));
+vi.mock('../../../platform/nativeMediaOwnership', () => ({
+  readNativeMediaSession: () => nativeMocks.session,
+  resolveOwnedNativeMediaProject: nativeMocks.resolveOwner,
 }));
 vi.mock('../../../utils/transcriptionRulesStore', () => ({
   ...(() => {
@@ -81,6 +95,9 @@ const buildHandlers = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nativeMocks.desktop = false;
+  nativeMocks.session = null;
+  nativeMocks.resolveOwner.mockReset();
   setRulesCacheId(null);
   setSubtitlesCacheId(null);
   vi.clearAllMocks();
@@ -103,6 +120,43 @@ beforeEach(() => {
       projectId: resolved.projectId,
     };
   });
+});
+
+test('native auto preparation ignores forged compatibility asset mirrors', async () => {
+  nativeMocks.desktop = true;
+  const media = {
+    __nativeMedia: true,
+    assetId: '019ffa3a-9a95-7a91-bad8-bd6144abaaeb',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
+  };
+  const cacheId = 'site_media_example_test_clip_mp4';
+  nativeMocks.session = Object.freeze({
+    assetId: media.assetId,
+    cacheId,
+    projectId: `project:${cacheId}`,
+  });
+  nativeMocks.resolveOwner.mockResolvedValue({ projectId: `project:${cacheId}` });
+  localStorage.setItem('current_video_url', 'https://media.example.test/clip.mp4');
+  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
+    localStorage.setItem('current_video_url', selectedVideo.url);
+    localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
+    return media;
+  });
+  const controller = new AbortController();
+  const request = createAutoGenerationRequest({ runId: 'native-auto', signal: controller.signal });
+  const { handlers } = buildHandlers();
+
+  const prepared = await handlers.startBackgroundVideoProcessing(
+    { url: 'https://media.example.test/clip.mp4' },
+    'youtube',
+    request,
+  );
+  const context = createAutoGenerationContext(prepared);
+  localStorage.setItem('current_file_cache_id', 'another-forged-browser-asset');
+  localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
+  expect(assertAutoGenerationContextCurrent(context)).toBe(context);
 });
 
 test('refreshes authoritative subtitle state when a repeated URL keeps the same alias', async () => {

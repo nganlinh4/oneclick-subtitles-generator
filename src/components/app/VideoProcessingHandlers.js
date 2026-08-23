@@ -25,6 +25,7 @@ import {
   isAutoGenerationRequest,
   sourceIdentityForUrl,
 } from '../../utils/autoGenerationOwnership';
+import { forgetBrowserMediaBlob } from '../../platform/browserMediaBlobRegistry';
 
 let activeDownloadPresentation = null;
 
@@ -140,7 +141,6 @@ export const downloadAndPrepareYouTubeVideo = async (
         await validateOwnership();
         previousSession = readNativeMediaSession();
         previousCompatibility = Object.freeze({
-          fileCacheId: localStorage.getItem('current_file_cache_id'),
           fileName: localStorage.getItem('current_file_name'),
           fileUrl: localStorage.getItem('current_file_url'),
           splitResult: localStorage.getItem('split_result'),
@@ -171,18 +171,9 @@ export const downloadAndPrepareYouTubeVideo = async (
           throw new AutoGenerationOwnershipError();
         }
 
-        const previousFileUrl = localStorage.getItem('current_file_url');
-        if (previousFileUrl?.startsWith('blob:')) {
-          try {
-            URL.revokeObjectURL(previousFileUrl);
-          } catch {
-            // A stale browser blob is already unusable and needs no further cleanup.
-          }
-        }
         localStorage.removeItem('split_result');
         localStorage.setItem('current_video_url', selectedVideo.url);
         localStorage.setItem('current_file_url', media.playbackUrl);
-        localStorage.setItem('current_file_cache_id', media.assetId);
         localStorage.setItem('current_file_name', media.name);
         handleTabChange('file-upload', false);
         setUploadedFile(media);
@@ -205,7 +196,6 @@ export const downloadAndPrepareYouTubeVideo = async (
         else writeNativeMediaSession(previousSession);
         if (previousCompatibility !== null) {
           for (const [key, value] of [
-            ['current_file_cache_id', previousCompatibility.fileCacheId],
             ['current_file_name', previousCompatibility.fileName],
             ['current_file_url', previousCompatibility.fileUrl],
             ['split_result', previousCompatibility.splitResult],
@@ -235,6 +225,18 @@ export const downloadAndPrepareYouTubeVideo = async (
       return undefined;
     }
 
+    // downloadNativeVideo resolves only after its post-publication ownership check. Until that
+    // boundary it can still roll back to previousCompatibility, so the old browser source must
+    // remain live even after publishActivation itself succeeds.
+    const replacedFileUrl = previousCompatibility?.fileUrl;
+    if (replacedFileUrl?.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(replacedFileUrl);
+      } catch {
+        // A stale browser blob is already unusable and needs no further cleanup.
+      }
+      forgetBrowserMediaBlob(replacedFileUrl);
+    }
     assertDownloadOwnership();
     return nativeMedia;
   } catch (error) {

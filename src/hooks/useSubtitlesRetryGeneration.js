@@ -11,6 +11,7 @@ import {
 import { subtitleCompletionStatus } from './subtitleCompletionStatus';
 import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { getBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
 import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 import {
@@ -221,8 +222,9 @@ export const useSubtitlesRetryGeneration = ({
                     let ytFile = null;
                     try {
                         if (blobUrl && blobUrl.startsWith('blob:')) {
-                            if (typeof window !== 'undefined' && window.__videoBlobMap && window.__videoBlobMap[blobUrl]) {
-                                const blob = window.__videoBlobMap[blobUrl];
+                            const registeredBlob = getBrowserMediaBlob(blobUrl);
+                            if (registeredBlob) {
+                                const blob = registeredBlob;
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             } else {
                                 // Fetching a blob: URL stays in-memory, not a network download

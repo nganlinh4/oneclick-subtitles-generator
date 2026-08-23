@@ -22,6 +22,9 @@ import {
   sourceIdentityForAsset,
   sourceIdentityForUrl,
 } from "../../../utils/autoGenerationOwnership";
+import { isDesktopRuntime } from "../../../platform/desktopRuntime";
+import { readNativeMediaSession } from "../../../platform/nativeMediaOwnership";
+import { registerBrowserMediaBlob } from "../../../platform/browserMediaBlobRegistry";
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -106,7 +109,15 @@ export const createDownloadHandlers = ({
       const assertPreparationOwnership = (expectedProjectId = null) => {
         if (guardedAutoRequest) {
           assertAutoGenerationRequestActive(guardedAutoRequest);
-          if (sourceIdentity?.startsWith('url:')) {
+          if (isDesktopRuntime() && expectedAssetId !== null) {
+            const session = readNativeMediaSession();
+            if (session === null
+                || session.assetId !== expectedAssetId
+                || (projectCacheId !== null && session.cacheId !== projectCacheId)
+                || (expectedProjectId !== null && session.projectId !== expectedProjectId)) {
+              throw new AutoGenerationOwnershipError();
+            }
+          } else if (sourceIdentity?.startsWith('url:')) {
             const currentUrl = localStorage.getItem('current_video_url');
             if (`url:${currentUrl ?? ''}` !== sourceIdentity) {
               throw new AutoGenerationOwnershipError();
@@ -117,7 +128,8 @@ export const createDownloadHandlers = ({
               throw new AutoGenerationOwnershipError();
             }
           }
-          if (expectedAssetId !== null
+          if (!isDesktopRuntime()
+              && expectedAssetId !== null
               && localStorage.getItem('current_file_cache_id') !== expectedAssetId) {
             throw new AutoGenerationOwnershipError();
           }
@@ -328,19 +340,13 @@ export const createDownloadHandlers = ({
           // opaque playback capability instead of treating the descriptor as a
           // browser File/Blob.
           localStorage.setItem("current_file_url", processedFile.playbackUrl);
-          localStorage.setItem("current_file_cache_id", processedFile.assetId);
         } else {
           // Check if we already have a blob URL for this browser file.
           let blobUrl = localStorage.getItem("current_file_url");
           if (!blobUrl || !blobUrl.startsWith("blob:")) {
             blobUrl = URL.createObjectURL(processedFile);
             localStorage.setItem("current_file_url", blobUrl);
-            try {
-              if (!window.__videoBlobMap) window.__videoBlobMap = {};
-              window.__videoBlobMap[blobUrl] = processedFile;
-            } catch {
-              // The optional browser-preview blob registry may be unavailable.
-            }
+            registerBrowserMediaBlob(blobUrl, processedFile);
           }
         }
         localStorage.setItem("current_file_name", processedFile.name);
@@ -361,7 +367,7 @@ export const createDownloadHandlers = ({
           projectId = binding.projectId;
           if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
           assertPreparationOwnership(projectId);
-          localStorage.setItem("current_file_cache_id", cacheId);
+          if (!nativeMedia) localStorage.setItem("current_file_cache_id", cacheId);
 
           // Publish only after the durable project identity is active.
           setUploadedFile(processedFile);

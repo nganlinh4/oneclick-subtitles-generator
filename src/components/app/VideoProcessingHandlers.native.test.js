@@ -13,6 +13,11 @@ import {
   AutoGenerationOwnershipError,
   createAutoGenerationRequest,
 } from '../../utils/autoGenerationOwnership';
+import {
+  clearBrowserMediaBlobs,
+  getBrowserMediaBlob,
+  registerBrowserMediaBlob,
+} from '../../platform/browserMediaBlobRegistry';
 
 vi.mock('../../platform/desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
@@ -99,6 +104,7 @@ const completeNativeDownloadTransaction = async (request, media = source) => {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  clearBrowserMediaBlobs();
   invokeDesktop.mockImplementation(async (command) => {
     if (command === 'get_session_snapshot' || command === 'clear_media') {
       return { media: null, playback: null, subtitleTrack: null };
@@ -188,6 +194,9 @@ it('shows a localized actionable error only after the downloader retry is exhaus
 it('activates the URL project before publishing downloaded media to React', async () => {
   generateUrlBasedCacheId.mockResolvedValue('reviewed');
   const setUploadedFile = vi.fn();
+  localStorage.setItem('current_file_url', 'blob:replaced');
+  registerBrowserMediaBlob('blob:replaced', new Blob(['old-media']));
+  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
   await expect(downloadAndPrepareYouTubeVideo(
     { url: 'https://www.youtube.com/watch?v=reviewed' },
@@ -216,6 +225,55 @@ it('activates the URL project before publishing downloaded media to React', asyn
   });
   expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
+  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:replaced');
+  expect(getBrowserMediaBlob('blob:replaced')).toBeNull();
+});
+
+it('rolls back to a live browser source when post-publication ownership is lost', async () => {
+  const previousBlob = new Blob(['previous-media']);
+  localStorage.setItem('current_file_url', 'blob:previous-media');
+  localStorage.setItem('current_file_name', 'previous.mp4');
+  registerBrowserMediaBlob('blob:previous-media', previousBlob);
+  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  downloadNativeVideo.mockImplementationOnce(async (request) => {
+    const cacheId = await generateUrlBasedCacheId.mock.results.at(-1)?.value;
+    const binding = await request.admitActivation({
+      assetId: source.assetId,
+      resolvedProject: {
+        cacheId,
+        projectId: `project:${cacheId}`,
+        snapshot: {
+          metadata: { id: `project:${cacheId}`, name: 'Downloaded media' },
+          stateVersion: 0,
+          media: [],
+          tracks: [],
+        },
+      },
+      url: request.url,
+    }, { validateOwnership: request.validateOwnership });
+    await request.publishActivation(source, binding, {
+      validateOwnership: request.validateOwnership,
+    });
+    await request.rollbackActivation({ validateOwnership: request.validateOwnership });
+    throw new AutoGenerationOwnershipError();
+  });
+  const setStatus = vi.fn();
+
+  await expect(downloadAndPrepareYouTubeVideo(
+    { url: 'https://www.youtube.com/watch?v=reviewed' },
+    vi.fn(),
+    vi.fn(),
+    setStatus,
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+  )).resolves.toBeUndefined();
+
+  expect(localStorage.getItem('current_file_url')).toBe('blob:previous-media');
+  expect(localStorage.getItem('current_file_name')).toBe('previous.mp4');
+  expect(getBrowserMediaBlob('blob:previous-media')).toBe(previousBlob);
+  expect(revokeObjectUrl).not.toHaveBeenCalled();
 });
 
 it('publishes neither compatibility identity nor React media before the binding receipt', async () => {
@@ -418,7 +476,7 @@ it('a manual A download which finishes after B cannot bind, select, or publish A
   });
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(sourceB);
   expect(localStorage.getItem('current_video_url')).toBe('https://example.test/b');
-  expect(localStorage.getItem('current_file_cache_id')).toBe(sourceB.assetId);
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
   expect(localStorage.getItem('current_file_url')).toBe(sourceB.playbackUrl);
   expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'success' }));
 });

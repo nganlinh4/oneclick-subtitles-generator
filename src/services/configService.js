@@ -39,12 +39,3 @@ export const setCurrentVideoUrl = (url) => {
     // Settings persistence is best effort for compatibility callers.
   }
 };
-
-export const getCurrentFileCacheId = () => localStorage.getItem('current_file_cache_id') || null;
-export const setCurrentFileCacheId = (id) => {
-  try {
-    localStorage.setItem('current_file_cache_id', id);
-  } catch {
-    // Settings persistence is best effort for compatibility callers.
-  }
-};

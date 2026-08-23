@@ -15,6 +15,7 @@ import {
   activateSubtitleProjectBinding,
   isSubtitleProjectBindingReceipt,
 } from '../platform/subtitleProjectBinding';
+import { forgetBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
 
 /**
  * Restore the media a previous run left active.
@@ -169,15 +170,25 @@ export const applyNativeMediaSession = ({
       if (validateOwnership() !== true) {
         throw new Error('The restored media session was superseded.');
       }
-      // These are write-only compatibility mirrors for old UI teardown. Restoration and every
-      // product operation derive identity from the native project/session capability above.
+      // The URL mirror exists only so old UI teardown can revoke a browser-era object URL. Native
+      // identity remains exclusively in the validated media-session capability above.
       const previousUrl = localStorage.getItem('current_file_url');
-      if (previousUrl?.startsWith('blob:') && previousUrl !== media.playbackUrl) {
-        URL.revokeObjectURL(previousUrl);
-      }
       localStorage.setItem('current_file_url', media.playbackUrl);
-      localStorage.setItem('current_file_cache_id', media.assetId);
-      setUploadedFile(media);
+      try {
+        setUploadedFile(media);
+      } catch (error) {
+        if (previousUrl === null) localStorage.removeItem('current_file_url');
+        else localStorage.setItem('current_file_url', previousUrl);
+        throw error;
+      }
+      if (previousUrl?.startsWith('blob:') && previousUrl !== media.playbackUrl) {
+        try {
+          URL.revokeObjectURL(previousUrl);
+        } catch {
+          // A stale object URL is already inert; the registry must still release its Blob.
+        }
+        forgetBrowserMediaBlob(previousUrl);
+      }
       return receipt;
     });
 };

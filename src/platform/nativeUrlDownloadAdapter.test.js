@@ -1432,7 +1432,7 @@ it('keeps native picker media opaque while preparing the file workflow', async (
 
   expect(createObjectUrl).not.toHaveBeenCalled();
   expect(localStorage.getItem('current_file_url')).toBe(nativeMedia.playbackUrl);
-  expect(localStorage.getItem('current_file_cache_id')).toBe(assetId);
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
   expect(getCachedSubtitles).toHaveBeenCalledWith(assetId, null, {
     expectedProjectId: `project:${assetId}`,
   });

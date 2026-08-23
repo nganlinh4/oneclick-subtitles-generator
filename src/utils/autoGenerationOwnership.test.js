@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   saveProjectSubtitles: vi.fn(),
   clearProjectSubtitles: vi.fn(),
   cacheListeners: new Set(),
+  desktop: false,
+  nativeSession: null,
+  resolveOwnedNativeMediaProject: vi.fn(),
 }));
 
 vi.mock('./transcriptionRulesStore', () => ({
@@ -23,12 +26,20 @@ vi.mock('../platform/subtitleProjectStore', () => ({
   clearProjectSubtitles: mocks.clearProjectSubtitles,
   loadProjectSubtitles: vi.fn(),
 }));
+vi.mock('../platform/desktopRuntime', () => ({
+  isDesktopRuntime: () => mocks.desktop,
+}));
+vi.mock('../platform/nativeMediaOwnership', () => ({
+  readNativeMediaSession: () => mocks.nativeSession,
+  resolveOwnedNativeMediaProject: mocks.resolveOwnedNativeMediaProject,
+}));
 
 import { commitDurableSubtitleCheckpoint } from '../services/subtitleCache';
 
 import {
   assertAutoGenerationContextCurrent,
   assertAutoGenerationContextDurable,
+  captureActiveMediaRunContext,
   createAutoGenerationCompletion,
   createAutoGenerationContext,
   createAutoGenerationRequest,
@@ -63,8 +74,82 @@ beforeEach(() => {
   mocks.clearProjectSubtitles.mockReset();
   mocks.clearProjectSubtitles.mockResolvedValue(true);
   mocks.cacheListeners.clear();
+  mocks.desktop = false;
+  mocks.nativeSession = null;
+  mocks.resolveOwnedNativeMediaProject.mockReset();
+  mocks.resolveOwnedNativeMediaProject.mockResolvedValue({ projectId: 'project-1' });
   localStorage.clear();
   localStorage.setItem('current_file_cache_id', 'asset-1');
+});
+
+test('desktop ownership uses the exact native session tuple instead of compatibility mirrors', async () => {
+  mocks.desktop = true;
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-1',
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+  });
+  const { context } = createContext();
+
+  localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
+  localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
+  expect(assertAutoGenerationContextCurrent(context)).toBe(context);
+  await expect(assertAutoGenerationContextDurable(context)).resolves.toBe(context);
+  expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledWith(mocks.nativeSession);
+
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-2',
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+  });
+  expect(() => assertAutoGenerationContextCurrent(context)).toThrowError(
+    expect.objectContaining({ code: 'autoGenerationOwnershipLost' })
+  );
+});
+
+test('desktop capture resolves the owned asset without creating from a browser alias', async () => {
+  mocks.desktop = true;
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-1',
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+  });
+  const controller = new AbortController();
+  const media = Object.freeze({ assetId: 'asset-1', type: 'video/mp4' });
+
+  const context = await captureActiveMediaRunContext({
+    runId: 'native-capture',
+    media,
+    signal: controller.signal,
+  });
+
+  expect(context).toMatchObject({
+    assetId: 'asset-1',
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+    sourceIdentity: 'asset:asset-1',
+  });
+  expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledExactlyOnceWith(mocks.nativeSession);
+  expect(mocks.resolveProjectForCache).not.toHaveBeenCalled();
+});
+
+test('desktop capture refuses a stale session before any durable resolver can mutate state', async () => {
+  mocks.desktop = true;
+  mocks.nativeSession = Object.freeze({
+    assetId: 'asset-stale',
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+  });
+  const controller = new AbortController();
+
+  await expect(captureActiveMediaRunContext({
+    runId: 'stale-native-capture',
+    media: Object.freeze({ assetId: 'asset-1', type: 'video/mp4' }),
+    signal: controller.signal,
+  })).rejects.toMatchObject({ code: 'autoGenerationOwnershipLost' });
+
+  expect(mocks.resolveOwnedNativeMediaProject).not.toHaveBeenCalled();
+  expect(mocks.resolveProjectForCache).not.toHaveBeenCalled();
 });
 
 test('the active-run watcher reports a source-only switch and detaches after loss', async () => {

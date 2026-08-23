@@ -17,6 +17,10 @@ import {
   selectMedia,
 } from '../../platform/mediaService';
 import {
+  forgetBrowserMediaBlob,
+  registerBrowserMediaBlob,
+} from '../../platform/browserMediaBlobRegistry';
+import {
   activateSubtitleProjectBinding,
   clearSubtitleProjectBinding,
 } from '../../platform/subtitleProjectBinding';
@@ -155,9 +159,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       } catch {
         // A stale object URL is already inert.
       }
+      forgetBrowserMediaBlob(previousUrl);
     }
     localStorage.setItem('current_file_url', media.playbackUrl);
-    localStorage.setItem('current_file_cache_id', media.assetId);
 
     if (onVideoSelect) onVideoSelect(null);
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
@@ -382,7 +386,11 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
 
         // Revoke any existing object URLs to prevent memory leaks
         if (localStorage.getItem('current_file_url')) {
-          URL.revokeObjectURL(localStorage.getItem('current_file_url'));
+          const previousUrl = localStorage.getItem('current_file_url');
+          if (previousUrl?.startsWith('blob:')) {
+            URL.revokeObjectURL(previousUrl);
+            forgetBrowserMediaBlob(previousUrl);
+          }
           localStorage.removeItem('current_file_url');
         }
 
@@ -392,12 +400,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
         // Create a new object URL for the processed file
         const objectUrl = URL.createObjectURL(processedFile);
         localStorage.setItem('current_file_url', objectUrl);
-        try {
-          if (!window.__videoBlobMap) window.__videoBlobMap = {};
-          window.__videoBlobMap[objectUrl] = processedFile;
-        } catch {
-          // The optional browser-only blob map is not part of native media ownership.
-        }
+        registerBrowserMediaBlob(objectUrl, processedFile);
 
         // Clear any selected YouTube video state via parent callback
         if (onVideoSelect) {
@@ -439,7 +442,11 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
           fileInputRef.current.value = '';
         }
         if (localStorage.getItem('current_file_url')) {
-          URL.revokeObjectURL(localStorage.getItem('current_file_url'));
+          const previousUrl = localStorage.getItem('current_file_url');
+          if (previousUrl?.startsWith('blob:')) {
+            URL.revokeObjectURL(previousUrl);
+            forgetBrowserMediaBlob(previousUrl);
+          }
           localStorage.removeItem('current_file_url');
         }
         // Clear loading state if validation fails
@@ -506,6 +513,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
       } catch {
         // A stale object URL is already inert.
       }
+      forgetBrowserMediaBlob(existingUrl);
     }
     localStorage.removeItem('current_file_url');
 

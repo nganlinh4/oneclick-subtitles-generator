@@ -5,6 +5,11 @@ import {
 } from './userSubtitlesStore';
 import { resolveProjectForCache } from '../platform/subtitleProjectStore';
 import { isDurableSubtitleCheckpointReceipt } from '../services/subtitleCache';
+import { isDesktopRuntime } from '../platform/desktopRuntime';
+import {
+  readNativeMediaSession,
+  resolveOwnedNativeMediaProject,
+} from '../platform/nativeMediaOwnership';
 
 const AUTO_REQUEST_KIND = 'auto-generation-request';
 const PREPARED_MEDIA_KIND = 'auto-prepared-media';
@@ -140,16 +145,37 @@ export const captureActiveMediaRunContext = async ({ runId, media, signal }) => 
   if (!cacheId || getSubtitlesCacheId() !== cacheId) {
     throw new AutoGenerationOwnershipError();
   }
-  const project = await resolveProjectForCache(cacheId, { create: true });
+  const desktop = isDesktopRuntime();
+  const capturedSession = desktop ? readNativeMediaSession() : null;
+  if (desktop && (capturedSession === null
+      || capturedSession.cacheId !== cacheId
+      || capturedSession.assetId !== media?.assetId)) {
+    throw new AutoGenerationOwnershipError();
+  }
+  const project = desktop
+    ? await resolveOwnedNativeMediaProject(capturedSession)
+    : await resolveProjectForCache(cacheId, { create: true });
   if (!project?.projectId) throw new AutoGenerationOwnershipError();
   assertAutoGenerationRequestActive(request);
   if (getRulesCacheId() !== cacheId || getSubtitlesCacheId() !== cacheId) {
     throw new AutoGenerationOwnershipError();
   }
-  const currentUrl = readStorage('current_video_url');
-  const sourceIdentity = currentUrl
-    ? sourceIdentityForUrl(currentUrl)
-    : sourceIdentityForAsset(readStorage('current_file_cache_id'));
+  let sourceIdentity;
+  if (desktop) {
+    const session = readNativeMediaSession();
+    if (session === null
+        || session.cacheId !== cacheId
+        || session.projectId !== project.projectId
+        || session.assetId !== capturedSession.assetId) {
+      throw new AutoGenerationOwnershipError();
+    }
+    sourceIdentity = sourceIdentityForAsset(session.assetId);
+  } else {
+    const currentUrl = readStorage('current_video_url');
+    sourceIdentity = currentUrl
+      ? sourceIdentityForUrl(currentUrl)
+      : sourceIdentityForAsset(readStorage('current_file_cache_id'));
+  }
   return createAutoGenerationContext(createPreparedAutoMedia({
     request,
     media,
@@ -194,6 +220,18 @@ export const assertAutoGenerationContextCurrent = (context) => {
     throw new AutoGenerationOwnershipError();
   }
 
+  if (isDesktopRuntime()) {
+    const session = readNativeMediaSession();
+    if (context.assetId === null
+        || session === null
+        || session.assetId !== context.assetId
+        || session.cacheId !== context.cacheId
+        || session.projectId !== context.projectId) {
+      throw new AutoGenerationOwnershipError();
+    }
+    return context;
+  }
+
   const currentUrl = readStorage('current_video_url');
   if (context.sourceIdentity.startsWith('url:')) {
     if (`url:${currentUrl ?? ''}` !== context.sourceIdentity) {
@@ -222,6 +260,15 @@ export const assertAutoGenerationContextCurrent = (context) => {
  */
 export const assertAutoGenerationContextDurable = async (context) => {
   assertAutoGenerationContextCurrent(context);
+  if (isDesktopRuntime()) {
+    const session = readNativeMediaSession();
+    const project = session === null ? null : await resolveOwnedNativeMediaProject(session);
+    assertAutoGenerationContextCurrent(context);
+    if (!project?.projectId || project.projectId !== context.projectId) {
+      throw new AutoGenerationOwnershipError();
+    }
+    return context;
+  }
   const project = await resolveProjectForCache(context.cacheId, { create: false });
   assertAutoGenerationContextCurrent(context);
   if (!project?.projectId || project.projectId !== context.projectId) {

@@ -41,8 +41,6 @@ vi.mock('../../../platform/speechService', () => ({
   GEMINI_SPEECH_MODELS: ['gemini-3.1-flash-live-preview'],
   getSpeechLifecycleSnapshot: speechMocks.getSpeechLifecycleSnapshot,
 }));
-vi.mock('./referenceAudioCache', () => ({ getCurrentMediaId: () => 'test-media' }));
-
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
 const REFERENCE_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a3';
 const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';

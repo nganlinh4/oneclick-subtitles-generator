@@ -3,6 +3,11 @@ import {
   createNativeMediaSessionHydrator,
 } from './useNativeMediaSessionHydration';
 import { createNativeMediaDescriptor } from '../platform/mediaService';
+import {
+  clearBrowserMediaBlobs,
+  getBrowserMediaBlob,
+  registerBrowserMediaBlob,
+} from '../platform/browserMediaBlobRegistry';
 
 const deferred = () => {
   let resolve;
@@ -83,6 +88,7 @@ const createHarness = (overrides = {}) => {
 
 beforeEach(() => {
   localStorage.clear();
+  clearBrowserMediaBlobs();
   vi.restoreAllMocks();
 });
 
@@ -109,6 +115,7 @@ it('publishes the owning project and reopens the remembered asset on a fresh pro
 
 it('awaits an exact-project binding receipt before publishing the restored media', async () => {
   localStorage.setItem('current_file_url', 'blob:obsolete');
+  registerBrowserMediaBlob('blob:obsolete', new Blob(['obsolete']));
   const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   const setUploadedFile = vi.fn();
   const receipt = Object.freeze({ cacheId: URL_ALIAS, projectId: PROJECT_A });
@@ -126,14 +133,35 @@ it('awaits an exact-project binding receipt before publishing the restored media
   });
 
   expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:obsolete');
+  expect(getBrowserMediaBlob('blob:obsolete')).toBeNull();
   expect(localStorage.getItem('current_file_url')).toBe(MEDIA_A.playbackUrl);
-  // The identity key still holds the asset; only the project alias holds the cache ID.
-  expect(localStorage.getItem('current_file_cache_id')).toBe(ASSET_A);
+  // Native identity is held only by the validated session tuple, never a browser mirror.
+  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
   expect(activateBindingImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS, {
     expectedProjectId: PROJECT_A,
     create: false,
   });
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
+});
+
+it('keeps the replaced browser source live when React publication refuses', async () => {
+  const previousBlob = new Blob(['still-current']);
+  localStorage.setItem('current_file_url', 'blob:still-current');
+  registerBrowserMediaBlob('blob:still-current', previousBlob);
+  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+  await expect(applyNativeMediaSession({
+    media: MEDIA_A,
+    cacheId: URL_ALIAS,
+    projectId: PROJECT_A,
+    setUploadedFile: () => { throw new Error('publication refused'); },
+    activateBindingImpl: async () => Object.freeze({ cacheId: URL_ALIAS, projectId: PROJECT_A }),
+    validateBindingImpl: () => true,
+  })).rejects.toThrow('publication refused');
+
+  expect(localStorage.getItem('current_file_url')).toBe('blob:still-current');
+  expect(getBrowserMediaBlob('blob:still-current')).toBe(previousBlob);
+  expect(revokeObjectUrl).not.toHaveBeenCalled();
 });
 
 it.each([
