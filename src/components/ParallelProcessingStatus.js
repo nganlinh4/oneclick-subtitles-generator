@@ -38,19 +38,30 @@ const ParallelProcessingStatus = ({
 
   // Check if transcription rules are available
   useEffect(() => {
+    let mounted = true;
+    const applyRulesAvailability = (rules) => {
+      if (mounted) setRulesAvailable(Boolean(rules));
+    };
     const checkRulesAvailability = async () => {
       try {
         // Dynamically import to avoid circular dependencies
         const { getTranscriptionRulesSync } = await import('../utils/transcriptionRulesStore');
-        const rules = getTranscriptionRulesSync();
-        setRulesAvailable(!!rules);
+        applyRulesAvailability(getTranscriptionRulesSync());
       } catch (error) {
         console.error('Error checking transcription rules availability:', error);
-        setRulesAvailable(false);
+        applyRulesAvailability(null);
       }
     };
+    const handleRulesUpdate = (event) => {
+      applyRulesAvailability(event.detail?.rules ?? null);
+    };
 
-    checkRulesAvailability();
+    window.addEventListener('transcriptionRulesUpdated', handleRulesUpdate);
+    void checkRulesAvailability();
+    return () => {
+      mounted = false;
+      window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
+    };
   }, []);
 
   // No need for click outside handler since we don't have a dropdown anymore

@@ -60,6 +60,36 @@ test('shows the rules action only when hydrated rules actually exist', async () 
   expect(onViewRules).toHaveBeenCalledTimes(1);
 });
 
+test('tracks rules created and cleared while segment processing remains mounted', async () => {
+  const onViewRules = vi.fn();
+  render(
+    <ParallelProcessingStatus
+      segments={segments}
+      overallStatus=""
+      statusType=""
+      onRetrySegment={vi.fn()}
+      onRetryWithModel={vi.fn()}
+      retryingSegments={[]}
+      onViewRules={onViewRules}
+    />
+  );
+
+  await waitFor(() => expect(getTranscriptionRulesSync).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: /view rules/i })).not.toBeInTheDocument();
+
+  act(() => window.dispatchEvent(new CustomEvent('transcriptionRulesUpdated', {
+    detail: { rules: { atmosphere: 'live interview' } },
+  })));
+  expect(await screen.findByRole('button', { name: /view rules/i })).toBeInTheDocument();
+
+  act(() => window.dispatchEvent(new CustomEvent('transcriptionRulesUpdated', {
+    detail: { rules: null },
+  })));
+  await waitFor(() => {
+    expect(screen.queryByRole('button', { name: /view rules/i })).not.toBeInTheDocument();
+  });
+});
+
 test('removes DOM-save and timeout success and locks every modal exit while retry is pending', async () => {
   vi.useFakeTimers();
   const saveButton = document.createElement('button');
