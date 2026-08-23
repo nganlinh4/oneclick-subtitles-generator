@@ -18,6 +18,7 @@ use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
+use uuid::Uuid;
 
 use crate::diagnostics;
 use crate::dialog_paths;
@@ -708,17 +709,43 @@ pub(crate) async fn promote_media_candidate(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
-pub(crate) fn clear_media(state: State<'_, DesktopState>) -> CommandResult<DesktopSessionSnapshot> {
-    clear_activated_media(&state.editor, &state.media_server)
+pub(crate) fn clear_media(
+    state: State<'_, DesktopState>,
+    expected_asset_id: Option<AssetId>,
+    expected_playback_id: Option<Uuid>,
+) -> CommandResult<DesktopSessionSnapshot> {
+    let expected = match (expected_asset_id, expected_playback_id) {
+        (None, None) => None,
+        (Some(asset_id), Some(playback_id)) => Some((asset_id, playback_id)),
+        _ => {
+            return Err(CommandError::invalid_input(
+                "Both expected media identifiers are required.",
+            ));
+        }
+    };
+    clear_activated_media(&state.editor, &state.media_server, expected)
 }
 
 fn clear_activated_media(
     editor_state: &std::sync::RwLock<crate::state::EditorSession>,
     media_server: &MediaServer,
+    expected: Option<(AssetId, Uuid)>,
 ) -> CommandResult<DesktopSessionSnapshot> {
     let mut editor = editor_state
         .write()
         .map_err(|_| CommandError::internal("the editing session is unavailable"))?;
+    if let Some((expected_asset_id, expected_playback_id)) = expected {
+        let exact_media_is_active = editor.pending_media_activation.is_none()
+            && editor
+                .local_media
+                .as_ref()
+                .map(crate::state::LocalMedia::asset_id)
+                == Some(expected_asset_id)
+            && editor.playback.as_ref().map(|playback| playback.id) == Some(expected_playback_id);
+        if !exact_media_is_active {
+            return Err(CommandError::media_selection_changed());
+        }
+    }
     advance_media_intent(&mut editor)?;
     editor.pending_media_activation = None;
     let previous = editor.playback.take();
@@ -1358,6 +1385,82 @@ mod tests {
     }
 
     #[test]
+    fn conditional_clear_refuses_stale_or_in_flight_media_and_releases_only_the_exact_active_pair()
+    {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let active_path = directory.path().join("active.mp4");
+        fs::write(&active_path, vec![0x51; 1024]).expect("active fixture");
+        let media_server = MediaServer::start(std::iter::empty()).expect("media server");
+        let editor = RwLock::new(EditorSession::default());
+
+        let active = inspect_media(&active_path).expect("active media");
+        let active_id = active.asset().id();
+        let active_playback = media_server
+            .register(active.canonical_path())
+            .expect("active playback");
+        let active_playback_id = active_playback.id;
+        let active_sequence = begin_media_activation(&editor, active_id, false)
+            .expect("begin active")
+            .expect("active intent");
+        commit_activated_media(
+            &editor,
+            &media_server,
+            active_sequence,
+            active_id,
+            active,
+            active_playback,
+        )
+        .expect("commit active")
+        .expect("active wins");
+
+        let stale = clear_activated_media(
+            &editor,
+            &media_server,
+            Some((AssetId::new(), active_playback_id)),
+        )
+        .expect_err("stale asset must not clear active media");
+        assert_eq!(stale.code(), "mediaSelectionChanged");
+
+        let pending_id = AssetId::new();
+        begin_media_activation(&editor, pending_id, false)
+            .expect("begin replacement")
+            .expect("replacement intent");
+        let pending = clear_activated_media(
+            &editor,
+            &media_server,
+            Some((active_id, active_playback_id)),
+        )
+        .expect_err("a newer in-flight selection must win");
+        assert_eq!(pending.code(), "mediaSelectionChanged");
+        assert_eq!(
+            editor
+                .read()
+                .expect("editor read")
+                .snapshot()
+                .session
+                .media
+                .as_ref()
+                .map(MediaAsset::id),
+            Some(active_id),
+        );
+
+        invalidate_pending_media_activation(&editor, Some(pending_id)).expect("cancel replacement");
+        let cleared = clear_activated_media(
+            &editor,
+            &media_server,
+            Some((active_id, active_playback_id)),
+        )
+        .expect("clear exact media");
+        assert!(cleared.session.media.is_none());
+        assert!(cleared.playback.is_none());
+        assert!(
+            !media_server
+                .unregister(active_playback_id)
+                .expect("exact clear already withdrew capability")
+        );
+    }
+
+    #[test]
     fn clear_advances_the_intent_and_invalidates_in_flight_activation() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let active_path = directory.path().join("active.mp4");
@@ -1397,7 +1500,7 @@ mod tests {
             .expect("begin pending")
             .expect("pending intent");
 
-        let cleared = clear_activated_media(&editor, &media_server).expect("clear media");
+        let cleared = clear_activated_media(&editor, &media_server, None).expect("clear media");
         assert!(cleared.session.media.is_none());
         assert!(cleared.playback.is_none());
         assert!(

@@ -132,12 +132,25 @@ export const writeNativeMediaSession = (session, {
 };
 
 export const forgetNativeMediaSession = ({
+  expectedSession = null,
+  readValue = () => localStorage.getItem(NATIVE_MEDIA_SESSION_KEY),
   removeValue = () => localStorage.removeItem(NATIVE_MEDIA_SESSION_KEY),
 } = {}) => {
+  if (expectedSession !== null) {
+    const current = readNativeMediaSession({ readValue });
+    if (current === null
+        || current.assetId !== expectedSession.assetId
+        || current.cacheId !== expectedSession.cacheId
+        || current.projectId !== expectedSession.projectId) {
+      return false;
+    }
+  }
   try {
     removeValue();
+    return true;
   } catch {
     // A session pointer that cannot be cleared is re-validated on the next read anyway.
+    return false;
   }
 };
 

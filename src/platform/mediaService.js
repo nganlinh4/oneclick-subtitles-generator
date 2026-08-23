@@ -175,6 +175,11 @@ const validateAssetId = (value) => {
   return value;
 };
 
+const validatePlaybackId = (value) => {
+  if (!isUuidV4(value)) throw invalidMediaRequest();
+  return value;
+};
+
 const validateOfferId = (value) => {
   if (!isUuidV4(value)) throw invalidMediaRequest();
   return value;
@@ -670,10 +675,25 @@ const mediaCandidateLifecycle = createMediaCandidateLifecycle();
 export const claimMediaCandidate = mediaCandidateLifecycle.claim;
 export const discardMediaCandidate = mediaCandidateLifecycle.discard;
 
-export const clearMedia = async () => normalizeSnapshot(
-  await invokeDesktop('clear_media', {}),
-  { requireEmpty: true }
-);
+export const clearMedia = async ({
+  expectedAssetId = null,
+  expectedPlaybackId = null,
+} = {}) => {
+  const hasExpectedIdentity = expectedAssetId !== null || expectedPlaybackId !== null;
+  if (hasExpectedIdentity && (expectedAssetId === null || expectedPlaybackId === null)) {
+    throw invalidMediaRequest();
+  }
+  const request = hasExpectedIdentity
+    ? {
+      expectedAssetId: validateAssetId(expectedAssetId),
+      expectedPlaybackId: validatePlaybackId(expectedPlaybackId),
+    }
+    : { expectedAssetId: null, expectedPlaybackId: null };
+  return normalizeSnapshot(
+    await invokeDesktop('clear_media', request),
+    { requireEmpty: true }
+  );
+};
 
 export const claimMediaDrop = async (offerId) => normalizeSnapshot(
   await invokeDesktop('media_drop_claim', { offerId: validateOfferId(offerId) }),

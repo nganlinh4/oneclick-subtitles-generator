@@ -5,6 +5,7 @@ import { nativeMediaDropService, sharedNativeMediaDropService } from '../../plat
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
 import {
   ensureProjectOwnsNativeMedia,
+  forgetNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
 } from '../../platform/nativeMediaOwnership';
@@ -13,7 +14,9 @@ import {
   claimMediaDrop,
   clearMedia,
   getSelectedMedia,
+  isNativeMediaDescriptor,
   isNativeMediaPlaybackUrl,
+  restoreMediaAsset,
   selectMedia,
 } from '../../platform/mediaService';
 import {
@@ -48,6 +51,50 @@ export const reconcileSelectedNativeMedia = async ({
   }
   await applyOwnedSession(media, session);
   return 'owned-session';
+};
+
+export const releaseSelectedNativeMedia = async ({
+  media,
+  clear = clearMedia,
+  readSession = readNativeMediaSession,
+  forgetSession = forgetNativeMediaSession,
+  restore = restoreMediaAsset,
+}) => {
+  if (!isNativeMediaDescriptor(media)
+      || typeof clear !== 'function'
+      || typeof readSession !== 'function'
+      || typeof forgetSession !== 'function'
+      || typeof restore !== 'function') {
+    throw new TypeError('Exact native media is required for release');
+  }
+  const session = readSession();
+  await clear({
+    expectedAssetId: media.assetId,
+    expectedPlaybackId: media.playbackId,
+  });
+  if (session === null || session.assetId !== media.assetId) return null;
+  if (forgetSession({ expectedSession: session }) === true) return session;
+
+  const current = readSession();
+  if (current === null
+      || current.assetId !== session.assetId
+      || current.cacheId !== session.cacheId
+      || current.projectId !== session.projectId) {
+    return null;
+  }
+
+  // The native capability has already been withdrawn, but its exact durable pointer survived.
+  // Reopen only if the host is still empty: a newer selection arriving after `clear` must win.
+  // Refusing the UI removal after this rollback keeps the visible state and relaunch state equal.
+  const restored = await restore(media.assetId);
+  if (restored === null) return null;
+  if (!isNativeMediaDescriptor(restored)
+      || restored.assetId !== media.assetId) {
+    throw new Error('The selected media could not be restored after its session remained active.');
+  }
+  throw Object.assign(new Error('The selected media session could not be removed.'), {
+    restoredMedia: restored,
+  });
 };
 
 const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
@@ -485,14 +532,26 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
   const handleRemoveFile = async (event) => {
     event.stopPropagation();
     const operation = ++nativeOperationRef.current;
-    if (isDesktopRuntime()) {
+    setIsLoading(true);
+    const desktopRuntime = isDesktopRuntime();
+    let removedSession = null;
+    if (desktopRuntime) {
       try {
-        await clearMedia();
+        removedSession = await releaseSelectedNativeMedia({
+          media: uploadedFile,
+        });
       } catch (error) {
         if (nativeOperationRef.current === operation) {
+          if (isNativeMediaDescriptor(error?.restoredMedia)) {
+            setUploadedFile(error.restoredMedia);
+            if (setUploadedFileData) setUploadedFileData(null);
+            localStorage.setItem('current_file_url', error.restoredMedia.playbackUrl);
+            displayFileInfo(error.restoredMedia);
+          }
           const message = error?.message || t('fileUpload.releaseError', 'Could not release the selected media.');
           if (setStatus) setStatus({ message, type: 'error' });
           else if (window.addToast) window.addToast(message, 'error', 8000);
+          setIsLoading(false);
         }
         return;
       }
@@ -502,7 +561,14 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     setFileInfo(null);
     if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(null);
-    clearSubtitleProjectBinding();
+    if (!desktopRuntime) {
+      clearSubtitleProjectBinding();
+    } else if (removedSession !== null) {
+      clearSubtitleProjectBinding({
+        expectedCacheId: removedSession.cacheId,
+        expectedProjectId: removedSession.projectId,
+      });
+    }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -534,6 +600,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
 
     const savedSubtitles = localStorage.getItem('subtitles_data');
     if (savedSubtitles && setIsSrtOnlyMode) setIsSrtOnlyMode(true);
+    setIsLoading(false);
   };
 
   // Handle drag events

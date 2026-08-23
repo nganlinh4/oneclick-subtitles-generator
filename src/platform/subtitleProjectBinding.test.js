@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   resolve: vi.fn(),
   rollbackRules: vi.fn(),
   rollbackSubtitles: vi.fn(),
+  setRulesCache: vi.fn(),
+  setSubtitlesCache: vi.fn(),
   activateProject: vi.fn(),
   releaseProject: vi.fn(),
   activeSnapshot: null,
@@ -28,7 +30,8 @@ vi.mock('../utils/transcriptionRulesStore', () => ({
     value?.kind === 'rules' && value.cacheId === scope.cacheId && value.projectId === scope.projectId
   ),
   rollbackTranscriptionRulesProjectBinding: mocks.rollbackRules,
-  setCurrentCacheId: vi.fn(),
+  getCurrentCacheId: () => mocks.currentCacheId,
+  setCurrentCacheId: mocks.setRulesCache,
 }));
 vi.mock('../utils/userSubtitlesStore', () => ({
   bindUserSubtitlesProject: mocks.bindSubtitles,
@@ -40,11 +43,12 @@ vi.mock('../utils/userSubtitlesStore', () => ({
   ),
   refreshCurrentSubtitleProject: mocks.refresh,
   rollbackUserSubtitlesProjectBinding: mocks.rollbackSubtitles,
-  setCurrentCacheId: vi.fn(),
+  setCurrentCacheId: mocks.setSubtitlesCache,
 }));
 
 import {
   activateSubtitleProjectBinding,
+  clearSubtitleProjectBinding,
   isSubtitleProjectBindingReceipt,
   rollbackSubtitleProjectBinding,
 } from './subtitleProjectBinding';
@@ -95,6 +99,29 @@ it('returns success only after both exact-project stores and the alias are durab
   expect(mocks.activateProject).toHaveBeenCalledWith(expect.objectContaining({
     projectId: 'project-a',
   }), { validateOwnership: expect.any(Function) });
+});
+
+it('clears only the exact active project binding captured by a media release', () => {
+  mocks.currentCacheId = 'cache-a';
+  mocks.activeSnapshot = { metadata: { id: 'project-a' } };
+
+  expect(clearSubtitleProjectBinding({
+    expectedCacheId: 'cache-b',
+    expectedProjectId: 'project-a',
+  })).toBe(false);
+  expect(clearSubtitleProjectBinding({
+    expectedCacheId: 'cache-a',
+    expectedProjectId: 'project-b',
+  })).toBe(false);
+  expect(mocks.setRulesCache).not.toHaveBeenCalled();
+  expect(mocks.setSubtitlesCache).not.toHaveBeenCalled();
+
+  expect(clearSubtitleProjectBinding({
+    expectedCacheId: 'cache-a',
+    expectedProjectId: 'project-a',
+  })).toBe(true);
+  expect(mocks.setRulesCache).toHaveBeenCalledExactlyOnceWith(null);
+  expect(mocks.setSubtitlesCache).toHaveBeenCalledExactlyOnceWith(null);
 });
 
 it('rolls back the sibling binding and never issues a receipt when one store fails', async () => {

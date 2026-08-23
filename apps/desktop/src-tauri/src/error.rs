@@ -75,6 +75,13 @@ impl CommandError {
         }
     }
 
+    pub(crate) fn media_selection_changed() -> Self {
+        Self::fixed(
+            "mediaSelectionChanged",
+            "The selected media changed before the operation completed.",
+        )
+    }
+
     pub(crate) fn media_export_unsafe() -> Self {
         Self::fixed(
             "unsafeExportDestination",

@@ -245,8 +245,35 @@ it('clears media only when the native host returns an empty snapshot', async () 
     .mockResolvedValueOnce(validSnapshot());
 
   await expect(clearMedia()).resolves.toBeNull();
-  expect(invokeDesktop).toHaveBeenNthCalledWith(1, 'clear_media', {});
+  expect(invokeDesktop).toHaveBeenNthCalledWith(1, 'clear_media', {
+    expectedAssetId: null,
+    expectedPlaybackId: null,
+  });
   await expect(clearMedia()).rejects.toMatchObject({ code: 'invalidMediaResponse' });
+});
+
+it('clears only the exact native asset and playback capability when requested', async () => {
+  invokeDesktop.mockResolvedValueOnce(emptySnapshot());
+
+  await expect(clearMedia({
+    expectedAssetId: ASSET_ID,
+    expectedPlaybackId: PLAYBACK_ID,
+  })).resolves.toBeNull();
+
+  expect(invokeDesktop).toHaveBeenCalledExactlyOnceWith('clear_media', {
+    expectedAssetId: ASSET_ID,
+    expectedPlaybackId: PLAYBACK_ID,
+  });
+});
+
+it.each([
+  { expectedAssetId: ASSET_ID },
+  { expectedPlaybackId: PLAYBACK_ID },
+  { expectedAssetId: PLAYBACK_ID, expectedPlaybackId: PLAYBACK_ID },
+  { expectedAssetId: ASSET_ID, expectedPlaybackId: ASSET_ID },
+])('refuses an incomplete or invalid conditional clear request', async (request) => {
+  await expect(clearMedia(request)).rejects.toMatchObject({ code: 'invalidMediaRequest' });
+  expect(invokeDesktop).not.toHaveBeenCalled();
 });
 
 it('validates only exact loopback capability URLs for the same UUIDv4 playback handle', () => {

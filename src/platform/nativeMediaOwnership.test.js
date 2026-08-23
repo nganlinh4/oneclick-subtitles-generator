@@ -98,6 +98,19 @@ it('round-trips a session pointer through storage', () => {
   expect(readNativeMediaSession()).toBeNull();
 });
 
+it('forgets a session only when the exact captured tuple is still current', () => {
+  const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  writeNativeMediaSession(sessionA);
+
+  expect(forgetNativeMediaSession({
+    expectedSession: { assetId: ASSET_B, cacheId: URL_ALIAS, projectId: PROJECT_A },
+  })).toBe(false);
+  expect(readNativeMediaSession()).toEqual(sessionA);
+
+  expect(forgetNativeMediaSession({ expectedSession: sessionA })).toBe(true);
+  expect(readNativeMediaSession()).toBeNull();
+});
+
 it.each([
   ['absent', null],
   ['not JSON', 'not-json'],

@@ -80,6 +80,26 @@ it('does not claim native cancellation succeeded when the command fails', async 
   expect(context.setStatus).not.toHaveBeenCalled();
 });
 
+it('changes acquisition tabs without discarding the active media project', () => {
+  const context = createContext();
+  localStorage.setItem('current_video_url', 'https://example.test/current');
+  localStorage.setItem('current_file_url', 'http://127.0.0.1:49152/asset/current');
+  localStorage.setItem('current_file_cache_id', 'legacy-browser-id');
+
+  createSettingsHandlers(context).handleTabChange('file-upload');
+
+  expect(context.setActiveTab).toHaveBeenCalledExactlyOnceWith('file-upload');
+  expect(localStorage.getItem('userPreferredTab')).toBe('file-upload');
+  expect(localStorage.getItem('lastActiveTab')).toBe('file-upload');
+  expect(localStorage.getItem('current_video_url')).toBe('https://example.test/current');
+  expect(localStorage.getItem('current_file_url')).toBe('http://127.0.0.1:49152/asset/current');
+  expect(localStorage.getItem('current_file_cache_id')).toBe('legacy-browser-id');
+  expect(context.setStatus).toHaveBeenCalledExactlyOnceWith({});
+  expect(context.setSelectedVideo).not.toHaveBeenCalled();
+  expect(context.setUploadedFile).not.toHaveBeenCalled();
+  expect(context.setSubtitlesData).not.toHaveBeenCalled();
+});
+
 it('ignores and purges secret callback arguments in native mode', async () => {
   localStorage.setItem('gemini_api_key', 'older-secret');
   localStorage.setItem('youtube_oauth_token', 'oauth-secret');

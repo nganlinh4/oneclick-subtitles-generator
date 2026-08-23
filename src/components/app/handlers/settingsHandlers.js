@@ -37,14 +37,10 @@ const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 export const createSettingsHandlers = ({
   currentDownloadId,
   setActiveTab,
-  setSelectedVideo,
-  setUploadedFile,
   setStatus,
-  setSubtitlesData,
   setIsDownloading,
   setDownloadProgress,
   setCurrentDownloadId,
-  setIsSrtOnlyMode,
   setTimeFormat,
   setShowWaveformLongVideos,
   setOptimizedResolution,
@@ -90,24 +86,10 @@ export const createSettingsHandlers = ({
     localStorage.setItem("lastActiveTab", tab);
     setActiveTab(tab);
 
-    // Only reset state for user-initiated tab changes
-    // System-initiated changes (like after video download) should preserve state
-    if (isUserInitiated) {
-      setSelectedVideo(null);
-      setUploadedFile(null);
-      setStatus({}); // Reset status
-      setSubtitlesData(null); // Reset subtitles data
-
-      // Only reset SRT-only mode if we don't have subtitles data in localStorage
-      const subtitlesData = localStorage.getItem("subtitles_data");
-      if (!subtitlesData) {
-        setIsSrtOnlyMode(false); // Reset SRT-only mode
-      }
-
-      localStorage.removeItem("current_video_url");
-      localStorage.removeItem("current_file_url");
-      localStorage.removeItem("current_file_cache_id"); // Also clear the file cache ID
-    }
+    // Choosing another acquisition surface is navigation, not a media mutation. The currently
+    // active native project remains usable until a replacement is fully admitted and published.
+    // This prevents a tab click from splitting React state away from Rust/session authority.
+    if (isUserInitiated) setStatus({});
   };
 
   /**

@@ -2,6 +2,7 @@ import { resolveProjectForCache } from './subtitleProjectStore';
 import { activateResolvedMediaProject } from './mediaProjectActivation';
 import {
   bindTranscriptionRulesProject,
+  getCurrentCacheId as getRulesCacheId,
   isTranscriptionRulesProjectBindingReceipt,
   rollbackTranscriptionRulesProjectBinding,
   setCurrentCacheId as setRulesCacheId,
@@ -180,8 +181,22 @@ export const rollbackSubtitleProjectBinding = (receipt) => {
   return true;
 };
 
-export const clearSubtitleProjectBinding = () => {
+export const clearSubtitleProjectBinding = ({
+  expectedCacheId = null,
+  expectedProjectId = null,
+} = {}) => {
+  if (expectedCacheId !== null && (
+    getSubtitlesCacheId() !== expectedCacheId
+    || getRulesCacheId() !== expectedCacheId
+  )) {
+    return false;
+  }
+  if (expectedProjectId !== null
+      && getActiveProjectSnapshot()?.metadata?.id !== expectedProjectId) {
+    return false;
+  }
   latestIntent += 1;
   setRulesCacheId(null);
   setSubtitlesCacheId(null);
+  return true;
 };
