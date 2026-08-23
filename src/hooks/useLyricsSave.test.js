@@ -62,3 +62,29 @@ it('keeps the keyed event checkpoint only as a browser fallback', async () => {
   window.removeEventListener(EVENTS.SAVE_COMPLETE, completed);
   consoleError.mockRestore();
 });
+
+it('surfaces a manual save refusal through one translated keyed toast', async () => {
+  flushDurableLyricsHistory.mockRejectedValue(new Error('private native detail'));
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  window.addToast = vi.fn();
+  const { result, unmount } = renderHook(() => useLyricsSave({
+    lyrics: [{ id: 1, start: 0, end: 1, text: 'Unsaved edit' }],
+    updateSavedLyrics: vi.fn(),
+    onSaveSubtitles: vi.fn(),
+    listenForLifecycle: false,
+  }));
+
+  await act(async () => {
+    await expect(result.current.handleSave()).resolves.toBe(false);
+  });
+
+  expect(window.addToast).toHaveBeenCalledExactlyOnceWith(
+    'The subtitles could not be saved. Please try again.',
+    'error',
+    8_000,
+    'subtitle-save-failed',
+  );
+  expect(saveSubtitlesToCache).not.toHaveBeenCalled();
+  unmount();
+  consoleError.mockRestore();
+});

@@ -19,6 +19,14 @@ const notifySaved = (message) => {
   }
 };
 
+const notifySaveFailed = (message) => {
+  try {
+    window.addToast?.(message, 'error', 8_000, 'subtitle-save-failed');
+  } catch {
+    // Notification failure cannot change the failed durable checkpoint.
+  }
+};
+
 /**
  * Encapsulates saving lyrics to cache plus the save-before-update and
  * save-after-streaming event listeners (with cleanup). Closes over the
@@ -34,6 +42,15 @@ export const useLyricsSave = ({
 
   // Function to save current subtitles to cache
   const handleSave = useCallback(async (options = {}) => {
+    const refuse = () => {
+      if (options?.silentFailure !== true) {
+        notifySaveFailed(t(
+          'subtitlesInput.saveFailed',
+          'The subtitles could not be saved. Please try again.'
+        ));
+      }
+      return false;
+    };
     try {
       await flushDurableLyricsHistory();
 
@@ -51,12 +68,12 @@ export const useLyricsSave = ({
 
       if (desktopRuntime) {
         mediaCapability = await resolveActiveNativeMedia();
-        if (cacheId !== mediaCapability.cacheId) return false;
+        if (cacheId !== mediaCapability.cacheId) return refuse();
       }
 
       if (!cacheId) {
         console.error('No cache ID found for current media');
-        return false;
+        return refuse();
       }
 
       // Check if we have latest segment subtitles in localStorage
@@ -85,7 +102,7 @@ export const useLyricsSave = ({
             || result.cacheId !== mediaCapability.cacheId
             || result.projectId !== mediaCapability.projectId) {
           console.error('Failed to save subtitles:', result.error);
-          return false;
+          return refuse();
         }
         await refreshActiveNativeMedia(mediaCapability);
 
@@ -132,7 +149,7 @@ export const useLyricsSave = ({
           return true;
         } else {
           console.error('Failed to save subtitles:', result.error);
-          return false;
+          return refuse();
         }
       } else {
         // Frontend-only: simulate success (local state + events only)
@@ -151,7 +168,7 @@ export const useLyricsSave = ({
       }
     } catch (error) {
       console.error('Error saving subtitles:', error);
-      return false;
+      return refuse();
     }
   }, [lyrics, onSaveSubtitles, t, updateSavedLyrics]);
 
@@ -178,7 +195,7 @@ export const useLyricsSave = ({
 
 
         // Trigger the save function to checkpoint current edits
-        handleSave({ allowEmptyCheckpoint: true }).then((success) => {
+        handleSave({ allowEmptyCheckpoint: true, silentFailure: true }).then((success) => {
           // Dispatch save-complete event to notify that save is done
           publish(EVENTS.SAVE_COMPLETE, {
             source: event.detail?.source,
