@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "6bf3f51839bb3e6cdf53e9577f106a435bd94a52",
+  "baselineRevision": "14ea8261b604dbae8bb0f5508be2e7621ad2072f",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8307,10 +8307,10 @@
       ]
     },
     "src/components/lyrics/TimelineVisualization.js": {
-      "hash": "af47bb2ecece3e919a5d7e81cd810e7f2d49461e3962df6f7a3b377a5877e6e1",
+      "hash": "5438e706dadd9959a63775cdcf679e83c2f42a816e97aa90b7351b6d01281d16",
       "rootCount": 1,
       "roots": [
-        "df32ab359e998538a00d3bd8bdd142f7c78f43a9636bbe437394e8862f5f06e8"
+        "609a8468eb0a0b4b714eea865e7dfcd1d3e02776d155ec550a4c9b894838f50e"
       ]
     },
     "src/components/lyrics/TimelineZoomControls.js": {
@@ -9096,10 +9096,10 @@
       ]
     },
     "src/components/subtitleSettings/components/FontSettings.js": {
-      "hash": "cc822d9bd4a2e8604cdac884275654e665dd574b3b40d13bdc5e960763c29405",
+      "hash": "783ab4788a6811473f73fc9b01df19135ee44d20d66da6e69c5ebfddeba399f7",
       "rootCount": 1,
       "roots": [
-        "0eb25b0a439f62b3a075630b1191a448313dd92ee786a3c597e734c3eb4855a8"
+        "dd5c98896b854b53b4f78ad5b5d92a8e8124c0ccba72f6b8f3469f364d0dc4aa"
       ]
     },
     "src/components/subtitleSettings/components/NarrationMenu.js": {
@@ -9363,10 +9363,10 @@
       ]
     },
     "src/components/VideoRenderingSection.js": {
-      "hash": "a256843bc90316a277013b4dd6cb10cc9b6487b32323c54aac33f1f8975187bb",
+      "hash": "3aa53164e4e4a1b2a4921dcc3efe13be09b6eea02be6a9f7039a386b4c7bd09f",
       "rootCount": 1,
       "roots": [
-        "105be1cbfea422eb6887d15762aca70297465a124c77a363e9644820670b92db"
+        "b89dad37e411e0e219b50eb88f0f8e5813610b1ff4e6a658100871e6bc07d02f"
       ]
     },
     "src/components/VideoRenderingSection/InputSelectionRow.js": {
@@ -9391,10 +9391,10 @@
       ]
     },
     "src/components/VideoRenderingSection/TrimTimelineRow.js": {
-      "hash": "556bffd740bec15c228b024bd09aba954cc89a6583c339a06f8406014981c8a8",
+      "hash": "5b293f215172f1e982279932bb33118d27c1452529dc5e32c8c345405b5b206f",
       "rootCount": 1,
       "roots": [
-        "15ca112e8747fe3b45e7e9162f9d0ad9741e5aaae5fdd93783139267f8d85b6e"
+        "eb1e4fc8957896fd261c2c47c7b561feeb668aef5c72805a9b2d5707af5d7e35"
       ]
     },
     "src/index.js": {
