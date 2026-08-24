@@ -40,7 +40,7 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
           value={parseInt(settings.fontSize)}
           onChange={(value) => handleSettingChange('fontSize', value.toString())}
           min={12}
-          max={36}
+          max={120}
           step={1}
           orientation="Horizontal"
           size="XSmall"

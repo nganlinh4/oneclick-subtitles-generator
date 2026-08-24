@@ -51,7 +51,7 @@ export const fontOptions = [
 // Default settings
 export const defaultSettings = {
   fontFamily: "'Noto Sans KR', sans-serif",
-  fontSize: '24',
+  fontSize: '48',
   fontWeight: '500',
   position: '90',
   boxWidth: '80',

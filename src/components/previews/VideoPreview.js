@@ -104,7 +104,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     // Default settings if nothing is saved
     return {
       fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
-      fontSize: '24',
+      fontSize: '48',
       fontWeight: '500',
       position: '90', // Now a percentage value from 0 (top) to 100 (bottom)
       boxWidth: '80',
