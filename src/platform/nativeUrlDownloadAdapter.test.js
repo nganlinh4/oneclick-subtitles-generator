@@ -998,7 +998,11 @@ it('re-inspects and retries one transient downloader process failure', async () 
     handlers.push(nextHandlers);
     return { id: jobIds[index] };
   });
-  const recoverDownloader = vi.fn().mockResolvedValue({ updated: true, throttled: false });
+  const recoverDownloader = vi.fn().mockResolvedValue({
+    checked: true,
+    updated: true,
+    throttled: false,
+  });
   const descriptor = Object.freeze({ assetId, playbackUrl: 'http://127.0.0.1/retried' });
   const onStarted = vi.fn();
   const onProgress = vi.fn();
@@ -1041,7 +1045,11 @@ it('re-inspects and retries one transient downloader process failure', async () 
 
 it('retries an execution failure only once and never retries other failures', async () => {
   const execution = createHarness();
-  execution.recoverDownloader.mockResolvedValue({ updated: true, throttled: false });
+  execution.recoverDownloader.mockResolvedValue({
+    checked: true,
+    updated: true,
+    throttled: false,
+  });
   const executionResult = execution.adapter.downloadVideo({
     url: 'https://example.com/execution-failure',
     cookieSource: 'none',
@@ -1057,16 +1065,23 @@ it('retries an execution failure only once and never retries other failures', as
   expect(execution.start).toHaveBeenCalledTimes(2);
 
   const unchanged = createHarness();
+  unchanged.recoverDownloader.mockResolvedValue({
+    checked: true,
+    updated: false,
+    throttled: true,
+  });
   const unchangedResult = unchanged.adapter.downloadVideo({
     url: 'https://example.com/unchanged-downloader',
     cookieSource: 'none',
   });
   await flush();
   unchanged.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
+  await flush();
+  unchanged.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
   await expect(unchangedResult).rejects.toMatchObject({ code: 'downloaderExecutionFailed' });
   expect(unchanged.recoverDownloader).toHaveBeenCalledTimes(1);
-  expect(unchanged.inspect).toHaveBeenCalledTimes(1);
-  expect(unchanged.start).toHaveBeenCalledTimes(1);
+  expect(unchanged.inspect).toHaveBeenCalledTimes(2);
+  expect(unchanged.start).toHaveBeenCalledTimes(2);
 
   const permanent = createHarness();
   const permanentResult = permanent.adapter.downloadVideo({

@@ -30,5 +30,11 @@
   "allRequestsAborted": "All requests have been cancelled",
   "parakeetApiError": "Parakeet API error: {{status}} {{errorText}}",
   "invalidSegmentSelection": "Invalid segment selection",
-  "videoDownloadExecutionFailed": "The downloader retried but the source still failed. Check your connection, or enable browser cookies if the video requires sign-in."
+  "videoDownloadAuthenticationRequired": "This video requires sign-in. Enable browser cookies for downloads and try again.",
+  "videoDownloadExecutionFailed": "The latest verified downloader retried with a fresh media inspection, but the source still failed.",
+  "videoDownloadFormatUnavailable": "The selected media format expired or is no longer available. Try the download again.",
+  "videoDownloadNetworkFailed": "The source refused or interrupted the media transfer. Check the connection and try again.",
+  "videoDownloadPostProcessingFailed": "The video and audio streams downloaded, but could not be combined.",
+  "videoDownloadRateLimited": "The source is temporarily rate-limiting downloads. Wait a little and try again.",
+  "videoDownloadSourceUnavailable": "This video is private, removed, region-blocked, or otherwise unavailable."
 }

@@ -335,6 +335,7 @@ export const createNativeDownloadPreflight = ({
 
 let automaticRecovery = null;
 let lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
+let lastAutomaticRecoveryResult = null;
 
 export const recoverNativeDownloaderAfterFailure = async ({
   readCatalog = getNativeToolsCatalog,
@@ -349,9 +350,12 @@ export const recoverNativeDownloaderAfterFailure = async ({
   const startedAt = now();
   if (!Number.isFinite(startedAt)
       || startedAt - lastAutomaticRecovery < AUTO_UPDATE_COOLDOWN_MS) {
-    return Object.freeze({ updated: false, throttled: true });
+    return Object.freeze({
+      checked: lastAutomaticRecoveryResult?.checked === true,
+      updated: lastAutomaticRecoveryResult?.updated === true,
+      throttled: true,
+    });
   }
-  lastAutomaticRecovery = startedAt;
   const controller = new AbortController();
   const run = (async () => {
     const [catalog, status] = await Promise.all([readCatalog(), readStatus()]);
@@ -362,8 +366,12 @@ export const recoverNativeDownloaderAfterFailure = async ({
         || installed.activeRuntime !== true
         || installed.pendingRemoval
         || installed.operation !== null) {
-      return Object.freeze({ updated: false, throttled: false });
+      return Object.freeze({ checked: false, updated: false, throttled: false });
     }
+    // Only an eligible operation consumes the cooldown. A terminal download event can arrive a
+    // few milliseconds before the native runtime lease is released; treating that observation as
+    // a completed check prevented the real owner from refreshing for thirty minutes.
+    lastAutomaticRecovery = startedAt;
     const notify = (message, type, duration, button) => safeCall(presentation.notify, {
       message,
       type,
@@ -428,10 +436,18 @@ export const recoverNativeDownloaderAfterFailure = async ({
       && refreshed.activeRuntime === true
       && refreshed.pendingRemoval === false
       && refreshed.operation === null;
-    return Object.freeze({ updated, throttled: false });
+    return Object.freeze({ checked: true, updated, throttled: false });
   })().catch((error) => {
     safeCall(presentation.dismiss, TOOL_PROGRESS_TOAST_KEY);
-    return Object.freeze({ updated: false, throttled: false, error: error?.code ?? 'failed' });
+    return Object.freeze({
+      checked: false,
+      updated: false,
+      throttled: false,
+      error: error?.code ?? 'failed',
+    });
+  }).then((result) => {
+    lastAutomaticRecoveryResult = result;
+    return result;
   }).finally(() => {
     if (automaticRecovery === run) automaticRecovery = null;
   });
@@ -442,6 +458,7 @@ export const recoverNativeDownloaderAfterFailure = async ({
 export const resetNativeDownloaderRecoveryForTest = () => {
   automaticRecovery = null;
   lastAutomaticRecovery = Number.NEGATIVE_INFINITY;
+  lastAutomaticRecoveryResult = null;
 };
 
 const nativeDownloadPreflight = createNativeDownloadPreflight({

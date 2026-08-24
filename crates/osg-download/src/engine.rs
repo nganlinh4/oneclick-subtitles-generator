@@ -4,8 +4,8 @@ use crate::process::{
 };
 use crate::{
     AddressResolver, BrowserCookieSource, DownloadError, DownloadPlan, FfmpegDirectory,
-    MediaInventory, ResolvedJsRuntime, ResolvedYtDlp, Result, RunControl, SystemResolver,
-    UrlPolicy, UrlValidator, ValidatedMediaUrl, YtDlpResolver, YtDlpSearch,
+    MediaInventory, ProcessFailureKind, ResolvedJsRuntime, ResolvedYtDlp, Result, RunControl,
+    SystemResolver, UrlPolicy, UrlValidator, ValidatedMediaUrl, YtDlpResolver, YtDlpSearch,
 };
 use serde::Serialize;
 use std::ffi::OsString;
@@ -336,16 +336,89 @@ impl fmt::Debug for DownloadResult {
 }
 
 fn require_success(output: &ProcessOutput) -> Result<()> {
-    let _bounded_diagnostic_bytes = output.stderr_tail.len();
     if output.stdout_truncated {
         return Err(DownloadError::OutputLimit);
     }
     if !output.status.success() {
         return Err(DownloadError::ProcessFailed {
             code: output.status.code(),
+            kind: classify_process_failure(&output.stderr_tail),
         });
     }
     Ok(())
+}
+
+fn classify_process_failure(stderr: &[u8]) -> ProcessFailureKind {
+    let message = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    let contains_any = |patterns: &[&str]| patterns.iter().any(|pattern| message.contains(pattern));
+
+    if contains_any(&[
+        "sign in to confirm",
+        "login required",
+        "log in to",
+        "authentication required",
+        "cookies are required",
+        "use --cookies",
+        "this video is private",
+        "members-only",
+        "age-restricted",
+    ]) {
+        ProcessFailureKind::AuthenticationRequired
+    } else if contains_any(&["http error 429", "too many requests", "rate limit"]) {
+        ProcessFailureKind::RateLimited
+    } else if contains_any(&[
+        "requested format is not available",
+        "requested format not available",
+        "format selection failed",
+    ]) {
+        ProcessFailureKind::FormatUnavailable
+    } else if contains_any(&[
+        "video unavailable",
+        "this video is unavailable",
+        "has been removed",
+        "not available in your country",
+        "geo-restricted",
+        "copyright claim",
+        "private video",
+    ]) {
+        ProcessFailureKind::SourceUnavailable
+    } else if contains_any(&[
+        "postprocessing:",
+        "post-processing:",
+        "ffmpeg exited",
+        "ffprobe exited",
+        "conversion failed",
+        "unable to merge",
+        "error while opening encoder",
+    ]) {
+        ProcessFailureKind::PostProcessing
+    } else if contains_any(&[
+        "http error 403",
+        "http error 5",
+        "unable to download",
+        "connection reset",
+        "connection refused",
+        "name resolution",
+        "network is unreachable",
+        "timed out",
+        "certificate verify failed",
+        "temporary failure",
+    ]) {
+        ProcessFailureKind::Network
+    } else if contains_any(&[
+        "extractor error",
+        "signature solving failed",
+        "signature extraction failed",
+        "challenge solving failed",
+        "nsig extraction failed",
+        "no video formats found",
+        "unsupported url",
+        "please report this issue",
+    ]) {
+        ProcessFailureKind::Extractor
+    } else {
+        ProcessFailureKind::Unknown
+    }
 }
 
 fn verify_artifact(path: &Path) -> Result<u64> {
@@ -423,6 +496,53 @@ mod tests {
         fn resolve(&self, _host: &str, _port: u16) -> io::Result<Vec<IpAddr>> {
             Ok(vec![IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))])
         }
+    }
+
+    #[test]
+    fn process_failure_classification_is_closed_and_actionable() {
+        for (stderr, expected) in [
+            (
+                "ERROR: Sign in to confirm you are not a bot",
+                ProcessFailureKind::AuthenticationRequired,
+            ),
+            (
+                "ERROR: HTTP Error 429: Too Many Requests",
+                ProcessFailureKind::RateLimited,
+            ),
+            (
+                "ERROR: Requested format is not available",
+                ProcessFailureKind::FormatUnavailable,
+            ),
+            (
+                "ERROR: This video is unavailable",
+                ProcessFailureKind::SourceUnavailable,
+            ),
+            (
+                "ERROR: ffmpeg exited with code 1",
+                ProcessFailureKind::PostProcessing,
+            ),
+            (
+                "ERROR: unable to download video data: HTTP Error 403",
+                ProcessFailureKind::Network,
+            ),
+            (
+                "WARNING: signature solving failed; no video formats found",
+                ProcessFailureKind::Extractor,
+            ),
+            ("ERROR: opaque future failure", ProcessFailureKind::Unknown),
+        ] {
+            assert_eq!(classify_process_failure(stderr.as_bytes()), expected);
+        }
+    }
+
+    #[test]
+    fn process_failure_kind_never_retains_raw_downloader_text() {
+        let private = "ERROR: unable to download https://private.example/token to C:/Users/me";
+        let kind = classify_process_failure(private.as_bytes());
+        let debug = format!("{kind:?}");
+        assert_eq!(kind, ProcessFailureKind::Network);
+        assert!(!debug.contains("private"));
+        assert!(!debug.contains("Users"));
     }
 
     fn engine(ffmpeg_directory: &tempfile::TempDir) -> DownloadEngine<PublicDns> {

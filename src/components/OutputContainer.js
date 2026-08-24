@@ -22,6 +22,7 @@ const OutputContainer = ({
   setSubtitlesData,
   selectedVideo,
   uploadedFile,
+  isDownloading = false,
   isGenerating,
   segmentsStatus = [],
   activeTab,
@@ -144,6 +145,9 @@ const OutputContainer = ({
   const [videoSource, setVideoSource] = useState('');
   const [actualVideoUrl, setActualVideoUrl] = useState('');
   const [fileType, setFileType] = useState('');
+  const activeVideoTitle = isNativeMediaDescriptor(uploadedFile)
+    ? uploadedFile.name.replace(/\.[^/.]+$/, '')
+    : selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles';
   useEffect(() => {
     // Reset the actual video URL when the source changes
     setActualVideoUrl('');
@@ -293,7 +297,7 @@ const OutputContainer = ({
 
       {(subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment')) && (
         <>
-          {renderedSections.preview && (
+          {renderedSections.preview && !isDownloading && (
             <div className="preview-section">
             {/* Check if we should hide sections for URL + SRT without downloaded video */}
             {(() => {
@@ -340,7 +344,7 @@ const OutputContainer = ({
               timeFormat={timeFormat}
               videoSource={isSrtOnlyMode ? null : actualVideoUrl}
               translatedSubtitles={translatedSubtitles}
-              videoTitle={selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles'}
+              videoTitle={activeVideoTitle}
               onSegmentSelect={onSegmentSelect}
               selectedSegment={selectedSegment}
               isProcessingSegment={isProcessingSegment}
@@ -351,16 +355,16 @@ const OutputContainer = ({
           )}
 
           {/* Translation Section */}
-          {renderedSections.translation && (
+          {renderedSections.translation && !isDownloading && (
             <TranslationSection
               subtitles={editedLyrics || subtitlesData}
-              videoTitle={selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles'}
+              videoTitle={activeVideoTitle}
               onTranslationComplete={onTranslatedSubtitlesChange}
             />
           )}
 
           {/* Unified Narration Section - Now separate from Translation */}
-          {renderedSections.narration && (
+          {renderedSections.narration && !isDownloading && (
             <UnifiedNarrationSection
               subtitles={translatedSubtitles || editedLyrics || subtitlesData}
               originalSubtitles={editedLyrics || subtitlesData}

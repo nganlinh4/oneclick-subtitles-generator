@@ -137,24 +137,11 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     const inputUrl = e.target.value.trim();
     setUrl(inputUrl);
 
-    // Clear previous video state when URL changes
-    const previousVideoUrl = localStorage.getItem('current_video_url');
-    if (previousVideoUrl && previousVideoUrl !== inputUrl) {
-      // Clear subtitle-related state when switching videos
-      localStorage.removeItem('latest_segment_subtitles');
-      // Dispatch event to clear subtitle state in other components
-      window.dispatchEvent(new CustomEvent('video-changed', {
-        detail: { previousUrl: previousVideoUrl, newUrl: inputUrl }
-      }));
-    }
-
     if (!inputUrl) {
       setSelectedVideo(null);
       setUrlType('');
       return;
     }
-
-    localStorage.removeItem('current_file_url');
 
     // Check for YouTube URL first
     if (isValidYoutubeUrl(inputUrl)) {
@@ -162,8 +149,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
       const videoId = extractYoutubeVideoId(inputUrl);
       if (videoId) {
         const preview = await fetchYoutubeVideoPreview(videoId);
-        // Store the video URL in localStorage to maintain state
-        localStorage.setItem('current_video_url', inputUrl);
         setSelectedVideo({
           id: videoId,
           url: inputUrl,
@@ -180,8 +165,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
       setUrlType('douyin');
       const videoId = extractDouyinVideoId(inputUrl);
       if (videoId) {
-        // Store the video URL in localStorage to maintain state
-        localStorage.setItem('current_video_url', inputUrl);
         setSelectedVideo({
           id: videoId,
           url: inputUrl,
@@ -200,9 +183,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
         const videoId = generateAllSitesVideoId(inputUrl);
         const hostname = new URL(inputUrl).hostname;
         const siteName = hostname.replace(/^www\./, '');
-
-        // Store the video URL in localStorage to maintain state
-        localStorage.setItem('current_video_url', inputUrl);
 
         setSelectedVideo({
           id: videoId,
@@ -297,8 +277,6 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
               setUrl('');
               setSelectedVideo(null);
               setUrlType('');
-              // Also clear the video URL from localStorage
-              localStorage.removeItem('current_video_url');
             }}
             aria-label="Clear input"
           >

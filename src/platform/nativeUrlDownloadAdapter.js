@@ -487,8 +487,12 @@ export const createNativeUrlDownloadAdapter = ({
         // capability, and retry the complete operation once. This covers transient extractor,
         // CDN, and process failures without ever duplicating a successful download.
         const recovery = await Promise.resolve(recoverDownloader())
-          .catch(() => ({ updated: false }));
-        if (recovery?.updated !== true) throw outcome.error;
+          .catch(() => ({ checked: false, updated: false }));
+        // A verified live-channel check also refreshes the inspection capability. Retry once even
+        // when the installed version was already latest: short-lived CDN format URLs can expire
+        // between inspection and download, and the old code claimed to cover that case while
+        // actually refusing to retry it. The loop remains strictly bounded to two attempts.
+        if (recovery?.checked !== true) throw outcome.error;
         operation.jobId = null;
         operation.cancelInvoked = false;
         operation.cancelRequested = false;

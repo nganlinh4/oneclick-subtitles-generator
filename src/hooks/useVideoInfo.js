@@ -85,6 +85,19 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
     const quality = actualDimensions?.quality
       ?? (optimized ? localStorage.getItem('optimized_resolution') || '360p' : 'Original');
 
+    // A URL selection is only an acquisition intent. Until its candidate is claimed, an existing
+    // native descriptor remains the sole render authority; preferring selectedVideo here labelled
+    // and configured exports of active video A as pending/failed video B.
+    if (isNativeMediaDescriptor(uploadedFile)) {
+      return {
+        source: 'upload',
+        title: uploadedFile.name,
+        quality: actualDimensions?.quality ?? 'original',
+        isOptimized: false,
+        url: null,
+      };
+    }
+
     if (selectedVideo) {
       return {
         source: selectedVideo.source,

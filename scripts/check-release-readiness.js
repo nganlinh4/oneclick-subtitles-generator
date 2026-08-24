@@ -65,11 +65,11 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  'a630813cef95746e6fff1e177d1bd10453370309e9bfa14ad45081be93c256c7';
+  '445afb72c4f40ed848956803399f715a60c28cb49ae3f2b826c3fbca2e66b31f';
 const DOWNLOAD_HANDLERS_SHA256 =
-  '72eaa50374c33db576f77d5f53bf1d71edb332e47a719b410e930b13a825a8a0';
+  'a9e4baf1cb4bac388f2be9c5240a07cb55861269790dce3eac3e0d8fa2cff91a';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
-  '2a135b0dae551d0b9d19910bd39410867d3e871ba5864c3ae679799dcd96a688';
+  'c2c6a642740e88c913985c3e1749083c9b896c33da231a39c7d929a83f49660f';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -1613,16 +1613,16 @@ function assertInstalledMediaFlowInspector(
     'evaluate(client, ACTIVATE_URL_TAB_EXPRESSION)',
     'evaluate(client, URL_CONTROL_READY_EXPRESSION)',
     'evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences))',
+    'const activeState = options.priorAssetId === null',
     'evaluate(client, SET_URL_EXPRESSION)',
-    'evaluate(client, URL_COMMITTED_EXPRESSION)',
-    'evaluate(client, RESET_SRT_EXPRESSION)',
-    'evaluate(client, SRT_CLEARED_EXPRESSION)',
-    "client.send('DOM.setFileInputFiles'",
-    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences))',
+    'evaluate(client, URL_STAGED_EXPRESSION)',
+    'if (options.priorAssetId === null) {',
+    'assertStagedReplacementPreservesActiveMedia(',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'const baselineDownloadJobIds = collectDownloadJobIds(baselineState)',
     'baselineState?.session?.media?.id === options.priorAssetId',
-    'evaluate(client, START_EXPRESSION(mediaPreferences))',
+    'client, START_EXPRESSION(mediaPreferences, options.priorAssetId)',
     "failureCode: 'download-start-timeout'",
     "failureCode: 'terminal-state-timeout'",
   ];
@@ -1633,7 +1633,7 @@ function assertInstalledMediaFlowInspector(
       && orderedIndices.every((index, position) => (
         position === 0 || orderedIndices[position - 1] < index
       )),
-    'Installed media-flow inspector must commit URL state, replace stale SRT state, and baseline before one real download action',
+    'Installed media-flow inspector must preserve active identity while staging before one real download action',
   );
   const exactExpression = (startFragment, endFragment) => {
     const start = script.indexOf(startFragment);
@@ -1644,24 +1644,16 @@ function assertInstalledMediaFlowInspector(
     'const ACTIVATE_URL_TAB_EXPRESSION = `',
     'const URL_CONTROL_READY_EXPRESSION = `',
   );
-  const commit = exactExpression(
-    'const URL_COMMITTED_EXPRESSION = `',
-    'const RESET_SRT_EXPRESSION = `',
-  );
-  const reset = exactExpression(
-    'const RESET_SRT_EXPRESSION = `',
-    'const SRT_CLEARED_EXPRESSION = `',
-  );
-  const cleared = exactExpression(
-    'const SRT_CLEARED_EXPRESSION = `',
-    'const SRT_READY_EXPRESSION = (preferences) => `',
+  const staged = exactExpression(
+    'const URL_STAGED_EXPRESSION = `',
+    'const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `',
   );
   const ready = exactExpression(
-    'const SRT_READY_EXPRESSION = (preferences) => `',
-    'const START_EXPRESSION = (preferences) => `',
+    'const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `',
+    'const START_EXPRESSION = (preferences, expectedCacheId) => `',
   );
   const start = exactExpression(
-    'const START_EXPRESSION = (preferences) => `',
+    'const START_EXPRESSION = (preferences, expectedCacheId) => `',
     'export const MEDIA_RESULT_EXPRESSION = `',
   );
   const configure = exactExpression(
@@ -1723,24 +1715,16 @@ function assertInstalledMediaFlowInspector(
     'Installed media-flow inspector must enter only the exact reviewed fixture URL',
   );
   invariant(
-    commit.includes("inputs[0].value === ${JSON.stringify(MEDIA_URL)}")
-      && commit.includes("(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}")
-      && commit.includes("localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}")
-      && commit.includes('previews.length === 1')
-      && run.includes("{ timeoutMs: 60_000, failureCode: 'url-commit-timeout' }")
-      && run.indexOf('evaluate(client, URL_COMMITTED_EXPRESSION)')
-        < run.indexOf('evaluate(client, RESET_SRT_EXPRESSION)'),
-    'Installed media-flow inspector must observe the committed reviewed URL before any SRT mutation',
-  );
-  invariant(
-    reset.includes("clearButtons.length !== 1 || clearButtons[0].disabled")
-      && (reset.match(/clearButtons\[0\]\.click\(\);/g) || []).length === 1
-      && cleared.includes("!uploadButtons[0].classList.contains('has-srt-uploaded')")
-      && cleared.includes("!uploadButtons[0].classList.contains('processing')")
-      && cleared.includes('clearButtons.length === 0')
-      && cleared.includes('info === null')
-      && cleared.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})"),
-    'Installed media-flow inspector must clear and observe absent stale SRT state before re-upload',
+    staged.includes("inputs[0].value === ${JSON.stringify(MEDIA_URL)}")
+      && staged.includes("(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}")
+      && !staged.includes("localStorage.getItem('current_video_url')")
+      && staged.includes('previews.length === 1')
+      && run.includes("{ timeoutMs: 60_000, failureCode: 'url-stage-timeout' }")
+      && run.includes('const activeState = options.priorAssetId === null')
+      && run.includes('assertStagedReplacementPreservesActiveMedia(')
+      && run.indexOf('evaluate(client, URL_STAGED_EXPRESSION)')
+        < run.indexOf('assertStagedReplacementPreservesActiveMedia('),
+    'Installed media-flow inspector must stage the reviewed URL without mutating active identity',
   );
   invariant(
     ready.includes("uploadButtons[0].classList.contains('has-srt-uploaded')")
@@ -1748,7 +1732,7 @@ function assertInstalledMediaFlowInspector(
       && ready.includes('clearButtons.length === 1 && !clearButtons[0].disabled')
       && ready.includes("Object.keys(info).sort().join(',') === 'cacheId,fileName,v'")
       && ready.includes('info.v === 2')
-      && ready.includes('info.cacheId === null')
+      && ready.includes('info.cacheId === ${JSON.stringify(expectedCacheId)}')
       && ready.includes("info.fileName === 'osg-installed-media-smoke.srt'")
       && ready.includes("document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
       && ready.includes("localStorage.getItem('auto_import_site_subtitles')")
@@ -1763,30 +1747,20 @@ function assertInstalledMediaFlowInspector(
       && run.includes("selector: '.buttons-container .srt-upload-buttons-group input[type=\"file\"][accept=\".srt,.json\"]'")
       && run.includes('Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1')
       && run.includes("failureCode: 'srt-readiness-timeout'"),
-    'Installed media-flow inspector must prove a fresh exact SRT callback before enabling one start action',
+    'Installed media-flow inspector must prove exact retained-or-fresh SRT state before enabling one start action',
   );
-  const exactSrtUploadBoundary = [
-    "    const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });",
-    "    const inputs = await client.send('DOM.querySelectorAll', {",
-    '      nodeId: documentNode.root.nodeId,',
-    '      selector: \'.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]\',',
-    '    });',
-    '    invariant(Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1',
-    '      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,',
-    "    'Installed media flow could not find one exact SRT input');",
-    "    await client.send('DOM.setFileInputFiles', {",
-    '      files: [options.srt], nodeId: inputs.nodeIds[0],',
-    '    });',
-    '    await waitForValue(',
-    '      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences)),',
-    '      (value) => value === true,',
-    "      { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },",
-    '    );',
-  ].join('\n');
+  const initialUploadStart = run.indexOf('if (options.priorAssetId === null) {');
+  const stagedIdentityCheck = run.indexOf('assertStagedReplacementPreservesActiveMedia(');
+  const srtReadinessWait = run.indexOf(
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
+  );
   invariant(
     (run.match(/DOM\.setFileInputFiles/g) || []).length === 1
-      && run.split(exactSrtUploadBoundary).length === 2,
-    'Installed media-flow inspector must retain one uninterrupted exact SRT upload transaction',
+      && initialUploadStart >= 0
+      && run.indexOf("client.send('DOM.setFileInputFiles'", initialUploadStart) > initialUploadStart
+      && stagedIdentityCheck > initialUploadStart
+      && srtReadinessWait > stagedIdentityCheck,
+    'Installed media-flow inspector must upload SRT only initially and preserve it during replacement',
   );
   invariant(
     (start.match(/buttons\[0\]\.click\(\);/g) || []).length === 1
@@ -1794,7 +1768,7 @@ function assertInstalledMediaFlowInspector(
       && start.includes('activeTabs[0] !== urlTabs[0]')
       && start.includes("inputs[0].value !== ${JSON.stringify(MEDIA_URL)}")
       && start.includes("(previews[0].textContent ?? '').trim() !== ${JSON.stringify(MEDIA_URL)}")
-      && start.includes("localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}")
+      && !start.includes("localStorage.getItem('current_video_url')")
       && start.includes("localStorage.getItem('auto_import_site_subtitles')")
       && start.includes('${JSON.stringify(preferences.autoImport)}')
       && start.includes("localStorage.getItem('preferred_subtitle_langs')")
@@ -1804,7 +1778,7 @@ function assertInstalledMediaFlowInspector(
       && start.includes('clearButtons.length !== 1 || clearButtons[0].disabled')
       && start.includes("Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'")
       && start.includes('info.v !== 2')
-      && start.includes('info.cacheId !== null')
+      && start.includes('info.cacheId !== ${JSON.stringify(expectedCacheId)}')
       && start.includes("info.fileName !== 'osg-installed-media-smoke.srt'")
       && start.includes("!document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})")
       && start.includes('buttons.length !== 1')
@@ -1813,13 +1787,12 @@ function assertInstalledMediaFlowInspector(
       && start.includes("buttons[0].dataset.generationMode !== 'url-with-srt'")
       && !script.includes('.generate-btn.semi-auto[data-generation-mode=')
       && start.indexOf('buttons.length !== 1') < start.indexOf('buttons[0].click();')
-      && run.split('evaluate(client, START_EXPRESSION(mediaPreferences))').length === 2,
-    'Installed media-flow inspector must synchronously revalidate URL and fresh SRT state before one exact reviewed action',
+      && run.split('client, START_EXPRESSION(mediaPreferences, options.priorAssetId)').length === 2,
+    'Installed media-flow inspector must synchronously revalidate staged URL and preserved SRT state before one exact reviewed action',
   );
   invariant(
     script.includes("'url-tab-timeout'")
-      && script.includes("'url-commit-timeout'")
-      && script.includes("'srt-clear-timeout'")
+      && script.includes("'url-stage-timeout'")
       && script.includes("'srt-readiness-timeout'")
       && script.includes("'download-start-timeout'")
       && script.includes("'terminal-state-timeout'")
@@ -1840,11 +1813,9 @@ function assertInstalledMediaFlowInspector(
   invariant(
     exactWaitCategory('ACTIVATE_URL_TAB_EXPRESSION', '30_000', 'url-tab-timeout')
       && exactWaitCategory('URL_CONTROL_READY_EXPRESSION', '30_000', 'url-tab-timeout')
-      && exactWaitCategory('URL_COMMITTED_EXPRESSION', '60_000', 'url-commit-timeout')
-      && exactWaitCategory('RESET_SRT_EXPRESSION', '30_000', 'srt-clear-timeout')
-      && exactWaitCategory('SRT_CLEARED_EXPRESSION', '30_000', 'srt-clear-timeout')
+      && exactWaitCategory('URL_STAGED_EXPRESSION', '60_000', 'url-stage-timeout')
       && exactWaitCategory(
-        'SRT_READY_EXPRESSION(mediaPreferences)',
+        'SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId)',
         '60_000',
         'srt-readiness-timeout',
       )
@@ -1868,6 +1839,23 @@ function assertInstalledMediaFlowInspector(
       && script.includes('value.uploadedSrtInfo.cacheId === value.assetId')
       && script.includes("value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt'"),
     'Installed media-flow inspector must bind terminal SRT provenance to the downloaded asset',
+  );
+  const stagedIdentityGuard = exactExpression(
+    'export function assertStagedReplacementPreservesActiveMedia(',
+    'const evaluate = async (client, expression) => {',
+  );
+  invariant(
+    stagedIdentityGuard.includes('before?.assetId === priorAssetId')
+      && stagedIdentityGuard.includes('before?.session?.media?.id === priorAssetId')
+      && stagedIdentityGuard.includes('before?.uploadedSrtInfo?.cacheId === priorAssetId')
+      && stagedIdentityGuard.includes('after?.assetId === before.assetId')
+      && stagedIdentityGuard.includes('after?.currentFileUrl === before.currentFileUrl')
+      && stagedIdentityGuard.includes('after?.session?.media?.id === before.session.media.id')
+      && stagedIdentityGuard.includes('after?.session?.playback?.id === before.session.playback?.id')
+      && stagedIdentityGuard.includes(
+        'after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId',
+      ),
+    'Installed media-flow inspector must reject staged mutations of active media identity',
   );
   invariant(
     crypto.createHash('sha256').update(script.replace(/\r\n/g, '\n'), 'utf8').digest('hex')

@@ -3,6 +3,36 @@ use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, DownloadError>;
 
+/// Closed, privacy-safe classification of a failed downloader process. Raw stderr can contain
+/// source URLs, account names, cookies, and filesystem paths, so it never crosses this boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProcessFailureKind {
+    AuthenticationRequired,
+    RateLimited,
+    Network,
+    FormatUnavailable,
+    SourceUnavailable,
+    PostProcessing,
+    Extractor,
+    Unknown,
+}
+
+impl ProcessFailureKind {
+    #[must_use]
+    pub const fn diagnostic(self) -> &'static str {
+        match self {
+            Self::AuthenticationRequired => "authentication-required",
+            Self::RateLimited => "rate-limited",
+            Self::Network => "network",
+            Self::FormatUnavailable => "format-unavailable",
+            Self::SourceUnavailable => "source-unavailable",
+            Self::PostProcessing => "post-processing",
+            Self::Extractor => "extractor",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// Public errors never contain a source URL, cookie source, local path, or raw
 /// `yt-dlp` output, so they are safe to map to an IPC response.
 #[derive(Debug, Error)]
@@ -32,7 +62,10 @@ pub enum DownloadError {
     #[error("yt-dlp process I/O failed: {0}")]
     ProcessIo(#[source] std::io::Error),
     #[error("yt-dlp exited unsuccessfully (code {code:?})")]
-    ProcessFailed { code: Option<i32> },
+    ProcessFailed {
+        code: Option<i32>,
+        kind: ProcessFailureKind,
+    },
     #[error("yt-dlp exceeded its {timeout:?} time limit")]
     TimedOut { timeout: Duration },
     #[error("the download was cancelled")]

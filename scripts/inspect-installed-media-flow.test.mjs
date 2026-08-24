@@ -9,6 +9,7 @@ import test from 'node:test';
 import {
   MEDIA_RESULT_EXPRESSION,
   assertMediaFlowResult,
+  assertStagedReplacementPreservesActiveMedia,
   collectDownloadJobIds,
   hasMediaFlowStarted,
   mediaPreferencesForPhase,
@@ -321,8 +322,7 @@ test('waits for a terminal accepted state and rejects a bounded timeout', async 
   ), /timed out: terminal-state-timeout/);
   for (const failureCode of [
     'url-tab-timeout',
-    'url-commit-timeout',
-    'srt-clear-timeout',
+    'url-stage-timeout',
     'srt-readiness-timeout',
     'download-start-timeout',
     'terminal-state-timeout',
@@ -346,7 +346,7 @@ test('waits for a terminal accepted state and rejects a bounded timeout', async 
   ), /timeout category is invalid/);
 });
 
-test('commits the URL before replacing stale SRT state and dispatching the fresh upload', async () => {
+test('stages replacement input without mutating the active media and subtitle transaction', async () => {
   const inspectorSource = fs.readFileSync(
     new URL('./inspect-installed-media-flow.mjs', import.meta.url),
     'utf8',
@@ -385,13 +385,13 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
   ));
   const orderedFragments = [
     'evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences))',
-    'evaluate(client, URL_COMMITTED_EXPRESSION)',
-    'evaluate(client, RESET_SRT_EXPRESSION)',
-    'evaluate(client, SRT_CLEARED_EXPRESSION)',
-    "client.send('DOM.setFileInputFiles'",
-    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences))',
+    'const activeState = options.priorAssetId === null',
+    'evaluate(client, URL_STAGED_EXPRESSION)',
+    'if (options.priorAssetId === null) {',
+    'assertStagedReplacementPreservesActiveMedia(',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
-    'evaluate(client, START_EXPRESSION(mediaPreferences))',
+    'client, START_EXPRESSION(mediaPreferences, options.priorAssetId)',
   ];
   const indices = orderedFragments.map((fragment) => run.indexOf(fragment));
   assert.equal(indices.every((index) => index >= 0), true);
@@ -406,7 +406,7 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
   assert.doesNotMatch(
     run.slice(
       run.indexOf("client.send('DOM.setFileInputFiles'"),
-      run.indexOf('evaluate(client, SRT_READY_EXPRESSION(mediaPreferences))'),
+      run.indexOf('evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))'),
     ),
     /dispatchEvent|\.files(?:\?|\.)/,
   );
@@ -429,41 +429,64 @@ test('commits the URL before replacing stale SRT state and dispatching the fresh
   assert.equal(fileInput.files.length, 0);
   assert.equal(freshSrtReady, true);
 
-  const createReactClosureModel = () => {
-    let selectedVideo = null;
-    let pendingVideo = null;
-    let srtOnly = false;
-    let staleSrtBadge = true;
-    let jobs = 0;
+  const createActivationModel = () => {
+    let active = { assetId: 'A', subtitles: 'A.srt' };
+    let pendingUrl = null;
     return {
-      setUrl() { pendingVideo = { url: 'reviewed' }; },
-      commitUrl() { selectedVideo = pendingVideo; },
-      clearSrt() { staleSrtBadge = false; },
-      uploadSrt() {
-        staleSrtBadge = true;
-        srtOnly = selectedVideo === null;
+      stage(url) { pendingUrl = url; },
+      fail() { pendingUrl = null; },
+      succeed(assetId) {
+        active = { assetId, subtitles: active.subtitles };
+        pendingUrl = null;
       },
-      start() {
-        if (!srtOnly && selectedVideo !== null && staleSrtBadge) jobs += 1;
-      },
-      result() { return { jobs, srtOnly, staleSrtBadge }; },
+      result() { return { active: { ...active }, pendingUrl }; },
     };
   };
 
-  const raced = createReactClosureModel();
-  raced.setUrl();
-  raced.uploadSrt();
-  raced.commitUrl();
-  raced.start();
-  assert.deepEqual(raced.result(), { jobs: 0, srtOnly: true, staleSrtBadge: true });
+  const failed = createActivationModel();
+  failed.stage('B');
+  assert.deepEqual(failed.result(), {
+    active: { assetId: 'A', subtitles: 'A.srt' }, pendingUrl: 'B',
+  });
+  failed.fail();
+  assert.deepEqual(failed.result(), {
+    active: { assetId: 'A', subtitles: 'A.srt' }, pendingUrl: null,
+  });
 
-  const reviewed = createReactClosureModel();
-  reviewed.setUrl();
-  reviewed.commitUrl();
-  reviewed.clearSrt();
-  reviewed.uploadSrt();
-  reviewed.start();
-  assert.deepEqual(reviewed.result(), { jobs: 1, srtOnly: false, staleSrtBadge: true });
+  const succeeded = createActivationModel();
+  succeeded.stage('B');
+  succeeded.succeed('B');
+  assert.deepEqual(succeeded.result(), {
+    active: { assetId: 'B', subtitles: 'A.srt' }, pendingUrl: null,
+  });
+});
+
+test('rejects every staged replacement mutation before native activation succeeds', () => {
+  const before = validResult();
+  before.assetId = PRIOR_ASSET_ID;
+  before.session.media.id = PRIOR_ASSET_ID;
+  before.uploadedSrtInfo.cacheId = PRIOR_ASSET_ID;
+  const unchanged = structuredClone(before);
+  assert.equal(
+    assertStagedReplacementPreservesActiveMedia(before, unchanged, PRIOR_ASSET_ID),
+    unchanged,
+  );
+
+  for (const [label, mutate] of [
+    ['asset', (value) => { value.assetId = validResult().assetId; }],
+    ['playback', (value) => { value.currentFileUrl += '&replacement=1'; }],
+    ['session', (value) => { value.session.media.id = validResult().assetId; }],
+    ['subtitle', (value) => { value.uploadedSrtInfo.cacheId = null; }],
+    ['marker', (value) => { value.subtitleMarkerVisible = false; }],
+  ]) {
+    const mutated = structuredClone(before);
+    mutate(mutated);
+    assert.throws(
+      () => assertStagedReplacementPreservesActiveMedia(before, mutated, PRIOR_ASSET_ID),
+      /mutated the active media or subtitle identity/,
+      label,
+    );
+  }
 });
 
 test('requires immediate native activity after the real media action', () => {

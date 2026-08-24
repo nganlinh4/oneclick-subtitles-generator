@@ -20,7 +20,7 @@ pub use binary::{
     YtDlpResolver, YtDlpSearch,
 };
 pub use engine::{DownloadEngine, DownloadResult, DownloadSummary, ToolVersion};
-pub use error::{DownloadError, Result};
+pub use error::{DownloadError, ProcessFailureKind, Result};
 pub use inventory::{
     AudioFormatOption, FormatContainer, FormatInventory, MediaInventory, QualityOption,
     SelectedFormat, SelectedSubtitle, SubtitleFormat, SubtitleSource, SubtitleTrackOption,

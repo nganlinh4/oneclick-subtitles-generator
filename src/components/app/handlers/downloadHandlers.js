@@ -117,13 +117,19 @@ export const createDownloadHandlers = ({
         if (!ownsPreparation()) throw ownershipFailure();
         if (guardedAutoRequest) {
           assertAutoGenerationRequestActive(guardedAutoRequest);
-          if (isDesktopRuntime() && expectedAssetId !== null) {
-            const session = readNativeMediaSession();
-            if (session === null
-                || session.assetId !== expectedAssetId
-                || (projectCacheId !== null && session.cacheId !== projectCacheId)
-                || (expectedProjectId !== null && session.projectId !== expectedProjectId)) {
-              throw new AutoGenerationOwnershipError();
+          if (isDesktopRuntime()) {
+            // Before a URL download publishes its candidate there is deliberately no active B
+            // media identity yet. The preparation token and abort signal own that interval; the
+            // URL input must never forge ownership by overwriting A's compatibility keys. Once B
+            // is claimed, its exact native asset/session becomes mandatory at every boundary.
+            if (expectedAssetId !== null) {
+              const session = readNativeMediaSession();
+              if (session === null
+                  || session.assetId !== expectedAssetId
+                  || (projectCacheId !== null && session.cacheId !== projectCacheId)
+                  || (expectedProjectId !== null && session.projectId !== expectedProjectId)) {
+                throw new AutoGenerationOwnershipError();
+              }
             }
           } else if (sourceIdentity?.startsWith('url:')) {
             const currentUrl = localStorage.getItem('current_video_url');

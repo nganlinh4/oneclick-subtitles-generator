@@ -26,8 +26,7 @@ const CAPABILITY_READ_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const REVIEWED_TIMEOUT_FAILURE_CODES = Object.freeze([
   'url-tab-timeout',
-  'url-commit-timeout',
-  'srt-clear-timeout',
+  'url-stage-timeout',
   'srt-readiness-timeout',
   'download-start-timeout',
   'terminal-state-timeout',
@@ -356,6 +355,25 @@ export function hasMediaFlowStarted(value, guardOptions) {
     ));
 }
 
+export function assertStagedReplacementPreservesActiveMedia(before, after, priorAssetId) {
+  invariant(UUID_V7.test(priorAssetId ?? ''),
+    'Installed media-flow staged replacement identity is invalid');
+  invariant(before?.assetId === priorAssetId
+    && before?.session?.media?.id === priorAssetId
+    && before?.uploadedSrtInfo?.cacheId === priorAssetId,
+  'Installed media flow did not begin from one coherent prior asset');
+  invariant(after?.assetId === before.assetId
+    && after?.currentFileName === before.currentFileName
+    && after?.currentFileUrl === before.currentFileUrl
+    && after?.session?.media?.id === before.session.media.id
+    && after?.session?.playback?.id === before.session.playback?.id
+    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId
+    && after?.uploadedSrtInfo?.fileName === before.uploadedSrtInfo.fileName
+    && after?.subtitleMarkerVisible === before.subtitleMarkerVisible,
+  'Staging replacement media mutated the active media or subtitle identity');
+  return after;
+}
+
 const evaluate = async (client, expression) => {
   const evaluation = await client.send('Runtime.evaluate', {
     expression,
@@ -464,7 +482,7 @@ const URL_CONTROL_READY_EXPRESSION = `
     && inputs.length === 1 && inputs[0] instanceof HTMLInputElement;
 })()`;
 
-const URL_COMMITTED_EXPRESSION = `
+const URL_STAGED_EXPRESSION = `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
   if (containers.length !== 1) return false;
@@ -488,66 +506,10 @@ const URL_COMMITTED_EXPRESSION = `
     && inputs.length === 1 && inputs[0] instanceof HTMLInputElement
     && inputs[0].value === ${JSON.stringify(MEDIA_URL)}
     && previews.length === 1
-    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}
-    && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)};
+    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)};
 })()`;
 
-const RESET_SRT_EXPRESSION = `
-(() => {
-  const groups = [...document.querySelectorAll(
-    '.buttons-container .srt-upload-buttons-group'
-  )];
-  if (groups.length !== 1) return null;
-  const group = groups[0];
-  const uploadContainers = [...group.children].filter(
-    (child) => child instanceof HTMLDivElement
-      && child.classList.contains('srt-upload-button-container')
-  );
-  if (uploadContainers.length !== 1) return null;
-  const uploadButtons = [...uploadContainers[0].children].filter(
-    (child) => child instanceof HTMLButtonElement
-      && child.classList.contains('srt-upload-button')
-  );
-  const inputs = [...uploadContainers[0].children].filter(
-    (child) => child instanceof HTMLInputElement
-      && child.type === 'file' && child.accept === '.srt,.json'
-  );
-  const clearButtons = [...group.children].filter(
-    (child) => child instanceof HTMLButtonElement
-      && child.classList.contains('clear-subtitles-button')
-  );
-  if (uploadButtons.length !== 1 || inputs.length !== 1) return null;
-  if (!uploadButtons[0].classList.contains('has-srt-uploaded')) {
-    return clearButtons.length === 0 ? 'already-clear' : null;
-  }
-  if (clearButtons.length !== 1 || clearButtons[0].disabled) return null;
-  clearButtons[0].click();
-  return 'cleared';
-})()`;
-
-const SRT_CLEARED_EXPRESSION = `
-(() => {
-  const groups = [...document.querySelectorAll(
-    '.buttons-container .srt-upload-buttons-group'
-  )];
-  if (groups.length !== 1) return false;
-  const group = groups[0];
-  const uploadButtons = [...group.querySelectorAll(':scope .srt-upload-button')];
-  const clearButtons = [...group.children].filter(
-    (child) => child instanceof HTMLButtonElement
-      && child.classList.contains('clear-subtitles-button')
-  );
-  let info = null;
-  try { info = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
-  return uploadButtons.length === 1
-    && !uploadButtons[0].classList.contains('has-srt-uploaded')
-    && !uploadButtons[0].classList.contains('processing')
-    && clearButtons.length === 0
-    && info === null
-    && !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)});
-})()`;
-
-const SRT_READY_EXPRESSION = (preferences) => `
+const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
   const groups = [...document.querySelectorAll(
@@ -588,7 +550,6 @@ const SRT_READY_EXPRESSION = (preferences) => `
     && inputs[0].value === ${JSON.stringify(MEDIA_URL)}
     && previews.length === 1
     && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}
-    && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}
     && localStorage.getItem('auto_import_site_subtitles')
       === ${JSON.stringify(preferences.autoImport)}
     && localStorage.getItem('preferred_subtitle_langs')
@@ -601,7 +562,7 @@ const SRT_READY_EXPRESSION = (preferences) => `
     && info && typeof info === 'object' && !Array.isArray(info)
     && Object.keys(info).sort().join(',') === 'cacheId,fileName,v'
     && info.v === 2
-    && info.cacheId === null
+    && info.cacheId === ${JSON.stringify(expectedCacheId)}
     && info.fileName === 'osg-installed-media-smoke.srt'
     && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
     && startButtons.length === 1
@@ -610,7 +571,7 @@ const SRT_READY_EXPRESSION = (preferences) => `
     && startButtons[0].dataset.generationMode === 'url-with-srt';
 })()`;
 
-const START_EXPRESSION = (preferences) => `
+const START_EXPRESSION = (preferences, expectedCacheId) => `
 (() => {
   const containers = [...document.querySelectorAll('.input-methods-container')];
   const buttonContainers = [...document.querySelectorAll('.buttons-container')];
@@ -650,7 +611,6 @@ const START_EXPRESSION = (preferences) => `
       || inputs[0].value !== ${JSON.stringify(MEDIA_URL)}
       || previews.length !== 1
       || (previews[0].textContent ?? '').trim() !== ${JSON.stringify(MEDIA_URL)}
-      || localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}
       || localStorage.getItem('auto_import_site_subtitles')
         !== ${JSON.stringify(preferences.autoImport)}
       || localStorage.getItem('preferred_subtitle_langs')
@@ -663,7 +623,7 @@ const START_EXPRESSION = (preferences) => `
       || !info || typeof info !== 'object' || Array.isArray(info)
       || Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'
       || info.v !== 2
-      || info.cacheId !== null
+      || info.cacheId !== ${JSON.stringify(expectedCacheId)}
       || info.fileName !== 'osg-installed-media-smoke.srt'
       || !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
       || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)
@@ -738,44 +698,42 @@ async function runInstalledMediaFlow(options) {
     // through START so the product action reads the reviewed native-adapter cache-key dimension.
     invariant(await evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences)) === true,
       'Installed media flow could not configure the reviewed phase');
+    const activeState = options.priorAssetId === null
+      ? null
+      : await evaluate(client, MEDIA_RESULT_EXPRESSION);
     invariant(await evaluate(client, SET_URL_EXPRESSION) === true,
       'Installed media flow could not enter the reviewed URL');
     await waitForValue(
-      () => evaluate(client, URL_COMMITTED_EXPRESSION),
+      () => evaluate(client, URL_STAGED_EXPRESSION),
       (value) => value === true,
-      { timeoutMs: 60_000, failureCode: 'url-commit-timeout' },
+      { timeoutMs: 60_000, failureCode: 'url-stage-timeout' },
     );
+    if (options.priorAssetId === null) {
+      const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
+      const inputs = await client.send('DOM.querySelectorAll', {
+        nodeId: documentNode.root.nodeId,
+        selector: '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
+      });
+      invariant(Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1
+        && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,
+      'Installed media flow could not find one exact SRT input');
+      await client.send('DOM.setFileInputFiles', {
+        files: [options.srt], nodeId: inputs.nodeIds[0],
+      });
+    } else {
+      const stagedState = await evaluate(client, MEDIA_RESULT_EXPRESSION);
+      assertStagedReplacementPreservesActiveMedia(
+        activeState, stagedState, options.priorAssetId,
+      );
+    }
     await waitForValue(
-      () => evaluate(client, RESET_SRT_EXPRESSION),
-      (value) => value === 'already-clear' || value === 'cleared',
-      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },
-    );
-    await waitForValue(
-      () => evaluate(client, SRT_CLEARED_EXPRESSION),
-      (value) => value === true,
-      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },
-    );
-    const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
-    const inputs = await client.send('DOM.querySelectorAll', {
-      nodeId: documentNode.root.nodeId,
-      selector: '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
-    });
-    invariant(Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1
-      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,
-    'Installed media flow could not find one exact SRT input');
-    await client.send('DOM.setFileInputFiles', {
-      files: [options.srt], nodeId: inputs.nodeIds[0],
-    });
-    await waitForValue(
-      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences)),
+      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId)),
       (value) => value === true,
       { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },
     );
     const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION);
     const baselineDownloadJobIds = collectDownloadJobIds(baselineState);
     if (options.priorAssetId !== null) {
-      // Activating the URL tab intentionally clears renderer compatibility storage, but the
-      // authoritative native session must still be the local asset we are replacing.
       invariant(baselineState?.session?.media?.id === options.priorAssetId,
         'Installed media flow did not begin from the reviewed prior asset');
     }
@@ -783,7 +741,9 @@ async function runInstalledMediaFlow(options) {
       priorAssetId: options.priorAssetId,
       baselineDownloadJobIds,
     };
-    invariant(await evaluate(client, START_EXPRESSION(mediaPreferences)) === true,
+    invariant(await evaluate(
+      client, START_EXPRESSION(mediaPreferences, options.priorAssetId),
+    ) === true,
       'Installed media flow could not click the real semi-automatic action');
     await waitForValue(
       () => evaluate(client, MEDIA_RESULT_EXPRESSION),

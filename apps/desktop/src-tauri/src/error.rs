@@ -131,6 +131,48 @@ impl CommandError {
         )
     }
 
+    pub(crate) fn downloader_authentication_required() -> Self {
+        Self::fixed(
+            "downloaderAuthenticationRequired",
+            "The source requires browser sign-in cookies.",
+        )
+    }
+
+    pub(crate) fn downloader_rate_limited() -> Self {
+        Self::fixed(
+            "downloaderRateLimited",
+            "The source temporarily rate-limited the downloader.",
+        )
+    }
+
+    pub(crate) fn downloader_network_failed() -> Self {
+        Self::fixed(
+            "downloaderNetworkFailed",
+            "The source refused or interrupted the media transfer.",
+        )
+    }
+
+    pub(crate) fn downloader_format_unavailable() -> Self {
+        Self::fixed(
+            "downloaderFormatUnavailable",
+            "The inspected media format is no longer available.",
+        )
+    }
+
+    pub(crate) fn downloader_source_unavailable() -> Self {
+        Self::fixed(
+            "downloaderSourceUnavailable",
+            "The source video is unavailable.",
+        )
+    }
+
+    pub(crate) fn downloader_post_processing_failed() -> Self {
+        Self::fixed(
+            "downloaderPostProcessingFailed",
+            "The downloaded streams could not be combined into a video.",
+        )
+    }
+
     pub(crate) fn render_busy() -> Self {
         Self::fixed(
             "renderBusy",

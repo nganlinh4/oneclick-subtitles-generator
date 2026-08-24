@@ -51,7 +51,13 @@ const downloadCommandCodes = new Set([
   'internal',
   'invalidInput',
   'mediaToolsUnavailable',
+  'downloaderAuthenticationRequired',
   'downloaderExecutionFailed',
+  'downloaderFormatUnavailable',
+  'downloaderNetworkFailed',
+  'downloaderPostProcessingFailed',
+  'downloaderRateLimited',
+  'downloaderSourceUnavailable',
   'jobAlreadyExists',
   'jobNotFound',
   'jobConflict',
@@ -931,9 +937,11 @@ export const createNativeDownloadService = ({
         terminal = true;
         releaseEntry(ownedEntry);
       }
-      if (event.event === 'failed' && event.error.code === 'downloaderExecutionFailed') {
-        triggerNativeDownloaderRecovery();
-      }
+      // Download retry belongs to nativeUrlDownloadAdapter. Starting a second, detached refresh
+      // here races the adapter's terminal handling: it can observe the still-releasing runtime,
+      // return without installing, and consume the global recovery cooldown before the owned
+      // retry asks for it. Direct inspection has no adapter-owned retry and remains handled by
+      // inspectDownloadUrl below.
       call(handlers.onEvent, event);
       if (event.event === 'progress') call(handlers.onProgress, event);
       if (event.event === 'completed') call(handlers.onCompleted, event);

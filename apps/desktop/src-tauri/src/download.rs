@@ -14,8 +14,9 @@ use osg_download::{
     AudioDownloadFormat, AudioQuality, BrowserCookieSource, CancellationToken, DownloadDestination,
     DownloadEngine, DownloadError, DownloadPhase, DownloadPlan, DownloadProgress, DownloadResult,
     DownloadSummary, FfmpegDirectory, InventoryId, InventoryRegistration, InventoryRegistry,
-    JsRuntimeResolver, JsRuntimeSearch, MediaInventory, MediaSelection, ProgressSink, RunControl,
-    SubtitleSelection, SubtitleSource, UrlPolicy, VideoHeight, VideoQuality, YtDlpSearch,
+    JsRuntimeResolver, JsRuntimeSearch, MediaInventory, MediaSelection, ProcessFailureKind,
+    ProgressSink, RunControl, SubtitleSelection, SubtitleSource, UrlPolicy, VideoHeight,
+    VideoQuality, YtDlpSearch,
 };
 use osg_infrastructure::storage::{
     ArtifactKind, ContentHash, Database, publish_durable_media_candidate as publish_media_artifact,
@@ -1330,9 +1331,20 @@ fn map_download_error(error: &DownloadError) -> CommandError {
         | DownloadError::InvalidJavaScriptRuntime(_)
         | DownloadError::FfmpegRequired => CommandError::media_tools_unavailable(),
         DownloadError::Cancelled => CommandError::internal("The media download was cancelled."),
-        DownloadError::Spawn(_) | DownloadError::ProcessFailed { .. } => {
-            CommandError::downloader_execution_failed()
-        }
+        DownloadError::Spawn(_) => CommandError::downloader_execution_failed(),
+        DownloadError::ProcessFailed { kind, .. } => match kind {
+            ProcessFailureKind::AuthenticationRequired => {
+                CommandError::downloader_authentication_required()
+            }
+            ProcessFailureKind::RateLimited => CommandError::downloader_rate_limited(),
+            ProcessFailureKind::Network => CommandError::downloader_network_failed(),
+            ProcessFailureKind::FormatUnavailable => CommandError::downloader_format_unavailable(),
+            ProcessFailureKind::SourceUnavailable => CommandError::downloader_source_unavailable(),
+            ProcessFailureKind::PostProcessing => CommandError::downloader_post_processing_failed(),
+            ProcessFailureKind::Extractor | ProcessFailureKind::Unknown => {
+                CommandError::downloader_execution_failed()
+            }
+        },
         DownloadError::InvalidDestination(_)
         | DownloadError::ProcessIo(_)
         | DownloadError::TimedOut { .. }
@@ -1409,7 +1421,7 @@ const fn download_error_diagnostic(error: &DownloadError) -> &'static str {
         DownloadError::FfmpegRequired => "ffmpeg-required",
         DownloadError::Cancelled => "cancelled",
         DownloadError::Spawn(_) => "spawn-failed",
-        DownloadError::ProcessFailed { .. } => "process-failed",
+        DownloadError::ProcessFailed { kind, .. } => kind.diagnostic(),
         DownloadError::InvalidDestination(_) => "invalid-destination",
         DownloadError::ProcessIo(_) => "process-io",
         DownloadError::TimedOut { .. } => "timed-out",
@@ -1465,25 +1477,36 @@ mod tests {
     }
 
     #[test]
-    fn only_downloader_launch_or_exit_failures_get_the_update_trigger_code() {
+    fn downloader_process_failures_map_to_actionable_path_free_codes() {
         let spawn = serde_json::to_value(map_download_error(&DownloadError::Spawn(
             std::io::Error::other("private operating-system detail"),
         )))
         .unwrap();
         let process = serde_json::to_value(map_download_error(&DownloadError::ProcessFailed {
             code: Some(1),
+            kind: osg_download::ProcessFailureKind::Extractor,
         }))
         .unwrap();
         let timeout = serde_json::to_value(map_download_error(&DownloadError::TimedOut {
             timeout: std::time::Duration::from_secs(1),
         }))
         .unwrap();
+        let authentication =
+            serde_json::to_value(map_download_error(&DownloadError::ProcessFailed {
+                code: Some(1),
+                kind: osg_download::ProcessFailureKind::AuthenticationRequired,
+            }))
+            .unwrap();
         assert_eq!(spawn["code"], "downloaderExecutionFailed");
         assert_eq!(process["code"], "downloaderExecutionFailed");
+        assert_eq!(authentication["code"], "downloaderAuthenticationRequired");
         assert_eq!(timeout["code"], "internal");
         assert_eq!(
-            download_error_diagnostic(&DownloadError::ProcessFailed { code: Some(1) }),
-            "process-failed"
+            download_error_diagnostic(&DownloadError::ProcessFailed {
+                code: Some(1),
+                kind: osg_download::ProcessFailureKind::AuthenticationRequired,
+            }),
+            "authentication-required"
         );
         assert_eq!(
             download_error_diagnostic(&DownloadError::TimedOut {
@@ -1493,6 +1516,7 @@ mod tests {
         );
         assert!(!spawn.to_string().contains("private"));
         assert!(!process.to_string().contains('1'));
+        assert!(!authentication.to_string().contains('1'));
     }
 
     #[test]

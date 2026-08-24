@@ -73,3 +73,22 @@ it('probes a native upload by opaque asset ID and never calls the legacy HTTP en
   expect(fetchSpy).not.toHaveBeenCalled();
   fetchSpy.mockRestore();
 });
+
+it('keeps active native video A authoritative while URL video B is only staged', async () => {
+  const selectedB = {
+    id: 'BBBBBBBBBBB',
+    source: 'youtube',
+    title: 'Video B',
+    url: 'https://youtube.com/watch?v=BBBBBBBBBBB',
+  };
+  const { result } = renderHook(() => useVideoInfo(selectedB, MEDIA, MEDIA.playbackUrl));
+
+  await waitFor(() => expect(result.current.actualDimensions?.videoId).toBe(ASSET_ID));
+  expect(result.current.videoInfo).toMatchObject({
+    source: 'upload',
+    title: 'clip.mp4',
+    url: null,
+  });
+  expect(result.current.getVideoInfoForModal().canRedownload).toBe(false);
+  await expect(result.current.getVideoFileForRendering('current')).resolves.toBe(MEDIA);
+});

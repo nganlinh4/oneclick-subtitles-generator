@@ -135,10 +135,6 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
 
   // Handle search result selection
   const handleVideoSelect = (video) => {
-    // Clear any existing file URLs when selecting a YouTube video
-    localStorage.removeItem('current_file_url');
-
-    // Set the selected video
     setSelectedVideo({
       ...video
     });

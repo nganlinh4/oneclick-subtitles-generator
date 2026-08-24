@@ -424,6 +424,7 @@ const AppLayout = ({
               setSubtitlesData={setSubtitlesData}
               selectedVideo={selectedVideo}
               uploadedFile={uploadedFile}
+              isDownloading={isDownloading}
               isGenerating={isGenerating}
               segmentsStatus={segmentsStatus}
               activeTab={activeTab}

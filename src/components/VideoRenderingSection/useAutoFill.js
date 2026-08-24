@@ -58,7 +58,7 @@ export const useAutoFill = ({
         // Create a video file object that represents the actual playing video
         setSelectedVideoFile({
           url: actualVideoUrl,
-          name: selectedVideo?.title || uploadedFile?.name || 'Current Video',
+          name: uploadedFile?.name || selectedVideo?.title || 'Current Video',
           isActualVideo: true
         });
       }

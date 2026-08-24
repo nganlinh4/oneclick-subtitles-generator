@@ -252,12 +252,37 @@ export const downloadAndPrepareYouTubeVideo = async (
     }
     if (!ownsPresentation()) return undefined;
     setDownloadProgress(0);
-    const detail = error?.code === 'downloaderExecutionFailed'
-      ? t(
+    const downloaderDetails = {
+      downloaderAuthenticationRequired: t(
+        'errors.videoDownloadAuthenticationRequired',
+        'This video requires sign-in. Enable browser cookies for downloads and try again.'
+      ),
+      downloaderExecutionFailed: t(
         'errors.videoDownloadExecutionFailed',
-        'The downloader retried but the source still failed. Check your connection, or enable browser cookies if the video requires sign-in.'
-      )
-      : error.message;
+        'The latest verified downloader retried with a fresh media inspection, but the source still failed.'
+      ),
+      downloaderFormatUnavailable: t(
+        'errors.videoDownloadFormatUnavailable',
+        'The selected media format expired or is no longer available. Try the download again.'
+      ),
+      downloaderNetworkFailed: t(
+        'errors.videoDownloadNetworkFailed',
+        'The source refused or interrupted the media transfer. Check the connection and try again.'
+      ),
+      downloaderPostProcessingFailed: t(
+        'errors.videoDownloadPostProcessingFailed',
+        'The video and audio streams downloaded, but could not be combined.'
+      ),
+      downloaderRateLimited: t(
+        'errors.videoDownloadRateLimited',
+        'The source is temporarily rate-limiting downloads. Wait a little and try again.'
+      ),
+      downloaderSourceUnavailable: t(
+        'errors.videoDownloadSourceUnavailable',
+        'This video is private, removed, region-blocked, or otherwise unavailable.'
+      ),
+    };
+    const detail = downloaderDetails[error?.code] ?? error.message;
     setStatus({
       message: `${t('errors.videoDownloadFailed', 'Video download failed')}: ${detail}`,
       type: 'error',

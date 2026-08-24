@@ -1302,14 +1302,18 @@ test('installed local-media picker handshake publishes atomic create-once ordere
   );
 });
 
-test('installed URL media flow commits URL and replaces stale SRT before one download', () => {
-  assert.doesNotThrow(() => assertInstalledMediaFlowInspector(
-    INSTALLED_MEDIA_FLOW_INSPECTOR,
-    INPUT_METHODS_SOURCE,
-    BUTTONS_CONTAINER_SOURCE,
-    DOWNLOAD_HANDLERS_SOURCE,
-    NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-  ));
+test('installed URL media flow preserves A while staging B and commits only native success', () => {
+  const assertReviewed = (
+    inspector = INSTALLED_MEDIA_FLOW_INSPECTOR,
+    inputMethods = INPUT_METHODS_SOURCE,
+    buttons = BUTTONS_CONTAINER_SOURCE,
+    handlers = DOWNLOAD_HANDLERS_SOURCE,
+    adapter = NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+  ) => assertInstalledMediaFlowInspector(
+    inspector, inputMethods, buttons, handlers, adapter,
+  );
+  assert.doesNotThrow(() => assertReviewed());
+
   const replaceWithin = (source, startMarker, endMarker, search, replacement) => {
     const start = source.indexOf(startMarker);
     const end = source.indexOf(endMarker, start + startMarker.length);
@@ -1318,588 +1322,218 @@ test('installed URL media flow commits URL and replaces stale SRT before one dow
     const changedBlock = weaken(block, search, replacement, { expected: 1 });
     return source.slice(0, start) + changedBlock + source.slice(end);
   };
-  const mutations = [
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'evaluate(client, URL_COMMITTED_EXPRESSION)',
-      'evaluate(client, URL_CONTROL_READY_EXPRESSION)',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}",
-      'previews.length >= 0',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)}",
-      'true',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '      () => evaluate(client, URL_COMMITTED_EXPRESSION),\n'
-        + '      (value) => value === true,\n'
-        + "      { timeoutMs: 60_000, failureCode: 'url-commit-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, RESET_SRT_EXPRESSION),',
-      '      () => evaluate(client, RESET_SRT_EXPRESSION),\n'
-        + "      (value) => value === 'already-clear' || value === 'cleared',\n"
-        + "      { timeoutMs: 30_000, failureCode: 'srt-readiness-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, URL_COMMITTED_EXPRESSION),',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '  clearButtons[0].click();\n  return \'cleared\';',
-      "  return 'cleared';",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    && !uploadButtons[0].classList.contains('has-srt-uploaded')",
-      "    && uploadButtons[0].classList.contains('has-srt-uploaded')",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '    && info === null',
-      '    && info !== null',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    && info.fileName === 'osg-installed-media-smoke.srt'",
-      '    && typeof info.fileName === \'string\'',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    && Object.keys(info).sort().join(',') === 'cacheId,fileName,v'",
-      "    && Object.keys(info).includes('fileName')",
-    ),
-    replaceWithin(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'const SRT_READY_EXPRESSION = (preferences) => `',
-      'const START_EXPRESSION = (preferences) => `',
-      '    && info.v === 2',
-      '    && Number.isInteger(info.v)',
-    ),
-    replaceWithin(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'const SRT_READY_EXPRESSION = (preferences) => `',
-      'const START_EXPRESSION = (preferences) => `',
-      '    && info.cacheId === null',
-      "    && typeof info.cacheId !== 'undefined'",
-    ),
-    replaceWithin(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'const START_EXPRESSION = (preferences) => `',
-      'export const MEDIA_RESULT_EXPRESSION = `',
-      "      || Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'",
-      "      || !Object.keys(info).includes('fileName')",
-    ),
-    replaceWithin(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'const START_EXPRESSION = (preferences) => `',
-      'export const MEDIA_RESULT_EXPRESSION = `',
-      '      || info.cacheId !== null',
-      "      || typeof info.cacheId === 'undefined'",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})",
-      '    && true',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1',
-      'Array.isArray(inputs.nodeIds) && inputs.nodeIds.length >= 1',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    await client.send('DOM.setFileInputFiles', {\n"
-        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
-        + '    });\n',
-      '',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    await client.send('DOM.setFileInputFiles', {",
-      "    void client.send('DOM.setFileInputFiles', {",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    await client.send('DOM.setFileInputFiles', {\n"
-        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
-        + '    });\n',
-      "    await client.send('DOM.setFileInputFiles', {\n"
-        + '      files: [options.srt], nodeId: inputs.nodeIds[0],\n'
-        + '    });\n'
-        + "    await evaluate(client, `inputs[0].dispatchEvent(new Event('change'))`);\n",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '      || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
-        + '      || buttons[0].disabled',
-      '      || buttons.length < 1 || !(buttons[0] instanceof HTMLButtonElement)\n'
-        + '      || buttons[0].disabled',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "    && startButtons[0].dataset.generationMode === 'url-with-srt';",
-      '    && true;',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "      || buttons[0].dataset.generationMode !== 'url-with-srt') return false;",
-      ') return false;',
-    ),
-    weakenAll(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "':scope .generate-btn.semi-auto'",
-      "':scope .generate-btn.semi-auto[data-generation-mode=\"url-with-srt\"]'",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '  buttons[0].click();\n  return true;',
-      '  buttons[0].click();\n  buttons[0].click();\n  return true;',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "{ timeoutMs: 30_000, failureCode: 'download-start-timeout' }",
-      "{ timeoutMs: 30_000, failureCode: 'terminal-state-timeout' }",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "      { failureCode: 'terminal-state-timeout' },",
-      "      { failureCode: 'srt-readiness-timeout' },",
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "      { timeoutMs: 30_000, failureCode: 'url-tab-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, URL_CONTROL_READY_EXPRESSION),',
-      "      { timeoutMs: 30_000, failureCode: 'url-commit-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, URL_CONTROL_READY_EXPRESSION),',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      "      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, SRT_CLEARED_EXPRESSION),',
-      "      { timeoutMs: 30_000, failureCode: 'srt-readiness-timeout' },\n"
-        + '    );\n'
-        + '    await waitForValue(\n'
-        + '      () => evaluate(client, SRT_CLEARED_EXPRESSION),',
-    ),
-    weakenAll(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      '.buttons-container .srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
-      '.srt-upload-buttons-group input[type="file"][accept=".srt,.json"]',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'REVIEWED_TIMEOUT_FAILURE_CODES.includes(failureCode)',
-      'typeof failureCode === \'string\'',
-    ),
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-      'throw new Error(`Installed media flow timed out: ${failureCode}`)',
-      "throw new Error('Installed media flow timed out')",
-    ),
-  ];
-  for (const [index, mutation] of mutations.entries()) {
-    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, `media-flow mutation ${index}`);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        mutation,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-      ),
-      /Installed media-flow inspector must/,
-      `media-flow mutation ${index}`,
-    );
-  }
-  const phaseMutations = [
+
+  const scriptMutations = [
     [
-      'same adapter preference in both phases',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
+      'staged URL wait replaced by a readiness wait',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        'evaluate(client, URL_STAGED_EXPRESSION)',
+        'evaluate(client, URL_CONTROL_READY_EXPRESSION)',
+      ),
+    ],
+    [
+      'staged URL no longer proves its visible preview',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        "(previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}",
+        'previews.length >= 0',
+      ),
+    ],
+    [
+      'staging writes the pending URL into active compatibility state',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        "    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)};",
+        "    && (previews[0].textContent ?? '').trim() === ${JSON.stringify(MEDIA_URL)}\n"
+          + "    && localStorage.getItem('current_video_url') === ${JSON.stringify(MEDIA_URL)};",
+      ),
+    ],
+    [
+      'active A snapshot removed before staging B',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    const activeState = options.priorAssetId === null\n'
+          + '      ? null\n'
+          + '      : await evaluate(client, MEDIA_RESULT_EXPRESSION);\n',
+        '    const activeState = null;\n',
+      ),
+    ],
+    [
+      'A/B identity guard call removed',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '      assertStagedReplacementPreservesActiveMedia(\n'
+          + '        activeState, stagedState, options.priorAssetId,\n'
+          + '      );\n',
+        '',
+      ),
+    ],
+    [
+      'initial-only SRT upload widened to replacement',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    if (options.priorAssetId === null) {',
+        '    if (true) {',
+      ),
+    ],
+    [
+      'staged active asset equality weakened',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '  invariant(after?.assetId === before.assetId',
+        '  invariant(typeof after?.assetId === \'string\'',
+      ),
+    ],
+    [
+      'staged playback capability equality weakened',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    && after?.currentFileUrl === before.currentFileUrl',
+        '    && typeof after?.currentFileUrl === \'string\'',
+      ),
+    ],
+    [
+      'staged native session equality weakened',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    && after?.session?.media?.id === before.session.media.id',
+        '    && typeof after?.session?.media?.id === \'string\'',
+      ),
+    ],
+    [
+      'staged subtitle ownership equality weakened',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId',
+        '    && after?.uploadedSrtInfo !== null',
+      ),
+    ],
+    [
+      'SRT readiness accepts an unowned cache id',
+      replaceWithin(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        'const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `',
+        'const START_EXPRESSION = (preferences, expectedCacheId) => `',
+        '    && info.cacheId === ${JSON.stringify(expectedCacheId)}',
+        '    && info.cacheId === null',
+      ),
+    ],
+    [
+      'start accepts an unowned SRT cache id',
+      replaceWithin(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        'const START_EXPRESSION = (preferences, expectedCacheId) => `',
+        'export const MEDIA_RESULT_EXPRESSION = `',
+        '      || info.cacheId !== ${JSON.stringify(expectedCacheId)}',
+        '      || false',
+      ),
+    ],
+    [
+      'native SRT file selection removed',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        "      await client.send('DOM.setFileInputFiles', {\n"
+          + '        files: [options.srt], nodeId: inputs.nodeIds[0],\n'
+          + '      });\n',
+        '',
+      ),
+    ],
+    [
+      'real customer action double-clicked',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '  buttons[0].click();\n  return true;',
+        '  buttons[0].click();\n  buttons[0].click();\n  return true;',
+      ),
+    ],
+    [
+      'URL-stage timeout mislabeled',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        "{ timeoutMs: 60_000, failureCode: 'url-stage-timeout' }",
+        "{ timeoutMs: 60_000, failureCode: 'terminal-state-timeout' }",
+      ),
+    ],
+    [
+      'timeout category allow-list bypassed',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
+        'REVIEWED_TIMEOUT_FAILURE_CODES.includes(failureCode)',
+        "typeof failureCode === 'string'",
+      ),
+    ],
+  ];
+  for (const [description, mutation] of scriptMutations) {
+    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
+    assert.throws(() => assertReviewed(mutation), /Installed media-flow inspector must/, description);
+  }
+
+  for (const [description, mutation] of [
+    [
+      'both phases collapse to one adapter preference',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
         "return Object.freeze({ autoImport: 'false', preferredLanguages: '[\"en\"]' });",
         "return Object.freeze({ autoImport: 'true', preferredLanguages: '[\"en\"]' });",
       ),
     ],
     [
-      'arbitrary phase accepted',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-        "if (mediaPhase === 'reactivation') {",
-        "if (typeof mediaPhase === 'string') {",
-      ),
-    ],
-    [
-      'phase and prior identity decoupled',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
+      'phase and prior identity are decoupled',
+      weaken(
+        INSTALLED_MEDIA_FLOW_INSPECTOR,
         "  invariant((mediaPhase === 'initial' && priorAssetId === null)\n"
           + "    || (mediaPhase === 'reactivation' && priorAssetId !== null),\n"
           + "  'Installed media-flow phase and prior asset are inconsistent');\n",
         '',
       ),
     ],
-    [
-      'phase configuration omitted',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-        '    invariant(await evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences)) === true,\n'
-          + "      'Installed media flow could not configure the reviewed phase');\n",
-        '',
-      ),
-    ],
-  ];
-  for (const [description, mutation] of phaseMutations) {
-    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        mutation,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-        DOWNLOAD_HANDLERS_SOURCE,
-        NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-      ),
-      /distinct reviewed adapter preferences|commit URL state/,
-      description,
-    );
-  }
-  const startAutoImportRevalidationRemoved = replaceWithin(
-    INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = (preferences) => `',
-    'export const MEDIA_RESULT_EXPRESSION = `',
-    "      || localStorage.getItem('auto_import_site_subtitles')\n"
-      + '        !== ${JSON.stringify(preferences.autoImport)}\n',
-    '',
-  );
-  const startLanguagesRevalidationRemoved = replaceWithin(
-    INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = (preferences) => `',
-    'export const MEDIA_RESULT_EXPRESSION = `',
-    "      || localStorage.getItem('preferred_subtitle_langs')\n"
-      + '        !== ${JSON.stringify(preferences.preferredLanguages)}\n',
-    '',
-  );
-  for (const [description, mutation] of [
-    ['START auto-import phase revalidation', startAutoImportRevalidationRemoved],
-    ['START preferred-language phase revalidation', startLanguagesRevalidationRemoved],
   ]) {
     assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        mutation,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-        DOWNLOAD_HANDLERS_SOURCE,
-        NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-      ),
-      /synchronously revalidate URL and fresh SRT state/,
-      description,
-    );
+    assert.throws(() => assertReviewed(mutation), /distinct reviewed adapter preferences/, description);
   }
-  const adapterKeyMutation = weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    "`${cookieSource}\\u0000${preferredLanguages.join(',')}\\u0000${url}`",
-    "`${cookieSource}\\u0000${url}`",
-  );
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      INSTALLED_MEDIA_FLOW_INSPECTOR,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-      DOWNLOAD_HANDLERS_SOURCE,
-      adapterKeyMutation,
-    ),
-    /distinct reviewed native adapter keys/,
-  );
-  for (const [description, adapterMutation] of [
-    [
-      'adapter operation key reverted to the unnormalized request URL',
-      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-        'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
-        'const key = operationKey(url, cookieSource, preferredLanguages);',
-      ),
-    ],
-    [
-      'adapter operation key dropped the explicit browser source',
-      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-        'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
-        'const key = operationKey(normalizedUrl, preferredLanguages);',
-      ),
-    ],
-    [
-      'adapter URL normalization weakened to a pass-through',
-      weaken(NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-        'const normalizedUrl = normalizeUrl(url);',
-        'const normalizedUrl = url;',
-      ),
-    ],
-  ]) {
-    assert.notEqual(adapterMutation, NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE, description);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        INSTALLED_MEDIA_FLOW_INSPECTOR,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-        DOWNLOAD_HANDLERS_SOURCE,
-        adapterMutation,
-      ),
-      /distinct reviewed native adapter keys/,
-      description,
-    );
-  }
-  const lastMomentPreferenceCollapse = weaken(DOWNLOAD_HANDLERS_SOURCE,
-    '        processedFile = await downloadAndPrepareYouTubeVideo(',
-    '        preferredSubtitleLanguages = [];\n\n'
-      + '        processedFile = await downloadAndPrepareYouTubeVideo(',
-  );
-  assert.notEqual(lastMomentPreferenceCollapse, DOWNLOAD_HANDLERS_SOURCE,
-    'last-moment handler preference collapse');
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      INSTALLED_MEDIA_FLOW_INSPECTOR,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-      lastMomentPreferenceCollapse,
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    ),
-    /distinct reviewed native adapter keys/,
-  );
-  const handlerPreferenceMutation = weaken(DOWNLOAD_HANDLERS_SOURCE,
-    "if (localStorage.getItem('auto_import_site_subtitles') !== 'false')",
-    "if (localStorage.getItem('auto_import_site_subtitles') === 'false')",
-  );
-  assert.notEqual(handlerPreferenceMutation, DOWNLOAD_HANDLERS_SOURCE,
-    'handler preference semantics inversion');
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      INSTALLED_MEDIA_FLOW_INSPECTOR,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-      handlerPreferenceMutation,
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    ),
-    /distinct reviewed native adapter keys/,
-  );
-  const commentedHandlerDecoy = `/*\n${DOWNLOAD_HANDLERS_SOURCE}\n*/\n`
-    + 'export const createDownloadHandlers = () => ({ '
-    + 'startBackgroundVideoProcessing: async () => undefined });\n';
-  const commentedAdapterDecoy = `/*\n${NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE}\n*/\n`
-    + 'export const downloadNativeVideo = async () => null;\n';
-  for (const [description, handlerSource, adapterSource] of [
-    [
-      'commented handler decoy with weakened executable',
-      commentedHandlerDecoy,
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    ],
-    [
-      'commented adapter decoy with weakened executable',
-      DOWNLOAD_HANDLERS_SOURCE,
-      commentedAdapterDecoy,
-    ],
-  ]) {
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        INSTALLED_MEDIA_FLOW_INSPECTOR,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-        handlerSource,
-        adapterSource,
-      ),
-      /reviewed executable source/,
-      description,
-    );
-  }
-  const queryFixtureMutation = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-    "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4';",
-    "osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4?osg-installed-flow=reactivation';",
-  );
-  assert.notEqual(queryFixtureMutation, INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'native-rejected fixture query');
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      queryFixtureMutation,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-      DOWNLOAD_HANDLERS_SOURCE,
-      NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
-    ),
-    /byte-exact native-approved fixture URL/,
-  );
-  const exactSetFileInputCall = [
-    "    await client.send('DOM.setFileInputFiles', {",
-    '      files: [options.srt], nodeId: inputs.nodeIds[0],',
-    '    });',
-    '',
-  ].join('\n');
-  const exactSrtReadyWaitStart = [
-    '    await waitForValue(',
-    '      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences)),',
-  ].join('\n');
-  const setFileInputThenReady = exactSetFileInputCall + exactSrtReadyWaitStart;
-  assert.equal(INSTALLED_MEDIA_FLOW_INSPECTOR.split(setFileInputThenReady).length, 2,
-    'setFileInputFiles to SRT_READY boundary cardinality');
-  const uploadBoundaryMutations = [
-    [
-      'positive node validity removal',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-        '      && Number.isInteger(inputs.nodeIds[0]) && inputs.nodeIds[0] > 0,',
-        '      && true,',
-      ),
-    ],
-    [
-      'manual onchange insertion',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-        setFileInputThenReady,
-        exactSetFileInputCall
-          + "    await evaluate(client, `document.querySelector('input')?.onchange?.(new Event('change'))`);\n"
-          + exactSrtReadyWaitStart,
-      ),
-    ],
-    [
-      'out-of-line URL evaluation insertion',
-      weaken(INSTALLED_MEDIA_FLOW_INSPECTOR,
-        setFileInputThenReady,
-        exactSetFileInputCall
-          + '    await evaluate(client, SET_URL_EXPRESSION);\n'
-          + exactSrtReadyWaitStart,
-      ),
-    ],
-  ];
-  for (const [description, mutation] of uploadBoundaryMutations) {
-    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        mutation,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-      ),
-      /retain one uninterrupted exact SRT upload transaction/,
-      description,
-    );
-  }
-  const startUrlRevalidationRemoved = replaceWithin(
-    INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = (preferences) => `',
-    'export const MEDIA_RESULT_EXPRESSION = `',
-    "      || localStorage.getItem('current_video_url') !== ${JSON.stringify(MEDIA_URL)}\n",
-    '',
-  );
-  const startSrtRevalidationRemoved = replaceWithin(
-    INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'const START_EXPRESSION = (preferences) => `',
-    'export const MEDIA_RESULT_EXPRESSION = `',
-    "      || info.fileName !== 'osg-installed-media-smoke.srt'\n",
-    '',
-  );
-  for (const [description, mutation] of [
-    ['START URL revalidation', startUrlRevalidationRemoved],
-    ['START SRT revalidation', startSrtRevalidationRemoved],
-  ]) {
-    assert.notEqual(mutation, INSTALLED_MEDIA_FLOW_INSPECTOR, description);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        mutation,
-        INPUT_METHODS_SOURCE,
-        BUTTONS_CONTAINER_SOURCE,
-      ),
-      /synchronously revalidate URL and fresh SRT state/,
-      description,
-    );
-  }
-  const srtClearedWait = [
-    '    await waitForValue(',
-    '      () => evaluate(client, SRT_CLEARED_EXPRESSION),',
-    '      (value) => value === true,',
-    "      { timeoutMs: 30_000, failureCode: 'srt-clear-timeout' },",
-    '    );',
-    '',
-  ].join('\n');
-  const withoutSrtClearedWait = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, srtClearedWait, '');
-  assert.notEqual(withoutSrtClearedWait, INSTALLED_MEDIA_FLOW_INSPECTOR,
-    'SRT_CLEARED wait removal');
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      withoutSrtClearedWait,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-    ),
-    /commit URL state, replace stale SRT state, and baseline before one real download action/,
-    'SRT_CLEARED wait removal',
-  );
-  const baselineAndPriorBlock = [
-    '    const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION);',
-    '    const baselineDownloadJobIds = collectDownloadJobIds(baselineState);',
-    '    if (options.priorAssetId !== null) {',
-    '      // Activating the URL tab intentionally clears renderer compatibility storage, but the',
-    '      // authoritative native session must still be the local asset we are replacing.',
-    '      invariant(baselineState?.session?.media?.id === options.priorAssetId,',
-    "        'Installed media flow did not begin from the reviewed prior asset');",
-    '    }',
-    '    const flowGuard = {',
-    '      priorAssetId: options.priorAssetId,',
-    '      baselineDownloadJobIds,',
-    '    };',
-    '',
-  ].join('\n');
-  const startCall = [
-    '    invariant(await evaluate(client, START_EXPRESSION(mediaPreferences)) === true,',
-    "      'Installed media flow could not click the real semi-automatic action');",
-    '',
-  ].join('\n');
-  const baselineAfterStart = weaken(
-    weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, baselineAndPriorBlock, '', { expected: 1 }),
-    startCall,
-    `${startCall}${baselineAndPriorBlock}`,
-    { expected: 1 },
-  );
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      baselineAfterStart,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-    ),
-    /commit URL state, replace stale SRT state, and baseline before one real download action/,
-    'baseline/prior ordering mutation',
-  );
-  const priorGuard = [
-    '    if (options.priorAssetId !== null) {',
-    '      // Activating the URL tab intentionally clears renderer compatibility storage, but the',
-    '      // authoritative native session must still be the local asset we are replacing.',
-    '      invariant(baselineState?.session?.media?.id === options.priorAssetId,',
-    "        'Installed media flow did not begin from the reviewed prior asset');",
-    '    }',
-    '',
-  ].join('\n');
-  const withoutPriorGuard = weaken(INSTALLED_MEDIA_FLOW_INSPECTOR, priorGuard, '');
-  assert.notEqual(withoutPriorGuard, INSTALLED_MEDIA_FLOW_INSPECTOR, 'prior guard removal');
-  assert.throws(
-    () => assertInstalledMediaFlowInspector(
-      withoutPriorGuard,
-      INPUT_METHODS_SOURCE,
-      BUTTONS_CONTAINER_SOURCE,
-    ),
-    /commit URL state, replace stale SRT state, and baseline before one real download action/,
-    'prior guard removal',
-  );
-  const missingUrlSelector = weaken(INPUT_METHODS_SOURCE,
+
+  const missingUrlSelector = weaken(
+    INPUT_METHODS_SOURCE,
     '\n            data-input-tab="unified-url"',
     '',
   );
-  const misplacedUrlSelector = weaken(missingUrlSelector,
-    'data-input-tab="file-upload"',
-    'data-input-tab="file-upload"\n            data-input-tab="unified-url"',
+  assert.throws(
+    () => assertReviewed(INSTALLED_MEDIA_FLOW_INSPECTOR, missingUrlSelector),
+    /unique URL selector/,
   );
-  for (const inputMethodsMutation of [missingUrlSelector, misplacedUrlSelector]) {
-    assert.notEqual(inputMethodsMutation, INPUT_METHODS_SOURCE);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        INSTALLED_MEDIA_FLOW_INSPECTOR,
-        inputMethodsMutation,
-        BUTTONS_CONTAINER_SOURCE,
-      ),
-      /unique URL selector/,
-    );
-  }
-  for (const buttonsMutation of [
-    weaken(BUTTONS_CONTAINER_SOURCE,
-      "    : hasUrlAndSrtOnly ? 'url-with-srt' : 'other';",
-      "    : hasUrlAndSrtOnly ? 'other' : 'url-with-srt';",
-    ),
-    weaken(BUTTONS_CONTAINER_SOURCE,
-      '              data-generation-mode={generationMode}\n',
-      '',
-    ),
-    weaken(BUTTONS_CONTAINER_SOURCE,
-      '              data-osg-action="generate-subtitles"\n',
-      '',
-    ),
-  ]) {
-    assert.notEqual(buttonsMutation, BUTTONS_CONTAINER_SOURCE);
-    assert.throws(
-      () => assertInstalledMediaFlowInspector(
-        INSTALLED_MEDIA_FLOW_INSPECTOR,
-        INPUT_METHODS_SOURCE,
-        buttonsMutation,
-      ),
-      /committed URL-with-SRT generation mode/,
-    );
-  }
-});
 
+  const weakenedHandler = weaken(
+    DOWNLOAD_HANDLERS_SOURCE,
+    "if (localStorage.getItem('auto_import_site_subtitles') !== 'false')",
+    "if (localStorage.getItem('auto_import_site_subtitles') === 'false')",
+  );
+  assert.throws(
+    () => assertReviewed(
+      INSTALLED_MEDIA_FLOW_INSPECTOR,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      weakenedHandler,
+    ),
+    /distinct reviewed native adapter keys/,
+  );
+
+  const weakenedAdapter = weaken(
+    NATIVE_URL_DOWNLOAD_ADAPTER_SOURCE,
+    'const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);',
+    'const key = operationKey(url, cookieSource, preferredLanguages);',
+  );
+  assert.throws(
+    () => assertReviewed(
+      INSTALLED_MEDIA_FLOW_INSPECTOR,
+      INPUT_METHODS_SOURCE,
+      BUTTONS_CONTAINER_SOURCE,
+      DOWNLOAD_HANDLERS_SOURCE,
+      weakenedAdapter,
+    ),
+    /distinct reviewed native adapter keys/,
+  );
+});
 test('installed native-tool inspector uses exact UI removal and hot reinstall proof', () => {
   assert.doesNotThrow(() => assertInstalledNativeToolsInspector(INSTALLED_NATIVE_TOOLS_INSPECTOR));
   const mutations = [
