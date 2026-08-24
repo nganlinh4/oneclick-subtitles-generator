@@ -10,6 +10,7 @@ import {
 } from './defaultCustomization';
 import { presetOrder, presets } from './presetDefinitions';
 import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../shared/subtitle/defaultSubtitleFont';
+import { resolveFontIdentity } from '../../services/fontIdentity';
 
 describe('subtitle customization default authority', () => {
   it('shares one frozen value between editor and native renderer', () => {
@@ -109,6 +110,20 @@ describe('subtitle customization default authority', () => {
     }
     for (const preset of ['custom_1750000000000', 'brand-preset-01', '한글-😀']) {
       expect(parseStoredSubtitleCustomization(JSON.stringify({ preset })).preset).toBe(preset);
+    }
+  });
+
+  it('never ships a built-in preset whose selected face the packaged Windows app must refuse', () => {
+    for (const preset of presetOrder) {
+      const customization = presets[preset];
+      const resolved = resolveFontIdentity({
+        fontFamily: customization.fontFamily,
+        fontWeight: customization.fontWeight,
+        platform: 'windows',
+        managedPackInstalled: true,
+        isSystemFaceInstalled: () => true,
+      });
+      expect(resolved, `${preset} selected an unusable face`).toMatchObject({ status: 'exact' });
     }
   });
 

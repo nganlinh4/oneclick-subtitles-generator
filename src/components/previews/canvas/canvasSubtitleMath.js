@@ -57,20 +57,43 @@ export const easeSubtitle = (progress, easing) => {
   return progress;
 };
 
-export const activeCueAt = (cues, instant, fadeInValue, fadeOutValue) => {
+export const activeCueAtFrom = (cues, instant, fadeInValue, fadeOutValue, startIndex = 0) => {
   const fadeIn = Number.isFinite(fadeInValue) && fadeInValue > 0 ? fadeInValue : 0;
   const fadeOut = Number.isFinite(fadeOutValue) && fadeOutValue > 0 ? fadeOutValue : 0;
-  const index = cues.findIndex((cue) => instant >= cue.start - fadeIn && instant <= cue.end + fadeOut);
-  if (index < 0) return null;
-  const cue = cues[index];
-  if (instant < cue.start) {
-    return { cue, index, phase: 'fadingIn', progress: (instant - (cue.start - fadeIn)) / fadeIn };
+  let strongestFade = null;
+
+  for (let index = Math.max(0, startIndex); index < cues.length; index += 1) {
+    const cue = cues[index];
+    if (cue.start - fadeIn > instant) break;
+    // A cue inside its authored interval always outranks another cue's widened fade window. The old
+    // first-window-wins rule let an outgoing cue at zero opacity swallow the next live cue, which
+    // is the visible one-frame (and sometimes multi-frame) blink users reported during playback.
+    if (instant >= cue.start && instant <= cue.end) {
+      return { cue, index, phase: 'holding', progress: 1 };
+    }
+
+    let candidate = null;
+    if (fadeIn > 0 && instant >= cue.start - fadeIn && instant < cue.start) {
+      candidate = {
+        cue, index, phase: 'fadingIn', progress: (instant - (cue.start - fadeIn)) / fadeIn,
+      };
+    } else if (fadeOut > 0 && instant > cue.end && instant <= cue.end + fadeOut) {
+      candidate = {
+        cue, index, phase: 'fadingOut', progress: 1 - ((instant - cue.end) / fadeOut),
+      };
+    }
+    // Only one raster can be shown. In a real gap, choose the more opaque fade instead of the
+    // earlier cue by list order; ties remain deterministic and keep the earlier cue.
+    if (candidate !== null && (strongestFade === null || candidate.progress > strongestFade.progress)) {
+      strongestFade = candidate;
+    }
   }
-  if (instant > cue.end) {
-    return { cue, index, phase: 'fadingOut', progress: 1 - ((instant - cue.end) / fadeOut) };
-  }
-  return { cue, index, phase: 'holding', progress: 1 };
+  return strongestFade;
 };
+
+export const activeCueAt = (cues, instant, fadeInValue, fadeOutValue) => (
+  activeCueAtFrom(cues, instant, fadeInValue, fadeOutValue, 0)
+);
 
 const slide = (entering, leaving, remaining, onEnter, onLeave) => {
   if (entering) return remaining * onEnter;

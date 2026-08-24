@@ -57,6 +57,58 @@ describe('a customer exports the subtitled video they previewed', () => {
       timeout: 60_000,
       timeoutMsg: 'the expanded native render preview never published its player controls',
     });
+    // Modern used to select Roboto, one of 105 catalog options with no packaged byte identity. The
+    // canvas then returned before repainting: `fontUnavailable` appeared while an opaque stale
+    // frame covered the video, even though audio and the seek bar continued. Exercise that exact
+    // customer action and require both the media clock and composed canvas to stay live.
+    const modernPreset = await $('//div[contains(@class,"preset-buttons")]'
+      + '//button[normalize-space(.)="Modern"]');
+    await modernPreset.waitForClickable({ timeout: 30_000 });
+    await modernPreset.click();
+    const presetPlayback = await browser.execute(async () => {
+      const video = document.querySelector('.video-preview-panel video');
+      const canvas = document.querySelector(
+        '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+      );
+      if (video === null || canvas === null) throw new Error('the render preview surface is incomplete');
+      video.muted = true;
+      video.currentTime = 0.75;
+      const startedAt = video.currentTime;
+      const revision = Number(canvas.dataset.osgFrameRevision ?? 0);
+      await video.play();
+      const samples = [];
+      for (let index = 0; index < 20; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        samples.push({
+          currentTime: video.currentTime,
+          revision: Number(canvas.dataset.osgFrameRevision ?? 0),
+          cue: canvas.dataset.osgCueIndex ?? null,
+        });
+      }
+      video.pause();
+      return {
+        startedAt,
+        revision,
+        samples,
+        fontError: [...document.querySelectorAll('.toast-item.live .toast')]
+          .some((node) => (node.innerText || '').includes('fontUnavailable')),
+      };
+    });
+    const presetPlaybackAfter = presetPlayback.samples.at(-1);
+    assert.ok(
+      presetPlaybackAfter.currentTime > presetPlayback.startedAt + 0.75,
+      `the render preview media clock froze after a preset switch: ${JSON.stringify(presetPlaybackAfter)}`,
+    );
+    assert.ok(
+      presetPlaybackAfter.revision > presetPlayback.revision,
+      `the composed video frame froze after a preset switch: ${JSON.stringify(presetPlaybackAfter)}`,
+    );
+    assert.equal(
+      presetPlayback.samples.every((sample) => sample.cue !== ''),
+      true,
+      `the subtitle blinked during preset-switched playback: ${JSON.stringify(presetPlayback.samples)}`,
+    );
+    assert.equal(presetPlayback.fontError, false, 'a built-in preset produced fontUnavailable');
     // Default styling alone would leave border, glow and text shadow unproved. Neon uses the
     // reviewed Arial face and exercises all three while remaining available on a clean Windows
     // profile; the same selected style flows into both the editor canvas and native export.

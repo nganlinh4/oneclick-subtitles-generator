@@ -10,7 +10,7 @@ import {
 } from '../native/nativePreviewScene';
 import { compositionSize } from '../native/nativePreviewGeometry';
 import { useVideoSourceDimensions } from '../native/useNativePreviewSource';
-import { activeCueAt, cueTransformAt, easeSubtitle } from './canvasSubtitleMath';
+import { activeCueAtFrom, cueTransformAt, easeSubtitle } from './canvasSubtitleMath';
 import { createAtlasCanvas, createCanvasSubtitleRenderer } from './canvasSubtitleRenderer';
 
 const MAX_CACHE_ENTRIES = 8;
@@ -44,6 +44,9 @@ const faceProbe = () => {
 };
 
 const stateKey = (state) => `${state.status}|${state.code ?? ''}`;
+const atlasKey = (snapshot, activeCue) => (
+  `${snapshot.sceneKey}|${activeCue.index}|${activeCue.cue.text}`
+);
 
 const cachePut = (cache, key, entry) => {
   if (cache.has(key)) cache.delete(key);
@@ -218,7 +221,7 @@ const CanvasVideoPreview = ({
     };
 
     const bake = (activeCue, snapshot) => {
-      const key = `${snapshot.sceneKey}|${activeCue.index}|${activeCue.cue.text}`;
+      const key = atlasKey(snapshot, activeCue);
       if (cacheRef.current.has(key) || pendingRef.current.has(key)) return key;
       const generation = generationRef.current;
       pendingRef.current.add(key);
@@ -239,7 +242,6 @@ const CanvasVideoPreview = ({
           const atlas = bakePreviewAtlas(bakeRequest);
           if (generation !== generationRef.current) return;
           cachePut(cacheRef.current, key, { atlas, canvas: createAtlasCanvas(atlas) });
-          publish({ status: 'ready', code: null });
         } catch (error) {
           if (generation !== generationRef.current) return;
           const code = error?.code ?? 'canvasPreviewRejected';
@@ -265,24 +267,16 @@ const CanvasVideoPreview = ({
       // which makes a 100,000-cue project O(1) per frame instead of rescanning the document.
       if (cursor.sceneKey === snapshot.sceneKey && time >= cursor.time) {
         let index = Math.min(cursor.index, Math.max(0, snapshot.cues.length - 1));
-        while (index < snapshot.cues.length) {
-          const cue = snapshot.cues[index];
-          if (time < cue.start - fadeIn) break;
-          if (time <= cue.end + fadeOut) {
-            cursor.index = index;
-            cursor.time = time;
-            const one = activeCueAt([cue], time, fadeIn, fadeOut);
-            return one === null ? null : { ...one, index };
-          }
+        while (index < snapshot.cues.length && time > snapshot.cues[index].end + fadeOut) {
           index += 1;
         }
         cursor.index = index;
         cursor.time = time;
-        return null;
+        return activeCueAtFrom(snapshot.cues, time, fadeIn, fadeOut, index);
       }
       // A backwards seek is rare and correctness matters more than indexing it: scan once from the
-      // start to preserve the export's first-match-wins rule even for hostile overlapping cues.
-      const selected = activeCueAt(snapshot.cues, time, fadeIn, fadeOut);
+      // start so authored intervals and overlapping fades follow the export's exact selection rule.
+      const selected = activeCueAtFrom(snapshot.cues, time, fadeIn, fadeOut, 0);
       cursor.sceneKey = snapshot.sceneKey;
       cursor.time = time;
       cursor.index = selected?.index ?? 0;
@@ -300,20 +294,23 @@ const CanvasVideoPreview = ({
           publish({ status: 'idle', code: null });
           return;
         }
-        if (snapshot.face === null || snapshot.customization === null) {
-          publish({ status: 'error', code: 'fontUnavailable' });
-          return;
-        }
         const time = Number.isFinite(video.currentTime) ? video.currentTime : snapshot.currentTime;
         const outsideTrim = time < snapshot.trimStart
           || (snapshot.trimEnd > snapshot.trimStart && time > snapshot.trimEnd);
-        const selected = outsideTrim ? null : selectCue(snapshot, time);
+        const selected = outsideTrim || snapshot.customization === null ? null : selectCue(snapshot, time);
         let entry = null;
         let activeWithEasing = null;
         let cueTransform = { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 };
-        if (selected !== null) {
+        if (selected !== null && snapshot.face !== null) {
           const key = bake(selected, snapshot);
           const cached = cacheRef.current.get(key) ?? null;
+          if (cached === null) {
+            // Publish a video frame and its subtitle as one visual revision. Painting the bare
+            // video while its atlas is queued creates a flash at every cue/style boundary. Holding
+            // the last complete canvas for one microtask is both shorter and visually atomic.
+            publish({ status: 'pending', code: null });
+            return;
+          }
           entry = cached?.atlas ? cached : null;
           const eased = easeSubtitle(selected.progress, snapshot.customization.animationEasing);
           activeWithEasing = { ...selected, eased };
@@ -323,6 +320,10 @@ const CanvasVideoPreview = ({
             selected.progress,
             snapshot.customization.animationEasing,
           );
+          const next = snapshot.cues[selected.index + 1];
+          if (next !== undefined) {
+            bake({ cue: next, index: selected.index + 1 }, snapshot);
+          }
         }
         const result = renderer.draw({
           video,
@@ -346,15 +347,20 @@ const CanvasVideoPreview = ({
           canvas.dataset.osgViewportHeight = String(result.viewport.height);
           canvas.dataset.osgOverlayRebuilds = String(overlayRebuildsRef.current);
         }
-        if (!drewVideo) publish({ status: 'source-loading', code: null });
+        if (snapshot.face === null || snapshot.customization === null) {
+          // The display canvas is opaque and sits above the live video. Returning before repainting
+          // left its last pixels frozen while audio and the seek bar continued underneath it.
+          publish({ status: 'error', code: 'fontUnavailable' });
+        }
+        else if (!drewVideo) publish({ status: 'source-loading', code: null });
         else if (selected === null) publish({
           status: snapshot.cues.length === 0 ? 'empty' : outsideTrim ? 'outside-trim' : 'between-cues',
           code: null,
         });
-        else if (cacheRef.current.get(`${snapshot.sceneKey}|${selected.index}|${selected.cue.text}`)?.error) {
+        else if (cacheRef.current.get(atlasKey(snapshot, selected))?.error) {
           publish({
             status: 'error',
-            code: cacheRef.current.get(`${snapshot.sceneKey}|${selected.index}|${selected.cue.text}`).error,
+            code: cacheRef.current.get(atlasKey(snapshot, selected)).error,
           });
         }
         else if (entry === null) publish({ status: 'pending', code: null });

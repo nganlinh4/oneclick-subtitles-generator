@@ -4,8 +4,9 @@ import { groupFontsByCategory, getFontSupportFlags, getFontSampleText } from './
 import CloseButton from '../common/CloseButton';
 import CustomDropdown from '../common/CustomDropdown';
 import '../../styles/subtitle-customization/FontSelectionModal.css';
+import { selectableFontOptions } from '../../services/selectableFonts';
 
-const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => {
+const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, onFontSelect }) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -95,7 +96,10 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
 
   if (!isOpen) return null;
 
-  const groupedFonts = groupFontsByCategory();
+  const groupedFonts = groupFontsByCategory(selectableFontOptions(
+    Object.values(groupFontsByCategory()).flat(),
+    { requestedWeight: fontWeight },
+  ));
   const categories = ['All', ...Object.keys(groupedFonts)];
 
   // Get translated category name
@@ -127,7 +131,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, onFontSelect }) => 
       onFontSelect(font);
     } else {
       // Google Font
-      onFontSelect(font.value);
+      onFontSelect(font.value, font.resolvedWeight);
     }
     onClose();
   };

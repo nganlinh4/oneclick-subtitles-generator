@@ -1,16 +1,14 @@
 //! Which cue is on screen at an instant, and how far through its fade it is.
 //!
-//! This reproduces the shipped selection exactly, including two behaviours that are surprising and
-//! are therefore called out rather than quietly corrected:
+//! Fade windows are allowed to overlap, but they must never hide authored subtitle time:
 //!
 //! * The fade window widens a cue's visibility. A cue is selected from `start - fade_in` until
 //!   `end + fade_out`, so it appears before its own start time and lingers past its end.
-//! * The first cue whose widened window contains the instant wins, and no other cue is considered.
-//!   Overlapping cues therefore disappear rather than stacking, and widening the fade window can
-//!   make an earlier cue swallow a later one.
+//! * A cue inside its authored `start..=end` interval outranks every widened fade window. When only
+//!   fades overlap in a real gap, the more opaque cue wins (with list order as a stable tie-break).
 //!
-//! Changing either is a visible behaviour change for existing projects, not a bug fix, so both are
-//! pinned by tests. Selection is a pure function of the instant, so seeking is exact.
+//! This keeps selection single-cue and deterministic while preventing an outgoing zero-opacity cue
+//! from swallowing the next live cue—the playback blink caused by the former first-match rule.
 
 use crate::timeline::ExactTime;
 
@@ -45,7 +43,7 @@ pub struct ActiveCue {
     pub phase: CuePhase,
 }
 
-/// Select the cue visible at `instant`, reproducing the shipped first-match-wins behaviour.
+/// Select the strongest cue visible at `instant`.
 ///
 /// `fade_in` and `fade_out` are in seconds and are clamped at zero; a non-finite or negative value
 /// is treated as zero rather than widening the window unpredictably.
@@ -60,31 +58,40 @@ pub fn active_cue_at(
     let fade_out = sanitise_fade(fade_out);
     let now = instant.as_seconds_lossy();
 
-    // Deliberately `find`, not `filter().last()`: the shipped renderer takes the first match and
-    // ignores every later overlapping cue.
-    let (index, cue) = cues.iter().enumerate().find(|(_, cue)| {
+    let mut strongest_fade = None;
+    for (index, cue) in cues.iter().enumerate() {
         let start = cue.start.as_seconds_lossy();
         let end = cue.end.as_seconds_lossy();
-        now >= start - fade_in && now <= end + fade_out
-    })?;
+        if now >= start && now <= end {
+            return Some(ActiveCue {
+                index,
+                progress: 1.0,
+                phase: CuePhase::Holding,
+            });
+        }
 
-    let start = cue.start.as_seconds_lossy();
-    let end = cue.end.as_seconds_lossy();
-    let (progress, phase) = if now < start {
-        // A zero-length fade window can only be entered exactly at `start`, which is not `< start`,
-        // so this division cannot see a zero denominator.
-        (((now - (start - fade_in)) / fade_in), CuePhase::FadingIn)
-    } else if now > end {
-        ((1.0 - (now - end) / fade_out), CuePhase::FadingOut)
-    } else {
-        (1.0, CuePhase::Holding)
-    };
-
-    Some(ActiveCue {
-        index,
-        progress: progress.clamp(0.0, 1.0),
-        phase,
-    })
+        let candidate = if fade_in > 0.0 && now >= start - fade_in && now < start {
+            Some(ActiveCue {
+                index,
+                progress: ((now - (start - fade_in)) / fade_in).clamp(0.0, 1.0),
+                phase: CuePhase::FadingIn,
+            })
+        } else if fade_out > 0.0 && now > end && now <= end + fade_out {
+            Some(ActiveCue {
+                index,
+                progress: (1.0 - (now - end) / fade_out).clamp(0.0, 1.0),
+                phase: CuePhase::FadingOut,
+            })
+        } else {
+            None
+        };
+        if let Some(candidate) = candidate
+            && strongest_fade.is_none_or(|current: ActiveCue| candidate.progress > current.progress)
+        {
+            strongest_fade = Some(candidate);
+        }
+    }
+    strongest_fade
 }
 
 fn sanitise_fade(value: f64) -> f64 {

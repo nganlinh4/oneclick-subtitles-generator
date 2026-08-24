@@ -216,11 +216,15 @@ const TextControls = ({ customization, onChange }) => {
         <FontSelectionModal
           isOpen={isFontModalOpen}
           onClose={() => setIsFontModalOpen(false)}
-          onFontSelect={(fontFamily) => {
-            updateCustomization({ fontFamily });
+          onFontSelect={(fontFamily, resolvedWeight) => {
+            updateCustomization({
+              fontFamily,
+              ...(Number.isInteger(resolvedWeight) ? { fontWeight: resolvedWeight } : {}),
+            });
             setIsFontModalOpen(false);
           }}
           selectedFont={customization.fontFamily}
+          fontWeight={customization.fontWeight}
         />
       )}
     </>

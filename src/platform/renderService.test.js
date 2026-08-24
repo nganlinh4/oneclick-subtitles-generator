@@ -21,6 +21,7 @@ import {
   NativeRenderError,
   allowedRenderCode,
   buildNativeRenderRequest,
+  createNativeRenderSourceResolver,
   createNativeRenderService,
   normalizeRenderEvent,
   normalizeRenderResultResponse,
@@ -121,6 +122,36 @@ const sourceAsset = () => ({
   extension: 'mp4',
   sizeBytes: 1_024,
   kind: 'video',
+});
+
+describe('native render source authority', () => {
+  it('uses the active native capability when the browser-era prop carries no durable identity', async () => {
+    const selected = sourceAsset();
+    const media = Object.freeze({ opaque: 'native playback descriptor' });
+    const resolveActiveMedia = vi.fn(async () => Object.freeze({ media }));
+    const resolver = createNativeRenderSourceResolver({
+      resolveActiveMedia,
+      canonicalize: vi.fn(() => selected),
+      isDesktop: () => true,
+    });
+
+    await expect(resolver({ url: 'blob:legacy-react-value' })).resolves.toEqual(selected);
+    expect(resolveActiveMedia).toHaveBeenCalledWith({ candidate: null });
+  });
+
+  it('refuses a complete caller identity that disagrees with the selected native asset', async () => {
+    const selected = sourceAsset();
+    const resolver = createNativeRenderSourceResolver({
+      resolveActiveMedia: vi.fn(async () => ({ media: {} })),
+      canonicalize: vi.fn(() => selected),
+      isDesktop: () => true,
+    });
+
+    await expect(resolver({ ...selected, id: uuidv7() })).rejects.toMatchObject({
+      code: 'invalidRenderRequest',
+      validationPath: 'source.identity',
+    });
+  });
 });
 
 const request = () => buildNativeRenderRequest({

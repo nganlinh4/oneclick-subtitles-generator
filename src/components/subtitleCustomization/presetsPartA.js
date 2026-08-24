@@ -6,7 +6,7 @@ export const presetsPartA = {
       modern: {
         // Text properties
         fontSize: 32,
-        fontFamily: "'Roboto', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontWeight: 400,
         textColor: '#ffffff',
         textAlign: 'center',
@@ -227,7 +227,7 @@ export const presetsPartA = {
       },
       minimal: {
         ...defaultCustomization,
-        fontFamily: "'Helvetica', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 26,
         fontWeight: 300,
         backgroundColor: '#000000',
@@ -241,9 +241,9 @@ export const presetsPartA = {
       },
       gaming: {
         ...defaultCustomization,
-        fontFamily: "'Audiowide', cursive",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 36,
-        fontWeight: 700,
+        fontWeight: 400,
         textColor: '#ff6b35',
         backgroundColor: '#0a0a0a',
         backgroundOpacity: 85,
@@ -262,7 +262,7 @@ export const presetsPartA = {
       },
       cinematic: {
         ...defaultCustomization,
-        fontFamily: "'Playfair Display', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 32,
         fontWeight: 400,
         textColor: '#f5f5dc',
@@ -280,7 +280,7 @@ export const presetsPartA = {
       },
       gradient: {
         ...defaultCustomization,
-        fontFamily: "'Montserrat', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 34,
         fontWeight: 600,
         gradientEnabled: true,
@@ -299,7 +299,7 @@ export const presetsPartA = {
       },
       retro: {
         ...defaultCustomization,
-        fontFamily: "'Press Start 2P', cursive",
+        fontFamily: "'Courier New', monospace",
         fontSize: 24,
         fontWeight: 700,
         textColor: '#00ff41',
@@ -319,9 +319,9 @@ export const presetsPartA = {
       },
       elegant: {
         ...defaultCustomization,
-        fontFamily: "'Cormorant Garamond', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 30,
-        fontWeight: 300,
+        fontWeight: 400,
         textColor: '#ffffff',
         backgroundColor: '#000000',
         backgroundOpacity: 0,
@@ -339,9 +339,9 @@ export const presetsPartA = {
       },
       cyberpunk: {
         ...defaultCustomization,
-        fontFamily: "'Orbitron', sans-serif",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 38,
-        fontWeight: 700,
+        fontWeight: 400,
         textColor: '#ff0080',
         backgroundColor: '#000000',
         backgroundOpacity: 95,

@@ -1,9 +1,9 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
-import { resolveActiveNativeMediaAssetId } from './activeNativeMedia';
+import { resolveActiveNativeMedia } from './activeNativeMedia';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
-import { getSelectedMedia, isNativeMediaDescriptor, isNativeMediaPlaybackUrl } from './mediaService';
+import { isNativeMediaDescriptor, isNativeMediaPlaybackUrl } from './mediaService';
 import {
   canonicalAssetFromDescriptor as sharedCanonicalAssetFromDescriptor,
   readNativeMediaSession,
@@ -249,10 +249,27 @@ export class NativeRenderError extends Error {
   }
 }
 
-const invalidRequest = () => new NativeRenderError(
-  'invalidRenderRequest',
-  'The native video render request is invalid'
-);
+const invalidRequest = (validationPath = null) => {
+  const error = new NativeRenderError(
+    'invalidRenderRequest',
+    'The native video render request is invalid',
+  );
+  if (typeof validationPath === 'string' && validationPath.length > 0) {
+    error.validationPath = validationPath;
+  }
+  return error;
+};
+
+const validateRequestPart = (validationPath, validator) => {
+  try {
+    return validator();
+  } catch (error) {
+    if (error instanceof NativeRenderError && error.code === 'invalidRenderRequest') {
+      throw invalidRequest(error.validationPath ?? validationPath);
+    }
+    throw error;
+  }
+};
 
 const invalidResponse = () => new NativeRenderError(
   'invalidRenderResponse',
@@ -558,11 +575,11 @@ const secondsToMicros = (value) => {
 
 // One shared descriptor-to-asset conversion, re-raised as a render failure so this module keeps
 // its own fixed error surface.
-const canonicalAssetFromDescriptor = (descriptor) => {
+const canonicalAssetFromDescriptor = (descriptor, validationPath = null) => {
   try {
     return sharedCanonicalAssetFromDescriptor(descriptor);
   } catch {
-    throw invalidRequest();
+    throw invalidRequest(validationPath);
   }
 };
 
@@ -601,49 +618,81 @@ const normalizeSourceAsset = (asset, { response = false } = {}) => {
   });
 };
 
-export const resolveNativeRenderSource = async (value) => {
-  if (!isDesktopRuntime()) throw runtimeRequired();
-  if (isNativeMediaDescriptor(value)) {
-    const asset = canonicalAssetFromDescriptor(value);
-    if (asset.kind !== 'video') throw invalidRequest();
-    return asset;
+const sameSourceAsset = (left, right) => (
+  left.id === right.id
+  && left.displayName === right.displayName
+  && left.extension === right.extension
+  && left.sizeBytes === right.sizeBytes
+  && left.kind === right.kind
+);
+
+/**
+ * Resolve render input from the native media capability, never from a legacy React prop.
+ *
+ * `selectedVideoFile` still has several browser-era shapes (a File-like object, a playback URL, or a
+ * `{ url }` wrapper). None of those proves which durable asset/project is active. The previous code
+ * nevertheless required that value to rediscover an asset id, so a valid imported video could play
+ * and preview while export refused it as `source.selection`.
+ *
+ * The active-native-media resolver already intersects the current project revision, durable owner,
+ * session pointer, and host playback descriptor. That capability is the authority. A caller value
+ * participates only when it carries a native descriptor or the complete canonical asset identity;
+ * browser compatibility shapes cannot override (or prevent use of) the selected native asset.
+ */
+export const createNativeRenderSourceResolver = ({
+  resolveActiveMedia = resolveActiveNativeMedia,
+  canonicalize = canonicalAssetFromDescriptor,
+  isDesktop = isDesktopRuntime,
+} = {}) => {
+  if (typeof resolveActiveMedia !== 'function'
+      || typeof canonicalize !== 'function'
+      || typeof isDesktop !== 'function') {
+    throw new TypeError('Native render source resolution requires reviewed dependencies');
   }
-  if (isPlainRecord(value)
-      && hasExactKeys(value, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])) {
-    const asset = normalizeSourceAsset(value);
-    if (asset.kind !== 'video') throw invalidRequest();
+  return async (value) => {
+    if (!isDesktop()) throw runtimeRequired();
+    const descriptorCandidate = isNativeMediaDescriptor(value) ? value : null;
+    let capability;
+    try {
+      capability = await resolveActiveMedia({ candidate: descriptorCandidate });
+    } catch {
+      throw invalidRequest('source.selection');
+    }
+    const selected = canonicalize(capability?.media, 'source.selectedMedia');
+    const asset = validateRequestPart('source.selectedMedia', () => normalizeSourceAsset(selected));
+    if (asset.kind !== 'video') throw invalidRequest('source.kind');
+
+    if (isPlainRecord(value)
+        && hasExactKeys(value, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])) {
+      const supplied = validateRequestPart('source.asset', () => normalizeSourceAsset(value));
+      if (!sameSourceAsset(supplied, asset)) throw invalidRequest('source.identity');
+    }
     return asset;
-  }
-  const candidate = isRecord(value) && typeof value.url === 'string' ? value.url : value;
-  const assetId = resolveActiveNativeMediaAssetId(candidate);
-  if (assetId === null) throw invalidRequest();
-  const selected = await getSelectedMedia();
-  if (!isNativeMediaDescriptor(selected) || selected.assetId !== assetId) throw invalidRequest();
-  const asset = canonicalAssetFromDescriptor(selected);
-  if (asset.kind !== 'video') throw invalidRequest();
-  return asset;
+  };
 };
+
+export const resolveNativeRenderSource = createNativeRenderSourceResolver();
 
 export const ensureNativeRenderProject = async (sourceAsset) => {
   if (!isDesktopRuntime()) throw runtimeRequired();
-  const asset = normalizeSourceAsset(sourceAsset);
+  const asset = validateRequestPart('project.source', () => normalizeSourceAsset(sourceAsset));
   const session = readNativeMediaSession();
   if (session?.assetId === asset.id) {
     const owned = await resolveOwnedNativeMediaProject(session);
-    if (owned === null) throw invalidRequest();
+    if (owned === null) throw invalidRequest('project.ownership');
     const existing = owned.snapshot.media.find((candidate) => candidate.id === asset.id);
     if (!existing
         || existing.displayName !== asset.displayName
         || existing.extension !== asset.extension
         || existing.sizeBytes !== asset.sizeBytes
         || existing.kind !== asset.kind) {
-      throw invalidRequest();
+      throw invalidRequest('project.sourceIdentity');
     }
     return owned.projectId;
   }
   const resolved = await resolveProjectForCache(asset.id, { create: true });
   if (!resolved || !uuidHasVersion(resolved.projectId, 7) || !isPlainRecord(resolved.snapshot)) {
-    throw invalidRequest();
+    throw invalidRequest('project.resolution');
   }
   const existing = resolved.snapshot.media.find((candidate) => candidate.id === asset.id);
   if (existing) {
@@ -651,7 +700,7 @@ export const ensureNativeRenderProject = async (sourceAsset) => {
         || existing.extension !== asset.extension
         || existing.sizeBytes !== asset.sizeBytes
         || existing.kind !== asset.kind) {
-      throw invalidRequest();
+      throw invalidRequest('project.sourceIdentity');
     }
     return resolved.projectId;
   }
@@ -791,27 +840,33 @@ export const buildNativeRenderRequest = ({
   customization,
   crop,
 }) => {
-  const source = normalizeSourceAsset(sourceAsset);
-  if (source.kind !== 'video') throw invalidRequest();
+  const source = validateRequestPart('source', () => normalizeSourceAsset(sourceAsset));
+  if (source.kind !== 'video') throw invalidRequest('source.kind');
   const normalizedNarrationArtifactId = narrationArtifactId === null
     ? null
-    : requireUuid(narrationArtifactId, 7);
+    : validateRequestPart('narrationArtifactId', () => requireUuid(narrationArtifactId, 7));
   if (!SUBTITLE_SOURCES.has(selectedSubtitles)
       || !NARRATION_SOURCES.has(selectedNarration)
       || (selectedNarration === 'generated') !== (normalizedNarrationArtifactId !== null)) {
-    throw invalidRequest();
+    throw invalidRequest('selection');
   }
   return Object.freeze({
     sourceAssetId: source.id,
-    projectId: requireUuid(projectId, 7),
-    sceneRevision: requireInteger(sceneRevision, 0, Number.MAX_SAFE_INTEGER),
+    projectId: validateRequestPart('projectId', () => requireUuid(projectId, 7)),
+    sceneRevision: validateRequestPart(
+      'sceneRevision',
+      () => requireInteger(sceneRevision, 0, Number.MAX_SAFE_INTEGER),
+    ),
     selectedSubtitles,
     selectedNarration,
     narrationArtifactId: normalizedNarrationArtifactId,
-    lyrics: normalizeLyrics(lyrics),
-    settings: normalizeSettings(settings),
-    customization: normalizeCustomization(customization),
-    crop: normalizeCrop(crop),
+    lyrics: validateRequestPart('lyrics', () => normalizeLyrics(lyrics)),
+    settings: validateRequestPart('settings', () => normalizeSettings(settings)),
+    customization: validateRequestPart(
+      'customization',
+      () => normalizeCustomization(customization),
+    ),
+    crop: validateRequestPart('crop', () => normalizeCrop(crop)),
   });
 };
 

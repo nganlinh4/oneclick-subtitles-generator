@@ -1,5 +1,4 @@
-//! Cue selection is pinned to the shipped behaviour, including the parts that are surprising.
-//! A failure here means existing projects would render differently.
+//! Cue selection pins the no-blink contract shared by preview and export.
 
 use osg_scene::cues::{CuePhase, CueTiming, active_cue_at};
 use osg_scene::timeline::ExactTime;
@@ -53,24 +52,21 @@ fn the_fade_window_keeps_a_cue_visible_after_its_own_end() {
 }
 
 #[test]
-fn the_first_matching_cue_wins_and_later_overlaps_never_render() {
-    // Pinned deliberately: overlapping cues silently vanish in the shipped renderer.
+fn authored_overlap_remains_deterministic() {
     let cues = [cue(0, 10), cue(2, 4)];
     let active = active_cue_at(&cues, at(3, 1), 0.0, 0.0).expect("active");
     assert_eq!(active.index, 0, "the later overlapping cue must not win");
 }
 
 #[test]
-fn a_wide_fade_window_lets_an_earlier_cue_swallow_a_later_one() {
-    // A consequence of first-match-wins plus the widened window, and a real reason a user's
-    // subtitles can disappear when they raise the fade duration.
+fn an_authored_cue_outranks_an_earlier_cues_fade_window() {
     let cues = [cue(0, 1), cue(2, 3)];
     assert_eq!(
         active_cue_at(&cues, at(5, 2), 0.0, 2.0)
             .expect("active")
             .index,
-        0,
-        "cue 0's fade-out window swallows cue 1"
+        1,
+        "cue 1 is live and must not be swallowed by cue 0's fade-out"
     );
     assert_eq!(
         active_cue_at(&cues, at(5, 2), 0.0, 0.0)
@@ -79,6 +75,20 @@ fn a_wide_fade_window_lets_an_earlier_cue_swallow_a_later_one() {
         1,
         "without the wide window cue 1 renders normally"
     );
+}
+
+#[test]
+fn overlapping_fades_choose_the_more_opaque_cue_without_a_blank_frame() {
+    let cues = [cue(0, 1), cue(2, 3)];
+    let early = active_cue_at(&cues, at(5, 4), 1.0, 1.0).expect("early gap fade");
+    assert_eq!(early.index, 0);
+    assert_eq!(early.phase, CuePhase::FadingOut);
+    assert_eq!(early.progress.to_bits(), 0.75_f64.to_bits());
+
+    let late = active_cue_at(&cues, at(7, 4), 1.0, 1.0).expect("late gap fade");
+    assert_eq!(late.index, 1);
+    assert_eq!(late.phase, CuePhase::FadingIn);
+    assert_eq!(late.progress.to_bits(), 0.75_f64.to_bits());
 }
 
 #[test]

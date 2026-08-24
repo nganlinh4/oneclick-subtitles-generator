@@ -4,7 +4,7 @@ import { defaultCustomization } from './defaultCustomization';
 export const presetsPartB = {
       vintage: {
         ...defaultCustomization,
-        fontFamily: "'Playfair Display', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 32,
         fontWeight: 400,
         textColor: '#f4e4bc',
@@ -22,9 +22,9 @@ export const presetsPartB = {
       },
       comic: {
         ...defaultCustomization,
-        fontFamily: "'Bangers', cursive",
+        fontFamily: "'Comic Sans MS', cursive",
         fontSize: 36,
-        fontWeight: 400,
+        fontWeight: 700,
         textColor: '#ffffff',
         backgroundColor: '#ff6b35',
         backgroundOpacity: 90,
@@ -41,7 +41,7 @@ export const presetsPartB = {
       },
       horror: {
         ...defaultCustomization,
-        fontFamily: "'Nosifer', cursive",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 34,
         fontWeight: 400,
         textColor: '#8b0000',
@@ -61,7 +61,7 @@ export const presetsPartB = {
       },
       luxury: {
         ...defaultCustomization,
-        fontFamily: "'Playfair Display', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 35,
         fontWeight: 400,
         textColor: '#ffd700',
@@ -80,9 +80,9 @@ export const presetsPartB = {
       },
       kawaii: {
         ...defaultCustomization,
-        fontFamily: "'Comfortaa', cursive",
+        fontFamily: "'Comic Sans MS', cursive",
         fontSize: 30,
-        fontWeight: 600,
+        fontWeight: 700,
         textColor: '#ff69b4',
         backgroundColor: '#ffffff',
         backgroundOpacity: 85,
@@ -97,7 +97,7 @@ export const presetsPartB = {
       },
       grunge: {
         ...defaultCustomization,
-        fontFamily: "'Righteous', cursive",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 32,
         fontWeight: 400,
         textColor: '#ffffff',
@@ -116,7 +116,7 @@ export const presetsPartB = {
       },
       corporate: {
         ...defaultCustomization,
-        fontFamily: "'Open Sans', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 28,
         fontWeight: 400,
         textColor: '#2c3e50',
@@ -133,7 +133,7 @@ export const presetsPartB = {
       },
       anime: {
         ...defaultCustomization,
-        fontFamily: "'Nunito', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 32,
         fontWeight: 700,
         textColor: '#ffffff',
@@ -152,7 +152,7 @@ export const presetsPartB = {
       },
       vaporwave: {
         ...defaultCustomization,
-        fontFamily: "'Orbitron', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 34,
         fontWeight: 300,
         gradientEnabled: true,
@@ -172,9 +172,9 @@ export const presetsPartB = {
       },
       steampunk: {
         ...defaultCustomization,
-        fontFamily: "'Cinzel', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 30,
-        fontWeight: 600,
+        fontWeight: 700,
         textColor: '#cd853f',
         backgroundColor: '#2f1b14',
         backgroundOpacity: 90,
@@ -190,7 +190,7 @@ export const presetsPartB = {
       },
       noir: {
         ...defaultCustomization,
-        fontFamily: "'Bebas Neue', sans-serif",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 36,
         fontWeight: 400,
         textColor: '#ffffff',
@@ -208,7 +208,7 @@ export const presetsPartB = {
       },
       pastel: {
         ...defaultCustomization,
-        fontFamily: "'Quicksand', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 28,
         fontWeight: 500,
         textColor: '#6b5b95',
@@ -225,7 +225,7 @@ export const presetsPartB = {
       },
       bold: {
         ...defaultCustomization,
-        fontFamily: "'Anton', sans-serif",
+        fontFamily: "'Impact', sans-serif",
         fontSize: 42,
         fontWeight: 400,
         textColor: '#ffffff',
@@ -244,7 +244,7 @@ export const presetsPartB = {
       },
       sketch: {
         ...defaultCustomization,
-        fontFamily: "'Kalam', cursive",
+        fontFamily: "'Comic Sans MS', cursive",
         fontSize: 30,
         fontWeight: 400,
         textColor: '#2c3e50',
@@ -281,9 +281,9 @@ export const presetsPartB = {
       },
       royal: {
         ...defaultCustomization,
-        fontFamily: "'Cinzel', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 34,
-        fontWeight: 600,
+        fontWeight: 700,
         textColor: '#ffd700',
         backgroundColor: '#4b0082',
         backgroundOpacity: 90,
@@ -300,7 +300,7 @@ export const presetsPartB = {
       },
       sunset: {
         ...defaultCustomization,
-        fontFamily: "'Poppins', sans-serif",
+        fontFamily: "'Google Sans', sans-serif",
         fontSize: 32,
         fontWeight: 500,
         gradientEnabled: true,
@@ -318,7 +318,7 @@ export const presetsPartB = {
       },
       ocean: {
         ...defaultCustomization,
-        fontFamily: "'Merriweather', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 30,
         fontWeight: 400,
         gradientEnabled: true,
@@ -336,7 +336,7 @@ export const presetsPartB = {
       },
       forest: {
         ...defaultCustomization,
-        fontFamily: "'Lora', serif",
+        fontFamily: "'Georgia', serif",
         fontSize: 28,
         fontWeight: 400,
         textColor: '#90ee90',

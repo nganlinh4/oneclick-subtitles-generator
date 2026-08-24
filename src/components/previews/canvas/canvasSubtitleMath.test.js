@@ -29,10 +29,33 @@ describe('canvas cue selection and placement', () => {
     { start: 1.5, end: 3, text: 'overlap' },
   ];
 
-  it('widens by fades and keeps the exporter first-match-wins rule', () => {
+  it('widens by fades while authored cue time outranks an overlapping fade', () => {
     expect(activeCueAt(cues, 0.8, 0.3, 0.2)).toMatchObject({ index: 0, phase: 'fadingIn' });
     expect(activeCueAt(cues, 1.75, 0.3, 0.2)).toMatchObject({ index: 0, phase: 'holding' });
-    expect(activeCueAt(cues, 2.1, 0.3, 0.2)).toMatchObject({ index: 0, phase: 'fadingOut' });
+    expect(activeCueAt(cues, 2.1, 0.3, 0.2)).toMatchObject({ index: 1, phase: 'holding' });
+  });
+
+  it('never lets an outgoing fade swallow an adjacent live cue', () => {
+    const adjacent = [
+      { start: 0, end: 1, text: 'first' },
+      { start: 1, end: 2, text: 'second' },
+    ];
+    expect(activeCueAt(adjacent, 1.01, 0.3, 0.3)).toMatchObject({
+      index: 1, phase: 'holding', progress: 1,
+    });
+  });
+
+  it('uses the stronger fade when two widened windows meet in a real gap', () => {
+    const separated = [
+      { start: 0, end: 1, text: 'first' },
+      { start: 2, end: 3, text: 'second' },
+    ];
+    expect(activeCueAt(separated, 1.25, 1, 1)).toMatchObject({
+      index: 0, phase: 'fadingOut', progress: 0.75,
+    });
+    expect(activeCueAt(separated, 1.75, 1, 1)).toMatchObject({
+      index: 1, phase: 'fadingIn', progress: 0.75,
+    });
   });
 
   it('uses the same asymmetric animation transforms as export', () => {
