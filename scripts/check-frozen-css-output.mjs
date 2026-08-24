@@ -23,13 +23,18 @@ import { fileURLToPath } from 'node:url';
  * minifier merge it into index.css. The combined `.custom-slider` textual count is therefore 54
  * rather than 44: duplicate selectors across two files cannot be merged. This contract pins both
  * files byte-for-byte and evaluates the semantic inventory across their combined contents.
+ *
+ * REPINNED after the native-waveform module-graph rewrite: the reviewed production build adds 243
+ * minified bytes to the base artifact. A detached build of its parent revision emits the same file,
+ * and every semantic inventory count below remains unchanged, so this records build reality rather
+ * than approving a design change.
  */
 export const FROZEN_CSS_ARTIFACTS = Object.freeze({
   files: Object.freeze([
     Object.freeze({
-      fileName: 'index-DdKwrqC7.css',
-      sha256: 'a37be7ea79505a6ab1d4b65ebd309c6b4ceda2a52bcc10ea0a0524ad7f118685',
-      sizeBytes: 500_608,
+      fileName: 'index-D286_Q6B.css',
+      sha256: 'fff9707a52ab4dd48e604a1ada3436a44d627e07ed2e6c37b93bf31dfef9b46f',
+      sizeBytes: 500_851,
     }),
     Object.freeze({
       fileName: 'narration-OoOluj4s.css',
