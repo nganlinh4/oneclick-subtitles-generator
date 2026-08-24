@@ -484,7 +484,7 @@
     gap: 12px;
   }
 
-  .footer-content {
+  .video-processing-modal .footer-content {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
@@ -712,7 +712,20 @@
 }
 
 
-.footer-content {
+.video-processing-modal .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 16px 16px 24px;
+  flex: 0 0 auto;
+}
+
+.video-processing-modal .modal-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.video-processing-modal .footer-content {
   display: contents;
   justify-content: space-between;
   align-items: flex-start;

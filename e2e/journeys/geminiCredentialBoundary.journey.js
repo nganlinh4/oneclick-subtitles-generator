@@ -1,4 +1,4 @@
-/* global $, browser, describe, it, document */
+/* global $, browser, describe, it, document, getComputedStyle */
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -37,6 +37,44 @@ describe('Gemini generation refuses safely without a credential', () => {
       description: 'Gemini generation is presented as a selectable customer method before submission.',
     });
     await method.click();
+
+    const modalLayout = await browser.execute(() => {
+      const modal = document.querySelector('.video-processing-modal');
+      const footer = modal?.querySelector('.modal-footer');
+      const button = footer?.querySelector('[data-osg-action="process-subtitles"]');
+      const token = footer?.querySelector('.footer-token-info');
+      const box = (node) => {
+        if (node === null || node === undefined) return null;
+        const rect = node.getBoundingClientRect();
+        return {
+          left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+          width: rect.width, height: rect.height,
+        };
+      };
+      return {
+        modal: box(modal),
+        footer: box(footer),
+        button: box(button),
+        token: box(token),
+        footerDisplay: footer === null ? null : getComputedStyle(footer).display,
+      };
+    });
+    const isInside = (child, parent) => child !== null && parent !== null
+      && child.left >= parent.left - 1
+      && child.top >= parent.top - 1
+      && child.right <= parent.right + 1
+      && child.bottom <= parent.bottom + 1;
+    assert.equal(modalLayout.footerDisplay, 'flex', `processing footer lost its layout: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.footer, modalLayout.modal), `processing footer escaped its modal: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.button, modalLayout.footer), `process button escaped its footer: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.token, modalLayout.footer), `token summary escaped its footer: ${JSON.stringify(modalLayout)}`);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-processing-options',
+      description: 'The full-range Gemini options and their footer remain contained and aligned before submission.',
+      details: { modalLayout },
+      focusSelector: '.video-processing-modal',
+    });
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let surface = null;
@@ -73,7 +111,7 @@ describe('Gemini generation refuses safely without a credential', () => {
     assert.doesNotMatch(log, /"event":"gemini\.(?:started|progress|completed|failed|cancelled)"/);
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-actionable-refusal',
+      step: '03-actionable-refusal',
       description: 'A missing credential produces a visible refusal and returns controls to idle without side effects.',
       details: { errorToasts: surface.errorToasts },
     });
