@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "14ea8261b604dbae8bb0f5508be2e7621ad2072f",
+  "baselineRevision": "3e99450029d2d052ad6f3ad36c322eb0c02ce8d9",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -226,7 +226,7 @@
     "src/styles/video-player-dark-theme.css": "1bad18fc8a6ba479f8bd0068aac8b245809afea378ec763d444b9fed58fe0501",
     "src/styles/VideoAnalysisButton.css": "3a0129a7716bd08ab8cd6829a0c3ee84845929fda6a291504c89620dd712e65e",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
-    "src/styles/VideoPreview.css": "dfdd169731a6f2d82764b2941a523a6b2f9c11658d60c92535e3bd10f371399f",
+    "src/styles/VideoPreview.css": "7b29b749d70ab953ea739c4a43ee77c2a27c416bb2f33ca48df385f700ca88e9",
     "src/styles/VideoPreviewPanel.css": "4c0259677b0c64d0fc9a0c65e377075502caf79383dd3765658f429d0b3531dd",
     "src/styles/VideoProcessingOptionsModal.css": "3d6561f823aac732464fd823667228bd6831002a358c2fbf3587e7f0b4bf04b3",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
@@ -8726,10 +8726,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "f274663c9ce497e8f2b86a4d2949a84199a90dc5727e8fea1f2176d67af27ecf",
+      "hash": "2815322b5d6b553fda4ed60d3e26dd4fdf275b7d6d6708f82f50ae6e037450f8",
       "rootCount": 1,
       "roots": [
-        "848465dfc365ded80de25321c7e2b0fa672671dd2b68ed72fa64ab943d4ef6fe"
+        "0b8af974127ecc6be50663beec38846cb80c24e47cfa75f7b5e586d0c5a93a5d"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9363,10 +9363,10 @@
       ]
     },
     "src/components/VideoRenderingSection.js": {
-      "hash": "3aa53164e4e4a1b2a4921dcc3efe13be09b6eea02be6a9f7039a386b4c7bd09f",
+      "hash": "4d95408837f5527d10cd1d01fd3ee9dca7bf014a4aba18c7147e2e19d0f5a820",
       "rootCount": 1,
       "roots": [
-        "b89dad37e411e0e219b50eb88f0f8e5813610b1ff4e6a658100871e6bc07d02f"
+        "1d60fb70b792f7f5265e994cfd8cac65c75a15b8707e84d458c4c39d2fdfc1f6"
       ]
     },
     "src/components/VideoRenderingSection/InputSelectionRow.js": {
