@@ -408,9 +408,20 @@ fn base_arguments(cookies: BrowserCookieSource) -> Vec<OsString> {
         OsString::from("--socket-timeout"),
         OsString::from("30"),
         OsString::from("--retries"),
-        OsString::from("3"),
+        OsString::from("10"),
         OsString::from("--fragment-retries"),
-        OsString::from("3"),
+        OsString::from("10"),
+        OsString::from("--extractor-retries"),
+        OsString::from("5"),
+        // Immediate retries amplify a short source-side throttle. Pace each retry class using
+        // yt-dlp's bounded exponential policy so a transient 429 gets time to clear without an
+        // unbounded or application-global sleep.
+        OsString::from("--retry-sleep"),
+        OsString::from("http:exp=1:16"),
+        OsString::from("--retry-sleep"),
+        OsString::from("fragment:exp=1:16"),
+        OsString::from("--retry-sleep"),
+        OsString::from("extractor:exp=1:16"),
         OsString::from("--no-overwrites"),
         OsString::from("--no-post-overwrites"),
         OsString::from("--no-mtime"),
@@ -521,6 +532,28 @@ mod tests {
             without_cookies
                 .iter()
                 .any(|argument| argument == "--no-cookies-from-browser")
+        );
+    }
+
+    #[test]
+    fn every_network_operation_uses_bounded_paced_retries() {
+        let (url, _) = inspected();
+        let arguments = inventory_arguments(&url, BrowserCookieSource::None);
+        let values_after = |name: &str| {
+            arguments
+                .iter()
+                .enumerate()
+                .filter(|(_, argument)| *argument == name)
+                .map(|(index, _)| arguments[index + 1].to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(values_after("--retries"), ["10"]);
+        assert_eq!(values_after("--fragment-retries"), ["10"]);
+        assert_eq!(values_after("--extractor-retries"), ["5"]);
+        assert_eq!(
+            values_after("--retry-sleep"),
+            ["http:exp=1:16", "fragment:exp=1:16", "extractor:exp=1:16",]
         );
     }
 

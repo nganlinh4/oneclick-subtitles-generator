@@ -41,7 +41,17 @@ const DEFAULT_MEDIA_SELECTION = Object.freeze({
   kind: 'video',
   quality: Object.freeze({ mode: 'best' }),
 });
-const MAX_EXECUTION_ATTEMPTS = 2;
+const MAX_EXECUTION_ATTEMPTS = 3;
+const RETRYABLE_DOWNLOAD_CODES = new Set([
+  'downloaderExecutionFailed',
+  'downloaderFormatUnavailable',
+  'downloaderNetworkFailed',
+  'downloaderRateLimited',
+]);
+const RETRY_DELAYS_MS = Object.freeze([2_000, 8_000]);
+const defaultWaitForRetry = (milliseconds) => new Promise((resolve) => {
+  setTimeout(resolve, milliseconds);
+});
 
 // The operation identity: two requests share a download only when their URL, explicit browser
 // source and preferred subtitle languages all match. The separator cannot occur in any of them.
@@ -69,6 +79,7 @@ export const createNativeUrlDownloadAdapter = ({
   // no legacy activator, so shipping callers must provide the project-bound transaction callbacks.
   activateProject = null,
   recoverDownloader = recoverNativeDownloaderAfterFailure,
+  waitForRetry = defaultWaitForRetry,
 } = {}) => {
   const active = new Map();
   const completedAssets = createCompletedAssetCache();
@@ -477,22 +488,26 @@ export const createNativeUrlDownloadAdapter = ({
         }
         if (outcome.kind === 'cancelled') return null;
         if (outcome.kind === 'protocolError') throw outcome.error;
-        if (outcome.error.code !== 'downloaderExecutionFailed'
+        const failureCode = outcome.error.code;
+        if (!RETRYABLE_DOWNLOAD_CODES.has(failureCode)
             || attempt === MAX_EXECUTION_ATTEMPTS) {
           throw outcome.error;
         }
 
-        // A failed native attempt is staged in a temporary directory and cannot publish a
-        // partial asset. Re-resolve the managed downloader, inspect again to obtain a fresh
-        // capability, and retry the complete operation once. This covers transient extractor,
-        // CDN, and process failures without ever duplicating a successful download.
-        const recovery = await Promise.resolve(recoverDownloader())
-          .catch(() => ({ checked: false, updated: false }));
-        // A verified live-channel check also refreshes the inspection capability. Retry once even
-        // when the installed version was already latest: short-lived CDN format URLs can expire
-        // between inspection and download, and the old code claimed to cover that case while
-        // actually refusing to retry it. The loop remains strictly bounded to two attempts.
-        if (recovery?.checked !== true) throw outcome.error;
+        // A generic extractor/process failure can mean the managed binary is stale, so verify the
+        // live reviewed channel before retrying it. Typed CDN/network/rate-limit failures are not
+        // updater failures and must not waste another release check.
+        if (failureCode === 'downloaderExecutionFailed') {
+          const recovery = await Promise.resolve(recoverDownloader())
+            .catch(() => ({ checked: false, updated: false }));
+          if (recovery?.checked !== true) throw outcome.error;
+        }
+
+        // Every native attempt is staged and cannot publish a partial asset. Wait before a fresh
+        // inspection so source-side throttling has time to clear, then revalidate subscribers:
+        // an abandoned request must not wake later and download into a different user intent.
+        await Promise.resolve(waitForRetry(RETRY_DELAYS_MS[attempt - 1]));
+        if (!await revalidateListeners(operation, { cancelIfEmpty: true })) return null;
         operation.jobId = null;
         operation.cancelInvoked = false;
         operation.cancelRequested = false;

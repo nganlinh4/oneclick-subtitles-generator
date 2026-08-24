@@ -109,6 +109,7 @@ const createHarness = (overrides = {}) => {
   const projectId = uuidv7();
   const resolveCandidateProject = vi.fn().mockResolvedValue(candidateProject(projectId));
   const recoverDownloader = vi.fn().mockResolvedValue({ updated: false, throttled: false });
+  const waitForRetry = vi.fn().mockResolvedValue(undefined);
   const adapter = createNativeUrlDownloadAdapter({
     inspect,
     start,
@@ -118,6 +119,7 @@ const createHarness = (overrides = {}) => {
     discardCandidate,
     resolveCandidateProject,
     recoverDownloader,
+    waitForRetry,
     activateProject: activateResolvedMediaProject,
     ...overrides,
   });
@@ -135,6 +137,7 @@ const createHarness = (overrides = {}) => {
     jobId,
     openAsset,
     recoverDownloader,
+    waitForRetry,
     resolveCandidateProject,
     start,
   };
@@ -1003,6 +1006,7 @@ it('re-inspects and retries one transient downloader process failure', async () 
     updated: true,
     throttled: false,
   });
+  const waitForRetry = vi.fn().mockResolvedValue(undefined);
   const descriptor = Object.freeze({ assetId, playbackUrl: 'http://127.0.0.1/retried' });
   const onStarted = vi.fn();
   const onProgress = vi.fn();
@@ -1016,6 +1020,7 @@ it('re-inspects and retries one transient downloader process failure', async () 
     discardCandidate: vi.fn().mockResolvedValue(true),
     resolveCandidateProject: vi.fn().mockResolvedValue(candidateProject(uuidv7(), 1)),
     recoverDownloader,
+    waitForRetry,
   });
 
   const result = adapter.downloadVideo({
@@ -1033,6 +1038,7 @@ it('re-inspects and retries one transient downloader process failure', async () 
   await flush();
 
   expect(recoverDownloader).toHaveBeenCalledTimes(1);
+  expect(waitForRetry).toHaveBeenCalledExactlyOnceWith(2_000);
   expect(inspect).toHaveBeenCalledTimes(2);
   expect(start).toHaveBeenCalledTimes(2);
   expect(start.mock.calls.map(([request]) => request.inventoryId)).toEqual(inventoryIds);
@@ -1043,7 +1049,7 @@ it('re-inspects and retries one transient downloader process failure', async () 
   await expect(result).resolves.toBe(descriptor);
 });
 
-it('retries an execution failure only once and never retries other failures', async () => {
+it('bounds repeated execution recovery and never retries permanent failures', async () => {
   const execution = createHarness();
   execution.recoverDownloader.mockResolvedValue({
     checked: true,
@@ -1058,11 +1064,15 @@ it('retries an execution failure only once and never retries other failures', as
   execution.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
   await flush();
   execution.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
+  await flush();
+  execution.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
   await expect(executionResult).rejects.toMatchObject({
     code: 'downloaderExecutionFailed',
   });
-  expect(execution.inspect).toHaveBeenCalledTimes(2);
-  expect(execution.start).toHaveBeenCalledTimes(2);
+  expect(execution.inspect).toHaveBeenCalledTimes(3);
+  expect(execution.start).toHaveBeenCalledTimes(3);
+  expect(execution.recoverDownloader).toHaveBeenCalledTimes(2);
+  expect(execution.waitForRetry.mock.calls).toEqual([[2_000], [8_000]]);
 
   const unchanged = createHarness();
   unchanged.recoverDownloader.mockResolvedValue({
@@ -1078,10 +1088,12 @@ it('retries an execution failure only once and never retries other failures', as
   unchanged.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
   await flush();
   unchanged.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
+  await flush();
+  unchanged.getHandlers().onFailed({ error: { code: 'downloaderExecutionFailed' } });
   await expect(unchangedResult).rejects.toMatchObject({ code: 'downloaderExecutionFailed' });
-  expect(unchanged.recoverDownloader).toHaveBeenCalledTimes(1);
-  expect(unchanged.inspect).toHaveBeenCalledTimes(2);
-  expect(unchanged.start).toHaveBeenCalledTimes(2);
+  expect(unchanged.recoverDownloader).toHaveBeenCalledTimes(2);
+  expect(unchanged.inspect).toHaveBeenCalledTimes(3);
+  expect(unchanged.start).toHaveBeenCalledTimes(3);
 
   const permanent = createHarness();
   const permanentResult = permanent.adapter.downloadVideo({
@@ -1093,6 +1105,25 @@ it('retries an execution failure only once and never retries other failures', as
   await expect(permanentResult).rejects.toMatchObject({ code: 'invalidDownloadRequest' });
   expect(permanent.inspect).toHaveBeenCalledTimes(1);
   expect(permanent.start).toHaveBeenCalledTimes(1);
+});
+
+it('paces and re-inspects a transient rate limit without misdiagnosing the downloader', async () => {
+  const harness = createHarness();
+  const result = harness.adapter.downloadVideo({
+    url: 'https://www.youtube.com/watch?v=rate-limited',
+    cookieSource: 'none',
+  });
+  await flush();
+  harness.getHandlers().onFailed({ error: { code: 'downloaderRateLimited' } });
+  await flush();
+
+  expect(harness.waitForRetry).toHaveBeenCalledExactlyOnceWith(2_000);
+  expect(harness.recoverDownloader).not.toHaveBeenCalled();
+  expect(harness.inspect).toHaveBeenCalledTimes(2);
+  expect(harness.start).toHaveBeenCalledTimes(2);
+
+  harness.getHandlers().onCompleted({ media: { asset: { id: harness.assetId } } });
+  await expect(result).resolves.toBe(harness.descriptor);
 });
 
 it('refreshes a completed asset capability without downloading again', async () => {

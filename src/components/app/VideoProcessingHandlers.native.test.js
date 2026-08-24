@@ -40,7 +40,12 @@ vi.mock('../../platform/nativeMediaOwnership', () => ({
 }));
 vi.mock('../../platform/subtitleProjectBinding', () => ({
   activateSubtitleProjectBinding: vi.fn(),
+  clearSubtitleProjectBinding: vi.fn(() => true),
   rollbackSubtitleProjectBinding: vi.fn(() => true),
+}));
+vi.mock('../../platform/projectService', async (importOriginal) => ({
+  ...await importOriginal(),
+  deactivateProject: vi.fn(() => true),
 }));
 vi.mock('../../services/subtitleCache', () => ({ generateUrlBasedCacheId: vi.fn() }));
 vi.mock('../../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
@@ -191,6 +196,64 @@ it('shows a localized actionable error only after the downloader retry is exhaus
   }));
 });
 
+it('withdraws video A by exact native identity before attempting URL B and leaves no stale preview on failure', async () => {
+  invokeDesktop.mockImplementation(async (command, request) => {
+    if (command === 'get_session_snapshot') {
+      return {
+        media: {
+          id: SOURCE_ID,
+          displayName: 'source.mkv',
+          extension: 'mkv',
+          sizeBytes: 4096,
+          kind: 'video',
+        },
+        playback: {
+          id: source.playbackId,
+          playbackUrl: source.playbackUrl,
+          mimeType: source.type,
+          byteLength: source.size,
+        },
+        subtitleTrack: null,
+      };
+    }
+    if (command === 'clear_media') {
+      expect(request).toEqual({
+        expectedAssetId: source.assetId,
+        expectedPlaybackId: source.playbackId,
+      });
+      return { media: null, playback: null, subtitleTrack: null };
+    }
+    throw new Error(`Unexpected desktop command: ${command}`);
+  });
+  downloadNativeVideo.mockRejectedValueOnce(Object.assign(new Error('rate limited'), {
+    code: 'downloaderRateLimited',
+  }));
+  localStorage.setItem('current_file_name', 'source.mkv');
+  localStorage.setItem('current_file_url', source.playbackUrl);
+  localStorage.setItem('current_video_url', 'https://example.test/video-a');
+  const setUploadedFile = vi.fn();
+
+  await expect(downloadAndPrepareYouTubeVideo(
+    { url: 'https://www.youtube.com/watch?v=video-b' },
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    vi.fn(),
+    setUploadedFile,
+    vi.fn(),
+  )).resolves.toBeUndefined();
+
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
+  expect(localStorage.getItem('current_file_name')).toBeNull();
+  expect(localStorage.getItem('current_file_url')).toBeNull();
+  expect(localStorage.getItem('current_video_url')).toBeNull();
+  expect(invokeDesktop).toHaveBeenCalledWith('clear_media', {
+    expectedAssetId: source.assetId,
+    expectedPlaybackId: source.playbackId,
+  });
+});
+
 it('activates the URL project before publishing downloaded media to React', async () => {
   generateUrlBasedCacheId.mockResolvedValue('reviewed');
   const setUploadedFile = vi.fn();
@@ -214,7 +277,7 @@ it('activates the URL project before publishing downloaded media to React', asyn
     create: false,
   });
   expect(activateSubtitleProjectBinding.mock.invocationCallOrder[0])
-    .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
+    .toBeLessThan(setUploadedFile.mock.invocationCallOrder.at(-1));
 
   // The durable asset-to-project association must land before React ever sees the media, so a
   // later run can reopen exactly this asset under exactly this alias.
@@ -224,12 +287,12 @@ it('activates the URL project before publishing downloaded media to React', asyn
     expectedProjectId: 'project:reviewed',
   });
   expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
-    .toBeLessThan(setUploadedFile.mock.invocationCallOrder[0]);
+    .toBeLessThan(setUploadedFile.mock.invocationCallOrder.at(-1));
   expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:replaced');
   expect(getBrowserMediaBlob('blob:replaced')).toBeNull();
 });
 
-it('rolls back to a live browser source when post-publication ownership is lost', async () => {
+it('never revives the replaced browser source when post-publication ownership is lost', async () => {
   const previousBlob = new Blob(['previous-media']);
   localStorage.setItem('current_file_url', 'blob:previous-media');
   localStorage.setItem('current_file_name', 'previous.mp4');
@@ -270,10 +333,10 @@ it('rolls back to a live browser source when post-publication ownership is lost'
     vi.fn(),
   )).resolves.toBeUndefined();
 
-  expect(localStorage.getItem('current_file_url')).toBe('blob:previous-media');
-  expect(localStorage.getItem('current_file_name')).toBe('previous.mp4');
-  expect(getBrowserMediaBlob('blob:previous-media')).toBe(previousBlob);
-  expect(revokeObjectUrl).not.toHaveBeenCalled();
+  expect(localStorage.getItem('current_file_url')).toBeNull();
+  expect(localStorage.getItem('current_file_name')).toBeNull();
+  expect(getBrowserMediaBlob('blob:previous-media')).toBeNull();
+  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:previous-media');
 });
 
 it('publishes neither compatibility identity nor React media before the binding receipt', async () => {
@@ -295,7 +358,7 @@ it('publishes neither compatibility identity nor React media before the binding 
   );
 
   await vi.waitFor(() => expect(activateSubtitleProjectBinding).toHaveBeenCalled());
-  expect(setUploadedFile).not.toHaveBeenCalled();
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
   expect(localStorage.getItem('current_file_url')).toBeNull();
   expect(localStorage.getItem('current_file_cache_id')).toBeNull();
 
@@ -305,7 +368,7 @@ it('publishes neither compatibility identity nor React media before the binding 
     projectId: 'project:awaited-project',
   });
   await expect(pending).resolves.toBe(source);
-  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(source);
+  expect(setUploadedFile.mock.calls).toEqual([[null], [source]]);
 });
 
 it('leaves the prepared media unpublished when exact-project binding fails', async () => {
@@ -325,7 +388,7 @@ it('leaves the prepared media unpublished when exact-project binding fails', asy
     vi.fn(),
   )).resolves.toBeUndefined();
 
-  expect(setUploadedFile).not.toHaveBeenCalled();
+  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
   expect(localStorage.getItem('current_file_url')).toBeNull();
   expect(localStorage.getItem('current_file_cache_id')).toBeNull();
   expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
@@ -461,7 +524,7 @@ it('a manual A download which finishes after B cannot bind, select, or publish A
   await expect(a).resolves.toBeUndefined();
   expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
   expect(ensureProjectOwnsNativeMedia).not.toHaveBeenCalled();
-  expect(setUploadedFile).not.toHaveBeenCalled();
+  expect(setUploadedFile.mock.calls).toEqual([[null], [null]]);
 
   await complete(acquisitions[1], sourceB, 'project-b');
   await expect(b).resolves.toBe(sourceB);
@@ -474,7 +537,7 @@ it('a manual A download which finishes after B cannot bind, select, or publish A
     cacheId: 'project-b',
     expectedProjectId: 'project:project-b',
   });
-  expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(sourceB);
+  expect(setUploadedFile.mock.calls).toEqual([[null], [null], [sourceB]]);
   expect(localStorage.getItem('current_video_url')).toBe('https://example.test/b');
   expect(localStorage.getItem('current_file_cache_id')).toBeNull();
   expect(localStorage.getItem('current_file_url')).toBe(sourceB.playbackUrl);

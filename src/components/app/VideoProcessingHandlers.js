@@ -17,8 +17,10 @@ import {
 } from '../../platform/nativeMediaOwnership';
 import {
   activateSubtitleProjectBinding,
+  clearSubtitleProjectBinding,
   rollbackSubtitleProjectBinding,
 } from '../../platform/subtitleProjectBinding';
+import { deactivateProject } from '../../platform/projectService';
 import {
   assertAutoGenerationRequestActive,
   AutoGenerationOwnershipError,
@@ -28,6 +30,50 @@ import {
 import { forgetBrowserMediaBlob } from '../../platform/browserMediaBlobRegistry';
 
 let activeDownloadPresentation = null;
+
+const withdrawVisibleMediaForUrlIntent = async ({
+  ownsPresentation,
+  setIsSrtOnlyMode,
+  setUploadedFile,
+}) => {
+  const selected = await getSelectedMedia();
+  if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
+
+  // Selecting URL B is itself a media intent. Video A remains durable in its project history, but
+  // it must stop being the active/visible media immediately; otherwise a failed B download lies by
+  // continuing to show A. Clear every compatibility surface before the fallible network work.
+  const replacedFileUrl = localStorage.getItem('current_file_url');
+  setUploadedFile(null);
+  setIsSrtOnlyMode?.(false);
+  for (const key of [
+    'current_file_name',
+    'current_file_url',
+    'split_result',
+    'current_video_url',
+  ]) localStorage.removeItem(key);
+  forgetNativeMediaSession();
+  clearSubtitleProjectBinding();
+  deactivateProject();
+
+  // Use the exact identities observed above. If another media intent won while the IPC round trip
+  // was in flight, native clear_media refuses instead of erasing that newer selection.
+  if (selected !== null) {
+    await clearMedia({
+      expectedAssetId: selected.assetId,
+      expectedPlaybackId: selected.playbackId,
+    });
+  }
+  if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
+
+  if (replacedFileUrl?.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(replacedFileUrl);
+    } catch {
+      // A stale browser blob is already unusable and needs no further cleanup.
+    }
+    forgetBrowserMediaBlob(replacedFileUrl);
+  }
+};
 
 export const ensureVideoCompatibility = async (videoFile) => {
   if (!isNativeMediaDescriptor(videoFile)) {
@@ -111,6 +157,11 @@ export const downloadAndPrepareYouTubeVideo = async (
   const autoRequest = nativeDownloadOptions.autoRequest;
   const guardedAutoRequest = isAutoGenerationRequest(autoRequest) ? autoRequest : null;
   try {
+    await withdrawVisibleMediaForUrlIntent({
+      ownsPresentation,
+      setIsSrtOnlyMode,
+      setUploadedFile,
+    });
     const expectedSourceIdentity = sourceIdentityForUrl(selectedVideo.url);
     const assertDownloadOwnership = () => {
       if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
@@ -228,18 +279,6 @@ export const downloadAndPrepareYouTubeVideo = async (
       return undefined;
     }
 
-    // downloadNativeVideo resolves only after its post-publication ownership check. Until that
-    // boundary it can still roll back to previousCompatibility, so the old browser source must
-    // remain live even after publishActivation itself succeeds.
-    const replacedFileUrl = previousCompatibility?.fileUrl;
-    if (replacedFileUrl?.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(replacedFileUrl);
-      } catch {
-        // A stale browser blob is already unusable and needs no further cleanup.
-      }
-      forgetBrowserMediaBlob(replacedFileUrl);
-    }
     assertDownloadOwnership();
     return nativeMedia;
   } catch (error) {
