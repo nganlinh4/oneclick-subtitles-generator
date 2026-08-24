@@ -2,6 +2,8 @@
  * Utility functions for timeline calculations
  */
 
+import { createTimelineDomain } from './timelineDomain';
+
 /**
  * Calculate minimum zoom level - now always returns 1 to allow full zoom out
  * @param {number} totalDuration - Total duration of the timeline in seconds
@@ -21,10 +23,7 @@ export const calculateMinZoom = (_totalDuration) => {
  * @returns {Object} - Object with start, end, and total properties
  */
 export const getVisibleTimeRange = (lyrics, duration, panOffset, zoom, _currentZoom) => {
-  const maxLyricTime = lyrics.length > 0
-    ? Math.max(...lyrics.map(lyric => lyric.end))
-    : duration;
-  const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+  const timelineEnd = createTimelineDomain(lyrics, duration).viewEnd;
 
   // Use zoom directly without minimum restriction
   const effectiveZoom = zoom;
@@ -47,10 +46,7 @@ export const getVisibleTimeRange = (lyrics, duration, panOffset, zoom, _currentZ
  * @returns {Object} - Object with start, end, and total properties
  */
 export const calculateVisibleTimeRange = (lyrics, duration, tempPanOffset, currentZoom) => {
-  const maxLyricTime = lyrics.length > 0
-    ? Math.max(...lyrics.map(lyric => lyric.end))
-    : duration;
-  const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+  const timelineEnd = createTimelineDomain(lyrics, duration).viewEnd;
 
   // Use zoom directly without minimum restriction
   const effectiveZoom = currentZoom;

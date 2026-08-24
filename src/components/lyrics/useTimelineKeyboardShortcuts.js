@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+import { getSelectAllRange } from './utils/timelineDomain';
+
 // Helper: ignore shortcuts when typing in inputs/textareas/contenteditable editors.
 // Exported so other keydown handlers (e.g. Delete/Backspace clear-in-range) reuse it.
 export const isEventFromEditable = (e) => {
@@ -61,15 +63,15 @@ export const useTimelineKeyboardShortcuts = ({
                 }
             }
 
-            // Ctrl+A to select entire video range
-            if (e.ctrlKey && e.key === 'a' && onSegmentSelect && duration) {
+            // Ctrl+A selects every cue, including cues outside media playback bounds.
+            if (e.ctrlKey && e.key.toLowerCase() === 'a' && onSegmentSelect) {
+                const selectAllRange = getSelectAllRange(lyrics, duration);
+                if (!(selectAllRange.end > selectAllRange.start)) return;
                 e.preventDefault(); // Prevent default browser select all
 
 
 
-                // Set drag state to simulate range selection from 0 to duration
-                const startTime = 0;
-                const endTime = duration;
+                const { start: startTime, end: endTime } = selectAllRange;
 
                 // Mark that dragging has been done in this session
                 setHasDraggedInSession(true);

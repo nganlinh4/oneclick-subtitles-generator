@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 
 import { handleTimelineClick as handleClick } from './utils/TimelineInteractions';
+import { createTimelineDomain, pixelToTimelineTime } from './utils/timelineDomain';
 import { isEventFromEditable } from './useTimelineKeyboardShortcuts';
 
 // Pointer/seek/select interaction for the timeline canvas.
@@ -39,15 +40,15 @@ export const useTimelinePointerInteraction = ({
     // Convert pixel position to time
     const pixelToTime = (pixelX) => {
         const canvas = timelineRef.current;
-        const effectiveDuration = duration || 60;
         if (!canvas) return 0;
 
         const rect = canvas.getBoundingClientRect();
-        const relativeX = pixelX - rect.left;
-        const timeRange = getTimeRange();
-        const timePerPixel = (timeRange.end - timeRange.start) / canvas.clientWidth;
-
-        return Math.max(0, Math.min(effectiveDuration, timeRange.start + (relativeX * timePerPixel)));
+        return pixelToTimelineTime(
+            pixelX,
+            rect,
+            getTimeRange(),
+            createTimelineDomain(lyrics, duration),
+        );
     };
 
     // Handle right-click on selected segment
@@ -101,14 +102,15 @@ export const useTimelinePointerInteraction = ({
         if (!hiddenActionBarRange && !actionBarRange && !selectedSegment) return;
 
         const canvas = timelineRef.current;
-        const effectiveDuration = duration || 60;
         if (!canvas) return;
 
         const rect = canvas.getBoundingClientRect();
-        const relativeX = e.clientX - rect.left;
-        const timeRange = getTimeRange();
-        const timePerPixel = (timeRange.end - timeRange.start) / canvas.clientWidth;
-        const hoverTime = Math.max(0, Math.min(effectiveDuration, timeRange.start + (relativeX * timePerPixel)));
+        const hoverTime = pixelToTimelineTime(
+            e.clientX,
+            rect,
+            getTimeRange(),
+            createTimelineDomain(lyrics, duration),
+        );
 
         // Check if hovering within the hidden action bar range
         const range = hiddenActionBarRange || actionBarRange;
@@ -128,7 +130,7 @@ export const useTimelinePointerInteraction = ({
                 setHiddenActionBarRange(selectedSegment);
             }
         }
-    }, [hiddenActionBarRange, actionBarRange, selectedSegment, duration, getTimeRange, hasSubtitlesInRange, isRangeMoveDraggingRef, timelineRef, setActionBarRange, setHiddenActionBarRange]);
+    }, [hiddenActionBarRange, actionBarRange, selectedSegment, duration, lyrics, getTimeRange, hasSubtitlesInRange, isRangeMoveDraggingRef, timelineRef, setActionBarRange, setHiddenActionBarRange]);
 
     // Add mouse move listener for hover detection
     useEffect(() => {

@@ -158,9 +158,9 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
   const renderWaveform = useCallback((canvas, containerWidth) => {
     renderWaveformImpl(canvas, containerWidth, {
-      waveform, visibleTimeRange, height, dbgWave,
+      waveform, visibleTimeRange, seekableEnd: duration, height, dbgWave,
     });
-  }, [waveform, visibleTimeRange, height]);
+  }, [waveform, visibleTimeRange, duration, height]);
 
   const updateVisualization = useCallback(() => {
     updateVisualizationImpl({

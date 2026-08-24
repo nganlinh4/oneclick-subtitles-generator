@@ -2,6 +2,8 @@
  * Utility functions for timeline interactions
  */
 
+import { clampSeekTime, createTimelineDomain, pixelToTimelineTime } from './timelineDomain';
+
 // calculateMinZoom is no longer needed since we removed zoom restrictions
 
 /**
@@ -21,13 +23,9 @@ export const centerTimelineOnTime = (
   setPanOffset,
   lastManualPanTime
 ) => {
-  if (!duration) return;
-
-  // Get the current timeline end
-  const maxLyricTime = lyrics.length > 0
-    ? Math.max(...lyrics.map(lyric => lyric.end))
-    : duration;
-  const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+  const domain = createTimelineDomain(lyrics, duration);
+  if (!(domain.contentEnd > 0)) return;
+  const timelineEnd = domain.viewEnd;
 
   // Use zoom directly without restrictions
   const effectiveZoom = currentZoom;
@@ -72,26 +70,18 @@ export const handleTimelineClick = (
   }
 
   const rect = timelineRef.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const { start: visibleStart, end: visibleEnd } = visibleTimeRange;
-  const visibleDuration = visibleEnd - visibleStart;
+  const domain = createTimelineDomain([], duration);
+  const timelineTime = pixelToTimelineTime(e.clientX, rect, visibleTimeRange, {
+    ...domain,
+    viewEnd: Math.max(domain.viewEnd, visibleTimeRange.end),
+  });
 
-  // Calculate the new time based on click position
-  const newTime = visibleStart + (clickX / rect.width) * visibleDuration;
-
-  if (newTime >= 0 && newTime <= duration) {
-    // Record this as a manual interaction to prevent auto-scrolling
-    if (lastManualPanTime) {
-      lastManualPanTime.current = performance.now();
-    }
-
-    // Just seek to the new time without changing the view position
-    // This eliminates the shaking effect by avoiding multiple view transitions
-    onTimelineClick(Math.min(duration, newTime));
-
-    // The view will be centered automatically when the currentTime prop updates
-    // This creates a single, smooth transition instead of multiple jerky ones
+  // A click in the subtitle-only area seeks to the nearest playable frame,
+  // while range selection remains free to reach that subtitle.
+  if (lastManualPanTime) {
+    lastManualPanTime.current = performance.now();
   }
+  onTimelineClick(clampSeekTime(timelineTime, domain));
 };
 
 /**
@@ -119,7 +109,8 @@ export const animateZoom = (
     cancelAnimationFrame(animationFrameRef.current);
   }
 
-  if (!duration || !setPanOffset || typeof currentTime !== 'number') {
+  const domain = createTimelineDomain(lyrics, duration);
+  if (!(domain.contentEnd > 0) || !setPanOffset || typeof currentTime !== 'number') {
     // Fallback to simple zoom without centering
     currentZoomRef.current = targetZoom;
     drawTimeline();
@@ -128,11 +119,7 @@ export const animateZoom = (
 
 
 
-  // Calculate timeline end
-  const maxLyricTime = lyrics.length > 0
-    ? Math.max(...lyrics.map(lyric => lyric.end))
-    : duration;
-  const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+  const timelineEnd = domain.viewEnd;
 
   // Calculate new visible duration based on target zoom
   const newVisibleDuration = timelineEnd / targetZoom;

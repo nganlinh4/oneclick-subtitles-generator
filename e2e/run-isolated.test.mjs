@@ -25,6 +25,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'startup.journey.js',
+    'timelineBoundary.journey.js',
     'urlLocalAsrPreview.journey.js',
     'urlToPreview.journey.js',
   ]);

@@ -1,4 +1,5 @@
 import LiquidGlass from '../common/LiquidGlass';
+import { createTimelineDomain } from './utils/timelineDomain';
 
 // Liquid Glass zoom controls in the top right corner. Pure presentational
 // component: zoom/pan state, callbacks and the zoom-drag refs are threaded in
@@ -75,11 +76,9 @@ const TimelineZoomControls = ({
                         const deltaX = x - startX;
                         const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
 
-                        if (duration && setPanOffset) {
-                            const maxLyricTime = lyrics.length > 0
-                                ? Math.max(...lyrics.map(lyric => lyric.end))
-                                : duration;
-                            const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+                        const timelineDomain = createTimelineDomain(lyrics, duration);
+                        if (timelineDomain.contentEnd > 0 && setPanOffset) {
+                            const timelineEnd = timelineDomain.viewEnd;
                             const newVisibleDuration = timelineEnd / newZoom;
                             const halfVisibleDuration = newVisibleDuration / 2;
 
@@ -119,14 +118,13 @@ const TimelineZoomControls = ({
                         const x = zoomDragLastXRef.current;
                         const deltaX = x - startX;
                         const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
-                        if (duration && setPanOffset) {
+                        if (createTimelineDomain(lyrics, duration).contentEnd > 0 && setPanOffset) {
                             // Prefer the latest pan computed during drag
                             const finalPan = (lastComputedPanRef.current ?? panOffset);
 
                             currentZoomRef.current = newZoom;
                             // Apply zoom first, then pan
                             setZoom(newZoom);
-                            setPanOffset(finalPan);
                             setPanOffset(finalPan);
                             disableAutoScroll.current = false;
                         } else {
@@ -164,11 +162,9 @@ const TimelineZoomControls = ({
                         const deltaX = x - startX;
                         const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
 
-                        if (duration && setPanOffset) {
-                            const maxLyricTime = lyrics.length > 0
-                                ? Math.max(...lyrics.map(lyric => lyric.end))
-                                : duration;
-                            const timelineEnd = Math.max(maxLyricTime, duration) * 1.05;
+                        const timelineDomain = createTimelineDomain(lyrics, duration);
+                        if (timelineDomain.contentEnd > 0 && setPanOffset) {
+                            const timelineEnd = timelineDomain.viewEnd;
                             const newVisibleDuration = timelineEnd / newZoom;
                             const halfVisibleDuration = newVisibleDuration / 2;
 
@@ -212,12 +208,11 @@ const TimelineZoomControls = ({
                         const x = zoomDragLastXRef.current;
                         const deltaX = x - startX;
                         const newZoom = Math.max(1, Math.min(200, startZoom + (deltaX * 0.05)));
-                        if (duration && setPanOffset) {
+                        if (createTimelineDomain(lyrics, duration).contentEnd > 0 && setPanOffset) {
                             const finalPan = (lastComputedPanRef.current ?? panOffset);
 
                             currentZoomRef.current = newZoom;
                             setZoom(newZoom);
-                            setPanOffset(finalPan);
                             setPanOffset(finalPan);
                             disableAutoScroll.current = false;
                         } else {

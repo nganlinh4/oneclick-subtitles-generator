@@ -17,6 +17,7 @@ import NarrationLaneControls from './NarrationLaneControls';
 import { useTimelineRenderEffects } from './useTimelineRenderEffects';
 import { useTimelineKeyboardShortcuts } from './useTimelineKeyboardShortcuts';
 import { useTimelinePointerInteraction } from './useTimelinePointerInteraction';
+import { createTimelineDomain } from './utils/timelineDomain';
 import TimelineRangeActionBar from './TimelineRangeActionBar';
 import TimelineZoomControls from './TimelineZoomControls';
 import TimelineDragHint from './TimelineDragHint';
@@ -253,8 +254,7 @@ const TimelineVisualization = ({
         const canvas = timelineRef.current;
         if (!canvas) return;
 
-        // Use a default duration if none is provided (for debugging)
-        const effectiveDuration = duration || 60; // Default to 60 seconds for testing
+        const effectiveDuration = createTimelineDomain(lyrics, duration).seekableEnd;
 
         canvasWidthRef.current = canvas.clientWidth;
 

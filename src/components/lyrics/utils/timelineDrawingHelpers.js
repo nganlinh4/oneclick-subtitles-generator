@@ -5,6 +5,7 @@
 
 import { getLyricColor, getRandomHeight } from './ColorUtils';
 import { timeToX } from './TimelineCalculations';
+import { createTimelineDomain } from './timelineDomain';
 import { formatTime } from '../../../utils/timeFormatter';
 
 /**
@@ -86,8 +87,7 @@ export const drawLyricSegments = (
     // Minimum segment width - always show segments with at least 1px
     const minSegmentWidth = 1;
 
-    // Estimate the total duration based on the last lyric's end time
-    const duration = lyrics.length > 0 ? Math.max(...lyrics.map(lyric => lyric.end)) * 1.05 : 0;
+    const duration = createTimelineDomain(lyrics, 0).contentEnd;
 
     // Use our optimized segments handler for long videos
     const isLongVideo = duration > 1800; // 30 minutes

@@ -5,8 +5,14 @@
 import { selectNativeWaveformLevel, setupHighDPICanvas } from './waveformLOD';
 
 // Render the waveform onto the given canvas.
-// params: { waveform, visibleTimeRange, height, dbgWave }
-export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRange, height, dbgWave }) => {
+// params: { waveform, visibleTimeRange, seekableEnd, height, dbgWave }
+export const renderWaveform = (canvas, containerWidth, {
+    waveform,
+    visibleTimeRange,
+    seekableEnd,
+    height,
+    dbgWave,
+}) => {
     if (!waveform || !visibleTimeRange) return;
 
     const ctx = setupHighDPICanvas(canvas, containerWidth, height);
@@ -17,11 +23,19 @@ export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRa
     const level = selectNativeWaveformLevel(waveform, visibleDuration, containerWidth);
     const lodData = level.points;
     const lodSamplesPerSecond = level.pointsPerSecond;
+    const waveformEnd = Math.min(
+      waveform.durationSeconds,
+      typeof seekableEnd === 'number' && Number.isFinite(seekableEnd) && seekableEnd > 0
+        ? seekableEnd
+        : waveform.durationSeconds,
+    );
+    const drawStart = Math.max(0, visibleStart);
+    const drawEnd = Math.min(visibleEnd, waveformEnd);
 
-    // Calculate visible sample range in LOD data
-    const startSample = Math.max(0, Math.floor(visibleStart * lodSamplesPerSecond));
-    const endSample = Math.min(lodData.length, Math.ceil(visibleEnd * lodSamplesPerSecond));
-    const samplesToDraw = endSample - startSample;
+    // Calculate the samples that overlap the visible, seekable media range.
+    const startSample = Math.max(0, Math.floor(drawStart * lodSamplesPerSecond));
+    const endSample = Math.min(lodData.length, Math.ceil(drawEnd * lodSamplesPerSecond));
+    const samplesToDraw = Math.max(0, endSample - startSample);
 
     dbgWave('[WAVEFORM] Rendering:', {
       duration: waveform.durationSeconds,
@@ -29,6 +43,8 @@ export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRa
       samplesPerSecond: waveform.levels[0].pointsPerSecond,
       visibleStart: visibleStart,
       visibleEnd: visibleEnd,
+      seekableEnd,
+      waveformEnd,
       startSample: startSample,
       endSample: endSample,
       samplesToDraw: samplesToDraw,
@@ -47,18 +63,28 @@ export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRa
     gradient.addColorStop(1, 'transparent');
     ctx.fillStyle = gradient;
 
-    if (samplesToDraw <= 0) return;
+    if (samplesToDraw <= 0 || !(drawEnd > drawStart)) return;
 
-    const pixelsPerSample = containerWidth / samplesToDraw;
+    const timeToCanvasX = (time) => (
+      ((time - visibleStart) / visibleDuration) * containerWidth
+    );
+    const startX = Math.max(0, timeToCanvasX(drawStart));
+    const endX = Math.min(containerWidth, timeToCanvasX(drawEnd));
 
     ctx.beginPath();
-    ctx.moveTo(0, height);
+    ctx.moveTo(startX, height);
 
     for (let i = 0; i < samplesToDraw; i++) {
         const sampleIndex = startSample + i;
         if (sampleIndex >= lodData.length) break;
 
-        const x = i * pixelsPerSample;
+        // Each point summarizes a time bin. Position its centre using time,
+        // never by stretching the number of remaining points to the canvas.
+        const sampleTime = Math.min(
+          drawEnd,
+          Math.max(drawStart, (sampleIndex + 0.5) / lodSamplesPerSecond),
+        );
+        const x = timeToCanvasX(sampleTime);
         const rootMeanSquare = lodData[sampleIndex]?.rootMeanSquare ?? 0;
         const amplitude = waveform.peakRootMeanSquare > 0
           ? Math.max(Math.pow(rootMeanSquare / waveform.peakRootMeanSquare, 0.75), 0.01)
@@ -69,7 +95,7 @@ export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRa
         ctx.lineTo(x, y);
     }
 
-    ctx.lineTo(containerWidth, height);
+    ctx.lineTo(endX, height);
     ctx.closePath();
     ctx.fill();
 

@@ -18,6 +18,7 @@
     "test:fresh-install-visual": "node run-isolated.mjs journeys/freshInstallVisual.journey.js",
     "test:gemini-output-preview": "node run-isolated.mjs journeys/geminiOutputPreview.journey.js",
     "test:preview-performance": "node run-isolated.mjs journeys/canvasPlaybackPerformance.journey.js",
+    "test:timeline-boundary": "node run-isolated.mjs journeys/timelineBoundary.journey.js",
     "test:asr": "node run-isolated.mjs journeys/localAsrGeneration.journey.js",
     "test:url-asr": "node run-isolated.mjs journeys/urlLocalAsrPreview.journey.js",
     "test:narration": "node run-isolated.mjs journeys/narrationGeneration.journey.js",

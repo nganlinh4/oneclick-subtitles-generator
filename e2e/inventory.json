@@ -308,6 +308,27 @@
       "note": "editPersistRelaunch and unicodeCues both open the real video through the real file control, so the import path is exercised. There is no journey whose SUBJECT is import, so a defect that only affects import without affecting persistence would be reported by the wrong journey."
     },
     {
+      "name": "timelineBoundary",
+      "kind": "workflow",
+      "file": "journeys/timelineBoundary.journey.js",
+      "capability": "Waveform, seeking, cue reachability and select-all agree at the end of real media.",
+      "chain": [
+        "open real media through the guarded native file-selection boundary",
+        "import one ordinary cue and one cue extending beyond the playable video",
+        "inspect actual waveform canvas pixels against the real video duration",
+        "select through the documented Ctrl+A shortcut and delete through the keyboard"
+      ],
+      "oracles": [
+        "waveform canvas pixels before and after the calculated seekable boundary",
+        "the visible range action bar and cue list",
+        "the application's own SQLite cue count, read only",
+        "ordered screenshots under target/workflow-evidence/timeline-boundary"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "Green against the rebuilt guarded binary and real 19.014-second video. A cue ending at 21.014 seconds remained visible and selectable; waveform ink stopped at backing pixel 754 of 875; Ctrl+A plus Delete removed both visible cues and reduced SQLite to zero. The journey owns the formerly untested cross-component invariant that drawing, pointer reachability, media seeking and cue-wide selection must not silently use different timeline extents."
+    },
+    {
       "name": "asrGeneration",
       "kind": "workflow",
       "file": "journeys/localAsrGeneration.journey.js",
