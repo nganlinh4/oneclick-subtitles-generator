@@ -28,13 +28,18 @@ import { fileURLToPath } from 'node:url';
  * minified bytes to the base artifact. A detached build of its parent revision emits the same file,
  * and every semantic inventory count below remains unchanged, so this records build reality rather
  * than approving a design change.
+ *
+ * REPINNED after the atomic-preview change removed the obsolete `.rendering-overlay`,
+ * `.rendering-progress`, and `.rendering-text` rules. Render progress now belongs to the toast
+ * channel and those selectors have no shipping consumer. Two clean production builds emitted the
+ * same bytes, while every semantic inventory count below remained unchanged.
  */
 export const FROZEN_CSS_ARTIFACTS = Object.freeze({
   files: Object.freeze([
     Object.freeze({
-      fileName: 'index-D286_Q6B.css',
-      sha256: 'fff9707a52ab4dd48e604a1ada3436a44d627e07ed2e6c37b93bf31dfef9b46f',
-      sizeBytes: 500_851,
+      fileName: 'index-gzhNp-em.css',
+      sha256: 'f746d1f0d58494c5bd5a8e1fadbd41b2e2c89801296438606d666cd60a84442c',
+      sizeBytes: 500_498,
     }),
     Object.freeze({
       fileName: 'narration-OoOluj4s.css',
