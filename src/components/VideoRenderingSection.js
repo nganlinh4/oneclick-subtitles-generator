@@ -656,12 +656,7 @@ const VideoRenderingSection = ({
 
 
             <TrimTimelineRow
-              renderSettings={{
-                ...renderSettings,
-                trimEnd: renderSettings.trimEnd === 0 && videoDuration > 0
-                  ? videoDuration
-                  : renderSettings.trimEnd,
-              }}
+              renderSettings={renderSettings}
               setRenderSettings={setRenderSettings}
               videoDuration={videoDuration}
               videoPlayerRef={videoPlayerRef}
@@ -678,14 +673,14 @@ const VideoRenderingSection = ({
             onCancelRender={handleCancelRender}
           />
 
-          {(renderAdmissionStage !== 'idle' || error) && (
+          {renderAdmissionStage !== 'idle' && !error && (
             <div
-              className={`render-admission-status ${error ? 'error' : ''}`}
+              className="render-admission-status"
               data-osg-render-admission={renderAdmissionStage}
-              role={error ? 'alert' : 'status'}
+              role="status"
               aria-live="polite"
             >
-              {error || renderStatus}
+              {renderStatus}
             </div>
           )}
 

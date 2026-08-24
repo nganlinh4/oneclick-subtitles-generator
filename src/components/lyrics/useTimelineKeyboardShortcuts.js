@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { getSelectAllRange } from './utils/timelineDomain';
+import { cueOverlapsTimelineRange, getSelectAllRange } from './utils/timelineDomain';
 
 // Helper: ignore shortcuts when typing in inputs/textareas/contenteditable editors.
 // Exported so other keydown handlers (e.g. Delete/Backspace clear-in-range) reuse it.
@@ -63,7 +63,8 @@ export const useTimelineKeyboardShortcuts = ({
                 }
             }
 
-            // Ctrl+A selects every cue, including cues outside media playback bounds.
+            // Ctrl+A selects the whole playable media range. A malformed cue may remain visible
+            // for repair, but no UI selection is allowed to claim time the video cannot play.
             if (e.ctrlKey && e.key.toLowerCase() === 'a' && onSegmentSelect) {
                 const selectAllRange = getSelectAllRange(lyrics, duration);
                 if (!(selectAllRange.end > selectAllRange.start)) return;
@@ -102,8 +103,7 @@ export const useTimelineKeyboardShortcuts = ({
                     // Helper function to check if there are subtitles in the range
                     const checkForSubtitles = (start, end) => {
                         if (!lyrics || lyrics.length === 0) return false;
-                        // Only consider subtitles fully contained within the range
-                        return lyrics.some(l => l.start >= start && l.end <= end);
+                        return lyrics.some(l => cueOverlapsTimelineRange(l, start, end));
                     };
 
                     // Check if there are subtitles in the range

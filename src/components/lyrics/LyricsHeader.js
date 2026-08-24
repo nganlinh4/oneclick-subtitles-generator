@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SubtitleSplitModal from './SubtitleSplitModal';
+import { cueOverlapsTimelineRange } from './utils/timelineDomain';
 
 const LyricsHeader = ({
   allowEditing,
@@ -28,11 +29,11 @@ const LyricsHeader = ({
   // Check if there are subtitles in the selected range
   const hasSubtitlesInRange = () => {
     if (!selectedRange || !lyrics || lyrics.length === 0) return false;
-    // Check if any subtitle is fully contained within the selected range
-    return lyrics.some(lyric => 
-      lyric.start >= selectedRange.start && 
-      lyric.end <= selectedRange.end
-    );
+    return lyrics.some(lyric => cueOverlapsTimelineRange(
+      lyric,
+      selectedRange.start,
+      selectedRange.end,
+    ));
   };
   
   const canSplitSubtitles = selectedRange && hasSubtitlesInRange();

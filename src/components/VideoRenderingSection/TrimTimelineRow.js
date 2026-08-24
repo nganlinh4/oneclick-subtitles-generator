@@ -12,25 +12,52 @@ const timeLabelStyle = {
   fontWeight: 500,
 };
 
+const finiteNonNegative = (value) => (
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
+);
+
+/** Project a durable trim window onto the current source's authoritative browser duration. */
+export const boundedTrimRange = (renderSettings, videoDuration) => {
+  const sourceEnd = finiteNonNegative(videoDuration);
+  if (!(sourceEnd > 0)) return Object.freeze([0, 0]);
+  const requestedStart = finiteNonNegative(renderSettings?.trimStart);
+  const requestedEnd = renderSettings?.trimEnd === 0
+    ? sourceEnd
+    : finiteNonNegative(renderSettings?.trimEnd);
+  const end = Math.min(requestedEnd, sourceEnd);
+  return Object.freeze([Math.min(requestedStart, end), end]);
+};
+
+/** Keep the durable zero spelling for "through source end"; never persist rounded metadata back. */
+export const durableTrimRange = (range, videoDuration) => {
+  const sourceEnd = finiteNonNegative(videoDuration);
+  const [start, end] = boundedTrimRange({ trimStart: range?.[0], trimEnd: range?.[1] }, sourceEnd);
+  return Object.freeze({
+    trimStart: start,
+    trimEnd: sourceEnd > 0 && sourceEnd - end <= 0.005 ? 0 : end,
+  });
+};
+
 /**
  * Trim timeline row: a range slider over the video duration that also seeks the
  * preview player. Pure component — state and the player ref come from props.
  */
 const TrimTimelineRow = ({ renderSettings, setRenderSettings, videoDuration, videoPlayerRef }) => {
   const { t } = useTranslation();
+  const [boundedStart, boundedEnd] = boundedTrimRange(renderSettings, videoDuration);
 
   return (
     <div className="trimming-timeline-row" style={{ margin: '0 0 16px 0', width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 16px' }}>
         <span className="material-symbols-rounded" style={{ flexShrink: 0}}>content_cut</span>
         <span style={timeLabelStyle}>
-          {formatTime(renderSettings.trimStart || 0, 'hms_ms')}
+          {formatTime(boundedStart, 'hms_ms')}
         </span>
         <StandardSlider
           range
           value={[
-            renderSettings.trimStart || 0,
-            renderSettings.trimEnd || 0
+            boundedStart,
+            boundedEnd,
           ]}
           min={0}
           // *** FIX ***
@@ -39,21 +66,26 @@ const TrimTimelineRow = ({ renderSettings, setRenderSettings, videoDuration, vid
           max={videoDuration || 1}
           step={0.01}
           onChange={([start, end]) => {
-            setRenderSettings(prev => ({ ...prev, trimStart: start, trimEnd: end }));
+            const [nextStart, nextEnd] = boundedTrimRange(
+              { trimStart: start, trimEnd: end },
+              videoDuration,
+            );
+            const durable = durableTrimRange([start, end], videoDuration);
+            setRenderSettings(prev => ({ ...prev, ...durable }));
 
-            const oldStart = renderSettings.trimStart || 0;
-            const oldEnd = renderSettings.trimEnd || 0;
+            const oldStart = boundedStart;
+            const oldEnd = boundedEnd;
 
             // Seek the preview player to the new position
             if (videoPlayerRef.current) {
               const frameRate = renderSettings.frameRate || 30;
-              if (start !== oldStart) {
+              if (nextStart !== oldStart) {
                 // Seek to start position
-                const frameToSeek = Math.floor(start * frameRate);
+                const frameToSeek = Math.floor(nextStart * frameRate);
                 videoPlayerRef.current.seekTo(frameToSeek);
-              } else if (end !== oldEnd) {
+              } else if (nextEnd !== oldEnd) {
                 // Seek to end position
-                const frameToSeek = Math.floor(end * frameRate);
+                const frameToSeek = Math.floor(nextEnd * frameRate);
                 videoPlayerRef.current.seekTo(frameToSeek);
               }
             }
@@ -72,7 +104,7 @@ const TrimTimelineRow = ({ renderSettings, setRenderSettings, videoDuration, vid
           }}
         />
         <span style={timeLabelStyle}>
-          {formatTime(renderSettings.trimEnd || 0, 'hms_ms')}
+          {formatTime(boundedEnd, 'hms_ms')}
         </span>
       </div>
     </div>

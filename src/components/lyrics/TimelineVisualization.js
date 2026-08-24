@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 // Import utility modules
@@ -17,7 +17,7 @@ import NarrationLaneControls from './NarrationLaneControls';
 import { useTimelineRenderEffects } from './useTimelineRenderEffects';
 import { useTimelineKeyboardShortcuts } from './useTimelineKeyboardShortcuts';
 import { useTimelinePointerInteraction } from './useTimelinePointerInteraction';
-import { createTimelineDomain } from './utils/timelineDomain';
+import { clampTimelineRange, createTimelineDomain } from './utils/timelineDomain';
 import TimelineRangeActionBar from './TimelineRangeActionBar';
 import TimelineZoomControls from './TimelineZoomControls';
 import TimelineDragHint from './TimelineDragHint';
@@ -49,6 +49,14 @@ const TimelineVisualization = ({
     onApplyTimings = null // Bulk-apply retimed subtitles (narration-lane smart arrange / drag)
 }) => {
     const { t } = useTranslation();
+    const timelineDomain = useMemo(
+        () => createTimelineDomain(lyrics, duration),
+        [duration, lyrics],
+    );
+    const boundedSelectedSegment = useMemo(
+        () => clampTimelineRange(selectedSegment, timelineDomain),
+        [selectedSegment, timelineDomain],
+    );
 
     // Narration-lane segments. `narrationSegments` (memoized) drives the controls + smart-arrange
     // handlers; `getSegmentsFor` rebuilds them from the exact lyrics being drawn so the lane can
@@ -228,10 +236,10 @@ const TimelineVisualization = ({
     useEffect(() => {
         if (onSelectedRangeChange) {
             // Report the active range (either actionBarRange or hiddenActionBarRange)
-            const activeRange = actionBarRange || hiddenActionBarRange || selectedSegment;
+            const activeRange = actionBarRange || hiddenActionBarRange || boundedSelectedSegment;
             onSelectedRangeChange(activeRange);
         }
-    }, [actionBarRange, hiddenActionBarRange, selectedSegment, onSelectedRangeChange]);
+    }, [actionBarRange, hiddenActionBarRange, boundedSelectedSegment, onSelectedRangeChange]);
 
     // Narration-lane staging state (global speed, per-clip placement, per-line weight) + lane drag.
     const {
@@ -271,7 +279,7 @@ const TimelineVisualization = ({
         const activeRange = actionBarRange || hiddenActionBarRange;
         const effectiveSelected = activeRange
             ? { start: activeRange.start + (rangePreviewDeltaRef.current || 0), end: activeRange.end + (rangePreviewDeltaRef.current || 0) }
-            : selectedSegment;
+            : boundedSelectedSegment;
         const segmentData = {
             selectedSegment: effectiveSelected,
             isDraggingSegment,
@@ -309,7 +317,7 @@ const TimelineVisualization = ({
         );
 
 
-    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, selectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
+    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, boundedSelectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
 
     // Render-coordination side effects (new-segment animation, resize, zoom,
     // timeline updates, playhead auto-scroll, unmount cleanup)
@@ -327,7 +335,7 @@ const TimelineVisualization = ({
         setPanOffset,
         currentTime,
         lyrics,
-        selectedSegment,
+        selectedSegment: boundedSelectedSegment,
         onSegmentSelect,
         videoSource,
         isDraggingSegment,
@@ -377,7 +385,7 @@ const TimelineVisualization = ({
         onTimelineClick,
         onSegmentSelect,
         onClearRange,
-        selectedSegment,
+        selectedSegment: boundedSelectedSegment,
         actionBarRange,
         hiddenActionBarRange,
         setActionBarRange,
@@ -421,7 +429,8 @@ const TimelineVisualization = ({
                 isClickingInsideRef={isClickingInsideRef}
                 setActionBarRange={setActionBarRange}
                 setHiddenActionBarRange={setHiddenActionBarRange}
-                selectedSegment={selectedSegment}
+                selectedSegment={boundedSelectedSegment}
+                timelineDomain={timelineDomain}
                 onBeginMoveRange={onBeginMoveRange}
                 onPreviewMoveRange={onPreviewMoveRange}
                 onCommitMoveRange={onCommitMoveRange}

@@ -314,7 +314,7 @@
       "capability": "Waveform, seeking, cue reachability and select-all agree at the end of real media.",
       "chain": [
         "open real media through the guarded native file-selection boundary",
-        "import one ordinary cue and one cue extending beyond the playable video",
+        "import one ordinary cue and one ending exactly at the playable boundary",
         "inspect actual waveform canvas pixels against the real video duration",
         "select through the documented Ctrl+A shortcut and delete through the keyboard"
       ],
@@ -326,7 +326,7 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "Green against the rebuilt guarded binary and real 19.014-second video. A cue ending at 21.014 seconds remained visible and selectable; waveform ink stopped at backing pixel 754 of 875; Ctrl+A plus Delete removed both visible cues and reduced SQLite to zero. The journey owns the formerly untested cross-component invariant that drawing, pointer reachability, media seeking and cue-wide selection must not silently use different timeline extents."
+      "note": "The journey now owns the stricter product invariant: waveform, pointer selection and Ctrl+A share the real media boundary, and no selectable range may extend into subtitle-only or visual-gutter time. It then deletes every in-bounds cue and verifies SQLite reaches zero."
     },
     {
       "name": "asrGeneration",

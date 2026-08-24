@@ -1,7 +1,12 @@
 import { useCallback, useEffect } from 'react';
 
 import { handleTimelineClick as handleClick } from './utils/TimelineInteractions';
-import { createTimelineDomain, pixelToTimelineTime } from './utils/timelineDomain';
+import {
+    clampTimelineRange,
+    createTimelineDomain,
+    cueOverlapsTimelineRange,
+    pixelToTimelineTime,
+} from './utils/timelineDomain';
 import { isEventFromEditable } from './useTimelineKeyboardShortcuts';
 
 // Pointer/seek/select interaction for the timeline canvas.
@@ -20,7 +25,7 @@ export const useTimelinePointerInteraction = ({
     onTimelineClick,
     onSegmentSelect,
     onClearRange,
-    selectedSegment,
+    selectedSegment: requestedSelectedSegment,
     actionBarRange,
     hiddenActionBarRange,
     setActionBarRange,
@@ -37,6 +42,10 @@ export const useTimelinePointerInteraction = ({
     isClickingInsideRef,
     lastManualPanTime
 }) => {
+    const selectedSegment = clampTimelineRange(
+        requestedSelectedSegment,
+        createTimelineDomain(lyrics, duration),
+    );
     // Convert pixel position to time
     const pixelToTime = (pixelX) => {
         const canvas = timelineRef.current;
@@ -91,7 +100,7 @@ export const useTimelinePointerInteraction = ({
     const hasSubtitlesInRange = useCallback((start, end) => {
         if (!lyrics || lyrics.length === 0) return false;
         // Only consider subtitles fully contained within the range
-        return lyrics.some(l => l.start >= start && l.end <= end);
+        return lyrics.some(l => cueOverlapsTimelineRange(l, start, end));
     }, [lyrics]);
 
     // Handle mouse move to detect hovering over the hidden range or selectedSegment

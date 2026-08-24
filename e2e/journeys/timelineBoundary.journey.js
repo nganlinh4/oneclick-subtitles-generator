@@ -1,5 +1,4 @@
-// A customer must be able to see and operate on cues that extend past media,
-// while the waveform remains bounded by playable media time.
+// Waveform, pointer selection and Ctrl+A must all stop at playable media time.
 
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
@@ -12,7 +11,7 @@ import {
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'timeline-boundary';
-const BOUNDARY_CUE = 'Boundary cue beyond media';
+const BOUNDARY_CUE = 'Boundary cue at media end';
 
 /* global $, browser, describe, document, it */
 
@@ -35,8 +34,8 @@ describe('timeline boundaries', () => {
     });
     assert.ok(duration > 2, `the real video has no usable duration: ${duration}`);
 
-    const cueStart = duration - 0.25;
-    const cueEnd = duration + 2;
+    const cueStart = duration - 1;
+    const cueEnd = duration;
     const subtitles = [
       '1',
       `${srtTime(0.5)} --> ${srtTime(2)}`,
@@ -93,7 +92,7 @@ describe('timeline boundaries', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-reachable-boundary-cue',
-      description: 'A cue beyond media remains visible while waveform pixels stop at playable time.',
+      description: 'The waveform and final cue stop at the playable media boundary.',
       details: { duration, cueStart, cueEnd, waveformMeasurement },
       focusSelector: '.timeline-container',
     });
@@ -109,7 +108,7 @@ describe('timeline boundaries', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-select-all-through-last-cue',
-      description: 'Ctrl+A reaches the final subtitle even though it ends after the video.',
+      description: 'Ctrl+A reaches the final subtitle without selecting beyond the video.',
       details: { cueEnd, duration },
       focusSelector: '.timeline-container',
     });

@@ -30,7 +30,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it('makes Ctrl+A contain the last cue even when it ends after the video', () => {
+it('keeps Ctrl+A inside the video while still owning an overlapping final cue', () => {
   const params = createParams();
   renderHook(() => useTimelineKeyboardShortcuts(params));
 
@@ -44,7 +44,7 @@ it('makes Ctrl+A contain the last cue even when it ends after the video', () => 
     vi.advanceTimersByTime(500);
   });
 
-  const expected = { start: 0, end: 216.159 };
+  const expected = { start: 0, end: 214.274 };
   expect(params.setDragCurrentTime).toHaveBeenCalledWith(expected.end);
   expect(params.setActionBarRange).toHaveBeenCalledWith(expected);
   expect(params.setHiddenActionBarRange).toHaveBeenCalledWith(expected);
@@ -67,4 +67,3 @@ it('keeps Ctrl+A available for an SRT-only timeline', () => {
 
   expect(params.setActionBarRange).toHaveBeenCalledWith({ start: 0, end: 216.159 });
 });
-

@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { OverlayFollower } from './timelineOverlays';
+import { clampTimelineMoveDelta } from './utils/timelineDomain';
 
 // Range action-bar overlay placed vertically above the timeline canvas.
 // Pure component: all state/refs/callbacks are threaded in via props. The
@@ -18,6 +19,7 @@ const TimelineRangeActionBar = ({
     setActionBarRange,
     setHiddenActionBarRange,
     selectedSegment,
+    timelineDomain,
     onBeginMoveRange,
     onPreviewMoveRange,
     onCommitMoveRange,
@@ -62,10 +64,12 @@ const TimelineRangeActionBar = ({
         }
 
         const onMove = (pe) => {
-            const px = startOffset + (pe.clientX - startX);
+            const requestedPx = startOffset + (pe.clientX - startX);
+            const requestedDelta = requestedPx * timePerPx;
+            const deltaSeconds = clampTimelineMoveDelta(startRange, requestedDelta, timelineDomain);
+            const px = deltaSeconds / timePerPx;
             setMoveDragOffsetPx(px);
             moveDragOffsetPxRef.current = px;
-            const deltaSeconds = px * timePerPx;
             rangePreviewDeltaRef.current = deltaSeconds;
             onPreviewMoveRange && onPreviewMoveRange(deltaSeconds);
             pe.preventDefault();

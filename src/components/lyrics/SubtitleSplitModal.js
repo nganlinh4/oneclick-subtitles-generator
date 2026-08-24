@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import CustomModelDialog from '../settings/CustomModelDialog';
 import StandardSlider from '../common/StandardSlider';
 import { formatTime } from '../../utils/timeFormatter';
+import { cueOverlapsTimelineRange } from './utils/timelineDomain';
 
 /**
  * Smart word counting function that handles multiple languages
@@ -192,9 +193,11 @@ const SubtitleSplitModal = ({ isOpen, onClose, lyrics, onSplitSubtitles, selecte
     
     lyrics.forEach((lyric) => {
       // Check if this lyric is within the selected range
-      const isInRange = selectedRange && 
-        lyric.start >= selectedRange.start && 
-        lyric.end <= selectedRange.end;
+      const isInRange = selectedRange && cueOverlapsTimelineRange(
+        lyric,
+        selectedRange.start,
+        selectedRange.end,
+      );
       
       // If no range is selected or lyric is not in range, keep it as is
       if (!selectedRange || !isInRange) {

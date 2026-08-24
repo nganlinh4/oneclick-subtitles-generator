@@ -76,8 +76,7 @@ export const handleTimelineClick = (
     viewEnd: Math.max(domain.viewEnd, visibleTimeRange.end),
   });
 
-  // A click in the subtitle-only area seeks to the nearest playable frame,
-  // while range selection remains free to reach that subtitle.
+  // Both clicks and range selection are hard-bounded to playable media time.
   if (lastManualPanTime) {
     lastManualPanTime.current = performance.now();
   }

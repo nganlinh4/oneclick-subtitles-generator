@@ -1,6 +1,9 @@
 import {
   clampSeekTime,
+  clampTimelineMoveDelta,
+  clampTimelineRange,
   createTimelineDomain,
+  cueOverlapsTimelineRange,
   getSelectAllRange,
   pixelToTimelineTime,
 } from './timelineDomain';
@@ -14,12 +17,13 @@ const measuredBoundaryCue = [{
   text: 'last cue',
 }];
 
-it('separates seekable media, editable cue content and the visual gutter', () => {
+it('separates seekable/selectable media from repairable cue content and the visual gutter', () => {
   const domain = createTimelineDomain(measuredBoundaryCue, 214.274);
 
   expect(domain).toEqual({
     start: 0,
     seekableEnd: 214.274,
+    selectableEnd: 214.274,
     cueStart: 214.080,
     cueEnd: 216.159,
     contentEnd: 216.159,
@@ -32,31 +36,38 @@ it('separates seekable media, editable cue content and the visual gutter', () =>
   });
 });
 
-it('selects all cues beyond media bounds without making them seekable', () => {
+it('hard-bounds select-all and pointer input to playable media', () => {
   const domain = createTimelineDomain(measuredBoundaryCue, 214.274);
 
   expect(getSelectAllRange(measuredBoundaryCue, 214.274)).toEqual({
     start: 0,
-    end: 216.159,
+    end: 214.274,
   });
   expect(clampSeekTime(216.159, domain)).toBe(214.274);
-});
-
-it('maps pointer input through the visible timeline so out-of-media cues stay reachable', () => {
-  const domain = createTimelineDomain(measuredBoundaryCue, 214.274);
   const rect = { left: 100, width: 1_000 };
   const visible = { start: 200, end: domain.viewEnd };
   const cueEndX = rect.left
     + (((domain.cueEnd - visible.start) / (visible.end - visible.start)) * rect.width);
 
-  expect(pixelToTimelineTime(cueEndX, rect, visible, domain)).toBeCloseTo(216.159, 10);
-  expect(pixelToTimelineTime(rect.left + rect.width, rect, visible, domain)).toBe(domain.viewEnd);
+  expect(pixelToTimelineTime(cueEndX, rect, visible, domain)).toBe(domain.selectableEnd);
+  expect(pixelToTimelineTime(rect.left + rect.width, rect, visible, domain))
+    .toBe(domain.selectableEnd);
+  expect(clampTimelineRange({ start: 100, end: 999_999 }, domain)).toEqual({
+    start: 100,
+    end: 214.274,
+  });
+  expect(clampTimelineMoveDelta({ start: 200, end: 210 }, 99, domain))
+    .toBeCloseTo(4.274);
+  expect(clampTimelineMoveDelta({ start: 2, end: 12 }, -99, domain)).toBe(-2);
+  expect(cueOverlapsTimelineRange(measuredBoundaryCue[0], 0, domain.selectableEnd)).toBe(true);
+  expect(cueOverlapsTimelineRange(measuredBoundaryCue[0], 0, 214)).toBe(false);
 });
 
 it('uses an explicit empty view without inventing playable media duration', () => {
   const domain = createTimelineDomain([], Number.NaN);
   expect(domain).toMatchObject({
     seekableEnd: 0,
+    selectableEnd: 0,
     cueEnd: 0,
     contentEnd: 0,
     viewEnd: 1,
@@ -83,4 +94,3 @@ it('clamps seeking separately when the pointer lands on subtitle-only time', () 
   expect(onTimelineClick).toHaveBeenCalledWith(214.274);
   expect(lastManualPanTime.current).toBeGreaterThan(0);
 });
-
