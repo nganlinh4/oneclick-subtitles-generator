@@ -126,9 +126,15 @@ impl MediaFoundationDecoder {
         let duration_100ns = media_type::duration_100ns(&reader)?;
         config.limits().check_duration(duration_100ns)?;
 
-        let (numerator, denominator) = media_type::frame_rate(&output)
-            .or_else(|| media_type::frame_rate(&native))
-            .ok_or(DecodeError::UnsupportedFrameRate)?;
+        // The native type describes the file's frame grid. The negotiated output type may instead
+        // expose Media Foundation's 100ns approximation of one frame duration: a real 24000/1001
+        // AV1 file arrived as 10000000/417083, an equivalent-looking decimal but neither the exact
+        // grid nor a ratio within the shared timeline's bounds. Prefer the authored ratio and use
+        // the output only for sources whose native type omitted it.
+        let (numerator, denominator) = preferred_frame_rate(
+            media_type::frame_rate(&native),
+            media_type::frame_rate(&output),
+        )?;
         let grid = SourceGrid::new(numerator, denominator)?;
 
         let colorimetry = match config.colorimetry() {
@@ -448,6 +454,13 @@ impl MediaFoundationDecoder {
     }
 }
 
+fn preferred_frame_rate(
+    native: Option<(u32, u32)>,
+    output: Option<(u32, u32)>,
+) -> Result<(u32, u32), DecodeError> {
+    native.or(output).ok_or(DecodeError::UnsupportedFrameRate)
+}
+
 impl VideoDecoder for MediaFoundationDecoder {
     fn source(&self) -> SourceInfo {
         self.info
@@ -551,4 +564,23 @@ fn convert(
 /// A source-reader flag as the bit it occupies in the flag word.
 fn flag(value: windows::Win32::Media::MediaFoundation::MF_SOURCE_READER_FLAG) -> u32 {
     value.0.cast_unsigned()
+}
+
+#[cfg(test)]
+mod frame_rate_tests {
+    use super::preferred_frame_rate;
+    use crate::DecodeError;
+
+    #[test]
+    fn the_authored_source_grid_wins_over_the_negotiated_timebase_approximation() {
+        assert_eq!(
+            preferred_frame_rate(Some((24_000, 1_001)), Some((10_000_000, 417_083))),
+            Ok((24_000, 1_001))
+        );
+        assert_eq!(preferred_frame_rate(None, Some((30, 1))), Ok((30, 1)));
+        assert_eq!(
+            preferred_frame_rate(None, None),
+            Err(DecodeError::UnsupportedFrameRate)
+        );
+    }
 }

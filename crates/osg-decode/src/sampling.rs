@@ -102,12 +102,28 @@ impl SourceGrid {
     /// Builds a grid from a declared frame rate.
     ///
     /// # Errors
-    /// Returns [`DecodeError::UnsupportedFrameRate`] when either term is zero or outside what the
-    /// shared timeline supports, so a source that declares a nonsense rate is refused here rather
-    /// than producing nonsense instants later.
+    /// Returns [`DecodeError::UnsupportedFrameRate`] when either term is zero or the represented
+    /// rate exceeds the decoder's 120fps product bound, so a source that declares a nonsense rate
+    /// is refused here rather than producing nonsense instants later.
     pub fn new(numerator: u32, denominator: u32) -> Result<Self, DecodeError> {
-        FrameTimeline::new(numerator, denominator, 1, ExactTime::ZERO)
-            .map_err(|_| DecodeError::UnsupportedFrameRate)?;
+        if numerator == 0 || denominator == 0 {
+            return Err(DecodeError::UnsupportedFrameRate);
+        }
+        // Media Foundation is allowed to preserve the container's time-base scale instead of
+        // returning a reduced ratio. Real 23.976fps AV1 files commonly arrive here as
+        // 24_000_000/1_001_000 rather than 24_000/1_001. Refusing before reducing made an ordinary
+        // YouTube download look like an unreadable/truncated source even though both spellings name
+        // exactly the same grid.
+        let divisor = greatest_common_divisor(numerator, denominator);
+        let numerator = numerator / divisor;
+        let denominator = denominator / divisor;
+        // A source grid is not a render timeline. Media Foundation may express it in its 100ns
+        // clock (10_000_000/417_083 for ordinary 23.976fps), whose terms are larger than the
+        // canonical authored ratios accepted by `FrameTimeline` but whose represented rate is
+        // entirely ordinary. Bound the value, not the spelling.
+        if u64::from(numerator) > u64::from(denominator) * 120 {
+            return Err(DecodeError::UnsupportedFrameRate);
+        }
         Ok(Self {
             numerator,
             denominator,
@@ -211,4 +227,13 @@ impl SourceGrid {
         let divisor = i128::from(HUNDRED_NANOS_PER_SECOND) * i128::from(self.denominator);
         u64::try_from(scaled / divisor).unwrap_or(u64::MAX)
     }
+}
+
+const fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
+    while right != 0 {
+        let next = left % right;
+        left = right;
+        right = next;
+    }
+    left
 }

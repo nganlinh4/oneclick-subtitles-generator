@@ -155,6 +155,30 @@ fn ntsc_source_frames_land_where_the_ratio_says() {
 }
 
 #[test]
+fn an_unreduced_platform_rate_is_the_same_source_grid() {
+    // Media Foundation reports this exact spelling for a real 24000/1001 AV1 download. The scale
+    // belongs to the container time base; it does not turn the ordinary rate into an unsupported
+    // 24-million-fps source.
+    let reduced = SourceGrid::new(24_000, 1_001).expect("a supported rate");
+    let platform = SourceGrid::new(24_000_000, 1_001_000).expect("the same supported rate");
+    assert_eq!(platform, reduced);
+    assert_eq!(platform.numerator(), 24_000);
+    assert_eq!(platform.denominator(), 1_001);
+    assert_eq!(
+        platform.frame_midpoint_100ns(100_000),
+        reduced.frame_midpoint_100ns(100_000)
+    );
+}
+
+#[test]
+fn a_media_foundation_clock_rate_is_bounded_by_value_not_by_its_large_terms() {
+    let platform = SourceGrid::new(10_000_000, 417_083).expect("ordinary 23.976fps");
+    assert_eq!(platform.numerator(), 10_000_000);
+    assert_eq!(platform.denominator(), 417_083);
+    assert_eq!(platform.frame_count_for(1_910_340_000), 4_580);
+}
+
+#[test]
 fn a_nonsense_frame_rate_is_refused_rather_than_producing_nonsense_instants() {
     assert_eq!(
         SourceGrid::new(0, 1),

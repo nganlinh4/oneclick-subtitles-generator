@@ -17,6 +17,7 @@
 //! the rest of the handoff rather than made here.
 
 use osg_compositor::CompositorError;
+use osg_decode::DecodeError;
 use osg_export::ExportError;
 
 use crate::error::CommandError;
@@ -144,9 +145,15 @@ pub(crate) fn from_export(error: &ExportError) -> CommandError {
                 )
             }
         }
+        ExportError::SourceUnreadable {
+            reason: DecodeError::TruncatedStream { .. },
+        } => CommandError::render_refusal(
+            "renderSourceTruncated",
+            "The source video ended before its declared duration.",
+        ),
         ExportError::SourceUnreadable { .. } => CommandError::render_refusal(
             "renderSourceUnreadable",
-            "The source video could not be read all the way through.",
+            "The source video format could not be decoded by this computer.",
         ),
         ExportError::AudioUnusable { .. } => CommandError::render_refusal(
             "renderAudioUnusable",
@@ -189,4 +196,25 @@ fn scene_rejected() -> CommandError {
         "renderSceneRejected",
         "This render is not one the native compositor can draw.",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use osg_decode::DecodeError;
+    use osg_export::ExportError;
+
+    use super::from_export;
+
+    #[test]
+    fn only_an_actual_early_end_is_reported_as_a_truncated_source() {
+        let truncated = from_export(&ExportError::SourceUnreadable {
+            reason: DecodeError::TruncatedStream { decoded: 42 },
+        });
+        assert_eq!(truncated.code(), "renderSourceTruncated");
+
+        let unsupported = from_export(&ExportError::SourceUnreadable {
+            reason: DecodeError::UnsupportedFrameRate,
+        });
+        assert_eq!(unsupported.code(), "renderSourceUnreadable");
+    }
 }

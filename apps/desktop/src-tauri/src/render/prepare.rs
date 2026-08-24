@@ -153,7 +153,7 @@ fn speech_artifact_format(metadata: &serde_json::Value) -> CommandResult<&'stati
 fn source_unreadable() -> CommandError {
     CommandError::render_refusal(
         "renderSourceUnreadable",
-        "The source video could not be read all the way through.",
+        "The source video format could not be decoded by this computer.",
     )
 }
 
