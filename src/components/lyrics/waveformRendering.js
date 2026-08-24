@@ -2,35 +2,31 @@
 // they need as params instead of closing over component state, so the
 // component can wrap them in useCallback with the right dependency lists.
 
-import { setupHighDPICanvas } from './waveformLOD';
+import { selectNativeWaveformLevel, setupHighDPICanvas } from './waveformLOD';
 
 // Render the waveform onto the given canvas.
-// params: { waveformLOD, visibleTimeRange, duration, height, dbgWave }
-export const renderWaveform = (canvas, containerWidth, { waveformLOD, visibleTimeRange, duration, height, dbgWave }) => {
-    if (!waveformLOD || !visibleTimeRange || !duration) return;
+// params: { waveform, visibleTimeRange, height, dbgWave }
+export const renderWaveform = (canvas, containerWidth, { waveform, visibleTimeRange, height, dbgWave }) => {
+    if (!waveform || !visibleTimeRange) return;
 
     const ctx = setupHighDPICanvas(canvas, containerWidth, height);
     const { start: visibleStart, end: visibleEnd } = visibleTimeRange;
 
-    // Calculate rendering parameters - using the working approach
     const visibleDuration = visibleEnd - visibleStart;
-    const pixelsPerSecond = containerWidth / visibleDuration;
-    const samplesPerSecond = waveformLOD.levels[0].length / duration;
-    const samplesPerPixel = samplesPerSecond / pixelsPerSecond;
-
-    // Get appropriate LOD level for current zoom
-    const lodData = waveformLOD.getLODLevel(samplesPerPixel);
-    const lodSamplesPerSecond = lodData.length / duration;
+    if (!(visibleDuration > 0) || !(containerWidth > 0)) return;
+    const level = selectNativeWaveformLevel(waveform, visibleDuration, containerWidth);
+    const lodData = level.points;
+    const lodSamplesPerSecond = level.pointsPerSecond;
 
     // Calculate visible sample range in LOD data
-    const startSample = Math.floor(visibleStart * lodSamplesPerSecond);
-    const endSample = Math.ceil(visibleEnd * lodSamplesPerSecond);
+    const startSample = Math.max(0, Math.floor(visibleStart * lodSamplesPerSecond));
+    const endSample = Math.min(lodData.length, Math.ceil(visibleEnd * lodSamplesPerSecond));
     const samplesToDraw = endSample - startSample;
 
     dbgWave('[WAVEFORM] Rendering:', {
-      duration: duration,
-      totalDataLength: waveformLOD.levels[0].length,
-      samplesPerSecond: samplesPerSecond,
+      duration: waveform.durationSeconds,
+      totalDataLength: waveform.levels[0].points.length,
+      samplesPerSecond: waveform.levels[0].pointsPerSecond,
       visibleStart: visibleStart,
       visibleEnd: visibleEnd,
       startSample: startSample,
@@ -63,7 +59,10 @@ export const renderWaveform = (canvas, containerWidth, { waveformLOD, visibleTim
         if (sampleIndex >= lodData.length) break;
 
         const x = i * pixelsPerSample;
-        const amplitude = lodData[sampleIndex] || 0;
+        const rootMeanSquare = lodData[sampleIndex]?.rootMeanSquare ?? 0;
+        const amplitude = waveform.peakRootMeanSquare > 0
+          ? Math.max(Math.pow(rootMeanSquare / waveform.peakRootMeanSquare, 0.75), 0.01)
+          : 0.01;
         const barHeight = Math.max(amplitude * height * 0.9, 0.5); // Reduced minimum height
         const y = height - barHeight;
 
@@ -74,20 +73,20 @@ export const renderWaveform = (canvas, containerWidth, { waveformLOD, visibleTim
     ctx.closePath();
     ctx.fill();
 
-    dbgWave('[WAVEFORM] Rendered', samplesToDraw, 'samples, amplitude range:', {
-      min: Math.min(...lodData.slice(startSample, endSample)),
-      max: Math.max(...lodData.slice(startSample, endSample))
+    dbgWave('[WAVEFORM] Rendered native level', {
+      samples: samplesToDraw,
+      pointsPerSecond: level.pointsPerSecond,
     });
 };
 
 // Decide whether/what to render and dispatch to renderWaveform.
-// params: { canvasRef, containerRef, waveformLOD, visibleTimeRange, height,
+// params: { canvasRef, containerRef, waveform, visibleTimeRange, height,
 //           lastRenderParamsRef, renderWaveform }
 export const updateVisualization = ({
-    canvasRef, containerRef, waveformLOD, visibleTimeRange, height,
+    canvasRef, containerRef, waveform, visibleTimeRange, height,
     lastRenderParamsRef, renderWaveform,
 }) => {
-    if (!canvasRef.current || !containerRef.current || !waveformLOD) return;
+    if (!canvasRef.current || !containerRef.current || !waveform) return;
     const canvas = canvasRef.current;
     const container = containerRef.current;
     const containerWidth = container.clientWidth;
@@ -98,7 +97,7 @@ export const updateVisualization = ({
       start: visibleTimeRange.start,
       end: visibleTimeRange.end,
       theme: document.documentElement.getAttribute('data-theme') || 'light',
-      dataLength: waveformLOD.levels[0].length
+      dataLength: waveform.levels[0].points.length
     };
 
     if (lastRenderParamsRef.current && JSON.stringify(lastRenderParamsRef.current) === JSON.stringify(renderParams)) {
