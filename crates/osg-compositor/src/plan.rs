@@ -90,6 +90,7 @@ pub(crate) struct FramePlan {
     segments: Vec<Segment>,
     masks: Vec<MaskJob>,
     atlas_page: Option<usize>,
+    held_cue: Option<usize>,
 }
 
 impl FramePlan {
@@ -111,6 +112,11 @@ impl FramePlan {
     /// missing. Such a plan emits no atlas segment either, so there is no page to resolve.
     pub(crate) const fn atlas_page(&self) -> Option<usize> {
         self.atlas_page
+    }
+
+    /// A cue whose complete pixels are invariant until its holding phase ends.
+    pub(crate) const fn held_cue(&self) -> Option<usize> {
+        self.held_cue
     }
 
     fn vertex_count(&self) -> u32 {
@@ -284,6 +290,7 @@ pub(crate) fn build_frame_plan(
 
     let mut plan = FramePlan {
         atlas_page: Some(page),
+        held_cue: (active.phase == CuePhase::Holding).then_some(active.index),
         ..FramePlan::default()
     };
     glow(&mut plan, &cue);

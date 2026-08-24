@@ -1,9 +1,9 @@
 //! The textured-quad pipeline and the GPU resources one subtitle frame needs.
 //!
-//! Everything here is rebuilt per frame except the pipeline and the sampler: the atlas texture, the
-//! bind group and the vertex buffer are created, written and dropped inside a single render. That is
-//! deliberate. A frame must not depend on what was drawn before it on the same device, and reusing a
-//! resized or partially written buffer is the usual way that guarantee quietly stops holding.
+//! The pipeline and sampler are device-owned. Export additionally prepares atlas bindings and a
+//! bounded geometry buffer once per scene; the one-shot readback API keeps the allocation path for
+//! isolated tests. Reuse never means partial state: every draw overwrites the complete live vertex
+//! range, while immutable atlas pages are uploaded exactly once.
 
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,

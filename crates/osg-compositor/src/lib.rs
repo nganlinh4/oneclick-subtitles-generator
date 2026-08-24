@@ -66,6 +66,7 @@ mod frame;
 mod geometry;
 mod glyphs;
 mod masks;
+mod overlay_pipeline;
 mod pages;
 mod pass;
 mod plan;
@@ -81,7 +82,9 @@ mod underlay;
 mod underlay_pipeline;
 mod underlay_resources;
 
-pub use compositor::{Compositor, CompositorTargetFormat};
+pub use compositor::{
+    Compositor, CompositorTargetFormat, PreparedSubtitleScene, PreparedTextureUnderlay,
+};
 pub use crop::{
     CANVAS_BACKFILL_BRIGHTNESS, CANVAS_BACKFILL_ZOOM, CanvasBackground, Crop, CropSpec,
     DEFAULT_CANVAS_BLUR_RADIUS_PX, MAX_CANVAS_BLUR_RADIUS, MAX_CANVAS_BLUR_SIGMA,

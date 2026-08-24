@@ -138,6 +138,52 @@ pub(crate) struct DecodeFenceWait {
     fence: ID3D12Fence,
 }
 
+/// D3D12 producer half of the compositor-completion fence.
+///
+/// One value orders both consumers: the decode device cannot overwrite its input slot and the
+/// encode device cannot copy its output slot until every D3D12 command for that frame has finished.
+#[derive(Debug)]
+pub(crate) struct RenderFenceSignal {
+    fence: ID3D12Fence,
+    value: u64,
+}
+
+impl RenderFenceSignal {
+    pub(crate) fn signal(&mut self, device: &wgpu::Device) -> Result<u64, GpuVideoError> {
+        self.value = self.value.checked_add(1).ok_or_else(sync_error)?;
+        // SAFETY: the compositor device remains live and gives access to its owned queue. Signal is
+        // enqueued after the wgpu submissions already placed on that same D3D12 queue.
+        let hal = unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }
+            .ok_or(GpuVideoError::BackendUnavailable)?;
+        // SAFETY: queue and shared fence are live and belong to the same D3D12 device.
+        unsafe { hal.raw_queue().Signal(&self.fence, self.value) }
+            .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+        Ok(self.value)
+    }
+}
+
+/// D3D11 consumer half of the compositor-completion fence.
+#[derive(Debug)]
+pub(crate) struct RenderFenceWait {
+    context: ID3D11DeviceContext4,
+    fence: ID3D11Fence,
+}
+
+// SAFETY: each wait half is moved to and used by exactly one protected D3D11 worker context.
+unsafe impl Send for RenderFenceWait {}
+
+impl RenderFenceWait {
+    pub(crate) fn wait(&self, value: u64) -> Result<(), GpuVideoError> {
+        if value == 0 {
+            return Ok(());
+        }
+        // SAFETY: context and fence are live. Wait is a GPU-timeline dependency; it does not block
+        // this CPU worker and therefore permits decode, composition and encode to overlap.
+        unsafe { self.context.Wait(&self.fence, value) }
+            .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))
+    }
+}
+
 impl DecodeFenceWait {
     pub(crate) fn wait(&self, device: &wgpu::Device, value: u64) -> Result<(), GpuVideoError> {
         // SAFETY: the compositor device remains live and gives access to its owned queue.
@@ -195,6 +241,61 @@ pub(crate) fn decode_fence(
         },
         DecodeFenceWait { fence: fence12 },
     ))
+}
+
+/// Builds one D3D12 -> D3D11 timeline shared by both video workers.
+pub(crate) fn render_fence(
+    decode: &VideoDevice,
+    encode: &VideoDevice,
+    d3d12: &wgpu::Device,
+) -> Result<(RenderFenceSignal, RenderFenceWait, RenderFenceWait), GpuVideoError> {
+    // SAFETY: the wgpu device remains live and returns its exact D3D12 device by borrow.
+    let hal = unsafe { d3d12.as_hal::<wgpu::hal::api::Dx12>() }
+        .ok_or(GpuVideoError::BackendUnavailable)?;
+    // SAFETY: creation returns an owned fence on the live device.
+    let fence12: ID3D12Fence = unsafe { hal.raw_device().CreateFence(0, D3D12_FENCE_FLAG_SHARED) }
+        .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+
+    let decode_wait = open_render_wait(decode, hal.raw_device(), &fence12)?;
+    let encode_wait = open_render_wait(encode, hal.raw_device(), &fence12)?;
+    Ok((
+        RenderFenceSignal {
+            fence: fence12,
+            value: 0,
+        },
+        decode_wait,
+        encode_wait,
+    ))
+}
+
+fn open_render_wait(
+    d3d11: &VideoDevice,
+    d3d12: &windows::Win32::Graphics::Direct3D12::ID3D12Device,
+    fence12: &ID3D12Fence,
+) -> Result<RenderFenceWait, GpuVideoError> {
+    let device5: ID3D11Device5 = d3d11
+        .device
+        .cast()
+        .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+    let context: ID3D11DeviceContext4 = d3d11
+        .context
+        .cast()
+        .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+    // SAFETY: the device and fence are live; this temporary process-local handle is closed below.
+    let handle = unsafe { d3d12.CreateSharedHandle(fence12, None, GENERIC_ALL.0, None) }
+        .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+    let mut fence = None;
+    // SAFETY: the handle names the supplied fence and the out-parameter is live.
+    let opened = unsafe { device5.OpenSharedFence(handle, &raw mut fence) };
+    // SAFETY: this function exclusively owns the temporary handle.
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+    opened.map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
+    Ok(RenderFenceWait {
+        context,
+        fence: fence.ok_or(GpuVideoError::null(InteropStage::Synchronization))?,
+    })
 }
 
 const fn sync_error() -> GpuVideoError {

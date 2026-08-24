@@ -1,13 +1,14 @@
-//! Bounded three-stage decode -> composite -> encode pipeline.
+//! Bounded, GPU-timeline decode -> composite -> encode pipeline.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use osg_compositor::{
-    AdapterSelection, Compositor, CompositorTargetFormat, Crop, FrameSize, SubtitleScene,
+    AdapterSelection, Compositor, CompositorTargetFormat, Crop, FrameSize, PreparedSubtitleScene,
+    PreparedTextureUnderlay, SubtitleScene,
 };
 use osg_decode::{DecoderConfig, GpuVideoDecoder, open_decoder, open_gpu_decoder};
 use osg_encode::{
@@ -20,12 +21,18 @@ use windows::Win32::Graphics::Direct3D11::{
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 use windows::core::Interface;
 
-use crate::d3d::{DecodeFenceSignal, DecodeFenceWait, VideoDevice, compositor_luid, decode_fence};
+use crate::d3d::{
+    DecodeFenceSignal, DecodeFenceWait, RenderFenceSignal, RenderFenceWait, VideoDevice,
+    compositor_luid, decode_fence, render_fence,
+};
 use crate::processor::VideoProcessor;
 use crate::shared::{SharedSurface, wait_submission};
 use crate::{GpuVideoError, InteropStage, WorkerStage};
 
-const RING_SIZE: usize = 3;
+const DECODE_RING_MAX: usize = 3;
+const ENCODE_RING_MAX: usize = 16;
+const MIN_RING_SIZE: usize = 2;
+const RING_MEMORY_BUDGET: u64 = 256 * 1024 * 1024;
 const CHANNEL_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
@@ -35,10 +42,17 @@ struct DecodedReady {
     fence_value: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ReusableDecoded {
+    slot: usize,
+    render_fence_value: u64,
+}
+
 enum EncodeCommand {
     Video {
         frame_index: u32,
         slot: usize,
+        render_fence_value: u64,
     },
     Audio {
         first_sample: u64,
@@ -52,18 +66,21 @@ enum EncodeCommand {
 /// A complete native video path with no frame-sized CPU pixel buffer.
 ///
 /// Decode and encode own their Media Foundation objects on dedicated threads. The caller owns
-/// wgpu composition. Three shared textures on either side provide bounded backpressure.
+/// wgpu composition. Memory-budgeted shared rings provide bounded backpressure, while cross-API
+/// fences order resource reuse on the GPU timeline instead of stopping the CPU after every frame.
 pub struct GpuVideoPipeline {
     compositor: Compositor,
-    scene: SubtitleScene,
+    scene: PreparedSubtitleScene,
     crop: Crop,
     source_size: FrameSize,
     decoded_slots: Vec<Arc<SharedSurface>>,
     decoded_local: wgpu::Texture,
+    prepared_underlay: Option<PreparedTextureUnderlay>,
     decode_fence: DecodeFenceWait,
+    render_fence: RenderFenceSignal,
     encoded_slots: Vec<Arc<SharedSurface>>,
     decoded_ready: mpsc::Receiver<Result<DecodedReady, GpuVideoError>>,
-    decoded_free: mpsc::SyncSender<usize>,
+    decoded_free: mpsc::SyncSender<ReusableDecoded>,
     encoded_free: mpsc::Receiver<usize>,
     encode_commands: mpsc::SyncSender<EncodeCommand>,
     encode_failures: mpsc::Receiver<GpuVideoError>,
@@ -109,21 +126,28 @@ impl GpuVideoPipeline {
         probe.close();
         let source_size = FrameSize::new(edge(geometry.width()), edge(geometry.height()))?;
         let output_size = scene.size();
+        let scene = compositor.prepare_subtitle_scene(scene)?;
 
         let decode_device = VideoDevice::on_adapter(luid)?;
         let encode_device = VideoDevice::on_adapter(luid)?;
         let (decode_signal, decode_wait) = decode_fence(&decode_device, compositor.device())?;
+        let (render_signal, decode_render_wait, encode_render_wait) =
+            render_fence(&decode_device, &encode_device, compositor.device())?;
+        let decode_ring_size = ring_size(source_size, DECODE_RING_MAX);
+        let encode_ring_size = ring_size(output_size, ENCODE_RING_MAX);
         let decoded_slots = shared_ring(
             &decode_device.device,
             compositor.device(),
             source_size,
             wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+            decode_ring_size,
         )?;
         let encoded_slots = shared_ring(
             &encode_device.device,
             compositor.device(),
             output_size,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
+            encode_ring_size,
         )?;
         let decoded_local = compositor
             .device()
@@ -139,25 +163,33 @@ impl GpuVideoPipeline {
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
+        let prepared_underlay =
+            compositor.prepare_texture_underlay(&decoded_local, source_size, crop, output_size)?;
         let cancelled = Arc::new(AtomicBool::new(false));
-        let (decoded_free_tx, decoded_free_rx) = mpsc::sync_channel(RING_SIZE);
+        let (decoded_free_tx, decoded_free_rx) = mpsc::sync_channel(decode_ring_size);
         let (decoded_ready_tx, decoded_ready_rx) = mpsc::channel();
-        for slot in 0..RING_SIZE {
-            decoded_free_tx.send(slot).map_err(|_| sync_error())?;
+        for slot in 0..decode_ring_size {
+            decoded_free_tx
+                .send(ReusableDecoded {
+                    slot,
+                    render_fence_value: 0,
+                })
+                .map_err(|_| sync_error())?;
         }
-        let (encoded_free_tx, encoded_free_rx) = mpsc::sync_channel(RING_SIZE);
-        for slot in 0..RING_SIZE {
+        let (encoded_free_tx, encoded_free_rx) = mpsc::sync_channel(encode_ring_size);
+        for slot in 0..encode_ring_size {
             encoded_free_tx.send(slot).map_err(|_| sync_error())?;
         }
         // Video slots already cap in-flight frames. Bound commands independently so audio blocks
         // cannot accumulate with media duration if the hardware encoder slows or stalls.
-        let (encode_command_tx, encode_command_rx) = mpsc::sync_channel(RING_SIZE * 2);
+        let (encode_command_tx, encode_command_rx) = mpsc::sync_channel(encode_ring_size * 2);
         let (encode_failure_tx, encode_failure_rx) = mpsc::channel();
         let (opened_tx, opened_rx) = mpsc::sync_channel(1);
         let encode_thread = spawn_encoder(
             output.to_path_buf(),
             encoder_config,
             encode_device,
+            encode_render_wait,
             encoded_slots.clone(),
             encoded_free_tx,
             encode_command_rx,
@@ -188,6 +220,7 @@ impl GpuVideoPipeline {
             decoded_free_rx,
             decoded_ready_tx,
             decode_signal,
+            decode_render_wait,
             Arc::clone(&cancelled),
         ) {
             Ok(worker) => worker,
@@ -206,7 +239,9 @@ impl GpuVideoPipeline {
             source_size,
             decoded_slots,
             decoded_local,
+            prepared_underlay,
             decode_fence: decode_wait,
+            render_fence: render_signal,
             encoded_slots,
             decoded_ready: decoded_ready_rx,
             decoded_free: decoded_free_tx,
@@ -258,11 +293,11 @@ impl GpuVideoPipeline {
             .encoded_slots
             .get(encoded_slot_index)
             .ok_or_else(sync_error)?;
-        {
-            // Keep both cross-API resources owned until the LAST submission completes. The copy
-            // and render are submitted to one ordered D3D12 queue, so waiting for the render also
-            // completes the decode copy. Waiting between the two serialized every frame and threw
-            // away the pipeline overlap the three-slot rings exist to provide.
+        let render_fence_value = {
+            // CPU ownership covers command publication. GPU ownership continues through the fence
+            // value carried to both workers: their D3D11 queues wait for this frame's LAST D3D12
+            // submission before either shared surface is touched. This is the overlap the rings
+            // exist to provide without permitting early resource reuse.
             let _read = decoded_slot.acquire()?;
             let _write = encoded_slot.acquire()?;
             self.decode_fence
@@ -291,8 +326,9 @@ impl GpuVideoPipeline {
                 },
             );
             let copy_submission = self.compositor.queue().submit(Some(commands.finish()));
-            let render_submission = match self.compositor.render_scene_texture_over_into(
-                &self.scene,
+            let render_submission = match self.compositor.render_prepared_scene_texture_over_into(
+                &mut self.scene,
+                self.prepared_underlay.as_ref(),
                 &self.decoded_local,
                 self.source_size,
                 self.crop,
@@ -312,19 +348,33 @@ impl GpuVideoPipeline {
                     return Err(error.into());
                 }
             };
-            wait_submission(
-                self.compositor.device(),
-                self.compositor.queue(),
-                render_submission,
-            )?;
-        }
+            let render_fence_value = match self.render_fence.signal(self.compositor.device()) {
+                Ok(value) => value,
+                Err(error) => {
+                    // A failed cross-API signal cannot protect either surface. Fall back to an
+                    // explicit completion wait before the keyed-mutex guards release them.
+                    wait_submission(
+                        self.compositor.device(),
+                        self.compositor.queue(),
+                        render_submission,
+                    )?;
+                    return Err(error);
+                }
+            };
+            trace(index, "render.gpu-queued");
+            render_fence_value
+        };
         // The worker drops its receiver immediately after publishing the final frame. Recycling
         // that last slot can therefore report disconnection, which is normal completion.
-        let _ = self.decoded_free.send(decoded.slot);
+        let _ = self.decoded_free.send(ReusableDecoded {
+            slot: decoded.slot,
+            render_fence_value,
+        });
         self.send_command_cancellable(
             EncodeCommand::Video {
                 frame_index: index,
                 slot: encoded_slot_index,
+                render_fence_value,
             },
             &mut should_cancel,
         )?;
@@ -445,8 +495,11 @@ impl GpuVideoPipeline {
     }
 
     fn wake_decoder(&self) {
-        for slot in 0..RING_SIZE {
-            let _ = self.decoded_free.try_send(slot);
+        for slot in 0..self.decoded_slots.len() {
+            let _ = self.decoded_free.try_send(ReusableDecoded {
+                slot,
+                render_fence_value: 0,
+            });
         }
     }
 
@@ -486,9 +539,10 @@ fn spawn_decoder(
     frame_count: u32,
     device: VideoDevice,
     slots: Vec<Arc<SharedSurface>>,
-    free: mpsc::Receiver<usize>,
+    free: mpsc::Receiver<ReusableDecoded>,
     ready: mpsc::Sender<Result<DecodedReady, GpuVideoError>>,
     mut fence: DecodeFenceSignal,
+    render_fence: RenderFenceWait,
     cancelled: Arc<AtomicBool>,
 ) -> Result<JoinHandle<()>, GpuVideoError> {
     std::thread::Builder::new()
@@ -506,10 +560,14 @@ fn spawn_decoder(
                 if cancelled.load(Ordering::Acquire) {
                     break;
                 }
-                let Ok(slot) = free.recv() else {
+                let Ok(reusable) = free.recv() else {
                     break;
                 };
                 if cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                if let Err(error) = render_fence.wait(reusable.render_fence_value) {
+                    let _ = ready.send(Err(error));
                     break;
                 }
                 let result = decode_into_slot(
@@ -518,14 +576,15 @@ fn spawn_decoder(
                     &slots,
                     &mut processor,
                     frame_index,
-                    slot,
+                    reusable.slot,
                     &mut fence,
                 )
                 .map(|fence_value| DecodedReady {
                     frame_index,
-                    slot,
+                    slot: reusable.slot,
                     fence_value,
                 });
+                trace(frame_index, "decode.complete");
                 let failed = result.is_err();
                 if let Err(error) = &result
                     && std::env::var_os("OSG_GPU_TRACE").is_some()
@@ -580,6 +639,7 @@ fn spawn_encoder(
     output: PathBuf,
     config: EncoderConfig,
     device: VideoDevice,
+    render_fence: RenderFenceWait,
     slots: Vec<Arc<SharedSurface>>,
     free: mpsc::SyncSender<usize>,
     commands: mpsc::Receiver<EncodeCommand>,
@@ -610,10 +670,22 @@ fn spawn_encoder(
                     return;
                 }
                 let result = match command {
-                    EncodeCommand::Video { frame_index, slot } => {
+                    EncodeCommand::Video {
+                        frame_index,
+                        slot,
+                        render_fence_value,
+                    } => {
                         trace(frame_index, "encode.video");
-                        encode_slot(encoder.as_mut(), &device, &slots, frame_index, slot)
-                            .and_then(|()| free.send(slot).map_err(|_| sync_error()))
+                        encode_slot(
+                            encoder.as_mut(),
+                            &device,
+                            &render_fence,
+                            &slots,
+                            frame_index,
+                            slot,
+                            render_fence_value,
+                        )
+                        .and_then(|()| free.send(slot).map_err(|_| sync_error()))
                     }
                     EncodeCommand::Audio {
                         first_sample,
@@ -656,15 +728,18 @@ fn spawn_encoder(
 fn encode_slot(
     encoder: &mut dyn GpuVideoEncoder,
     device: &VideoDevice,
+    render_fence: &RenderFenceWait,
     slots: &[Arc<SharedSurface>],
     frame_index: u32,
     slot: usize,
+    render_fence_value: u64,
 ) -> Result<(), GpuVideoError> {
     let source = slots.get(slot).ok_or_else(sync_error)?;
     let video = encoder.config().video();
     let private = private_bgra(&device.device, video.width(), video.height())?;
     {
         let _read = source.acquire()?;
+        render_fence.wait(render_fence_value)?;
         let source_resource: ID3D11Resource = source
             .d3d11
             .cast()
@@ -680,7 +755,9 @@ fn encode_slot(
         };
         device.wait()?;
     }
+    trace(frame_index, "encode.copy-complete");
     encoder.write_gpu_frame(frame_index, &private, 0)?;
+    trace(frame_index, "encode.submitted");
     Ok(())
 }
 
@@ -689,12 +766,24 @@ fn shared_ring(
     wgpu_device: &wgpu::Device,
     size: FrameSize,
     usage: wgpu::TextureUsages,
+    count: usize,
 ) -> Result<Vec<Arc<SharedSurface>>, GpuVideoError> {
-    (0..RING_SIZE)
+    (0..count)
         .map(|_| {
             SharedSurface::new(owner, wgpu_device, size.width(), size.height(), usage).map(Arc::new)
         })
         .collect()
+}
+
+fn ring_size(size: FrameSize, maximum: usize) -> usize {
+    let bytes_per_frame = u64::from(size.width())
+        .saturating_mul(u64::from(size.height()))
+        .saturating_mul(4);
+    let within_budget = RING_MEMORY_BUDGET
+        .checked_div(bytes_per_frame)
+        .and_then(|count| usize::try_from(count).ok())
+        .unwrap_or(maximum);
+    within_budget.clamp(MIN_RING_SIZE, maximum)
 }
 
 fn private_bgra(
@@ -747,7 +836,12 @@ fn edge(value: usize) -> u32 {
 
 fn trace(index: u32, stage: &str) {
     if std::env::var_os("OSG_GPU_TRACE").is_some() {
-        eprintln!("[osg-gpu-video] frame={index} stage={stage}");
+        static START: OnceLock<Instant> = OnceLock::new();
+        let elapsed_us = START.get_or_init(Instant::now).elapsed().as_micros();
+        eprintln!(
+            "[osg-gpu-video] elapsed_us={elapsed_us} frame={index} stage={stage} thread={:?}",
+            std::thread::current().id()
+        );
     }
 }
 
@@ -759,5 +853,31 @@ fn worker_start_error(worker: WorkerStage, error: &std::io::Error) -> GpuVideoEr
     GpuVideoError::WorkerUnavailable {
         worker,
         code: error.raw_os_error().unwrap_or(0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use osg_compositor::FrameSize;
+
+    use super::{DECODE_RING_MAX, ENCODE_RING_MAX, ring_size};
+
+    #[test]
+    fn output_ring_uses_depth_sixteen_at_1080p() {
+        let size = FrameSize::new(1_920, 1_080).expect("1080p");
+        assert_eq!(ring_size(size, ENCODE_RING_MAX), 16);
+    }
+
+    #[test]
+    fn output_ring_stays_inside_the_vram_budget_at_4k() {
+        let size = FrameSize::new(3_840, 2_160).expect("4K");
+        assert_eq!(ring_size(size, ENCODE_RING_MAX), 8);
+    }
+
+    #[test]
+    fn extreme_frames_keep_only_the_two_slots_needed_for_overlap() {
+        let size = FrameSize::new(7_680, 4_320).expect("8K");
+        assert_eq!(ring_size(size, ENCODE_RING_MAX), 2);
+        assert_eq!(ring_size(size, DECODE_RING_MAX), 2);
     }
 }

@@ -62,11 +62,24 @@ pub(crate) fn build(
     jobs: &[MaskJob],
     size: FrameSize,
 ) -> Masks {
+    let (mask_quads, _, _) = pipelines;
+    let atlas = mask_quads.bind_atlas(device, queue, atlas_page);
+    build_bound(device, queue, pipelines, &atlas, jobs, size)
+}
+
+/// Render masks from an atlas page that the scene already owns on this device.
+pub(crate) fn build_bound(
+    device: &Device,
+    queue: &Queue,
+    pipelines: (&QuadPipeline, &QuadPipeline, &SeparableBlur),
+    atlas: &BindGroup,
+    jobs: &[MaskJob],
+    size: FrameSize,
+) -> Masks {
     if jobs.is_empty() {
         return Masks::none();
     }
     let (mask_quads, frame_quads, blur) = pipelines;
-    let atlas = mask_quads.bind_atlas(device, queue, atlas_page);
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
         label: Some("osg-compositor decoration mask encoder"),
     });
@@ -89,7 +102,7 @@ pub(crate) fn build(
             if let Some(buffer) = buffer.as_ref() {
                 let count = u32::try_from(job.vertices.len() / VERTEX_FLOATS).unwrap_or(0);
                 pass.set_pipeline(mask_quads.pipeline());
-                pass.set_bind_group(0, &atlas, &[]);
+                pass.set_bind_group(0, atlas, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..count, 0..1);
             }

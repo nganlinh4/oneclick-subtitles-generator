@@ -97,6 +97,33 @@ impl UnderlayPipeline {
         &self.composite
     }
 
+    /// Prepares the binding when the backfill does not depend on source-frame pixels.
+    ///
+    /// Solid and transparent backgrounds bind the same source texture, crop uniforms and one
+    /// transparent placeholder for the entire export. A blurred background is intentionally not
+    /// returned: its cover is made from each current video frame and must remain dynamic.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the prepared binding carries the same explicit crop/source contract as the dynamic path"
+    )]
+    pub(crate) fn prepare_static_texture(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        blur: &SeparableBlur,
+        source_view: &TextureView,
+        source_size: FrameSize,
+        crop: Crop,
+        size: FrameSize,
+    ) -> Option<BindGroup> {
+        match crop.background() {
+            CanvasBackground::Blur { .. } => None,
+            CanvasBackground::Transparent | CanvasBackground::Solid(_) => Some(
+                self.prepare_texture(device, queue, blur, source_view, source_size, crop, size),
+            ),
+        }
+    }
+
     /// Uploads the source, builds the backfill if one is blurred, and binds the composite draw.
     ///
     /// The returned bind group owns every texture it references, so the caller only has to keep it
