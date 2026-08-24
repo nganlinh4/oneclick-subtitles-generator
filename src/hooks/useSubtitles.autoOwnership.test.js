@@ -521,8 +521,42 @@ test('a rejected segment checkpoint leaves the prior native timeline visible', a
   });
 });
 
-test('segment generation refuses a malformed native merge base before provider work', async () => {
+test('a project without a subtitle track uses an empty merge base for its first range', async () => {
+  const firstRows = [{ id: 1, start: 5, end: 8, text: 'First generated cue' }];
   mocks.loadExactProjectSubtitles.mockResolvedValue(null);
+  mocks.processGeminiSegment.mockResolvedValue(firstRows);
+  mocks.saveSubtitlesToCache.mockResolvedValue({
+    success: true,
+    cacheId: 'cache-1',
+    projectId: 'project-1',
+    subtitleCount: firstRows.length,
+  });
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+
+  await act(async () => {
+    await expect(result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        method: 'old',
+        model: 'gemini-3.1-flash-lite',
+        fps: 1,
+        mediaResolution: 'low',
+        segment: { start: 5, end: 8 },
+      },
+    )).resolves.toBe(true);
+  });
+
+  expect(mocks.processGeminiSegment).toHaveBeenCalledTimes(1);
+  expect(mocks.saveSubtitlesToCache).toHaveBeenCalledWith('cache-1', firstRows, {
+    expectedProjectId: 'project-1',
+  });
+  expect(result.current.subtitlesData).toEqual(firstRows);
+});
+
+test('segment generation refuses a malformed native merge base before provider work', async () => {
+  mocks.loadExactProjectSubtitles.mockResolvedValue({ rows: [] });
   const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
 
   await act(async () => {

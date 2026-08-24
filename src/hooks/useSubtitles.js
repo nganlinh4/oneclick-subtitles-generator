@@ -455,10 +455,14 @@ export const useSubtitles = (t) => {
                 // native project revision back as the merge base; a React setter callback is not a
                 // transactional read and can stall or observe another project's presentation.
                 await validateDeliveryOwnership(deliveryContext);
-                const currentSubtitles = await loadExactProjectSubtitles(
+                const loadedSubtitles = await loadExactProjectSubtitles(
                     deliveryContext.cacheId,
                     deliveryContext.projectId
                 );
+                // A project with media but no subtitle track is the normal first-generation state.
+                // The native store represents that absence as null; the merge identity for an
+                // absent track is an empty timeline, not a corrupt project.
+                const currentSubtitles = loadedSubtitles === null ? [] : loadedSubtitles;
                 if (!Array.isArray(currentSubtitles)) {
                     throw new Error('The native subtitle project returned an invalid track.');
                 }
