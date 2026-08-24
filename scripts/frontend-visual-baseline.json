@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "5953b6559d3a3faecf8459f1cef133284e691c2c",
+  "baselineRevision": "0f7c0f578008d98ad505f9c9475137da97a6fd74",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -512,7 +512,7 @@
       ]
     },
     "src/i18n/locales/en/errors.json": {
-      "hash": "f6fe9e153466116d7a432f97866f11380814cb9171120f45dc024b2d75ed375a",
+      "hash": "f4628a28bf5b30aed6b0ba3aebad79e2914da72b08610308509b0d795578c483",
       "keys": [
         "allRequestsAborted",
         "apiKeyRequired",
@@ -542,7 +542,13 @@
         "requestAborted",
         "tokenLimitExceeded",
         "tokenLimitExceededCounts",
+        "videoDownloadAuthenticationRequired",
         "videoDownloadExecutionFailed",
+        "videoDownloadFormatUnavailable",
+        "videoDownloadNetworkFailed",
+        "videoDownloadPostProcessingFailed",
+        "videoDownloadRateLimited",
+        "videoDownloadSourceUnavailable",
         "youtubeApiKeyRequired",
         "youtubeApiNotEnabled",
         "youtubeAuthRequired"
@@ -2856,7 +2862,7 @@
       ]
     },
     "src/i18n/locales/ko/errors.json": {
-      "hash": "1911c44b49d637a5b214ea850b89edac596d65d98682ea4394ac1aad1052f5cb",
+      "hash": "6c2db6b6a0ecf179cfe58ef4f74a6834b6ac4ef76d0502d0b6fbf678ca6b5c78",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -2899,8 +2905,14 @@
         "tokenLimitExceeded",
         "tokenLimitExceededCounts",
         "unexpectedErrorReload",
+        "videoDownloadAuthenticationRequired",
         "videoDownloadExecutionFailed",
         "videoDownloadFailed",
+        "videoDownloadFormatUnavailable",
+        "videoDownloadNetworkFailed",
+        "videoDownloadPostProcessingFailed",
+        "videoDownloadRateLimited",
+        "videoDownloadSourceUnavailable",
         "videoPreparationFailed",
         "videoProcessingFailed",
         "youtubeApiKeyRequired",
@@ -5463,7 +5475,7 @@
       ]
     },
     "src/i18n/locales/vi/errors.json": {
-      "hash": "b8f8d1d3ee5fdc8f1921abe7c282252f80a7ae5fc06568f080f11c62619b35bd",
+      "hash": "1b717328299821eb99e5de7517fe60d95a6caab09d71d166e9eaf75cfbe70b88",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -5506,8 +5518,14 @@
         "tokenLimitExceeded",
         "tokenLimitExceededCounts",
         "unexpectedErrorReload",
+        "videoDownloadAuthenticationRequired",
         "videoDownloadExecutionFailed",
         "videoDownloadFailed",
+        "videoDownloadFormatUnavailable",
+        "videoDownloadNetworkFailed",
+        "videoDownloadPostProcessingFailed",
+        "videoDownloadRateLimited",
+        "videoDownloadSourceUnavailable",
         "videoPreparationFailed",
         "videoProcessingFailed",
         "youtubeApiKeyRequired",
@@ -7845,10 +7863,10 @@
       ]
     },
     "src/components/app/AppLayout.jsx": {
-      "hash": "12676ac9b6355d8eafb69ffd96d54593fdcdf4e4c3f4c2e5ee5783c2fda0c09c",
+      "hash": "d35564b5fb60ccd2a268f780cefc253b00b99756a826bde4337c529d84ed9bdb",
       "rootCount": 1,
       "roots": [
-        "314715fcf04dc0be3923742391fb2078ede3669cb70b5e837940f57789ecf862"
+        "9df6b58d81f0d318c9367291a19b37d2e4005921edf14b0022f827e28ac80268"
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
@@ -8623,10 +8641,10 @@
       ]
     },
     "src/components/OutputContainer.js": {
-      "hash": "70c480d360fe5af8a9c2c99e6148fae7282df7d07a6ce2c2b8f6dc439e497dd2",
+      "hash": "1e4bf11e95f2075cd944a91c2c396b54b7e24c981a96e8ae06a6affd98e2bf30",
       "rootCount": 1,
       "roots": [
-        "d34b35efa63d20ad616df18be68f0a18189795f1a4785f8b0e3dfff5c9125ab7"
+        "790a02b3b8c6e95641ed6badea0b149794901b620dd2adcccd540bfd5e6153ec"
       ]
     },
     "src/components/ParallelProcessingStatus.js": {
