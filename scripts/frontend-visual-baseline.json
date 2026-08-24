@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "0f7c0f578008d98ad505f9c9475137da97a6fd74",
+  "baselineRevision": "6bf3f51839bb3e6cdf53e9577f106a435bd94a52",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -9082,10 +9082,10 @@
       ]
     },
     "src/components/subtitleCustomization/TextControls.js": {
-      "hash": "5934ca60c655e6851d63e905778312a8d29f9997fd4afed8bd1a6a7bb0fd16b0",
+      "hash": "fa949a0ba0e8114149e4ffe579b0fd58962a0bfe65d56d88c018680b6c79f1e8",
       "rootCount": 1,
       "roots": [
-        "3ba12da1382c5a8fb2b8d36f91d0d942aed39826555c5fc4e11b2da8c0417a19"
+        "ed67d14aa33640450a69f25b17b0cd3fb27882fc53f477923d8576f63609f5eb"
       ]
     },
     "src/components/SubtitleCustomizationPanel.js": {
