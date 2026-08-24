@@ -1,8 +1,8 @@
 //! Building the four media types an OSG export needs.
 //!
 //! Two per stream: the encoded type registered on the sink writer, and the uncompressed type the
-//! caller feeds in. The colour description goes on **both** video types — see
-//! [`crate::colorimetry`] for why one side is not enough.
+//! caller feeds in. Both video types carry explicit colour descriptions; the DXGI path uses a
+//! different truthful output range from the CPU path. See [`crate::colorimetry`].
 //!
 //! All `unsafe` in this file is confined to the three attribute-setter helpers at the bottom, so
 //! there is exactly one place a reviewer has to check for the whole media-type surface.
@@ -19,7 +19,7 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::core::GUID;
 
-use crate::colorimetry::full_range_bt709;
+use crate::colorimetry::{Colorimetry, full_range_bt709, studio_range_bt709};
 use crate::config::{AudioConfig, VideoConfig};
 use crate::error::{EncodeError, MfStage};
 use crate::mf::platform::platform_error;
@@ -34,7 +34,13 @@ use crate::mf::platform::platform_error;
 /// # Errors
 /// Returns [`EncodeError::MediaFoundation`] when the platform refuses an attribute.
 pub(crate) fn apply_full_range_bt709(media_type: &IMFMediaType) -> Result<(), EncodeError> {
-    let colorimetry = full_range_bt709();
+    apply_colorimetry(media_type, full_range_bt709())
+}
+
+fn apply_colorimetry(
+    media_type: &IMFMediaType,
+    colorimetry: Colorimetry,
+) -> Result<(), EncodeError> {
     let stage = MfStage::MediaType;
     set_u32(
         media_type,
@@ -58,6 +64,22 @@ pub(crate) fn apply_full_range_bt709(media_type: &IMFMediaType) -> Result<(), En
 
 /// The encoded H.264 type registered on the sink writer.
 pub(crate) fn encoded_video_type(config: VideoConfig) -> Result<IMFMediaType, EncodeError> {
+    encoded_video_type_with_colorimetry(config, full_range_bt709())
+}
+
+/// H.264 output type for GPU-resident DXGI input.
+///
+/// Intel's Windows hardware transform was measured to emit studio-range samples from BGRA DXGI
+/// surfaces even when the surface type itself is full-range. Describing that stream as full-range
+/// expands video levels twice on decode. This media type records what the hardware actually emits.
+pub(crate) fn encoded_gpu_video_type(config: VideoConfig) -> Result<IMFMediaType, EncodeError> {
+    encoded_video_type_with_colorimetry(config, studio_range_bt709())
+}
+
+fn encoded_video_type_with_colorimetry(
+    config: VideoConfig,
+    colorimetry: Colorimetry,
+) -> Result<IMFMediaType, EncodeError> {
     let media_type = create_media_type()?;
     let stage = MfStage::MediaType;
 
@@ -105,7 +127,7 @@ pub(crate) fn encoded_video_type(config: VideoConfig) -> Result<IMFMediaType, En
         h264_high_profile(),
         stage,
     )?;
-    apply_full_range_bt709(&media_type)?;
+    apply_colorimetry(&media_type, colorimetry)?;
 
     Ok(media_type)
 }

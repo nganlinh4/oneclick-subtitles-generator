@@ -133,16 +133,23 @@ The 1% of Remotion's bytes that were `ffmpeg.exe` become 0%.
 
 Three details are ported deliberately, and two are corrected:
 
-- **Ported — full-range colorimetry.** `MF_MT_VIDEO_NOMINAL_RANGE` must be `MFNominalRange_0_255`
-  with BT.709 primaries and matrix, on both the input and output media types. The compositor emits
-  full-range sRGB; declaring studio range silently remaps 0-255 into 16-235. The reference records
-  this as a bug it had to fix, and for us it would break the WYSIWYG requirement outright — the
-  export would be visibly washed out against the preview it is supposed to match.
+- **Ported and measured — explicit colorimetry.** The CPU-BGRA input and output media types remain
+  full-range BT.709. The GPU path also declares the compositor's DXGI input full-range, but declares
+  the hardware-produced H.264 output studio-range: a real encode/decode probe showed that Windows'
+  hardware transform writes studio-range samples. Calling that bitstream full-range remapped an
+  input value of 30 to 42. The pinned GPU round trip now has mean channel error below 0.75, a 99.9th
+  percentile no greater than 4, and a maximum no greater than 16; a one-pixel subtitle shift exceeds
+  those tail bounds by an order of magnitude.
 - **Ported — bounded keyframe spacing.** A keyframe at least every 60 frames, so scrubbing an
   exported file in a WebView stays responsive.
-- **Ported — the CPU-BGRA entry point.** `write_frame_cpu` takes exactly what a wgpu readback
-  already produces, so the compositor and the encoder meet at a plain byte buffer with no shared GPU
-  state. The GPU zero-copy path is a later optimization, not a requirement.
+- **Completed — the production path never stages frame pixels on the CPU.** Media Foundation
+  decodes to NV12 D3D11 surfaces; a D3D11 video processor applies aperture, rotation and colour into
+  a three-slot shared BGRA ring; wgpu imports those surfaces on the exact same adapter and composites
+  into a second shared ring; `MFCreateDXGISurfaceBuffer` hands GPU-resident frames to the SinkWriter.
+  D3D11/D3D12 shared fences, keyed mutexes and bounded completion waits make ownership explicit.
+  Decode, compose and encode run as three back-pressured stages, and Windows has deliberately no
+  CPU/readback fallback that could silently restore the slow path. The CPU-BGRA encoder entry point
+  remains as independently tested codec infrastructure, not as the shipped export route.
 - **Corrected — timestamps must not accumulate a truncated duration.** The reference computes one
   frame duration as `10_000_000 * den / num` in integer arithmetic and reuses it. At 30000/1001 that
   truncates 333_666.67 to 333_666, so the audio and video drift apart by about a frame every 50
@@ -153,18 +160,18 @@ Three details are ported deliberately, and two are corrected:
 
 Two consequences to be honest about:
 
-- **`unsafe` is unavoidable here.** Media Foundation is a COM API. The workspace stays
-  `unsafe_code = "forbid"`; exactly two crates downgrade it — `osg-encode` and `osg-decode`, the two
-  that drive Media Foundation directly. Each narrows the exception to that single lint, mirrors
-  every other workspace lint verbatim, and additionally turns on
+- **`unsafe` is unavoidable here.** Media Foundation and D3D11/D3D12 interop are COM APIs. The
+  workspace stays `unsafe_code = "forbid"`; exactly three crates downgrade it — `osg-encode`,
+  `osg-decode`, and the narrowly scoped `osg-gpu-video` bridge. Each narrows the exception to that
+  single lint, mirrors every other workspace lint verbatim, and additionally turns on
   `clippy::undocumented_unsafe_blocks` and `clippy::multiple_unsafe_ops_per_block`, so the compiler
   enforces the audit instead of review custom. All unsafe lives under each crate's `src/mf/`
-  directory. No third crate gains the allowance.
+  directory or, for the bridge, beside the exact ownership invariant it implements. No other crate
+  gains the allowance.
 
-  This originally read "`osg-encode` is the single crate", which the decoder made false. That is
-  recorded rather than quietly rewritten, because a second exception is the kind of thing that
-  should be noticed: the decoding decision below structurally implies it, but the count is now two
-  and any third would need its own argument.
+  This originally read "`osg-encode` is the single crate", which the decoder made false. The GPU
+  bridge is the third and final exception: it is the only crate permitted to exchange raw D3D
+  resources, handles or fences, and its public API exposes none of them.
 - **Parity is proven at the frame, not at the bitstream.** Hardware encoders differ between vendors
   and driver versions, so an H.264 file is not bit-reproducible. The determinism contract therefore
   binds the compositor's RGBA output, which is what the parity fixtures compare. The encoder is

@@ -6,8 +6,8 @@
 //! stored on the two real media types.
 
 use osg_encode::{
-    Colorimetry, NOMINAL_RANGE_0_255, TRANSFER_MATRIX_BT709, VIDEO_PRIMARIES_BT709,
-    full_range_bt709,
+    Colorimetry, NOMINAL_RANGE_0_255, NOMINAL_RANGE_16_235, TRANSFER_MATRIX_BT709,
+    VIDEO_PRIMARIES_BT709, full_range_bt709, studio_range_bt709,
 };
 
 #[test]
@@ -17,6 +17,12 @@ fn the_named_function_returns_full_range_bt709() {
     assert_eq!(colorimetry.nominal_range, NOMINAL_RANGE_0_255);
     assert_eq!(colorimetry.primaries, VIDEO_PRIMARIES_BT709);
     assert_eq!(colorimetry.transfer_matrix, TRANSFER_MATRIX_BT709);
+}
+
+#[test]
+fn studio_range_is_distinct_and_named() {
+    assert_eq!(NOMINAL_RANGE_16_235, 2);
+    assert_eq!(studio_range_bt709(), Colorimetry::STUDIO_RANGE_BT709);
 }
 
 #[test]
@@ -66,6 +72,19 @@ fn both_media_types_really_carry_full_range_bt709() {
     // Both sides. Declaring only one lets the colour-conversion transform reintroduce the remap.
     assert_eq!(readback.encoded_colorimetry, full_range_bt709());
     assert_eq!(readback.uncompressed_colorimetry, full_range_bt709());
+}
+
+#[cfg(windows)]
+#[test]
+fn gpu_surface_input_is_full_range_but_its_h264_output_is_studio_range() {
+    use osg_encode::{VideoConfig, read_back_gpu_video_media_types};
+
+    let config = VideoConfig::new(1920, 1080, 30, 1, 60).expect("a supported configuration");
+    let readback = read_back_gpu_video_media_types(config)
+        .expect("Media Foundation must expose the GPU path media types");
+
+    assert_eq!(readback.uncompressed_colorimetry, full_range_bt709());
+    assert_eq!(readback.encoded_colorimetry, studio_range_bt709());
 }
 
 #[cfg(windows)]

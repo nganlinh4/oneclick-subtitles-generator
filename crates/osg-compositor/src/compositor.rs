@@ -7,7 +7,8 @@ use wgpu::{
     LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor, PrimitiveState, RenderPass,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, VertexState,
+    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    VertexState,
 };
 
 use crate::blur::SeparableBlur;
@@ -24,9 +25,23 @@ use crate::subtitle::SubtitleScene;
 use crate::underlay::VideoUnderlay;
 use crate::underlay_pipeline::UnderlayPipeline;
 
-/// The offscreen colour format. Unorm rather than sRGB, so shader output reaches the readback
-/// without an encode step that would vary between backends.
-const TARGET_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
+/// Pixel storage used by an externally consumed composition target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompositorTargetFormat {
+    /// Host readback and deterministic frame fixtures.
+    Rgba8,
+    /// Windows Media Foundation's `ARGB32` input surface (BGRA bytes in memory).
+    Bgra8,
+}
+
+impl CompositorTargetFormat {
+    const fn wgpu(self) -> TextureFormat {
+        match self {
+            Self::Rgba8 => TextureFormat::Rgba8Unorm,
+            Self::Bgra8 => TextureFormat::Bgra8Unorm,
+        }
+    }
+}
 
 /// A headless GPU compositor.
 ///
@@ -38,8 +53,10 @@ pub struct Compositor {
     pipeline: RenderPipeline,
     uniform_layout: BindGroupLayout,
     quads: QuadPipeline,
+    mask_quads: QuadPipeline,
     underlay: UnderlayPipeline,
     blur: SeparableBlur,
+    target_format: TextureFormat,
 }
 
 impl Compositor {
@@ -54,19 +71,49 @@ impl Compositor {
     /// [`CompositorError::NoAdapter`] rather than panicking, exactly as a machine without a usable
     /// adapter does.
     pub fn with_adapters(selection: AdapterSelection) -> Result<Self, CompositorError> {
+        Self::with_target_format(selection, CompositorTargetFormat::Rgba8)
+    }
+
+    /// Acquires a compositor whose frame target uses `format`.
+    ///
+    /// The BGRA form exists for the native zero-copy encoder path. All internal masks and atlas
+    /// textures remain unchanged; only the final render target storage follows the consumer.
+    pub fn with_target_format(
+        selection: AdapterSelection,
+        format: CompositorTargetFormat,
+    ) -> Result<Self, CompositorError> {
         let gpu = GpuContext::acquire(selection)?;
-        let (pipeline, uniform_layout) = build_pipeline(gpu.device());
-        let quads = QuadPipeline::build(gpu.device(), TARGET_FORMAT);
-        let underlay = UnderlayPipeline::build(gpu.device(), TARGET_FORMAT);
+        let target_format = format.wgpu();
+        let (pipeline, uniform_layout) = build_pipeline(gpu.device(), target_format);
+        let quads = QuadPipeline::build(gpu.device(), target_format);
+        let mask_quads = QuadPipeline::build(gpu.device(), TextureFormat::Rgba8Unorm);
+        let underlay = UnderlayPipeline::build(gpu.device(), target_format);
         let blur = SeparableBlur::build(gpu.device());
         Ok(Self {
             gpu,
             pipeline,
             uniform_layout,
             quads,
+            mask_quads,
             underlay,
             blur,
+            target_format,
         })
+    }
+
+    /// The device that owns every compositor resource.
+    ///
+    /// Exposed for the audited D3D11/D3D12 interop crate. Ordinary callers should use the safe
+    /// frame APIs and never need the raw device.
+    #[must_use]
+    pub const fn device(&self) -> &wgpu::Device {
+        self.gpu.device()
+    }
+
+    /// The queue paired with [`Self::device`].
+    #[must_use]
+    pub const fn queue(&self) -> &wgpu::Queue {
+        self.gpu.queue()
     }
 
     /// What the compositor acquired.
@@ -201,6 +248,99 @@ impl Compositor {
         self.compose_scene(scene, Some(underlay), frame_index)
     }
 
+    /// Composes a GPU-resident source into a caller-owned GPU target without host readback.
+    ///
+    /// `source` and `target` must belong to [`Self::device`]. The source must be filterable and the
+    /// target must carry `RENDER_ATTACHMENT`; wgpu validates those capabilities when the resources
+    /// are created. This method validates the dimensions and final format before recording work.
+    /// Synchronization with an external producer or consumer remains the interop owner's job.
+    pub fn render_scene_texture_over_into(
+        &self,
+        scene: &SubtitleScene,
+        source: &wgpu::Texture,
+        source_size: FrameSize,
+        crop: crate::Crop,
+        frame_index: u32,
+        target: &wgpu::Texture,
+    ) -> Result<wgpu::SubmissionIndex, CompositorError> {
+        let plan = build_frame_plan(scene, frame_index)?;
+        self.check_source_size(scene, source_size)?;
+        let target_size = target.size();
+        if target_size.width != scene.size().width()
+            || target_size.height != scene.size().height()
+            || target.format() != self.target_format
+        {
+            return Err(Rejection::ExternalTarget.into());
+        }
+        if source.size().width != source_size.width()
+            || source.size().height != source_size.height()
+        {
+            return Err(Rejection::ExternalSource.into());
+        }
+
+        let device = self.gpu.device();
+        let queue = self.gpu.queue();
+        let source_view = source.create_view(&TextureViewDescriptor::default());
+        let ground = self.underlay.prepare_texture(
+            device,
+            queue,
+            &self.blur,
+            &source_view,
+            source_size,
+            crop,
+            scene.size(),
+        );
+        let Some(page) = scene.bound_page(plan.atlas_page()) else {
+            return Err(Rejection::AtlasPagesEmpty.into());
+        };
+        let atlas = self.quads.bind_atlas(device, queue, page);
+        let masks = masks::build(
+            device,
+            queue,
+            (&self.mask_quads, &self.quads, &self.blur),
+            page,
+            plan.masks(),
+            scene.size(),
+        );
+        let buffer = vertex_buffer(device, queue, plan.vertices());
+        let target_view = target.create_view(&TextureViewDescriptor::default());
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+            label: Some("osg-compositor GPU frame encoder"),
+        });
+        {
+            let mut pass = begin_frame_pass(&mut encoder, &target_view, Color::TRANSPARENT);
+            pass.set_pipeline(self.underlay.pipeline());
+            pass.set_bind_group(0, &ground, &[]);
+            pass.draw(0..3, 0..1);
+            if let Some(buffer) = buffer.as_ref() {
+                pass.set_pipeline(self.quads.pipeline());
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                for segment in plan.segments() {
+                    let bound = match segment.source {
+                        BindSource::Atlas => Some(&atlas),
+                        BindSource::Mask(index) => masks.get(index),
+                    };
+                    if let Some(bound) = bound {
+                        pass.set_bind_group(0, bound, &[]);
+                        pass.draw(segment.first..segment.first + segment.count, 0..1);
+                    }
+                }
+            }
+        }
+        Ok(queue.submit(Some(encoder.finish())))
+    }
+
+    fn check_source_size(
+        &self,
+        scene: &SubtitleScene,
+        source_size: FrameSize,
+    ) -> Result<(), CompositorError> {
+        let max_edge = self.max_texture_dimension_2d();
+        scene.size().check_device(TextureTarget::Frame, max_edge)?;
+        scene.check_pages_on_device(max_edge)?;
+        source_size.check_device(TextureTarget::Source, max_edge)
+    }
+
     /// The one subtitle path, with or without a video ground beneath it.
     ///
     /// The decoration masks are rendered and blurred before the frame's own pass opens, because a
@@ -234,8 +374,8 @@ impl Compositor {
         let masks = masks::build(
             device,
             queue,
-            (&self.quads, &self.blur),
-            &atlas,
+            (&self.mask_quads, &self.quads, &self.blur),
+            page,
             plan.masks(),
             scene.size(),
         );
@@ -283,7 +423,7 @@ impl Compositor {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TARGET_FORMAT,
+            format: self.target_format,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
             view_formats: &[],
         });
@@ -320,7 +460,33 @@ impl Compositor {
     }
 }
 
-fn build_pipeline(device: &wgpu::Device) -> (RenderPipeline, BindGroupLayout) {
+fn begin_frame_pass<'encoder>(
+    encoder: &'encoder mut wgpu::CommandEncoder,
+    view: &'encoder TextureView,
+    clear: Color,
+) -> RenderPass<'encoder> {
+    encoder.begin_render_pass(&RenderPassDescriptor {
+        label: Some("osg-compositor scene pass"),
+        color_attachments: &[Some(RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: Operations {
+                load: LoadOp::Clear(clear),
+                store: StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
+}
+
+fn build_pipeline(
+    device: &wgpu::Device,
+    target_format: TextureFormat,
+) -> (RenderPipeline, BindGroupLayout) {
     let shader = device.create_shader_module(ShaderModuleDescriptor {
         label: Some("osg-compositor test scene"),
         source: ShaderSource::Wgsl(include_str!("shaders/test_scene.wgsl").into()),
@@ -360,7 +526,7 @@ fn build_pipeline(device: &wgpu::Device) -> (RenderPipeline, BindGroupLayout) {
             entry_point: Some("fs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(ColorTargetState {
-                format: TARGET_FORMAT,
+                format: target_format,
                 blend: Some(BlendState::REPLACE),
                 write_mask: ColorWrites::ALL,
             })],

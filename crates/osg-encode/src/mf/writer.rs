@@ -9,10 +9,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFByteStream, IMFMediaType, IMFSample, IMFSinkWriter,
-    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SINK_WRITER_DISABLE_THROTTLING,
-    MF_TRANSCODE_CONTAINERTYPE, MFCreateAttributes, MFCreateSinkWriterFromURL,
-    MFTranscodeContainerType_MPEG4,
+    IMFAttributes, IMFByteStream, IMFDXGIDeviceManager, IMFMediaType, IMFSample, IMFSinkWriter,
+    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SINK_WRITER_D3D_MANAGER,
+    MF_SINK_WRITER_DISABLE_THROTTLING, MF_TRANSCODE_CONTAINERTYPE, MFCreateAttributes,
+    MFCreateSinkWriterFromURL, MFTranscodeContainerType_MPEG4,
 };
 use windows::core::PCWSTR;
 
@@ -42,11 +42,11 @@ enum State {
 pub(crate) struct MediaFoundationEncoder {
     writer: Option<IMFSinkWriter>,
     output: PathBuf,
-    config: EncoderConfig,
-    clock: FrameClock,
-    video_stream: u32,
+    pub(crate) config: EncoderConfig,
+    pub(crate) clock: FrameClock,
+    pub(crate) video_stream: u32,
     audio_stream: Option<u32>,
-    next_frame: u32,
+    pub(crate) next_frame: u32,
     next_audio_sample: u64,
     state: State,
     cancel: CancelToken,
@@ -69,6 +69,22 @@ impl fmt::Debug for MediaFoundationEncoder {
 impl MediaFoundationEncoder {
     /// Opens `output` and configures the streams `config` asks for.
     pub(crate) fn open(output: &Path, config: EncoderConfig) -> Result<Self, EncodeError> {
+        Self::open_inner(output, config, None)
+    }
+
+    pub(crate) fn open_gpu(
+        output: &Path,
+        config: EncoderConfig,
+        manager: &IMFDXGIDeviceManager,
+    ) -> Result<Self, EncodeError> {
+        Self::open_inner(output, config, Some(manager))
+    }
+
+    fn open_inner(
+        output: &Path,
+        config: EncoderConfig,
+        manager: Option<&IMFDXGIDeviceManager>,
+    ) -> Result<Self, EncodeError> {
         check_output_path(output)?;
         let parent = output.parent().ok_or(EncodeError::OutputUnusable {
             reason: OutputRejection::ParentMissing,
@@ -88,7 +104,7 @@ impl MediaFoundationEncoder {
 
         ensure_media_foundation()?;
         let clock = config.video().frame_clock()?;
-        let attributes = writer_attributes()?;
+        let attributes = writer_attributes(manager)?;
         let path_units = wide_path(output)?;
 
         // SAFETY: `path_units` is a NUL-terminated wide string that outlives the call, and both
@@ -117,14 +133,19 @@ impl MediaFoundationEncoder {
         };
 
         // From here on every failure path goes through `Drop`, which removes the partial file.
-        encoder.configure_streams()?;
+        encoder.configure_streams(manager.is_some())?;
         encoder.begin_writing()?;
         Ok(encoder)
     }
 
-    fn configure_streams(&mut self) -> Result<(), EncodeError> {
+    fn configure_streams(&mut self, gpu_surface_input: bool) -> Result<(), EncodeError> {
         let video = self.config.video();
-        self.video_stream = self.add_stream(&media_type::encoded_video_type(video)?)?;
+        let encoded = if gpu_surface_input {
+            media_type::encoded_gpu_video_type(video)?
+        } else {
+            media_type::encoded_video_type(video)?
+        };
+        self.video_stream = self.add_stream(&encoded)?;
         self.set_input_type(
             self.video_stream,
             &media_type::uncompressed_video_type(video)?,
@@ -167,7 +188,7 @@ impl MediaFoundationEncoder {
     }
 
     /// Rejects a write that the encoder's lifecycle no longer permits.
-    fn check_open(&mut self) -> Result<(), EncodeError> {
+    pub(crate) fn check_open(&mut self) -> Result<(), EncodeError> {
         match self.state {
             State::Finalized => return Err(EncodeError::AlreadyFinished),
             State::Cancelled => return Err(EncodeError::Cancelled),
@@ -191,7 +212,7 @@ impl MediaFoundationEncoder {
         self.state = state;
     }
 
-    fn write_sample(&self, stream: u32, sample: &IMFSample) -> Result<(), EncodeError> {
+    pub(crate) fn write_sample(&self, stream: u32, sample: &IMFSample) -> Result<(), EncodeError> {
         let writer = self.writer()?;
         // SAFETY: both interfaces are live for the duration of the call; the writer takes its own
         // reference to the sample.
@@ -343,7 +364,7 @@ impl Drop for MediaFoundationEncoder {
 /// Hardware transforms are enabled so the encode uses the machine's video encoder when it has one.
 /// Throttling is disabled because this is an offline export, not a live capture: there is no
 /// wall clock to keep up with and no reason to pace the writer to one.
-fn writer_attributes() -> Result<IMFAttributes, EncodeError> {
+fn writer_attributes(manager: Option<&IMFDXGIDeviceManager>) -> Result<IMFAttributes, EncodeError> {
     let mut store: Option<IMFAttributes> = None;
     // SAFETY: the out-parameter is a live local for the duration of the call, and the count is the
     // number of attributes the store is sized for, not a length the platform reads through.
@@ -355,6 +376,11 @@ fn writer_attributes() -> Result<IMFAttributes, EncodeError> {
     })?;
 
     let stage = MfStage::WriterAttributes;
+    if let Some(manager) = manager {
+        // SAFETY: both are live COM interfaces and the attribute store retains its own reference.
+        unsafe { store.SetUnknown(&MF_SINK_WRITER_D3D_MANAGER, manager) }
+            .map_err(|error| platform_error(stage, &error))?;
+    }
     media_type::set_u32(&store, &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1, stage)?;
     media_type::set_u32(&store, &MF_SINK_WRITER_DISABLE_THROTTLING, 1, stage)?;
     media_type::set_guid(

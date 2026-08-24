@@ -1,0 +1,44 @@
+[package]
+name = "osg-gpu-video"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Audited zero-copy Media Foundation and wgpu video transport for OSG"
+license = "MIT"
+
+[dependencies]
+osg-compositor = { workspace = true }
+osg-decode = { workspace = true }
+osg-encode = { workspace = true }
+osg-scene = { workspace = true }
+thiserror.workspace = true
+wgpu = { version = "=30.0.0", default-features = false, features = ["std", "dx12"] }
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D10",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Media_MediaFoundation",
+  "Win32_Security",
+] }
+
+# This is the only crate permitted to cross D3D11/D3D12 ownership. The public API is safe and
+# contains no raw handles. Every unsafe block is locally documented and clippy audits its scope.
+[lints.rust]
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unsafe_code = "allow"
+unused_lifetimes = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+multiple_unsafe_ops_per_block = "warn"
+undocumented_unsafe_blocks = "warn"

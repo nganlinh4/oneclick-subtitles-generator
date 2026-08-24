@@ -12,6 +12,7 @@ members = [
   "crates/osg-engine-packages",
   "crates/osg-export",
   "crates/osg-gemini",
+  "crates/osg-gpu-video",
   "crates/osg-infrastructure",
   "crates/osg-live-music",
   "crates/osg-media",
@@ -43,6 +44,7 @@ osg-encode = { path = "crates/osg-encode" }
 osg-engine-packages = { path = "crates/osg-engine-packages" }
 osg-export = { path = "crates/osg-export" }
 osg-gemini = { path = "crates/osg-gemini" }
+osg-gpu-video = { path = "crates/osg-gpu-video" }
 osg-live-music = { path = "crates/osg-live-music" }
 osg-media = { path = "crates/osg-media" }
 osg-media-pipeline = { path = "crates/osg-media-pipeline" }

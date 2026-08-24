@@ -16,7 +16,7 @@ use windows::core::GUID;
 use crate::colorimetry::Colorimetry;
 use crate::config::VideoConfig;
 use crate::error::{EncodeError, MfStage};
-use crate::mf::media_type::{encoded_video_type, uncompressed_video_type};
+use crate::mf::media_type::{encoded_gpu_video_type, encoded_video_type, uncompressed_video_type};
 use crate::mf::platform::{ensure_media_foundation, platform_error};
 
 /// What the encoder wrote onto the two video media types for a given configuration.
@@ -64,6 +64,33 @@ pub fn read_back_video_media_types(
         max_keyframe_spacing: read_u32(&encoded, &MF_MT_MAX_KEYFRAME_SPACING)?,
         average_bitrate: read_u32(&encoded, &MF_MT_AVG_BITRATE)?,
         default_stride: read_u32(&uncompressed, &MF_MT_DEFAULT_STRIDE)?,
+    })
+}
+
+/// Reads the media-type pair used by the DXGI hardware path.
+pub fn read_back_gpu_video_media_types(
+    config: VideoConfig,
+) -> Result<VideoMediaTypeReadback, EncodeError> {
+    ensure_media_foundation()?;
+    let encoded = encoded_gpu_video_type(config)?;
+    let uncompressed = uncompressed_video_type(config)?;
+    readback(config, &encoded, &uncompressed)
+}
+
+fn readback(
+    _config: VideoConfig,
+    encoded: &IMFMediaType,
+    uncompressed: &IMFMediaType,
+) -> Result<VideoMediaTypeReadback, EncodeError> {
+    Ok(VideoMediaTypeReadback {
+        encoded_colorimetry: read_colorimetry(encoded)?,
+        uncompressed_colorimetry: read_colorimetry(uncompressed)?,
+        profile: read_u32(encoded, &MF_MT_MPEG2_PROFILE)?,
+        encoded_interlace_mode: read_u32(encoded, &MF_MT_INTERLACE_MODE)?,
+        uncompressed_interlace_mode: read_u32(uncompressed, &MF_MT_INTERLACE_MODE)?,
+        max_keyframe_spacing: read_u32(encoded, &MF_MT_MAX_KEYFRAME_SPACING)?,
+        average_bitrate: read_u32(encoded, &MF_MT_AVG_BITRATE)?,
+        default_stride: read_u32(uncompressed, &MF_MT_DEFAULT_STRIDE)?,
     })
 }
 

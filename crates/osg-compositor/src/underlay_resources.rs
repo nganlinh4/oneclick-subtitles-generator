@@ -127,7 +127,7 @@ pub(crate) fn composite_uniforms(crop: Crop) -> [f32; 12] {
 }
 
 /// The cover fit: the source is scaled to fill the output without distorting, then over-scaled.
-pub(crate) fn cover_uniforms(source: &SourceFrame, crop: Crop, size: FrameSize) -> [f32; 8] {
+pub(crate) fn cover_uniforms(source: FrameSize, crop: Crop, size: FrameSize) -> [f32; 8] {
     let source_aspect = f64::from(source.width()) / f64::from(source.height());
     let output_aspect = f64::from(size.width()) / f64::from(size.height());
     let (mut across, mut down) = (1.0_f64, 1.0_f64);

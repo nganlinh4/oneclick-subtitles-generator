@@ -130,6 +130,10 @@ pub enum Rejection {
     CropCanvasBlur,
     /// A decoded source frame does not carry exactly `width * height * 4` bytes.
     SourcePixelCount,
+    /// A GPU-resident source texture disagrees with its declared visible dimensions.
+    ExternalSource,
+    /// A GPU target disagrees with the scene size or compositor target format.
+    ExternalTarget,
 }
 
 impl fmt::Display for Rejection {
@@ -178,6 +182,8 @@ impl fmt::Display for Rejection {
             Self::SourcePixelCount => {
                 "the source frame does not carry exactly one RGBA8 pixel per position"
             }
+            Self::ExternalSource => "the GPU source texture does not match its declared geometry",
+            Self::ExternalTarget => "the GPU target does not match the composition",
         };
         f.write_str(message)
     }

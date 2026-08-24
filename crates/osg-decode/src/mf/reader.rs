@@ -16,7 +16,7 @@ use std::path::Path;
 
 use osg_scene::ExactTime;
 use windows::Win32::Media::MediaFoundation::{
-    IMFSample, IMFSourceReader, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
+    IMFDXGIDeviceManager, IMFSample, IMFSourceReader, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MFCreateSourceReaderFromURL,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
@@ -92,6 +92,23 @@ impl fmt::Debug for MediaFoundationDecoder {
 impl MediaFoundationDecoder {
     /// Opens `source` and negotiates an NV12 decode of its first video stream.
     pub(crate) fn open(source: &Path, config: DecoderConfig) -> Result<Self, DecodeError> {
+        Self::open_inner(source, config, None)
+    }
+
+    /// Opens the same frame-exact reader with a DXGI manager, keeping selected samples in VRAM.
+    pub(crate) fn open_gpu(
+        source: &Path,
+        config: DecoderConfig,
+        manager: &IMFDXGIDeviceManager,
+    ) -> Result<Self, DecodeError> {
+        Self::open_inner(source, config, Some(manager))
+    }
+
+    fn open_inner(
+        source: &Path,
+        config: DecoderConfig,
+        manager: Option<&IMFDXGIDeviceManager>,
+    ) -> Result<Self, DecodeError> {
         check_source_path(source)?;
         if !source.is_file() {
             return Err(DecodeError::SourceUnusable {
@@ -100,7 +117,10 @@ impl MediaFoundationDecoder {
         }
 
         ensure_media_foundation()?;
-        let attributes = media_type::reader_attributes()?;
+        let attributes = match manager {
+            Some(manager) => media_type::gpu_reader_attributes(manager)?,
+            None => media_type::reader_attributes()?,
+        };
         let path_units = wide_path(source)?;
 
         // SAFETY: `path_units` is a NUL-terminated wide string that outlives the call, and the
@@ -409,7 +429,10 @@ impl MediaFoundationDecoder {
     }
 
     /// Resolves one instant into the source frame that covers it.
-    fn frame_at_100ns(&mut self, target_100ns: i64) -> Result<DecodedFrame, DecodeError> {
+    pub(crate) fn selected_sample_at_100ns(
+        &mut self,
+        target_100ns: i64,
+    ) -> Result<SourceSample, DecodeError> {
         self.check_usable()?;
         // An instant past the source's declared span is answered without touching the platform. The
         // caller's timeline is longer than the file, which is a fact about the file and not a
@@ -425,10 +448,6 @@ impl MediaFoundationDecoder {
         }
         self.walk_to(target_100ns)?;
 
-        let presentation = self.info.presentation();
-        let colorimetry = self.info.colorimetry();
-        let grid = self.info.grid();
-        let stride = self.fallback_stride;
         let decoded = self.stats.samples_decoded();
 
         let current = self
@@ -450,7 +469,49 @@ impl MediaFoundationDecoder {
         {
             return Err(DecodeError::TruncatedStream { decoded });
         }
-        convert(current, presentation, colorimetry, stride, grid)
+        Ok(SourceSample::new(
+            current.interface().clone(),
+            current.presentation_100ns(),
+            current.duration_100ns(),
+        ))
+    }
+
+    fn frame_at_100ns(&mut self, target_100ns: i64) -> Result<DecodedFrame, DecodeError> {
+        let sample = self.selected_sample_at_100ns(target_100ns)?;
+        convert(
+            &sample,
+            self.info.presentation(),
+            self.info.colorimetry(),
+            self.fallback_stride,
+            self.info.grid(),
+        )
+    }
+
+    pub(crate) const fn source_info(&self) -> SourceInfo {
+        self.info
+    }
+
+    pub(crate) const fn decoder_config(&self) -> DecoderConfig {
+        self.config
+    }
+
+    pub(crate) fn decoder_cancel_token(&self) -> CancelToken {
+        self.cancel.clone()
+    }
+
+    pub(crate) const fn decode_stats(&self) -> DecodeStats {
+        self.stats
+    }
+
+    pub(crate) fn output_sample_100ns(&self, index: u32) -> Result<i64, DecodeError> {
+        self.sampler.sample_100ns(index)
+    }
+
+    pub(crate) fn close_reader(&mut self) {
+        self.current = None;
+        self.pending = None;
+        self.reader = None;
+        self.at_end = true;
     }
 }
 
@@ -523,10 +584,7 @@ impl VideoDecoder for MediaFoundationDecoder {
     }
 
     fn close(&mut self) {
-        self.current = None;
-        self.pending = None;
-        self.reader = None;
-        self.at_end = true;
+        self.close_reader();
     }
 }
 

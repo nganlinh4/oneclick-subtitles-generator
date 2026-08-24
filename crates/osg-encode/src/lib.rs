@@ -20,9 +20,10 @@
 //! - **Timing.** Presentation timestamps come from [`osg_scene::FrameTimeline`] via [`timing`], one
 //!   rounding per frame, derived from that frame's own index. Nothing is accumulated, so a
 //!   multi-hour export ends exactly where a one-second export would predict.
-//! - **Colour.** Full-range Rec.709 is declared on the input *and* output media types, in
-//!   [`colorimetry`]. Left to the platform default, the conversion into H.264 compresses 0-255 into
-//!   16-235 and every export comes back washed out against the preview it is supposed to match.
+//! - **Colour.** [`colorimetry`] describes each boundary truthfully. CPU-fed streams remain
+//!   full-range end to end; the DXGI path declares full-range BGRA input and the studio-range H.264
+//!   the Windows hardware transform actually emits. Labelling either side incorrectly produces a
+//!   visible preview/export range shift.
 //!
 //! # Platforms
 //!
@@ -71,16 +72,23 @@ pub mod timing;
 #[cfg(windows)]
 pub mod mf;
 
+#[cfg(windows)]
+pub mod gpu;
+
 pub use audio::AudioBlock;
 pub use colorimetry::{
-    Colorimetry, NOMINAL_RANGE_0_255, TRANSFER_MATRIX_BT709, VIDEO_PRIMARIES_BT709,
-    full_range_bt709,
+    Colorimetry, NOMINAL_RANGE_0_255, NOMINAL_RANGE_16_235, TRANSFER_MATRIX_BT709,
+    VIDEO_PRIMARIES_BT709, full_range_bt709, studio_range_bt709,
 };
 pub use config::{AudioBitrate, AudioConfig, ChannelCount, EncoderConfig, SampleRate, VideoConfig};
 pub use encoder::{CancelToken, EncodeOutcome, VideoEncoder, open_encoder};
 pub use error::{ConfigField, EncodeError, MfStage, OutputRejection};
 #[cfg(windows)]
-pub use mf::{VideoMediaTypeReadback, read_back_video_media_types};
+pub use gpu::{GpuVideoEncoder, open_gpu_encoder};
+#[cfg(windows)]
+pub use mf::{
+    VideoMediaTypeReadback, read_back_gpu_video_media_types, read_back_video_media_types,
+};
 pub use output::check_output_path;
 pub use pixels::{FrameBuffer, PixelLayout};
 pub use timing::{FrameClock, HUNDRED_NANOS_PER_SECOND, MAX_ENCODE_FRAME_COUNT};

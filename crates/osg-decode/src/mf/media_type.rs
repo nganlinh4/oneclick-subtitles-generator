@@ -10,11 +10,12 @@
 //! produces natively, so asking for it is the path with no hidden transform in it at all.
 
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFMediaType, IMFSourceReader, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
-    MF_MT_FRAME_SIZE, MF_MT_GEOMETRIC_APERTURE, MF_MT_MAJOR_TYPE, MF_MT_MINIMUM_DISPLAY_APERTURE,
-    MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE, MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_VIDEO_ROTATION,
-    MF_MT_YUV_MATRIX, MF_PD_DURATION, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
-    MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING,
+    IMFAttributes, IMFDXGIDeviceManager, IMFMediaType, IMFSourceReader, MF_MT_DEFAULT_STRIDE,
+    MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_GEOMETRIC_APERTURE, MF_MT_MAJOR_TYPE,
+    MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE,
+    MF_MT_VIDEO_NOMINAL_RANGE, MF_MT_VIDEO_ROTATION, MF_MT_YUV_MATRIX, MF_PD_DURATION,
+    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SOURCE_READER_ALL_STREAMS,
+    MF_SOURCE_READER_D3D_MANAGER, MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING,
     MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READER_MEDIASOURCE, MFCreateAttributes,
     MFCreateMediaType, MFMediaType_Video, MFVideoFormat_NV12,
 };
@@ -46,10 +47,23 @@ fn media_source() -> u32 {
 /// attribute is mutually exclusive, so the combination the reference had to avoid cannot arise
 /// here.
 pub(crate) fn reader_attributes() -> Result<IMFAttributes, DecodeError> {
+    reader_attributes_inner(None)
+}
+
+/// The source reader's GPU attribute store.
+pub(crate) fn gpu_reader_attributes(
+    manager: &IMFDXGIDeviceManager,
+) -> Result<IMFAttributes, DecodeError> {
+    reader_attributes_inner(Some(manager))
+}
+
+fn reader_attributes_inner(
+    manager: Option<&IMFDXGIDeviceManager>,
+) -> Result<IMFAttributes, DecodeError> {
     let mut store: Option<IMFAttributes> = None;
     // SAFETY: the out-parameter is a live local for the duration of the call, and the count is the
     // number of attributes the store is sized for, not a length the platform reads through.
-    unsafe { MFCreateAttributes(&raw mut store, 2) }
+    unsafe { MFCreateAttributes(&raw mut store, 3) }
         .map_err(|error| platform_error(MfStage::ReaderAttributes, &error))?;
     let store = store.ok_or(DecodeError::MediaFoundation {
         stage: MfStage::ReaderAttributes,
@@ -57,6 +71,12 @@ pub(crate) fn reader_attributes() -> Result<IMFAttributes, DecodeError> {
     })?;
 
     let stage = MfStage::ReaderAttributes;
+    if let Some(manager) = manager {
+        // SAFETY: both values are live COM interfaces. The attribute store retains its own
+        // reference to the manager instead of borrowing it after this call.
+        unsafe { store.SetUnknown(&MF_SOURCE_READER_D3D_MANAGER, manager) }
+            .map_err(|error| platform_error(stage, &error))?;
+    }
     set_u32(&store, &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1, stage)?;
     set_u32(
         &store,

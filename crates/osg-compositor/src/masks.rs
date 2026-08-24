@@ -24,6 +24,7 @@ use crate::pass::{clearing_pass, render_target};
 use crate::plan::MaskJob;
 use crate::quad_pipeline::{QuadPipeline, vertex_buffer};
 use crate::size::FrameSize;
+use osg_scene::glyph::GlyphAtlasDescriptor;
 
 /// The bound masks, plus the resources they were built from.
 ///
@@ -56,15 +57,16 @@ impl Masks {
 pub(crate) fn build(
     device: &Device,
     queue: &Queue,
-    pipelines: (&QuadPipeline, &SeparableBlur),
-    atlas: &BindGroup,
+    pipelines: (&QuadPipeline, &QuadPipeline, &SeparableBlur),
+    atlas_page: &GlyphAtlasDescriptor,
     jobs: &[MaskJob],
     size: FrameSize,
 ) -> Masks {
     if jobs.is_empty() {
         return Masks::none();
     }
-    let (quads, blur) = pipelines;
+    let (mask_quads, frame_quads, blur) = pipelines;
+    let atlas = mask_quads.bind_atlas(device, queue, atlas_page);
     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
         label: Some("osg-compositor decoration mask encoder"),
     });
@@ -86,8 +88,8 @@ pub(crate) fn build(
             );
             if let Some(buffer) = buffer.as_ref() {
                 let count = u32::try_from(job.vertices.len() / VERTEX_FLOATS).unwrap_or(0);
-                pass.set_pipeline(quads.pipeline());
-                pass.set_bind_group(0, atlas, &[]);
+                pass.set_pipeline(mask_quads.pipeline());
+                pass.set_bind_group(0, &atlas, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..count, 0..1);
             }
@@ -113,7 +115,7 @@ pub(crate) fn build(
             )
         };
         masks.textures.push(shape);
-        masks.bound.push(quads.bind_texture(device, &view));
+        masks.bound.push(frame_quads.bind_texture(device, &view));
     }
 
     queue.submit(Some(encoder.finish()));

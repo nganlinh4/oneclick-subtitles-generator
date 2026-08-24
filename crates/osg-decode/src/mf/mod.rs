@@ -11,9 +11,9 @@
 
 mod format;
 mod media_type;
-mod platform;
+pub(crate) mod platform;
 mod reader;
-mod sample;
+pub(crate) mod sample;
 
 pub(crate) use reader::MediaFoundationDecoder;
 pub use sample::{SampleLock, SourceSample};

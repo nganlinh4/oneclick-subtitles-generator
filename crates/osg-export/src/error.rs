@@ -15,6 +15,7 @@ use osg_audio::AudioError;
 use osg_compositor::{CompositorError, Rejection};
 use osg_decode::DecodeError;
 use osg_encode::EncodeError;
+use osg_gpu_video::GpuVideoError;
 use osg_render::RenderError;
 use osg_scene::TimelineError;
 use osg_scene::glyph::LayoutRefusal;
@@ -141,6 +142,17 @@ pub enum ExportError {
     #[error("the export output could not be written because the volume is full")]
     OutputVolumeFull,
 
+    /// The zero-copy Windows video transport could not preserve its GPU contract.
+    ///
+    /// There is deliberately no automatic CPU fallback: returning to host-staged frames would
+    /// reintroduce the performance failure this renderer replaced and hide the machine capability
+    /// that needs attention.
+    #[error("the native GPU video path was unavailable: {reason}")]
+    GpuVideoUnavailable {
+        /// The audited interop layer's path-free diagnosis.
+        reason: GpuVideoError,
+    },
+
     /// The export was cancelled and its partial output has been removed.
     #[error("the export was cancelled")]
     Cancelled,
@@ -212,5 +224,17 @@ impl From<AudioError> for ExportError {
 impl From<EncodeError> for ExportError {
     fn from(error: EncodeError) -> Self {
         Self::from_encode(error)
+    }
+}
+
+impl From<GpuVideoError> for ExportError {
+    fn from(reason: GpuVideoError) -> Self {
+        match reason {
+            GpuVideoError::Cancelled => Self::Cancelled,
+            GpuVideoError::Decode(reason) => Self::SourceUnreadable { reason },
+            GpuVideoError::Encode(reason) => Self::from_encode(reason),
+            GpuVideoError::Compose(reason) => reason.into(),
+            other => Self::GpuVideoUnavailable { reason: other },
+        }
     }
 }

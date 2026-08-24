@@ -45,7 +45,12 @@ use crate::support::media::{
 /// enough that the one-pixel-shift check below fails it by more than an order of magnitude. See
 /// the module docs for what it cannot see.
 pub(crate) const REVIEWED: Tolerance = Tolerance {
-    mean_channel: 0.5,
+    // The DXGI hardware path measured 0.6387 on the densest multi-page Korean frame. The former
+    // 0.5 bound was calibrated against CPU-fed Media Foundation and rejected a faithful frame
+    // whose p999 and maximum were only 3 and 5. The paired mutation checks put a one-pixel subtitle
+    // shift at p999 32-108 and maximum 97-128, so the unchanged tail bounds still reject spatial
+    // regressions by more than an order of magnitude.
+    mean_channel: 0.75,
     p999_channel: 4,
     max_channel: 16,
 };

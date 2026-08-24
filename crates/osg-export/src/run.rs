@@ -21,7 +21,10 @@ use std::path::Path;
 
 use osg_audio::MixStats;
 use osg_decode::{DecodeError, DecoderConfig, SourceBound, SourceInfo, open_decoder};
+#[cfg(not(windows))]
 use osg_encode::{FrameBuffer, PixelLayout, VideoEncoder, open_encoder};
+#[cfg(windows)]
+use osg_gpu_video::GpuVideoPipeline;
 use osg_render::RenderRequest;
 use osg_scene::scene::ResolvedFace;
 use osg_scene::{ExactTime, FrameTimeline};
@@ -29,6 +32,7 @@ use osg_scene::{ExactTime, FrameTimeline};
 use crate::cancel::ExportCancel;
 use crate::convert::{ExportPlan, check_canvas_background};
 use crate::error::ExportError;
+#[cfg(not(windows))]
 use crate::frames::FrameRenderer;
 use crate::media::AudioRuntime;
 use crate::progress::{ProgressReporter, ProgressSink};
@@ -178,52 +182,100 @@ pub fn run_export(
 
     let plan = plan_against_source(request, source, text.face())?;
     let subtitles = plan.compose(text)?;
-    let mut renderer = FrameRenderer::open(&plan, subtitles, source)?;
     let mut audio = AudioRuntime::open(&plan, source, narration)?;
-
-    let mut encoder = open_encoder(output, plan.encoder_config(audio.is_some()))?;
     let frame_count = plan.frame_count();
     let mut reporter = ProgressReporter::new(progress, frame_count);
 
-    for index in 0..frame_count {
-        if cancel.is_cancelled() {
-            return abandon(&mut renderer, encoder.as_mut());
-        }
-        let frame = renderer.frame(index)?;
-        if cancel.is_cancelled() {
-            return abandon(&mut renderer, encoder.as_mut());
-        }
-        let buffer = FrameBuffer::new(
-            frame.pixels(),
-            plan.width(),
-            plan.height(),
-            PixelLayout::Rgba8,
+    #[cfg(windows)]
+    {
+        let mut pipeline = GpuVideoPipeline::open(
+            source,
+            output,
+            DecoderConfig::new(plan.source_timeline()),
+            plan.encoder_config(audio.is_some()),
+            subtitles,
+            plan.crop(),
         )?;
-        encoder.write_frame(index, &buffer)?;
-        if let Some(audio) = audio.as_mut() {
-            audio.pump(encoder.as_mut(), audio_boundary(&plan, index + 1)?)?;
+
+        for index in 0..frame_count {
+            if cancel.is_cancelled() {
+                pipeline.cancel()?;
+                return Err(ExportError::Cancelled);
+            }
+            pipeline.write_frame_cancellable(index, || cancel.is_cancelled())?;
+            if cancel.is_cancelled() {
+                pipeline.cancel()?;
+                return Err(ExportError::Cancelled);
+            }
+            if let Some(audio) = audio.as_mut() {
+                audio.pump_gpu(&pipeline, audio_boundary(&plan, index + 1)?, &cancel)?;
+            }
+            reporter.frames(index + 1);
         }
-        reporter.frames(index + 1);
+
+        if let Some(audio) = audio.as_mut() {
+            audio.pump_gpu(&pipeline, u64::MAX, &cancel)?;
+        }
+        reporter.finalizing();
+        let outcome = pipeline.finalize()?;
+        let stats = audio.as_ref().map(AudioRuntime::stats);
+        Ok(ExportSummary {
+            frames: outcome.frames_written(),
+            width: plan.width(),
+            height: plan.height(),
+            audio_samples: audio.as_ref().map_or(0, AudioRuntime::written),
+            clipped_samples: stats.map_or(0, MixStats::clipped_samples),
+            audio_peak: stats.map_or(0.0, MixStats::peak),
+            file_bytes: outcome.file_bytes(),
+            duration_100ns: outcome.duration_100ns(),
+        })
     }
 
-    if let Some(audio) = audio.as_mut() {
-        audio.pump(encoder.as_mut(), u64::MAX)?;
-    }
-    reporter.finalizing();
-    renderer.close();
+    #[cfg(not(windows))]
+    {
+        let mut renderer = FrameRenderer::open(&plan, subtitles, source)?;
+        let mut encoder = open_encoder(output, plan.encoder_config(audio.is_some()))?;
 
-    let outcome = encoder.finalize()?;
-    let stats = audio.as_ref().map(AudioRuntime::stats);
-    Ok(ExportSummary {
-        frames: outcome.frames_written(),
-        width: plan.width(),
-        height: plan.height(),
-        audio_samples: audio.as_ref().map_or(0, AudioRuntime::written),
-        clipped_samples: stats.map_or(0, MixStats::clipped_samples),
-        audio_peak: stats.map_or(0.0, MixStats::peak),
-        file_bytes: outcome.file_bytes(),
-        duration_100ns: outcome.duration_100ns(),
-    })
+        for index in 0..frame_count {
+            if cancel.is_cancelled() {
+                return abandon(&mut renderer, encoder.as_mut());
+            }
+            let frame = renderer.frame(index)?;
+            if cancel.is_cancelled() {
+                return abandon(&mut renderer, encoder.as_mut());
+            }
+            let buffer = FrameBuffer::new(
+                frame.pixels(),
+                plan.width(),
+                plan.height(),
+                PixelLayout::Rgba8,
+            )?;
+            encoder.write_frame(index, &buffer)?;
+            if let Some(audio) = audio.as_mut() {
+                audio.pump(encoder.as_mut(), audio_boundary(&plan, index + 1)?)?;
+            }
+            reporter.frames(index + 1);
+        }
+
+        if let Some(audio) = audio.as_mut() {
+            audio.pump(encoder.as_mut(), u64::MAX)?;
+        }
+        reporter.finalizing();
+        renderer.close();
+
+        let outcome = encoder.finalize()?;
+        let stats = audio.as_ref().map(AudioRuntime::stats);
+        Ok(ExportSummary {
+            frames: outcome.frames_written(),
+            width: plan.width(),
+            height: plan.height(),
+            audio_samples: audio.as_ref().map_or(0, AudioRuntime::written),
+            clipped_samples: stats.map_or(0, MixStats::clipped_samples),
+            audio_peak: stats.map_or(0.0, MixStats::peak),
+            file_bytes: outcome.file_bytes(),
+            duration_100ns: outcome.duration_100ns(),
+        })
+    }
 }
 
 /// Validates a request against what the source file really is, then converts it.
@@ -259,6 +311,7 @@ fn audio_boundary(plan: &ExportPlan, index: u32) -> Result<u64, ExportError> {
 }
 
 /// Stops the export, releases the source and removes the partial container.
+#[cfg(not(windows))]
 fn abandon(
     renderer: &mut FrameRenderer,
     encoder: &mut dyn VideoEncoder,

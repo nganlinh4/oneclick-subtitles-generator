@@ -19,7 +19,7 @@ use wgpu::{
 };
 
 use crate::blur::{BlurRequest, SeparableBlur};
-use crate::crop::CanvasBackground;
+use crate::crop::{CanvasBackground, Crop};
 use crate::pass::{
     RENDER_FORMAT, fullscreen_draw, fullscreen_pipeline, linear_clamp_sampler, render_target,
     sampler_entry, texture_entry, uniform_buffer, uniform_entry,
@@ -112,19 +112,51 @@ impl UnderlayPipeline {
         let source = upload_source(device, queue, underlay.source());
         let source_view = source.create_view(&TextureViewDescriptor::default());
 
+        self.prepare_texture(
+            device,
+            queue,
+            blur,
+            &source_view,
+            underlay.source().size(),
+            underlay.crop(),
+            size,
+        )
+    }
+
+    /// Binds a source that is already resident on this wgpu device.
+    ///
+    /// This is the zero-copy compositor seam. The caller owns synchronization with whichever API
+    /// produced the texture; from this point onward the exact same crop, backfill and subtitle
+    /// passes used by the host-memory path are applied.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the resident texture seam mirrors the full underlay request without owning it"
+    )]
+    pub(crate) fn prepare_texture(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        blur: &SeparableBlur,
+        source_view: &TextureView,
+        source_size: FrameSize,
+        crop: Crop,
+        size: FrameSize,
+    ) -> BindGroup {
         let mut keep = Vec::new();
-        let backfill_view = match underlay.crop().background() {
+        let backfill_view = match crop.background() {
             CanvasBackground::Blur { sigma_px } => self.build_backfill(
                 &BlurRequest {
                     device,
                     queue,
                     size,
-                    radius: underlay.crop().blur_radius_px(),
+                    radius: crop.blur_radius_px(),
                     sigma_px,
                 },
                 blur,
-                &source_view,
-                (underlay, &mut keep),
+                source_view,
+                source_size,
+                crop,
+                &mut keep,
             ),
             CanvasBackground::Transparent | CanvasBackground::Solid(_) => {
                 let placeholder = placeholder_texture(device, queue);
@@ -138,7 +170,7 @@ impl UnderlayPipeline {
             device,
             queue,
             "osg-compositor underlay uniforms",
-            &composite_uniforms(underlay.crop()),
+            &composite_uniforms(crop),
         );
 
         device.create_bind_group(&BindGroupDescriptor {
@@ -151,7 +183,7 @@ impl UnderlayPipeline {
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::TextureView(&source_view),
+                    resource: BindingResource::TextureView(source_view),
                 },
                 BindGroupEntry {
                     binding: 2,
@@ -171,9 +203,10 @@ impl UnderlayPipeline {
         request: &BlurRequest<'_>,
         blur: &SeparableBlur,
         source_view: &TextureView,
-        underlay: (&VideoUnderlay, &mut Vec<Texture>),
+        source_size: FrameSize,
+        crop: Crop,
+        keep: &mut Vec<Texture>,
     ) -> TextureView {
-        let (underlay, keep) = underlay;
         let device = request.device;
         let cover_target = render_target(device, request.size, "osg-compositor backfill");
         let cover_view = cover_target.create_view(&TextureViewDescriptor::default());
@@ -181,7 +214,7 @@ impl UnderlayPipeline {
             device,
             request.queue,
             "osg-compositor backfill cover uniforms",
-            &cover_uniforms(underlay.source(), underlay.crop(), request.size),
+            &cover_uniforms(source_size, crop, request.size),
         );
         let cover_bind = self.bind_cover(device, &cover_uniforms, source_view);
 

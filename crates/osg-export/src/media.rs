@@ -16,8 +16,13 @@
 use std::path::Path;
 
 use osg_audio::{AudioDecoder, AudioError, AudioSource, MixPlan, MixStats, Mixer};
-use osg_encode::{AudioBlock, AudioConfig, ChannelCount, SampleRate, VideoEncoder};
+#[cfg(not(windows))]
+use osg_encode::VideoEncoder;
+use osg_encode::{AudioBlock, AudioConfig, ChannelCount, SampleRate};
+#[cfg(windows)]
+use osg_gpu_video::GpuVideoPipeline;
 
+use crate::cancel::ExportCancel;
 use crate::convert::ExportPlan;
 use crate::error::ExportError;
 
@@ -87,6 +92,7 @@ impl AudioRuntime {
     /// Writes blocks until the mix has reached sample frame `through`, or until it is exhausted.
     ///
     /// `u64::MAX` drains the rest of the mix, which is what the end of the video loop asks for.
+    #[cfg(not(windows))]
     pub(crate) fn pump(
         &mut self,
         encoder: &mut dyn VideoEncoder,
@@ -99,6 +105,28 @@ impl AudioRuntime {
             let block = AudioBlock::new(block, self.config)?;
             let frames = block.frame_count();
             encoder.write_audio(self.written, &block)?;
+            self.written = self.written.saturating_add(frames);
+        }
+        Ok(())
+    }
+
+    /// Queues owned blocks on the dedicated GPU encode worker.
+    #[cfg(windows)]
+    pub(crate) fn pump_gpu(
+        &mut self,
+        pipeline: &GpuVideoPipeline,
+        through: u64,
+        cancel: &ExportCancel,
+    ) -> Result<(), ExportError> {
+        while self.written < through {
+            let Some(block) = self.mixer.next_block()? else {
+                break;
+            };
+            let block = AudioBlock::new(block, self.config)?;
+            let frames = block.frame_count();
+            pipeline.write_audio_cancellable(self.written, &block, self.config, || {
+                cancel.is_cancelled()
+            })?;
             self.written = self.written.saturating_add(frames);
         }
         Ok(())

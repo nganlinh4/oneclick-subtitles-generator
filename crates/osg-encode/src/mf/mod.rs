@@ -13,9 +13,11 @@
 
 mod inspect;
 mod media_type;
-mod platform;
+pub(crate) mod platform;
 mod sample;
 mod writer;
 
-pub use inspect::{VideoMediaTypeReadback, read_back_video_media_types};
+pub use inspect::{
+    VideoMediaTypeReadback, read_back_gpu_video_media_types, read_back_video_media_types,
+};
 pub(crate) use writer::MediaFoundationEncoder;

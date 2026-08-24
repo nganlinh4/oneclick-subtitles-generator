@@ -89,6 +89,14 @@ impl SourceSample {
         self.duration_100ns
     }
 
+    /// The GPU-resident Media Foundation sample.
+    ///
+    /// Kept crate-private: callers receive the typed DXGI surface wrapper instead of being able to
+    /// detach the COM sample from the texture whose allocator lifetime it owns.
+    pub(crate) fn interface(&self) -> &IMFSample {
+        &self.sample
+    }
+
     /// Locks the sample's memory for reading.
     ///
     /// `fallback_stride` is used only when the platform hands back a buffer that cannot describe

@@ -12,6 +12,7 @@ osg-audio = { path = "../osg-audio" }
 osg-compositor = { path = "../osg-compositor" }
 osg-decode = { path = "../osg-decode" }
 osg-encode = { path = "../osg-encode" }
+osg-gpu-video = { path = "../osg-gpu-video" }
 osg-render = { path = "../osg-render" }
 osg-scene = { path = "../osg-scene" }
 thiserror = "=2.0.20"

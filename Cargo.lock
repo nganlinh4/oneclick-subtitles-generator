@@ -3635,6 +3635,7 @@ dependencies = [
  "osg-decode",
  "osg-domain",
  "osg-encode",
+ "osg-gpu-video",
  "osg-render",
  "osg-scene",
  "serde_json",
@@ -3664,6 +3665,19 @@ dependencies = [
  "tokio-util",
  "url",
  "wiremock",
+]
+
+[[package]]
+name = "osg-gpu-video"
+version = "1.0.0"
+dependencies = [
+ "osg-compositor",
+ "osg-decode",
+ "osg-encode",
+ "osg-scene",
+ "thiserror 2.0.20",
+ "wgpu",
+ "windows 0.62.2",
 ]
 
 [[package]]
