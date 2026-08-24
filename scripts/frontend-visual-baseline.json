@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "60b6741b19e2918e3206b60235997632a17eb54e",
+  "baselineRevision": "5953b6559d3a3faecf8459f1cef133284e691c2c",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8303,10 +8303,10 @@
       ]
     },
     "src/components/lyrics/VolumeVisualizer.js": {
-      "hash": "a43a8d75b4315cf80078ff9e3ffa8b68e57268c4b4a7864b033d6a1e95d08e68",
+      "hash": "f09177568230ebcf439dff3057344500ec6ba01e4305cc3c521296488faf5d32",
       "rootCount": 1,
       "roots": [
-        "4dc40e8d8bfc63d4d490cf768ec39b8a6d1543be0ea388d3a9c2c24909f68fd9"
+        "f29c79289bed801b9e94f9d4a5d33b79c9640caa129244372b8b364b6edf3485"
       ]
     },
     "src/components/LyricsDisplay.js": {
