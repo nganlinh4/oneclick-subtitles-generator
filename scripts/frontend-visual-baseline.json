@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "680194201762c0669ada6df05a2bf142140ea835",
+  "baselineRevision": "60b6741b19e2918e3206b60235997632a17eb54e",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -228,7 +228,7 @@
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
     "src/styles/VideoPreview.css": "dfdd169731a6f2d82764b2941a523a6b2f9c11658d60c92535e3bd10f371399f",
     "src/styles/VideoPreviewPanel.css": "4c0259677b0c64d0fc9a0c65e377075502caf79383dd3765658f429d0b3531dd",
-    "src/styles/VideoProcessingOptionsModal.css": "75c66b2ee9361b7f88583960b6f63a904791850c8df3c49b2cbaea73e7b0a492",
+    "src/styles/VideoProcessingOptionsModal.css": "3d6561f823aac732464fd823667228bd6831002a358c2fbf3587e7f0b4bf04b3",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
     "src/styles/VideoRenderingControls.css": "90945973be9b4d58451c32d2844b92973fa945daeef4236bf987c0cbb13cb15e",
     "src/styles/VideoRenderingSection.css": "a1f1391087f9576bd385ed38246a0dbe79303272ce3b9ff1e27ca425f0072f52",
@@ -752,7 +752,7 @@
       ]
     },
     "src/i18n/locales/en/narration.json": {
-      "hash": "460f4ba5a47e2f0907cbe65947102b74fb29b0982606cdfcc5241066269bc3a9",
+      "hash": "b87eafce62ec75472a83c31dec8e6ffdaae1c6cfbfd6cf10d12b2bdc4df1ada5",
       "keys": [
         "advancedSettings",
         "advancedSettingsToggle",
@@ -984,6 +984,7 @@
         "outputFormat",
         "pause",
         "pending",
+        "persistenceError",
         "play",
         "playbackError",
         "playing",
@@ -1009,6 +1010,7 @@
         "regenerateAligned",
         "removeSilence",
         "removeSilenceDesc",
+        "restoreError",
         "results",
         "retryComplete",
         "retryError",
@@ -3115,7 +3117,7 @@
       ]
     },
     "src/i18n/locales/ko/narration.json": {
-      "hash": "562d83c3f2aaa4ca16ad80f464a238897111b9f0898c78cd8009460646d76ba5",
+      "hash": "ba0e951cb994e1b2a773dbe35129180f97a959e887cee2245fb26406920c1e47",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -3393,6 +3395,7 @@
         "outputFormat",
         "pause",
         "pending",
+        "persistenceError",
         "play",
         "playbackError",
         "playbackTitle",
@@ -3422,6 +3425,7 @@
         "regenerateAligned",
         "removeSilence",
         "removeSilenceDesc",
+        "restoreError",
         "results",
         "retry",
         "retryAllError",
@@ -5762,7 +5766,7 @@
       ]
     },
     "src/i18n/locales/vi/narration.json": {
-      "hash": "03f21961c059c3e438d250f1b45c286c4b01b3d598a6a221a3fafebf1c3671d5",
+      "hash": "d2c585ce0c1b4d90c62f9d9917bece3ef88eb245a84423fd7b1a0f037f646e03",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -6043,6 +6047,7 @@
         "outputFormat",
         "pause",
         "pending",
+        "persistenceError",
         "play",
         "playbackError",
         "playbackTitle",
@@ -6072,6 +6077,7 @@
         "regenerateAligned",
         "removeSilence",
         "removeSilenceDesc",
+        "restoreError",
         "results",
         "retry",
         "retryAllError",
