@@ -12,6 +12,12 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'canvas-playback-performance';
 const SAMPLE_MS = 6_000;
+// Stay clear of authored cue edges and their fades. Between 3.0s and 3.5s the source intentionally
+// has no subtitle, so that interval must not be mistaken for a blink.
+const EXPECTED_CUE_WINDOWS = Object.freeze([
+  Object.freeze({ start: 0.75, end: 2.75, cue: '0' }),
+  Object.freeze({ start: 3.75, end: 6.75, cue: '1' }),
+]);
 
 describe('continuous subtitle preview playback', () => {
   it('tracks real source frames without long tasks or runaway heap growth', async () => {
@@ -20,7 +26,7 @@ describe('continuous subtitle preview playback', () => {
     await seekPreviewTo(0.8);
     await waitForCanvasSubtitleFrame(30_000);
 
-    const started = await browser.execute(async () => {
+    const started = await browser.execute(async (expectedCueWindows) => {
       const video = document.querySelector('.video-preview video.video-player');
       const canvas = document.querySelector(
         '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
@@ -35,6 +41,8 @@ describe('continuous subtitle preview playback', () => {
         revisionStartedAt: Number(canvas.dataset.osgFrameRevision ?? 0),
         overlayRebuildsStartedAt: Number(canvas.dataset.osgOverlayRebuilds ?? 0),
         heapStartedAt: Number(performance.memory?.usedJSHeapSize ?? Number.NaN),
+        cueSamples: 0,
+        cueGaps: [],
       };
       if (typeof PerformanceObserver === 'function'
           && PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
@@ -46,6 +54,23 @@ describe('continuous subtitle preview playback', () => {
       const tick = () => {
         if (!sample.active) return;
         sample.animationFrames += 1;
+        const expected = expectedCueWindows.find(
+          ({ start, end }) => video.currentTime >= start && video.currentTime <= end,
+        );
+        if (expected !== undefined) {
+          sample.cueSamples += 1;
+          const cue = canvas.dataset.osgCueIndex ?? '';
+          if (cue !== expected.cue && sample.cueGaps.length < 20) {
+            sample.cueGaps.push({
+              mediaTime: video.currentTime,
+              expectedCue: expected.cue,
+              publishedCue: cue,
+              revision: canvas.dataset.osgFrameRevision ?? null,
+              previewState: document.querySelector('[data-osg-preview]')
+                ?.getAttribute('data-osg-preview') ?? null,
+            });
+          }
+        }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -56,7 +81,7 @@ describe('continuous subtitle preview playback', () => {
         mediaTime: video.currentTime,
         revision: sample.revisionStartedAt,
       };
-    });
+    }, EXPECTED_CUE_WINDOWS);
 
     await browser.pause(SAMPLE_MS);
 
@@ -87,6 +112,8 @@ describe('continuous subtitle preview playback', () => {
         heapGrowthBytes: Number.isFinite(heapNow) && Number.isFinite(sample.heapStartedAt)
           ? heapNow - sample.heapStartedAt
           : null,
+        cueSamples: sample.cueSamples,
+        cueGaps: sample.cueGaps,
         canvas: [canvas.width, canvas.height],
         previewState: document.querySelector('[data-osg-preview]')
           ?.getAttribute('data-osg-preview') ?? null,
@@ -106,6 +133,12 @@ describe('continuous subtitle preview playback', () => {
     assert.ok(
       result.overlayRebuilds <= 4,
       `static subtitle paint was repeatedly rebuilt during playback: ${JSON.stringify(result)}`,
+    );
+    assert.ok(result.cueSamples >= 90, `too few active-cue presentation samples: ${JSON.stringify(result)}`);
+    assert.deepEqual(
+      result.cueGaps,
+      [],
+      `the main preview published a frame without its active subtitle: ${JSON.stringify(result)}`,
     );
     if (result.heapGrowthBytes !== null) {
       assert.ok(

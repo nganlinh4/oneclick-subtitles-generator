@@ -219,18 +219,37 @@ describe('a customer exports the subtitled video they previewed', () => {
             text: (node.innerText || '').trim().slice(0, 1_000),
           })),
         toasts: [...document.querySelectorAll('.toast-item.live .toast')]
-          .map((node) => (node.innerText || '').trim()).filter(Boolean),
+          .map((node) => ({
+            className: node.className,
+            text: (node.innerText || '').trim(),
+          })).filter(({ text }) => Boolean(text)),
         alerts: [...document.querySelectorAll('.error, [role="alert"]')]
           .map((node) => (node.innerText || '').trim()).filter(Boolean).slice(0, 8),
         admission: document.querySelector('[data-osg-render-admission]')?.getAttribute(
           'data-osg-render-admission',
         ) ?? null,
+        inlineStatus: document.querySelector('.render-admission-status, .rendering-overlay')
+          ?.innerText?.trim() ?? null,
       }));
     assert.ok(
       admission.queue.length > 0 || admission.toasts.length > 0,
       `Render produced no job and no refusal: ${JSON.stringify(admission)}`,
     );
-    assert.deepEqual(admission.toasts, [], `Render was refused before admission: ${JSON.stringify(admission)}`);
+    assert.equal(
+      admission.toasts.some(({ className }) => /toast-(?:error|warning)/.test(className)),
+      false,
+      `Render was refused before admission: ${JSON.stringify(admission)}`,
+    );
+    assert.equal(
+      admission.toasts.some(({ className }) => /(?:^|\s)toast-info(?:\s|$)/.test(className)),
+      true,
+      `render progress did not move to a toast: ${JSON.stringify(admission)}`,
+    );
+    assert.equal(
+      admission.inlineStatus,
+      null,
+      `render progress leaked back into the video layout: ${JSON.stringify(admission)}`,
+    );
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '03-render-admitted',

@@ -35,6 +35,8 @@ import useVideoSeekControls from '../../hooks/useVideoSeekControls';
 import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../services/fontCapability';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 
+const ACTIVE_RENDER_TOAST_DURATION_MS = 24 * 60 * 60 * 1000;
+
 const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo }) => {
   const { t } = useTranslation();
   const narrationState = useProjectNarrationState();
@@ -335,6 +337,21 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     window.addToast?.(error, 'error', 8000, 'video-source-error');
   }, [error]);
 
+  const renderToastProgress = Math.min(100, Math.max(0, Math.floor(renderProgress * 10) * 10));
+  useEffect(() => {
+    const key = 'preview-video-render-status';
+    if (!isRenderingVideo) {
+      window.removeToastByKey?.(key);
+      return;
+    }
+    window.addToast?.(
+      `${t('videoPreview.rendering', 'Rendering video with subtitles...')} (${renderToastProgress}%)`,
+      'info',
+      ACTIVE_RENDER_TOAST_DURATION_MS,
+      key,
+    );
+  }, [isRenderingVideo, renderToastProgress, t]);
+
   /**
    * One bounded word for what the subtitle preview is doing, published on the surface itself.
    *
@@ -409,17 +426,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
           setVolume={setVolume}
         />
       </div>
-
-      {isRenderingVideo && (
-        <div className="rendering-overlay">
-          <div className="rendering-progress">
-            <div className="progress-bar" style={{ width: `${renderProgress * 100}%` }}></div>
-          </div>
-          <div className="rendering-text">
-            {t('videoPreview.rendering', 'Rendering video with subtitles...')} ({Math.round(renderProgress * 100)}%)
-          </div>
-        </div>
-      )}
 
       <div
         className="video-container"

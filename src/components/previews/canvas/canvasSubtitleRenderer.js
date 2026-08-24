@@ -351,15 +351,21 @@ export const createAtlasCanvas = (atlas) => {
 };
 
 export const createCanvasSubtitleRenderer = (canvas) => {
-  const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
+  // The visible canvas is a presentation surface, not a work surface. A desynchronised context may
+  // expose the intermediate video-only paint before the subtitle pass completes, which looks like
+  // the subtitle blinking even though the cue and atlas never changed.
+  const context = canvas.getContext('2d', { alpha: false });
   if (context === null) throw new Error('canvasPreviewUnavailable');
+  const frame = document.createElement('canvas');
   const mask = document.createElement('canvas');
   const scratch = document.createElement('canvas');
   const staticOverlay = document.createElement('canvas');
+  const frameContext = frame.getContext('2d', { alpha: false });
   const maskContext = mask.getContext('2d', { alpha: true });
   const scratchContext = scratch.getContext('2d', { alpha: true });
   const staticOverlayContext = staticOverlay.getContext('2d', { alpha: true });
-  if (maskContext === null || scratchContext === null || staticOverlayContext === null) {
+  if (frameContext === null || maskContext === null || scratchContext === null
+      || staticOverlayContext === null) {
     throw new Error('canvasPreviewUnavailable');
   }
   let staticState = null;
@@ -390,15 +396,16 @@ export const createCanvasSubtitleRenderer = (canvas) => {
       const width = canvas.width;
       const height = canvas.height;
       if (width <= 0 || height <= 0) return null;
+      resizeWorkCanvas(frame, width, height);
       resizeWorkCanvas(mask, width, height);
       resizeWorkCanvas(scratch, width, height);
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.globalAlpha = 1;
-      context.filter = 'none';
-      context.fillStyle = '#000';
-      context.fillRect(0, 0, width, height);
+      frameContext.setTransform(1, 0, 0, 1, 0, 0);
+      frameContext.globalAlpha = 1;
+      frameContext.filter = 'none';
+      frameContext.fillStyle = '#000';
+      frameContext.fillRect(0, 0, width, height);
       const viewport = fitContain(width, height, composition.width, composition.height);
-      const videoReady = drawVideoUnderlay(context, video, viewport, crop);
+      const videoReady = drawVideoUnderlay(frameContext, video, viewport, crop);
       let overlayRebuilt = false;
       if (atlasEntry !== null && active !== null) {
         const args = {
@@ -431,11 +438,17 @@ export const createCanvasSubtitleRenderer = (canvas) => {
             };
             overlayRebuilt = true;
           }
-          context.drawImage(staticOverlay, 0, 0);
+          frameContext.drawImage(staticOverlay, 0, 0);
         } else {
-          paintSubtitle({ context, ...args });
+          paintSubtitle({ context: frameContext, ...args });
         }
       }
+      // One visible-canvas operation publishes the complete video + subtitle frame. The browser
+      // can no longer present the interval between clearing the prior frame and painting text.
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalAlpha = 1;
+      context.filter = 'none';
+      context.drawImage(frame, 0, 0);
       return { drewVideo: videoReady, viewport, overlayRebuilt };
     },
   });

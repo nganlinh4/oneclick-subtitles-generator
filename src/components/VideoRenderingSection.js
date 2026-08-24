@@ -40,6 +40,7 @@ try {
   DEBUG_LOGS = false;
 }
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+const ACTIVE_RENDER_TOAST_DURATION_MS = 24 * 60 * 60 * 1000;
 
 const VideoRenderingSection = ({
   selectedVideo,
@@ -56,12 +57,23 @@ const VideoRenderingSection = ({
   const [, setRenderProgress] = useState(0);
   const [renderStatus, setRenderStatus] = useState('');
   const [, setRenderedVideoUrl] = useState('');
-  const [error, setError] = useState('');
-  const [renderAdmissionStage, setRenderAdmissionStage] = useState('idle');
+  const [, setError] = useState('');
+  const [, setRenderAdmissionStage] = useState('idle');
   const [currentRenderId, setCurrentRenderId] = useState(null);
   const [abortController, setAbortController] = useState(null);
   const abortControllerRef = useRef(null);
   const activeNativeRenderIdRef = useRef(null);
+
+  useEffect(() => {
+    const key = 'native-video-render-status';
+    if (!isRendering || !renderStatus) {
+      window.removeToastByKey?.(key);
+      return;
+    }
+    // The keyed toast is explicitly removed when the render stops. Give it a long timer so a
+    // slow render cannot silently lose its only progress surface between phase changes.
+    window.addToast?.(renderStatus, 'info', ACTIVE_RENDER_TOAST_DURATION_MS, key);
+  }, [isRendering, renderStatus]);
 
   // Ref for the native render preview's player surface
   const videoPlayerRef = useRef(null);
@@ -96,6 +108,14 @@ const VideoRenderingSection = ({
     updateScene: updateProjectRenderScene,
     flushScene: flushProjectRenderScene,
   } = useProjectRenderScene();
+  useEffect(() => {
+    const key = 'native-render-scene-error';
+    if (!renderSceneError) {
+      window.removeToastByKey?.(key);
+      return;
+    }
+    window.addToast?.(renderSceneError.message, 'error', 8000, key);
+  }, [renderSceneError]);
   const fallbackScene = defaultProjectRenderSceneValues();
   const sceneValues = projectRenderScene ?? fallbackScene;
   const {
@@ -599,19 +619,7 @@ const VideoRenderingSection = ({
             {t('videoRendering.helperMessage', 'Configure video rendering settings and generate your final video with subtitles and narration')}
           </p>
         </div>
-      ) : renderSceneStatus !== 'ready' ? (
-        <div
-          className={`render-admission-status ${renderSceneError ? 'error' : ''}`}
-          data-osg-render-scene={renderSceneStatus}
-          role={renderSceneError ? 'alert' : 'status'}
-          aria-live="polite"
-        >
-          {renderSceneError?.message || t(
-            'videoRendering.loadingProjectScene',
-            'Loading this project’s render settings…',
-          )}
-        </div>
-      ) : (
+      ) : renderSceneStatus !== 'ready' ? null : (
         /* Expanded content */
         <div className="video-rendering-content">
           {/* First row: Video Input, Subtitle Source, and Narration Audio in one line */}
@@ -672,17 +680,6 @@ const VideoRenderingSection = ({
             onRender={handleRender}
             onCancelRender={handleCancelRender}
           />
-
-          {renderAdmissionStage !== 'idle' && !error && (
-            <div
-              className="render-admission-status"
-              data-osg-render-admission={renderAdmissionStage}
-              role="status"
-              aria-live="polite"
-            >
-              {renderStatus}
-            </div>
-          )}
 
           {/* Rendered videos are now accessible through the queue items */}
 

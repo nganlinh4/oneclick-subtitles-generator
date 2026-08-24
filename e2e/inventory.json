@@ -9,7 +9,7 @@
     "status: green (passing), red (written and failing for a recorded product reason), planned.",
     "A red entry is not a gap in coverage -- it is coverage that has found something."
   ],
-  "updated": "2026-08-22",
+  "updated": "2026-08-24",
   "binary": {
     "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
@@ -278,12 +278,13 @@
       "oracles": [
         "the real video clock advances at least five seconds during a six-second sample",
         "the persistent composition canvas publishes substantially more frames than the deleted 10 fps PNG transport",
+        "every presentation sample strictly inside an authored cue retains that cue on the main preview canvas",
         "PerformanceObserver records no blocking task and the JavaScript heap does not grow without bound",
         "an ordered screenshot and machine-readable sample are retained under target/workflow-evidence"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "The rebuilt real binary advanced 6.005 seconds during a 6.046-second sample, published 114 compositor frames and 602 animation frames from the real 15 fps video, rebuilt the static subtitle overlay once, recorded zero long tasks, and ended with 2.68 MB less JavaScript heap than it started with."
+      "note": "The rebuilt real binary advanced 6.032 seconds during a 6.073-second sample, published 115 compositor frames and 603 animation frames from the real 15 fps video, retained the expected subtitle in all 495 active-cue samples, rebuilt the static overlay once, recorded zero long tasks, and grew the JavaScript heap by 4.09 MB. The visible canvas is now presentation-only: each revision arrives as one complete video-plus-subtitle paint from a back buffer."
     },
     {
       "name": "nativeExportDecoded",
