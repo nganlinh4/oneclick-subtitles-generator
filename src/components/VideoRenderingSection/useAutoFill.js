@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isNativeMediaDescriptor } from '../../platform/mediaService';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
@@ -50,12 +51,16 @@ export const useAutoFill = ({
         }
       }
 
-      // Auto-fill video - prioritize videoFile from quality modal, then actual video URL
+      // Auto-fill video from identity-bearing values first. `actualVideoUrl` is only a playback
+      // transport and is published asynchronously by the player; it cannot be the condition for a
+      // native asset appearing in export. Keeping the descriptor also lets the preview and render
+      // admission prove that they refer to the same project-owned bytes.
       if (autoFillData.videoFile) {
-        // Use the video file selected from the quality modal
         setSelectedVideoFile(autoFillData.videoFile);
+      } else if (isNativeMediaDescriptor(uploadedFile)) {
+        setSelectedVideoFile(uploadedFile);
       } else if (actualVideoUrl) {
-        // Create a video file object that represents the actual playing video
+        // Browser compatibility only: browser builds have no native media descriptor.
         setSelectedVideoFile({
           url: actualVideoUrl,
           name: uploadedFile?.name || selectedVideo?.title || 'Current Video',

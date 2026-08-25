@@ -254,17 +254,21 @@ const AppLayout = ({
         infoForModal.url);
       const showVersionOption = Array.isArray(availableVersions) && availableVersions.length > 0;
 
-      // If there would be only the "current" option, skip the modal and auto-scroll to rendering
+      // If there would be only the "current" option, skip the modal and carry the native media
+      // descriptor into rendering. Passing null here used to make the export panel reconstruct a
+      // browser-era `{ url }` wrapper from an asynchronously published playback URL. A downloaded
+      // video could therefore be active, playable and project-owned while Render opened an empty
+      // panel when that URL notification had not arrived (or had just been reset).
       if (!showRedownloadOption && !showVersionOption) {
-        proceedWithVideoRendering(null, true); // will expand + scroll (source set to 'video-quality-modal')
+        proceedWithVideoRendering(uploadedFile, true);
         return;
       }
 
       // Otherwise, show the quality modal
       setShowVideoQualityModal(true);
     } else {
-      // Fallback to original behavior if no video info - no auto-scroll for fallback
-      proceedWithVideoRendering(null, false);
+      // Preserve the selected native descriptor even while optional video metadata is loading.
+      proceedWithVideoRendering(uploadedFile, false);
     }
   };
 
