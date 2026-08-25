@@ -86,6 +86,40 @@ describe('native render-tab preview', () => {
     expect(video.muted).toBe(true);
   });
 
+  it('holds the last complete canvas frame until a seek has decoded its replacement', () => {
+    const onSeek = vi.fn();
+    const { video } = mount({ onSeek });
+    Object.defineProperty(video, 'duration', { value: 12, configurable: true });
+    fireEvent.loadedMetadata(video);
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Seek video' }), {
+      target: { value: '6' },
+    });
+    expect(video.currentTime).toBe(6);
+    expect(captured.props.currentTime).toBe(6);
+    expect(captured.props.seeking).toBe(true);
+    expect(onSeek).toHaveBeenCalledTimes(1);
+
+    fireEvent.seeking(video);
+    expect(captured.props.seeking).toBe(true);
+    fireEvent.seeked(video);
+    expect(captured.props.seeking).toBe(false);
+    expect(captured.props.currentTime).toBe(6);
+    expect(onSeek).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not enter a seek hold when the requested frame is already current', () => {
+    const onSeek = vi.fn();
+    const { ref, video } = mount({ onSeek, frameRate: 25 });
+    video.currentTime = 2;
+
+    act(() => ref.current.seekTo(50));
+
+    expect(captured.props.seeking).toBe(false);
+    expect(captured.props.currentTime).toBe(2);
+    expect(onSeek).toHaveBeenCalledWith(2);
+  });
+
   it('sends compositor refusals to a toast instead of overlaying the picture', async () => {
     const { container } = mount();
     act(() => captured.props.onStateChange({ status: 'error', code: 'canvasPreviewRejected' }));

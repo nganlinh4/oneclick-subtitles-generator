@@ -406,6 +406,10 @@ export const createCanvasSubtitleRenderer = (canvas) => {
       frameContext.fillRect(0, 0, width, height);
       const viewport = fitContain(width, height, composition.width, composition.height);
       const videoReady = drawVideoUnderlay(frameContext, video, viewport, crop);
+      // The work canvas begins black. Publishing it while the decoder is between frames replaces a
+      // valid visible composition with a transient blank one (most visibly during seeks). Leave the
+      // presentation canvas untouched until an entire replacement frame can be composed.
+      if (!videoReady) return { drewVideo: false, viewport, overlayRebuilt: false };
       let overlayRebuilt = false;
       if (atlasEntry !== null && active !== null) {
         const args = {

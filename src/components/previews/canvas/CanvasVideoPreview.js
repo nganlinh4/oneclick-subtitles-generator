@@ -74,6 +74,7 @@ const CanvasVideoPreview = ({
   videoRef,
   sourceKey = null,
   playing = false,
+  seeking = false,
   currentTime = 0,
   customization,
   subtitles,
@@ -139,6 +140,7 @@ const CanvasVideoPreview = ({
   latestRef.current = {
     active,
     playing,
+    seeking,
     currentTime,
     customization,
     cues,
@@ -294,6 +296,11 @@ const CanvasVideoPreview = ({
           publish({ status: 'idle', code: null });
           return;
         }
+        // Seeking invalidates the video's decoded presentation frame before the replacement is
+        // available. Preserve the last atomically published composition instead of exposing an
+        // intermediate old/empty/black frame. `video.seeking` closes the small interval before
+        // React has committed the explicit lifecycle prop.
+        if (snapshot.seeking || video.seeking) return;
         const time = Number.isFinite(video.currentTime) ? video.currentTime : snapshot.currentTime;
         const outsideTrim = time < snapshot.trimStart
           || (snapshot.trimEnd > snapshot.trimStart && time > snapshot.trimEnd);
@@ -386,7 +393,7 @@ const CanvasVideoPreview = ({
   // Paused seeks and externally driven playheads do not produce a video-frame callback.
   useEffect(() => {
     drawRef.current();
-  }, [currentTime]);
+  }, [currentTime, seeking]);
 
   useEffect(() => () => {
     for (const entry of cacheRef.current.values()) {

@@ -100,6 +100,7 @@ const NativeRenderPreview = forwardRef(({
 
   const [source, setSource] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [canvasPreviewState, setCanvasPreviewState] = useState({ status: 'idle', code: null });
   const [currentTime, setCurrentTime] = useState(0);
@@ -112,6 +113,7 @@ const NativeRenderPreview = forwardRef(({
   useEffect(() => {
     const resolved = resolveVideoSource(videoFile);
     setSource(resolved);
+    setIsSeeking(false);
     if (resolved === null) {
       setDuration(0);
       setVideoDimensions(null);
@@ -186,10 +188,27 @@ const NativeRenderPreview = forwardRef(({
     const element = videoRef.current;
     if (!element) return;
     const next = Math.min(Math.max(Number(time) || 0, 0), duration || 0);
+    if (Math.abs(element.currentTime - next) < 0.000_001) {
+      setCurrentTime(next);
+      if (onSeek) onSeek(next);
+      return;
+    }
+    // Keep the last complete composition visible while the media decoder resolves the new
+    // position. Repainting immediately after assigning currentTime can only produce the old frame
+    // or no frame; `seeked` is the first point at which the replacement is safe to publish.
+    setIsSeeking(true);
     element.currentTime = next;
     setCurrentTime(next);
     if (onSeek) onSeek(next);
   }, [duration, onSeek]);
+
+  const handleSeeked = useCallback(() => {
+    const element = videoRef.current;
+    if (!element) return;
+    setCurrentTime(element.currentTime);
+    setIsSeeking(false);
+    syncNarration(!element.paused);
+  }, [syncNarration]);
 
   const toggleMute = useCallback(() => {
     const element = videoRef.current;
@@ -210,7 +229,15 @@ const NativeRenderPreview = forwardRef(({
     seekTo: (frame) => {
       const element = videoRef.current;
       if (!element || !Number.isFinite(frame) || frameRate <= 0) return;
-      element.currentTime = Math.max(frame / frameRate, 0);
+      const next = Math.max(frame / frameRate, 0);
+      if (Math.abs(element.currentTime - next) < 0.000_001) {
+        setCurrentTime(next);
+        if (onSeek) onSeek(next);
+        return;
+      }
+      setIsSeeking(true);
+      element.currentTime = next;
+      setCurrentTime(element.currentTime);
       if (onSeek) onSeek(element.currentTime);
     },
     play: () => videoRef.current?.play().catch(() => undefined),
@@ -282,7 +309,8 @@ const NativeRenderPreview = forwardRef(({
           syncNarration(false);
           if (onPause) onPause();
         }}
-        onSeeked={() => syncNarration(!videoRef.current?.paused)}
+        onSeeking={() => setIsSeeking(true)}
+        onSeeked={handleSeeked}
         style={{
           width: '100%',
           height: '100%',
@@ -298,6 +326,7 @@ const NativeRenderPreview = forwardRef(({
         videoRef={videoRef}
         sourceKey={source?.url ?? null}
         playing={isPlaying}
+        seeking={isSeeking}
         currentTime={currentTime}
         customization={subtitleCustomization}
         subtitles={subtitles}

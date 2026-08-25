@@ -109,6 +109,88 @@ describe('a customer exports the subtitled video they previewed', () => {
       `the subtitle blinked during preset-switched playback: ${JSON.stringify(presetPlayback.samples)}`,
     );
     assert.equal(presetPlayback.fontError, false, 'a built-in preset produced fontUnavailable');
+    // A seek used to publish the compositor's freshly cleared black work canvas twice: once from
+    // the controlled slider update and once from the media event, before the decoder produced the
+    // requested frame. Observe the real presentation surface across the real seeking lifecycle;
+    // it must hold one complete frame and publish only after `seeked`.
+    const seekLifecycle = await browser.execute(async () => {
+      const video = document.querySelector('.video-preview-panel video');
+      const canvas = document.querySelector(
+        '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+      );
+      const slider = document.querySelector('.native-render-controls [data-osg-control="seek"]');
+      if (video === null || canvas === null || slider === null) {
+        throw new Error('the render preview seek surface is incomplete');
+      }
+      video.pause();
+      const beforeRevision = Number(canvas.dataset.osgFrameRevision ?? 0);
+      const target = Math.min(Math.max(video.currentTime + 1, 0.5), Math.max(0.5, video.duration - 0.5));
+      let betweenEvents = false;
+      const publishedDuringSeek = [];
+      let heldPixels = null;
+      const changedPixelsDuringSeek = [];
+      const recordMutations = (records) => {
+        if (betweenEvents || video.seeking) {
+          for (const record of records) {
+            publishedDuringSeek.push({
+              before: Number(record.oldValue ?? 0),
+              after: Number(canvas.dataset.osgFrameRevision ?? 0),
+            });
+          }
+          if (heldPixels !== null && canvas.toDataURL() !== heldPixels) {
+            changedPixelsDuringSeek.push(Number(canvas.dataset.osgFrameRevision ?? 0));
+          }
+        }
+      };
+      const observer = new MutationObserver(recordMutations);
+      observer.observe(canvas, {
+        attributes: true,
+        attributeFilter: ['data-osg-frame-revision'],
+        attributeOldValue: true,
+      });
+      const result = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('the render preview seek never completed')), 15_000);
+        video.addEventListener('seeking', () => {
+          // Discard presentation mutations that happened before the media event but whose observer
+          // callback had not run yet. The pixels captured here are the frame a customer sees while
+          // the decoder works.
+          observer.takeRecords();
+          heldPixels = canvas.toDataURL();
+          betweenEvents = true;
+        }, { once: true });
+        video.addEventListener('seeked', () => {
+          recordMutations(observer.takeRecords());
+          betweenEvents = false;
+          clearTimeout(timeout);
+          resolve({ target, actual: video.currentTime });
+        }, { once: true });
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        valueSetter?.call(slider, String(target));
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        slider.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      observer.disconnect();
+      return { beforeRevision, changedPixelsDuringSeek, publishedDuringSeek, ...result };
+    });
+    assert.deepEqual(
+      seekLifecycle.changedPixelsDuringSeek,
+      [],
+      `the render preview changed visible pixels during seek: ${JSON.stringify(seekLifecycle)}`,
+    );
+    assert.ok(
+      Math.abs(seekLifecycle.actual - seekLifecycle.target) < 0.25,
+      `the render preview did not reach the requested seek position: ${JSON.stringify(seekLifecycle)}`,
+    );
+    await browser.waitUntil(async () => (await browser.execute(() => {
+      const canvas = document.querySelector(
+        '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
+      );
+      return Number(canvas?.dataset.osgFrameRevision ?? 0);
+    })) > seekLifecycle.beforeRevision, {
+      timeout: 30_000,
+      interval: 100,
+      timeoutMsg: 'the render preview did not publish the decoded post-seek frame',
+    });
     // Default styling alone would leave border, glow and text shadow unproved. Neon uses the
     // reviewed Arial face and exercises all three while remaining available on a clean Windows
     // profile; the same selected style flows into both the editor canvas and native export.

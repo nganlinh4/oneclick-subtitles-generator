@@ -78,3 +78,33 @@ it('publishes a complete preview frame with one visible-canvas paint', () => {
     HTMLCanvasElement.prototype.getContext = original;
   }
 });
+
+it('preserves the last visible frame while the video decoder has no replacement', () => {
+  const contexts = new Map();
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = vi.fn(function getContext() {
+    if (!contexts.has(this)) contexts.set(this, contextFor(this));
+    return contexts.get(this);
+  });
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = 540;
+    const renderer = createCanvasSubtitleRenderer(canvas);
+    const result = renderer.draw({
+      video: { videoWidth: 640, videoHeight: 360, readyState: 1 },
+      composition: { width: 640, height: 360 },
+      crop: { x: 0, y: 0, width: 100, height: 100 },
+      atlasEntry: null,
+      customization: null,
+      active: null,
+      cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
+    });
+
+    expect(result.drewVideo).toBe(false);
+    expect(contexts.get(canvas).drawImage).not.toHaveBeenCalled();
+  } finally {
+    HTMLCanvasElement.prototype.getContext = original;
+  }
+});
