@@ -6,7 +6,8 @@
 export const createFullMediaStreamingHandler = (
     setSubtitlesData,
     setStatus,
-    t = (_key, fallback) => fallback
+    t = (_key, fallback) => fallback,
+    { rollbackRows = null, rollbackPublisher = setSubtitlesData } = {},
 ) => {
     let lastUpdate = 0;
     let timer = null;
@@ -48,17 +49,9 @@ export const createFullMediaStreamingHandler = (
     };
 
     handler.cancel = cancelPending;
+    handler.rollback = () => {
+        cancelPending();
+        if (Array.isArray(rollbackRows)) rollbackPublisher(rollbackRows);
+    };
     return handler;
 };
-
-/**
- * Native generation stages rows behind the durable Rust checkpoint. Only progress is presented
- * while provider work is uncommitted; the transaction owner publishes final rows after save.
- */
-export const createStagedFullMediaStreamingHandler = (setStatus, t) => (
-    (streamingSubtitles, isStreaming) => {
-        if (isStreaming && Array.isArray(streamingSubtitles)) {
-            setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
-        }
-    }
-);

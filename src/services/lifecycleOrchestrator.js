@@ -7,6 +7,7 @@ import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
 
 const CHECKPOINT_SOURCES = new Set([
   CHECKPOINT_SOURCE.AUTO_GENERATION_START,
+  CHECKPOINT_SOURCE.GENERATION_START,
   CHECKPOINT_SOURCE.SEGMENT_PROCESSING_START,
   CHECKPOINT_SOURCE.TRANSLATION_START,
   CHECKPOINT_SOURCE.VIDEO_PROCESSING_COMPLETE,
@@ -37,7 +38,7 @@ const nextCheckpointId = () => {
 
 /**
  * Wait for the matching successful save-complete event after publishing save-before-update.
- * @param {{ source: 'auto-generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete', segment?: {start:number,end:number}, signal?: AbortSignal }} payload
+ * @param {{ source: 'auto-generation-start'|'generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete', segment?: {start:number,end:number}, signal?: AbortSignal }} payload
  * @param {number} [timeoutMs=CHECKPOINT_TIMEOUT_MS]
  * @returns {Promise<void>}
  */

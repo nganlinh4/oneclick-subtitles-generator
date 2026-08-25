@@ -30,7 +30,7 @@
 
 /**
  * @typedef {Object} SaveBeforeUpdatePayload
- * @property {('auto-generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete')} source
+ * @property {('auto-generation-start'|'generation-start'|'segment-processing-start'|'translation-start'|'video-processing-complete')} source
  * @property {Segment} [segment]
  * @property {string} [runId]
  * @property {string} [checkpointId]
@@ -67,6 +67,7 @@ export const EVENTS = {
 
 export const CHECKPOINT_SOURCE = Object.freeze({
   AUTO_GENERATION_START: 'auto-generation-start',
+  GENERATION_START: 'generation-start',
   SEGMENT_PROCESSING_START: 'segment-processing-start',
   TRANSLATION_START: 'translation-start',
   VIDEO_PROCESSING_COMPLETE: 'video-processing-complete',

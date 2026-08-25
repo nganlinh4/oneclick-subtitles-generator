@@ -19,7 +19,39 @@ const engineState = async (id) => browser.execute((engineId) => {
  * who installs the multi-gigabyte engine once and then creates many projects.
  */
 export const ensureEngineReady = async (id, { onReady = async () => {} } = {}) => {
+  await browser.execute(() => {
+    window.__OSG_E2E_SETTINGS_ERRORS__ = [];
+    window.addEventListener('error', (event) => {
+      window.__OSG_E2E_SETTINGS_ERRORS__.push(`error:${event.message}`);
+    }, { once: true });
+    window.addEventListener('unhandledrejection', (event) => {
+      window.__OSG_E2E_SETTINGS_ERRORS__.push(`rejection:${String(event.reason)}`);
+    }, { once: true });
+  });
   await clickControl('[data-app-action="open-settings"]');
+  const toolsTab = await $('[data-settings-tab="tools"]');
+  if (!(await toolsTab.waitForExist({ timeout: 5_000 }).catch(() => false))) {
+    // WebDriver's synthesized click is occasionally acknowledged without dispatching through the
+    // WebView. Engine preparation is setup for the journey, so retry once through the DOM's real
+    // click method; the product handler, lazy settings chunk and all native commands remain real.
+    const dispatched = await browser.execute(() => {
+      const control = document.querySelector('[data-app-action="open-settings"]');
+      if (control === null) return false;
+      control.click();
+      return true;
+    });
+    if (!dispatched) throw new Error('the Settings control disappeared during engine preparation');
+  }
+  const opened = await toolsTab.waitForExist({ timeout: 20_000 }).catch(() => false);
+  if (!opened) {
+    const state = await browser.execute(() => ({
+      openCount: localStorage.getItem('settings_open_count'),
+      errors: window.__OSG_E2E_SETTINGS_ERRORS__,
+      modalPresent: document.querySelector('.settings-modal') !== null,
+      bodyTail: (document.body?.innerText || '').trim().slice(-2_000),
+    }));
+    throw new Error(`Settings handler did not produce its modal: ${JSON.stringify(state)}`);
+  }
   await clickControl('[data-settings-tab="tools"]');
 
   const selector = `[data-engine-id="${id}"]`;

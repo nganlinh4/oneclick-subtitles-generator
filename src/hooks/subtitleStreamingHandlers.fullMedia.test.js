@@ -1,7 +1,4 @@
-import {
-  createFullMediaStreamingHandler,
-  createStagedFullMediaStreamingHandler,
-} from './subtitleStreamingHandlers';
+import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -45,12 +42,20 @@ test('cancelling provider work prevents a delayed partial from publishing after 
   expect(setSubtitlesData).toHaveBeenCalledTimes(1);
 });
 
-test('native staging reports progress without publishing uncommitted rows', () => {
+test('native streaming publishes partial rows and restores the durable baseline on failure', () => {
+  const setSubtitlesData = vi.fn();
   const setStatus = vi.fn();
-  const handler = createStagedFullMediaStreamingHandler(
+  const baseline = [{ start: 0, end: 1, text: 'durable' }];
+  const partial = [{ start: 0, end: 1, text: 'partial' }];
+  const handler = createFullMediaStreamingHandler(
+    setSubtitlesData,
     setStatus,
     (_key, fallback) => fallback,
+    { rollbackRows: baseline },
   );
-  handler([{ start: 0, end: 1, text: 'partial' }], true);
+  handler(partial, true);
+  expect(setSubtitlesData).toHaveBeenLastCalledWith(partial);
   expect(setStatus).toHaveBeenCalledWith({ message: 'Streaming...', type: 'loading' });
+  handler.rollback();
+  expect(setSubtitlesData).toHaveBeenLastCalledWith(baseline);
 });

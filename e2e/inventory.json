@@ -312,12 +312,15 @@
       "name": "timelineBoundary",
       "kind": "workflow",
       "file": "journeys/timelineBoundary.journey.js",
-      "capability": "Waveform, seeking, cue reachability and select-all agree at the end of real media.",
+      "capability": "Timeline boundaries agree, delete-all is durable, and a new transcription streams without resurrecting deleted cues.",
       "chain": [
         "open real media through the guarded native file-selection boundary",
         "import one ordinary cue and one ending exactly at the playable boundary",
         "inspect actual waveform canvas pixels against the real video duration",
-        "select through the documented Ctrl+A shortcut and delete through the keyboard"
+        "select through the documented Ctrl+A shortcut and delete through the keyboard",
+        "start the real local ASR engine from the empty durable track",
+        "observe fresh visible cues while the overall generation operation is still active",
+        "wait separately for the same transcribe job to succeed"
       ],
       "oracles": [
         "waveform canvas pixels before and after the calculated seekable boundary",
@@ -327,7 +330,7 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "The journey now owns the stricter product invariant: waveform, pointer selection and Ctrl+A share the real media boundary, and no selectable range may extend into subtitle-only or visual-gutter time. It then deletes every in-bounds cue and verifies SQLite reaches zero."
+      "note": "The journey owns two connected invariants. First, waveform, pointer selection and Ctrl+A share the real media boundary, no selectable range extends into subtitle-only or visual-gutter time, and deleting the selection drives SQLite to zero. Second, generation starts from that empty Rust checkpoint: deleted imported text may never reappear, a MutationObserver must witness newly transcribed rows while the overall generation operation is still active, and those rows must later be durable with a separately observed succeeded job state."
     },
     {
       "name": "asrGeneration",

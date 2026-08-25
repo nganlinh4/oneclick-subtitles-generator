@@ -182,16 +182,19 @@ export const useLyricsSave = ({
 
       // Handle both segment processing start and video processing complete
       const isSegmentStart = event.detail?.source === CHECKPOINT_SOURCE.SEGMENT_PROCESSING_START;
+      const isGenerationStart = event.detail?.source === CHECKPOINT_SOURCE.GENERATION_START;
       const isProcessingComplete = event.detail?.source === CHECKPOINT_SOURCE.VIDEO_PROCESSING_COMPLETE;
       const isAutoGenerationStart = event.detail?.source === CHECKPOINT_SOURCE.AUTO_GENERATION_START;
       const isTranslationStart = event.detail?.source === CHECKPOINT_SOURCE.TRANSLATION_START;
 
-      if (isSegmentStart || isProcessingComplete || isAutoGenerationStart || isTranslationStart) {
+      if (isSegmentStart || isGenerationStart || isProcessingComplete || isAutoGenerationStart || isTranslationStart) {
         const action = isSegmentStart
           ? 'segment processing'
-          : (isAutoGenerationStart
+          : (isGenerationStart
+              ? 'generation'
+              : (isAutoGenerationStart
               ? 'automatic generation'
-              : (isTranslationStart ? 'translation' : 'video processing completion'));
+              : (isTranslationStart ? 'translation' : 'video processing completion')));
 
 
         // Trigger the save function to checkpoint current edits

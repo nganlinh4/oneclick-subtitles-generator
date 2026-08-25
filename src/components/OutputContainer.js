@@ -7,7 +7,6 @@ import LyricsDisplay from './LyricsDisplay';
 import TranslationSection from './translation';
 import { UnifiedNarrationSection } from './narration';
 import ParallelProcessingStatus from './ParallelProcessingStatus';
-import { EVENTS, subscribe } from '../events/bus';
 import { hasValidDownloadedVideo } from '../utils/videoUtils';
 import { useLyricsSave } from '../hooks/useLyricsSave';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
@@ -23,7 +22,6 @@ const OutputContainer = ({
   selectedVideo,
   uploadedFile,
   isDownloading = false,
-  isGenerating,
   segmentsStatus = [],
   activeTab,
   onRetrySegment,
@@ -44,14 +42,12 @@ const OutputContainer = ({
   selectedSegment = null, // Currently selected segment
   isUploading = false, // Whether video is currently uploading
   isProcessingSegment = false, // Whether a segment is being processed
-  onLiveSubtitlesChange = null, // Optional: report live timeline state upstream
   translatedSubtitles = null,
   onTranslatedSubtitlesChange = null,
 }) => {
   const { t } = useTranslation();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [editedLyrics, setEditedLyrics] = useState(null);
   const [seekTime, setSeekTime] = useState(null); // Track when seeking happens
   const [referenceAudio, setReferenceAudio] = useState(null); // Reference audio for narration
   const [renderedSections, setRenderedSections] = useState({ preview: false, translation: false, narration: false }); // Track staggered rendering
@@ -71,67 +67,33 @@ const OutputContainer = ({
   };
 
   const handleUpdateLyrics = (updatedLyrics) => {
-    setEditedLyrics(updatedLyrics);
+    // The app-level subtitle track is the presentation authority as well as the native history
+    // mirror. Keeping a second editedLyrics array here let an empty edit disappear upstream and
+    // later generation merged against the stale downloaded track.
+    setSubtitlesData?.(updatedLyrics);
   };
 
   // Handle saving subtitles
   const handleSaveSubtitles = (savedLyrics) => {
-    // Update the edited lyrics state with the saved lyrics
-    setEditedLyrics(savedLyrics);
-    // Also update the subtitlesData in the parent component
-    // This ensures that if the page is reloaded, the saved subtitles will be used
-    if (setSubtitlesData) {
-      setSubtitlesData(savedLyrics);
-    }
+    setSubtitlesData?.(savedLyrics);
   };
 
   // This coordinator must remain mounted even when the output UI has no content yet. A fresh URL
   // starts automatic generation before LyricsDisplay is stagger-mounted, but its pre-run checkpoint
   // still has to settle (and remain cancellable) immediately.
   useLyricsSave({
-    lyrics: editedLyrics ?? subtitlesData ?? [],
+    lyrics: subtitlesData ?? [],
     updateSavedLyrics: markSavedOutsideEditor,
     onSaveSubtitles: handleSaveSubtitles,
   });
 
-  const [preferLiveDuringProcessing, setPreferLiveDuringProcessing] = useState(false);
-
-  useEffect(() => {
-    // Prefer live stream while generating or processing
-    if (isGenerating || isProcessingSegment || (Array.isArray(retryingSegments) && retryingSegments.length > 0)) {
-      setPreferLiveDuringProcessing(true);
-    }
-  }, [isGenerating, isProcessingSegment, retryingSegments]);
-
-  useEffect(() => {
-    const onRetry = () => setPreferLiveDuringProcessing(true);
-    const onStreamUpdate = () => setPreferLiveDuringProcessing(true);
-    const onStreamDone = () => setPreferLiveDuringProcessing(false);
-    const onRetryDone = () => setPreferLiveDuringProcessing(false);
-    const un1 = subscribe(EVENTS.RETRY_SEGMENT_FROM_CACHE, onRetry);
-    const un2 = subscribe(EVENTS.STREAMING_UPDATE, onStreamUpdate);
-    const un3 = subscribe(EVENTS.STREAMING_COMPLETE, onStreamDone);
-    const un4 = subscribe(EVENTS.RETRY_SEGMENT_FROM_CACHE_COMPLETE, onRetryDone);
-    return () => { un1(); un2(); un3(); un4(); };
-  }, []);
-
   const formatSubtitlesForLyricsDisplay = (subtitles) => {
-    // While processing/retrying, show live subtitles instead of stale edits
-    const sourceData = preferLiveDuringProcessing ? subtitles : (editedLyrics || subtitles);
-    return sourceData?.map(sub => ({
+    return subtitles?.map(sub => ({
       ...sub,
       startTime: sub.start,
       endTime: sub.end
     })) || [];
   };
-  // Whenever editedLyrics changes, report live timeline state (only when non-empty)
-  useEffect(() => {
-    if (!onLiveSubtitlesChange) return;
-    const arr = editedLyrics || subtitlesData;
-    if (Array.isArray(arr) && arr.length > 0) {
-      onLiveSubtitlesChange(arr);
-    }
-  }, [editedLyrics, subtitlesData, onLiveSubtitlesChange]);
 
 
   // Background Image Generator functionality moved back to AppLayout
@@ -206,11 +168,6 @@ const OutputContainer = ({
       }
     }
   }, [isSrtOnlyMode, subtitlesData]);
-
-  // Reset edited lyrics when subtitlesData changes (new video/generation)
-  useEffect(() => {
-    setEditedLyrics(null);
-  }, [subtitlesData]);
 
   // Show status messages as toasts instead of inline
   useEffect(() => {
@@ -315,7 +272,7 @@ const OutputContainer = ({
                 setDuration={setVideoDuration}
                 onSeek={handleVideoSeek}
                 translatedSubtitles={translatedSubtitles}
-                subtitlesArray={editedLyrics || subtitlesData}
+                subtitlesArray={subtitlesData}
                 onVideoUrlReady={setActualVideoUrl}
                 useOptimizedPreview={useOptimizedPreview}
                 onReferenceAudioChange={setReferenceAudio}
@@ -357,7 +314,7 @@ const OutputContainer = ({
           {/* Translation Section */}
           {renderedSections.translation && !isDownloading && (
             <TranslationSection
-              subtitles={editedLyrics || subtitlesData}
+              subtitles={subtitlesData}
               videoTitle={activeVideoTitle}
               onTranslationComplete={onTranslatedSubtitlesChange}
             />
@@ -366,8 +323,8 @@ const OutputContainer = ({
           {/* Unified Narration Section - Now separate from Translation */}
           {renderedSections.narration && !isDownloading && (
             <UnifiedNarrationSection
-              subtitles={translatedSubtitles || editedLyrics || subtitlesData}
-              originalSubtitles={editedLyrics || subtitlesData}
+              subtitles={translatedSubtitles || subtitlesData}
+              originalSubtitles={subtitlesData}
               translatedSubtitles={translatedSubtitles}
               referenceAudio={referenceAudio}
               videoPath={actualVideoUrl}

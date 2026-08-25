@@ -4,6 +4,8 @@ import { strict as assert } from 'node:assert';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
+import { clickControl } from '../support/editor.js';
+import { ensureEngineReady } from '../support/engines.js';
 import {
   importSubtitleDocument,
   openProjectWithMedia,
@@ -12,6 +14,7 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'timeline-boundary';
 const BOUNDARY_CUE = 'Boundary cue at media end';
+const ENGINE = 'faster-whisper-turbo';
 
 /* global $, browser, describe, document, it */
 
@@ -25,8 +28,9 @@ const srtTime = (seconds) => {
 };
 
 describe('timeline boundaries', () => {
-  it('clips waveform pixels to media and lets Ctrl+A clear every cue', async () => {
+  it('clears every cue and generates only fresh rows from the empty durable track', async () => {
     await openProjectWithMedia();
+    await ensureEngineReady(ENGINE);
     const duration = await browser.execute(() => {
       const video = document.querySelector('.video-preview video.video-player');
       if (video === null || !Number.isFinite(video.duration)) return null;
@@ -129,6 +133,106 @@ describe('timeline boundaries', () => {
       workflow: WORKFLOW,
       step: '03-all-cues-cleared',
       description: 'Delete after Ctrl+A removes every visible and durable cue, including the boundary cue.',
+      focusSelector: '.lyrics-container-wrapper',
+    });
+
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await timeline.click();
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    const method = await $(`[data-transcription-method="${ENGINE}"]`);
+    await method.waitForDisplayed({
+      timeout: 60_000,
+      timeoutMsg: 'the generation method chooser did not open for the empty timeline',
+    });
+    await browser.waitUntil(async () => (await method.getAttribute('data-method-available')) === 'true', {
+      timeout: 60_000,
+      interval: 500,
+      timeoutMsg: `${ENGINE} never became selectable after clearing the track`,
+    });
+    await method.click();
+    await browser.execute(() => {
+      window.__OSG_E2E_TIMELINE_STREAM_WITNESS__ = null;
+      const observer = new MutationObserver(() => {
+        const rows = [...document.querySelectorAll('.lyric-text')]
+          .map((node) => (node.innerText || '').trim()).filter(Boolean);
+        const generationActive = document.querySelector('[data-osg-action="generate-subtitles"]')
+          ?.classList.contains('processing') === true;
+        if (generationActive && rows.length > 0) {
+          window.__OSG_E2E_TIMELINE_STREAM_WITNESS__ ??= {
+            rows,
+            observedAtMs: performance.now(),
+          };
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      window.__OSG_E2E_TIMELINE_STREAM_OBSERVER__ = observer;
+    });
+    await clickControl('[data-osg-action="process-subtitles"]');
+
+    let visibleRows = [];
+    let regenerated = null;
+    let lastTranscribeJob = null;
+    let livePublicationWitness = null;
+    await browser.waitUntil(async () => {
+      const surface = await browser.execute(() => ({
+        rows: [...document.querySelectorAll('.lyric-text')]
+          .map((node) => (node.innerText || '').trim()).filter(Boolean),
+        generationActive: document.querySelector('[data-osg-action="generate-subtitles"]')
+          ?.classList.contains('processing') === true,
+        streamWitness: window.__OSG_E2E_TIMELINE_STREAM_WITNESS__ ?? null,
+      }));
+      visibleRows = surface.rows;
+      regenerated = durableState(process.env.OSG_E2E_DATA_ROOT);
+      lastTranscribeJob = [...regenerated.jobs].reverse()
+        .find((job) => job.kind === 'transcribe') ?? null;
+      const resurrected = visibleRows.includes('First cue for the preview')
+        || visibleRows.includes(BOUNDARY_CUE)
+        || regenerated.cues.some((cue) => (
+          cue.text === 'First cue for the preview' || cue.text === BOUNDARY_CUE
+        ));
+      if (resurrected) throw new Error('generation resurrected the deleted subtitle track');
+      if (livePublicationWitness === null && surface.streamWitness !== null) {
+        livePublicationWitness = {
+          visibleCueCount: surface.streamWitness.rows.length,
+          observedAtMs: surface.streamWitness.observedAtMs,
+        };
+      }
+      if (lastTranscribeJob !== null
+        && ['failed', 'cancelled', 'interrupted'].includes(lastTranscribeJob.state)) {
+        throw new Error(`fresh transcription terminated: ${JSON.stringify(lastTranscribeJob)}`);
+      }
+      return livePublicationWitness !== null
+        && lastTranscribeJob?.state === 'succeeded'
+        && surface.generationActive === false
+        && visibleRows.length > 0
+        && regenerated.counts.cues > 0;
+    }, {
+      timeout: 1_800_000,
+      interval: 500,
+      timeoutMsg: () => `generation did not stream fresh cues before completing: ${JSON.stringify({
+        visibleRows,
+        durableCueCount: regenerated?.counts?.cues ?? null,
+        lastTranscribeJob,
+        livePublicationWitness,
+      })}`,
+    });
+    assert.ok(regenerated.cues.every((cue) => (
+      cue.text !== 'First cue for the preview' && cue.text !== BOUNDARY_CUE
+    )), 'a deleted imported cue reached the regenerated durable track');
+    await browser.execute(() => {
+      window.__OSG_E2E_TIMELINE_STREAM_OBSERVER__?.disconnect();
+      delete window.__OSG_E2E_TIMELINE_STREAM_OBSERVER__;
+    });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-fresh-generation-after-delete-all',
+      description: 'Generation starts from the empty Rust checkpoint, streams fresh cues before completion, and never restores deleted rows.',
+      details: {
+        engine: ENGINE,
+        cueCount: regenerated.counts.cues,
+        livePublicationWitness,
+        terminalJobState: lastTranscribeJob.state,
+      },
       focusSelector: '.lyrics-container-wrapper',
     });
   });

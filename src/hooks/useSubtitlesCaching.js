@@ -35,7 +35,6 @@ export const resolveCacheIdForGeneration = async ({
     currentVideoUrl,
     t,
     setStatus,
-    debugLog: _debugLog
 }) => {
     let cacheId = null;
 
@@ -97,25 +96,13 @@ export const loadCachedSubtitlesIfAvailable = async ({
     cacheId,
     segment,
     currentVideoUrl,
-    debugLog
 }) => {
     if (cacheId && !segment) {
-        debugLog('[Subtitle Generation] Checking for cached subtitles with cache ID:', cacheId);
         const cachedSubtitles = await checkCachedSubtitles(cacheId, currentVideoUrl);
-        debugLog('[Subtitle Generation] Cache check result:', {
-            found: !!cachedSubtitles,
-            count: cachedSubtitles ? cachedSubtitles.length : 0
-        });
 
         if (cachedSubtitles) {
             return { cacheHit: true, cachedSubtitles };
         }
-        debugLog('[Subtitle Generation] No cached subtitles found');
-    } else if (segment) {
-        debugLog('[Subtitle Generation] Skipping cache check for segment processing - generating fresh subtitles');
-        // For segment processing, keep existing subtitles (don't clear)
-    } else {
-        debugLog('[Subtitle Generation] No cache ID available');
     }
 
     return { cacheHit: false, cachedSubtitles: null };

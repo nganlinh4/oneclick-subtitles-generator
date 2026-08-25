@@ -335,7 +335,6 @@ const publishOwnedEvent = async (context, mountedRef, name, detail, { allowAbort
 
 export const useSubtitlesSegmentRetry = ({
     t,
-    debugLog,
     setSubtitlesData,
     setStatus,
     setIsGenerating,
@@ -417,10 +416,6 @@ export const useSubtitlesSegmentRetry = ({
             await assertSubtitleOperationDurable(context);
             registerPresentation(record, context, segmentIndex);
             const modelId = options.modelId ?? options.model;
-            debugLog(modelId
-                ? `[RetrySegment] Using custom model for segment ${segmentIndex + 1}: ${modelId}`
-                : `[RetrySegment] Using default model for segment ${segmentIndex + 1}`);
-
             const { checkpointBeforeUpdate } = await loadLifecycleOrchestrator();
             await checkpointBeforeUpdate({
                 source: 'segment-processing-start',
@@ -562,7 +557,7 @@ export const useSubtitlesSegmentRetry = ({
             if (lease) releaseSubtitleProjectOperationLease(lease);
             finishRun({ controller, context, record, segmentIndex });
         }
-    }, [canPresent, currentSourceFileRef, debugLog, finishRun, registerPresentation, setStatus, setSubtitlesData, t]);
+    }, [canPresent, currentSourceFileRef, finishRun, registerPresentation, setStatus, setSubtitlesData, t]);
 
     useEffect(() => {
         mountedRef.current = true;

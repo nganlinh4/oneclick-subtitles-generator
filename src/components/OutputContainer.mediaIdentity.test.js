@@ -2,6 +2,8 @@ import { act, render, screen } from '@testing-library/react';
 
 import OutputContainer from './OutputContainer';
 
+const lyricsSurface = vi.hoisted(() => ({ props: null }));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key, fallback) => fallback }),
 }));
@@ -9,7 +11,10 @@ vi.mock('./previews/VideoPreview', () => ({
   default: ({ videoSource }) => <div data-testid="video-preview">{videoSource}</div>,
 }));
 vi.mock('./LyricsDisplay', () => ({
-  default: ({ videoTitle }) => <div data-testid="lyrics-title">{videoTitle}</div>,
+  default: (componentProps) => {
+    lyricsSurface.props = componentProps;
+    return <div data-testid="lyrics-title">{componentProps.videoTitle}</div>;
+  },
 }));
 vi.mock('./translation', () => ({ default: () => <div data-testid="translation" /> }));
 vi.mock('./narration', () => ({
@@ -50,6 +55,8 @@ const props = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  lyricsSurface.props = null;
   vi.useFakeTimers();
   window.addToast = vi.fn();
   window.removeToastByKey = vi.fn();
@@ -73,4 +80,14 @@ it('never presents active video A as pending video B', async () => {
   expect(screen.getByTestId('video-preview')).toHaveTextContent('video-a');
   expect(screen.getByTestId('lyrics-title')).toHaveTextContent('Video A');
   expect(screen.getByTestId('lyrics-title')).not.toHaveTextContent('Video B');
+});
+
+it('publishes an all-deleted timeline to the single app-level subtitle authority', async () => {
+  const setSubtitlesData = vi.fn();
+  render(<OutputContainer {...props} setSubtitlesData={setSubtitlesData} />);
+  await act(async () => vi.advanceTimersByTime(1_000));
+
+  act(() => lyricsSurface.props.onUpdateLyrics([]));
+
+  expect(setSubtitlesData).toHaveBeenCalledExactlyOnceWith([]);
 });

@@ -13,10 +13,8 @@ import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { getBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
-import {
-    createFullMediaStreamingHandler,
-    createStagedFullMediaStreamingHandler,
-} from './subtitleStreamingHandlers';
+import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
+import { CHECKPOINT_SOURCE } from '../events/constants';
 import {
     acknowledgeGeminiTranscriptionDeliveries,
     retryPendingGeminiTranscriptionDeliveries,
@@ -77,7 +75,7 @@ export const useSubtitlesRetryGeneration = ({
         setIsGenerating(true);
         setStatus({ message: 'Retrying request to Gemini. This may take a few minutes...', type: 'loading' });
 
-        let browserStreamingHandler = null;
+        let streamingHandler = null;
         try {
             let nativeMediaCapability = isDesktopRuntime()
                 ? await resolveActiveNativeMedia({
@@ -89,11 +87,6 @@ export const useSubtitlesRetryGeneration = ({
                     nativeMediaCapability = await refreshActiveNativeMedia(nativeMediaCapability);
                 }
             };
-            browserStreamingHandler = nativeMediaCapability === null
-                ? createFullMediaStreamingHandler(setSubtitlesData, setStatus, t)
-                : null;
-            const publishStagedStreamingProgress = browserStreamingHandler
-                ?? createStagedFullMediaStreamingHandler(setStatus, t);
             const cacheId = await resolveCacheIdForGeneration({
                 input,
                 inputType,
@@ -102,7 +95,6 @@ export const useSubtitlesRetryGeneration = ({
                     : null,
                 t,
                 setStatus,
-                debugLog: () => undefined,
             });
             if (typeof cacheId !== 'string' || cacheId.length === 0) {
                 throw new Error('The subtitle project could not be resolved.');
@@ -149,6 +141,28 @@ export const useSubtitlesRetryGeneration = ({
                     expectedProjectStateVersion: snapshot.stateVersion,
                 };
             };
+            const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
+            await checkpointBeforeUpdate({
+                source: CHECKPOINT_SOURCE.GENERATION_START,
+                runId,
+                ...(options.signal ? { signal: options.signal } : {}),
+            });
+            await validateOwnership(deliveryContext);
+            const loadedRows = await loadExactProjectSubtitles(
+                deliveryContext.cacheId,
+                deliveryContext.projectId,
+            );
+            await validateOwnership(deliveryContext);
+            const rollbackRows = loadedRows === null ? [] : loadedRows;
+            if (!Array.isArray(rollbackRows)) {
+                throw new Error('The native subtitle project returned an invalid track.');
+            }
+            streamingHandler = createFullMediaStreamingHandler(
+                setSubtitlesData,
+                setStatus,
+                t,
+                { rollbackRows },
+            );
             const priorDeliveryRecovery = await retryPendingGeminiTranscriptionDeliveries({
                 cacheId: deliveryContext.cacheId,
                 projectId: deliveryContext.projectId,
@@ -199,7 +213,7 @@ export const useSubtitlesRetryGeneration = ({
                             }),
                             {
                                 onStatus: setStatus,
-                                onStreamingUpdate: publishStagedStreamingProgress,
+                                onStreamingUpdate: streamingHandler,
                                 t
                             }
                         );
@@ -208,7 +222,6 @@ export const useSubtitlesRetryGeneration = ({
                         subtitles = await processMediaFile(input, setStatus, t, { userProvidedSubtitles });
                     }
                 } catch (error) {
-                    console.error('Error checking media duration:', error);
                     if (isDesktopRuntime()) throw error;
                     // Fallback to normal processing (respect inlineExtraction for non-YouTube)
                     const forceInline = options.inlineExtraction === true && inputType !== 'youtube';
@@ -238,8 +251,8 @@ export const useSubtitlesRetryGeneration = ({
                                 ytFile = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
                             }
                         }
-                    } catch (e) {
-                        console.warn('Inline YouTube: failed to access current blob URL, falling back:', e);
+                    } catch {
+                        // The loaded browser blob is optional; the normal provider path remains.
                         // Remember source file for retries
                         currentSourceFileRef.current = ytFile;
 
@@ -273,7 +286,7 @@ export const useSubtitlesRetryGeneration = ({
                                 forceInline: true,
                                 runId
                             }),
-                            { onStatus: setStatus, onStreamingUpdate: publishStagedStreamingProgress, t }
+                            { onStatus: setStatus, onStreamingUpdate: streamingHandler, t }
                         );
                     } else {
                         // Fallback: proceed without forcing inline (no re-download)
@@ -315,7 +328,7 @@ export const useSubtitlesRetryGeneration = ({
                 validateOwnership,
             });
             await validateOwnership(deliveryContext);
-            browserStreamingHandler?.cancel();
+            streamingHandler?.cancel();
             setSubtitlesData(subtitles);
             setStatus(deliveryCommit.acknowledged
                 ? subtitleCompletionStatus(subtitles, t, { speechOnly })
@@ -328,8 +341,7 @@ export const useSubtitlesRetryGeneration = ({
                 });
             return true;
         } catch (error) {
-            browserStreamingHandler?.cancel();
-            console.error('Error regenerating subtitles:', error);
+            streamingHandler?.rollback?.();
 
             // Check for specific Gemini API errors
             if (error?.code === 'subtitleCacheSaveFailed') {

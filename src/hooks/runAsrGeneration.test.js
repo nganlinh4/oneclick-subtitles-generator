@@ -37,6 +37,7 @@ const createParams = (overrides = {}) => ({
   setStatus: vi.fn(),
   setIsGenerating: vi.fn(),
   setSubtitlesData: vi.fn(),
+  loadSubtitles: vi.fn(async () => []),
   persistSubtitles: vi.fn(async () => undefined),
   t: vi.fn((key, fallback) => fallback || key),
   ...overrides,
@@ -69,8 +70,7 @@ it('also clears generation state when the pre-update checkpoint fails', async ()
   await expect(runAsrGeneration(params)).rejects.toBe(failure);
   expect(processAsrSegment).not.toHaveBeenCalled();
   expect(checkpointBeforeUpdate).toHaveBeenCalledWith({
-    source: 'segment-processing-start',
-    segment: { start: 10, end: 20 },
+    source: 'generation-start',
     runId: 'run-1',
   });
   expect(params.setIsGenerating).toHaveBeenCalledTimes(1);
@@ -87,7 +87,7 @@ it('returns false for an invalid segment and clears generation state once', asyn
   expect(params.setIsGenerating).toHaveBeenCalledWith(false);
 });
 
-it('persists the complete merge before publishing completion', async () => {
+it('loads the native track and persists the complete merge before publishing completion', async () => {
   let subtitles = [{ start: 0, end: 1, text: 'existing' }];
   const setSubtitlesData = vi.fn((updater) => {
     if (typeof updater === 'function') subtitles = updater(subtitles);
@@ -104,7 +104,10 @@ it('persists the complete merge before publishing completion', async () => {
     });
     return true;
   });
-  const params = createParams({ setSubtitlesData });
+  const params = createParams({
+    setSubtitlesData,
+    loadSubtitles: vi.fn(async () => subtitles),
+  });
   const owner = new AbortController();
   params.options.signal = owner.signal;
 
@@ -135,6 +138,23 @@ it('persists the complete merge before publishing completion', async () => {
   expect(params.persistSubtitles).toHaveBeenCalledBefore(acknowledgeJobResult);
   expect(params.setIsGenerating).toHaveBeenCalledTimes(1);
   expect(params.setIsGenerating).toHaveBeenCalledWith(false);
+});
+
+it('never merges generated rows into a stale React track after all durable subtitles were deleted', async () => {
+  let visible = [{ start: 0, end: 5, text: 'stale downloaded subtitle' }];
+  const generated = [{ start: 10, end: 11, text: 'fresh generated subtitle' }];
+  processAsrSegment.mockImplementation(async (_engine, _input, part, _options, hooks) => {
+    await hooks.onMergeSegment(part, generated);
+  });
+  const params = createParams({
+    loadSubtitles: vi.fn(async () => []),
+    setSubtitlesData: vi.fn((rows) => { visible = rows; }),
+  });
+
+  await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(visible).toEqual(generated);
+  expect(params.persistSubtitles).toHaveBeenCalledExactlyOnceWith(generated);
 });
 
 it('publishes neither success nor completion when the durable write fails', async () => {

@@ -106,7 +106,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       setIsAtSavedState(true);
       return;
     }
-    if (initialLyrics && initialLyrics.length > 0) {
+    if (Array.isArray(initialLyrics)) {
       observeExternalLyrics(initialLyrics);
       setLyrics(initialLyrics);
       if (originalLyrics.length === 0) {

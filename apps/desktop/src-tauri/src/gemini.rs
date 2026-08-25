@@ -250,6 +250,7 @@ pub(crate) enum GeminiJobEvent {
 struct GeminiOutput {
     text: String,
     usage: Option<GeminiUsage>,
+    chunk_count: usize,
 }
 
 #[tauri::command]
@@ -352,6 +353,7 @@ pub(crate) async fn gemini_start(
                                 ("task", task_name.to_owned()),
                                 ("elapsedMs", elapsed_millis(started)),
                                 ("outputBytes", output.text.len().to_string()),
+                                ("chunkCount", output.chunk_count.to_string()),
                             ],
                         );
                         let _ = on_event.send(GeminiJobEvent::Completed {
@@ -632,6 +634,7 @@ async fn run_gemini(
         let mut text = String::new();
         let mut usage = None;
         let mut first_chunk = true;
+        let mut chunk_count = 0_usize;
         let mut next_progress_bytes = 512 * 1024;
         let mut channel_open = true;
         while let Some(response) = stream.next().await {
@@ -648,6 +651,7 @@ async fn run_gemini(
                 }));
             }
             text.push_str(&chunk);
+            chunk_count = chunk_count.saturating_add(1);
             if first_chunk {
                 record_gemini_phase(job_id, "firstChunk", started);
                 first_chunk = false;
@@ -668,7 +672,11 @@ async fn run_gemini(
         if text.is_empty() {
             return Err(osg_gemini::Error::NoTextOutput.into());
         }
-        Ok(GeminiOutput { text, usage })
+        Ok(GeminiOutput {
+            text,
+            usage,
+            chunk_count,
+        })
     }
     .await;
 
@@ -712,6 +720,7 @@ async fn empty_speech_output(
     Ok(Some(GeminiOutput {
         text: "[]".to_owned(),
         usage: None,
+        chunk_count: 0,
     }))
 }
 
@@ -1106,6 +1115,7 @@ mod tests {
             &GeminiOutput {
                 text: "translated".to_owned(),
                 usage: None,
+                chunk_count: 1,
             },
         )
         .expect("delivery");
@@ -1159,6 +1169,7 @@ mod tests {
             &GeminiOutput {
                 text: "must not publish".to_owned(),
                 usage: None,
+                chunk_count: 1,
             },
         )
         .expect("delivery");

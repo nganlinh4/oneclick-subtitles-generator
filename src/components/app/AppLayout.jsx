@@ -359,7 +359,6 @@ const AppLayout = ({
       status.message.includes('SRT only') ||
       status.message.includes('No video source available')
     )) {
-      console.log('Clearing SRT-only status message:', status.message);
       setStatus({});
     }
   }, [selectedVideo, uploadedFile, status, setStatus]);
@@ -429,7 +428,6 @@ const AppLayout = ({
               selectedVideo={selectedVideo}
               uploadedFile={uploadedFile}
               isDownloading={isDownloading}
-              isGenerating={isGenerating}
               segmentsStatus={segmentsStatus}
               activeTab={activeTab}
               onRetrySegment={retrySegment}
@@ -455,7 +453,6 @@ const AppLayout = ({
               selectedSegment={selectedSegment}
               isUploading={isUploading}
               isProcessingSegment={isProcessingSegment}
-              onLiveSubtitlesChange={(live) => setSubtitlesData(live)}
               translatedSubtitles={translatedSubtitles}
               onTranslatedSubtitlesChange={setTranslatedSubtitles}
             />

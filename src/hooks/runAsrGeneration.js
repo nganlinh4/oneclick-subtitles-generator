@@ -17,16 +17,18 @@ export const runAsrGeneration = async ({
   input,
   options,
   runId,
-  debugLog,
   setStatus,
   setIsGenerating,
   setSubtitlesData,
+  loadSubtitles,
   persistSubtitles,
   t,
 }) => {
   const seg = options.segment;
   const engineName = (engine && (engine.name || engine.labelDefault || engine.id)) || 'ASR';
   const deliveryReceipts = [];
+  let durableBaseline = null;
+  let workingSubtitles = null;
 
   try {
     if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number') {
@@ -34,16 +36,24 @@ export const runAsrGeneration = async ({
       return false;
     }
 
-    debugLog(`[Run ${runId}] ASR(${engine.id}): checkpoint before segment processing`, { seg });
-    {
+    if (!options.autoRunContext) {
       const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
       await checkpointBeforeUpdate({
-        source: 'segment-processing-start',
-        segment: seg,
+        source: 'generation-start',
         runId,
         ...(options.signal ? { signal: options.signal } : {}),
       });
     }
+    if (typeof loadSubtitles !== 'function') {
+      throw new TypeError('Local ASR requires an authoritative subtitle loader');
+    }
+    const loaded = await loadSubtitles();
+    durableBaseline = loaded === null ? [] : loaded;
+    if (!Array.isArray(durableBaseline)) {
+      throw new TypeError('The native subtitle project returned an invalid track');
+    }
+    workingSubtitles = durableBaseline;
+    setSubtitlesData(workingSubtitles);
 
     await processAsrSegment(
       engine,
@@ -62,24 +72,15 @@ export const runAsrGeneration = async ({
         onRanges: (ranges) => publishProcessingRanges({ ranges }),
         onStreamingUpdate: (subs, part) => publishStreamingUpdate({ subtitles: subs, segment: part, runId }),
         onMergeSegment: async (part, newSegmentSubs) => {
-          await new Promise((resolve) => {
-            setSubtitlesData((current) => {
-              const merged = mergeSegmentSubtitles(current || [], newSegmentSubs, part);
-              resolve();
-              return merged;
-            });
-          });
+          workingSubtitles = mergeSegmentSubtitles(workingSubtitles, newSegmentSubs, part);
+          setSubtitlesData(workingSubtitles);
         },
         onDeliveryReceipt: (receipt) => { deliveryReceipts.push(receipt); },
         t,
       }
     );
 
-    // Read the final subtitles back from state for the streaming-complete payload + auto-save.
-    let finalSubs = [];
-    await new Promise((resolve) => {
-      setSubtitlesData((current) => { finalSubs = current || []; resolve(); return current; });
-    });
+    const finalSubs = workingSubtitles;
 
     const filteredForSeg = (finalSubs || [])
       .filter((s) => (s.start < seg.end && s.end > seg.start))
@@ -108,6 +109,9 @@ export const runAsrGeneration = async ({
 
     setStatus({ message: t('output.asrTranscriptionComplete', '{{engine}} transcription complete', { engine: engineName }), type: 'success' });
     return true;
+  } catch (error) {
+    if (durableBaseline !== null) setSubtitlesData(durableBaseline);
+    throw error;
   } finally {
     setIsGenerating(false);
   }
