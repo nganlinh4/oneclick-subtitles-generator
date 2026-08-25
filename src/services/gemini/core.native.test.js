@@ -234,6 +234,21 @@ it('rejects an invalid native segment before starting either native job', async 
   expect(runNativeGeminiTranscription).not.toHaveBeenCalled();
 });
 
+it('refuses to silently ignore an oversized unsplit native range', async () => {
+  const media = Object.freeze({
+    assetId: '01890f39-7b62-7c4e-8c9a-000000000101',
+    name: 'clip.mp4',
+    type: 'video/mp4',
+  });
+
+  await expect(callGeminiApi(media, 'video', {
+    segmentInfo: { start: 0, end: 240, duration: 240 },
+    maxDurationPerRequest: 60,
+  })).rejects.toThrow('received an unsplit range');
+  expect(runMediaPipeline).not.toHaveBeenCalled();
+  expect(runNativeGeminiTranscription).not.toHaveBeenCalled();
+});
+
 it('revalidates the captured project immediately before native Gemini registration', async () => {
   const media = Object.freeze({
     assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',

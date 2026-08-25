@@ -57,6 +57,16 @@ const normalizeMediaResolution = (value) => {
 
 const FULL_RANGE_TOLERANCE_SECONDS = 0.25;
 
+const assertSingleNativeRange = (range, maximumSeconds) => {
+  const maximum = Number(maximumSeconds);
+  if (range !== null && Number.isFinite(maximum) && maximum > 0
+      && range.end - range.start > maximum + Number.EPSILON) {
+    throw new Error(
+      'Native Gemini received an unsplit range larger than maxDurationPerRequest.'
+    );
+  }
+};
+
 const coversWholeAsset = async (assetId, range) => {
   if (range.start > FULL_RANGE_TOLERANCE_SECONDS) return false;
   const inspection = await inspectMediaPipelineAsset(assetId);
@@ -93,6 +103,7 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
   const { requestId, signal, abort } = createRequestController(options.signal);
   try {
     const segmentRange = normalizeNativeSegmentRange(options.segmentInfo);
+    assertSingleNativeRange(segmentRange, options.maxDurationPerRequest);
     let mediaAssetId = input.assetId;
     let mediaKind = input.type?.startsWith('audio/') ? 'audio' : 'video';
     if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
