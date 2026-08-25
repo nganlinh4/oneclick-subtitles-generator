@@ -10,7 +10,7 @@ use osg_compositor::{
     AdapterSelection, Compositor, CompositorTargetFormat, Crop, FrameSize, PreparedSubtitleScene,
     PreparedTextureUnderlay, SubtitleScene,
 };
-use osg_decode::{DecoderConfig, GpuVideoDecoder, open_decoder, open_gpu_decoder};
+use osg_decode::{DecoderConfig, GpuDecodedFrame, open_decoder, open_gpu_decoder};
 use osg_encode::{
     AudioBlock, AudioConfig, EncodeOutcome, EncoderConfig, GpuVideoEncoder, open_gpu_encoder,
 };
@@ -36,16 +36,55 @@ const RING_MEMORY_BUDGET: u64 = 256 * 1024 * 1024;
 const CHANNEL_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
-struct DecodedReady {
-    frame_index: u32,
-    slot: usize,
-    fence_value: u64,
+enum DecodedReady {
+    Frame {
+        frame_index: u32,
+        slot: usize,
+        fence_value: u64,
+    },
+    /// This output instant selects the same decoded source sample as the preceding instant.
+    /// D3D12 queue ordering keeps `decoded_local` valid, so no VP conversion or VRAM copy is needed.
+    Hold { frame_index: u32 },
+}
+
+impl DecodedReady {
+    const fn frame_index(&self) -> u32 {
+        match self {
+            Self::Frame { frame_index, .. } | Self::Hold { frame_index } => *frame_index,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ReusableDecoded {
     slot: usize,
     render_fence_value: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DecodedSampleKey {
+    presentation_100ns: i64,
+    duration_100ns: i64,
+    source_index: u64,
+}
+
+impl DecodedSampleKey {
+    const fn of(frame: &GpuDecodedFrame) -> Self {
+        Self {
+            presentation_100ns: frame.presentation_100ns(),
+            duration_100ns: frame.duration_100ns(),
+            source_index: frame.source_index(),
+        }
+    }
+}
+
+const fn holds_source_sample(
+    previous: Option<DecodedSampleKey>,
+    current: DecodedSampleKey,
+) -> bool {
+    matches!(previous, Some(previous) if previous.presentation_100ns == current.presentation_100ns
+        && previous.duration_100ns == current.duration_100ns
+        && previous.source_index == current.source_index)
 }
 
 enum EncodeCommand {
@@ -276,100 +315,24 @@ impl GpuVideoPipeline {
                 Err(mpsc::RecvTimeoutError::Disconnected) => return Err(sync_error()),
             }
         };
-        if decoded.frame_index != index {
+        if decoded.frame_index() != index {
             trace(index, "render.decode-index-mismatch");
             return Err(sync_error());
         }
-        let decoded_slot = self
-            .decoded_slots
-            .get(decoded.slot)
-            .ok_or_else(sync_error)?;
         // Reserve the output slot before submitting any work which reads the decoded slot. If the
         // encoder is applying backpressure this leaves no un-waited GPU submission behind an early
         // cancellation or channel error.
         let encoded_slot_index = self.next_encode_slot(&mut should_cancel)?;
-        trace(index, "render.compose");
-        let encoded_slot = self
-            .encoded_slots
-            .get(encoded_slot_index)
-            .ok_or_else(sync_error)?;
-        let render_fence_value = {
-            // CPU ownership covers command publication. GPU ownership continues through the fence
-            // value carried to both workers: their D3D11 queues wait for this frame's LAST D3D12
-            // submission before either shared surface is touched. This is the overlap the rings
-            // exist to provide without permitting early resource reuse.
-            let _read = decoded_slot.acquire()?;
-            let _write = encoded_slot.acquire()?;
-            self.decode_fence
-                .wait(self.compositor.device(), decoded.fence_value)?;
-            let mut commands =
-                self.compositor
-                    .device()
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("osg coherent shared decode copy"),
-                    });
-            commands.copy_texture_to_texture(
-                texture_copy(&decoded_slot.wgpu),
-                texture_copy(&self.decoded_local),
-                self.decoded_local.size(),
-            );
-            // Leave the shared resource in COPY_DST after reading it so the next frame must cross
-            // COPY_DST -> COPY_SRC. The corner comes from the just-read frame, preserving the exact
-            // pixel while retaining the reference architecture's cache-transition guarantee.
-            commands.copy_texture_to_texture(
-                texture_copy(&self.decoded_local),
-                texture_copy(&decoded_slot.wgpu),
-                wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let copy_submission = self.compositor.queue().submit(Some(commands.finish()));
-            let render_submission = match self.compositor.render_prepared_scene_texture_over_into(
-                &mut self.scene,
-                self.prepared_underlay.as_ref(),
-                &self.decoded_local,
-                self.source_size,
-                self.crop,
-                index,
-                &encoded_slot.wgpu,
-            ) {
-                Ok(submission) => submission,
-                Err(error) => {
-                    // The copy is already queued. Complete it before either keyed mutex is released
-                    // on this error path; otherwise D3D11 could overwrite a texture D3D12 still
-                    // reads. Preserve the composition refusal when synchronization itself succeeds.
-                    wait_submission(
-                        self.compositor.device(),
-                        self.compositor.queue(),
-                        copy_submission,
-                    )?;
-                    return Err(error.into());
-                }
-            };
-            let render_fence_value = match self.render_fence.signal(self.compositor.device()) {
-                Ok(value) => value,
-                Err(error) => {
-                    // A failed cross-API signal cannot protect either surface. Fall back to an
-                    // explicit completion wait before the keyed-mutex guards release them.
-                    wait_submission(
-                        self.compositor.device(),
-                        self.compositor.queue(),
-                        render_submission,
-                    )?;
-                    return Err(error);
-                }
-            };
-            trace(index, "render.gpu-queued");
-            render_fence_value
-        };
+        let render_fence_value = self.compose_decoded(index, &decoded, encoded_slot_index)?;
         // The worker drops its receiver immediately after publishing the final frame. Recycling
         // that last slot can therefore report disconnection, which is normal completion.
-        let _ = self.decoded_free.send(ReusableDecoded {
-            slot: decoded.slot,
-            render_fence_value,
-        });
+        let (render_fence_value, decoded_slot_index) = render_fence_value;
+        if let Some(slot) = decoded_slot_index {
+            let _ = self.decoded_free.send(ReusableDecoded {
+                slot,
+                render_fence_value,
+            });
+        }
         self.send_command_cancellable(
             EncodeCommand::Video {
                 frame_index: index,
@@ -380,6 +343,96 @@ impl GpuVideoPipeline {
         )?;
         trace(index, "render.queued-encode");
         Ok(())
+    }
+
+    fn compose_decoded(
+        &mut self,
+        index: u32,
+        decoded: &DecodedReady,
+        encoded_slot_index: usize,
+    ) -> Result<(u64, Option<usize>), GpuVideoError> {
+        trace(index, "render.compose");
+        let encoded_slot = self
+            .encoded_slots
+            .get(encoded_slot_index)
+            .ok_or_else(sync_error)?;
+        // CPU ownership covers command publication. GPU ownership continues through the fence
+        // value carried to both workers: their D3D11 queues wait for this frame's last D3D12
+        // submission before either shared surface is touched.
+        let _write = encoded_slot.acquire()?;
+        let (decoded_slot_index, copy_submission) = match decoded {
+            DecodedReady::Frame {
+                slot, fence_value, ..
+            } => {
+                let decoded_slot = self.decoded_slots.get(*slot).ok_or_else(sync_error)?;
+                let _read = decoded_slot.acquire()?;
+                self.decode_fence
+                    .wait(self.compositor.device(), *fence_value)?;
+                let mut commands = self.compositor.device().create_command_encoder(
+                    &wgpu::CommandEncoderDescriptor {
+                        label: Some("osg coherent shared decode copy"),
+                    },
+                );
+                commands.copy_texture_to_texture(
+                    texture_copy(&decoded_slot.wgpu),
+                    texture_copy(&self.decoded_local),
+                    self.decoded_local.size(),
+                );
+                // Return the shared resource to COPY_DST so the next read crosses a cache-coherent
+                // COPY_DST -> COPY_SRC transition. The copied corner preserves the exact pixel.
+                commands.copy_texture_to_texture(
+                    texture_copy(&self.decoded_local),
+                    texture_copy(&decoded_slot.wgpu),
+                    wgpu::Extent3d {
+                        width: 1,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                (
+                    Some(*slot),
+                    Some(self.compositor.queue().submit(Some(commands.finish()))),
+                )
+            }
+            DecodedReady::Hold { .. } => {
+                trace(index, "render.source-held");
+                (None, None)
+            }
+        };
+        let render_submission = match self.compositor.render_prepared_scene_texture_over_into(
+            &mut self.scene,
+            self.prepared_underlay.as_ref(),
+            &self.decoded_local,
+            self.source_size,
+            self.crop,
+            index,
+            &encoded_slot.wgpu,
+        ) {
+            Ok(submission) => submission,
+            Err(error) => {
+                if let Some(copy_submission) = copy_submission {
+                    wait_submission(
+                        self.compositor.device(),
+                        self.compositor.queue(),
+                        copy_submission,
+                    )?;
+                }
+                return Err(error.into());
+            }
+        };
+        let render_fence_value = match self.render_fence.signal(self.compositor.device()) {
+            Ok(value) => value,
+            Err(error) => {
+                wait_submission(
+                    self.compositor.device(),
+                    self.compositor.queue(),
+                    render_submission,
+                )?;
+                return Err(error);
+            }
+        };
+        trace(index, "render.gpu-queued");
+        Ok((render_fence_value, decoded_slot_index))
     }
 
     pub fn write_audio(
@@ -556,9 +609,25 @@ fn spawn_decoder(
                 }
             };
             let mut processor = None;
+            let mut previous_sample = None;
             for frame_index in 0..frame_count {
                 if cancelled.load(Ordering::Acquire) {
                     break;
+                }
+                let frame = match decoder.frame_for_output(frame_index) {
+                    Ok(frame) => frame,
+                    Err(error) => {
+                        let _ = ready.send(Err(error.into()));
+                        break;
+                    }
+                };
+                let sample = DecodedSampleKey::of(&frame);
+                if holds_source_sample(previous_sample, sample) {
+                    trace(frame_index, "decode.source-held");
+                    if ready.send(Ok(DecodedReady::Hold { frame_index })).is_err() {
+                        break;
+                    }
+                    continue;
                 }
                 let Ok(reusable) = free.recv() else {
                     break;
@@ -571,15 +640,15 @@ fn spawn_decoder(
                     break;
                 }
                 let result = decode_into_slot(
-                    decoder.as_mut(),
+                    &frame,
+                    decoder.source(),
                     &device,
                     &slots,
                     &mut processor,
-                    frame_index,
                     reusable.slot,
                     &mut fence,
                 )
-                .map(|fence_value| DecodedReady {
+                .map(|fence_value| DecodedReady::Frame {
                     frame_index,
                     slot: reusable.slot,
                     fence_value,
@@ -591,6 +660,9 @@ fn spawn_decoder(
                 {
                     eprintln!("[osg-gpu-video] frame={frame_index} decode-error={error:?}");
                 }
+                if !failed {
+                    previous_sample = Some(sample);
+                }
                 if ready.send(result).is_err() || failed {
                     break;
                 }
@@ -601,20 +673,18 @@ fn spawn_decoder(
 }
 
 fn decode_into_slot(
-    decoder: &mut dyn GpuVideoDecoder,
+    frame: &GpuDecodedFrame,
+    source: osg_decode::SourceInfo,
     device: &VideoDevice,
     slots: &[Arc<SharedSurface>],
     processor: &mut Option<VideoProcessor>,
-    frame_index: u32,
     slot: usize,
     fence: &mut DecodeFenceSignal,
 ) -> Result<u64, GpuVideoError> {
-    let frame = decoder.frame_for_output(frame_index)?;
     if processor
         .as_ref()
         .is_none_or(|value| !value.matches(frame.presentation()))
     {
-        let source = decoder.source();
         *processor = Some(VideoProcessor::new(
             &device.device,
             &device.context,
@@ -628,7 +698,7 @@ fn decode_into_slot(
     processor
         .as_ref()
         .ok_or_else(sync_error)?
-        .convert(&frame, &target.d3d11)?;
+        .convert(frame, &target.d3d11)?;
     let fence_value = fence.signal()?;
     device.wait()?;
     Ok(fence_value)
@@ -860,7 +930,42 @@ fn worker_start_error(worker: WorkerStage, error: &std::io::Error) -> GpuVideoEr
 mod tests {
     use osg_compositor::FrameSize;
 
-    use super::{DECODE_RING_MAX, ENCODE_RING_MAX, ring_size};
+    use super::{
+        DECODE_RING_MAX, DecodedSampleKey, ENCODE_RING_MAX, holds_source_sample, ring_size,
+    };
+
+    const SAMPLE: DecodedSampleKey = DecodedSampleKey {
+        presentation_100ns: 1_000,
+        duration_100ns: 333,
+        source_index: 3,
+    };
+
+    #[test]
+    fn only_the_exact_same_selected_source_sample_is_held() {
+        assert!(holds_source_sample(Some(SAMPLE), SAMPLE));
+        assert!(!holds_source_sample(None, SAMPLE));
+        assert!(!holds_source_sample(
+            Some(DecodedSampleKey {
+                presentation_100ns: SAMPLE.presentation_100ns + 1,
+                ..SAMPLE
+            }),
+            SAMPLE,
+        ));
+        assert!(!holds_source_sample(
+            Some(DecodedSampleKey {
+                duration_100ns: SAMPLE.duration_100ns + 1,
+                ..SAMPLE
+            }),
+            SAMPLE,
+        ));
+        assert!(!holds_source_sample(
+            Some(DecodedSampleKey {
+                source_index: SAMPLE.source_index + 1,
+                ..SAMPLE
+            }),
+            SAMPLE,
+        ));
+    }
 
     #[test]
     fn output_ring_uses_depth_sixteen_at_1080p() {
