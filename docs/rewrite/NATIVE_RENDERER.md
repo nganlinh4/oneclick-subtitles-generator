@@ -31,8 +31,8 @@ bytes. Judged against the repository's own audit standard the compositor scores
 
 ## What the renderer must reproduce
 
-The specification is the measured feature matrix, not this document's prose. In summary: **70
-persisted options** (54 subtitle-customization fields, 6 render settings, 10 crop settings), **30
+The specification is the measured feature matrix, not this document's prose. In summary: **72
+persisted options** (56 subtitle-customization fields, 6 render settings, 10 crop settings), **30
 shipped presets**, unlimited user presets, and a font catalog of **121 options over 115 unique families**.
 
 Behaviours that a naive reimplementation gets wrong, all of which are current shipped behaviour and
@@ -40,7 +40,9 @@ must be reproduced deliberately or fixed deliberately:
 
 1. Two different scaling maths coexist. Sizes scale by `value * height / 1080` rounded to 2dp;
    margins use a fixed 1920x1080 percentage, so margins are resolution-independent and sizes are not.
-2. `ease` and `ease-in-out` are the same quadratic, and neither is the CSS `ease` curve.
+2. The legacy renderer made `ease` and `ease-in-out` the same quadratic. This is deliberately fixed:
+   `ease` is the CSS `cubic-bezier(0.25, 0.1, 0.25, 1)` keyword curve, while `ease-in-out` retains
+   the established quadratic. One generated bit-exact fixture keeps preview and export WYSIWYG.
 3. The fade window makes a cue visible before its `start` and after its `end`.
 4. Only the first matching cue renders, so overlapping cues silently vanish.
 5. `backgroundOpacity` is concatenated as hex alpha, so an `#rrggbbaa` colour — which every
@@ -353,7 +355,7 @@ crate is not uniformly Remotion-bound and must not be deleted wholesale:
 | `error.rs` | 39 | 2 | Keep the variants the contract needs, drop the rest. |
 
 `contract.rs` is the validated request the WebView already speaks: `RenderRequest`,
-`RenderSettings`, `SubtitleCustomization` with all 54 fields, `CropSettings` with all 10, and a
+`RenderSettings`, `SubtitleCustomization` with all 56 fields, `CropSettings` with all 10, and a
 checked enum for every vocabulary the UI can send. It is the typed boundary the frontend was written
 against, and rewriting it alongside a new renderer would risk exactly the silent drift the parity
 ledger exists to catch — for no benefit, since nothing in it mentions the engine that happened to
@@ -460,7 +462,7 @@ it, and this table is kept synchronised with executable state — if it disagree
 | 5 | Preview switched to a persistent WebView canvas fed by the live video element and the exact shaped line atlas used by native export. | **Complete.** Continuous playback performs no native frame render, PNG encode, IPC frame transfer, capability-URL load, or React frame loop. Export remains the Rust/GPU compositor; shared atlas pixels, scene maths, and decoded-frame SSIM prove WYSIWYG. |
 | 6 | Encode/mux stage. | **Done, both directions.** `osg-encode` writes H.264/AAC MP4 through Media Foundation, ffprobe-verified full-range BT.709. `osg-decode` reads through `IMFSourceReader` with frame-exact sampling, 58 tests. `osg-audio` decodes, resamples and mixes, 100 tests. No FFmpeg anywhere. |
 | 6b | Export orchestration: a validated request to a finished file. | **Done.** `osg-export`, 65 tests including 8 real end-to-end exports. The single place every parity decision is applied. |
-| 7 | Parity suite across presets, options, resolutions and frame rates. | **Input frozen, gate not built.** Field coverage is **2 of 70 pending** (`maxWidth`, awaiting its caller; `rtlSupport`, awaiting contextual cell baking). `scripts/generate-parity-matrix.mjs` freezes what the gate must cover — 30 presets, 70 options, 147 field-value renders, 9 texts, 4 output shapes — and `npm run test:parity-matrix` fails if it goes stale. The gate that renders and compares them does not exist yet. |
+| 7 | Parity suite across presets, options, resolutions and frame rates. | **Input frozen, gate not built.** Field coverage is **2 of 72 pending** (`maxWidth`, awaiting its caller; `rtlSupport`, awaiting contextual cell baking). `scripts/generate-parity-matrix.mjs` freezes what the gate must cover — 30 presets, 72 options, 155 field-value renders, 9 texts, 4 output shapes — and `npm run test:parity-matrix` fails if it goes stale. The gate that renders and compares them does not exist yet. |
 | 8 | Removal, in the order above, with the readiness rule landing last. | **Not started, and correctly blocked** — nothing is removed until step 7 proves the replacement. |
 
 Step 6 turned out to be the step that removed the licensing problem entirely rather than relocating

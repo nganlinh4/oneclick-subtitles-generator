@@ -216,13 +216,19 @@ npm run tauri:dev
 
 Tauri starts Vite automatically. `npm run dev:vite` is available for frontend-only inspection, but
 browser mode cannot exercise native commands and is not a functional replacement for the desktop
-app.
+app. The public frontend commands (`dev:vite`, `build:vite`, `build:promptdj`, and
+`build:frontend`) also acquire the bounded external `dev` lane; they do not write Vite caches,
+PromptDJ output, version metadata, or `build/` into the repository. Tauri invokes separately named
+guarded inner scripts under its existing dev/package lease, so its hooks never nest another cache
+manager. Those inner scripts reject unmanaged local use. GitHub Actions uses the explicit inner
+route only after validating the complete runner/workspace identity; setting `CI=true` or
+`GITHUB_ACTIONS=true` in a local shell grants no bypass.
 
 To compile without creating an installer:
 
 ```powershell
 npm run build:frontend
-cargo check --workspace --all-features --locked
+npm run cargo:check
 npm run tauri:build -- --no-bundle
 ```
 
@@ -256,8 +262,8 @@ npm run check:frozen-css-output
 npm run check:production-transport
 node scripts/check-release-readiness.js --profile compile
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
+npm run cargo:clippy
+npm run cargo:test
 ```
 
 ### Real-binary journeys
@@ -267,12 +273,62 @@ which is the only layer that can observe what a user observes -- it is what foun
 timeout that left every clean installation unable to draw a subtitle while every source-level gate
 stayed green. Windows only, and the E2E-channel binary must be built first:
 
-```bash
-npm run build:frontend
-npm --prefix apps/desktop run tauri -- build --features e2e-automation --no-bundle --target x86_64-pc-windows-msvc
+```powershell
+npm run build:e2e-binary
 npm --prefix e2e test
 npm --prefix e2e run test:damaged-font
 ```
+
+`build:e2e-binary` uses the named nonshipping `e2e` Cargo profile, but it does not add another
+unbounded `target` tree to the repository. It obtains leased Cargo, frontend, application, and reusable-asset lanes
+from the owned cache at `%LOCALAPPDATA%\OSG-Development\cache` (28 GiB and 14 inactive days by
+default). Set `OSG_DEV_CACHE_ROOT` to an explicit absolute directory to relocate the whole cache.
+The manager rejects repository ancestors, drive roots, traversal, reparse points, unknown bytes and
+foreign ownership markers; it prunes only complete manager-owned lanes and never adopts or deletes
+an existing repository `target` directory. See
+[`docs/rewrite/DEVELOPMENT_CACHE.md`](docs/rewrite/DEVELOPMENT_CACHE.md), or inspect it with:
+
+```powershell
+npm run cache:status
+npm run cache:prune          # dry run
+npm run cache:prune:apply    # owned external lanes only
+```
+
+The builder always rebuilds the frontend first, with version metadata pinned to the source commit so
+an unchanged rerun does not relink only because the wall clock advanced. Each invocation builds in a
+private temporary directory and atomically publishes a content-addressed immutable frontend
+snapshot; it never rewrites production `src/config/version.js` or `build/`. Cargo receives that exact
+snapshot only through its child-process `TAURI_CONFIG`. After Cargo completes, only
+`osg-desktop.exe`, `ui-fonts/`, `workers/`, and `licenses/` cross into a second content-addressed
+application publication. The harness resolves the current receipt, independently verifies its
+manifest and every file digest, and holds the managed lane lease for the real process lifetime. A
+concurrent, corrupt, or interrupted publisher therefore cannot expose mixed bytes or replace the
+last known-good runnable app. The managed frontend and schema-v2 application publishers each retain
+only the verified current hash and one verified previous hash. During the schema-v1 application
+migration, at most one separately verified legacy publication may remain beside that bounded pair.
+Tools, engines, deterministic media, and workflow screenshot evidence use separate leased external
+lanes under the same cap; evidence is browsable under `evidence\<workflow>\attempts`. Each workflow
+keeps its three newest immutable attempts plus its latest successful proof (at most four when the
+success is older). Frontend publication, application publication, and evidence retention each
+validate their complete publisher-owned inventory and use a recoverable journaled quarantine, so a
+hard kill cannot turn a partial publish or delete into permanent cache poison.
+
+Canonical local frontend, Cargo, and Tauri commands all enter that same manager. The inner
+`apps/desktop` Tauri entry points reject unmanaged local invocations, and Vite itself fails closed
+if an inner command is reached without the exact owned Cargo/frontend/application markers and one
+live shared lease.
+
+Cargo is bounded to one build job so unattended tests do not exhaust the workstation while another
+Rust task is active. Desktop builds emit only the `rlib` consumed by `src/main.rs`; unused mobile ABI
+static/DLL forms belong in a future thin mobile wrapper. Final binary, installer, updater, size and
+installed-app proof still use the unchanged production release profile and ordinary wall-clock build
+metadata.
+
+The ordinary `cargo:check`, `cargo:test`, `cargo:clippy`, `tauri:dev`, and `tauri:build` npm commands
+also hold managed dev/package leases and put both Cargo and generated frontend output in the
+external cache. The inner `apps/desktop` Tauri entry points reject unmanaged local invocations;
+always start them through the root npm commands. Running raw Cargo from the repository bypasses size
+management and is intentionally no longer the documented local path.
 
 `npm --prefix e2e test` runs every journey against the built application in an isolated data root.
 `test:damaged-font` stages throwaway copies of that installation with damaged font resources and

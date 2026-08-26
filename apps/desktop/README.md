@@ -21,14 +21,26 @@ npm run tauri:dev
 ```
 
 Vite is started automatically by Tauri. `npm run dev:vite` is useful for frontend-only inspection,
-but browser mode cannot exercise native commands and is not the product runtime.
+but browser mode cannot exercise native commands and is not the product runtime. Public frontend
+and PromptDJ build/dev commands acquire the bounded `dev` lane themselves. Tauri's
+`beforeDevCommand` and `beforeBuildCommand` use guarded inner scripts under the lease Tauri already
+holds, avoiding nested managers. Direct inner use, including a shell with only spoofed CI flags,
+fails closed before Vite can write an output or dependency cache.
+
+Run Tauri and Cargo from the repository root through the documented npm commands. They hold an
+owned `dev` or `package` lease and put Cargo plus generated frontend output in the bounded external
+cache (`%LOCALAPPDATA%\OSG-Development\cache`, 28 GiB and 14 inactive days by default). The inner Tauri
+scripts in this package deliberately reject unmanaged local invocations. Cache publication
+keeps only the current and one previous verified frontend/application generation, while real-flow
+evidence keeps the three newest attempts plus the latest success. Recovery is journal-driven; see
+[../../docs/rewrite/DEVELOPMENT_CACHE.md](../../docs/rewrite/DEVELOPMENT_CACHE.md).
 
 ## Compile without packaging
 
 ```powershell
 npm run build:frontend
-cargo check --workspace --all-features --locked
-npm run tauri -- build --no-bundle --ci -- --locked
+npm run cargo:check
+npm run tauri:build -- --no-bundle --ci -- --locked
 ```
 
 Do not treat `--no-bundle` as a release. Target-specific optional runtimes, notices, updater
@@ -44,8 +56,8 @@ npm run test:python-workers
 npm run build:frontend
 npm run check:production-transport
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
+npm run cargo:clippy
+npm run cargo:test
 npm run check:tauri-contract
 node scripts/check-release-readiness.js --profile compile
 ```
