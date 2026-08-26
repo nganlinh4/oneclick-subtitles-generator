@@ -29,18 +29,26 @@ const readRows = () => browser.execute((ids) => ids.map((id) => {
 
 const waitForRows = async (expected) => {
   let last = null;
-  await browser.waitUntil(async () => {
+  try {
+    await browser.waitUntil(async () => {
+      last = await readRows();
+      return TOOL_IDS.every((id) => {
+        const accepted = Array.isArray(expected[id]) ? expected[id] : [expected[id]];
+        return accepted.includes(last.find((row) => row.id === id)?.state);
+      })
+        && last.every((row) => row.errors.length === 0);
+    }, {
+      timeout: TIMEOUT_MS,
+      interval: 1_000,
+      timeoutMsg: 'native tools did not reach the requested states before their timeout',
+    });
+  } catch (error) {
     last = await readRows();
-    return TOOL_IDS.every((id) => {
-      const accepted = Array.isArray(expected[id]) ? expected[id] : [expected[id]];
-      return accepted.includes(last.find((row) => row.id === id)?.state);
-    })
-      && last.every((row) => row.errors.length === 0);
-  }, {
-    timeout: TIMEOUT_MS,
-    interval: 1_000,
-    timeoutMsg: `native tools did not reach ${JSON.stringify(expected)}; last=${JSON.stringify(last)}`,
-  });
+    throw new Error(
+      `native tools did not reach ${JSON.stringify(expected)}; last=${JSON.stringify(last)}`,
+      { cause: error },
+    );
+  }
   return last;
 };
 

@@ -1,4 +1,7 @@
-import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath, URL } from 'node:url';
+import jobSupervisor from '../../scripts/windows-job-supervisor.js';
 
 import {
   corruptFontResource,
@@ -8,6 +11,16 @@ import {
   stagedBinary,
   stagedFontResources,
 } from '../support/stageApplication.js';
+import {
+  createRunRoot, removeRunRoot, runRootAuthorization, scrubAutomationEnvironment,
+} from '../support/environment.js';
+import { INHERITED_APPLICATION_LEASE } from '../support/applicationLease.js';
+import { withScenarioLeases } from '../support/twoProcessScenario.js';
+import {
+  beginWorkflowEvidence, finalizeWorkflowEvidence, workflowNameForJourney,
+} from '../support/workflowEvidence.js';
+
+/* global console */
 
 /**
  * Run the font journey against installations whose shipped font bytes are damaged.
@@ -45,30 +58,75 @@ const CASES = [
   },
 ];
 
+const E2E_ROOT = fileURLToPath(new URL('..', import.meta.url));
+const SPEC = './journeys/damagedFontPayload.journey.js';
+const WDIO = join(E2E_ROOT, 'node_modules', '@wdio', 'cli', 'bin', 'wdio.js');
+const WORKFLOW = workflowNameForJourney(SPEC);
+const { runSupervisedSync } = jobSupervisor;
+
 let failures = 0;
 
-for (const testCase of CASES) {
-  const staged = stageApplication();
+for (const [index, testCase] of CASES.entries()) {
   try {
-    const damaged = testCase.damage(staged);
-    console.log(`\n=== ${testCase.name}\n    damaged: ${damaged}`);
-
-    const result = spawnSync(
-      'npx',
-      ['wdio', 'run', 'wdio.conf.js', '--spec', './journeys/damagedFontPayload.journey.js'],
-      {
-        cwd: new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
-        env: { ...process.env, OSG_E2E_BINARY: stagedBinary(staged) },
-        stdio: 'inherit',
-        shell: process.platform === 'win32',
-      },
-    );
-    if (result.status !== 0) {
-      failures += 1;
-      console.error(`FAILED: ${testCase.name}`);
-    }
-  } finally {
-    discardStagedApplication(staged);
+    withScenarioLeases(({
+      applicationLease, inheritedApplication, managedPaths, stagingLease,
+    }) => {
+      const staged = stageApplication({ applicationLease, stagingLease });
+      const root = createRunRoot({
+        keepNativeTools: false,
+        keepEnginePackages: false,
+        stagingLease,
+      });
+      const rootAuthorization = runRootAuthorization(root);
+      try {
+        const damaged = testCase.damage(staged);
+        console.log(`\n=== ${testCase.name}\n    damaged: ${damaged}`);
+        const binary = stagedBinary(staged);
+        const attempt = beginWorkflowEvidence({
+          workflow: WORKFLOW,
+          journey: SPEC,
+          iteration: index + 1,
+          binaryPath: binary,
+        });
+        const environment = {
+          ...scrubAutomationEnvironment(process.env),
+          OSG_E2E_BINARY: binary,
+          OSG_E2E_WORKFLOW: WORKFLOW,
+          OSG_E2E_EVIDENCE_ATTEMPT: attempt.id,
+          OSG_E2E_DATA_ROOT: root,
+          OSG_E2E_REUSE_ROOT: '1',
+          OSG_E2E_RUN_ROOT_AUTHORIZATION: rootAuthorization,
+          [INHERITED_APPLICATION_LEASE]: inheritedApplication,
+        };
+        const supervised = runSupervisedSync({
+          command: process.execPath,
+          args: [WDIO, 'run', 'wdio.conf.js', '--spec', SPEC],
+          cwd: E2E_ROOT,
+          env: environment,
+          stdio: 'inherit',
+          ownerProcessId: process.pid,
+          managedPaths,
+        });
+        const passed = !supervised.error && supervised.status === 0;
+        finalizeWorkflowEvidence({
+          workflow: WORKFLOW,
+          attemptId: attempt.id,
+          outcome: passed ? 'pass' : 'fail',
+          exitStatus: supervised.status,
+          signal: supervised.signal,
+          failure: supervised.error?.message ?? (passed ? null : `${testCase.name} failed`),
+        });
+        if (supervised.error) throw supervised.error;
+        if (!passed) throw new Error(`${testCase.name} exited with ${supervised.status}`);
+      } finally {
+        removeRunRoot(root, rootAuthorization);
+        discardStagedApplication(staged);
+      }
+    });
+  } catch (error) {
+    failures += 1;
+    console.error(`FAILED: ${testCase.name}`);
+    console.error(error);
   }
 }
 

@@ -48,17 +48,24 @@ describe('the default subtitle font in the real application', () => {
   it('is present, verified and drawn from its own bytes', async () => {
     let seen = await observe();
 
-    await browser.waitUntil(async () => {
-      seen = await observe();
-      // Fonts load asynchronously; waiting on the face rather than on a timer.
-      return seen.rootChildren > 0 && seen.faceCheck === true
-        && seen.readiness?.state === 'ready';
-    }, {
-      timeout: READY_TIMEOUT_MS,
-      interval: 500,
-      timeoutMsg: () => 'the managed font never became usable. last observation: '
-        + JSON.stringify(seen, null, 2),
-    });
+    try {
+      await browser.waitUntil(async () => {
+        seen = await observe();
+        // Fonts load asynchronously; waiting on the face rather than on a timer.
+        return seen.rootChildren > 0 && seen.faceCheck === true
+          && seen.readiness?.state === 'ready';
+      }, {
+        timeout: READY_TIMEOUT_MS,
+        interval: 500,
+        timeoutMsg: 'the managed font never became usable',
+      });
+    } catch (error) {
+      throw new Error(
+        'the managed font never became usable. last observation: '
+          + JSON.stringify(seen, null, 2),
+        { cause: error },
+      );
+    }
 
     console.log('font observation:\n' + JSON.stringify(seen, null, 2));
 

@@ -53,7 +53,7 @@ describe('timeline boundaries', () => {
     await importSubtitleDocument(subtitles, 'timeline-boundary.srt', BOUNDARY_CUE);
 
     let waveformMeasurement = null;
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       waveformMeasurement = await browser.execute((mediaEnd, contentEnd) => {
         const host = document.querySelector('[data-osg-waveform-state="ready"]');
         const canvas = host?.querySelector('canvas') ?? null;
@@ -90,7 +90,7 @@ describe('timeline boundaries', () => {
     }, {
       timeout: 180_000,
       interval: 500,
-      timeoutMsg: () => `waveform pixels did not stop at playable media: ${JSON.stringify(waveformMeasurement)}`,
+      diagnostic: () => `waveform pixels did not stop at playable media: ${JSON.stringify(waveformMeasurement)}`,
     });
 
     await captureWorkflowStep({
@@ -173,7 +173,7 @@ describe('timeline boundaries', () => {
     let regenerated = null;
     let lastTranscribeJob = null;
     let livePublicationWitness = null;
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       const surface = await browser.execute(() => ({
         rows: [...document.querySelectorAll('.lyric-text')]
           .map((node) => (node.innerText || '').trim()).filter(Boolean),
@@ -209,7 +209,7 @@ describe('timeline boundaries', () => {
     }, {
       timeout: 1_800_000,
       interval: 500,
-      timeoutMsg: () => `generation did not stream fresh cues before completing: ${JSON.stringify({
+      diagnostic: () => `generation did not stream fresh cues before completing: ${JSON.stringify({
         visibleRows,
         durableCueCount: regenerated?.counts?.cues ?? null,
         lastTranscribeJob,
@@ -237,3 +237,14 @@ describe('timeline boundaries', () => {
     });
   });
 });
+
+async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
+  try {
+    return await browser.waitUntil(predicate, {
+      ...options,
+      timeoutMsg: 'condition did not settle before its timeout',
+    });
+  } catch (error) {
+    throw new Error(diagnostic(), { cause: error });
+  }
+}

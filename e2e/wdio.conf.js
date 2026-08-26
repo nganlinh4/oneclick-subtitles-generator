@@ -11,14 +11,38 @@
 // The server is compiled only under the `e2e-automation` Cargo feature. `cargo tree` reports two
 // wdio crates in that graph and zero in the production graph.
 
-import { copyFileSync, existsSync } from 'node:fs';
+/* global browser, console, process */
+
+import { copyFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 
 import {
-  APPLICATION_BINARY, JOURNEY_TIMEOUT_MS, assertAutomationDialogGuard, createRunRoot,
-  isolationEnvironment, removeRunRoot, stagedDialogPaths,
+  APPLICATION_BINARY, BUILT_APPLICATION_DIRECTORY, JOURNEY_TIMEOUT_MS,
+  assertAutomationDialogGuard, assertStagedApplicationBinary, attachRunRootCaches, canReuseRunRoot,
+  isolationEnvironment, managedStagingEnvironment, readVerifiedPublishedApplication,
+  runRootAuthorization, stagedDialogPaths,
 } from './support/environment.js';
-import { cachedRealVideo } from './support/realMedia.js';
-import { captureWorkflowStep } from './support/workflowEvidence.js';
+import { readInheritedApplicationLease } from './support/applicationLease.js';
+import {
+  cachedRealVideo, ensureSourceSwitchVideo, verifiedDownloadIdentityVideo,
+} from './support/realMedia.js';
+import { waitForAutomationWindowIsolation } from './support/editor.js';
+import {
+  promoteWorkflowFailureEvidence, recordWorkflowTestFailure, workflowFailureStepForTest,
+} from './support/workflowEvidence.js';
+import { startDownloadFixtureOrigin } from './support/downloadFixtureOrigin.js';
+import {
+  assertGuardedWebDriverSession,
+  assertWebDriverCommandIsNonInteractive,
+  createGuardedWebDriverBinding,
+  guardedWebDriverEnvironment,
+  verifyGuardedWebDriverStatus,
+} from './support/driverIdentity.js';
+import { assertInstalledTauriServiceSafety } from './support/tauriServiceSafetyPatch.mjs';
+
+// `npm ci --ignore-scripts` must fail here, before a run root is created and before the service can
+// spawn anything. The postinstall patch is reproducible convenience; this assertion is authority.
+assertInstalledTauriServiceSafety();
 
 // The run root is created and exported into the environment WHEN THIS CONFIG LOADS, before any
 // hook and before the service spawns the binary.
@@ -30,15 +54,53 @@ import { captureWorkflowStep } from './support/workflowEvidence.js';
 // state while appearing to be isolated, which is the most dangerous shape a test harness can take:
 // it looks clean and it is not.
 //
-// The root is REUSED when one is already in the environment, because this config is loaded once in
-// the launcher process and again in each worker. Creating a root in both produced two per run, and
-// the service spawns the binary from the launcher — so the application wrote its database and log
-// into the launcher's root while the worker saved screenshots into a different one. Diagnosing the
-// first real failure this harness found therefore started with an evidence directory that contained
-// a screenshot, no log, and no indication that the log existed somewhere else entirely.
-const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_DATA_ROOT)
-  ? process.env.OSG_E2E_DATA_ROOT
-  : createRunRoot();
+// The root is REUSED only by a real WDIO IPC worker or a reviewed multi-process scenario, because
+// this config is loaded once in the launcher and again in each worker. Both must present the
+// independently-created 256-bit authority stored in the root. A path, worker-looking environment,
+// or explicit reuse flag alone is not authority. Creating another root in the worker produced two
+// per run: the service spawned the binary into the launcher's root while the worker saved
+// screenshots elsewhere.
+const isWdioWorker = typeof process.send === 'function'
+  && typeof process.env.WDIO_WORKER_ID === 'string'
+  && process.env.WDIO_WORKER_ID.length > 0;
+const samePath = (left, right) => (
+  process.platform === 'win32'
+    ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+    : resolve(left) === resolve(right)
+);
+const { inherited: inheritedApplication, publication: leasedPublication } = readInheritedApplicationLease({
+  readPublication: readVerifiedPublishedApplication,
+});
+if (process.env.OSG_E2E_BINARY === undefined) {
+  if (
+    !samePath(leasedPublication.binaryPath, APPLICATION_BINARY)
+    || !samePath(leasedPublication.applicationRoot, BUILT_APPLICATION_DIRECTORY)
+    || basename(leasedPublication.applicationRoot) !== leasedPublication.applicationHash
+  ) {
+    throw new Error('the inherited E2E application publication does not match the selected binary');
+  }
+} else {
+  const staged = assertStagedApplicationBinary(APPLICATION_BINARY);
+  if (staged.marker.applicationHash !== inheritedApplication.applicationHash) {
+    throw new Error('the staged E2E application was not copied from the inherited publication');
+  }
+}
+assertAutomationDialogGuard(APPLICATION_BINARY);
+if (!canReuseRunRoot({ environment: process.env, workerProcess: isWdioWorker })) {
+  throw new Error('WDIO must inherit one authorized run root from its managed staging lease owner');
+}
+const runRoot = process.env.OSG_E2E_DATA_ROOT;
+attachRunRootCaches({ root: runRoot });
+const runAuthorization = runRootAuthorization(runRoot);
+process.env.OSG_E2E_RUN_ROOT_AUTHORIZATION = runAuthorization;
+Object.assign(process.env, managedStagingEnvironment(runRoot));
+const webdriverBinding = await createGuardedWebDriverBinding({
+  environment: process.env,
+  runRoot,
+  workerProcess: isWdioWorker,
+});
+Object.assign(process.env, guardedWebDriverEnvironment(webdriverBinding));
+let guardedWebDriverProcessId = null;
 // The staged dialog answers, decided before the binary is spawned because the application reads
 // them from its own environment at launch.
 //
@@ -49,11 +111,60 @@ const runRoot = process.env.OSG_E2E_DATA_ROOT && existsSync(process.env.OSG_E2E_
 // selection receives a typed refusal from the automation-only Rust boundary. It can never fall back
 // to the customer dialog implementation because that implementation is not compiled into this
 // channel.
-const cachedVideo = cachedRealVideo();
+// A damaged-install run has no E2E asset-lane lease by design. It tests only the private staged
+// application, so it must not even inspect persistent media while that lane can be pruned.
+const cachedVideo = process.env.OSG_E2E_BINARY === undefined ? cachedRealVideo() : null;
 const dialogPaths = stagedDialogPaths(runRoot, cachedVideo);
 if (process.env.OSG_E2E_MEDIA_SELECTION === undefined && cachedVideo !== null) {
   copyFileSync(cachedVideo, dialogPaths.mediaSelection);
   process.env.OSG_E2E_MEDIA_SELECTION = dialogPaths.mediaSelection;
+}
+if (process.env.OSG_E2E_WORKFLOW === 'main-preview-controls-and-fullscreen') {
+  if (cachedVideo === null || process.env.OSG_E2E_MEDIA_SELECTION === undefined) {
+    throw new Error('the preview-controls journey requires the cached real YouTube source');
+  }
+  const secondSource = await ensureSourceSwitchVideo();
+  const stagedSecondSource = join(runRoot, 'input', `source-switch-${basename(secondSource)}`);
+  copyFileSync(secondSource, stagedSecondSource);
+  process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
+    process.env.OSG_E2E_MEDIA_SELECTION,
+    stagedSecondSource,
+  ]);
+}
+let downloadFixtureOrigin = null;
+if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
+    || process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale') {
+  // This configuration is loaded once by the WDIO launcher and again by its worker. Only the
+  // launcher creates the origin; the exact capabilities then reach both the worker and the app as
+  // inherited, immutable-at-launch environment values. The application cannot choose a URL and a
+  // journey cannot widen the allow-list after it starts.
+  if (process.env.OSG_E2E_EXACT_DOWNLOAD_URLS === undefined) {
+    const sourceA = await ensureSourceSwitchVideo();
+    const failureJourney = process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale';
+    downloadFixtureOrigin = await startDownloadFixtureOrigin({
+      eventsPath: join(runRoot, 'evidence', 'download-fixture-events.jsonl'),
+      sources: failureJourney ? [
+        { label: 'a', path: sourceA },
+        // C is still a real, reviewed MP4 for yt-dlp inspection. After that first GET, the exact
+        // origin returns 503 so the native job/failure/cleanup path runs without a product mock.
+        { label: 'c', path: verifiedDownloadIdentityVideo(), rejectGetAfter: 1 },
+      ] : [
+        { label: 'a', path: sourceA },
+        // A real committed speech clip, not generated colour bars. Real-network extraction stays
+        // independently proven by urlToPreview instead of making cancellation timing depend on it.
+        { label: 'b', path: verifiedDownloadIdentityVideo() },
+      ],
+      chunkDelayMs: failureJourney ? 10 : 120,
+      initialDelayMs: failureJourney ? 0 : 2_000,
+    });
+    process.env.OSG_E2E_EXACT_DOWNLOAD_URLS = JSON.stringify(
+      downloadFixtureOrigin.manifest.map(({ url }) => url),
+    );
+    process.env.OSG_E2E_DOWNLOAD_FIXTURE_MANIFEST = JSON.stringify(
+      downloadFixtureOrigin.manifest,
+    );
+    process.env.OSG_E2E_DOWNLOAD_FIXTURE_EVENTS = downloadFixtureOrigin.eventsPath;
+  }
 }
 if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {
   // A directory, not a file: only the application knows what the asset is called or what container
@@ -75,9 +186,19 @@ export const config = {
   services: ['@wdio/tauri-service'],
   capabilities: [{
     browserName: 'tauri',
+    'osg:e2eAuthorization': webdriverBinding.authorization,
     'tauri:options': {
       application: APPLICATION_BINARY,
       driverProvider: 'embedded',
+      // A genuinely clean profile can spend more than the service's 60-second default installing
+      // and verifying managed runtime packages before the embedded server starts accepting
+      // sessions. The window is already created entirely off-screen by the E2E-only Rust feature, so
+      // waiting here cannot interrupt the desktop. Treat a slow cold start as slow, not as a crash.
+      startTimeout: 180_000,
+    },
+    'wdio:tauriServiceOptions': {
+      embeddedPort: webdriverBinding.port,
+      env: guardedWebDriverEnvironment(webdriverBinding),
     },
   }],
   reporters: ['spec'],
@@ -86,7 +207,11 @@ export const config = {
   // only "took too long", discarding the observation the journey collected about WHY.
   // Heavy engine-install journeys legitimately run for hours. Cross-process persistence is driven
   // by scenario runners that launch this configuration twice, never by extending one Mocha test.
-  mochaOpts: { ui: 'bdd', timeout: JOURNEY_TIMEOUT_MS },
+  mochaOpts: {
+    ui: 'bdd',
+    timeout: JOURNEY_TIMEOUT_MS,
+    require: ['./support/mochaHooks.js'],
+  },
   logLevel: 'warn',
 
   onPrepare: () => {
@@ -94,6 +219,12 @@ export const config = {
       throw new Error('the isolation environment was overwritten before the run started');
     }
     assertAutomationDialogGuard(APPLICATION_BINARY);
+  },
+
+  // The upstream service considers any ready server on its port to be the process it just spawned.
+  // Verify the compiled marker, PID and 256-bit run identity before WebDriver creates a session.
+  beforeSession: async () => {
+    ({ processId: guardedWebDriverProcessId } = await verifyGuardedWebDriverStatus(webdriverBinding));
   },
 
   // This application has exactly one WebView. Mark its existing WebDriver handle as the explicit
@@ -104,43 +235,84 @@ export const config = {
   // the rendered editor. An explicit standard WebDriver switch suppresses that irrelevant recovery
   // path; it does not navigate, inject state, mock IPC or choose a different application window.
   before: async () => {
+    assertGuardedWebDriverSession(
+      browser.capabilities,
+      webdriverBinding,
+      guardedWebDriverProcessId,
+    );
     const handle = await browser.getWindowHandle();
     await browser.switchToWindow(handle);
-    if (process.env.OSG_E2E_OFFSCREEN_WINDOW === '1') {
-      const rect = await browser.getWindowRect();
-      if (rect.x > -9_000) {
-        throw new Error(`the automation window entered the interactive desktop: ${JSON.stringify(rect)}`);
-      }
+    await waitForAutomationWindowIsolation();
+  },
+
+  // Defense in depth above the server-side refusals. The vendored server independently runs the
+  // native off-screen/non-focusable invariant before every HTTP request, including screenshots and
+  // synthetic input; these names must never reach its mutation routes.
+  beforeCommand: (commandName) => {
+    assertWebDriverCommandIsNonInteractive(commandName);
+  },
+
+  // Suite/root hooks can fail before a journey body starts, most importantly the native hidden-
+  // window preflight. They do not enter afterTest, so retain the same exact bounded Error here.
+  afterHook: (test, context, { error, passed }, hookName) => {
+    if (passed) return;
+    const workflow = process.env.OSG_E2E_WORKFLOW;
+    if (!workflow) return;
+    try {
+      recordWorkflowTestFailure({ workflow, test: { ...test, hook: hookName }, error });
+    } catch (captureError) {
+      console.log(`\n--- immutable hook failure unavailable: ${captureError.message} ---`);
     }
   },
 
-  afterSession: () => {
-    if (runRoot && !process.env.OSG_E2E_KEEP_ROOT) removeRunRoot(runRoot);
+  // Launcher-owned network resources must outlive the application session but never the WDIO run.
+  // A worker sees only the inherited manifest and therefore has nothing it can accidentally close.
+  onComplete: async () => {
+    let resourceError;
+    try {
+      if (downloadFixtureOrigin !== null) await downloadFixtureOrigin.close();
+    } catch (error) {
+      resourceError = error;
+    }
+    if (resourceError !== undefined) throw resourceError;
   },
 
-  // Evidence on every failure. A timeout without a screenshot and a log dump costs more to diagnose
-  // than the test saved by existing.
-  afterTest: async function afterTest(test, context, { passed }) {
+  // Evidence on every failure. The promoted bundle already records bounded WebView diagnostics and
+  // app-log tails; querying WebDriver logs again here only duplicates the request (and the embedded
+  // provider's unsupported-command warnings) without adding evidence.
+  afterTest: async function afterTest(test, context, { error, passed }) {
     if (passed) return;
-    const name = test.title.replace(/[^\w-]+/g, '-').slice(0, 80);
+    const title = typeof test.title === 'string' ? test.title : 'unknown test';
+    const failureStep = workflowFailureStepForTest(title);
+    const fallbackScreenshot = join(runRoot, 'evidence', `${failureStep}.png`);
+    let savedFallback = null;
     const workflow = process.env.OSG_E2E_WORKFLOW;
+    // The Error object exists independently of the WebView session. Persist it first: a failed
+    // transport may make every screenshot and execute call below unavailable.
     if (workflow) {
       try {
-        await captureWorkflowStep({
-          workflow,
-          step: `failure-${name}`.toLowerCase(),
-          description: `Failure evidence: ${test.title}`,
-        });
-      } catch { /* retain the run-root fallback below */ }
+        recordWorkflowTestFailure({ workflow, test, error });
+      } catch (captureError) {
+        console.log(`\n--- immutable test failure unavailable: ${captureError.message} ---`);
+      }
     }
+    // Screenshot first. Page evaluation is one of the operations most likely to be broken after a
+    // timeout or renderer failure, while WebDriver can still often return the last composited frame.
     try {
-      await browser.saveScreenshot(`${runRoot}/evidence/${name}.png`);
-    } catch { /* the window may already be gone; the logs below still help */ }
-    try {
-      const logs = await browser.getLogs('browser');
-      console.log(`\n--- WebView logs (${name}) ---\n${JSON.stringify(logs, null, 2)}`);
-    } catch (error) {
-      console.log(`\n--- WebView logs unavailable: ${error.message} ---`);
+      await browser.saveScreenshot(fallbackScreenshot);
+      savedFallback = fallbackScreenshot;
+    } catch { /* the window may already be gone; immutable diagnostics still capture app logs */ }
+    if (workflow) {
+      try {
+        await promoteWorkflowFailureEvidence({
+          workflow,
+          step: failureStep,
+          description: `Failure evidence: ${title}`,
+          fallbackScreenshot: savedFallback,
+        });
+      } catch (error) {
+        console.log(`\n--- immutable failure evidence unavailable: ${error.message} ---`);
+      }
     }
     console.log(`\n--- evidence kept at: ${runRoot} ---`);
     process.env.OSG_E2E_KEEP_ROOT = '1';

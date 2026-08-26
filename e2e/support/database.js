@@ -121,3 +121,16 @@ export const durableTranslations = (root) => withDatabase(root, (database) => (
     return { key, translation: auxiliary?.translation ?? null };
   })
 ));
+
+/** Project-owned render scenes, decoded independently from the app's command boundary. */
+export const durableRenderScenes = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    'SELECT hex(project_id) AS project_id, scene_revision, schema_version, scene_json'
+      + ' FROM project_render_scenes ORDER BY updated_at_ms',
+  ).all().map((row) => ({
+    projectId: String(row.project_id).toLowerCase(),
+    sceneRevision: row.scene_revision,
+    schemaVersion: row.schema_version,
+    scene: JSON.parse(row.scene_json),
+  }))
+));

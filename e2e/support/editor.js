@@ -6,10 +6,43 @@
  * onboarding by writing `has_visited_site` would also skip whatever onboarding breaks.
  */
 
+/* global $, browser, document, process, window */
+
 const READY_TIMEOUT_MS = 90_000;
+const OFFSCREEN_X_LIMIT = -9_000;
+
+/**
+ * Prove that the real automation window cannot touch the interactive desktop.
+ *
+ * This belongs in the journey call path, not only in a WebdriverIO lifecycle hook: WebdriverIO was
+ * observed logging a rejected `before` hook and then running the spec to a successful exit code.
+ * Every journey calls `waitForEditorReady`, so an unsafe placement is now a test failure even when
+ * the runner mishandles its own hook.
+ */
+export const waitForAutomationWindowIsolation = async () => {
+  if (process.env.OSG_E2E_OFFSCREEN_WINDOW !== '1') return null;
+
+  let lastRect = null;
+  await browser.waitUntil(
+    async () => {
+      lastRect = await browser.getWindowRect();
+      return lastRect.x <= OFFSCREEN_X_LIMIT;
+    },
+    {
+      timeout: 30_000,
+      interval: 100,
+      timeoutMsg: 'the automation window never reached its off-screen position',
+    },
+  );
+  if (lastRect === null || lastRect.x > OFFSCREEN_X_LIMIT) {
+    throw new Error(`the automation window entered the interactive desktop: ${JSON.stringify(lastRect)}`);
+  }
+  return lastRect;
+};
 
 /** Wait until React has committed the application shell. */
 export const waitForEditorReady = async () => {
+  await waitForAutomationWindowIsolation();
   await browser.waitUntil(
     async () => (await browser.execute(
       () => document.querySelector('#root')?.childElementCount ?? 0,
@@ -94,14 +127,23 @@ export const whatIsAt = async (selector) => browser.execute((target) => {
   const node = document.querySelector(target);
   if (node === null) return { present: false };
   const rect = node.getBoundingClientRect();
-  const centre = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  const centreX = rect.left + rect.width / 2;
+  const centreY = rect.top + rect.height / 2;
+  const centre = document.elementFromPoint(centreX, centreY);
   return {
     present: true,
     rect: {
       x: Math.round(rect.x), y: Math.round(rect.y),
       w: Math.round(rect.width), h: Math.round(rect.height),
     },
-    inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight,
+    // Actionability is about the point WebDriver presses, not full-rectangle containment. A user
+    // can press a tab whose outer padding is clipped by a scroll container while its centre remains
+    // visible; requiring every edge caused `scrollIntoView(nearest)` to make no movement and then
+    // wait forever on a perfectly usable control.
+    inViewport: centreX >= 0 && centreY >= 0
+      && centreX < window.innerWidth && centreY < window.innerHeight,
+    fullyInViewport: rect.top >= 0 && rect.left >= 0
+      && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth,
     disabled: node.disabled === true,
     intercepting: centre === null || centre === node || node.contains(centre)
       ? null
@@ -110,21 +152,70 @@ export const whatIsAt = async (selector) => browser.execute((target) => {
 }, selector);
 
 /**
- * Press a control the way a person does: bring it into view, then click it.
+ * Press a control the way a person does: bring it into view only when needed, then click it.
  *
- * Scrolling is part of using the application, not a workaround -- these controls sit below the fold
- * on a default window, and a customer scrolls to them. If the click still cannot happen, the
- * failure names what intercepted it instead of only saying it was not clickable.
+ * Scrolling is part of using below-the-fold controls, but scrolling a fixed/modal control that is
+ * already visible can move a transformed application shell and corrupt screenshot evidence. If the
+ * click still cannot happen, the failure names what intercepted it instead of only saying it was
+ * not clickable.
  */
 export const clickControl = async (selector, { timeout = 30_000 } = {}) => {
+  if (typeof selector !== 'string' || selector.trim() === '' || selector.trimStart().startsWith('/')) {
+    throw new TypeError('clickControl requires one non-empty CSS selector; XPath is not supported');
+  }
   const control = await $(selector);
   await control.waitForExist({ timeout, timeoutMsg: `${selector} never appeared` });
-  await control.scrollIntoView({ block: 'center' });
+  const initialState = await whatIsAt(selector);
+  if (!initialState.inViewport) {
+    const scrolled = await browser.execute((target) => {
+      const node = document.querySelector(target);
+      if (node === null) return false;
+      node.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+      return true;
+    }, selector);
+    if (!scrolled) throw new Error(`${selector} disappeared before it could be scrolled into view`);
+    let scrolledState = null;
+    try {
+      await browser.waitUntil(async () => {
+        scrolledState = await whatIsAt(selector);
+        return scrolledState.inViewport;
+      }, {
+        timeout,
+        interval: 50,
+        timeoutMsg: `${selector} remained outside the viewport after in-document scrolling`,
+      });
+    } catch (error) {
+      scrolledState = await whatIsAt(selector);
+      throw new Error(
+        `${selector} remained outside the viewport after in-document scrolling: ${JSON.stringify(scrolledState)}`,
+        { cause: error },
+      );
+    }
+  }
+  let actionableState = null;
   try {
-    await control.waitForClickable({ timeout });
+    await browser.waitUntil(async () => {
+      actionableState = await whatIsAt(selector);
+      return actionableState.present
+        && actionableState.inViewport
+        && !actionableState.disabled
+        && actionableState.intercepting === null;
+    }, {
+      timeout,
+      interval: 50,
+      timeoutMsg: `${selector} never owned an enabled hit target inside the viewport`,
+    });
+  } catch (error) {
+    actionableState = await whatIsAt(selector);
+    throw new Error(
+      `${selector} never owned an enabled hit target inside the viewport: ${JSON.stringify(actionableState)}`,
+      { cause: error },
+    );
+  }
+  try {
+    await control.click();
   } catch (error) {
     const state = await whatIsAt(selector);
     throw new Error(`${selector} could not be clicked: ${JSON.stringify(state)}`, { cause: error });
   }
-  await control.click();
 };

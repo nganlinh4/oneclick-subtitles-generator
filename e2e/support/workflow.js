@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { clickControl, openEditor } from './editor.js';
 import { FIXTURE_ROOT } from './environment.js';
 
+/* global $, DataTransfer, DragEvent, File, MouseEvent, browser, document, window */
+
 /**
  * The steps every project-level journey has to perform before it can test anything of its own.
  *
@@ -209,17 +211,21 @@ export const editCueText = async (existing, replacement) => {
   }, replacement);
 
   let seen = await editorState();
-  await browser.waitUntil(
-    async () => {
+  try {
+    await browser.waitUntil(async () => {
       seen = await editorState();
       return seen.bodyHasReplacement && !seen.editorStillOpen;
-    },
-    {
+    }, {
       timeout: 30_000,
       interval: 500,
-      timeoutMsg: () => `the edited cue text never appeared. last: ${JSON.stringify(seen)}`,
-    },
-  );
+      timeoutMsg: 'the edited cue text never appeared',
+    });
+  } catch (error) {
+    seen = await editorState();
+    throw new Error(`the edited cue text never appeared. last: ${JSON.stringify(seen)}`, {
+      cause: error,
+    });
+  }
 };
 
 /** Whether the rendered page currently shows this text anywhere a customer could read it. */

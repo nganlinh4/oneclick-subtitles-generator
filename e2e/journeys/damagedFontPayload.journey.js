@@ -25,15 +25,22 @@ describe('an installation whose shipped font bytes are damaged', () => {
   it('still starts, and settles on a state a person can act on', async () => {
     let seen = await observe();
 
-    await browser.waitUntil(async () => {
-      seen = await observe();
-      return seen.rootChildren > 0 && RESOLVED_STATES.has(seen.readiness?.state);
-    }, {
-      timeout: SETTLE_TIMEOUT_MS,
-      interval: 1_000,
-      timeoutMsg: () => 'the font capability never settled; it must not wait forever. last: '
-        + JSON.stringify(seen, null, 2),
-    });
+    try {
+      await browser.waitUntil(async () => {
+        seen = await observe();
+        return seen.rootChildren > 0 && RESOLVED_STATES.has(seen.readiness?.state);
+      }, {
+        timeout: SETTLE_TIMEOUT_MS,
+        interval: 1_000,
+        timeoutMsg: 'the font capability never settled; it must not wait forever',
+      });
+    } catch (error) {
+      throw new Error(
+        'the font capability never settled; it must not wait forever. last: '
+          + JSON.stringify(seen, null, 2),
+        { cause: error },
+      );
+    }
 
     console.log('damaged-payload observation:\n' + JSON.stringify(seen, null, 2));
 

@@ -1,8 +1,24 @@
 import { readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import process from 'node:process';
 
-import { resetWorkflowEvidence, workflowNameForJourney } from './support/workflowEvidence.js';
+import {
+  APPLICATION_BINARY, assertAutomationDialogGuard, createRunRoot, readVerifiedPublishedApplication,
+  removeRunRoot, runRootAuthorization, scrubAutomationEnvironment,
+} from './support/environment.js';
+import {
+  INHERITED_APPLICATION_LEASE, serializeInheritedApplicationLease,
+  withE2eApplicationLease,
+} from './support/applicationLease.js';
+import { withEvidenceLease } from './support/evidenceLease.js';
+import { withStagingLease } from './support/stagingLease.js';
+import {
+  beginWorkflowEvidence, finalizeWorkflowEvidence, workflowNameForJourney,
+} from './support/workflowEvidence.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { runSupervisedSync } = require('../scripts/windows-job-supervisor.js');
 
 const E2E_ROOT = import.meta.dirname;
 const JOURNEY_ROOT = join(E2E_ROOT, 'journeys');
@@ -15,6 +31,7 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
+  'multiWindowAsrPersistence.journey.js',
   'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',
   'translationPersistence.journey.js',
@@ -24,6 +41,12 @@ const NON_DEFAULT_JOURNEYS = new Set([
 const fail = (message) => {
   throw new Error(`isolated E2E runner: ${message}`);
 };
+
+const samePath = (left, right) => (
+  process.platform === 'win32'
+    ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+    : resolve(left) === resolve(right)
+);
 
 export const defaultJourneys = () => readdirSync(JOURNEY_ROOT, { withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith('.journey.js'))
@@ -65,47 +88,76 @@ export const parseArguments = (arguments_) => {
 };
 
 export const isolatedEnvironment = (environment) => {
-  const clean = { ...environment };
-  // `wdio.conf.js` creates the root while loading in each fresh child. Carrying any of these values
-  // from the parent would deliberately defeat that isolation or reuse a dialog answer from another
-  // journey.
-  for (const key of [
-    'OSG_E2E_DATA_ROOT',
-    'OSG_E2E_KEEP_ROOT',
-    'OSG_E2E_MEDIA_SELECTION',
-    'OSG_E2E_MEDIA_DESTINATION',
-    'OSG_E2E_OFFSCREEN_WINDOW',
-    'OSG_E2E_WORKFLOW',
-    'WEBVIEW2_USER_DATA_FOLDER',
-  ]) {
-    delete clean[key];
-  }
-  return clean;
+  // `wdio.conf.js` creates the root while loading in each fresh child. Carrying any automation or
+  // WebView capability from the parent would defeat isolation or reuse another run's driver token.
+  return scrubAutomationEnvironment(environment);
 };
 
-const run = ({ repeat, journeys }) => {
+export const run = ({ repeat, journeys }) => {
   const failures = [];
   const started = Date.now();
   for (let iteration = 1; iteration <= repeat; iteration += 1) {
     for (const journey of journeys) {
       const label = `${basename(journey)} (${iteration}/${repeat})`;
       const workflow = workflowNameForJourney(journey);
-      if (iteration === 1) resetWorkflowEvidence(workflow);
-      process.stdout.write(`\n=== isolated journey: ${label} ===\n`);
-      const environment = isolatedEnvironment(process.env);
-      environment.OSG_E2E_WORKFLOW = workflow;
-      const result = spawnSync(
-        process.execPath,
-        [WDIO, 'run', CONFIG, '--spec', journey],
-        {
-          cwd: E2E_ROOT,
-          env: environment,
-          stdio: 'inherit',
-          windowsHide: true,
-        },
-      );
-      if (result.error) fail(`${label} could not start: ${result.error.message}`);
-      if (result.status !== 0) failures.push({ label, status: result.status });
+      withE2eApplicationLease((applicationLease) => {
+        const publication = readVerifiedPublishedApplication();
+        if (!samePath(publication.binaryPath, APPLICATION_BINARY)) {
+          fail('the leased immutable binary changed after the isolated runner loaded');
+        }
+        assertAutomationDialogGuard(publication.binaryPath);
+        const inheritedApplication = serializeInheritedApplicationLease({
+          lease: applicationLease,
+          publication,
+        });
+        withStagingLease((stagingLease) => withEvidenceLease((evidenceLease) => {
+          const runRoot = createRunRoot({ stagingLease });
+          const runAuthorization = runRootAuthorization(runRoot);
+          const attempt = beginWorkflowEvidence({
+            workflow,
+            journey: relative(E2E_ROOT, journey).replaceAll('\\', '/'),
+            iteration,
+            binaryPath: publication.binaryPath,
+          });
+          process.stdout.write(`\n=== isolated journey: ${label} ===\n`);
+          const environment = isolatedEnvironment(process.env);
+          environment.OSG_E2E_WORKFLOW = workflow;
+          environment.OSG_E2E_EVIDENCE_ATTEMPT = attempt.id;
+          environment.OSG_E2E_DATA_ROOT = runRoot;
+          environment.OSG_E2E_REUSE_ROOT = '1';
+          environment.OSG_E2E_RUN_ROOT_AUTHORIZATION = runAuthorization;
+          environment[INHERITED_APPLICATION_LEASE] = inheritedApplication;
+          let result;
+          try {
+            result = runSupervisedSync({
+              command: process.execPath,
+              args: [WDIO, 'run', CONFIG, '--spec', journey],
+              cwd: E2E_ROOT,
+              env: environment,
+              stdio: 'inherit',
+              ownerProcessId: process.pid,
+              managedPaths: [
+                ...applicationLease.managedPaths,
+                ...stagingLease.managedPaths,
+                evidenceLease.evidenceRoot,
+              ],
+            });
+            const passed = !result.error && result.status === 0;
+            finalizeWorkflowEvidence({
+              workflow,
+              attemptId: attempt.id,
+              outcome: passed ? 'pass' : 'fail',
+              exitStatus: result.status,
+              signal: result.signal,
+              failure: result.error?.message ?? null,
+            });
+            if (result.error) fail(`${label} could not start: ${result.error.message}`);
+            if (!passed) failures.push({ label, status: result.status });
+          } finally {
+            removeRunRoot(runRoot, runAuthorization);
+          }
+        }));
+      });
     }
   }
   const seconds = ((Date.now() - started) / 1_000).toFixed(1);

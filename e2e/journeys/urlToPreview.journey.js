@@ -83,13 +83,13 @@ describe('a customer saves a real YouTube video to disk', () => {
     // card. That the card names the RIGHT video is the first thing worth asserting — a resolution
     // that silently failed would still let the button below be pressed.
     let seen = await inspect();
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       seen = await inspect();
       return seen.videoId.includes(REAL_VIDEO.id);
     }, {
       timeout: 120_000,
       interval: 2_000,
-      timeoutMsg: () => `the URL never resolved to ${REAL_VIDEO.id}. last: ${JSON.stringify(seen)}`,
+      diagnostic: () => `the URL never resolved to ${REAL_VIDEO.id}. last: ${JSON.stringify(seen)}`,
     });
     report('after the URL resolved', seen);
     await captureWorkflowStep({
@@ -120,7 +120,7 @@ describe('a customer saves a real YouTube video to disk', () => {
     // The customer outcome: the file they asked for is on their disk. Progress and job status are
     // steps along the way, not the thing being asserted.
     let polls = 0;
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       seen = await inspect();
       polls += 1;
       if (polls % 10 === 0) {
@@ -132,7 +132,7 @@ describe('a customer saves a real YouTube video to disk', () => {
     }, {
       timeout: WORKFLOW_TIMEOUT_MS,
       interval: 3_000,
-      timeoutMsg: () => [
+      diagnostic: () => [
         'the video was never written to the staged directory.',
         `directory: ${directory}`,
         'If nothing arrived and no error is visible, the staging was refused and a REAL save '
@@ -172,3 +172,14 @@ describe('a customer saves a real YouTube video to disk', () => {
     });
   });
 });
+
+async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
+  try {
+    return await browser.waitUntil(predicate, {
+      ...options,
+      timeoutMsg: 'condition did not settle before its timeout',
+    });
+  } catch (error) {
+    throw new Error(diagnostic(), { cause: error });
+  }
+}

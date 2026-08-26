@@ -80,7 +80,7 @@ describe('a customer turns a real URL into visible subtitles', () => {
 
     let state = null;
     let lastJob = null;
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       state = await visibleState();
       durable = durableState(process.env.OSG_E2E_DATA_ROOT);
       lastJob = [...durable.jobs].reverse().find((job) => job.kind === 'transcribe') ?? null;
@@ -89,7 +89,7 @@ describe('a customer turns a real URL into visible subtitles', () => {
     }, {
       timeout: 1_800_000,
       interval: 2_000,
-      timeoutMsg: () => `the URL workflow never produced subtitles: ${JSON.stringify({ state, lastJob })}`,
+      diagnostic: () => `the URL workflow never produced subtitles: ${JSON.stringify({ state, lastJob })}`,
     });
 
     assert.ok(!lastJob || !['failed', 'cancelled', 'interrupted'].includes(lastJob.state),
@@ -129,3 +129,14 @@ describe('a customer turns a real URL into visible subtitles', () => {
     });
   });
 });
+
+async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
+  try {
+    return await browser.waitUntil(predicate, {
+      ...options,
+      timeoutMsg: 'condition did not settle before its timeout',
+    });
+  } catch (error) {
+    throw new Error(diagnostic(), { cause: error });
+  }
+}

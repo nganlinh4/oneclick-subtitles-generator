@@ -6,12 +6,15 @@
     "and configures itself; a WORKFLOW journey proves a customer got what they came for. Only the",
     "second kind counts as a feature being verified. Unit tests and mock-call assertions never do.",
     "",
-    "status: green (passing), red (written and failing for a recorded product reason), planned.",
-    "A red entry is not a gap in coverage -- it is coverage that has found something."
+    "status: green (passing real-binary proof), red (a real-binary journey is written and failing),",
+    "unproven (the customer capability exists but has no product-level success proof), planned",
+    "(the named non-overlapping journey is not written yet), or covered-indirectly.",
+    "A red entry is not a gap in coverage -- it is coverage that has found something. Source tests",
+    "and screenshots of a surface alone never promote a customer outcome to green."
   ],
-  "updated": "2026-08-24",
+  "updated": "2026-08-26",
   "binary": {
-    "e2e": "target/x86_64-pc-windows-msvc/release/osg-desktop.exe built with --features e2e-automation",
+    "e2e": "npm run build:e2e-binary publishes the guarded nonshipping E2E application into the managed external cache; every launch holds the apps/e2e cache lease while re-verifying receipts/current.json, its immutable manifest, exact inventory and every file digest, with no repository-target fallback",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
   },
   "sourceLevelTests": {
@@ -38,18 +41,18 @@
   },
   "media": {
     "$comment": [
-      "There are no synthetic media fixtures. Every journey that needs video uses a real YouTube",
-      "video, downloaded by the same yt-dlp the application installs for itself from its reviewed",
-      "delivery catalog.",
+      "There are no synthetic media fixtures. Customer acquisition is proven independently against",
+      "a real YouTube URL. Deterministic cancellation and A-to-B identity use two pinned real videos",
+      "behind an exact, throttled loopback capability compiled only into the hidden E2E graph.",
       "",
       "The colour-bars clips that used to live in e2e/fixtures/media proved the decoder could open a",
       "file this repository had generated, which is not a claim about anything a customer plays."
     ],
     "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
     "why": "First video published to YouTube. Nineteen seconds, no music licence, the least likely link on the platform to be deleted or region-locked.",
-    "cachedAt": "target/e2e-real-media (input-only; copied into each disposable run root)",
-    "nativeToolsCachedAt": "target/e2e-native-tools",
-    "enginePackagesCachedAt": "target/e2e-engine-packages (package bytes only; every journey still has a fresh database, projects, WebView and logs)"
+    "cachedAt": "managed external cache assets/e2e/real-media (input-only; copied into each disposable run root; the old repository target is read-only rollback input)",
+    "nativeToolsCachedAt": "managed external cache assets/e2e/native-tools",
+    "enginePackagesCachedAt": "managed external cache assets/e2e/engine-packages (package bytes only; every journey still has a fresh database, projects, WebView and logs)"
   },
   "harnessSubstitutions": {
     "$comment": [
@@ -74,20 +77,89 @@
       "handsTo": "the requested media, narration, subtitle, archive, or image exporter, which writes the real bytes",
       "note": "A DIRECTORY, not a file path: only the application knows the proposed file name. In an e2e-automation build, missing, invalid, out-of-root, or occupied staging is a typed refusal. Native picker/save implementations are compiled only outside that feature, so an autonomous journey cannot fall back to File Explorer."
     },
+    "downloadOrigin": {
+      "variables": [
+        "OSG_E2E_EXACT_DOWNLOAD_URLS",
+        "OSG_E2E_DOWNLOAD_FIXTURE_MANIFEST",
+        "OSG_E2E_DOWNLOAD_FIXTURE_EVENTS"
+      ],
+      "boundedBy": "an exact two-URL allow-list fixed before launch; canonical http://127.0.0.1 unprivileged ports; one 256-bit token per MP4 URL",
+      "replaces": "only the remote origin for cancellation timing; yt-dlp inspection, native job registration, streaming, cancellation, candidate claim and activation remain the product path",
+      "productionProof": "the ordinary validator rejects the same loopback URLs even in an automation-capable build, and the separate constructor is absent unless osg-download/e2e-automation is propagated from the desktop E2E feature",
+      "independentNetworkProof": "urlToPreview remains the real YouTube/yt-dlp smoke and does not use this origin"
+    },
     "dataRoot": {
       "variable": "OSG_E2E_DATA_ROOT",
-      "channel": "unsigned-local-build",
+      "channel": "e2e-automation",
       "why": "SHGetKnownFolderPath ignores %LOCALAPPDATA%, so a run cannot be isolated from outside the process"
     }
   },
   "screenshotEvidence": {
-    "root": "target/workflow-evidence/<workflow>/",
-    "index": "Each workflow folder contains ordered PNG checkpoints, README.md for quick browsing, and manifest.json with bounded visible state plus independent oracle details.",
-    "windowMode": "The e2e-automation binary remains full-size and compositor-visible but is placed off-screen, unfocused, and absent from the taskbar. It is never hidden or minimized, so GPU preview and video rendering are not throttled.",
+    "root": "managed external cache evidence/<workflow>/ (the runner holds the dedicated evidence lease from attempt creation through finalization, then releases and post-prunes)",
+    "index": "Each workflow folder keeps the three newest immutable attempts plus its latest successful proof, an ordered README index, and an atomic latest-success.json pointer. Every retained attempt contains its own screenshots, independent artifacts, diagnostics and manifest.",
+    "windowMode": "The e2e-automation binary runs as a full-size real WebView whose complete native rectangle is derived beyond the union of every attached monitor and excluded from the taskbar. The HWND is made non-focusable (WS_EX_NOACTIVATE through Tauri's safe API), and repositioning uses SWP_NOACTIVATE. The embedded driver may keep it compositor-visible so GPU/video work advances; every journey rejects an interactive-desktop coordinate in its own test path, and no journey uses Windows computer-control or a native dialog. Playback/render journeys prove frame and media progress directly; visibility is never used as a proxy.",
     "interaction": "Embedded WebDriver protocol only: no SendInput, physical cursor movement, focus stealing, or native picker/save implementation.",
     "command": "npm --prefix e2e run test:screenshot-workflows",
-    "authority": "Screenshots expose customer-visible truth and aesthetic defects; files, SQLite, logs, hashes, ffprobe, decoded pixels, and second-process restoration remain the independent success oracles."
+    "authority": "Screenshots expose customer-visible truth and aesthetic defects; files, SQLite, logs, hashes, ffprobe, decoded pixels, and second-process restoration remain the independent success oracles.",
+    "provenance": "Every attempt records the source commit and dirty paths plus the exact E2E executable path, byte size and SHA-256. The three newest attempts and latest successful proof are retained; only a completed passing attempt may atomically replace latest-success.json, so a red rerun cannot erase prior green proof. Retention is inventory-validated, journaled and recoverable after a partial quarantine."
   },
+  "recommendedJourneySet": [
+    {
+      "name": "acquisitionSearchAndRestrictedUrls",
+      "scope": "YouTube search, search history, API-key and OAuth modes, cookie-backed/private URL download, quality choice, cancellation and stale-result isolation.",
+      "nonOverlap": "Does not generate subtitles or exercise editor features; it ends after the selected media is independently identified on disk."
+    },
+    {
+      "name": "editorCrudAndSubtitleDocuments",
+      "scope": "Manual cue creation, insert/delete/merge/split, timing edits, drag/range movement, undo/redo/reset/checkpoints, SRT/JSON/TXT export and SRT-only mode.",
+      "nonOverlap": "Starts from committed local media and subtitles; it does not install engines or call a provider."
+    },
+    {
+      "name": "providerTranscriptionAndRecovery",
+      "scope": "Gemini new and old transcription methods, request-window splitting, streaming publication, cancellation, retry and partial-segment recovery.",
+      "nonOverlap": "Owns provider transcription only; translation, narration and document processing are separate journeys."
+    },
+    {
+      "name": "alternateLocalAsrMatrix",
+      "scope": "Parakeet, Faster-Whisper Large-v3 and both Qwen3-ASR packages, language/segmentation choices, cancellation and cleanup.",
+      "nonOverlap": "Reuses one committed real-media input and validates each local engine without covering the already-green Faster-Whisper Turbo path."
+    },
+    {
+      "name": "translationProviderAndDocuments",
+      "scope": "Credential-backed translation, multiple target languages, bulk pool, original/translated selection, export and relaunch.",
+      "nonOverlap": "Starts from persisted cues and does not test transcription, narration or video export."
+    },
+    {
+      "name": "narrationEngineMatrix",
+      "scope": "F5-TTS, Chatterbox, Gemini Live and Edge TTS plus reference voice, per-cue playback/download/regeneration, speed controls and aligned mix.",
+      "nonOverlap": "The already-green gTTS baseline remains the control; this journey owns only alternate engines and narration controls."
+    },
+    {
+      "name": "previewCustomizationMatrix",
+      "scope": "Main preview playback/scrub/fullscreen plus every shipped subtitle preset and material style/effect/position/animation control across representative scripts.",
+      "nonOverlap": "Uses preview pixels only; final encoded parity belongs to renderControlsAndRecovery."
+    },
+    {
+      "name": "renderControlsAndRecovery",
+      "scope": "Trim, crop/position/scale, frame rates, resolutions, audio/narration volumes, source selection, queue/cancel/retry/relaunch and independently decoded outputs.",
+      "nonOverlap": "Does not edit cue text or call generation providers; it starts from one frozen project."
+    },
+    {
+      "name": "creativeGenerators",
+      "scope": "Gemini background image, album-art prompt flow, PromptDJ live music, prompt updates, MIDI, recording, playback, reset and saved audio.",
+      "nonOverlap": "Owns creative background assets only; narration and video rendering are separate."
+    },
+    {
+      "name": "settingsAndRecovery",
+      "scope": "Every Settings tab, durable save/relaunch, theme/language/font, prompt and cache management, narration models, tools removal/repair, factory reset and safe credential clearing.",
+      "nonOverlap": "Validates settings state and recovery without running provider work. Destructive reset uses only an isolated disposable root."
+    },
+    {
+      "name": "installedUpdaterLifecycle",
+      "scope": "Signed installer, configured updater check, download, signature verification, update/relaunch, rollback refusal and uninstall on an isolated Windows runner.",
+      "nonOverlap": "Owns distribution boundaries only and consumes an already-proven golden workflow rather than repeating feature matrices."
+    }
+  ],
   "journeys": [
     {
       "name": "freshInstallVisual",
@@ -209,6 +281,33 @@
       "note": "The first run reproduced the reported projectScopeMismatch: mounting the file tab reactivated downloaded media as a local upload while the renderer minted another asset-keyed project, leaving cues and media in separate projects. The unchanged real URL path is now green with exactly one project, six durable provider cues, a seek into a real cue, and a screenshot showing that cue in native preview pixels. If a provider supplies no track, the same journey continues through the managed local ASR engine."
     },
     {
+      "name": "downloadCancellationRetryIdentity",
+      "kind": "workflow",
+      "file": "journeys/downloadCancellationRetryIdentity.journey.js",
+      "capability": "A customer cancels a partial URL acquisition, retries immediately, then selects distinct URL B without stale A ever reappearing.",
+      "assertions": [
+        "public cancellation aborts the active range transfer and immediate retry registers a distinct native operation and job",
+        "the cancelled job publishes no project, media, artifact, ownership edge, successful-job claim, alias or leftover scratch bytes",
+        "retry publishes exact source-A bytes with exact successful-job provenance",
+        "starting B withdraws every visible/session identity for A before B can finish",
+        "B becomes the sole active media while A remains a distinct durable historical project",
+        "every artifact-root file is reconciled to SQLite: two durable downloads and two waveform-cache entries, with no orphan or scratch bytes"
+      ],
+      "oracles": [
+        "public WebView controls and screenshot evidence",
+        "launcher-owned path-free range request ledger",
+        "SQLite read-only ownership and provenance queries",
+        "managed filesystem walk plus independent SHA-256 of both durable artifacts",
+        "complete SQLite-to-filesystem reconciliation for native waveform-cache artifacts"
+      ],
+      "substitutes": [
+        "the remote byte origin only, through the compile-time exact loopback capability described above"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "note": "Green in off-screen real-binary attempt 20260825155018591-64168-fab31072 against automation binary af9691ba1b57f4055b15ec541a5407ff10e3563f2e66d79420308237647e9ff1. All five screenshots were inspected. The run proved an aborted partial A transfer, a distinct successful retry, exact source bytes, early A withdrawal during B, distinct durable A/B projects, and exact ownership of both download and waveform-cache artifacts."
+    },
+    {
       "name": "editPersistRelaunch",
       "kind": "workflow",
       "file": "journeys/editPersistRelaunch.journey.js",
@@ -280,7 +379,7 @@
         "the persistent composition canvas publishes substantially more frames than the deleted 10 fps PNG transport",
         "every presentation sample strictly inside an authored cue retains that cue on the main preview canvas",
         "PerformanceObserver records no blocking task and the JavaScript heap does not grow without bound",
-        "an ordered screenshot and machine-readable sample are retained under target/workflow-evidence"
+        "an ordered screenshot and machine-readable sample are retained under the managed external evidence lane"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
@@ -326,7 +425,7 @@
         "waveform canvas pixels before and after the calculated seekable boundary",
         "the visible range action bar and cue list",
         "the application's own SQLite cue count, read only",
-        "ordered screenshots under target/workflow-evidence/timeline-boundary"
+        "ordered screenshots under the managed external evidence lane/timeline-boundary"
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
@@ -355,11 +454,45 @@
       "lastGreenCommit": "c1a5b47d"
     },
     {
+      "name": "multiWindowAsrGeneration",
+      "kind": "workflow-persistence",
+      "file": "journeys/multiWindowAsrPersistence.journey.js",
+      "capability": "The public maximum-duration setting splits one long video into exactly four native ASR jobs whose results stream monotonically, merge durably, and restore after relaunch without resurrecting deleted cues.",
+      "chain": [
+        "stage a 204-second H.264/AAC video built offline from ten repetitions of the tracked real AMI meeting speech fixture",
+        "import and durably delete four uniquely named old cues through Ctrl+A and Delete",
+        "select the full media through Ctrl+A and set the real ASR maximum-duration slider to one minute",
+        "observe four contiguous ranges, four distinct native transcribe jobs, and one live timeline publication per range",
+        "compare the exact streamed cue union with SQLite's ordered durable track",
+        "start a second hidden desktop process and restore the same jobs, media, cues, and drawable native preview"
+      ],
+      "oracles": [
+        "the customer-facing slider value and visible four-part prediction",
+        "processing-ranges and streaming-update events observed without replacing their product consumers",
+        "monotonically growing visible timeline snapshots while aggregate processing is active",
+        "the application's own SQLite jobs and cues, read only",
+        "a second independently launched desktop process",
+        "six ordered screenshots under the managed external evidence lane/multi-window-asr-persistence"
+      ],
+      "fixtures": [
+        "tests/subtitle-benchmark/fixtures/en-ami-meeting.flac, SHA-256 37cb02502a3116303c6d7295318a8795899a665da5602ada6d114ac5087dcfc2",
+        "the managed external assets/e2e/four-window-asr-media/asr-four-windows-real-speech.mp4 cache, generated offline by the reviewed native-tools FFmpeg and semantically probed before use"
+      ],
+      "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
+      "status": "ready-unrun",
+      "note": "The journey, deterministic fixture recipe, two-process staging boundary, hostile oracle tests, and screenshot evidence steps are implemented. It is deliberately not green until the rebuilt guarded binary completes both processes. No provider credential, network request, native dialog, visible window, or production profile is involved."
+    },
+    {
       "name": "geminiGeneration",
       "kind": "workflow",
       "capability": "Subtitles are generated by Gemini from a real video.",
       "status": "planned",
-      "note": "Needs a real API key. Until one is available to the harness, this capability has no product-level success proof; geminiCredentialBoundary separately proves the unauthenticated path fails before any provider job or cue publication."
+      "recommendedJourney": "providerTranscriptionAndRecovery",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a budget-bounded Gemini credential and network access",
+        "note": "Until an isolated credential is supplied to the harness, this capability has no product-level success proof. geminiCredentialBoundary separately proves the unauthenticated path fails before any provider job or cue publication."
+      }
     },
     {
       "name": "geminiCredentialBoundary",
@@ -395,7 +528,7 @@
       ],
       "runsAgainst": "two independent e2e-binary processes sharing one isolated profile",
       "status": "green",
-      "note": "Format mode proves the complete ownership, persistence, projection and native drawing path without pretending to prove Gemini. Provider-backed translation remains credential-gated under geminiGeneration.",
+      "note": "Format mode proves the complete ownership, persistence, projection and native drawing path without pretending to prove Gemini. Provider-backed translation is tracked separately by providerTranslation.",
       "lastGreenCommit": "f64443bc"
     },
     {
@@ -461,9 +594,474 @@
       "status": "green",
       "note": "This deliberately remains an isolated Windows CI workflow. Local screenshot journeys use the guarded off-screen binary because running an installer/uninstaller against the developer account would disturb the live installation and profile.",
       "lastGreenCommit": "ff111800"
+    },
+    {
+      "name": "youtubeSearchAndHistory",
+      "kind": "workflow",
+      "capability": "A customer searches YouTube by title, selects the intended result, reuses or clears search history, and acquires that exact video.",
+      "status": "unproven",
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a scoped YouTube Data API key or an isolated OAuth test account, plus network access",
+        "note": "The direct public URL journey does not exercise search, result identity, quota errors, OAuth, or history."
+      }
+    },
+    {
+      "name": "authenticatedAndRestrictedUrlAcquisition",
+      "kind": "workflow",
+      "capability": "Cookie-backed, age-gated, private, playlist and non-YouTube URLs download the selected item without reusing stale media.",
+      "status": "unproven",
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "user-or-isolated-browser-fixture",
+        "requires": "reviewed test accounts/cookies and stable network fixtures for each supported provider",
+        "note": "Public youtube.com/watch URLs are green; authenticated cookies, playlists and alternate providers are not."
+      }
+    },
+    {
+      "name": "downloadQualityCancellationAndIdentity",
+      "kind": "workflow",
+      "capability": "Quality selection, cancellation, retry and consecutive A-then-B downloads always publish only the requested media and clean partial bytes.",
+      "status": "unproven",
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "test-infrastructure",
+        "requires": "a range-capable deterministic origin plus one real network smoke",
+        "note": "urlToPreview proves one successful quality choice, but not cancellation, retry, partial cleanup or stale-result isolation."
+      }
+    },
+    {
+      "name": "srtOnlyAndJsonImport",
+      "kind": "workflow",
+      "capability": "SRT-only mode and JSON subtitle import work without a video, and later attachment to media preserves the track.",
+      "status": "unproven",
+      "recommendedJourney": "editorCrudAndSubtitleDocuments",
+      "note": "Media-free JSON import and explicit SRT-only editing are green in subtitleDocumentRoundTrip. This broader compound claim stays unproven because attaching that document to later media has not yet been exercised."
+    },
+    {
+      "name": "subtitleDocumentRoundTrip",
+      "kind": "workflow",
+      "file": "journeys/subtitleDocumentRoundTrip.journey.js",
+      "capability": "A customer imports a JSON subtitle document without media and saves the unchanged original cues as valid SRT, JSON and timing-free TXT.",
+      "assertions": [
+        "the public drop target enters explicit SRT-only mode with every imported cue visible and no video",
+        "the public Download Center exposes exactly SRT, JSON and TXT and creates one stable file per save",
+        "independent parsers require exact Unicode text, multiline content, millisecond timing and JSON schema",
+        "all saves leave the cue list unchanged and no inline error or toast visible"
+      ],
+      "oracles": [
+        "public WebView controls and ordered screenshot evidence",
+        "independent Node SRT/JSON/TXT parsers over the native saved files",
+        "one-new-regular-file, extension, byte-length and SHA-256 checks inside the isolated output root"
+      ],
+      "substitutes": [
+        "the native save dialog, through OSG_E2E_MEDIA_DESTINATION"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "recommendedJourney": "editorCrudAndSubtitleDocuments",
+      "note": "Green on guarded off-screen binary SHA-256 a714f0d1224274951349b49144875e1f060801c2ee3fb956e32568bb82622634, attempt 20260825152111597-54748-9ef79e5d. Five ordered screenshots and three copied output artifacts accompany exact independent SRT/JSON/TXT parsing. Attaching the document to later media and translated-track exports remain separate unproven capabilities."
+    },
+    {
+      "name": "manualLyricsAndGeniusLookup",
+      "kind": "workflow",
+      "capability": "A customer can enter subtitles manually or fetch lyrics by artist/song, review the result and turn it into durable cues.",
+      "status": "unproven",
+      "recommendedJourney": "editorCrudAndSubtitleDocuments",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a Genius credential and network for lookup; manual entry must remain independently testable offline",
+        "note": "No current journey opens LyricsInputSection or proves album-art/result ownership."
+      }
+    },
+    {
+      "name": "editorCueCrudAndHistory",
+      "kind": "workflow",
+      "file": "journeys/editorCueCrudAndHistory.journey.js",
+      "capability": "Create, insert, edit, delete, merge and split cues; then undo, redo, reset, jump to a checkpoint, save and relaunch without losing ownership.",
+      "assertions": [
+        "empty-state creation and row insert/edit/delete/merge use only customer-visible editor controls",
+        "pointer range selection opens the shipped smart-split dialog and preserves every word and timing boundary",
+        "structural undo/redo, saved-state reset and two distinct session checkpoints reconcile with read-only SQLite",
+        "project, media and contiguous cue ownership remain stable through every history transition"
+      ],
+      "status": "green",
+      "recommendedJourney": "editorCueCrudAndHistory",
+      "note": "Green against guarded binary SHA-256 42d686845ffda699328f15262315d1d055dfefe61571ac70f875c3bab026e12c. Attempt 20260825125011088-38964-22d7f17b passed create, row insert/edit/delete/merge, customer smart split, undo/redo, two saves, reset, checkpoint navigation and read-only SQLite ownership with eight screenshots. There is no duplicate-cue command in the shipped UI, so the journey does not fabricate one. editPersistRelaunch remains the independent second-process ownership proof; timelineBoundary remains the non-overlapping Ctrl+A/delete-all proof."
+    },
+    {
+      "name": "timelineAdvancedEditing",
+      "kind": "workflow",
+      "capability": "Pointer/touch selection, cue timing edits, range move preview/commit/cancel, timing application, zoom and narration-lane dragging remain bounded by real media.",
+      "status": "unproven",
+      "recommendedJourney": "editorCrudAndSubtitleDocuments",
+      "note": "The green boundary journey covers waveform pixels, Ctrl+A and delete-all, not the advanced movement and timing controls."
+    },
+    {
+      "name": "subtitleDocumentExports",
+      "kind": "workflow",
+      "capability": "Original and translated tracks save as valid SRT, JSON and timing-free TXT with the proposed customer filename.",
+      "status": "unproven",
+      "recommendedJourney": "editorCrudAndSubtitleDocuments",
+      "note": "The automation-safe save boundary exists, but no current real-binary journey validates the bytes and semantics of these six export combinations."
+    },
+    {
+      "name": "geminiDocumentConsolidateAndSummarize",
+      "kind": "workflow",
+      "capability": "Complete-document and summary processing honor split duration, model and custom prompt, then save the exact provider result.",
+      "status": "unproven",
+      "recommendedJourney": "translationProviderAndDocuments",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a budget-bounded Gemini credential and network access",
+        "note": "The format-only translation journey does not call document processing."
+      }
+    },
+    {
+      "name": "geminiTranscriptionSuccessAndWindowing",
+      "kind": "workflow",
+      "capability": "Gemini new and old transcription methods process the requested timeline windows, stream only fresh cues and durably recover or retry failed segments.",
+      "status": "unproven",
+      "recommendedJourney": "providerTranscriptionAndRecovery",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a budget-bounded Gemini credential, network access and a request ledger that can prove each selected window",
+        "note": "geminiCredentialBoundary proves fail-closed behavior only; generated-shaped fixture text is not provider success."
+      }
+    },
+    {
+      "name": "alternateLocalAsrEngines",
+      "kind": "workflow",
+      "capability": "Nvidia Parakeet, Faster-Whisper Large-v3, Qwen3-ASR 1.7B and Qwen3-ASR 0.6B install, transcribe, stream, cancel and clean up correctly.",
+      "variants": [
+        "nvidia-parakeet",
+        "faster-whisper-large-v3",
+        "qwen3-asr-1.7b",
+        "qwen3-asr-0.6b"
+      ],
+      "status": "unproven",
+      "recommendedJourney": "alternateLocalAsrMatrix",
+      "dependencies": {
+        "owner": "project-delivery-and-test-hardware",
+        "requires": "reviewed managed packages, sufficient disk/RAM and representative GPU/CPU configurations",
+        "note": "Only Faster-Whisper Turbo has a green real-binary generation journey."
+      }
+    },
+    {
+      "name": "transcriptionSegmentationRulesAndVideoAnalysis",
+      "kind": "workflow",
+      "capability": "Language, segmentation strategy, max request duration, custom transcription rules and optional Gemini media analysis change only the intended job and persist after relaunch.",
+      "status": "unproven",
+      "recommendedJourney": "providerTranscriptionAndRecovery",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "Gemini credentials/network for media analysis; local segmentation rules must also be proven offline",
+        "note": "No current journey verifies the customer-selected request windows or analysis/rules UI."
+      }
+    },
+    {
+      "name": "providerTranslation",
+      "kind": "workflow",
+      "capability": "Gemini translates persisted cues into one or more selected target languages, streams progress, draws the chosen result and restores it after relaunch.",
+      "status": "unproven",
+      "recommendedJourney": "translationProviderAndDocuments",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a budget-bounded Gemini credential and network access",
+        "note": "translationPersistence proves credential-free Format mode, not semantic provider translation."
+      }
+    },
+    {
+      "name": "bulkTranslationPoolAndImportExport",
+      "kind": "workflow",
+      "capability": "Bulk translation pool, source/target selection, subtitle import and exported translated files preserve every cue and project boundary.",
+      "status": "unproven",
+      "recommendedJourney": "translationProviderAndDocuments",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "provider credentials only for provider-backed translation; import/export must remain independently testable",
+        "note": "The existing green journey covers one Format-mode language and persistence, not bulk controls or files."
+      }
+    },
+    {
+      "name": "alternateNarrationEngines",
+      "kind": "workflow",
+      "capability": "F5-TTS, Chatterbox, Gemini Live and Edge TTS generate project-owned playable narration with their visible engine-specific settings.",
+      "variants": [
+        "f5tts",
+        "chatterbox",
+        "gemini",
+        "edge-tts"
+      ],
+      "status": "unproven",
+      "recommendedJourney": "narrationEngineMatrix",
+      "dependencies": {
+        "owner": "project-delivery-user-and-test-hardware",
+        "requires": "reviewed local packages/models for F5-TTS and Chatterbox, network for Edge TTS, and a Gemini credential/network for Gemini Live",
+        "note": "Only gTTS has a green real-binary narration journey."
+      }
+    },
+    {
+      "name": "narrationReferenceVoiceAndCueControls",
+      "kind": "workflow",
+      "capability": "Reference-audio selection/recording, per-cue play/download/regenerate, speed controls, source selection and cache restoration behave durably.",
+      "status": "unproven",
+      "recommendedJourney": "narrationEngineMatrix",
+      "dependencies": {
+        "owner": "test-hardware",
+        "requires": "a deterministic reference-audio file; microphone capture requires an explicitly isolated audio device and must not use the developer microphone",
+        "note": "narrationGeneration proves generated files and one aligned mix, not the rest of the narration control surface."
+      }
+    },
+    {
+      "name": "mainPreviewControlsAndFullscreen",
+      "kind": "workflow-visual",
+      "file": "journeys/mainPreviewControlsAndFullscreen.journey.js",
+      "capability": "Play/pause, seek, volume, mute, narration refresh and source switching never blink, freeze or show stale media.",
+      "status": "green",
+      "recommendedJourney": "previewCustomizationMatrix",
+      "oracles": [
+        "public pointer/accessibility controls against the guarded off-screen real binary",
+        "HTMLMediaElement transport plus native canvas frame/cue revisions",
+        "fullscreen control presence without activating browser fullscreen during unattended runs",
+        "two distinct real media identities in SQLite plus frame SSIM and an animation-frame stale-cue witness"
+      ],
+      "note": "The transport and A→B ownership path remains an off-screen real-binary journey. Browser Fullscreen API activation is deliberately excluded from unattended runs: measured on 2026-08-26, it relocated the E2E HWND from x=-10000 to x=0 at 2560×1080, violating the no-desktop-interruption boundary. Fullscreen logic remains source/component covered and requires an explicitly user-idle visual run for physical-window proof. Narration refresh is likewise not clicked without provenance-backed narration."
+    },
+    {
+      "name": "mainPreviewRenderHandoff",
+      "kind": "workflow-visual",
+      "file": "journeys/mainPreviewRenderHandoff.journey.js",
+      "capability": "A subtitle style edited beside the main video is one durable project scene consumed unchanged by the main native canvas, Render preview and final export.",
+      "status": "green",
+      "recommendedJourney": "previewCustomizationMatrix",
+      "oracles": [
+        "customer controls and both native preview surfaces in the guarded real binary",
+        "the project's SQLite render scene read independently after the edit",
+        "same-instant compositor screenshots compared by SSIM"
+      ],
+      "note": "The first hidden real-binary run found the architectural split: the main preview wrote project-less subtitle_settings localStorage while Render/export read project_render_scenes from SQLite. The replacement now writes one project-owned SQLite scene consumed directly by both native surfaces and export. The rebuilt guarded binary independently read the edited scene, then produced unobscured same-instant main/Render screenshots at 0.981722 SSIM with the same font size, colors, opacity, alignment, position, width, radius and X/Y padding. Evidence is retained under the managed external evidence lane/main-preview-render-handoff with the exact binary SHA-256."
+    },
+    {
+      "name": "subtitleCustomizationPreview",
+      "kind": "workflow",
+      "capability": "Every shipped preset plus text, font, background, effect, position and animation control produces stable native preview pixels for Latin, Vietnamese, Korean, emoji and bidi text.",
+      "status": "unproven",
+      "recommendedJourney": "previewCustomizationMatrix",
+      "note": "nativeExportDecoded proves one Arial/border/glow/shadow/background combination. It is not coverage of the preset and control matrix."
+    },
+    {
+      "name": "subtitleMaterialAndAnimation",
+      "kind": "workflow-visual",
+      "file": "journeys/subtitleMaterialAndAnimation.journey.js",
+      "capability": "Every public subtitle material, typography, alignment, transform, colour, background, five border styles, shadow, glow, six gradient directions, stroke, anchor, margin, custom placement, width and timing control persists cumulatively into the project-owned scene and changes native pixels; a bounded sixteen-case sweep proves all seven easings on one fixed animation plus each of the other nine animations through uninterrupted multilingual playback.",
+      "status": "unproven",
+      "recommendedJourney": "previewCustomizationMatrix",
+      "oracles": [
+        "public controls only in one guarded off-screen/non-focusable/muted embedded-WebDriver binary",
+        "read-only SQLite revision and complete exact 56-field cumulative customization after every individual material, animation and easing edit",
+        "fresh native compositor revision and measured pixel delta after every material edit",
+        "activeCueAtFrom-derived fadingIn, holding and fadingOut requestAnimationFrame windows through uninterrupted real-video playback",
+        "same-instant composed/source-only screenshots independently decoded for pixel centroid, area and energy plus temporal entry/mid/exit deltas",
+        "a pre-setup MutationObserver ledger that rejects even transient visible errors or nonempty native preview refusal codes"
+      ],
+      "note": "The journey and hostile pure contracts are written but deliberately remain unproven until a freshly rebuilt guarded binary completes the matrix and publishes the seven grouped material plus three representative animation artifacts under the managed external evidence lane/subtitle-material-and-animation. Written source, mocked UI and an uninspected screenshot must not promote this entry to green."
+    },
+    {
+      "name": "exportAnimationParityMatrix",
+      "kind": "workflow-visual",
+      "file": "journeys/exportAnimationParityMatrix.journey.js",
+      "capability": "All ten public subtitle animations preserve exact entry/exit WYSIWYG parity across Main preview, Render preview and independently decoded native MP4 output while distributing every easing and border style plus position, alignment, transform, glow, gradient, stroke, margins, Vietnamese, Korean, Arabic, emoji/combining/ZWJ and narrow wrapping.",
+      "status": "unproven",
+      "recommendedJourney": "renderControlsAndRecovery",
+      "oracles": [
+        "one guarded off-screen/non-focusable/muted embedded-WebDriver binary with no fullscreen or native-dialog fallback",
+        "pointer plus Arrow-key public Main/Render seek surfaces that finish every sample on an exact 30-fps rational frame, with the exact key sequence recorded",
+        "public dropdowns, switches, visible range tracks and colour text companions only; read-only SQLite proves all durable scene values and every imported cue text/time",
+        "Main and Render compositor screenshots plus separate same-WebView source-only controls and an independently FFmpeg-decoded source frame at every sample",
+        "an independently derived subtitle difference mask and expanded ROI proving Main differs from source and Main, Render and decoded export agree on subtitle/effect pixels; whole-frame SSIM remains secondary",
+        "SHA-256 and decoded pixel deltas binding distinct entry/exit artifacts on Main, Render, export and independently decoded source, plus animation-specific phase signals",
+        "staged customer save followed by independent ffprobe/FFmpeg validation of duration, dimensions, exact fps, audio channels, sample rate and stream timebase/duration coverage",
+        "a pre-media MutationObserver ledger that records transient visible errors and every nonempty native preview refusal code"
+      ],
+      "note": "The journey, public-control contract and hostile pure ROI/audio/temporal oracles are written but deliberately remain unproven until the freshly rebuilt guarded binary completes all ten exports and publishes screenshot/artifact evidence under the managed external evidence lane/export-animation-parity-matrix. A source test or a merely written journey must not promote this entry to green. The only OS seam is the fail-closed staged open/save boundary inside the disposable run root."
+    },
+    {
+      "name": "renderTransformAndFormatMatrix",
+      "kind": "workflow",
+      "capability": "Trim, crop, scale, position, source rotation, 24-120 fps and 360p-8K choices produce correctly timed, independently decodable output or an honest hardware refusal.",
+      "status": "unproven",
+      "recommendedJourney": "renderControlsAndRecovery",
+      "dependencies": {
+        "owner": "test-hardware",
+        "requires": "GPU/encoder capability fixtures; unsupported 4K/8K/120 fps combinations must be typed refusals rather than false green",
+        "note": "The green export journey covers one short default-format render and pixel comparison."
+      }
+    },
+    {
+      "name": "renderAudioNarrationMix",
+      "kind": "workflow",
+      "capability": "Original-audio and narration selection/volume controls produce the expected independently measured mix in the final video.",
+      "status": "unproven",
+      "recommendedJourney": "renderControlsAndRecovery",
+      "note": "narrationAlignment validates a standalone aligned M4A and nativeExportDecoded validates source audio; neither proves the combined final-video mix controls."
+    },
+    {
+      "name": "renderQueueCancelRetryAndRelaunch",
+      "kind": "workflow",
+      "capability": "Queued renders, cancellation, retry, failure cleanup and relaunch recovery never publish partial or stale artifacts.",
+      "status": "unproven",
+      "recommendedJourney": "renderControlsAndRecovery",
+      "note": "One successful render is green. Queue ordering and every recovery boundary remain without real-binary proof."
+    },
+    {
+      "name": "backgroundImageGeneration",
+      "kind": "workflow",
+      "capability": "Prompt and album-art flows generate a project-owned Gemini background image, preview it, save it and restore it.",
+      "status": "unproven",
+      "recommendedJourney": "creativeGenerators",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider",
+        "requires": "a budget-bounded Gemini image credential/model and network access",
+        "note": "There is no product-level proof for any background-image action."
+      }
+    },
+    {
+      "name": "backgroundMusicPromptDj",
+      "kind": "workflow",
+      "capability": "PromptDJ starts a native live-music session, updates weighted prompts, plays/pauses/stops/resets, records, previews and saves audio.",
+      "status": "unproven",
+      "recommendedJourney": "creativeGenerators",
+      "dependencies": {
+        "owner": "user-or-test-secret-provider-and-test-hardware",
+        "requires": "a Gemini Live Music credential/network; MIDI and microphone branches need explicitly isolated test devices",
+        "note": "The iframe and native live service currently have no real-binary workflow proof."
+      }
+    },
+    {
+      "name": "settingsSurface",
+      "kind": "shell-visual",
+      "file": "journeys/settingsSurface.journey.js",
+      "capability": "Settings opens and every visible tab renders without blank suspension, errors, clipping or overflow.",
+      "status": "green",
+      "recommendedJourney": "settingsAndRecovery",
+      "oracles": [
+        "the actual Header Settings control and modal DOM in the guarded real binary",
+        "seven ordered screenshots covering every customer-visible tab",
+        "captured browser errors, alerts and overflow state"
+      ],
+      "note": "The first run proved the former lazy boundary could receive both JavaScript and CSS bytes while React remained suspended forever. Settings is now a static app-shell dependency; the rebuilt guarded binary opened it immediately and rendered all seven tab surfaces in 10.9 seconds. The screenshots then exposed separate stale-banner, deleted-renderer cache and unsupported-model defects, which remain tracked independently rather than hidden by this green reachability result."
+    },
+    {
+      "name": "settingsCredentialsAndYoutubeOAuth",
+      "kind": "workflow",
+      "capability": "Gemini, YouTube and Genius credentials plus YouTube OAuth save, redact, validate, persist and clear safely.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "dependencies": {
+        "owner": "user-or-isolated-test-account-provider",
+        "requires": "scoped disposable credentials and an OAuth redirect fixture",
+        "note": "Safe missing-Gemini refusal is green; entering, persisting and clearing credentials is not."
+      }
+    },
+    {
+      "name": "settingsVideoProcessingAndPrompts",
+      "kind": "workflow",
+      "capability": "Segment duration, model, time format, waveform, video optimization, cookies, search, subtitle import, analysis, effects, thinking budgets, custom models and prompts save and affect only their documented consumers.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "note": "No real-binary journey traverses or persists the Video Processing and Prompts tabs."
+    },
+    {
+      "name": "settingsCacheManagement",
+      "kind": "workflow",
+      "file": "journeys/cacheClearSafety.journey.js",
+      "capability": "Native cache inventory and Clear Cache report real bytes and never delete active project media, subtitles or render scenes.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "oracles": [
+        "the actual Settings > Cache controls and compiled cache_info/cache_clear commands in an off-screen isolated binary",
+        "read-only SQLite identity for active project, track, cues, scene, revisions, media ownership and durable artifacts before/after",
+        "SHA-256 and byte length of every active media location plus the staged real source before/after",
+        "four screenshot steps covering the active preview, native inventory, clear completion and post-clear playable preview"
+      ],
+      "note": "The preservation journey is written but has not run against the rebuilt guarded binary, so this remains unproven. Static production-callsite inspection currently finds no product path that registers a disposable cache_entries artifact; the journey therefore labels byte deletion unproven unless real product behavior creates one. It never fabricates a cache row or invokes a private command to manufacture coverage. Per-category removal and the explicit Refresh button remain separate unproven interactions if the native inventory is empty."
+    },
+    {
+      "name": "settingsNarrationModelManagement",
+      "kind": "workflow",
+      "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "dependencies": {
+        "owner": "project-delivery",
+        "requires": "a reviewed model catalog and signed package operations",
+        "note": "A source audit found the UI advertises custom/alternate model operations while modelService currently accepts only f5tts-v1-base. This remains unproven, not green, until a real journey resolves the contract."
+      }
+    },
+    {
+      "name": "settingsAppearanceAndPersistence",
+      "kind": "workflow",
+      "capability": "Theme, language and application font changes apply across the complete UI and survive a process restart.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "note": "freshInstallVisual captures the preference screen and defaultFont proves one subtitle font package; neither proves Settings changes and relaunch persistence."
+    },
+    {
+      "name": "settingsToolsRemoveAndFactoryReset",
+      "kind": "workflow",
+      "capability": "Removing tools and factory-resetting a disposable profile clear exactly the promised state, relaunch cleanly and never touch data outside the isolated root.",
+      "status": "unproven",
+      "recommendedJourney": "settingsAndRecovery",
+      "dependencies": {
+        "owner": "test-infrastructure",
+        "requires": "a disposable OSG_E2E_DATA_ROOT and exact before/after filesystem plus SQLite oracle",
+        "note": "Install/corruption/repair is green. Removal and destructive reset are deliberately not inferred from it."
+      }
+    },
+    {
+      "name": "aboutAndDesktopUpdater",
+      "kind": "workflow",
+      "capability": "About reports the exact installed version/channel and the updater checks, verifies, downloads, installs and relaunches a signed newer build.",
+      "status": "unproven",
+      "recommendedJourney": "installedUpdaterLifecycle",
+      "dependencies": {
+        "owner": "release-owner",
+        "requires": "the private updater signing key, a signed old/new fixture pair and a non-legacy update manifest on an isolated Windows runner",
+        "note": "installedGolden proves install/relaunch/uninstall of one build. It does not prove the configured updater, whose live endpoint has historically referenced the legacy release."
+      }
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "The built application navigated its main window to a file:// directory listing of the frontend path and the process died on the first IPC message.",
+      "foundBy": "startup",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "The managed build contexts passed build.frontendDist as an absolute Windows path in TAURI_CONFIG. Tauri parses that as a URL whose scheme is the drive letter, so codegen embedded no assets and get_app_url navigated to the raw path, which WebView2 rendered as a file:// directory index; wry's WebMessageReceived handler then panicked unwrapping Request::uri on that URL, killing the process. The same override shape was wired into the production package lane. All producers now emit a validated relative directory through one shared tauriFrontendDistOverride helper, the build-context guard rejects the absolute form, and the release-readiness pin tracks the new shape."
+    },
+    {
+      "finding": "Every journey screenshot failed with an extension error before any evidence could be captured.",
+      "foundBy": "startup",
+      "status": "harness-fixed",
+      "severity": "critical",
+      "note": "WebdriverIO 9 validates that saveScreenshot targets end in .png, while workflow evidence stages payloads under journal-owned .tmp names before their atomic rename. Capture and failure promotion now take the PNG bytes via takeScreenshot and stage them through the existing journaled write, leaving the recovery contract untouched."
+    },
+    {
+      "finding": "Every cache prune deleted every live lease, so concurrent managed commands could steal each other's lanes.",
+      "foundBy": "startup",
+      "status": "harness-fixed",
+      "severity": "critical",
+      "note": "ConvertFrom-Json auto-converts the lease marker's ISO-8601 creation field into a DateTime; stringifying it dropped sub-second precision and the UTC suffix, so the tick comparison classified every live owner as a reused PID. A prune stole the running E2E build's lease mid-compile and its publication failed closed. The comparison now uses the DateTime directly, and a regression test proves a live-owner lease survives Prune and blocks a second acquire."
+    },
+    {
+      "finding": "The from-empty native-tools scenario could not start because the application's own store directory was misread as an attached cache, and a live run root's designed junction wedged every managed prune.",
+      "foundBy": "nativeToolsInstall",
+      "status": "harness-fixed",
+      "severity": "major",
+      "note": "The application creates data/native-tools eagerly at boot and the WDIO worker re-runs the config after the launcher's service has spawned the binary, so the disabled-cache guard now refuses only links, not ordinary directories. Separately, the cache size walker failed closed on the engine-packages junction inside an actively leased staging run root; it now skips staging directory reparse points without following them while every other lane stays strict."
+    },
     {
       "finding": "A successful URL download wrote the requested video and then showed a failure toast while leaving the modal open.",
       "foundBy": "urlToPreview",
@@ -594,7 +1192,10 @@
       "fixtures/subtitles/cues-unicode.srt",
       "fixtures/subtitles/cues-gemini-shape.srt"
     ],
-    "media": "none -- see the media section above"
+    "media": [
+      "pinned W3C Sintel trailer cached in managed external assets/e2e/source-switch-media",
+      "tests/subtitle-benchmark/fixtures/vi-fleurs-container.mp4 (real Vietnamese FLEURS speech clip)"
+    ]
   },
   "harnessLimitations": [
     {

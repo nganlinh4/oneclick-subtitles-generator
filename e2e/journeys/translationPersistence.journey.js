@@ -1,14 +1,14 @@
 // A customer formats subtitles, selects that project-owned result for preview, and gets it back
 // after relaunch. Format mode is deliberately provider-free; it proves the complete translation
 // ownership/persistence/presentation path without pretending to prove Gemini translation.
-/* global browser, describe, it, $, document, localStorage, window */
+/* global browser, describe, it, $, document */
 
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
-import { durableTranslations } from '../support/database.js';
+import { durableRenderScenes, durableTranslations } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
 import { compareFrames, saveNativePreviewFrame } from '../support/nativeMediaOracle.js';
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
@@ -71,12 +71,14 @@ describe('a customer keeps a project-owned formatted translation', () => {
       let restoredState = null;
       await browser.waitUntil(async () => {
         restoredState = await browser.execute(() => ({
-          translated: window.translatedSubtitles?.[0]?.text ?? null,
-          language: localStorage.getItem('subtitle_language'),
           hasVideo: Number.isFinite(document.querySelector('.video-preview video')?.duration),
         }));
+        restoredState.translated = durableTranslations(root)[0]
+          ?.translation?.baseSubtitles?.[0]?.text ?? null;
+        restoredState.selectedSubtitles = durableRenderScenes(root).at(-1)
+          ?.scene?.selectedSubtitles ?? null;
         return restoredState.translated === EXPECTED_FIRST
-          && restoredState.language === 'translated' && restoredState.hasVideo;
+          && restoredState.selectedSubtitles === 'translated' && restoredState.hasVideo;
       }, {
         timeout: 180_000,
         interval: 1_000,
@@ -169,16 +171,18 @@ describe('a customer keeps a project-owned formatted translation', () => {
         previewSelectionState = await browser.execute(() => ({
           url: document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
             ?.getAttribute('data-osg-frame-revision') ?? null,
-          translated: window.translatedSubtitles?.[0]?.text ?? null,
-          language: localStorage.getItem('subtitle_language'),
           selectedLabel: document.querySelector(
             '.subtitle-language-group .custom-dropdown-button .dropdown-value',
           )?.textContent?.trim() ?? null,
           menuOpen: document.querySelector('.subtitle-language-group .custom-dropdown.open') !== null,
         }));
+        previewSelectionState.translated = durableTranslations(root)[0]
+          ?.translation?.baseSubtitles?.[0]?.text ?? null;
+        previewSelectionState.selectedSubtitles = durableRenderScenes(root).at(-1)
+          ?.scene?.selectedSubtitles ?? null;
         return previewSelectionState.url !== null && previewSelectionState.url !== oldFrameUrl
           && previewSelectionState.translated === EXPECTED_FIRST
-          && previewSelectionState.language === 'translated';
+          && previewSelectionState.selectedSubtitles === 'translated';
       }, {
         timeout: 120_000,
         interval: 1_000,

@@ -78,23 +78,30 @@ describe('Gemini generation refuses safely without a credential', () => {
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let surface = null;
-    await browser.waitUntil(async () => {
-      surface = await browser.execute(() => ({
-        errorToasts: [...document.querySelectorAll('.toast-error')]
-          .map((node) => (node.innerText || '').trim()).filter(Boolean),
-        forceStopPresent: document.querySelector('.force-stop-btn') !== null,
-        generateDisabled: document.querySelector('[data-osg-action="generate-subtitles"]')
-          ?.disabled ?? null,
-        processModalPresent: document.querySelector('.processing-modal-overlay') !== null,
-      }));
-      return surface.errorToasts.some((message) => /API/i.test(message))
-        && surface.forceStopPresent === false
-        && surface.generateDisabled === false;
-    }, {
-      timeout: 30_000,
-      interval: 250,
-      timeoutMsg: () => `missing-credential refusal did not settle: ${JSON.stringify(surface)}`,
-    });
+    try {
+      await browser.waitUntil(async () => {
+        surface = await browser.execute(() => ({
+          errorToasts: [...document.querySelectorAll('.toast-error')]
+            .map((node) => (node.innerText || '').trim()).filter(Boolean),
+          forceStopPresent: document.querySelector('.force-stop-btn') !== null,
+          generateDisabled: document.querySelector('[data-osg-action="generate-subtitles"]')
+            ?.disabled ?? null,
+          processModalPresent: document.querySelector('.processing-modal-overlay') !== null,
+        }));
+        return surface.errorToasts.some((message) => /API/i.test(message))
+          && surface.forceStopPresent === false
+          && surface.generateDisabled === false;
+      }, {
+        timeout: 30_000,
+        interval: 250,
+        timeoutMsg: 'missing-credential refusal did not settle',
+      });
+    } catch (error) {
+      throw new Error(
+        `missing-credential refusal did not settle: ${JSON.stringify(surface)}`,
+        { cause: error },
+      );
+    }
 
     // The UI is the stimulus and the visible refusal is one oracle. SQLite and the native log are
     // independent oracles that distinguish a genuine pre-provider refusal from a request that was

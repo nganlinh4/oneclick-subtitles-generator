@@ -58,14 +58,21 @@ describe('a customer edits a cue and reopens the application', () => {
 
       await openEditor();
       let seen = null;
-      await browser.waitUntil(async () => {
-        seen = await inspect();
-        return seen.hasVideoElement && (await showsText(EDITED));
-      }, {
-        timeout: 180_000,
-        interval: 2_000,
-        timeoutMsg: () => `the project did not restore in a new process. last: ${JSON.stringify(seen)}`,
-      });
+      try {
+        await browser.waitUntil(async () => {
+          seen = await inspect();
+          return seen.hasVideoElement && (await showsText(EDITED));
+        }, {
+          timeout: 180_000,
+          interval: 2_000,
+          timeoutMsg: 'the project did not restore in a new process',
+        });
+      } catch (error) {
+        throw new Error(
+          `the project did not restore in a new process. last: ${JSON.stringify(seen)}`,
+          { cause: error },
+        );
+      }
       assert.ok(
         Math.abs(seen.videoDuration - REAL_VIDEO.durationSeconds)
           <= REAL_VIDEO.durationToleranceSeconds,
@@ -125,15 +132,22 @@ describe('a customer edits a cue and reopens the application', () => {
 
     // --- the durable oracle ---------------------------------------------------------------------
     let saved = null;
-    await browser.waitUntil(async () => {
-      saved = durableState(root);
-      return saved.cues.some((cue) => cue.text === EDITED);
-    }, {
-      timeout: 60_000,
-      interval: 2_000,
-      timeoutMsg: () => 'the edited cue never reached the database. cues on record: '
-        + JSON.stringify(saved?.cues.map((cue) => cue.text) ?? []),
-    });
+    try {
+      await browser.waitUntil(async () => {
+        saved = durableState(root);
+        return saved.cues.some((cue) => cue.text === EDITED);
+      }, {
+        timeout: 60_000,
+        interval: 2_000,
+        timeoutMsg: 'the edited cue never reached the database',
+      });
+    } catch (error) {
+      throw new Error(
+        'the edited cue never reached the database. cues on record: '
+          + JSON.stringify(saved?.cues.map((cue) => cue.text) ?? []),
+        { cause: error },
+      );
+    }
 
     console.log(`durable state after save: ${JSON.stringify(saved.counts)}`);
     assert.equal(saved.counts.projects, 1, 'exactly one project must exist');

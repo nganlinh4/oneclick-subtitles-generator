@@ -10,6 +10,8 @@
 
 import { clickControl } from './editor.js';
 
+/* global browser, console, document */
+
 /** How long the real format scan may take: it is a network round trip through yt-dlp. */
 const SCAN_TIMEOUT_MS = 300_000;
 
@@ -41,14 +43,21 @@ export const confirmDownloadOnly = async ({ afterScan = async () => {} } = {}) =
   await clickControl('.download-only-modal input[name="download-type"][value="video"]');
 
   let state = await modalState();
-  await browser.waitUntil(async () => {
+  try {
+    await browser.waitUntil(async () => {
+      state = await modalState();
+      return state.open && !state.scanning && (state.qualities.length > 0 || state.noQualities);
+    }, {
+      timeout: SCAN_TIMEOUT_MS,
+      interval: 2_000,
+      timeoutMsg: 'the quality scan never finished',
+    });
+  } catch (error) {
     state = await modalState();
-    return state.open && !state.scanning && (state.qualities.length > 0 || state.noQualities);
-  }, {
-    timeout: SCAN_TIMEOUT_MS,
-    interval: 2_000,
-    timeoutMsg: () => `the quality scan never finished. last: ${JSON.stringify(state)}`,
-  });
+    throw new Error(`the quality scan never finished. last: ${JSON.stringify(state)}`, {
+      cause: error,
+    });
+  }
 
   if (state.noQualities) {
     throw new Error('the application found no downloadable quality for the URL');
@@ -64,10 +73,15 @@ export const confirmDownloadOnly = async ({ afterScan = async () => {} } = {}) =
   const lowest = state.qualities.length - 1;
   await clickControl(`.download-only-modal label[for="quality-${lowest}"]`);
 
-  await browser.waitUntil(async () => !(await modalState()).confirmDisabled, {
-    timeout: 30_000,
-    interval: 500,
-    timeoutMsg: async () => `confirm stayed disabled: ${JSON.stringify(await modalState())}`,
-  });
+  try {
+    await browser.waitUntil(async () => !(await modalState()).confirmDisabled, {
+      timeout: 30_000,
+      interval: 500,
+      timeoutMsg: 'download confirmation stayed disabled',
+    });
+  } catch (error) {
+    state = await modalState();
+    throw new Error(`confirm stayed disabled: ${JSON.stringify(state)}`, { cause: error });
+  }
   await clickControl('.download-only-modal .confirm-button');
 };

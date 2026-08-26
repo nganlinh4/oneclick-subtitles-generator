@@ -2,6 +2,7 @@
 
 import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
+import process from 'node:process';
 
 import { clickControl } from '../support/editor.js';
 import {
@@ -10,7 +11,6 @@ import {
   listMediaFiles,
   newestMediaFile,
   probeMedia,
-  saveNativePreviewFrame,
   savePreviewElementFrame,
 } from '../support/nativeMediaOracle.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
@@ -21,6 +21,8 @@ import {
   waitForCanvasSubtitleFrame,
 } from '../support/workflow.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
+
+/* global $, HTMLInputElement, MutationObserver, browser, clearTimeout, describe, document, Event, it, setTimeout */
 
 const COMPARE_AT_SECONDS = 1;
 const WORKFLOW = 'native-export-decoded';
@@ -214,7 +216,7 @@ describe('a customer exports the subtitled video they previewed', () => {
       video.currentTime = seconds;
     }, COMPARE_AT_SECONDS);
     let styledRevision = null;
-    await browser.waitUntil(async () => {
+    await waitUntilWithFreshDiagnostic(async () => {
       styledRevision = await browser.execute(() => {
         const canvas = document.querySelector(
           '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]',
@@ -232,7 +234,7 @@ describe('a customer exports the subtitled video they previewed', () => {
     }, {
       timeout: 120_000,
       interval: 250,
-      timeoutMsg: () => `the Neon preset never reached preview pixels: ${JSON.stringify(styledRevision)}`,
+      diagnostic: () => `the Neon preset never reached preview pixels: ${JSON.stringify(styledRevision)}`,
     });
     const previewPath = join(root, 'evidence', 'preview-at-1s.png');
     await savePreviewElementFrame(
@@ -269,11 +271,10 @@ describe('a customer exports the subtitled video they previewed', () => {
       details: playerControls,
       focusSelector: '.video-preview-panel',
     });
-    // The current rebuilt binary predates the stable data attribute by one narrow UI edit, so the
-    // icon is retained as a compatibility selector for this red-to-green run. Future binaries use
-    // data-osg-action and both forms identify the same visible control.
-    const renderSelector = '//*[contains(@class,"video-rendering-section") and contains(@class,"expanded")]'
-      + '//button[@data-osg-action="render-video" or .//span[normalize-space(.)="desktop_windows"]]';
+    // Use the shipped stable action identity. `clickControl` deliberately accepts CSS only because
+    // its hit-target diagnostic executes document.querySelector inside the real WebView.
+    const renderSelector = '.video-rendering-section.expanded '
+      + 'button[data-osg-action="render-video"]';
     const renderButton = await $(renderSelector);
     await renderButton.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the render controls did not open' });
     assert.equal(
@@ -410,3 +411,14 @@ describe('a customer exports the subtitled video they previewed', () => {
     });
   });
 });
+
+async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
+  try {
+    return await browser.waitUntil(predicate, {
+      ...options,
+      timeoutMsg: 'condition did not settle before its timeout',
+    });
+  } catch (error) {
+    throw new Error(diagnostic(), { cause: error });
+  }
+}

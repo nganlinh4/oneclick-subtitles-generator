@@ -6,13 +6,471 @@
 // through OSG_E2E_DATA_ROOT, which exists only in the `unsigned-local-build` channel.
 
 import { Buffer } from 'node:buffer';
+import { createHash, randomBytes } from 'node:crypto';
 import {
-  mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync,
+  existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, readdirSync,
+  rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import {
+  basename, dirname, isAbsolute, join, parse, relative, resolve, sep,
+} from 'node:path';
+import process from 'node:process';
+
+const require = createRequire(import.meta.url);
+const { readAndVerifyE2eApplicationReceipt } = require(
+  '../../scripts/e2e-application-publication.js'
+);
+const { assertWindowsProcessIdentity } = require('../../scripts/windows-process-identity.js');
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
+
+const DEVELOPMENT_CACHE_DIRECTORY = join('OSG-Development', 'cache');
+const UNPUBLISHED_APPLICATION_DIRECTORY = '.unpublished';
+const STAGED_APPLICATION_MARKER = '.osg-e2e-staged-application.json';
+const STAGED_APPLICATION_PARENT_MARKER = '.osg-e2e-staging-parent';
+const STAGED_APPLICATION_SCHEMA_VERSION = 1;
+const APPLICATION_HASH_PATTERN = /^[0-9a-f]{64}$/u;
+const STAGED_APPLICATION_ROOT_PATTERN = /^osg-e2e-app-/u;
+const WINDOWS_SEPARATOR = '\\';
+const WINDOWS_DEVICE_PREFIXES = Object.freeze([
+  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}?${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}.${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}??${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}??${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}device${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}device${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}global??${WINDOWS_SEPARATOR}`,
+  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}global??${WINDOWS_SEPARATOR}`,
+]);
+
+const sameCanonicalPath = (left, right) => (
+  process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
+);
+
+const hasTraversalSegment = (input) => String(input)
+  .split(/[\\/]+/u)
+  .some((segment) => segment === '.' || segment === '..');
+
+const hasWindowsDeviceNamespace = (input) => {
+  const windowsPath = String(input).replaceAll('/', WINDOWS_SEPARATOR).toLowerCase();
+  return WINDOWS_DEVICE_PREFIXES.some((prefix) => windowsPath.startsWith(prefix));
+};
+
+const hasAmbiguousWindowsSegment = (input) => String(input)
+  .replaceAll('/', WINDOWS_SEPARATOR)
+  .split(WINDOWS_SEPARATOR)
+  .some((segment) => segment.length > 0 && /[. ]$/u.test(segment));
+
+const canonicalizeExistingPrefix = (input) => {
+  const suffix = [];
+  let existing = resolve(input);
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) break;
+    suffix.unshift(basename(existing));
+    existing = parent;
+  }
+  return resolve(realpathSync.native(existing), ...suffix);
+};
+
+const sameResolvedPath = (left, right) => sameCanonicalPath(resolve(left), resolve(right));
+
+const sameOrChildPath = (candidate, parent) => {
+  const pathFromParent = relative(resolve(parent), resolve(candidate));
+  return pathFromParent === '' || (
+    pathFromParent !== '..'
+    && !pathFromParent.startsWith(`..${sep}`)
+    && !isAbsolute(pathFromParent)
+  );
+};
+
+/** Resolve the one external development-cache root shared with scripts/dev-cache.ps1. */
+export const resolveDevelopmentCacheRoot = ({
+  environment = process.env,
+  localApplicationData = environment.LOCALAPPDATA,
+  repositoryRoot = REPOSITORY_ROOT,
+} = {}) => {
+  const explicit = typeof environment.OSG_DEV_CACHE_ROOT === 'string'
+    && environment.OSG_DEV_CACHE_ROOT.trim().length > 0
+    ? environment.OSG_DEV_CACHE_ROOT
+    : null;
+  if (explicit === null && (
+    typeof localApplicationData !== 'string' || localApplicationData.trim().length === 0
+  )) {
+    throw new Error('LOCALAPPDATA is unavailable, so the managed E2E cache cannot be located');
+  }
+  const requested = explicit ?? join(localApplicationData, DEVELOPMENT_CACHE_DIRECTORY);
+  if (
+    !isAbsolute(requested)
+    || hasTraversalSegment(requested)
+    || hasWindowsDeviceNamespace(requested)
+    || hasAmbiguousWindowsSegment(requested)
+  ) {
+    throw new Error(`The managed E2E cache must be an absolute path without traversal: ${requested}`);
+  }
+  const root = resolve(requested);
+  if (root === parse(root).root) {
+    throw new Error(`The managed E2E cache cannot be a filesystem root: ${root}`);
+  }
+  const canonicalRoot = canonicalizeExistingPrefix(root);
+  if (!sameCanonicalPath(canonicalRoot, root)) {
+    throw new Error(`The managed E2E cache crosses a redirected filesystem path: ${root}`);
+  }
+  const canonicalRepository = realpathSync.native(resolve(repositoryRoot));
+  if (
+    sameOrChildPath(canonicalRoot, canonicalRepository)
+    || sameOrChildPath(canonicalRepository, canonicalRoot)
+  ) {
+    throw new Error(`The managed E2E cache must be external to the repository: ${root}`);
+  }
+  return canonicalRoot;
+};
+
+export const DEVELOPMENT_CACHE_ROOT = resolveDevelopmentCacheRoot();
+export const E2E_APPLICATIONS_CACHE_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'apps', 'e2e');
+export const E2E_ASSET_CACHE_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'assets', 'e2e');
+export const EVIDENCE_CACHE_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'evidence');
+export const E2E_STAGING_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'staging');
+
+/** Re-hash the receipt, manifest, exact inventory, and every application file. */
+export const readVerifiedPublishedApplication = () => readAndVerifyE2eApplicationReceipt({
+  applicationsCacheRoot: E2E_APPLICATIONS_CACHE_ROOT,
+});
+
+const currentReceiptPath = join(E2E_APPLICATIONS_CACHE_ROOT, 'receipts', 'current.json');
+const publicationAtModuleLoad = existsSync(currentReceiptPath)
+  ? readVerifiedPublishedApplication()
+  : null;
+
+const assertRealUnredirectedTree = (root) => {
+  const canonicalRoot = realpathSync.native(root);
+  const canonicalParent = realpathSync.native(dirname(canonicalRoot));
+  const managedStagingRoot = existsSync(E2E_STAGING_ROOT)
+    ? realpathSync.native(E2E_STAGING_ROOT)
+    : null;
+  let stagedParent;
+  try {
+    stagedParent = readFileSync(join(canonicalRoot, STAGED_APPLICATION_PARENT_MARKER), 'utf8').trim();
+  } catch (error) {
+    throw new Error('OSG_E2E_BINARY is not inside a direct private staged-application root', {
+      cause: error,
+    });
+  }
+  if (
+    !sameCanonicalPath(stagedParent, canonicalParent)
+    || (
+      !(managedStagingRoot !== null && sameCanonicalPath(canonicalParent, managedStagingRoot))
+      && !(process.env.NODE_TEST_CONTEXT && sameOrChildPath(canonicalParent, tmpdir()))
+    )
+    || !STAGED_APPLICATION_ROOT_PATTERN.test(basename(canonicalRoot))
+  ) {
+    throw new Error('OSG_E2E_BINARY is not inside a direct private staged-application root');
+  }
+  const pending = [canonicalRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    const directoryStatus = lstatSync(directory);
+    if (!directoryStatus.isDirectory() || directoryStatus.isSymbolicLink()) {
+      throw new Error(`The staged E2E application contains a redirected directory: ${directory}`);
+    }
+    if (!sameResolvedPath(realpathSync.native(directory), directory)) {
+      throw new Error(`The staged E2E application crosses a redirected directory: ${directory}`);
+    }
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      const status = lstatSync(path);
+      if (entry.isSymbolicLink() || status.isSymbolicLink()) {
+        throw new Error(`The staged E2E application contains a link or reparse point: ${path}`);
+      }
+      if (!sameResolvedPath(realpathSync.native(path), path)) {
+        throw new Error(`The staged E2E application contains a redirected entry: ${path}`);
+      }
+      if (entry.isDirectory() && status.isDirectory()) pending.push(path);
+      else if (!entry.isFile() || !status.isFile() || status.nlink !== 1) {
+        throw new Error(`The staged E2E application contains an unsafe entry: ${path}`);
+      }
+    }
+  }
+};
+
+export const writeStagedApplicationParentMarker = ({ stagedRoot, stagingParent }) => {
+  writeFileSync(
+    join(stagedRoot, STAGED_APPLICATION_PARENT_MARKER),
+    `${realpathSync.native(stagingParent)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
+};
+
+/** Prove an explicit override was created by stageApplication(), never selected from a build tree. */
+export const assertStagedApplicationBinary = (binary) => {
+  if (
+    typeof binary !== 'string'
+    || !isAbsolute(binary)
+    || hasTraversalSegment(binary)
+    || basename(binary).toLowerCase() !== 'osg-desktop.exe'
+  ) {
+    throw new Error('OSG_E2E_BINARY must name the staged osg-desktop.exe by an absolute safe path');
+  }
+  const root = dirname(resolve(binary));
+  assertRealUnredirectedTree(root);
+  const markerPath = join(root, STAGED_APPLICATION_MARKER);
+  let marker;
+  try {
+    marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+  } catch (error) {
+    throw new Error('OSG_E2E_BINARY has no valid staged-application authority marker', {
+      cause: error,
+    });
+  }
+  if (
+    marker === null
+    || typeof marker !== 'object'
+    || Object.keys(marker).sort().join('|')
+      !== 'applicationHash|entrypoint|schemaVersion|sourceApplicationRoot'
+    || marker.schemaVersion !== STAGED_APPLICATION_SCHEMA_VERSION
+    || marker.entrypoint !== 'osg-desktop.exe'
+    || !APPLICATION_HASH_PATTERN.test(marker.applicationHash ?? '')
+    || typeof marker.sourceApplicationRoot !== 'string'
+    || !isAbsolute(marker.sourceApplicationRoot)
+    || !sameResolvedPath(
+      marker.sourceApplicationRoot,
+      join(E2E_APPLICATIONS_CACHE_ROOT, 'applications', marker.applicationHash ?? 'invalid'),
+    )
+  ) {
+    throw new Error('OSG_E2E_BINARY has an invalid staged-application authority marker');
+  }
+  const binaryStatus = lstatSync(binary);
+  if (!binaryStatus.isFile() || binaryStatus.isSymbolicLink() || binaryStatus.nlink !== 1) {
+    throw new Error('OSG_E2E_BINARY is not a private regular staged file');
+  }
+  return Object.freeze({ binary: resolve(binary), root, marker });
+};
+
+export const writeStagedApplicationMarker = ({ stagedRoot, publication }) => {
+  writeFileSync(join(stagedRoot, STAGED_APPLICATION_MARKER), `${JSON.stringify({
+    schemaVersion: STAGED_APPLICATION_SCHEMA_VERSION,
+    applicationHash: publication.applicationHash,
+    sourceApplicationRoot: publication.applicationRoot,
+    entrypoint: 'osg-desktop.exe',
+  }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+};
+
+const RUN_ROOT_AUTHORITY_FILE = '.osg-e2e-authority';
+const RUN_ROOT_PARENT_FILE = '.osg-e2e-staging-parent';
+const RUN_ROOT_STAGING_AUTHORITY_FILE = '.osg-e2e-staging-authority.json';
+const RUN_ROOT_STAGING_AUTHORITY_SCHEMA_VERSION = 1;
+const RUN_ROOT_AUTHORITY_PATTERN = /^[0-9a-f]{64}$/u;
+const CACHE_LEASE_ID_PATTERN = /^[0-9a-f]{32}$/u;
+const RUN_ROOT_CACHE_POLICY_FILE = '.osg-e2e-cache-policy.json';
+const RUN_ROOT_CACHE_POLICY_SCHEMA_VERSION = 1;
+const RUN_ROOT_CHILDREN = Object.freeze([
+  'data', 'cache', 'logs', 'webview', 'evidence', 'input', 'output',
+]);
+
+const readPrivateJson = (path, label) => {
+  const status = lstatSync(path);
+  if (!status.isFile() || status.isSymbolicLink() || status.nlink !== 1) {
+    throw new Error(`${label} is not one private regular file`);
+  }
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new Error(`${label} is not valid JSON`, { cause: error });
+  }
+};
+
+const managedStagingAuthority = ({ root, requireLiveOwner }) => {
+  const authority = readPrivateJson(
+    join(root, RUN_ROOT_STAGING_AUTHORITY_FILE),
+    'the isolated run staging authority',
+  );
+  const expectedKeys = authority?.managed
+    ? 'cacheRoot|leaseId|leaseOwnerProcessCreatedUtc|leaseOwnerProcessId|managed|owner|rootId|schemaVersion|stagingRoot'
+    : 'managed|schemaVersion|stagingRoot';
+  if (
+    authority === null
+    || typeof authority !== 'object'
+    || typeof authority.managed !== 'boolean'
+    || Object.keys(authority).sort().join('|') !== expectedKeys
+    || authority.schemaVersion !== RUN_ROOT_STAGING_AUTHORITY_SCHEMA_VERSION
+  ) {
+    throw new Error('the isolated run staging authority has an invalid schema');
+  }
+  const canonicalRoot = realpathSync.native(root);
+  const canonicalParent = realpathSync.native(dirname(canonicalRoot));
+  if (!sameCanonicalPath(authority.stagingRoot ?? '', canonicalParent)) {
+    throw new Error('the isolated run staging authority changed its parent');
+  }
+  if (!authority.managed) {
+    if (!process.env.NODE_TEST_CONTEXT || !sameOrChildPath(canonicalParent, tmpdir())) {
+      throw new Error('a test-only staging authority escaped node:test');
+    }
+    return Object.freeze(authority);
+  }
+  if (
+    authority.owner !== 'oneclick-subtitles-generator'
+    || !CACHE_LEASE_ID_PATTERN.test(authority.rootId ?? '')
+    || !CACHE_LEASE_ID_PATTERN.test(authority.leaseId ?? '')
+    || !Number.isSafeInteger(authority.leaseOwnerProcessId)
+    || authority.leaseOwnerProcessId < 1
+    || typeof authority.leaseOwnerProcessCreatedUtc !== 'string'
+    || Number.isNaN(Date.parse(authority.leaseOwnerProcessCreatedUtc))
+    || !sameCanonicalPath(realpathSync.native(authority.cacheRoot), realpathSync.native(DEVELOPMENT_CACHE_ROOT))
+    || !sameCanonicalPath(realpathSync.native(authority.stagingRoot), realpathSync.native(E2E_STAGING_ROOT))
+  ) {
+    throw new Error('the isolated run staging authority changed its managed cache identity');
+  }
+  const rootMarker = readPrivateJson(
+    join(authority.cacheRoot, '.osg-development-cache.json'),
+    'the managed development-cache root marker',
+  );
+  const entryMarker = readPrivateJson(
+    join(authority.stagingRoot, '.osg-cache-entry.json'),
+    'the managed staging entry marker',
+  );
+  const leaseMarker = readPrivateJson(
+    join(authority.stagingRoot, '.osg-cache-lease'),
+    'the managed staging lease marker',
+  );
+  if (
+    rootMarker.schemaVersion !== 1
+    || rootMarker.cacheKind !== 'development-cache'
+    || rootMarker.owner !== authority.owner
+    || rootMarker.rootId !== authority.rootId
+    || entryMarker.schemaVersion !== 1
+    || entryMarker.owner !== authority.owner
+    || entryMarker.rootId !== authority.rootId
+    || entryMarker.lane !== 'staging'
+    || leaseMarker.schemaVersion !== 1
+    || leaseMarker.owner !== authority.owner
+    || leaseMarker.rootId !== authority.rootId
+    || leaseMarker.laneGroup !== 'staging'
+    || leaseMarker.leaseId !== authority.leaseId
+    || leaseMarker.processId !== authority.leaseOwnerProcessId
+    || leaseMarker.processCreatedUtc !== authority.leaseOwnerProcessCreatedUtc
+  ) {
+    throw new Error('the isolated run staging authority does not match the active managed lease');
+  }
+  if (requireLiveOwner) {
+    try {
+      assertWindowsProcessIdentity({
+        processId: authority.leaseOwnerProcessId,
+        processCreatedUtc: authority.leaseOwnerProcessCreatedUtc,
+      });
+    } catch (error) {
+      throw new Error('the isolated run staging lease owner identity is stale or was reused', {
+        cause: error,
+      });
+    }
+  }
+  return Object.freeze(authority);
+};
+
+const cachePolicyDigest = ({ authorization, keepNativeTools, keepEnginePackages }) => createHash(
+  'sha256',
+).update([
+  authorization,
+  keepNativeTools ? 'native-tools:1' : 'native-tools:0',
+  keepEnginePackages ? 'engine-packages:1' : 'engine-packages:0',
+].join('\n')).digest('hex');
+
+const readRunRootCachePolicy = (root, authorization) => {
+  const path = join(root, RUN_ROOT_CACHE_POLICY_FILE);
+  const status = lstatSync(path);
+  if (!status.isFile() || status.isSymbolicLink() || status.nlink !== 1) {
+    throw new Error('the isolated run root cache policy is not one private regular file');
+  }
+  const policy = JSON.parse(readFileSync(path, 'utf8'));
+  if (
+    policy === null
+    || typeof policy !== 'object'
+    || Object.keys(policy).sort().join('|')
+      !== 'digest|keepEnginePackages|keepNativeTools|schemaVersion'
+    || policy.schemaVersion !== RUN_ROOT_CACHE_POLICY_SCHEMA_VERSION
+    || typeof policy.keepNativeTools !== 'boolean'
+    || typeof policy.keepEnginePackages !== 'boolean'
+    || policy.digest !== cachePolicyDigest({ authorization, ...policy })
+  ) {
+    throw new Error('the isolated run root cache policy is invalid or was changed after creation');
+  }
+  return Object.freeze({
+    keepNativeTools: policy.keepNativeTools,
+    keepEnginePackages: policy.keepEnginePackages,
+  });
+};
+
+const hasSafeRunRootLayout = (root) => {
+  try {
+    if (typeof root !== 'string' || root.length === 0) return false;
+    const rootStatus = lstatSync(root);
+    if (!rootStatus.isDirectory() || rootStatus.isSymbolicLink()) return false;
+    const canonicalRoot = realpathSync.native(root);
+    const parentAuthorityPath = join(canonicalRoot, RUN_ROOT_PARENT_FILE);
+    const parentAuthorityStatus = lstatSync(parentAuthorityPath);
+    if (
+      !parentAuthorityStatus.isFile()
+      || parentAuthorityStatus.isSymbolicLink()
+      || parentAuthorityStatus.nlink !== 1
+    ) return false;
+    const authorizedParent = readFileSync(parentAuthorityPath, 'utf8').trim();
+    const canonicalParent = realpathSync.native(dirname(canonicalRoot));
+    const managedStagingRoot = existsSync(E2E_STAGING_ROOT)
+      ? realpathSync.native(E2E_STAGING_ROOT)
+      : null;
+    if (
+      !sameCanonicalPath(authorizedParent, canonicalParent)
+      || !basename(canonicalRoot).startsWith('osg-e2e-run-')
+      || (
+        !(managedStagingRoot !== null && sameCanonicalPath(canonicalParent, managedStagingRoot))
+        && !(process.env.NODE_TEST_CONTEXT && sameOrChildPath(canonicalParent, tmpdir()))
+      )
+    ) {
+      return false;
+    }
+    for (const child of RUN_ROOT_CHILDREN) {
+      const path = join(canonicalRoot, child);
+      const status = lstatSync(path);
+      if (
+        !status.isDirectory()
+        || status.isSymbolicLink()
+        || !sameCanonicalPath(realpathSync.native(path), path)
+      ) {
+        return false;
+      }
+    }
+    const authorityPath = join(canonicalRoot, RUN_ROOT_AUTHORITY_FILE);
+    const authorityStatus = lstatSync(authorityPath);
+    if (
+      !authorityStatus.isFile()
+      || authorityStatus.isSymbolicLink()
+      || authorityStatus.nlink !== 1
+    ) {
+      return false;
+    }
+    const authorization = readFileSync(authorityPath, 'utf8').trim();
+    if (!RUN_ROOT_AUTHORITY_PATTERN.test(authorization)) return false;
+    managedStagingAuthority({ root: canonicalRoot, requireLiveOwner: false });
+    readRunRootCachePolicy(canonicalRoot, authorization);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Remove every ambient capability that could redirect an unattended desktop run. */
+export const scrubAutomationEnvironment = (environment) => Object.fromEntries(
+  Object.entries(environment).filter(([key]) => (
+    !key.startsWith('OSG_E2E_')
+    && !key.startsWith('WEBVIEW2_')
+    && !key.startsWith('WDIO_')
+    && !key.startsWith('__WDIO_TAURI_')
+    && key !== 'TAURI_WEBDRIVER_PORT'
+    && key !== 'TAURI_DATA_DIR'
+    && key !== 'REMOTE_WEBDRIVER_URL'
+  )),
+);
 
 /**
  * Reviewed SUBTITLE fixtures a journey may hand to the application.
@@ -36,7 +494,7 @@ export const FIXTURE_ROOT = join(REPOSITORY_ROOT, 'e2e', 'fixtures', 'subtitles'
  * exactly where it resolves them for a customer. `nativeToolsInstall.journey.js` is the one that
  * starts from empty and proves the install itself.
  */
-export const NATIVE_TOOLS_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-native-tools');
+export const NATIVE_TOOLS_CACHE = join(E2E_ASSET_CACHE_ROOT, 'native-tools');
 
 /**
  * Heavy local AI packages retained between isolated journeys.
@@ -46,24 +504,41 @@ export const NATIVE_TOOLS_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-native-to
  * junctioned into an otherwise disposable root, exactly like a customer keeps an installed engine
  * while opening and closing projects. `nativeEngineInstall` owns the from-empty proof.
  */
-export const ENGINE_PACKAGES_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-engine-packages');
+export const ENGINE_PACKAGES_CACHE = join(E2E_ASSET_CACHE_ROOT, 'engine-packages');
 
 /**
  * Where a real downloaded video is kept between runs. This cache is input-only; every journey
  * copies its selected media into its disposable run root and writes exports elsewhere in that root.
  *
- * Created eagerly, because the application CANONICALIZES this root before it will honour a staged
- * destination — and canonicalizing a directory that does not exist fails, which makes the seam fall
- * back to the real dialog. Measured: a run with this directory missing opened a native save dialog
- * behind the application window and hung for fifteen minutes with no error and no file.
+ * The managed cache lease creates the owned asset lane before this child is used. The application
+ * canonicalizes staged paths, so workflow setup creates this exact child before handing any path to
+ * the application; a missing directory must remain a typed automation refusal, never a dialog.
  */
-export const REAL_MEDIA_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-real-media');
-mkdirSync(REAL_MEDIA_CACHE, { recursive: true });
+export const REAL_MEDIA_CACHE = join(E2E_ASSET_CACHE_ROOT, 'real-media');
 
-/** Where the E2E channel binary and its resources are built. */
-export const BUILT_APPLICATION_DIRECTORY = join(
-  REPOSITORY_ROOT, 'target', 'x86_64-pc-windows-msvc', 'release',
+/**
+ * A second, visibly different real video used only by the main-preview source-switch journey.
+ * Kept out of `REAL_MEDIA_CACHE` so newest-file discovery can never make unrelated journeys select
+ * it instead of their reviewed YouTube source.
+ */
+export const SOURCE_SWITCH_MEDIA_CACHE = join(
+  E2E_ASSET_CACHE_ROOT,
+  'source-switch-media',
 );
+
+/** Offline-generated long-form speech/video used by the four-window ASR journey. */
+export const FOUR_WINDOW_ASR_MEDIA_CACHE = join(E2E_ASSET_CACHE_ROOT, 'four-window-asr-media');
+
+/**
+ * The verified immutable application selected by the current external-cache receipt.
+ *
+ * A missing receipt gets a deliberately nonexistent EXTERNAL sentinel so source-only tests can
+ * still import this module. assertAutomationDialogGuard() resolves the receipt again and refuses
+ * before WebDriver starts. A present but corrupt receipt is never softened to that sentinel: module
+ * loading itself fails closed.
+ */
+export const BUILT_APPLICATION_DIRECTORY = publicationAtModuleLoad?.applicationRoot
+  ?? join(E2E_APPLICATIONS_CACHE_ROOT, UNPUBLISHED_APPLICATION_DIRECTORY);
 
 // A from-empty managed ASR install downloads and verifies 4.56 GiB before inference begins. The
 // journey owns tighter per-step timeouts; this outer Mocha cap must not kill that valid operation.
@@ -77,8 +552,28 @@ export const JOURNEY_TIMEOUT_MS = 3 * 60 * 60 * 1_000;
  * output every other journey depends on. The staged copy is a real installation layout, so the
  * application resolves its resources exactly as it does in the built one.
  */
-export const APPLICATION_BINARY = process.env.OSG_E2E_BINARY
+const stagedApplicationOverride = process.env.OSG_E2E_BINARY;
+if (stagedApplicationOverride !== undefined) assertStagedApplicationBinary(stagedApplicationOverride);
+export const APPLICATION_BINARY = stagedApplicationOverride
+  ?? publicationAtModuleLoad?.binaryPath
   ?? join(BUILT_APPLICATION_DIRECTORY, 'osg-desktop.exe');
+
+const assertApplicationLaunchSource = (binary) => {
+  if (!sameResolvedPath(binary, APPLICATION_BINARY)) return;
+  if (stagedApplicationOverride !== undefined) {
+    assertStagedApplicationBinary(binary);
+    return;
+  }
+  const current = readVerifiedPublishedApplication();
+  if (
+    !sameResolvedPath(current.binaryPath, binary)
+    || publicationAtModuleLoad?.applicationHash !== current.applicationHash
+  ) {
+    throw new Error(
+      'The immutable E2E application receipt changed after the harness selected its binary',
+    );
+  }
+};
 
 // Compiled into dialog_paths.rs only when `e2e-automation` is enabled. Checking this before WDIO
 // launches the executable prevents a production build at the same Cargo output path from silently
@@ -88,8 +583,29 @@ export const AUTOMATION_DIALOG_GUARD = Buffer.from(
   'The automation build refused an unstaged native file dialog.',
   'utf8',
 );
+export const AUTOMATION_WINDOW_GUARD = Buffer.from(
+  'The automation build requires a non-focusable off-screen native window.',
+  'utf8',
+);
+export const AUTOMATION_ENVIRONMENT_GUARD = Buffer.from(
+  'the automation build refused an unsafe harness environment:',
+  'utf8',
+);
+export const AUTOMATION_AUDIO_GUARD = Buffer.from('--mute-audio', 'utf8');
+export const AUTOMATION_INTERACTION_GUARD = Buffer.from(
+  'The automation build refused an interactive desktop surface.',
+  'utf8',
+);
+export const AUTOMATION_WEBDRIVER_GUARD = Buffer.from(
+  'The OSG automation WebDriver refuses native-window mutation and unidentified sessions.',
+  'utf8',
+);
 
 export const assertAutomationDialogGuard = (binary) => {
+  // The WebDriver configuration is contract-tested to pass APPLICATION_BINARY here before its
+  // service can spawn anything. Re-read and re-hash the current immutable publication at that last
+  // responsible moment; importing a path from a once-valid receipt is not launch authority.
+  assertApplicationLaunchSource(binary);
   let bytes;
   try {
     bytes = readFileSync(binary);
@@ -100,6 +616,51 @@ export const assertAutomationDialogGuard = (binary) => {
     throw new Error(
       `Refusing to launch ${binary}: it does not contain the compile-time automation dialog guard. `
       + 'Rebuild with --features e2e-automation; a production binary may open File Explorer.',
+    );
+  }
+  if (!bytes.includes(AUTOMATION_WINDOW_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the compile-time off-screen window guard. `
+      + 'Rebuild the current source with --features e2e-automation; an older automation binary may enter the interactive desktop.',
+    );
+  }
+  if (!bytes.includes(AUTOMATION_ENVIRONMENT_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the compile-time isolated-profile preflight. `
+      + 'Rebuild the current source with --features e2e-automation; a test binary must fail closed before resolving application data.',
+    );
+  }
+  if (!bytes.includes(AUTOMATION_AUDIO_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the compile-time automation audio guard. `
+      + 'Rebuild the current source with --features e2e-automation; an older test binary may emit sound.',
+    );
+  }
+  if (!bytes.includes(AUTOMATION_INTERACTION_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the compile-time automation interaction guard. `
+      + 'Rebuild the current source with --features e2e-automation; an older test binary may open an OS surface.',
+    );
+  }
+  if (!bytes.includes(AUTOMATION_WEBDRIVER_GUARD)) {
+    throw new Error(
+      `Refusing to launch ${binary}: it does not contain the guarded WebDriver server. `
+      + 'Rebuild the current source with --features e2e-automation; the registry server can move or fullscreen the native window.',
+    );
+  }
+  const peOffset = bytes.length >= 64 ? bytes.readUInt32LE(0x3c) : -1;
+  const optionalHeader = peOffset + 24;
+  const subsystemOffset = optionalHeader + 68;
+  const isWindowsGui = bytes.subarray(0, 2).equals(Buffer.from('MZ'))
+    && peOffset >= 64
+    && bytes.subarray(peOffset, peOffset + 4).equals(Buffer.from([0x50, 0x45, 0, 0]))
+    && subsystemOffset + 2 <= bytes.length
+    && [0x10b, 0x20b].includes(bytes.readUInt16LE(optionalHeader))
+    && bytes.readUInt16LE(subsystemOffset) === 2;
+  if (!isWindowsGui) {
+    throw new Error(
+      `Refusing to launch ${binary}: it is not a Windows GUI-subsystem executable. `
+      + 'The GUI subsystem is required independently of the patched launcher\'s windowsHide guard.',
     );
   }
 };
@@ -119,22 +680,251 @@ export const assertAutomationDialogGuard = (binary) => {
  * `keepNativeTools` junctions the persistent tool directory in. Everything else about the root stays
  * disposable: the database, the projects, the caches and the logs are all new every run.
  */
-export const createRunRoot = ({ keepNativeTools = true, keepEnginePackages = true } = {}) => {
-  const root = mkdtempSync(join(tmpdir(), 'osg-e2e-'));
-  for (const child of ['data', 'cache', 'logs', 'webview', 'evidence', 'input', 'output']) {
+export const createRunRoot = ({
+  keepNativeTools = true,
+  keepEnginePackages = true,
+  stagingLease = null,
+  testStagingRoot = null,
+} = {}) => {
+  if (typeof keepNativeTools !== 'boolean' || typeof keepEnginePackages !== 'boolean') {
+    throw new Error('the isolated run root cache policy accepts booleans only');
+  }
+  if ((stagingLease === null) === (testStagingRoot === null)) {
+    throw new Error('an isolated run root requires exactly one managed staging lease or test root');
+  }
+  let parent;
+  let stagingAuthority;
+  if (stagingLease !== null) {
+    if (
+      typeof stagingLease !== 'object'
+      || !CACHE_LEASE_ID_PATTERN.test(stagingLease.leaseId ?? '')
+      || !sameResolvedPath(stagingLease.stagingRoot ?? '', E2E_STAGING_ROOT)
+    ) {
+      throw new Error('the isolated run root requires the exact active managed staging lease');
+    }
+    const rootMarker = readPrivateJson(
+      join(DEVELOPMENT_CACHE_ROOT, '.osg-development-cache.json'),
+      'the managed development-cache root marker',
+    );
+    const entryMarker = readPrivateJson(
+      join(E2E_STAGING_ROOT, '.osg-cache-entry.json'),
+      'the managed staging entry marker',
+    );
+    const marker = readPrivateJson(
+      join(E2E_STAGING_ROOT, '.osg-cache-lease'),
+      'the managed staging lease marker',
+    );
+    if (
+      rootMarker.schemaVersion !== 1
+      || rootMarker.cacheKind !== 'development-cache'
+      || rootMarker.owner !== 'oneclick-subtitles-generator'
+      || !CACHE_LEASE_ID_PATTERN.test(rootMarker.rootId ?? '')
+      || entryMarker.schemaVersion !== 1
+      || entryMarker.owner !== rootMarker.owner
+      || entryMarker.rootId !== rootMarker.rootId
+      || entryMarker.lane !== 'staging'
+      || marker.schemaVersion !== 1
+      || marker.leaseId !== stagingLease.leaseId
+      || marker.owner !== rootMarker.owner
+      || marker.rootId !== rootMarker.rootId
+      || marker.laneGroup !== 'staging'
+      || marker.processId !== process.pid
+      || marker.processCreatedUtc !== stagingLease.leaseOwnerProcessCreatedUtc
+    ) {
+      throw new Error('the isolated run root staging lease is not active for this process');
+    }
+    try {
+      assertWindowsProcessIdentity({
+        processId: marker.processId,
+        processCreatedUtc: marker.processCreatedUtc,
+      });
+    } catch (error) {
+      throw new Error('the isolated run root staging owner identity is stale or was reused', {
+        cause: error,
+      });
+    }
+    parent = E2E_STAGING_ROOT;
+    stagingAuthority = {
+      schemaVersion: RUN_ROOT_STAGING_AUTHORITY_SCHEMA_VERSION,
+      managed: true,
+      owner: rootMarker.owner,
+      rootId: rootMarker.rootId,
+      cacheRoot: realpathSync.native(DEVELOPMENT_CACHE_ROOT),
+      stagingRoot: realpathSync.native(E2E_STAGING_ROOT),
+      leaseId: marker.leaseId,
+      leaseOwnerProcessId: marker.processId,
+      leaseOwnerProcessCreatedUtc: marker.processCreatedUtc,
+    };
+  } else {
+    if (
+      !process.env.NODE_TEST_CONTEXT
+      || typeof testStagingRoot !== 'string'
+      || !isAbsolute(testStagingRoot)
+      || !sameOrChildPath(testStagingRoot, tmpdir())
+    ) {
+      throw new Error('the private run-root test boundary is unavailable outside node:test');
+    }
+    mkdirSync(testStagingRoot, { recursive: true });
+    parent = testStagingRoot;
+    stagingAuthority = {
+      schemaVersion: RUN_ROOT_STAGING_AUTHORITY_SCHEMA_VERSION,
+      managed: false,
+      stagingRoot: realpathSync.native(testStagingRoot),
+    };
+  }
+  const canonicalParent = realpathSync.native(parent);
+  const root = mkdtempSync(join(canonicalParent, 'osg-e2e-run-'));
+  for (const child of RUN_ROOT_CHILDREN) {
     mkdirSync(join(root, child), { recursive: true });
   }
-  if (keepNativeTools) {
-    mkdirSync(NATIVE_TOOLS_CACHE, { recursive: true });
-    // A junction rather than a copy: the application writes its install receipts here, and they have
-    // to survive the run that wrote them for the next run to see the tools as installed.
-    symlinkSync(NATIVE_TOOLS_CACHE, join(root, 'data', 'native-tools'), 'junction');
-  }
-  if (keepEnginePackages) {
-    mkdirSync(ENGINE_PACKAGES_CACHE, { recursive: true });
-    symlinkSync(ENGINE_PACKAGES_CACHE, join(root, 'data', 'engine-packages'), 'junction');
-  }
+  // A path is not authority to reuse a profile. The launcher that created this root also owns a
+  // fresh secret, which must be passed explicitly to a worker or a reviewed multi-process scenario.
+  // This prevents a stale OSG_E2E_DATA_ROOT in an ambient shell from selecting an earlier run.
+  const authorization = randomBytes(32).toString('hex');
+  writeFileSync(
+    join(root, RUN_ROOT_AUTHORITY_FILE),
+    authorization,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
+  writeFileSync(
+    join(root, RUN_ROOT_PARENT_FILE),
+    `${canonicalParent}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
+  writeFileSync(
+    join(root, RUN_ROOT_STAGING_AUTHORITY_FILE),
+    `${JSON.stringify(stagingAuthority, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
+  const policy = {
+    schemaVersion: RUN_ROOT_CACHE_POLICY_SCHEMA_VERSION,
+    keepNativeTools,
+    keepEnginePackages,
+    digest: cachePolicyDigest({ authorization, keepNativeTools, keepEnginePackages }),
+  };
+  writeFileSync(
+    join(root, RUN_ROOT_CACHE_POLICY_FILE),
+    `${JSON.stringify(policy, null, 2)}\n`,
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
   return root;
+};
+
+const attachPersistentCache = ({ root, name, cache, enabled }) => {
+  const junction = join(root, 'data', name);
+  let junctionStatus = lstatSync(junction, { throwIfNoEntry: false });
+  if (!enabled) {
+    // The application creates its store directory eagerly at boot, and this config runs again in
+    // the WDIO worker after the launcher's service has already spawned the binary. An ordinary
+    // directory is that disposable in-root store; only a link that could reach a shared persistent
+    // cache violates the from-empty policy.
+    if (junctionStatus !== undefined
+      && (junctionStatus.isSymbolicLink() || !junctionStatus.isDirectory())) {
+      throw new Error(`the isolated run root attached the disabled ${name} cache`);
+    }
+    return;
+  }
+  mkdirSync(cache, { recursive: true });
+  if (junctionStatus === undefined) {
+    // A junction rather than a copy: install receipts and multi-gigabyte engines must survive the
+    // disposable database/profile that exercised them.
+    symlinkSync(cache, junction, 'junction');
+    junctionStatus = lstatSync(junction);
+  }
+  if (
+    !junctionStatus.isSymbolicLink()
+    || !sameCanonicalPath(realpathSync.native(junction), realpathSync.native(cache))
+  ) {
+    throw new Error(`the isolated run root ${name} cache junction has the wrong target`);
+  }
+};
+
+/** Attach persistent assets only after the WDIO launcher holds the managed E2E cache lease. */
+export const attachRunRootCaches = ({
+  root,
+  nativeToolsCache = NATIVE_TOOLS_CACHE,
+  enginePackagesCache = ENGINE_PACKAGES_CACHE,
+}) => {
+  const authorization = runRootAuthorization(root);
+  const policy = readRunRootCachePolicy(root, authorization);
+  attachPersistentCache({
+    root,
+    name: 'native-tools',
+    cache: nativeToolsCache,
+    enabled: policy.keepNativeTools,
+  });
+  attachPersistentCache({
+    root,
+    name: 'engine-packages',
+    cache: enginePackagesCache,
+    enabled: policy.keepEnginePackages,
+  });
+  return policy;
+};
+
+export const runRootAuthorization = (root) => {
+  if (!hasSafeRunRootLayout(root)) {
+    throw new Error('the isolated run root does not have the required private temporary layout');
+  }
+  const value = readFileSync(join(root, RUN_ROOT_AUTHORITY_FILE), 'utf8').trim();
+  if (!RUN_ROOT_AUTHORITY_PATTERN.test(value)) {
+    throw new Error('the isolated run root has no valid reuse authority');
+  }
+  return value;
+};
+
+/**
+ * Reify the managed staging lease that authorized this run root into the child environment.
+ *
+ * The native guard validates the same files again immediately before Tauri starts. Passing the
+ * exact identities here is intentional: a path beneath the cache is not lease authority, and a
+ * stale run-root marker must not become one after its owner dies or its staging lease is replaced.
+ */
+export const managedStagingEnvironment = (root) => {
+  if (!hasSafeRunRootLayout(root)) {
+    throw new Error('the isolated run root cannot supply managed staging authority');
+  }
+  const authority = managedStagingAuthority({ root, requireLiveOwner: true });
+  if (!authority.managed) {
+    throw new Error('a test-only staging root cannot launch the real automation binary');
+  }
+  return Object.freeze({
+    OSG_E2E_CACHE_ROOT: authority.cacheRoot,
+    OSG_E2E_CACHE_ROOT_ID: authority.rootId,
+    OSG_E2E_STAGING_ROOT: authority.stagingRoot,
+    OSG_E2E_STAGING_LEASE_ID: authority.leaseId,
+    OSG_E2E_STAGING_LEASE_OWNER_PID: String(authority.leaseOwnerProcessId),
+    OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC: authority.leaseOwnerProcessCreatedUtc,
+  });
+};
+
+/**
+ * Decide whether this process may reuse an already-created isolated profile.
+ *
+ * Ordinary launchers always create a new root. Reuse is limited to either a real WDIO IPC worker,
+ * or a scenario runner that explicitly opts into cross-process persistence, and both must prove
+ * possession of the root's independently-created 256-bit authority.
+ */
+export const canReuseRunRoot = ({ environment, workerProcess }) => {
+  const root = environment.OSG_E2E_DATA_ROOT;
+  const suppliedAuthority = environment.OSG_E2E_RUN_ROOT_AUTHORIZATION;
+  const isAuthorizedRole = workerProcess
+    ? typeof environment.WDIO_WORKER_ID === 'string' && environment.WDIO_WORKER_ID.length > 0
+    : environment.OSG_E2E_REUSE_ROOT === '1';
+  if (
+    !isAuthorizedRole
+    || typeof root !== 'string'
+    || root.length === 0
+    || !hasSafeRunRootLayout(root)
+    || !RUN_ROOT_AUTHORITY_PATTERN.test(suppliedAuthority ?? '')
+  ) {
+    return false;
+  }
+  try {
+    return runRootAuthorization(root) === suppliedAuthority;
+  } catch {
+    return false;
+  }
 };
 
 export const stagedDialogPaths = (root, cachedVideo) => Object.freeze({
@@ -146,25 +936,42 @@ export const stagedDialogPaths = (root, cachedVideo) => Object.freeze({
 /** Everything a run must set so it cannot reach live user state. */
 export const isolationEnvironment = (root) => ({
   OSG_E2E_DATA_ROOT: root,
-  // Full-size and compositor-visible, but outside the interactive desktop. This is consumed only
-  // by the binary's `e2e-automation` graph; production does not compile the reader.
+  // A full-size real WebView positioned entirely off-screen and excluded from the taskbar. The
+  // embedded driver may make its HWND compositor-visible so GPU/video work keeps advancing; the
+  // enforceable boundary is that it never enters the interactive desktop or receives real input.
+  // This is consumed only by the binary's `e2e-automation` graph;
+  // production does not compile the reader. Playback/render journeys prove their own progress
+  // instead of assuming visibility implies the compositor ran.
   OSG_E2E_OFFSCREEN_WINDOW: '1',
   // The only files a staged file-dialog selection may name. The application resolves and re-checks
   // this itself; declaring it here is what keeps a journey to reviewed files.
-  OSG_E2E_FIXTURE_ROOT: process.env.OSG_E2E_FIXTURE_ROOT ?? root,
+  // Never inherit this boundary from the shell. `run-isolated.mjs` strips the parent value and
+  // this factory binds the application to the disposable root it just created. Letting an ambient
+  // value win would make the staged dialog guard authorise files outside the isolated run.
+  OSG_E2E_FIXTURE_ROOT: root,
   // What the next OPEN dialog returns, and where the next SAVE dialog writes. Both are read from
   // the process environment, so they are fixed for a launch; a journey needing different ones runs
   // its own launch. Both are bounded by the application to the reviewed root above.
   ...(process.env.OSG_E2E_MEDIA_SELECTION === undefined
     ? {}
     : { OSG_E2E_MEDIA_SELECTION: process.env.OSG_E2E_MEDIA_SELECTION }),
+  ...(process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE === undefined
+    ? {}
+    : { OSG_E2E_MEDIA_SELECTION_SEQUENCE: process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE }),
   ...(process.env.OSG_E2E_MEDIA_DESTINATION === undefined
     ? {}
     : { OSG_E2E_MEDIA_DESTINATION: process.env.OSG_E2E_MEDIA_DESTINATION }),
   WEBVIEW2_USER_DATA_FOLDER: join(root, 'webview'),
 });
 
-export const removeRunRoot = (root) => {
+export const removeRunRoot = (root, authorization) => {
+  if (
+    !RUN_ROOT_AUTHORITY_PATTERN.test(authorization ?? '')
+    || !hasSafeRunRootLayout(root)
+    || runRootAuthorization(root) !== authorization
+  ) {
+    throw new Error('refusing to remove an isolated run root without its exact private authority');
+  }
   try {
     // The junction is removed, never followed: `rm -r` through a junction would delete the tools
     // every run and quietly reinstate the 110 MB download this cache exists to avoid.

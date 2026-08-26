@@ -1,49 +1,128 @@
+import { Buffer } from 'node:buffer';
 import {
-  copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync,
+  copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync,
+  rmSync, statSync, writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { isAbsolute, join, resolve } from 'node:path';
+import process from 'node:process';
 
-import { BUILT_APPLICATION_DIRECTORY } from './environment.js';
+import {
+  E2E_STAGING_ROOT, assertStagedApplicationBinary, readVerifiedPublishedApplication,
+  writeStagedApplicationMarker, writeStagedApplicationParentMarker,
+} from './environment.js';
+
+const require = createRequire(import.meta.url);
+const { assertWindowsProcessIdentity } = require('../../scripts/windows-process-identity.js');
 
 /**
- * A throwaway copy of the built application, so a journey can damage what it ships.
+ * A throwaway copy of the verified immutable application publication, so a journey can damage
+ * what it ships.
  *
  * The managed font is now part of the payload, which makes "the shipped bytes are wrong" a real
  * failure mode that no unit test can reach: it lives in the relationship between the resources on
  * disk, the digests the delivery catalog pins, and what the application does when they disagree.
- * Damaging the build output directly would break every other journey, so each of these runs against
- * its own copy laid out exactly as an installation is.
+ * Damaging the shared publication directly would break every other journey, so each of these runs
+ * against its own copy laid out exactly as an installation is.
  *
  * Deliberately a copy and not a mount or a symlink: the application must resolve its resources by
  * the same `resource_dir()` path it uses in production, with no indirection that could change what
  * is being tested.
  */
 
-const RESOURCE_DIRECTORIES = ['ui-fonts', 'workers', 'licenses'];
-
-/** Copy the binary and its resources into a fresh directory, returning that directory. */
-export const stageApplication = () => {
-  const staged = mkdtempSync(join(tmpdir(), 'osg-e2e-app-'));
-  copyFileSync(
-    join(BUILT_APPLICATION_DIRECTORY, 'osg-desktop.exe'),
-    join(staged, 'osg-desktop.exe'),
-  );
-  for (const directory of RESOURCE_DIRECTORIES) {
-    const source = join(BUILT_APPLICATION_DIRECTORY, directory);
-    let entries;
-    try {
-      entries = readdirSync(source, { withFileTypes: true });
-    } catch {
-      // Not every layout ships every directory; a missing one is not this helper's business.
-      continue;
+const copyVerifiedTree = (source, destination) => {
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const input = join(source, entry.name);
+    const output = join(destination, entry.name);
+    const status = lstatSync(input);
+    if (entry.isSymbolicLink() || status.isSymbolicLink()) {
+      throw new Error(`The verified E2E publication changed into a link while staging: ${input}`);
     }
-    mkdirSync(join(staged, directory), { recursive: true });
-    for (const entry of entries) {
-      if (entry.isFile()) copyFileSync(join(source, entry.name), join(staged, directory, entry.name));
+    if (entry.isDirectory() && status.isDirectory()) {
+      mkdirSync(output, { mode: 0o700 });
+      copyVerifiedTree(input, output);
+    } else if (entry.isFile() && status.isFile() && status.nlink === 1) {
+      copyFileSync(input, output);
+    } else {
+      throw new Error(`The verified E2E publication changed into an unsafe entry: ${input}`);
     }
   }
-  return staged;
+};
+
+/** Copy the binary and its resources into a fresh directory, returning that directory. */
+export const stageApplication = ({
+  applicationLease,
+  stagingLease,
+  testStagingRoot = null,
+} = {}) => {
+  let staged = null;
+  try {
+    let parent;
+    if (testStagingRoot !== null) {
+      if (!process.env.NODE_TEST_CONTEXT || !isAbsolute(testStagingRoot)) {
+        throw new Error('private staged-application roots are test-only');
+      }
+      parent = resolve(testStagingRoot);
+      mkdirSync(parent, { recursive: true });
+    } else {
+      if (
+        applicationLease === null
+        || typeof applicationLease !== 'object'
+        || stagingLease === null
+        || typeof stagingLease !== 'object'
+        || resolve(stagingLease.stagingRoot ?? '') !== resolve(E2E_STAGING_ROOT)
+      ) {
+        throw new Error('staging an application requires live application and staging leases');
+      }
+      const stagingMarker = JSON.parse(readFileSync(join(E2E_STAGING_ROOT, '.osg-cache-lease'), 'utf8'));
+      if (
+        stagingMarker.leaseId !== stagingLease.leaseId
+        || stagingMarker.processId !== process.pid
+        || stagingMarker.laneGroup !== 'staging'
+        || stagingMarker.processCreatedUtc !== stagingLease.leaseOwnerProcessCreatedUtc
+      ) {
+        throw new Error('the staged-application lease is not active for this process');
+      }
+      try {
+        assertWindowsProcessIdentity({
+          processId: stagingMarker.processId,
+          processCreatedUtc: stagingMarker.processCreatedUtc,
+        });
+      } catch (error) {
+        throw new Error('the staged-application lease owner identity is stale or was reused', {
+          cause: error,
+        });
+      }
+      parent = E2E_STAGING_ROOT;
+    }
+    const publication = readVerifiedPublishedApplication();
+    if (
+      testStagingRoot === null
+      && publication.applicationRoot !== join(
+        applicationLease.applicationsCacheRoot,
+        'applications',
+        publication.applicationHash,
+      )
+    ) {
+      throw new Error('the application lease does not cover the publication being staged');
+    }
+    staged = mkdtempSync(join(realpathSync.native(parent), 'osg-e2e-app-'));
+    writeStagedApplicationParentMarker({ stagedRoot: staged, stagingParent: parent });
+    copyVerifiedTree(publication.applicationRoot, staged);
+    const afterCopy = readVerifiedPublishedApplication();
+    if (
+      afterCopy.applicationHash !== publication.applicationHash
+      || afterCopy.applicationRoot !== publication.applicationRoot
+    ) {
+      throw new Error('The current E2E application publication changed while it was being staged');
+    }
+    writeStagedApplicationMarker({ stagedRoot: staged, publication });
+    assertStagedApplicationBinary(join(staged, 'osg-desktop.exe'));
+    return staged;
+  } catch (error) {
+    if (staged !== null) rmSync(staged, { recursive: true, force: true, maxRetries: 5 });
+    throw error;
+  }
 };
 
 /** The staged binary path, for `OSG_E2E_BINARY`. */
@@ -80,5 +159,13 @@ export const removeFontResource = (staged, name) => {
 };
 
 export const discardStagedApplication = (staged) => {
-  rmSync(staged, { recursive: true, force: true, maxRetries: 5 });
+  if (typeof staged !== 'string' || !isAbsolute(staged)) {
+    throw new Error('discarding a staged application requires its exact absolute root');
+  }
+  const requestedRoot = resolve(staged);
+  const authority = assertStagedApplicationBinary(join(requestedRoot, 'osg-desktop.exe'));
+  if (authority.root !== requestedRoot) {
+    throw new Error('the staged-application deletion capability changed root');
+  }
+  rmSync(requestedRoot, { recursive: true, force: true, maxRetries: 5 });
 };
