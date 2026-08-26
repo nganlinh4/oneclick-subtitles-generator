@@ -12,7 +12,6 @@ use osg_native_tools::{
     NativeToolManager, NativeToolStatus, OperationPhase, OperationProgress, RemovalOutcome,
     RuntimeCoordinator, ToolLease, catalog,
 };
-use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{State, ipc::Channel};
@@ -259,27 +258,14 @@ impl Drop for OperationReservation {
 }
 
 impl NativeToolRuntime {
-    #[cfg(test)]
+    /// The manager prepares its staging authority inside the store root, so an interrupted
+    /// install's journal can never be separated from the `.staging` entry it owns.
     pub(crate) fn new(
         root: &Path,
         database: Database,
         jobs: Arc<JobRegistry<Database>>,
     ) -> Result<Self, NativeToolRuntimeError> {
         let manager = NativeToolManager::new(root, Arc::new(LeaseRuntimeCoordinator))?;
-        Self::with_manager(manager, database, jobs)
-    }
-
-    pub(crate) fn new_with_staging_authority(
-        root: &Path,
-        database: Database,
-        jobs: Arc<JobRegistry<Database>>,
-        staging_authority: RuntimeStagingAuthority,
-    ) -> Result<Self, NativeToolRuntimeError> {
-        let manager = NativeToolManager::new_with_staging_authority(
-            root,
-            Arc::new(LeaseRuntimeCoordinator),
-            staging_authority,
-        )?;
         Self::with_manager(manager, database, jobs)
     }
 

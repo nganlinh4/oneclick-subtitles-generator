@@ -53,9 +53,17 @@ fn request(value: &Value) -> RenderRequest {
     serde_json::from_value(value.clone()).expect("the fixture request deserializes")
 }
 
-fn inputs(source: &std::path::Path, staging: &TempDir, value: &Value) -> NativeExportInputs {
-    let authority_root = staging.path().join("authority");
-    let staging_authority = RuntimeStagingAuthority::prepare(&authority_root).unwrap();
+fn inputs(
+    source: &std::path::Path,
+    staging: &TempDir,
+    authority: &TempDir,
+    value: &Value,
+) -> NativeExportInputs {
+    // The authority journal root is separate from the render staging root, as in production:
+    // RenderRuntimeHost stages under <cache>/v1/render while the authority owns its own private
+    // area. Nesting it inside the staging root made "the staging root is empty afterwards" tests
+    // count the authority's infrastructure as export residue.
+    let staging_authority = RuntimeStagingAuthority::prepare(authority.path()).unwrap();
     NativeExportInputs {
         request: request(value),
         source: source.to_owned(),
@@ -81,13 +89,14 @@ fn a_staged_request_exports_a_playable_file_of_the_length_the_timeline_names() {
     let _platform = fixtures::platform();
     let media = TempDir::new().expect("a media directory");
     let staging = TempDir::new().expect("a staging root");
+    let authority = TempDir::new().expect("an authority root");
     let source = fixtures::source_clip(&media, "export-source.mp4");
     let value = fixtures::request_json();
     let control = ExportControl::default();
     let mut recorder = Recorder::default();
 
     let exported = export::run(
-        inputs(&source, &staging, &value),
+        inputs(&source, &staging, &authority, &value),
         staged_text(),
         &control,
         &mut recorder,
@@ -168,6 +177,7 @@ fn a_cancelled_export_leaves_no_file_that_could_be_mistaken_for_a_finished_one()
     let _platform = fixtures::platform();
     let media = TempDir::new().expect("a media directory");
     let staging = TempDir::new().expect("a staging root");
+    let authority = TempDir::new().expect("an authority root");
     let source = fixtures::source_clip(&media, "cancel-source.mp4");
     let value = fixtures::request_json();
     let control = ExportControl::default();
@@ -178,7 +188,7 @@ fn a_cancelled_export_leaves_no_file_that_could_be_mistaken_for_a_finished_one()
     };
 
     let refused = export::run(
-        inputs(&source, &staging, &value),
+        inputs(&source, &staging, &authority, &value),
         staged_text(),
         &control,
         &mut stopper,
@@ -192,8 +202,12 @@ fn a_cancelled_export_leaves_no_file_that_could_be_mistaken_for_a_finished_one()
         .collect();
     assert!(
         left_behind.is_empty(),
-        "a cancelled export left {} entries behind",
+        "a cancelled export left {} entries behind: {:?}",
         left_behind.len(),
+        left_behind
+            .iter()
+            .map(std::fs::DirEntry::file_name)
+            .collect::<Vec<_>>(),
     );
 }
 

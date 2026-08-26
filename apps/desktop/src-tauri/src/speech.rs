@@ -183,10 +183,11 @@ impl SpeechRuntime {
             artifact_publication_gates: Mutex::new(HashMap::new()),
             lifecycles: Mutex::new(HashMap::new()),
         }));
-        let manager = SpeechPackageManager::new_with_staging_authority(
+        // The package store's staging journals live inside the store itself (co-located
+        // authority); the shared authority above covers only work staging under the cache root.
+        let manager = SpeechPackageManager::new(
             runtime.0.install_root.join("packages-v1"),
             Arc::new(runtime.package_coordinator()),
-            runtime.0.staging_authority.clone(),
         )
         .map_err(|_| io::Error::other("the managed speech package store is unavailable"))?;
         runtime

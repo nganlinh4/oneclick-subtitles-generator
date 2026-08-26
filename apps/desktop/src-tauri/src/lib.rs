@@ -495,18 +495,19 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         resource_dir.clone(),
         runtime_staging_authority.clone(),
     )?;
-    let engine_package_manager = EnginePackageManager::new_with_staging_authority(
+    // Persistent stores under local data keep their staging-authority journals INSIDE the store
+    // (the constructor prepares `<store>/.runtime-staging-authority`). Sharing the cache-rooted
+    // authority split journal and store across two directories a customer can clear independently:
+    // clearing the app cache after an interrupted install orphaned the store's `.staging` entry,
+    // which the store then refused forever — an unbootable application.
+    let engine_package_manager = EnginePackageManager::new(
         local_data_dir.join("engine-packages/v1"),
         Arc::new(asr.package_coordinator()),
-        runtime_staging_authority.clone(),
     )?;
     asr.attach_package_manager(engine_package_manager.clone())?;
     let media_server = MediaServer::start(media_server_allowed_origins(cfg!(debug_assertions)))?;
-    let voice_sample_runtime = VoiceSampleRuntime::new_with_staging_authority(
-        &local_data_dir.join("asset-packages/v1"),
-        media_server.clone(),
-        runtime_staging_authority.clone(),
-    )?;
+    let voice_sample_runtime =
+        VoiceSampleRuntime::new(&local_data_dir.join("asset-packages/v1"), media_server.clone())?;
     let mut settings = database.list_settings("app")?;
     let disallowed_settings = settings
         .keys()
@@ -528,11 +529,10 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         EnginePackageRuntime::new(engine_package_manager, database.clone(), Arc::clone(&jobs))?;
     let speech_package_runtime =
         SpeechPackageRuntime::new(speech_runtime.package_manager()?, Arc::clone(&jobs));
-    let native_tool_runtime = NativeToolRuntime::new_with_staging_authority(
+    let native_tool_runtime = NativeToolRuntime::new(
         &local_data_dir.join("native-tools/v1"),
         database.clone(),
         Arc::clone(&jobs),
-        runtime_staging_authority.clone(),
     )?;
     let media_runtimes = prepare_media_runtimes(
         &cache_dir,

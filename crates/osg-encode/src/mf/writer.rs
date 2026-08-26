@@ -7,6 +7,8 @@
 use core::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFByteStream, IMFDXGIDeviceManager, IMFMediaType, IMFSample, IMFSinkWriter,
@@ -208,7 +210,20 @@ impl MediaFoundationEncoder {
     /// export where a finished export belongs.
     fn discard(&mut self, state: State) {
         self.writer = None;
-        let _ = fs::remove_file(&self.output);
+        // Releasing an unfinalized sink writer tears its byte stream down asynchronously, so the
+        // partial container can stay share-locked for a moment after the COM release returns. A
+        // single immediate delete therefore reliably left the partial file behind on cancellation.
+        // Retry within a small bound so a stopped export leaves no file that could be mistaken for
+        // a finished one; the owning staging directory's removal is the second chance after this.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match fs::remove_file(&self.output) {
+                Ok(()) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                Err(_) => break,
+            }
+        }
         self.state = state;
     }
 

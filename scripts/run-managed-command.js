@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runSupervisedSync } = require('./windows-job-supervisor');
@@ -251,6 +252,11 @@ const runManagedCommand = ({
       processId,
       spawn,
     });
+    // The relative frontendDist override is a directory, and `tauri::generate_context!` requires
+    // it to exist at compile time. Real application builds populate it first (their frontend gates
+    // enforce that); pure Rust check/test/clippy work may run before any frontend exists, so an
+    // empty leased directory keeps codegen honest without faking a frontend.
+    fs.mkdirSync(path.join(lease.frontendCacheRoot, 'build'), { recursive: true });
     value = runChild({
       command: invocation.command,
       args: invocation.args,

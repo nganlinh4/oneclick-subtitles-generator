@@ -153,20 +153,13 @@ fn overall_basis_points(progress: OperationProgress) -> u16 {
 }
 
 impl VoiceSampleRuntime {
-    #[cfg(test)]
+    /// The manager prepares its staging authority inside the store root, so an interrupted
+    /// install's journal can never be separated from the `.staging` entry it owns.
     pub(crate) fn new(
         root: &std::path::Path,
         media_server: MediaServer,
     ) -> Result<Self, PackageError> {
         Self::new_inner(root, media_server, None)
-    }
-
-    pub(crate) fn new_with_staging_authority(
-        root: &std::path::Path,
-        media_server: MediaServer,
-        staging_authority: RuntimeStagingAuthority,
-    ) -> Result<Self, PackageError> {
-        Self::new_inner(root, media_server, Some(staging_authority))
     }
 
     fn new_inner(

@@ -1063,6 +1063,13 @@
       "note": "The application creates data/native-tools eagerly at boot and the WDIO worker re-runs the config after the launcher's service has spawned the binary, so the disabled-cache guard now refuses only links, not ordinary directories. Separately, the cache size walker failed closed on the engine-packages junction inside an actively leased staging run root; it now skips staging directory reparse points without following them while every other lane stays strict."
     },
     {
+      "finding": "An application killed during an engine install could never boot again once its cache directory was cleared.",
+      "foundBy": "asrGeneration",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "Persistent package stores under local data shared the cache-rooted staging authority, so the journal that owned an interrupted install's .staging entry lived in a directory the customer (or an E2E run-root teardown) can clear independently of the store. The orphaned entry then made recover_staging fail closed and the Tauri setup hook panicked before the window existed. Store managers now always prepare their staging authority inside the store root (the ui-fonts store already did), so the journal and the entry it owns can only be deleted together and boot-time reconciliation reclaims interrupted installs. A cancelled native export separately left its partial container behind because the unfinalized Media Foundation sink tears down asynchronously; discard now retries the delete within a bound."
+    },
+    {
       "finding": "A successful URL download wrote the requested video and then showed a failure toast while leaving the modal open.",
       "foundBy": "urlToPreview",
       "status": "fixed",
