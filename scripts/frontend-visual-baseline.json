@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "3e99450029d2d052ad6f3ad36c322eb0c02ce8d9",
+  "baselineRevision": "cd9f742e36d91209d746b3e0aad5cc68cdd31c65",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -62,7 +62,7 @@
     "src/assets/transcription-methods/whisper_light.webp": "eab0f2e1cb5944799d128de02f4de58dcb7ce0f0d7180d053344cf42a3dbfb4b",
     "src/components/common/CloseButton.css": "7a6d9aa5f2a682643803c295d8ea4a8e2095c90e6c7d3d9df36918916852254c",
     "src/components/common/LoadingIndicator.css": "d98e5054e73f09a7421af975192829a102aa108ed0888bb7538da27faf50e3b8",
-    "src/components/common/ToastPanel.css": "8da8d1a6213fdeb943785dee921f091f0eb6992fbd4596c4879cfad880bc65f8",
+    "src/components/common/ToastPanel.css": "35f570d67f0c145881dd96063282bb24c0a91cbbcbc5c5c133379b500469ab54",
     "src/components/engines/engines.css": "aab31a7dae93dbfb8058cae1c1833ee96c6c7628f5bbd579627b3c4b643d8d5f",
     "src/styles/AddSubtitlesButton.css": "c13f5f1e1972dee08c559cc9e523f92c5466ce07120700e5aa1f7a4e14fcd78a",
     "src/styles/album-art-fix.css": "906cd4878a311edca2a680c1fc27fc2ca5d19834dadab62ee77301faca184530",
@@ -110,7 +110,7 @@
     "src/styles/font-overrides.css": "64a9279148c8a5699e89a275ef962820723609981ae524f502f01fe2c4347e3f",
     "src/styles/GeminiButtonAnimations.css": "a391a033b0d94460826484c3aac50cf3d53de9ef47546bed98bcd43947947f02",
     "src/styles/GeminiHeaderAnimation.css": "a12aa6db9e1d99067b3daa9636302c6d06dc873ccd1daf12d82e29e8437457d7",
-    "src/styles/Header.css": "569c825a07a1ba3fd2a6dc93ced503c7029761119d275a2166ed79ca0ce579e8",
+    "src/styles/Header.css": "2460723353cd92d4dc4f12a5658c7218844155d7c3d613bb20df6d329f8e9ab1",
     "src/styles/index.css": "6a44224dbe1b93be272a1369a55fffe2faab833f711a3a9c2f02a5abb3e31767",
     "src/styles/InputMethods.css": "1de24ed124fb9c34e80a2e93e78cf103793a00ecb4a7ee1499cda8e5ecd88370",
     "src/styles/InputMethodsBase.css": "6d9bf67a81f3bc943331a90facfe69c677ac45c660efcb3c43b7504004f27ec9",
@@ -167,22 +167,22 @@
     "src/styles/ParallelProcessingStatus.css": "e9091a4db39ef26b96a38e1ab206d9cbf264d4287b92d7171346d5406304b4f1",
     "src/styles/ProcessingTextAnimation.css": "5d69880b3cb6d527b84360042198e66860603430b19b2df0abce632fb99b4e5b",
     "src/styles/PromptEditor.css": "c1b424370b8b4b9ce40d0e134044b317ec2c2a95dbd91c84027561e3b9956731",
-    "src/styles/QueueManagerPanel.css": "46cc681ed5f001a86677392a62c54f6bb86552277446a264e50fc6ff6dedeb49",
+    "src/styles/QueueManagerPanel.css": "564420862fdc0d0faa61ded0c1f6d4752b8a7353d5517c902cc148accbe5e394",
     "src/styles/SegmentRetryModal.css": "3a267cd10cd0f44242993fc3bb42c8bb6d57583b90fb8236c1e618cf4b69e761",
     "src/styles/settings/about.css": "f31204ca5b1b04e5846f6a51e4d85ffcaf7f86610127e6377ea993095a870358",
     "src/styles/settings/api-key.css": "f0193ba1de4ef58deef218814b79b82b6d8d88dc1b2056d4dbcc8add74d0531b",
     "src/styles/settings/appearance.css": "4c4cc096039a1b27b7817206b1d05a3c2eb53de998bbf624608bfe0ad1c5dc59",
-    "src/styles/settings/base.css": "e7219cdda195abd0de88d4cbf2a626e7a1143236b69dba7f954299e17f680c86",
+    "src/styles/settings/base.css": "b28cd70558973b2eec6691c6db8f1bd48a93d334133c4d97f62015e076f6ab9c",
     "src/styles/settings/buttons.css": "1e8af0ed3924c80c74164b670d178c8daf8732e9584b6324b52f55fef4f33bdb",
     "src/styles/settings/cache.css": "6a07300d5cd01edcdadfb1f425459cc577f479a6a868c6cda54c212e784a279e",
     "src/styles/settings/checkbox-fix.css": "3ce3758335768350a4f93028c3a5aafc22420383a06a10ace364646f8a9596f6",
     "src/styles/settings/content-scrollbars.css": "73a172842c5de2c0df3f7aca670b8286ed00dbccda4a7c174b12f199dd17b070",
     "src/styles/settings/customGeminiModels.css": "a896cb79e654289c83d71dea4fe4aaaec42d78905290d00f67011350c72edc71",
     "src/styles/settings/customModelDialog.css": "04650db06d97fc7ea537d356c7481bf9d9acc6717f79c98cc2c7b413b7e820c5",
-    "src/styles/settings/gemini-paused-message.css": "34871043e7fa0dcea2dc9e2f8dc428094e3ed775d5bd658b5a6b5bfba09145e9",
+    "src/styles/settings/gemini-paused-message.css": "f70be60326e9ecdf0f3ce3d9055981f28c979bd8112379e018268f135dc05cff",
     "src/styles/settings/header-footer.css": "b7a667d9ff27eefe4d8075b73955072610b797039118bbcbc1e5c1a69bafae0f",
     "src/styles/settings/modelDialog.css": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "src/styles/settings/modelManagement.css": "f82a6458facf12375a51d104b57befa3db6a7bed4fe678d10e9d18b242bd5d6a",
+    "src/styles/settings/modelManagement.css": "3d172e259fda43e5109ef7b4db91efe8a6681ff9b787bcd46c50e52b37baf7ab",
     "src/styles/settings/oauth.css": "5631afe809cae622eb32a691953f8fd85a3ae1b29c48bde2650269da9e4f2c85",
     "src/styles/settings/preset-view-modal.css": "6b956458d5eea15037f54084d1717790c9cd24d053201ba9bc91c78029b99a7a",
     "src/styles/settings/prompt-presets.css": "9fff3c3b1019aebbff3f69600c11ed7c8f8385943ac0988bcf4b9d82c44a2663",
@@ -573,11 +573,12 @@
       ]
     },
     "src/i18n/locales/en/fontModal.json": {
-      "hash": "fd656834aa350a94a9f346f46326eac4f8d28c71311dc2040c4dc06932d9ef9b",
+      "hash": "c063039a9754cde6172e1407dc09328cd0a4ddb7164cf762ac85905ff3286840",
       "keys": [
         "adjustSearch",
         "allCategories",
         "cancel",
+        "category",
         "categoryArabic",
         "categoryArabic Optimized",
         "categoryAsian",
@@ -1495,7 +1496,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "70848d2c0ecfe315354e73e001e4ef31d15b06d7c57171cc3a211e6cb0ee6211",
+      "hash": "d9a3e9f5bdb71cccb31291b2519ad8eaeea6be1168c0ee54e58104a1147b0293",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1526,6 +1527,7 @@
         "autoSplitSubtitlesDescription",
         "builtInPresets",
         "cache",
+        "cacheCategoryCount",
         "cacheClearedDetails",
         "cacheClearedSuccess",
         "cacheClearError",
@@ -1538,6 +1540,7 @@
         "checkRestrictions",
         "clearAuth",
         "clearCache",
+        "clearCacheCategory",
         "clearingCache",
         "clickAddUsers",
         "clickSave",
@@ -1650,94 +1653,36 @@
         "modelFlash3",
         "modelGemini35Flash",
         "modelManagement",
-        "modelManagement.active",
-        "modelManagement.activeModelSet",
-        "modelManagement.addCustomModel",
-        "modelManagement.addingCustomModel",
-        "modelManagement.addingModel",
-        "modelManagement.addLanguageCode",
-        "modelManagement.addModel",
-        "modelManagement.addModelExplanation",
-        "modelManagement.addNewCustomModel",
-        "modelManagement.addNewModel",
-        "modelManagement.allModelsInstalled",
-        "modelManagement.availableModels",
-        "modelManagement.by",
-        "modelManagement.cacheModels",
-        "modelManagement.cancelDownload",
-        "modelManagement.confirmDelete",
-        "modelManagement.customAuthor",
-        "modelManagement.customModel",
-        "modelManagement.delete",
-        "modelManagement.deleteConfirmationText",
-        "modelManagement.deleteCustomModel",
-        "modelManagement.deleteFromCache",
-        "modelManagement.deleteFromCacheInfo",
-        "modelManagement.deleteFromCacheWarning",
-        "modelManagement.deleteModel",
-        "modelManagement.deleting",
+        "modelManagement.actionFailed",
+        "modelManagement.cancel",
+        "modelManagement.cancelFailed",
+        "modelManagement.cancelled",
+        "modelManagement.checking",
+        "modelManagement.confirm",
+        "modelManagement.confirmRemove",
         "modelManagement.description",
-        "modelManagement.directModelUrl",
-        "modelManagement.directModelUrlHelp",
-        "modelManagement.directUrl",
-        "modelManagement.directVocabUrl",
-        "modelManagement.directVocabUrlHelp",
-        "modelManagement.download",
-        "modelManagement.downloadCancelled",
-        "modelManagement.downloadFailed",
-        "modelManagement.downloading",
-        "modelManagement.downloadModel",
-        "modelManagement.editModel",
-        "modelManagement.editModelExplanation",
-        "modelManagement.errorAddingModel",
-        "modelManagement.errorCancellingDownload",
-        "modelManagement.errorDeletingModel",
-        "modelManagement.errorSettingActiveModel",
-        "modelManagement.errorUpdatingModel",
-        "modelManagement.hideAdvancedOptions",
-        "modelManagement.hideCacheModels",
-        "modelManagement.huggingFace",
-        "modelManagement.huggingFaceModelUrl",
-        "modelManagement.huggingFaceModelUrlHelp",
-        "modelManagement.huggingFaceVocabUrl",
-        "modelManagement.huggingFaceVocabUrlHelp",
-        "modelManagement.installedModels",
-        "modelManagement.invalidConfigFormat",
-        "modelManagement.language",
-        "modelManagement.languageCode",
-        "modelManagement.languageCodeHelp",
-        "modelManagement.languageCodes",
-        "modelManagement.languageCodesHelp",
-        "modelManagement.modelAddedSuccess",
-        "modelManagement.modelConfig",
-        "modelManagement.modelConfigHelp",
-        "modelManagement.modelDeletedSuccess",
-        "modelManagement.modelDownloading",
-        "modelManagement.modelId",
-        "modelManagement.modelIdHelp",
-        "modelManagement.modelManagement",
-        "modelManagement.modelName",
-        "modelManagement.modelSource",
-        "modelManagement.modelTemplateAdded",
-        "modelManagement.modelUpdatedSuccess",
-        "modelManagement.noCacheModels",
-        "modelManagement.noModelsInstalled",
-        "modelManagement.noSnapshots",
-        "modelManagement.notUsingSymlinks",
-        "modelManagement.ongoingDownloads",
-        "modelManagement.originalFiles",
+        "modelManagement.install",
+        "modelManagement.installed",
+        "modelManagement.installedSuccess",
+        "modelManagement.installing",
+        "modelManagement.keep",
+        "modelManagement.languages",
+        "modelManagement.notInstalled",
+        "modelManagement.operationProgress",
         "modelManagement.refresh",
-        "modelManagement.refreshModels",
-        "modelManagement.showAdvancedOptions",
-        "modelManagement.showCacheModels",
-        "modelManagement.size",
-        "modelManagement.snapshots",
-        "modelManagement.source",
-        "modelManagement.storageInformation",
-        "modelManagement.title",
+        "modelManagement.remove",
+        "modelManagement.removedSuccess",
+        "modelManagement.removing",
+        "modelManagement.repair",
+        "modelManagement.repairRequired",
+        "modelManagement.signedSource",
+        "modelManagement.statusFailed",
+        "modelManagement.statusUnavailable",
+        "modelManagement.unavailable",
         "modelManagement.update",
+        "modelManagement.updateAvailable",
         "modelManagement.updating",
-        "modelManagement.usingSymlinks",
+        "modelManagement.version",
         "modelSettings",
         "modelThirdBest",
         "multipleKeysDescription",
@@ -1771,6 +1716,7 @@
         "presetTitlePlaceholder",
         "presetTranslateDirectly",
         "processingSettings",
+        "projectionWarning",
         "promptFromSettings",
         "promptPresets",
         "promptPresetsDescription",
@@ -1844,8 +1790,6 @@
         "transcriptionPrompt",
         "transcriptionPromptDescription",
         "troubleshootingOAuth",
-        "udbmDownloadHere",
-        "udbmIntroduction",
         "update",
         "updateAvailable",
         "updateCancelled",
@@ -1895,10 +1839,6 @@
         "videoProcessing",
         "videoRendered",
         "videoRenderedCount",
-        "videoRendererOutput",
-        "videoRendererOutputCount",
-        "videoRendererUploads",
-        "videoRendererUploadsCount",
         "videos",
         "videosCount",
         "videoTemp",
@@ -2262,10 +2202,11 @@
       ]
     },
     "src/i18n/locales/en/videoPreview.json": {
-      "hash": "ce4572bc96a91cf10a74251ed689acd08747045fb90f545b861452968750adff",
+      "hash": "7d867a76547882a09b2e6feaca9acee4ea20492e8a503ef7442b2d808f6d824a",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
+        "projectStyleUnavailable",
         "renderError",
         "rendering",
         "retrySubtitleFont",
@@ -2315,7 +2256,7 @@
       ]
     },
     "src/i18n/locales/en/videoRendering.json": {
-      "hash": "15a5ef9c1a0a253217775ff870698eb2ec8da2f2c83b89258d1d57d25e0d2254",
+      "hash": "6e06204a344638832666445876d4aa426defe54a1c477aac33a561a56a99ca0a",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -2482,6 +2423,7 @@
         "stylePresets",
         "subtitleCustomization",
         "subtitledVideo",
+        "subtitleFontRepaired",
         "subtitleSource",
         "subtitleSourceHelp",
         "textAlign",
@@ -2939,11 +2881,12 @@
       ]
     },
     "src/i18n/locales/ko/fontModal.json": {
-      "hash": "b9f9b7a4195ca49792c3902d63bf60ae274ef65b2f0f909f830cc914ff371aa2",
+      "hash": "10310fb1e52f9b0cb021ffb16cd277f1f485b3614552dde3aa6a3fdc2d125b32",
       "keys": [
         "adjustSearch",
         "allCategories",
         "cancel",
+        "category",
         "categoryArabic",
         "categoryArabic Optimized",
         "categoryAsian",
@@ -3981,7 +3924,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "3ca48d04e3eb17d17324222cbfb624f8e6e21ec72194d6874692ed75489d9445",
+      "hash": "134912b6359ec5fff173b6bb8139fc6c5a36dbd565699b66ba428cece288798b",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4012,6 +3955,7 @@
         "autoSplitSubtitlesDescription",
         "builtInPresets",
         "cache",
+        "cacheCategoryCount",
         "cacheClearedDetails",
         "cacheClearedSuccess",
         "cacheClearError",
@@ -4025,6 +3969,7 @@
         "clearAlbumArt",
         "clearAuth",
         "clearCache",
+        "clearCacheCategory",
         "clearingCache",
         "clearLyrics",
         "clearNarrationOutput",
@@ -4160,96 +4105,36 @@
         "modelFlash3",
         "modelGemini35Flash",
         "modelManagement",
-        "modelManagement.active",
-        "modelManagement.activeModelSet",
-        "modelManagement.addCustomModel",
-        "modelManagement.addingCustomModel",
-        "modelManagement.addingModel",
-        "modelManagement.addLanguageCode",
-        "modelManagement.addModel",
-        "modelManagement.addModelExplanation",
-        "modelManagement.addNewCustomModel",
-        "modelManagement.addNewModel",
-        "modelManagement.allModelsInstalled",
-        "modelManagement.availableModels",
-        "modelManagement.by",
-        "modelManagement.cacheModels",
-        "modelManagement.cancelDownload",
-        "modelManagement.confirmDelete",
-        "modelManagement.customAuthor",
-        "modelManagement.customModel",
-        "modelManagement.delete",
-        "modelManagement.deleteConfirmationText",
-        "modelManagement.deleteCustomModel",
-        "modelManagement.deleteFromCache",
-        "modelManagement.deleteFromCacheInfo",
-        "modelManagement.deleteFromCacheWarning",
-        "modelManagement.deleteModel",
-        "modelManagement.deleting",
+        "modelManagement.actionFailed",
+        "modelManagement.cancel",
+        "modelManagement.cancelFailed",
+        "modelManagement.cancelled",
+        "modelManagement.checking",
+        "modelManagement.confirm",
+        "modelManagement.confirmRemove",
         "modelManagement.description",
-        "modelManagement.directModelUrl",
-        "modelManagement.directModelUrlHelp",
-        "modelManagement.directUrl",
-        "modelManagement.directVocabUrl",
-        "modelManagement.directVocabUrlHelp",
-        "modelManagement.download",
-        "modelManagement.downloadCancelled",
-        "modelManagement.downloadFailed",
-        "modelManagement.downloading",
-        "modelManagement.downloadModel",
-        "modelManagement.editModel",
-        "modelManagement.editModelExplanation",
-        "modelManagement.errorAddingModel",
-        "modelManagement.errorCancellingDownload",
-        "modelManagement.errorDeletingModel",
-        "modelManagement.errorSettingActiveModel",
-        "modelManagement.errorUpdatingModel",
-        "modelManagement.hideAdvancedOptions",
-        "modelManagement.hideCacheModels",
-        "modelManagement.huggingFace",
-        "modelManagement.huggingFaceModelUrl",
-        "modelManagement.huggingFaceModelUrlHelp",
-        "modelManagement.huggingFaceVocabUrl",
-        "modelManagement.huggingFaceVocabUrlHelp",
-        "modelManagement.installedModels",
-        "modelManagement.invalidConfigFormat",
-        "modelManagement.language",
-        "modelManagement.languageCode",
-        "modelManagement.languageCodeHelp",
-        "modelManagement.languageCodes",
-        "modelManagement.languageCodesHelp",
-        "modelManagement.modelAddedSuccess",
-        "modelManagement.modelConfig",
-        "modelManagement.modelConfigHelp",
-        "modelManagement.modelDeletedSuccess",
-        "modelManagement.modelDownloading",
-        "modelManagement.modelId",
-        "modelManagement.modelIdHelp",
-        "modelManagement.modelManagement",
-        "modelManagement.modelName",
-        "modelManagement.modelNamePlaceholder",
-        "modelManagement.modelSource",
-        "modelManagement.modelTemplateAdded",
-        "modelManagement.modelUpdatedSuccess",
-        "modelManagement.noCacheModels",
-        "modelManagement.noModelsInstalled",
-        "modelManagement.noSnapshots",
-        "modelManagement.notUsingSymlinks",
-        "modelManagement.ongoingDownloads",
-        "modelManagement.originalFiles",
+        "modelManagement.install",
+        "modelManagement.installed",
+        "modelManagement.installedSuccess",
+        "modelManagement.installing",
+        "modelManagement.keep",
+        "modelManagement.languages",
+        "modelManagement.notInstalled",
+        "modelManagement.operationProgress",
         "modelManagement.refresh",
-        "modelManagement.refreshModels",
-        "modelManagement.removeLanguageCode",
-        "modelManagement.showAdvancedOptions",
-        "modelManagement.showCacheModels",
-        "modelManagement.size",
-        "modelManagement.snapshots",
-        "modelManagement.source",
-        "modelManagement.storageInformation",
-        "modelManagement.title",
+        "modelManagement.remove",
+        "modelManagement.removedSuccess",
+        "modelManagement.removing",
+        "modelManagement.repair",
+        "modelManagement.repairRequired",
+        "modelManagement.signedSource",
+        "modelManagement.statusFailed",
+        "modelManagement.statusUnavailable",
+        "modelManagement.unavailable",
         "modelManagement.update",
+        "modelManagement.updateAvailable",
         "modelManagement.updating",
-        "modelManagement.usingSymlinks",
+        "modelManagement.version",
         "modelSettings",
         "modelThirdBest",
         "multipleKeysDescription",
@@ -4285,6 +4170,7 @@
         "presetTranslateDirectly",
         "pressEscToClose",
         "processingSettings",
+        "projectionWarning",
         "promptFromSettings",
         "promptPresets",
         "promptPresetsDescription",
@@ -4374,8 +4260,6 @@
         "transcriptionPrompt",
         "transcriptionPromptDescription",
         "troubleshootingOAuth",
-        "udbmDownloadHere",
-        "udbmIntroduction",
         "update",
         "updateAvailable",
         "updateCancelled",
@@ -4425,10 +4309,6 @@
         "videoProcessing",
         "videoRendered",
         "videoRenderedCount",
-        "videoRendererOutput",
-        "videoRendererOutputCount",
-        "videoRendererUploads",
-        "videoRendererUploadsCount",
         "videos",
         "videosCount",
         "videoTemp",
@@ -4828,10 +4708,11 @@
       ]
     },
     "src/i18n/locales/ko/videoPreview.json": {
-      "hash": "a87e8f40110d707b52fb3aebb8666bdf320126ccd57e5a3c6ccdf3b9d3f542ea",
+      "hash": "bc0456bc9451832ad93cc5da4213e5274f0c83ba2b2e7406c1e7ef8da1faa2b0",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
+        "projectStyleUnavailable",
         "renderError",
         "rendering",
         "retrySubtitleFont",
@@ -4882,7 +4763,7 @@
       ]
     },
     "src/i18n/locales/ko/videoRendering.json": {
-      "hash": "e3cf938883c94758e3e7442aaa4cac6f17231d395bc41f6d51b8f92bcc133ebb",
+      "hash": "b8852ba89a819437caedd1add5e45c822254b000154761b2ac21bcf125c4a7aa",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -5099,6 +4980,7 @@
         "stylePresets",
         "subtitleCustomization",
         "subtitledVideo",
+        "subtitleFontRepaired",
         "subtitleSource",
         "subtitleSourceHelp",
         "textAlign",
@@ -5552,11 +5434,12 @@
       ]
     },
     "src/i18n/locales/vi/fontModal.json": {
-      "hash": "8fd4f666055e522ea9a20f95c6f11e0538d99e5f54f5281debe501a2c287681f",
+      "hash": "0a632ec2306d5b0262d8a453937dfce17586680508ffa146fb7210a7db119721",
       "keys": [
         "adjustSearch",
         "allCategories",
         "cancel",
+        "category",
         "categoryArabic",
         "categoryArabic Optimized",
         "categoryAsian",
@@ -6640,7 +6523,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "cbc07c37195881e730ffb7026e45591dacf7c6eb32d2daeeda7e8e88ac97ed01",
+      "hash": "e1ad1132c3e10928e093a72c4a45917aa12ff9673e3cac271a096b6be60add5a",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6671,6 +6554,7 @@
         "autoSplitSubtitlesDescription",
         "builtInPresets",
         "cache",
+        "cacheCategoryCount",
         "cacheClearedDetails",
         "cacheClearedSuccess",
         "cacheClearError",
@@ -6684,6 +6568,7 @@
         "clearAlbumArt",
         "clearAuth",
         "clearCache",
+        "clearCacheCategory",
         "clearingCache",
         "clearLyrics",
         "clearNarrationOutput",
@@ -6819,96 +6704,36 @@
         "modelFlash3",
         "modelGemini35Flash",
         "modelManagement",
-        "modelManagement.active",
-        "modelManagement.activeModelSet",
-        "modelManagement.addCustomModel",
-        "modelManagement.addingCustomModel",
-        "modelManagement.addingModel",
-        "modelManagement.addLanguageCode",
-        "modelManagement.addModel",
-        "modelManagement.addModelExplanation",
-        "modelManagement.addNewCustomModel",
-        "modelManagement.addNewModel",
-        "modelManagement.allModelsInstalled",
-        "modelManagement.availableModels",
-        "modelManagement.by",
-        "modelManagement.cacheModels",
-        "modelManagement.cancelDownload",
-        "modelManagement.confirmDelete",
-        "modelManagement.customAuthor",
-        "modelManagement.customModel",
-        "modelManagement.delete",
-        "modelManagement.deleteConfirmationText",
-        "modelManagement.deleteCustomModel",
-        "modelManagement.deleteFromCache",
-        "modelManagement.deleteFromCacheInfo",
-        "modelManagement.deleteFromCacheWarning",
-        "modelManagement.deleteModel",
-        "modelManagement.deleting",
+        "modelManagement.actionFailed",
+        "modelManagement.cancel",
+        "modelManagement.cancelFailed",
+        "modelManagement.cancelled",
+        "modelManagement.checking",
+        "modelManagement.confirm",
+        "modelManagement.confirmRemove",
         "modelManagement.description",
-        "modelManagement.directModelUrl",
-        "modelManagement.directModelUrlHelp",
-        "modelManagement.directUrl",
-        "modelManagement.directVocabUrl",
-        "modelManagement.directVocabUrlHelp",
-        "modelManagement.download",
-        "modelManagement.downloadCancelled",
-        "modelManagement.downloadFailed",
-        "modelManagement.downloading",
-        "modelManagement.downloadModel",
-        "modelManagement.editModel",
-        "modelManagement.editModelExplanation",
-        "modelManagement.errorAddingModel",
-        "modelManagement.errorCancellingDownload",
-        "modelManagement.errorDeletingModel",
-        "modelManagement.errorSettingActiveModel",
-        "modelManagement.errorUpdatingModel",
-        "modelManagement.hideAdvancedOptions",
-        "modelManagement.hideCacheModels",
-        "modelManagement.huggingFace",
-        "modelManagement.huggingFaceModelUrl",
-        "modelManagement.huggingFaceModelUrlHelp",
-        "modelManagement.huggingFaceVocabUrl",
-        "modelManagement.huggingFaceVocabUrlHelp",
-        "modelManagement.installedModels",
-        "modelManagement.invalidConfigFormat",
-        "modelManagement.language",
-        "modelManagement.languageCode",
-        "modelManagement.languageCodeHelp",
-        "modelManagement.languageCodes",
-        "modelManagement.languageCodesHelp",
-        "modelManagement.modelAddedSuccess",
-        "modelManagement.modelConfig",
-        "modelManagement.modelConfigHelp",
-        "modelManagement.modelDeletedSuccess",
-        "modelManagement.modelDownloading",
-        "modelManagement.modelId",
-        "modelManagement.modelIdHelp",
-        "modelManagement.modelManagement",
-        "modelManagement.modelName",
-        "modelManagement.modelNamePlaceholder",
-        "modelManagement.modelSource",
-        "modelManagement.modelTemplateAdded",
-        "modelManagement.modelUpdatedSuccess",
-        "modelManagement.noCacheModels",
-        "modelManagement.noModelsInstalled",
-        "modelManagement.noSnapshots",
-        "modelManagement.notUsingSymlinks",
-        "modelManagement.ongoingDownloads",
-        "modelManagement.originalFiles",
+        "modelManagement.install",
+        "modelManagement.installed",
+        "modelManagement.installedSuccess",
+        "modelManagement.installing",
+        "modelManagement.keep",
+        "modelManagement.languages",
+        "modelManagement.notInstalled",
+        "modelManagement.operationProgress",
         "modelManagement.refresh",
-        "modelManagement.refreshModels",
-        "modelManagement.removeLanguageCode",
-        "modelManagement.showAdvancedOptions",
-        "modelManagement.showCacheModels",
-        "modelManagement.size",
-        "modelManagement.snapshots",
-        "modelManagement.source",
-        "modelManagement.storageInformation",
-        "modelManagement.title",
+        "modelManagement.remove",
+        "modelManagement.removedSuccess",
+        "modelManagement.removing",
+        "modelManagement.repair",
+        "modelManagement.repairRequired",
+        "modelManagement.signedSource",
+        "modelManagement.statusFailed",
+        "modelManagement.statusUnavailable",
+        "modelManagement.unavailable",
         "modelManagement.update",
+        "modelManagement.updateAvailable",
         "modelManagement.updating",
-        "modelManagement.usingSymlinks",
+        "modelManagement.version",
         "modelSettings",
         "modelThirdBest",
         "multipleKeysDescription",
@@ -6944,6 +6769,7 @@
         "presetTranslateDirectly",
         "pressEscToClose",
         "processingSettings",
+        "projectionWarning",
         "promptFromSettings",
         "promptPresets",
         "promptPresetsDescription",
@@ -7033,8 +6859,6 @@
         "transcriptionPrompt",
         "transcriptionPromptDescription",
         "troubleshootingOAuth",
-        "udbmDownloadHere",
-        "udbmIntroduction",
         "update",
         "updateAvailable",
         "updateCancelled",
@@ -7084,10 +6908,6 @@
         "videoProcessing",
         "videoRendered",
         "videoRenderedCount",
-        "videoRendererOutput",
-        "videoRendererOutputCount",
-        "videoRendererUploads",
-        "videoRendererUploadsCount",
         "videos",
         "videosCount",
         "videoTemp",
@@ -7492,10 +7312,11 @@
       ]
     },
     "src/i18n/locales/vi/videoPreview.json": {
-      "hash": "80a9449fcf71e3ad39422b82860b450a11dc5cb000f915272fc101b940084dfc",
+      "hash": "df4202fa4bbc9f0ee78dcb976abece5e3b8f17ad4e04cec1f8ef7b0608721184",
       "keys": [
         "noSubtitlesToRender",
         "noTranslatedSubtitles",
+        "projectStyleUnavailable",
         "renderError",
         "rendering",
         "retrySubtitleFont",
@@ -7546,7 +7367,7 @@
       ]
     },
     "src/i18n/locales/vi/videoRendering.json": {
-      "hash": "5c943a57f62fa26d5c9dee8484884f53131b1978d26ef5b9c0c71b3642742e67",
+      "hash": "eb0d05f9c89f910f367a6e828134712f91da66a528bce05c73068fcab0d92062",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -7763,6 +7584,7 @@
         "stylePresets",
         "subtitleCustomization",
         "subtitledVideo",
+        "subtitleFontRepaired",
         "subtitleSource",
         "subtitleSourceHelp",
         "textAlign",
@@ -7863,10 +7685,10 @@
       ]
     },
     "src/components/app/AppLayout.jsx": {
-      "hash": "d35564b5fb60ccd2a268f780cefc253b00b99756a826bde4337c529d84ed9bdb",
+      "hash": "9677097dcac0172c34ab1512e2e1013de26ff7bfce306561ff31008d6cf775ee",
       "rootCount": 1,
       "roots": [
-        "9df6b58d81f0d318c9367291a19b37d2e4005921edf14b0022f827e28ac80268"
+        "1a23444a698f9a902296d154abbfd77cf97db159b0f3a1439f885d2e3032198f"
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
@@ -7877,10 +7699,10 @@
       ]
     },
     "src/components/app/index.js": {
-      "hash": "060e5480a0f896c8351499264898d6bd9344c89561acc9488c8210563f484523",
+      "hash": "7e7508a1dfea96c2d0a2db34a63becec459e83a4f7ea706558b841529e9757a3",
       "rootCount": 1,
       "roots": [
-        "5505a08e72035679223cef4deceae8ffb47992ffe0df4c8d34c45a1fb31ea47a"
+        "7fec5f3aa590dd72808d1a9a4fee4ef6bbeacfb2579359b3e67eb4bfcbf85217"
       ]
     },
     "src/components/AsrProcessingOptions.js": {
@@ -7963,10 +7785,10 @@
       ]
     },
     "src/components/common/CustomDropdown.js": {
-      "hash": "0be1bb6b959a4b081b894f4a7db71f05ae83e078bd6a1b37c64ec92688d051e3",
+      "hash": "99e2d887876884a9b7c5850a2b374babfd7671413405c80b30c94d3391ffc5c5",
       "rootCount": 4,
       "roots": [
-        "3dd22dae26e449bf5995728a5c9244a7a06fb0851666b404e2d54379f731c966",
+        "4a2d8e18d608199a65a1b5b5399a3d6dfef5b0963cb1586a3a1f7d9105495d7a",
         "1e409cac4a5122a75e8d22caafdd7a54b4a625f132b4542d1988f5dbed229972",
         "975b3a278a98e430f1247edcfe7e3dd646574f24894d33f52d6a9961f1558d64",
         "1fb3c2379bef5cf6d7b842fc4a81a16be3b38c769c82662549916ff78d89be9c"
@@ -8065,10 +7887,10 @@
       ]
     },
     "src/components/common/StandardSlider.js": {
-      "hash": "ba30a378a7c26570e9285ebc2bcec089881bfb9b663bbebe94959edda8153b17",
+      "hash": "0257509caa8efa8adbeb3b188124b05bd631d032a843152a1084accc04ca157c",
       "rootCount": 2,
       "roots": [
-        "1769e38ff7d0a2c069341ceed1a31b6e388f98c6070cdd39302122369b661046",
+        "d3bb55c936314a2af04020cb0e092281e4ef4503e6b5af3f9b812230ada796bb",
         "29c57c3f06818d187c078b965b3708997eb160383f2d7a97d7505a4e79afc0ef"
       ]
     },
@@ -8080,10 +7902,10 @@
       ]
     },
     "src/components/common/ToastPanel.js": {
-      "hash": "bb0c7accfeb482e10c6262359d9542ff64b0621a82956fe9e60fc30b82e82359",
+      "hash": "d18bfdd9b1109b550988b9f4fc72e6a71e1b3fbb757cdb79b4110012fbb23ef1",
       "rootCount": 1,
       "roots": [
-        "646d4ddf144070f27779bb042d716edd07a087f7e6a6c0866c0e3ce3bf271534"
+        "1d2fb8768e342c433158ff795eafc0dd902ce7e00d6438f5b83ae90e29fe42c1"
       ]
     },
     "src/components/common/Tooltip.jsx": {
@@ -8143,13 +7965,13 @@
       ]
     },
     "src/components/engines/EnginesPanel.js": {
-      "hash": "fa05b72d3f4f0a22ba17dc45ded87af73eb4e7be5ecb42f0d414028d5df45113",
+      "hash": "e92695df2551871acc6e7ca8692935caf2e255e655d5dace9b25b9e582868802",
       "rootCount": 4,
       "roots": [
         "895916dcc157b1e452c874d7cdbf8c1921e7003ce568cfd6f488ce4836769ad4",
         "aa1a08e55e1b931b0b27f4d90473f96fcb4f5e3df42369d1f042df2673b03304",
         "a9593b2d5fedacd5e3c7033cc7cb471ba0469159c361633ab42983a8d11a211a",
-        "9bea1472ff3bfd6db87418c6c8f1bddbc259b8dd3de2c7770ed866001058e985"
+        "26696fbb5ac3d9cf4721bf1a459de21d384e726e6ed0d3a4bab2b6d6fc2a0af7"
       ]
     },
     "src/components/engines/NativeToolsList.js": {
@@ -8188,10 +8010,10 @@
       ]
     },
     "src/components/Header.js": {
-      "hash": "7497937520d7b944bf689cd2dbf33694734d5b013b0aadfd3c540885530900d0",
+      "hash": "417561dd18d84d2558559849c85d23d11359185bf7e0c7f02de1d23a95fb5ebf",
       "rootCount": 1,
       "roots": [
-        "eca8f930e012af1af3d7877597aaeebb53d6b757255401f220c877c2d54d8c77"
+        "6472a295bdc36345477a1d50eb01b4e6a9b6570a3ffbbbf5adcecf0d13c1fa00"
       ]
     },
     "src/components/InputMethods.js": {
@@ -8249,10 +8071,10 @@
       ]
     },
     "src/components/LanguageSelector.js": {
-      "hash": "e3f28a32287807f59b85507d1466680bfce334b7d2d8e22ef940fb9bef23e2cc",
+      "hash": "80d47e5ff2380da86745d39bf8207cfc94e8ddec8ffa4848d9ec5a68ae584712",
       "rootCount": 2,
       "roots": [
-        "c8494ca4eae934746c00861db7f7805b30a69c47da37c5727de03c709c9155d3",
+        "cada55d2f322583b454ecd81eb934d2042e8eaf0d691e4946a0f0b609494e121",
         "128ed795fa37d9bbcf888d9c56704d5b9a916be4f834e0ca606479ded12882e4"
       ]
     },
@@ -8321,10 +8143,10 @@
       ]
     },
     "src/components/lyrics/VolumeVisualizer.js": {
-      "hash": "f09177568230ebcf439dff3057344500ec6ba01e4305cc3c521296488faf5d32",
+      "hash": "28097d1e9e6e468cd6016314287f7537d9f9b26a14a32f3b1fcf9413b016e819",
       "rootCount": 1,
       "roots": [
-        "f29c79289bed801b9e94f9d4a5d33b79c9640caa129244372b8b364b6edf3485"
+        "01db9f83429815671761fa6afca4455d6fe146033068861ae9e17d740b4e4200"
       ]
     },
     "src/components/LyricsDisplay.js": {
@@ -8641,10 +8463,10 @@
       ]
     },
     "src/components/OutputContainer.js": {
-      "hash": "1e4bf11e95f2075cd944a91c2c396b54b7e24c981a96e8ae06a6affd98e2bf30",
+      "hash": "8c12891d838910727aa84b651fb35b1bad2fca5b18bf815bf90f1bb7e76b3b01",
       "rootCount": 1,
       "roots": [
-        "790a02b3b8c6e95641ed6badea0b149794901b620dd2adcccd540bfd5e6153ec"
+        "1c34da833ca2adc0d9e4fe103de37390f271eb15d195993c1843fe9b8ff1c7cd"
       ]
     },
     "src/components/ParallelProcessingStatus.js": {
@@ -8683,10 +8505,10 @@
       ]
     },
     "src/components/previews/NativeRenderPreview.js": {
-      "hash": "c695368b4c69fae3bec4954d695d6b97d1ad75e46b907d191232a41bbea8a607",
+      "hash": "8e103830aedb8c699430f8959de032a9209b622b8d2702f4e700d1f31d2e502a",
       "rootCount": 2,
       "roots": [
-        "4bdb6a49d0302b1cc738815b720850e37b2d9f43337c50a657614499e04c7450",
+        "616a507620a7d4b3277bd764cecd55837903adcffe6cfa91f0b6b5b71668c408",
         "58593648d68a3e71e08e2aa5f85e27c44c4138ffc39eccbb52a8f6d5cb1ff5a4"
       ]
     },
@@ -8698,10 +8520,10 @@
       ]
     },
     "src/components/previews/VideoBottomControls.js": {
-      "hash": "68320094deeb80b801d67b408624638cf73d95e74b10528792a267da5092380a",
+      "hash": "c224338acf2cfbe99b3196145e0f43357859f59553b13cc38aa4116e789f608b",
       "rootCount": 1,
       "roots": [
-        "226d7677f27d80324aa54ce394e0610553ba16412dbb7232faece37eded9d099"
+        "cb996fbae86b43e6a8a1e6a02c255e043ac4f3e9840c28b649bf59e4f61d2f26"
       ]
     },
     "src/components/previews/VideoControlButton.js": {
@@ -8712,10 +8534,10 @@
       ]
     },
     "src/components/previews/VideoPlayerElement.js": {
-      "hash": "97f0b9dd5f735923a1da098383e5fedb678da15bd027e3d63580432616c5d075",
+      "hash": "29fcf38bf70380e9ecab9b7a8a905f53bc5efc26276430b479f134f0969f04e1",
       "rootCount": 1,
       "roots": [
-        "b7f673ef6cb481913818de329b64771b0d8b94ad33ebeb0b5b440f2564eb7a26"
+        "3f8605dceb1eea120bfcbfb43ccb3fe93cebef365cf7e4d2ff1124fdb56d71c3"
       ]
     },
     "src/components/previews/VideoPlayerStyles.js": {
@@ -8726,10 +8548,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "2815322b5d6b553fda4ed60d3e26dd4fdf275b7d6d6708f82f50ae6e037450f8",
+      "hash": "69c8af9375c23b43740aa5c0cb1113e3d990d52e7f476e74ec2dad188dd2dfb9",
       "rootCount": 1,
       "roots": [
-        "0b8af974127ecc6be50663beec38846cb80c24e47cfa75f7b5e586d0c5a93a5d"
+        "22de27b7fbd03ae2137516482f18c82b29fa61818e2b86c66ce47cb420fa3f83"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -8828,90 +8650,26 @@
         "5fffdc019e2b2b5b9bacb0e6fb0f14d84074ea7cba6779ff6ac5a636ddc3f657"
       ]
     },
-    "src/components/settings/ModelList.js": {
-      "hash": "7695555dcb677f8b6d944c6e5f737ef188049c26f09ef190586830944202d909",
-      "rootCount": 1,
-      "roots": [
-        "93b99e006c3bae1b58872857535451f26c638eabd119cc9df0806b30b42bcb2a"
-      ]
-    },
-    "src/components/settings/modelManagement/AddModelDialog.js": {
-      "hash": "713434a25d72531a45d74a6a6d830fb81d44f74584a27838dfdad2d5572b9aba",
-      "rootCount": 1,
-      "roots": [
-        "e7d0dfb8b3f271e6045a04672ff1ea300936afac71922b250cb97fc0b4209c43"
-      ]
-    },
-    "src/components/settings/modelManagement/AvailableModelsList.js": {
-      "hash": "ef848de57e4923be609e1ab25f86eb930aa1c2322eaf2f60ceaa876b34e7e527",
-      "rootCount": 1,
-      "roots": [
-        "c088c01d922b8042a2a0464e7419cb2812ff25cc4636c0bd0c5361dc6bc74580"
-      ]
-    },
-    "src/components/settings/modelManagement/DeleteModelDialog.js": {
-      "hash": "16663ff3826ca1fef02d8c5457d5d74b32aaafcfc315d7d9ef9d60299b77885d",
-      "rootCount": 1,
-      "roots": [
-        "b2af7fe3ce08c678ce75e4e4bacaa726225bb01d7ebdba0cd01811af4b3f3430"
-      ]
-    },
-    "src/components/settings/modelManagement/DownloadProgress.js": {
-      "hash": "7a4ce1b92a85b76733a1ac9f56b10599c02afce8e6f96417c3a2953984acabda",
-      "rootCount": 2,
-      "roots": [
-        "ae461f2f371c696e793674600162502afa24e3917b8a6331ab1e699565227235",
-        "1cbfc4cddba0464edd69835aa3198c1a91a331589c20fee42b4524675cb45c5b"
-      ]
-    },
-    "src/components/settings/modelManagement/EditModelDialog.js": {
-      "hash": "d8a66ef423bc7d2788d0b5bd4dcd0785f57f93f6d0cd92d0be2bdfcdc44ca995",
-      "rootCount": 1,
-      "roots": [
-        "c5a64cd3b18493905822980d152f95087824a699ae38fb411e527c41d07e7662"
-      ]
-    },
-    "src/components/settings/modelManagement/InstalledModelsList.js": {
-      "hash": "537be7a31d08534d23d9d493767b0abef934368ff62cbcfdbe74e1b7a7f5e21d",
-      "rootCount": 1,
-      "roots": [
-        "931126293a6be0d13b029a8c505e43cd4387e29cf94440fdb3ea6eca0ca05df3"
-      ]
-    },
-    "src/components/settings/modelManagement/LanguageCodeInput.js": {
-      "hash": "eab32e6e8ec9ab31e05e541fff5cd6effc6b3a1ce2f110feed82678def838c9b",
-      "rootCount": 1,
-      "roots": [
-        "7f51a33f2c74dab4a533e4f2a37a11995e4985daa602701f0bef85204805b280"
-      ]
-    },
-    "src/components/settings/modelManagement/ModelCard.js": {
-      "hash": "ac2b5de48e28745953fe6f4d6a14595664e94e37b5bea174c559cbd90e7b92b6",
-      "rootCount": 1,
-      "roots": [
-        "bf68ae878aee1e3e3465f373c36361030fa467977fec92688ce23a38aadcb223"
-      ]
-    },
     "src/components/settings/modelManagement/ModelManagementTab.js": {
-      "hash": "fe8b006e71dc0e7b0620de16a22d44eb5c4850c2f6f17feaed22c97d8155624d",
+      "hash": "915bd6e1b07a222efd98e1586e3c723d1daff05458ed06a8465b9d027308fe16",
       "rootCount": 1,
       "roots": [
-        "72a3fe4c372688febf7373c689ba7c76e8e47ea782e64098459fd597df7c8881"
+        "196a4351f9b5a502398c013b092f4a2a2cb10aaeb56cdd091034776790fb0032"
       ]
     },
     "src/components/settings/SettingsFooterControls.jsx": {
-      "hash": "001cc591c19e3e3dbf01c4fadd3aac73085ef5c41d1244c3a83b6f0ac6c85cc7",
+      "hash": "ec183b6fde6b8614748db0b020346610c9970163f834aa9e476ed21d016b7af4",
       "rootCount": 2,
       "roots": [
-        "778c297e2b0316c5975c738e2a9f3ac4e6a54e74119dc4635d2ba3d5dd08b7e8",
-        "adb7ae9121bc146b3060d364c4df2ee90650c4892b7e8a97562be7b36257fa3f"
+        "cc98588b2bd7a1e3de2da1282a10e96491e4a439f08a41df6d6b71940768f58b",
+        "c2d360367ed715f6bbe08814558e2974c5c724c9d87bf1d9228d0ffd4585dc7c"
       ]
     },
     "src/components/settings/SettingsModal.js": {
-      "hash": "2bccacfb3b1a0b6a3b69c54cabeadacdd3b6bf1aa887af8606b3a3649f575276",
+      "hash": "30fa8e10f8ec019e23ccf9221f29278c0de855bb5dba945a0c7486ae0604204c",
       "rootCount": 1,
       "roots": [
-        "a8f973349be2ddb839144b7a806db85e4061d3094d1dd33209016a67176c1db2"
+        "56495bdfbdb3da5f18bd6ade51f1aac86f3f377f9f48adfc43500d15dbff1307"
       ]
     },
     "src/components/settings/tabs/AboutTab.js": {
@@ -8922,17 +8680,17 @@
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "96ba13fe00c86d758a397111e4a3c00641866dbcc7925143a6487b1d5ecdc709",
+      "hash": "c434dfcab088ec262cb309d6fc24e83407f6256e5f1dfc72a1f4acaba374210d",
       "rootCount": 1,
       "roots": [
-        "808896e71fcfdfe74f0c02a77eefb978cd786e99ec33a10399fd3b3aea491103"
+        "fdd86ec3aefb5c46f8b25ae5949b8a0a2396c7b27123fb4b1a0fd438d74f3d36"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {
-      "hash": "e8fd615e8c3480d6e0d9f206cc54f7223ba3a5dd5ac68578495e2137e4eb0131",
+      "hash": "649b633d5424b0df3b0bb2986a7ce2a537cb6da544340de2d61dd604f8e2a516",
       "rootCount": 1,
       "roots": [
-        "3816606e549a50dbcbffbdd6b2e957585b148c5b5b504b9d5c9f69e9fa2a6951"
+        "01237522e8b36a8785718e33988391c467f5a449dfe1b15c9d46fb21c659551b"
       ]
     },
     "src/components/settings/tabs/GeminiKeysManager.js": {
@@ -8943,10 +8701,10 @@
       ]
     },
     "src/components/settings/tabs/PromptsTab.js": {
-      "hash": "879e08a2f5325930a0226fef75c7e785fd1699698e2e34b4e996507cd94fde14",
+      "hash": "781493093c10dfde8568ef07ebe676ac3f48c76a6d4090a6cef2ea79bada727c",
       "rootCount": 1,
       "roots": [
-        "26b53eba3e45f23c263bd95db046a6adf5cae4b507ec41224c346e68a768bbbd"
+        "013433876e3d9e40ce8f9547ca12840f054d0ae547e82152038a3ade6e2a5b84"
       ]
     },
     "src/components/settings/tabs/ThinkingBudgetCard.js": {
@@ -8993,31 +8751,31 @@
       ]
     },
     "src/components/subtitleCustomization/AnimationControls.js": {
-      "hash": "0aae3114cec5a1feb434ee01a628aaca1324c75360ead1c11e22b3608cf3d790",
+      "hash": "5994545814bf5a9e6662bd552c6d8e78d6a65c65ba3c9ea7647427239c7a27eb",
       "rootCount": 1,
       "roots": [
-        "91514cfd1a82700157371ea2e5ef139ea5568b8564ca31e082dfa91c2988df2f"
+        "0e1c28caac7f7369a8ec5973086094763ed9f63eaf1d9985a2c56114d0302bda"
       ]
     },
     "src/components/subtitleCustomization/BackgroundControls.js": {
-      "hash": "15ecf88207d4e1b28c1d75b4206821dd4f7f53f4692160bc35398d5a6df2f9a2",
+      "hash": "b31341cc62e3eb5fcf23ad3afd850103bc1fd77fe17488322e38446bda658ce8",
       "rootCount": 1,
       "roots": [
-        "1dec7f64819aeaa324a9629ae631aee63b3728a5786fbc3d90765337c222f95d"
+        "f08b03176f53bae1292945dbe6cbb8572b54b02b192a91df42f7134c553c3f90"
       ]
     },
-    "src/components/subtitleCustomization/CustomPresetButtons.js": {
-      "hash": "957ff25d57cdd33224ae553341f5e3545bc84305d5c8f12ef82c06592fd7c800",
+    "src/components/subtitleCustomization/ColorControl.js": {
+      "hash": "c1a3655485402611093e0120dda6ce46c77e6c26b01fb2aa734e5abab835516b",
       "rootCount": 1,
       "roots": [
-        "9deb96b358239bc0d7e23c48ce13a9bd0f33de1681ce6b23e4d764b70f8ff21e"
+        "a024c2735fc6dd1ea62725fa65f84e506f79c352093e1f718828a93322f764b0"
       ]
     },
     "src/components/subtitleCustomization/EffectsControls.js": {
-      "hash": "153a49cc50e3cc1af49b47190f87a4316502bcdb81bbc3ad86811e0d462b096f",
+      "hash": "8613ca089ffc79d8978c66098f3f37a8958dbdffc8ebae2a7743e62bb3d83267",
       "rootCount": 1,
       "roots": [
-        "8513c9c25ec64cf95fc11f3a3b5647be4da8462e22c9f9fbeea40480fc1c2081"
+        "7251a36355995a3d7c72f28b350dc4d997336e6c1ce110f19c47892f5125d248"
       ]
     },
     "src/components/subtitleCustomization/FontDropdown.js": {
@@ -9040,17 +8798,17 @@
       ]
     },
     "src/components/subtitleCustomization/FontSelectionModal.js": {
-      "hash": "f1c1c27209d22f23eac5bc9315af336ef394c0d671b718330447c7b4deecd543",
+      "hash": "5ffe3fceaa95d277a7deb65f6b5acaefeaf4262d906dd4fd1db590b7dae5be7e",
       "rootCount": 1,
       "roots": [
-        "f8af0bcd90ffa7c2d3d7832794f1b543cdad7ae3b1c86a60d44d6ec83228d716"
+        "89453b5fcc2298be6d3bff417456ba531cabe9425e4a6443be79d4c159fa7704"
       ]
     },
     "src/components/subtitleCustomization/PositionControls.js": {
-      "hash": "1fc76ec1345768878a4c429877bf01d5fe57b6129ff93f6668b903d508d9d203",
+      "hash": "66467b25786009ce6fd060c2e82a562e3c941f2cecdf3c6befcbf20fb2d28cfe",
       "rootCount": 1,
       "roots": [
-        "372df6d161a5df86e76e104c9335f63e31166d74c1f3a90496313b5fe40bdb64"
+        "9d4c313f681d4e9a4a167a9b72db9be99b7cd49279a40d464678c2e0b1ddf586"
       ]
     },
     "src/components/subtitleCustomization/PresetButtons.js": {
@@ -9061,10 +8819,10 @@
       ]
     },
     "src/components/subtitleCustomization/PresetButtonsGrid.js": {
-      "hash": "9c7a24c49a178ed68ce2305cdc9646ddd941fbd2423f84d90f85256ffbeca58e",
+      "hash": "e998fba9934efd218d6f10637cad693f93deba70c6fbbc4e74f5d449b2e77391",
       "rootCount": 1,
       "roots": [
-        "a931f279c6ccd6316ae105cf88bad6063af64a44601a646d08c6568f7affa630"
+        "1f129698b15d95eaef7863d2d967b5a861380d96790443e252068d290c9bc21d"
       ]
     },
     "src/components/subtitleCustomization/PresetNamingModal.js": {
@@ -9074,18 +8832,11 @@
         "7d2ad8c7fabc86bab6f96d701e0e9f8fd3de3ee68d7d32f844a9d6c460f6285d"
       ]
     },
-    "src/components/subtitleCustomization/SavePresetButton.js": {
-      "hash": "b31ea370d632b3e346cd5f3bdf22f3841752e580262e3d1b09c6e54d187e1877",
-      "rootCount": 1,
-      "roots": [
-        "6af3e75a973465a8fb0991f21c7b42bcb8ddada058b0065a29591a34e8fd9690"
-      ]
-    },
     "src/components/subtitleCustomization/TextControls.js": {
-      "hash": "fa949a0ba0e8114149e4ffe579b0fd58962a0bfe65d56d88c018680b6c79f1e8",
+      "hash": "be4d93a287fd492506cc327c8323d80ed3ccd14c54ae4e11755c370554823c0f",
       "rootCount": 1,
       "roots": [
-        "ed67d14aa33640450a69f25b17b0cd3fb27882fc53f477923d8576f63609f5eb"
+        "428b6146e9a6e4fa169bb244e1ac7e855f767d18db88dcc0e6abd5b348ca3d16"
       ]
     },
     "src/components/SubtitleCustomizationPanel.js": {
@@ -9096,10 +8847,10 @@
       ]
     },
     "src/components/subtitleSettings/components/FontSettings.js": {
-      "hash": "783ab4788a6811473f73fc9b01df19135ee44d20d66da6e69c5ebfddeba399f7",
+      "hash": "48da78b933de38c2c6b5f0be545977e2f5d8c1b8f0c3ca8278836fa1b31a0761",
       "rootCount": 1,
       "roots": [
-        "dd5c98896b854b53b4f78ad5b5d92a8e8124c0ccba72f6b8f3469f364d0dc4aa"
+        "6a9706cb8f4fcf870e1d57a181790cf185d536f76dac1b60a81546aaa36f186e"
       ]
     },
     "src/components/subtitleSettings/components/NarrationMenu.js": {
@@ -9117,24 +8868,25 @@
       ]
     },
     "src/components/subtitleSettings/components/StyleSettings.js": {
-      "hash": "024f2d1897686226229e17b2a098dc56f958853ae40933780e016aded7f40c97",
+      "hash": "473ab98a719190e624670ad6ec8f5c7008fd806b4d944eb05d51db44849f6bac",
       "rootCount": 1,
       "roots": [
-        "8e78649cb524a3934de9385bd0162d86534ce496877a2ad3589a9226dd193b1b"
+        "e2ccb1fe5fd2ebd111bb74132fc32ba2b68044e7e89816eaaa0b3dd4b2543024"
       ]
     },
     "src/components/subtitleSettings/components/SubtitleSettingsPanel.js": {
-      "hash": "1229524f1ec5e91662cbefa17777bbc6e3f1636be678e3b85f6710ac229cde53",
-      "rootCount": 1,
+      "hash": "ac3bf40a4db8fde13fa6a321aed16c06b02d22ca7fbd1ce6cbd490682e470b36",
+      "rootCount": 2,
       "roots": [
-        "b520a2609bfd4542f4543896aee560124afff45a1b7b6eb383043255c3f13135"
+        "d9f70a8d4f9fcefce1be81fac4557d2a60619cb8df2727c6b4ae0ee888d3db67",
+        "7ba829d88459acb91947404aa9db2c2e430d89e806ff09ce0f014e7ba308aaa7"
       ]
     },
     "src/components/subtitleSettings/index.js": {
-      "hash": "fdc7b25732826a9bd4f68712a1a6c7eb395aa0c7eb3fd094a60cc854649b3483",
+      "hash": "a69b6eaecd0b9e2209d6b979a5d73196405328e8632c405215a89ba96909b573",
       "rootCount": 1,
       "roots": [
-        "5c04a8a7734319d3bebfdbf7540ce86de436509ce75eee56297490ac3e5fe3ff"
+        "51b07285bf7d0cbd772d0020439b1534e1dfd8dc626e2838f3502ee3a3f86eee"
       ]
     },
     "src/components/SubtitlesInputModal.js": {
