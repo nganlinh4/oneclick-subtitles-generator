@@ -7,6 +7,7 @@ import { PROMPT_PRESETS, getUserPromptPresets } from '../services/geminiService'
 import useCountdownTimer from './transcriptionRules/useCountdownTimer';
 import PresetSelector from './transcriptionRules/PresetSelector';
 import { showErrorToast } from '../utils/toastUtils';
+import { normalizeUserTranscriptionPromptPresets } from '../services/gemini/transcriptionPromptPresetSelection';
 import {
   handleArrayItemChange as changeArrayItem,
   addArrayItem as appendArrayItem,
@@ -111,7 +112,13 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
   useEffect(() => {
     if (!isOpen) return; // Only run when modal is open
 
-    // SIMPLE: Check what's currently saved in localStorage
+    const loadedUserPresets = getUserPromptPresets();
+    const usableUserPresets = normalizeUserTranscriptionPromptPresets(
+      loadedUserPresets,
+      PROMPT_PRESETS.map(({ id }) => id),
+    );
+
+    // Check what's currently saved in localStorage.
     const savedPresetId = localStorage.getItem('video_processing_prompt_preset');
 
     // If there's an analysis recommendation and no saved preset, use the recommendation as initial value
@@ -119,24 +126,32 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
 
     let detectedPresetId = 'custom';
 
-    if (savedPresetId) {
+    const knownPresetIds = new Set([
+      ...PROMPT_PRESETS.map(({ id }) => id),
+      ...usableUserPresets.map(({ id }) => id),
+    ]);
+    const editorPresetId = (presetId) => {
+      if (presetId === 'settings' || presetId === 'custom') return 'custom';
+      return knownPresetIds.has(presetId) ? presetId : null;
+    };
+    const savedEditorPresetId = editorPresetId(savedPresetId);
+    const sessionEditorPresetId = editorPresetId(sessionPresetId);
+
+    if (savedEditorPresetId) {
       // Use what's saved (user's choice)
       console.log('[TranscriptionRulesEditor] Using saved preset:', savedPresetId);
-      detectedPresetId = savedPresetId === 'settings' ? 'custom' : savedPresetId;
+      detectedPresetId = savedEditorPresetId;
       setCurrentPresetId(detectedPresetId);
-    } else if (sessionPresetId) {
+    } else if (sessionEditorPresetId) {
       // No saved preference, use analysis recommendation as initial value
       console.log('[TranscriptionRulesEditor] Using analysis recommendation as initial value:', sessionPresetId);
-      detectedPresetId = sessionPresetId;
-      setCurrentPresetId(sessionPresetId);
-      // Save it immediately so it persists
-      localStorage.setItem('video_processing_prompt_preset', sessionPresetId);
+      detectedPresetId = sessionEditorPresetId;
+      setCurrentPresetId(sessionEditorPresetId);
     } else {
       // No saved preference and no recommendation, default to custom
       console.log('[TranscriptionRulesEditor] No saved preset or recommendation, defaulting to custom');
       detectedPresetId = 'custom';
       setCurrentPresetId('custom');
-      localStorage.setItem('video_processing_prompt_preset', 'settings');
     }
 
     // Set initial state for change tracking
@@ -154,7 +169,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
     });
 
     // Load user presets
-    setUserPromptPresets(getUserPromptPresets());
+    setUserPromptPresets(usableUserPresets);
   }, [isOpen, initialRules]); // Re-run when modal opens or initial rules change
 
   // Handle ESC key to close modal and prevent background scrolling

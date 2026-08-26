@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LanguageSelector from '../LanguageSelector';
 import CustomDropdown from '../common/CustomDropdown';
 import '../../styles/common/CustomDropdown.css';
+import {
+  APP_FONT_PREFERENCE,
+  applyEffectiveAppFont,
+} from '../../platform/nativeUiPreferences';
 import { toggleTheme as toggleThemeUtil, getThemeIcon, getThemeLabel, initializeTheme, setupSystemThemeListener } from './utils/themeUtils';
+import { showPreferenceProjectionWarning } from './utils/preferenceProjectionWarning';
 
 /**
  * Reusable settings footer controls: Theme toggle + Language selector (+ optional Font selector)
@@ -11,52 +16,73 @@ import { toggleTheme as toggleThemeUtil, getThemeIcon, getThemeLabel, initialize
  * - size: 'normal' | 'large' (for onboarding reveal)
  * - layout: 'group' | 'split' (split places theme left, language right)
  */
-const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'group', className = '', showFontDropdown = false }) => {
+const SettingsFooterControls = ({
+  isDropup = false,
+  size = 'normal',
+  layout = 'group',
+  className = '',
+  showFontDropdown = false,
+  disabled = false,
+}) => {
   const { t } = useTranslation();
+  const themeWriteInFlightRef = useRef(false);
+  const appFontWriteInFlightRef = useRef(false);
 
   const [theme, setTheme] = useState(() => initializeTheme());
-  const [appFont, setAppFont] = useState(() => {
-    const stored = localStorage.getItem('app_font');
-    return ['google-sans', 'system-ui', 'noto-sans'].includes(stored)
-      ? stored
-      : 'google-sans';
-  });
+  const [appFont, setAppFont] = useState(() => (
+    APP_FONT_PREFERENCE.readMirror('google-sans')
+  ));
 
   useEffect(() => {
     const cleanup = setupSystemThemeListener(setTheme);
     return () => cleanup && cleanup();
   }, []);
 
-  const handleToggleTheme = () => {
-    const newTheme = toggleThemeUtil(theme, setTheme);
-    setTheme(newTheme);
+  const handleToggleTheme = async () => {
+    if (disabled || themeWriteInFlightRef.current) return;
+    themeWriteInFlightRef.current = true;
+    try {
+      await toggleThemeUtil(theme, setTheme, {
+        onProjectionWarning: () => showPreferenceProjectionWarning(t),
+      });
+    } catch {
+      window.addToast?.(
+        t('settings.saveFailed', 'Settings could not be saved. Please try again.'),
+        'error',
+        8000,
+      );
+    } finally {
+      themeWriteInFlightRef.current = false;
+    }
   };
 
-  // Apply selected font to CSS variables for the whole app
-  useEffect(() => {
-    const root = document.documentElement;
-    let primary = `"Google Sans", "Open Sans", sans-serif`;
-    let title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
-
-    if (appFont === 'system-ui') {
-      primary = `system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-      title = primary;
-    } else if (appFont === 'noto-sans') {
-      primary = `"Noto Sans", "Open Sans", sans-serif`;
-      title = primary;
-    } else {
-      // default: Google Sans Flex
-      primary = `"Google Sans", "Open Sans", sans-serif`;
-      title = `"Google Sans", "Be Vietnam Pro", sans-serif`;
+  const handleAppFontChange = async (nextFont) => {
+    if (disabled || appFontWriteInFlightRef.current) return;
+    appFontWriteInFlightRef.current = true;
+    try {
+      const committedFont = await APP_FONT_PREFERENCE.commit(nextFont, {
+        apply: applyEffectiveAppFont,
+        publish: (publishedFont) => {
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: APP_FONT_PREFERENCE.key,
+            newValue: publishedFont,
+          }));
+        },
+        onProjectionWarning: () => showPreferenceProjectionWarning(t),
+      });
+      // State is a separate projection from CSS and the storage event. Even if either one fails,
+      // reflect durable native authority in this still-mounted control; startup hydrates it again.
+      setAppFont(committedFont);
+    } catch {
+      window.addToast?.(
+        t('settings.saveFailed', 'Settings could not be saved. Please try again.'),
+        'error',
+        8000,
+      );
+    } finally {
+      appFontWriteInFlightRef.current = false;
     }
-
-    root.style.setProperty('--font-primary', primary);
-    root.style.setProperty('--font-title', title);
-    localStorage.setItem('app_font', appFont);
-    // Trigger reflow updates for components that read CSS vars
-    const storageEvent = new StorageEvent('storage', { key: 'app_font', newValue: appFont });
-    window.dispatchEvent(storageEvent);
-  }, [appFont]);
+  };
 
   const fontOptions = useMemo(() => ([
     { value: 'google-sans', label: 'Google Sans Flex' },
@@ -71,6 +97,7 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
           <button
             className="theme-toggle"
             onClick={handleToggleTheme}
+            disabled={disabled}
             aria-label={getThemeLabel(theme, t)}
             title={getThemeLabel(theme, t)}
           >
@@ -81,12 +108,13 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
           {showFontDropdown && (
             <CustomDropdown
               value={appFont}
-              onChange={setAppFont}
+              onChange={handleAppFontChange}
               options={fontOptions}
               className="app-font-dropdown"
+              disabled={disabled}
             />
           )}
-          <LanguageSelector isDropup={isDropup} />
+          <LanguageSelector isDropup={isDropup} disabled={disabled} />
         </div>
       </div>
     );
@@ -97,6 +125,7 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
       <button
         className="theme-toggle"
         onClick={handleToggleTheme}
+        disabled={disabled}
         aria-label={getThemeLabel(theme, t)}
         title={getThemeLabel(theme, t)}
       >
@@ -105,12 +134,13 @@ const SettingsFooterControls = ({ isDropup = false, size = 'normal', layout = 'g
       {showFontDropdown && (
         <CustomDropdown
           value={appFont}
-          onChange={setAppFont}
+          onChange={handleAppFontChange}
           options={fontOptions}
           className="app-font-dropdown"
+          disabled={disabled}
         />
       )}
-      <LanguageSelector isDropup={isDropup} />
+      <LanguageSelector isDropup={isDropup} disabled={disabled} />
     </div>
   );
 };

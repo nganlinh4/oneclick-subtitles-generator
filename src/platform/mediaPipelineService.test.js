@@ -162,13 +162,14 @@ describe('mediaPipelineService', () => {
   });
 
   test('validates bounded waveform pyramids', () => {
-    const event = normalizeMediaPipelineEvent({
+    const rawEvent = {
       event: 'completed',
       operation: 'generateWaveform',
       job: { ...job('succeeded', 10_000), kind: 'generateWaveform' },
       result: {
         kind: 'waveform',
         assetId: SOURCE_ID,
+        cacheHit: true,
         waveform: {
           durationUs: 1_000_000,
           sourceSampleRateHz: 400,
@@ -178,8 +179,21 @@ describe('mediaPipelineService', () => {
           }],
         },
       },
-    }, { operation: 'generateWaveform', assetId: SOURCE_ID });
+    };
+    const event = normalizeMediaPipelineEvent(rawEvent, {
+      operation: 'generateWaveform', assetId: SOURCE_ID,
+    });
     expect(event.result.waveform.levels[0].points).toHaveLength(1);
+    expect(event.result.cacheHit).toBe(true);
+
+    delete rawEvent.result.cacheHit;
+    expect(() => normalizeMediaPipelineEvent(rawEvent, {
+      operation: 'generateWaveform', assetId: SOURCE_ID,
+    })).toThrow(MediaPipelineServiceError);
+    rawEvent.result.cacheHit = 'yes';
+    expect(() => normalizeMediaPipelineEvent(rawEvent, {
+      operation: 'generateWaveform', assetId: SOURCE_ID,
+    })).toThrow(MediaPipelineServiceError);
   });
 
   test('buffers early channel events, dispatches once, and cancels through the owned command', async () => {

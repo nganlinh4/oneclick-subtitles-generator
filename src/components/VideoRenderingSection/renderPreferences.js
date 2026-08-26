@@ -1,6 +1,7 @@
 import {
   parseStoredSubtitleCustomization,
 } from '../subtitleCustomization/defaultCustomization';
+import { previewCustomizationForNativeRender } from '../previews/projectPreviewSettings';
 
 const RENDER_RESOLUTIONS = new Set(['360p', '480p', '720p', '1080p', '1440p', '4K', '8K']);
 const FRAME_RATES = new Set([24, 25, 30, 50, 60, 120]);
@@ -15,6 +16,7 @@ const LEGACY_RENDER_SCENE_KEYS = Object.freeze([
   'videoRender_subtitleCustomization',
   'videoRender_cropSettings',
 ]);
+const LEGACY_EDITOR_STYLE_KEYS = Object.freeze(['subtitle_settings', 'subtitle_language']);
 
 export const DEFAULT_RENDER_SETTINGS = Object.freeze({
   resolution: '1080p',
@@ -165,6 +167,14 @@ export const storeRenderPreference = (key, value, { json = false, storage } = {}
   }
 };
 
+export class LegacyRenderSceneConsumptionError extends Error {
+  constructor(message, cause) {
+    super(message, { cause });
+    this.name = 'LegacyRenderSceneConsumptionError';
+    this.code = 'legacyRenderSceneConsumptionFailed';
+  }
+}
+
 /**
  * Consume the one global render-scene record shipped by the browser-era app.
  *
@@ -175,34 +185,48 @@ export const storeRenderPreference = (key, value, { json = false, storage } = {}
  */
 export const consumeLegacyRenderScene = (storage) => {
   const target = storage ?? globalThis.localStorage;
-  let present = false;
+  let renderScenePresent = false;
+  let renderCustomizationSerialized = null;
+  let editorSettingsSerialized = null;
   try {
-    present = LEGACY_RENDER_SCENE_KEYS.some((key) => target.getItem(key) !== null);
-  } catch {
-    return null;
+    renderScenePresent = LEGACY_RENDER_SCENE_KEYS.some((key) => target.getItem(key) !== null);
+    renderCustomizationSerialized = target.getItem('videoRender_subtitleCustomization');
+    editorSettingsSerialized = target.getItem('subtitle_settings');
+  } catch (cause) {
+    throw new LegacyRenderSceneConsumptionError(
+      'The previous render settings could not be read safely',
+      cause,
+    );
   }
-  if (!present) return null;
+  if (!renderScenePresent && editorSettingsSerialized === null) return null;
 
   const customization = (() => {
-    try {
-      return parseStoredSubtitleCustomization(target.getItem('videoRender_subtitleCustomization'));
-    } catch {
-      return parseStoredSubtitleCustomization(null);
+    if (renderCustomizationSerialized === null && editorSettingsSerialized !== null) {
+      return previewCustomizationForNativeRender(parseStoredRecord(editorSettingsSerialized) ?? {});
     }
+    return parseStoredSubtitleCustomization(renderCustomizationSerialized);
   })();
+  const editorSettings = parseStoredRecord(editorSettingsSerialized);
   const scene = {
-    selectedSubtitles: loadSubtitleSource(target),
+    selectedSubtitles: renderScenePresent
+      ? loadSubtitleSource(target)
+      : (dataValue(editorSettings, 'showTranslatedSubtitles') === true ? 'translated' : 'original'),
     selectedNarration: loadNarrationSource(target),
     renderSettings: loadRenderSettings(target),
     customization,
     crop: loadCropSettings(target),
   };
   try {
-    LEGACY_RENDER_SCENE_KEYS.forEach((key) => target.removeItem(key));
-  } catch {
-    // If deletion is unavailable, refuse the import. Reusing one global scene for several projects
-    // is worse than retaining it for a later, successful bounded import.
-    return null;
+    [...LEGACY_RENDER_SCENE_KEYS, ...LEGACY_EDITOR_STYLE_KEYS]
+      .forEach((key) => target.removeItem(key));
+  } catch (cause) {
+    // If deletion is unavailable, fail activation. Treating this as "no legacy scene" would
+    // materialize defaults, permanently skip these customer settings, and leave the same global
+    // scene available for a different project on a later launch.
+    throw new LegacyRenderSceneConsumptionError(
+      'The previous render settings could not be consumed safely',
+      cause,
+    );
   }
   return scene;
 };

@@ -11,9 +11,9 @@ import {
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 import {
   ensureProjectOwnsNativeMedia,
-  forgetNativeMediaSession,
+  forgetNativeMediaSessionDurably,
+  persistNativeMediaSession,
   readNativeMediaSession,
-  writeNativeMediaSession,
 } from '../../platform/nativeMediaOwnership';
 import {
   activateSubtitleProjectBinding,
@@ -51,7 +51,7 @@ const withdrawVisibleMediaForUrlIntent = async ({
     'split_result',
     'current_video_url',
   ]) localStorage.removeItem(key);
-  forgetNativeMediaSession();
+  await forgetNativeMediaSessionDurably();
   clearSubtitleProjectBinding();
   deactivateProject();
 
@@ -246,8 +246,8 @@ export const downloadAndPrepareYouTubeVideo = async (
             throw new Error('The previous native media selection could not be restored.');
           }
         }
-        if (previousSession === null) forgetNativeMediaSession();
-        else writeNativeMediaSession(previousSession);
+        if (previousSession === null) await forgetNativeMediaSessionDurably();
+        else await persistNativeMediaSession(previousSession);
         if (previousCompatibility !== null) {
           for (const [key, value] of [
             ['current_file_name', previousCompatibility.fileName],

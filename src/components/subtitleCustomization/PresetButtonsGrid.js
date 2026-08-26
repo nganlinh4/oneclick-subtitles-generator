@@ -19,6 +19,7 @@ const PresetButtonsGrid = ({
       {presetOrder.map(preset => (
         <button
           key={preset}
+          data-osg-preset={preset}
           className={`pill-button ${customization.preset === preset ? 'primary' : 'secondary'}`}
           onClick={() => onApplyPreset(preset)}
           style={{ fontFamily: presets[preset].fontFamily }}
@@ -31,6 +32,7 @@ const PresetButtonsGrid = ({
       {customPresets.map(customPreset => (
         <div key={customPreset.id} className="custom-preset-button-container">
           <button
+            data-osg-preset={customPreset.id}
             className={`pill-button custom-preset-button ${customization.preset === customPreset.id ? 'primary' : 'secondary'}`}
             onClick={() => onApplyCustomPreset(customPreset)}
             title={customPreset.name}

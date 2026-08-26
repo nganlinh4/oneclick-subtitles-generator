@@ -10,7 +10,6 @@ const TARGET_BY_URL = new Map([
   ['https://ai.google.dev/gemini-api/docs/video-understanding', 'geminiVideoDocumentation'],
   ['https://genius.com/api-clients', 'geniusApiClients'],
   ['https://console.cloud.google.com/apis/credentials', 'googleCloudCredentials'],
-  ['https://github.com/nganlinh4/udbm/releases', 'udbmReleases'],
   ['https://console.developers.google.com/apis/api/youtube.googleapis.com/overview', 'youtubeApiOverview'],
   ['https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md', 'ytDlpSupportedSites'],
 ].map(([url, target]) => [new URL(url).href, target]));

@@ -56,6 +56,7 @@ const PlaybackSpeedMenu = ({
               onClick={() => {
                 setPlaybackSpeed(speed);
                 if (videoRef.current) videoRef.current.playbackRate = speed;
+                setIsSpeedMenuVisible(false);
               }}
             >
               <div style={{

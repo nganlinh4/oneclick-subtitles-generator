@@ -2,7 +2,7 @@ import type { SubtitleCustomization } from './types';
 import { DEFAULT_SUBTITLE_FONT_FAMILY } from './defaultSubtitleFont';
 
 export const defaultSubtitleCustomization = Object.freeze({
-  fontSize: 28,
+  fontSize: 48,
   fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
   fontWeight: 400,
   textColor: '#ffffff',
@@ -12,6 +12,8 @@ export const defaultSubtitleCustomization = Object.freeze({
   textTransform: 'none',
   backgroundColor: '#000000',
   backgroundOpacity: 70,
+  backgroundPaddingX: 16,
+  backgroundPaddingY: 8,
   borderRadius: 4,
   borderWidth: 0,
   borderColor: '#ffffff',

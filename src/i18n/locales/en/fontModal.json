@@ -2,6 +2,7 @@
   "selectFont": "Select Font",
   "searchPlaceholder": "Search fonts...",
   "clear": "Clear",
+  "category": "Font category",
   "allCategories": "All",
   "categorySerif": "Serif",
   "categorySansSerif": "Sans Serif",

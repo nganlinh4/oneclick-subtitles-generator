@@ -17,6 +17,8 @@ export const presetsPartA = {
         // Background properties
         backgroundColor: '#1a1a1a',
         backgroundOpacity: 80,
+        backgroundPaddingX: 16,
+        backgroundPaddingY: 8,
         borderRadius: 8,
         borderWidth: 0,
         borderColor: '#ffffff',
@@ -91,6 +93,8 @@ export const presetsPartA = {
         // Background properties
         backgroundColor: '#000000',
         backgroundOpacity: 70,
+        backgroundPaddingX: 16,
+        backgroundPaddingY: 8,
         borderRadius: 0,
         borderWidth: 0,
         borderColor: '#ffffff',
@@ -165,6 +169,8 @@ export const presetsPartA = {
         // Background properties
         backgroundColor: '#000000',
         backgroundOpacity: 90,
+        backgroundPaddingX: 16,
+        backgroundPaddingY: 8,
         borderRadius: 12,
         borderWidth: 2,
         borderColor: '#00ffff',
@@ -348,6 +354,7 @@ export const presetsPartA = {
         borderRadius: 0,
         borderWidth: 3,
         borderColor: '#ff0080',
+        borderStyle: 'solid',
         glowEnabled: true,
         glowColor: '#ff0080',
         glowIntensity: 25,

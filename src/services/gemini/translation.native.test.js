@@ -256,6 +256,31 @@ test('format-only mode refuses to substitute a requested-language label for prov
   expect(runNativeGeminiText).not.toHaveBeenCalled();
 });
 
+test('format-only mode ignores the editor blank target placeholder', async () => {
+  const outcome = await translateSubtitles(
+    [{ id: 1, start: 0, end: 1, text: 'One' }],
+    [],
+    'gemini-3.5-flash-lite',
+    null,
+    0,
+    false,
+    ' ',
+    false,
+    null,
+    [
+      { id: 1, type: 'language', value: '', isOriginal: false },
+      { id: 2, type: 'delimiter', value: 'FMT: ', style: { open: '', close: '' } },
+      { id: 3, type: 'language', value: 'Original', isOriginal: true },
+    ]
+  );
+
+  expect(outcome).toMatchObject({
+    status: 'complete',
+    rows: [expect.objectContaining({ text: 'FMT: One' })],
+  });
+  expect(runNativeGeminiText).not.toHaveBeenCalled();
+});
+
 test.each([
   [['Korean', 'korean'], 'unique'],
   [[' Korean'], 'non-blank'],

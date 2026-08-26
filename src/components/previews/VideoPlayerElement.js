@@ -1,53 +1,47 @@
 
 /**
  * The native <video> element plus its click/touch (play-pause + double-tap
- * seek) handlers and the optimized->original source fallback on error.
+ * seek) handlers.
  *
- * videoRef and the shared playback state (isPlaying/setIsPlaying) stay in the
- * parent and are passed in. lastTouchTimeRef tracks double-tap timing and
+ * videoRef stays in the parent. lastTouchTimeRef tracks double-tap timing and
  * handleSeek drives the on-screen seek indicator.
  *
  * Props:
  *   - videoRef, lastTouchTimeRef: shared refs from the parent
- *   - isPlaying, setIsPlaying: shared playback state
  *   - handleSeek(direction): show the seek indicator
- *   - useOptimizedPreview, optimizedVideoUrl, videoUrl: source selection
+ *
+ * This component deliberately renders no `src` and no `<source>` child. React commits declarative
+ * media sources before source-switch effects can snapshot the outgoing transport, so
+ * useVideoSourceSwitching is the element's only source writer and owns optimized fallback.
  *   - t: i18n translate function
  */
 const VideoPlayerElement = ({
   videoRef,
   lastTouchTimeRef,
-  isPlaying,
-  setIsPlaying,
   handleSeek,
-  useOptimizedPreview,
-  optimizedVideoUrl,
-  videoUrl,
+  seekBy,
   t,
 }) => {
-  const activeSrc = useOptimizedPreview && optimizedVideoUrl ? optimizedVideoUrl : videoUrl;
+  const togglePlayback = () => {
+    const video = videoRef.current;
+    if (video === null || video === undefined) return;
+    if (!video.paused) {
+      video.pause();
+      return;
+    }
+
+    try {
+      Promise.resolve(video.play()).catch(console.error);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   return (
     <video
       ref={videoRef}
       className="video-player"
-      onClick={() => {
-        if (videoRef.current) {
-          if (isPlaying) {
-            videoRef.current.pause();
-          } else {
-            videoRef.current.play().catch(console.error);
-          }
-
-          // Force sync UI state after a short delay to ensure it matches video state
-          setTimeout(() => {
-            const actuallyPlaying = !videoRef.current.paused;
-            if (actuallyPlaying !== isPlaying) {
-              setIsPlaying(actuallyPlaying);
-            }
-          }, 50);
-        }
-      }}
+      onClick={togglePlayback}
       onTouchEnd={(e) => {
         // Prevent double-tap zoom on mobile
         e.preventDefault();
@@ -59,30 +53,15 @@ const VideoPlayerElement = ({
           const isLeft = x < rect.width / 2;
           if (videoRef.current) {
             if (isLeft) {
-              videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+              seekBy(-5, { reason: 'video-double-tap' });
             } else {
-              if (videoRef.current.duration) {
-                videoRef.current.currentTime = Math.min(videoRef.current.duration, videoRef.current.currentTime + 5);
-              }
+              seekBy(5, { reason: 'video-double-tap' });
             }
           }
           handleSeek(isLeft ? 'backward' : 'forward');
         } else {
           lastTouchTimeRef.current = now;
-          if (videoRef.current) {
-            if (isPlaying) {
-              videoRef.current.pause();
-            } else {
-              videoRef.current.play().catch(console.error);
-            }
-            // Force sync UI state after a short delay to ensure it matches video state
-            setTimeout(() => {
-              const actuallyPlaying = !videoRef.current.paused;
-              if (actuallyPlaying !== isPlaying) {
-                setIsPlaying(actuallyPlaying);
-              }
-            }, 50);
-          }
+          togglePlayback();
         }
       }}
       style={{
@@ -97,31 +76,8 @@ const VideoPlayerElement = ({
       playsInline
       controlsList="nodownload nofullscreen noremoteplayback"
       disablePictureInPicture={false}
-      src={activeSrc}
       crossOrigin="anonymous"
-      onError={(e) => {
-        console.error('Video error:', e);
-        // If optimized video fails to load, fall back to original video
-        if (useOptimizedPreview && optimizedVideoUrl && e.target.src === optimizedVideoUrl) {
-
-          e.target.src = videoUrl;
-          e.target.load();
-        }
-      }}
     >
-      <source
-        src={activeSrc}
-        type="video/mp4"
-        onError={(e) => {
-          console.error('Source error:', e);
-          // If optimized video fails to load, fall back to original video
-          if (useOptimizedPreview && optimizedVideoUrl && e.target.src === optimizedVideoUrl) {
-
-            e.target.src = videoUrl;
-          }
-        }}
-      />
-
       {/* Native track subtitles disabled - using only custom subtitle display */}
 
       {t('preview.videoNotSupported', 'Your browser does not support the video tag.')}

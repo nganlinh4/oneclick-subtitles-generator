@@ -4,6 +4,37 @@
  */
 
 /**
+ * Preserve the parts of a subtitle track outside a replaced half-open range.
+ * Rows crossing either boundary are copied and clamped; rows that do not
+ * overlap are retained by reference. Walking the track once also prevents the
+ * independently-filtered progressive path from duplicating or dropping a
+ * cross-segment row.
+ */
+const preserveOutsideRange = (subtitles, rangeStart, rangeEnd) => {
+  if (rangeEnd <= rangeStart) return [...subtitles];
+
+  const preserved = [];
+  for (const subtitle of subtitles) {
+    if (subtitle.end <= rangeStart || subtitle.start >= rangeEnd) {
+      preserved.push(subtitle);
+      continue;
+    }
+
+    if (subtitle.start < rangeStart) {
+      const left = { ...subtitle, end: rangeStart };
+      if (left.end > left.start) preserved.push(left);
+    }
+
+    if (subtitle.end > rangeEnd) {
+      const right = { ...subtitle, start: rangeEnd };
+      if (right.end > right.start) preserved.push(right);
+    }
+  }
+
+  return preserved;
+};
+
+/**
  * Merge new segment subtitles with existing subtitles
  * Replaces any existing subtitles that overlap with the segment time range
  * @param {Array} existingSubtitles - Current subtitle array
@@ -23,78 +54,16 @@ export const mergeSegmentSubtitles = (existingSubtitles, newSegmentSubtitles, se
   }
 
   const { start: segmentStart, end: segmentEnd } = segment;
+  const preserved = preserveOutsideRange(existingSubtitles, segmentStart, segmentEnd);
 
-  console.log(`[SubtitleMerger] Input data:`, {
-    segmentRange: `${segmentStart}s - ${segmentEnd}s`,
-    existingCount: existingSubtitles.length,
-    newCount: newSegmentSubtitles.length,
-    existing: existingSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`),
-    new: newSegmentSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`)
-  });
-
-  // Filter out existing subtitles that overlap with the segment time range,
-  // but clamp edge-overlapping subtitles instead of deleting them.
-  const preserved = [];
-  for (const sub of existingSubtitles) {
-    // Entirely before segment
-    if (sub.end <= segmentStart) {
-      preserved.push(sub);
-      continue;
-    }
-    // Entirely after segment
-    if (sub.start >= segmentEnd) {
-      preserved.push(sub);
-      continue;
-    }
-    // Overlaps the start boundary (straddles into segment start)
-    if (sub.start < segmentStart && sub.end > segmentStart && sub.end <= segmentEnd) {
-      const clamped = { ...sub, end: segmentStart };
-      if (clamped.end > clamped.start) preserved.push(clamped);
-      continue;
-    }
-    // Overlaps the end boundary (straddles out of segment end)
-    if (sub.start >= segmentStart && sub.start < segmentEnd && sub.end > segmentEnd) {
-      const clamped = { ...sub, start: segmentEnd };
-      if (clamped.end > clamped.start) preserved.push(clamped);
-      continue;
-    }
-    // Spans across the whole segment (covers both sides)
-    if (sub.start < segmentStart && sub.end > segmentEnd) {
-      const left = { ...sub, end: segmentStart };
-      const right = { ...sub, start: segmentEnd };
-      if (left.end > left.start) preserved.push(left);
-      if (right.end > right.start) preserved.push(right);
-      continue;
-    }
-    // Fully inside segment -> drop (will be replaced by new)
-  }
-
-  const subtitlesBeforeSegment = preserved.filter(s => s.end <= segmentStart || (s.end === segmentStart && s.start < s.end));
-  const subtitlesAfterSegment = preserved.filter(s => s.start >= segmentEnd || (s.start === segmentEnd && s.end > s.start));
-
-  console.log(`[SubtitleMerger] Filtering results:`, {
-    before: subtitlesBeforeSegment.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`),
-    after: subtitlesAfterSegment.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`)
-  });
-
-  // Combine: before + new segment + after
+  // Combine replacement rows with the preserved portions of the old track.
   const mergedSubtitles = [
-    ...subtitlesBeforeSegment,
-    ...newSegmentSubtitles,
-    ...subtitlesAfterSegment
+    ...preserved,
+    ...newSegmentSubtitles
   ];
 
   // Sort by start time to ensure proper order
   mergedSubtitles.sort((a, b) => a.start - b.start);
-
-  console.log(`[SubtitleMerger] Final result:`, {
-    segmentRange: `${segmentStart}s - ${segmentEnd}s`,
-    before: subtitlesBeforeSegment.length,
-    new: newSegmentSubtitles.length,
-    after: subtitlesAfterSegment.length,
-    total: mergedSubtitles.length,
-    final: mergedSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`)
-  });
 
   return mergedSubtitles;
 };
@@ -120,82 +89,24 @@ export const mergeStreamingSubtitlesProgressively = (existingSubtitles, newStrea
 
   const { start: segmentStart, end: segmentEnd } = segment;
 
-  // Find the rightmost (latest) subtitle in the new streaming results
-  const rightmostNewSubtitle = newStreamingSubtitles.reduce((latest, sub) =>
-    sub.end > latest.end ? sub : latest, newStreamingSubtitles[0]);
-
-  const progressiveEndTime = rightmostNewSubtitle.end;
-
-  // CRITICAL FIX: Only clear subtitles within THIS segment's boundaries
-  // Don't clear subtitles from other segments!
+  const progressiveEndTime = newStreamingSubtitles.reduce(
+    (latestEnd, subtitle) => Math.max(latestEnd, subtitle.end),
+    segmentStart
+  );
   const effectiveProgressiveEnd = Math.min(progressiveEndTime, segmentEnd);
-
-  // console.log(`[SubtitleMerger] Progressive merge:`, {
-  //   segmentRange: `${segmentStart}s - ${segmentEnd}s`,
-  //   progressiveEnd: `${progressiveEndTime}s`,
-  //   effectiveProgressiveEnd: `${effectiveProgressiveEnd}s`,
-  //   existingCount: existingSubtitles.length,
-  //   newCount: newStreamingSubtitles.length,
-  // });
-
-  // Keep subtitles before the segment, clamping straddlers at the segmentStart
-  const subtitlesBeforeSegment = [];
-  for (const sub of existingSubtitles) {
-    if (sub.end <= segmentStart) {
-      subtitlesBeforeSegment.push(sub);
-    } else if (sub.start < segmentStart && sub.end > segmentStart) {
-      const clamped = { ...sub, end: segmentStart };
-      if (clamped.end > clamped.start) subtitlesBeforeSegment.push(clamped);
-    }
-  }
-
-  // Keep subtitles after THIS SEGMENT (not after progressive end)
-  // This ensures we don't delete subtitles from other segments
-  const subtitlesAfterSegment = existingSubtitles.filter(sub => sub.start >= segmentEnd);
-  
-  // Keep subtitles within this segment that are after the progressive end
-  // (these are old subtitles in this segment that haven't been replaced yet)
-  const subtitlesInSegmentAfterProgressive = existingSubtitles.filter(sub => 
-    sub.start >= effectiveProgressiveEnd && sub.start < segmentEnd
+  const preserved = preserveOutsideRange(
+    existingSubtitles,
+    segmentStart,
+    effectiveProgressiveEnd
   );
 
-  // Additionally, clamp any subtitles that straddle the progressive end boundary
-  const clampedAtProgressive = existingSubtitles
-    .filter(sub => sub.start < effectiveProgressiveEnd && sub.end > effectiveProgressiveEnd && sub.start < segmentEnd && sub.end <= segmentEnd)
-    .map(sub => ({ ...sub, start: effectiveProgressiveEnd }))
-    .filter(sub => sub.end > sub.start);
-
-  // Filter out subtitles in the progressive range (from segment start to progressive end)
-  // These will be replaced by the new streaming subtitles
-
-  // console.log(`[SubtitleMerger] Progressive filtering:`, {
-  //   before: subtitlesBeforeSegment.length,
-  //   afterSegment: subtitlesAfterSegment.length,
-  //   inSegmentAfterProgressive: subtitlesInSegmentAfterProgressive.length,
-  //   progressiveRange: `${segmentStart}s - ${effectiveProgressiveEnd}s (cleared)`
-  // });
-
-  // Combine: before segment + new streaming + remaining in segment + after segment
   const mergedSubtitles = [
-    ...subtitlesBeforeSegment,
+    ...preserved,
     ...newStreamingSubtitles,
-    ...clampedAtProgressive,
-    ...subtitlesInSegmentAfterProgressive,
-    ...subtitlesAfterSegment
   ];
 
   // Sort by start time to ensure proper order
   mergedSubtitles.sort((a, b) => a.start - b.start);
-
-  // console.log(`[SubtitleMerger] Progressive result:`, {
-  //   segmentRange: `${segmentStart}s - ${segmentEnd}s`,
-  //   progressiveEnd: `${progressiveEndTime}s`,
-  //   before: subtitlesBeforeSegment.length,
-  //   new: newStreamingSubtitles.length,
-  //   afterProgressive: subtitlesAfterProgressive.length,
-  //   total: mergedSubtitles.length,
-  //   final: mergedSubtitles.map(s => `${s.start}-${s.end}: ${s.text.substring(0, 15)}...`)
-  // });
 
   return mergedSubtitles;
 };
@@ -253,46 +164,4 @@ export const validateAndCleanSubtitles = (subtitles) => {
       sub.text.trim().length > 0
     )
     .sort((a, b) => a.start - b.start);
-};
-
-/**
- * Example usage and test function (for development/debugging)
- */
-export const testSubtitleMerging = () => {
-  const existingSubtitles = [
-    { start: 0, end: 10, text: "Hello" },
-    { start: 10, end: 20, text: "World" },
-    { start: 20, end: 30, text: "This will be replaced" },
-    { start: 30, end: 40, text: "Keep this" }
-  ];
-
-  const newSegmentSubtitles = [
-    { start: 15, end: 25, text: "New content here" },
-    { start: 25, end: 35, text: "More new content" }
-  ];
-
-  const segment = { start: 15, end: 35 };
-
-  const result = mergeSegmentSubtitles(existingSubtitles, newSegmentSubtitles, segment);
-
-  console.log('Test merge result:', result);
-  // Expected: [
-  //   { start: 0, end: 10, text: "Hello" },
-  //   { start: 10, end: 20, text: "World" }, // kept (ends exactly at segment start)
-  //   { start: 15, end: 25, text: "New content here" }, // new
-  //   { start: 25, end: 35, text: "More new content" }, // new
-  //   { start: 30, end: 40, text: "Keep this" } // kept (starts exactly at segment end)
-  // ]
-
-  // Verify the logic
-  const beforeSegment = existingSubtitles.filter(sub => sub.end <= segment.start);
-  const afterSegment = existingSubtitles.filter(sub => sub.start >= segment.end);
-
-  console.log('Filter test:', {
-    segment: `${segment.start}-${segment.end}`,
-    before: beforeSegment.map(s => `${s.start}-${s.end}: ${s.text}`),
-    after: afterSegment.map(s => `${s.start}-${s.end}: ${s.text}`)
-  });
-
-  return result;
 };

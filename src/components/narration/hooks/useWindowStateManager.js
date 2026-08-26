@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { enhanceF5TTSNarrations } from '../../../utils/narrationEnhancer';
 import { loadProjectSubtitleGrouping } from '../../../platform/projectSubtitleGroupingStore';
 import { getActiveProjectSnapshot } from '../../../platform/projectService';
+import { hasCompleteGroupingText } from '../../../services/gemini/subtitleGroupingSourceReadiness';
 import {
   publishProjectNarrationGrouping,
   publishProjectNarrationResults,
@@ -88,7 +89,11 @@ const useWindowStateManager = ({
     const sourceSubtitles = sourceType === 'translated'
       ? translatedSubtitles
       : originalSubtitles || subtitles;
-    if (!Array.isArray(sourceSubtitles) || sourceSubtitles.length === 0) {
+    // A newly inserted cue deliberately has timing before it has text. That is an ordinary editor
+    // draft, not malformed provider input. Existing grouping cannot describe that draft, so clear
+    // it quietly and wait until every row carries complete text before asking the strict grouping
+    // store to fingerprint the source.
+    if (!hasCompleteGroupingText(sourceSubtitles)) {
       setGroupedSubtitles(null);
       setUseGroupedSubtitles(false);
       return undefined;

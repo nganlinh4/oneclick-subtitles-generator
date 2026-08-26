@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../styles/SubtitleSettings.css';
 import '../../styles/narration/narrationPlaybackMenuRedesign.css';
@@ -24,6 +23,7 @@ import SubtitleSettingsPanel from './components/SubtitleSettingsPanel';
 const SubtitleSettings = ({
   settings,
   onSettingsChange,
+  onResetSettings,
   hasTranslation,
   targetLanguage,
   videoRef,
@@ -43,9 +43,10 @@ const SubtitleSettings = ({
     setIsOpen,
     subtitleLanguage,
     handleSettingChange,
+    handleSettingsChange,
     handleSubtitleLanguageChange,
     resetToDefaults
-  } = useSubtitleSettings(settings, onSettingsChange);
+  } = useSubtitleSettings(settings, onSettingsChange, onResetSettings);
 
   const {
     showNarrationMenu,
@@ -68,13 +69,6 @@ const SubtitleSettings = ({
     alignedNarrations,
     narrationCues,
   );
-
-  // Update subtitle language when translation becomes available
-  useEffect(() => {
-    if (hasTranslation && settings.showTranslatedSubtitles && subtitleLanguage !== 'translated') {
-      handleSubtitleLanguageChange({ target: { value: 'translated' } });
-    }
-  }, [hasTranslation, settings.showTranslatedSubtitles, subtitleLanguage, handleSubtitleLanguageChange]);
 
   // No need for individual narration playback code anymore
   // Aligned narration is handled by the useAlignedNarration hook
@@ -144,6 +138,7 @@ const SubtitleSettings = ({
         setIsOpen={setIsOpen}
         settings={settings}
         handleSettingChange={handleSettingChange}
+        handleSettingsChange={handleSettingsChange}
         subtitleLanguage={subtitleLanguage}
         handleSubtitleLanguageChange={handleSubtitleLanguageChange}
         hasTranslation={hasTranslation}

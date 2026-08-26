@@ -1,18 +1,49 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../common/SliderWithValue';
-import { groupFontsByCategory, getFontSupportFlags } from './fontOptions';
+import {
+  getFontSupportFlags,
+  getFontWeightOptions,
+  groupFontsByCategory,
+} from './fontOptions';
 import FontSelectionModal from './FontSelectionModal';
 import { formatDecimal } from '../../utils/formatUtils';
 import CustomDropdown from '../common/CustomDropdown';
 import { defaultCustomization } from '../SubtitleCustomizationPanel';
+import {
+  currentFontSelection,
+  selectableFontWeights,
+  systemFontProbe,
+} from '../../services/selectableFonts';
+import ColorControl from './ColorControl';
+import { patchSubtitleCustomization } from './customizationUpdate';
+import { useFontReadiness } from '../../services/useFontReadiness';
 
 const TextControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
   const [isFontModalOpen, setIsFontModalOpen] = useState(false);
+  const fontCapability = useFontReadiness();
+  const fontCatalog = useMemo(() => Object.values(groupFontsByCategory()).flat(), []);
+  const isSystemFaceInstalled = useMemo(() => systemFontProbe(), []);
+  const selection = currentFontSelection(fontCatalog, {
+    fontFamily: customization.fontFamily,
+    fontWeight: customization.fontWeight,
+    capability: fontCapability,
+    isSystemFaceInstalled,
+  });
+  const exactFontWeights = selectableFontWeights({
+    fontFamily: customization.fontFamily,
+    capability: fontCapability,
+    isSystemFaceInstalled,
+  });
+  const exactWeightSet = new Set(exactFontWeights);
+  const fontWeightOptions = getFontWeightOptions(t).filter(({ value }) => exactWeightSet.has(value));
+  const currentFont = selection.displayOption;
+  const currentFontName = selection.displayName
+    ?? t('fontModal.selectFont', 'Select Font');
 
   const updateCustomization = (updates) => {
-    onChange({ ...customization, ...updates, preset: 'custom' });
+    onChange(patchSubtitleCustomization(updates));
   };
 
   return (
@@ -24,7 +55,8 @@ const TextControls = ({ customization, onChange }) => {
         </div>
         <div className="row-content">
           <button
-            className="font-selector-button"
+            className={`font-selector-button ${selection.selectedResolution.status === 'exact' ? '' : 'font-unavailable'}`.trim()}
+            data-font-selection-status={selection.selectedResolution.status}
             onClick={() => setIsFontModalOpen(true)}
           >
             <div className="font-selector-preview">
@@ -32,20 +64,10 @@ const TextControls = ({ customization, onChange }) => {
                 className="font-name"
                 style={{ fontFamily: customization.fontFamily }}
               >
-                {(() => {
-                  const currentFont = Object.values(groupFontsByCategory())
-                    .flat()
-                    .find(font => font.value === customization.fontFamily);
-                  return currentFont?.label || 'Select Font';
-                })()}
+                {currentFontName}
               </span>
               <span className="font-flags" style={{ fontFamily: customization.fontFamily }}>
-                {(() => {
-                  const currentFont = Object.values(groupFontsByCategory())
-                    .flat()
-                    .find(font => font.value === customization.fontFamily);
-                  return currentFont ? getFontSupportFlags(currentFont) : '';
-                })()}
+                {currentFont ? getFontSupportFlags(currentFont) : ''}
               </span>
             </div>
           </button>
@@ -82,20 +104,15 @@ const TextControls = ({ customization, onChange }) => {
           <label>{t('videoRendering.fontWeight', 'Font Weight')}</label>
         </div>
         <div className="row-content">
-          <SliderWithValue
-            value={customization.fontWeight}
-            onChange={(value) => updateCustomization({ fontWeight: parseInt(value) })}
-            min={100}
-            max={900}
-            step={100}
-            orientation="Horizontal"
-            size="XSmall"
-            state="Enabled"
-            className="font-weight-slider"
+          <CustomDropdown
             id="font-weight-slider"
+            value={customization.fontWeight}
+            onChange={(value) => updateCustomization({ fontWeight: Number(value) })}
+            options={fontWeightOptions}
+            className="font-weight-slider"
+            dataSetting="font-weight"
             ariaLabel={t('videoRendering.fontWeight', 'Font Weight')}
-            formatValue={(v) => v}
-            defaultValue={defaultCustomization.fontWeight}
+            placeholder={t('subtitleSettings.selectFontWeight', 'Select Font Weight')}
           />
         </div>
       </div>
@@ -103,41 +120,38 @@ const TextControls = ({ customization, onChange }) => {
       {/* Text Color */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.textColor', 'Text Color')}</label>
+          <label htmlFor="subtitle-text-color">
+            {t('videoRendering.textColor', 'Text Color')}
+          </label>
         </div>
         <div className="row-content">
-          <div className="color-control">
-            <input
-              type="color"
-              value={customization.textColor}
-              onChange={(e) => updateCustomization({ textColor: e.target.value })}
-              className="color-picker"
-            />
-            <input
-              type="text"
-              value={customization.textColor}
-              onChange={(e) => updateCustomization({ textColor: e.target.value })}
-              placeholder="#ffffff"
-              className="color-input"
-            />
-          </div>
+          <ColorControl
+            id="subtitle-text-color"
+            value={customization.textColor}
+            onChange={value => updateCustomization({ textColor: value })}
+            placeholder="#ffffff"
+            ariaLabel={t('videoRendering.textColor', 'Text Color')}
+          />
         </div>
       </div>
 
       {/* Text Alignment */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.textAlign', 'Text Alignment')}</label>
+          <label htmlFor="render-text-align">{t('videoRendering.textAlign', 'Text Alignment')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="render-text-align"
             value={customization.textAlign}
             onChange={(value) => updateCustomization({ textAlign: value })}
             options={[
               { value: 'left', label: t('videoRendering.left', 'Left') },
               { value: 'center', label: t('videoRendering.center', 'Center') },
-              { value: 'right', label: t('videoRendering.right', 'Right') }
+              { value: 'right', label: t('videoRendering.right', 'Right') },
+              { value: 'justify', label: t('videoRendering.justify', 'Justify') }
             ]}
+            dataSetting="text-align"
             placeholder={t('videoRendering.selectAlignment', 'Select Alignment')}
           />
         </div>
@@ -194,10 +208,11 @@ const TextControls = ({ customization, onChange }) => {
       {/* Text Transform */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.textTransform', 'Text Transform')}</label>
+          <label htmlFor="render-text-transform">{t('videoRendering.textTransform', 'Text Transform')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="render-text-transform"
             value={customization.textTransform}
             onChange={(value) => updateCustomization({ textTransform: value })}
             options={[
@@ -206,6 +221,7 @@ const TextControls = ({ customization, onChange }) => {
               { value: 'lowercase', label: t('videoRendering.lowercase', 'Lowercase') },
               { value: 'capitalize', label: t('videoRendering.capitalize', 'Capitalize') }
             ]}
+            dataSetting="text-transform"
             placeholder={t('videoRendering.selectTransform', 'Select Transform')}
           />
         </div>

@@ -502,19 +502,21 @@ const normalizeWaveform = (value) => {
 const normalizeResult = (value, operation, sourceAssetId) => {
   const data = snapshotDataRecord(value, {
     required: ['kind'],
-    allowed: ['kind', 'media', 'inspection', 'assetId', 'waveform'],
+    allowed: ['kind', 'media', 'inspection', 'assetId', 'waveform', 'cacheHit'],
     failure: invalidResponse,
   });
   if (data.kind === 'media') return normalizeMediaResult(data, operation, sourceAssetId);
   if (data.kind === 'waveform') {
     if (operation !== 'generateWaveform'
-        || !hasSnapshotKeys(data, ['kind', 'assetId', 'waveform'])
-        || data.assetId !== sourceAssetId) {
+        || !hasSnapshotKeys(data, ['kind', 'assetId', 'cacheHit', 'waveform'])
+        || data.assetId !== sourceAssetId
+        || typeof data.cacheHit !== 'boolean') {
       throw invalidResponse();
     }
     return Object.freeze({
       kind: 'waveform',
       assetId: data.assetId,
+      cacheHit: data.cacheHit,
       waveform: normalizeWaveform(data.waveform),
     });
   }

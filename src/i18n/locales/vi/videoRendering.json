@@ -243,5 +243,6 @@
   "trimmingTimeline": "Cắt video",
   "validating": "Đang kiểm tra điều kiện kết xuất...",
   "queued": "Đã xếp hàng kết xuất",
-  "loadingProjectScene": "Đang tải cài đặt kết xuất của dự án này…"
+  "loadingProjectScene": "Đang tải cài đặt kết xuất của dự án này…",
+  "subtitleFontRepaired": "Đã sửa phông chữ phụ đề: {{oldFont}} → {{newFont}}"
 }

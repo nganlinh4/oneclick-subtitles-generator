@@ -28,6 +28,7 @@ export const GLYPH_ATLAS_ERROR_CODES = Object.freeze([
   'glyphAtlasMetricsUnavailable',
   'glyphAtlasFaceUnverifiable',
   'glyphAtlasFaceUnavailable',
+  'glyphAtlasFaceLoading',
   'glyphAtlasFaceSubstituted',
   // Cue-set only: one atlas carries one layout verdict for every cue it serves, so a cue that
   // cannot be laid out from cells at all cannot be staged beside cues that can.

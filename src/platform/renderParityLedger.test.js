@@ -30,9 +30,9 @@ describe('render parity ledger', () => {
   });
 
   it('covers the field count the migration was scoped against', () => {
-    // The design doc scoped this work at 54 subtitle-customization fields. If that number moves,
+    // The design doc now scopes 56 subtitle-customization fields. If that number moves,
     // the scope moved with it and the doc needs revisiting.
-    expect(Object.keys(RENDER_PARITY_LEDGER)).toHaveLength(54);
+    expect(Object.keys(RENDER_PARITY_LEDGER)).toHaveLength(56);
   });
 
   it('gives every field a recognised disposition', () => {
@@ -82,7 +82,7 @@ describe('render parity ledger', () => {
   });
 
   it('reports the remaining work honestly rather than rounding it down', () => {
-    // Zero. Every one of the 70 persisted options is now reproduced, deliberately corrected, or
+    // Zero. Every one of the 72 persisted options is now reproduced, deliberately corrected, or
     // deliberately inert — and each of those states is asserted above rather than assumed here.
     //
     // This reaching zero is not the same as the migration being finished. It says every field has an
@@ -127,12 +127,12 @@ describe('render parity ledger', () => {
 
 describe('render output parity ledger', () => {
   it('covers the render and crop settings the native contract actually carries', () => {
-    // 54 subtitle fields plus these 16 are the 70 persisted options the migration was scoped
+    // 56 subtitle fields plus these 16 are the 72 persisted options the migration is scoped
     // against. Keeping both halves asserted means neither can drift without a failing test.
     expect(Object.keys(RENDER_OUTPUT_PARITY_LEDGER)).toHaveLength(16);
     expect(
       Object.keys(RENDER_PARITY_LEDGER).length + Object.keys(RENDER_OUTPUT_PARITY_LEDGER).length,
-    ).toBe(70);
+    ).toBe(72);
   });
 
   it('names every render setting the native request normalizes', () => {
@@ -163,8 +163,8 @@ describe('render output parity ledger', () => {
     }
   });
 
-  it('treats the trim and crop defects as changes a user will see, not as silent repairs', () => {
-    // Both of these alter files a user has already exported once. Fixing them quietly would look
+  it('treats visible renderer fixes as changes a user will see, not as silent repairs', () => {
+    // These alter files a user has already exported once. Fixing them quietly would look
     // like the migration broke something, so each has to explain itself well enough to write a
     // release note from.
     const changes = allDeliberateChanges();
@@ -173,17 +173,19 @@ describe('render output parity ledger', () => {
     expect(fields).toContain('trimStart');
     expect(fields).toContain('x');
     expect(fields).toContain('backgroundOpacity');
+    expect(fields).toContain('animationEasing');
 
     for (const change of changes) {
       expect(change.note, `${change.field} must say what changes`).toBeTruthy();
       expect(change.where, `${change.field} must name its implementation`).toBeTruthy();
     }
 
-    // The two that move pixels in an already-exported file shout about it; the colour one is
-    // explicitly pixel-identical and only makes a silent failure findable.
+    // The trim and crop notes shout about their visible impact; the colour note states that the
+    // previously missing alpha-bearing background now remains visible.
     expect(RENDER_OUTPUT_PARITY_LEDGER.trimStart.note).toContain('VISIBLE CHANGE');
     expect(RENDER_OUTPUT_PARITY_LEDGER.x.note).toContain('VISIBLE CHANGE');
-    expect(RENDER_PARITY_LEDGER.backgroundOpacity.note).toContain('Unchanged on screen');
+    expect(RENDER_PARITY_LEDGER.backgroundOpacity.note).toContain('remain visible');
+    expect(RENDER_PARITY_LEDGER.animationEasing.note).toContain('standards-defined CSS');
   });
 
   it('takes the export duration from the timeline rather than from however extraction went', () => {

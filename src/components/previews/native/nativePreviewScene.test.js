@@ -5,7 +5,9 @@ import { GLYPH_ATLAS_VERSION } from '../../../platform/glyphAtlas';
 import { createFakeSurface, lineTextsOf } from '../../../platform/glyphAtlasTestFont';
 import { defaultCustomization } from '../../subtitleCustomization/defaultCustomization';
 import {
+  ATLAS_BAKE_CUSTOMIZATION_FIELDS,
   PREVIEW_FULL_FRAME_CROP,
+  atlasBakeCacheKey,
   atlasBakeRequest,
   bakePreviewAtlas,
   previewCueList,
@@ -33,6 +35,133 @@ const customization = (overrides = {}) => ({
 
 /** Long enough that an 80% box wraps it several times at either resolution. */
 const PARAGRAPH = Array.from({ length: 40 }, (_, index) => `word${String(index).padStart(2, '0')}`).join(' ');
+
+const NON_ATLAS_CUSTOMIZATION_FIELDS = Object.freeze([
+  'fontFamily',
+  'fontWeight',
+  'textColor',
+  'backgroundColor',
+  'backgroundOpacity',
+  'backgroundPaddingX',
+  'backgroundPaddingY',
+  'borderRadius',
+  'borderWidth',
+  'borderColor',
+  'borderStyle',
+  'textShadowEnabled',
+  'textShadowColor',
+  'textShadowBlur',
+  'textShadowOffsetX',
+  'textShadowOffsetY',
+  'glowEnabled',
+  'glowColor',
+  'glowIntensity',
+  'gradientEnabled',
+  'gradientType',
+  'gradientDirection',
+  'gradientColorStart',
+  'gradientColorEnd',
+  'gradientColorMid',
+  'strokeEnabled',
+  'strokeWidth',
+  'strokeColor',
+  'multiShadowEnabled',
+  'shadowLayers',
+  'pulseEnabled',
+  'pulseSpeed',
+  'shakeEnabled',
+  'shakeIntensity',
+  'position',
+  'customPositionX',
+  'customPositionY',
+  'marginBottom',
+  'marginTop',
+  'marginLeft',
+  'marginRight',
+  'fadeInDuration',
+  'fadeOutDuration',
+  'animationType',
+  'animationEasing',
+  'maxLines',
+  'lineBreakBehavior',
+  'preset',
+]);
+
+const ATLAS_FIELD_ALTERNATES = Object.freeze({
+  fontSize: 61,
+  lineHeight: 1.4,
+  letterSpacing: 3,
+  textAlign: 'right',
+  textTransform: 'uppercase',
+  wordWrap: false,
+  maxWidth: 73,
+  rtlSupport: true,
+});
+
+const differentValue = (value) => {
+  if (typeof value === 'boolean') return !value;
+  if (typeof value === 'number') return value + 1;
+  return `${value}-different`;
+};
+
+const atlasInput = (style = customization(), overrides = {}) => ({
+  customization: style,
+  text: 'One | shaped || line 😀',
+  compositionWidthPx: 1_920,
+  compositionHeightPx: 1_080,
+  face: FACE,
+  ...overrides,
+});
+
+describe('atlas cache dependency partition', () => {
+  it('classifies every persisted customization field exactly once', () => {
+    const classified = [...ATLAS_BAKE_CUSTOMIZATION_FIELDS, ...NON_ATLAS_CUSTOMIZATION_FIELDS];
+    expect(new Set(classified).size).toBe(classified.length);
+    expect(classified.sort()).toEqual(Object.keys(defaultCustomization).sort());
+    expect(ATLAS_BAKE_CUSTOMIZATION_FIELDS).toEqual([
+      'fontSize',
+      'lineHeight',
+      'letterSpacing',
+      'textAlign',
+      'textTransform',
+      'wordWrap',
+      'maxWidth',
+      'rtlSupport',
+    ]);
+  });
+
+  it('changes the cache identity if and only if the bake request changes for every style field', () => {
+    const baseStyle = customization();
+    const baseInput = atlasInput(baseStyle);
+    const baseKey = atlasBakeCacheKey(baseInput);
+    const baseBake = atlasBakeRequest(baseInput);
+
+    for (const field of Object.keys(defaultCustomization)) {
+      const changedStyle = {
+        ...baseStyle,
+        [field]: ATLAS_FIELD_ALTERNATES[field] ?? differentValue(baseStyle[field]),
+      };
+      const changedInput = atlasInput(changedStyle);
+      const shouldRebake = ATLAS_BAKE_CUSTOMIZATION_FIELDS.includes(field);
+      expect(atlasBakeCacheKey(changedInput) !== baseKey, `${field} cache classification`)
+        .toBe(shouldRebake);
+      expect(JSON.stringify(atlasBakeRequest(changedInput)) !== JSON.stringify(baseBake), `${field} bake dependency`)
+        .toBe(shouldRebake);
+    }
+  });
+
+  it('addresses text, composition and exact face bytes, but not cue identity or timing', () => {
+    const base = atlasInput();
+    const key = atlasBakeCacheKey(base);
+    expect(atlasBakeCacheKey({ ...base, text: `${base.text} changed` })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, compositionWidthPx: 1_921 })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, compositionHeightPx: 1_081 })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, face: { ...FACE, family: 'Other Sans' } })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, face: { ...FACE, weight: 700 } })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, face: { ...FACE, source: 'managed:v2' } })).not.toBe(key);
+    expect(atlasBakeCacheKey({ ...base, cueIndex: 99, cueStart: 42, cueEnd: 84 })).toBe(key);
+  });
+});
 
 describe('the maxWidth conversion, proven through a real bake at two resolutions', () => {
   const bakeAt = (compositionWidthPx, compositionHeightPx) => {

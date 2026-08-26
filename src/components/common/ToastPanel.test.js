@@ -10,6 +10,10 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 test('clean-install onboarding suppresses routine noise but never failures or actions', async () => {
   window.addToast('startup failure', 'error', 8000);
   render(<ToastPanel />);
@@ -79,4 +83,87 @@ test('history persistence retains the newest 200 notifications', async () => {
     expect(history[0].message).toBe('toast-204');
     expect(history.at(-1).message).toBe('toast-5');
   });
+});
+
+test('coalesces only recent identical non-actionable successes', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-25T12:00:00Z'));
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => {
+    window.addToast('Progress saved successfully', 'success', 60_000);
+    window.addToast('Progress saved successfully', 'success', 60_000);
+    window.addToast('A different success', 'success', 60_000);
+    window.addToast('Save failed', 'error', 60_000);
+    window.addToast('Save failed', 'error', 60_000);
+  });
+
+  expect(screen.getAllByText('Progress saved successfully')).toHaveLength(1);
+  expect(screen.getAllByText('A different success')).toHaveLength(1);
+  expect(screen.getAllByText('Save failed')).toHaveLength(2);
+
+  act(() => {
+    vi.advanceTimersByTime(3_001);
+    window.addToast('Progress saved successfully', 'success', 60_000);
+  });
+
+  expect(screen.getAllByText('Progress saved successfully')).toHaveLength(2);
+});
+
+test('does not coalesce identical successes that carry independent actions', () => {
+  vi.useFakeTimers();
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => {
+    window.addToast('Export ready', 'success', 60_000, undefined, {
+      text: 'Open first',
+      onClick: vi.fn(),
+    });
+    window.addToast('Export ready', 'success', 60_000, undefined, {
+      text: 'Open second',
+      onClick: vi.fn(),
+    });
+  });
+
+  expect(screen.getAllByText('Export ready')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'Open first' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Open second' })).toBeInTheDocument();
+});
+
+test('blocks ambient history chrome over a modal while preserving live actionable toasts', () => {
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  localStorage.setItem('toast_history_v1', JSON.stringify([{
+    id: 'older-session-1',
+    message: 'Earlier completed action',
+    type: 'success',
+    timestamp: Date.now() - 60_000,
+  }]));
+  const { rerender } = render(<ToastPanel />);
+
+  const historyButton = screen.getByRole('button', { name: 'common.showToastHistory' });
+  expect(historyButton).toBeEnabled();
+  fireEvent.click(historyButton);
+  expect(screen.getByText('Earlier completed action')).toBeInTheDocument();
+
+  act(() => window.addToast('Confirm reset?', 'warning', 60_000, 'reset', {
+    text: 'Confirm',
+    onClick: vi.fn(),
+  }));
+  rerender(<ToastPanel backgroundControlsBlocked />);
+
+  const blockedHistory = screen.getByRole('button', {
+    name: 'common.hideToastHistory',
+    hidden: true,
+  });
+  expect(blockedHistory).toBeDisabled();
+  expect(blockedHistory).toHaveAttribute('tabindex', '-1');
+  expect(blockedHistory.closest('.toast-history-button-container')).toHaveAttribute('hidden');
+  expect(blockedHistory.closest('.toast-history-button-container')).toHaveAttribute('aria-hidden', 'true');
+  expect(screen.queryByText('Earlier completed action')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
 });

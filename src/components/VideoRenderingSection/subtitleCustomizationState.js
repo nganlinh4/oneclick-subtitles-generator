@@ -5,7 +5,7 @@
  * `{ ...defaultCustomization, ...subtitleCustomization }` at each of the three places a render
  * request was constructed, and handed the preview the state object raw. `normalizeCustomization` in
  * `src/platform/renderService.js` takes an EXACT key set, so a style missing one key — a custom
- * preset saved by an older build, a hand-edited `localStorage` entry, `CustomPresetButtons`
+ * preset saved by an older build or a hand-edited `localStorage` entry
  * spreading a stored preset straight into `onChange` — built an export request and refused a
  * preview request. The file rendered and the panel went silently dormant, the two disagreeing about
  * a style neither of them reported.

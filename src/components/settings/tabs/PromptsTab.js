@@ -1,8 +1,12 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import CustomScrollbarTextarea from '../../common/CustomScrollbarTextarea';
 import { DEFAULT_TRANSCRIPTION_PROMPT, PROMPT_PRESETS, getUserPromptPresets, saveUserPromptPresets } from '../../../services/geminiService';
+import {
+  hasExactlyOneContentTypeToken,
+  normalizeTranscriptionPrompt,
+} from '../../../services/gemini/transcriptionPromptInvariant';
 
 const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
   const { t } = useTranslation();
@@ -11,7 +15,36 @@ const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
   const [newPresetTitle, setNewPresetTitle] = useState('');
   const [viewingPreset, setViewingPreset] = useState(null);
   const [targetLanguage, setTargetLanguage] = useState('');
-  const textareaRef = useRef(null);
+  const lastValidPromptRef = useRef(
+    hasExactlyOneContentTypeToken(transcriptionPrompt)
+      ? transcriptionPrompt
+      : DEFAULT_TRANSCRIPTION_PROMPT
+  );
+
+  useEffect(() => {
+    if (hasExactlyOneContentTypeToken(transcriptionPrompt)) {
+      lastValidPromptRef.current = transcriptionPrompt;
+    }
+  }, [transcriptionPrompt]);
+
+  const handlePromptChange = (event) => {
+    const draft = event.target.value;
+    setTranscriptionPrompt(draft);
+    if (hasExactlyOneContentTypeToken(draft)) {
+      lastValidPromptRef.current = draft;
+    }
+  };
+
+  const handlePromptBlur = () => {
+    const normalized = normalizeTranscriptionPrompt(
+      transcriptionPrompt,
+      lastValidPromptRef.current
+    );
+    lastValidPromptRef.current = normalized;
+    if (normalized !== transcriptionPrompt) {
+      setTranscriptionPrompt(normalized);
+    }
+  };
 
   // Handle selecting a preset
   const handleSelectPreset = (preset, customLanguage = '') => {
@@ -318,152 +351,9 @@ const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
         <div className="prompt-editor-container transcription-prompt-setting">
           <CustomScrollbarTextarea
             id="transcription-prompt"
-            ref={textareaRef}
             value={transcriptionPrompt}
-            onKeyDown={(e) => {
-              // Prevent deletion of {contentType} with Delete or Backspace keys
-              const contentTypePos = transcriptionPrompt.indexOf('{contentType}');
-              if (contentTypePos !== -1) {
-                const cursorPos = e.target.selectionStart;
-                const selectionEnd = e.target.selectionEnd;
-                const hasSelection = cursorPos !== selectionEnd;
-
-                // Check if selection includes the placeholder
-                const selectionIncludesPlaceholder =
-                  hasSelection &&
-                  cursorPos <= contentTypePos + '{contentType}'.length &&
-                  selectionEnd >= contentTypePos;
-
-                // Check if cursor is at the start or end of placeholder
-                const cursorAtPlaceholderStart = cursorPos === contentTypePos && e.key === 'Delete';
-                const cursorAtPlaceholderEnd = cursorPos === contentTypePos + '{contentType}'.length && e.key === 'Backspace';
-
-                // Check if cursor is inside placeholder
-                const cursorInsidePlaceholder =
-                  cursorPos > contentTypePos &&
-                  cursorPos < contentTypePos + '{contentType}'.length &&
-                  (e.key === 'Delete' || e.key === 'Backspace');
-
-                // Prevent cut/delete operations on the placeholder
-                if ((selectionIncludesPlaceholder || cursorAtPlaceholderStart || cursorAtPlaceholderEnd || cursorInsidePlaceholder) &&
-                    (e.key === 'Delete' || e.key === 'Backspace' || (e.key === 'x' && e.ctrlKey) || (e.key === 'X' && e.ctrlKey))) {
-                  e.preventDefault();
-                }
-              }
-            }}
-            onCut={(e) => {
-              // Prevent cutting the placeholder
-              const contentTypePos = transcriptionPrompt.indexOf('{contentType}');
-              if (contentTypePos !== -1) {
-                const cursorPos = e.target.selectionStart;
-                const selectionEnd = e.target.selectionEnd;
-
-                // Check if selection includes the placeholder
-                if (cursorPos <= contentTypePos + '{contentType}'.length && selectionEnd >= contentTypePos) {
-                  e.preventDefault();
-                }
-              }
-            }}
-            onPaste={(e) => {
-              // Handle paste to ensure placeholder is preserved
-              const contentTypePos = transcriptionPrompt.indexOf('{contentType}');
-              if (contentTypePos !== -1) {
-                const cursorPos = e.target.selectionStart;
-                const selectionEnd = e.target.selectionEnd;
-
-                // Check if selection includes the placeholder
-                if (cursorPos <= contentTypePos + '{contentType}'.length && selectionEnd >= contentTypePos) {
-                  e.preventDefault();
-
-                  // Get pasted text
-                  const pastedText = e.clipboardData.getData('text');
-
-                  // Create new text with placeholder preserved
-                  const newText =
-                    transcriptionPrompt.substring(0, cursorPos) +
-                    pastedText +
-                    transcriptionPrompt.substring(selectionEnd);
-
-                  // If the new text doesn't include the placeholder, add it back
-                  if (!newText.includes('{contentType}')) {
-                    // Add placeholder at cursor position after paste
-                    const updatedText =
-                      transcriptionPrompt.substring(0, cursorPos) +
-                      pastedText +
-                      '{contentType}' +
-                      transcriptionPrompt.substring(selectionEnd);
-
-                    setTranscriptionPrompt(updatedText);
-
-                    // Set cursor position after the pasted text
-                    setTimeout(() => {
-                      const newPos = cursorPos + pastedText.length + '{contentType}'.length;
-                      e.target.selectionStart = newPos;
-                      e.target.selectionEnd = newPos;
-                    }, 0);
-                  } else {
-                    // Placeholder is still in the text, just update normally
-                    setTranscriptionPrompt(newText);
-
-                    // Set cursor position after the pasted text
-                    setTimeout(() => {
-                      const newPos = cursorPos + pastedText.length;
-                      e.target.selectionStart = newPos;
-                      e.target.selectionEnd = newPos;
-                    }, 0);
-                  }
-                }
-              }
-            }}
-            onChange={(e) => {
-              // Get current and new values
-              const currentValue = transcriptionPrompt;
-              const newValue = e.target.value;
-              const cursorPos = e.target.selectionStart;
-
-              // Check if {contentType} was removed
-              if (!newValue.includes('{contentType}')) {
-                // Find where {contentType} was in the original text
-                const contentTypePos = currentValue.indexOf('{contentType}');
-
-                if (contentTypePos !== -1) {
-                  // Determine if user is trying to delete the placeholder
-                  const isDeleteAttempt =
-                    // Check if cursor is at or near the placeholder position
-                    (cursorPos >= contentTypePos && cursorPos <= contentTypePos + '{contentType}'.length) ||
-                    // Or if text before and after the placeholder matches the new value
-                    (currentValue.substring(0, contentTypePos) +
-                     currentValue.substring(contentTypePos + '{contentType}'.length) === newValue);
-
-                  if (isDeleteAttempt) {
-                    // Prevent deletion by keeping the original value
-                    e.target.value = currentValue;
-                    // Restore cursor position
-                    setTimeout(() => {
-                      e.target.selectionStart = cursorPos;
-                      e.target.selectionEnd = cursorPos;
-                    }, 0);
-                    return; // Exit without updating state
-                  } else {
-                    // If it wasn't a direct deletion attempt, add it back at cursor position
-                    const restoredValue = newValue.substring(0, cursorPos) +
-                                        '{contentType}' +
-                                        newValue.substring(cursorPos);
-                    setTranscriptionPrompt(restoredValue);
-                    // Position cursor after the placeholder
-                    setTimeout(() => {
-                      const newPos = cursorPos + '{contentType}'.length;
-                      e.target.selectionStart = newPos;
-                      e.target.selectionEnd = newPos;
-                    }, 0);
-                    return;
-                  }
-                }
-              }
-
-              // If we get here, the placeholder is still in the text or was handled above
-              setTranscriptionPrompt(newValue);
-            }}
+            onChange={handlePromptChange}
+            onBlur={handlePromptBlur}
             // No placeholder needed since we're pre-filling with the default prompt
             rows={8}
             className="transcription-prompt-textarea"

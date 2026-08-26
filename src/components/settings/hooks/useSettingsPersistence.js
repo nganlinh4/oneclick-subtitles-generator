@@ -10,6 +10,8 @@ import {
 import { upsertSingletonCredential } from '../../../platform/credentialStateController';
 import { createDownloadCookiePreferenceValues } from '../../../platform/downloadCookiePreference';
 import { persistDesktopSettings } from '../../../platform/settingsService';
+import { DEFAULT_TRANSCRIPTION_PROMPT } from '../../../services/gemini/promptManagement';
+import { normalizeTranscriptionPrompt } from '../../../services/gemini/transcriptionPromptInvariant';
 
 const NATIVE_SECRET_ALIASES = Object.freeze([
   'gemini_api_key',
@@ -94,6 +96,7 @@ const useSettingsPersistence = (params) => {
     setGeniusApiKey,
     setYoutubeClientId,
     setYoutubeClientSecret,
+    setTranscriptionPrompt,
     onSave,
     handleClose,
   } = params;
@@ -102,6 +105,10 @@ const useSettingsPersistence = (params) => {
   const handleSave = async () => {
     const mediaModel = normalizeMediaModelId(geminiModel, DEFAULT_GEMINI_MODEL_ID);
     const analysisModel = normalizeMediaModelId(videoAnalysisModel, DEFAULT_ANALYSIS_MODEL_ID);
+    const normalizedTranscriptionPrompt = normalizeTranscriptionPrompt(
+      transcriptionPrompt,
+      DEFAULT_TRANSCRIPTION_PROMPT
+    );
 
     const drafts = { geniusApiKey, youtubeApiKey, youtubeClientId, youtubeClientSecret };
     // Clear every secret-bearing React field before crossing the first async boundary.
@@ -121,7 +128,7 @@ const useSettingsPersistence = (params) => {
       show_favorite_max_length: showFavoriteMaxLength.toString(),
       show_waveform_long_videos: showWaveformLongVideos.toString(),
       segment_offset_correction: segmentOffsetCorrection.toString(),
-      transcription_prompt: transcriptionPrompt,
+      transcription_prompt: normalizedTranscriptionPrompt,
       use_youtube_oauth: useOAuth.toString(),
       use_video_analysis: useVideoAnalysis.toString(),
       video_analysis_model: analysisModel,
@@ -140,12 +147,13 @@ const useSettingsPersistence = (params) => {
       custom_gemini_models: JSON.stringify(customGeminiModels),
     });
 
-    // Commit the complete filtered preference snapshot to SQLite first. Browser state and all
-    // success presentation remain untouched if the durable write fails.
-    await persistDesktopSettings(localStorage, pendingPreferences);
+    // Commit only this form's explicit values to SQLite first. Ambient browser keys are a mirror,
+    // not user intent, and must never be swept into the durable preference authority.
+    await persistDesktopSettings(pendingPreferences);
     Object.entries(pendingPreferences).forEach(([key, value]) => {
       localStorage.setItem(key, value);
     });
+    setTranscriptionPrompt?.(normalizedTranscriptionPrompt);
 
     // Apply Gemini effects immediately in the same window
     if (enableGeminiEffects) {
@@ -184,7 +192,7 @@ const useSettingsPersistence = (params) => {
       timeFormat,
       showWaveformLongVideos,
       segmentOffsetCorrection,
-      transcriptionPrompt,
+      transcriptionPrompt: normalizedTranscriptionPrompt,
       useOAuth,
       youtubeClientId: '',
       youtubeClientSecret: '',

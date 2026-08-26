@@ -17,9 +17,12 @@ describe('subtitle customization default authority', () => {
     expect(defaultCustomization).toBe(rendererDefaultCustomization);
     expect(Object.isFrozen(defaultCustomization)).toBe(true);
     expect(defaultCustomization).toMatchObject({
+      fontSize: 48,
       fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
       fontWeight: 400,
       backgroundOpacity: 70,
+      backgroundPaddingX: 16,
+      backgroundPaddingY: 8,
       strokeWidth: 0,
     });
   });
@@ -68,12 +71,15 @@ describe('subtitle customization default authority', () => {
       rtlSupport: 'false',
       preset: '',
       backgroundOpacity: 42,
+      backgroundPaddingX: 27,
+      backgroundPaddingY: -1,
       gradientDirection: '360deg',
     });
 
     expect(merged).toEqual({
       ...defaultCustomization,
       backgroundOpacity: 42,
+      backgroundPaddingX: 27,
       gradientDirection: '360deg',
     });
   });
@@ -124,6 +130,16 @@ describe('subtitle customization default authority', () => {
         isSystemFaceInstalled: () => true,
       });
       expect(resolved, `${preset} selected an unusable face`).toMatchObject({ status: 'exact' });
+    }
+  });
+
+  it('never declares a visible preset border while disabling its paint style', () => {
+    for (const preset of presetOrder) {
+      const customization = presets[preset];
+      if (customization.borderWidth > 0) {
+        expect(customization.borderStyle, `${preset} silently disabled its declared border`)
+          .not.toBe('none');
+      }
     }
   });
 

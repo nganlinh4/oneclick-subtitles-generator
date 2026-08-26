@@ -3,6 +3,7 @@ import { relative, resolve } from 'node:path';
 
 import {
   applySubtitleAnimationEasing,
+  SUBTITLE_ANIMATION_EASING_REVIEW_SAMPLES,
   SUBTITLE_ANIMATION_EASINGS,
 } from './subtitleAnimationEasing';
 import { scaleSubtitleStyleValue } from './subtitleVisualMath';
@@ -12,13 +13,23 @@ const SMOOTH = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 const BOUNCE = 'cubic-bezier(0.68, -0.55, 0.265, 1.55)';
 
 describe('shared subtitle animation easing', () => {
-  it('retains the five legacy easing results', () => {
+  it('uses the reviewed keyword curves and keeps unknown values linear', () => {
     expect(applySubtitleAnimationEasing(0.25, 'linear')).toBe(0.25);
     expect(applySubtitleAnimationEasing(0.25, 'ease-in')).toBe(0.0625);
     expect(applySubtitleAnimationEasing(0.25, 'ease-out')).toBe(0.4375);
     expect(applySubtitleAnimationEasing(0.25, 'ease-in-out')).toBe(0.125);
-    expect(applySubtitleAnimationEasing(0.25, 'ease')).toBe(0.125);
+    expect(applySubtitleAnimationEasing(0.25, 'ease')).toBeCloseTo(0.408510591355271, 12);
     expect(applySubtitleAnimationEasing(0.25, 'unknown')).toBe(0.25);
+  });
+
+  it('gives every user-visible easing a distinct reviewed interior signature', () => {
+    const signatures = SUBTITLE_ANIMATION_EASINGS.map(easing => JSON.stringify(
+      SUBTITLE_ANIMATION_EASING_REVIEW_SAMPLES.map(
+        progress => applySubtitleAnimationEasing(progress, easing),
+      ),
+    ));
+
+    expect(new Set(signatures).size).toBe(SUBTITLE_ANIMATION_EASINGS.length);
   });
 
   it('solves CSS cubic-bezier x before evaluating y', () => {
@@ -56,7 +67,7 @@ describe('shared subtitle animation easing', () => {
     for (const path of modules) {
       const source = readFileSync(path, 'utf8');
       expect(source, `${relative(ROOT, path)} defines a second easing curve`)
-        .not.toMatch(/const\s+applyEasing\s*=/);
+        .not.toMatch(/^\s*(?:export[ \t]+)?(?:const|function)[ \t]+(?:applyEasing|cubicBezier|cubicCoordinate)\b/m);
       expect(source, `${relative(ROOT, path)} rounds a scaled style itself`)
         .not.toContain('Math.round(value * scale)');
     }

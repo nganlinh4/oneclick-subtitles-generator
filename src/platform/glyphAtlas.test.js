@@ -502,7 +502,7 @@ describe('bakeGlyphAtlas face verification', () => {
   });
 
   it('lets document.fonts.check veto a face the metrics accepted', () => {
-    expect(codeOf(() => bake({ text: 'Hello' }, { isFaceLoaded: () => false }))).toBe('glyphAtlasFaceUnavailable');
+    expect(codeOf(() => bake({ text: 'Hello' }, { isFaceLoaded: () => false }))).toBe('glyphAtlasFaceLoading');
     expect(() => bake({ text: 'Hello' }, { isFaceLoaded: () => true })).not.toThrow();
     // An unknown answer must not override a measured result in either direction.
     expect(() => bake({ text: 'Hello' }, { isFaceLoaded: () => null })).not.toThrow();

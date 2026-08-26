@@ -73,7 +73,7 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
 
     // Listen for openRulesEditorWithCountdown event
     const handleOpenRulesEditorWithCountdown = (event) => {
-      const { context, transcriptionRules, recommendedPresetId, showCountdown } = event.detail;
+      const { context, transcriptionRules, showCountdown } = event.detail;
       try {
         assertAutoGenerationContextCurrent(context);
       } catch {
@@ -85,12 +85,6 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
         setEditorContext(context);
         setTranscriptionRulesState(transcriptionRules);
         setHasAnalysis(true);
-
-        // Save the recommended preset directly to localStorage so it's used immediately
-        if (recommendedPresetId) {
-          localStorage.setItem('video_processing_prompt_preset', recommendedPresetId);
-          sessionStorage.setItem('current_session_preset_id', recommendedPresetId);
-        }
 
         // Store countdown flag for the rules editor
         if (showCountdown) {

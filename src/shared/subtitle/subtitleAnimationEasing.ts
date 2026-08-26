@@ -10,6 +10,10 @@ export const SUBTITLE_ANIMATION_EASINGS = [
 
 export type SubtitleAnimationEasing = typeof SUBTITLE_ANIMATION_EASINGS[number];
 
+// Interior points reviewed by the parity fixture. A catalog entry is a user-visible choice, so two
+// entries may not produce the same vector across all of these points.
+export const SUBTITLE_ANIMATION_EASING_REVIEW_SAMPLES = [0.1, 0.25, 0.5, 0.75, 0.9] as const;
+
 const SMOOTH_EASING = SUBTITLE_ANIMATION_EASINGS[5];
 const BOUNCE_EASING = SUBTITLE_ANIMATION_EASINGS[6];
 const BISECTION_STEPS = 40;
@@ -54,6 +58,8 @@ export const applySubtitleAnimationEasing = (
     case 'ease-out':
       return 1 - Math.pow(1 - progress, 2);
     case 'ease':
+      // CSS Easing Functions Level 1 defines the `ease` keyword as this cubic Bezier.
+      return evaluateCubicBezier(progress, 0.25, 0.1, 0.25, 1);
     case 'ease-in-out':
       return progress < 0.5
         ? 2 * progress * progress

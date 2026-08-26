@@ -4,6 +4,9 @@ import {
   canonicalAssetFromDescriptor,
   ensureProjectOwnsNativeMedia,
   forgetNativeMediaSession,
+  forgetNativeMediaSessionDurably,
+  loadDurableNativeMediaSession,
+  persistNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
   subtitleAliasForActiveMedia,
@@ -37,6 +40,7 @@ const MEDIA_A = createNativeMediaDescriptor({
 const ASSET_RECORD = Object.freeze({
   id: ASSET_A, displayName: 'fixture.mp4', extension: 'mp4', sizeBytes: 10, kind: 'video',
 });
+const ASSET_RECORD_B = Object.freeze({ ...ASSET_RECORD, id: ASSET_B });
 
 const snapshotWith = (media, { projectId = PROJECT_A, stateVersion = 3 } = {}) => ({
   metadata: { id: projectId, name: 'Downloaded media' },
@@ -98,6 +102,198 @@ it('round-trips a session pointer through storage', () => {
   expect(readNativeMediaSession()).toBeNull();
 });
 
+it('restores the exact typed native workspace after browser preferences are cleared', async () => {
+  const session = { assetId: ASSET_B, cacheId: 'same-bytes-project-b', projectId: PROJECT_B };
+  const invokeCommand = vi.fn(async (command) => {
+    expect(command).toBe('active_workspace_get');
+    return {
+      schemaVersion: 1,
+      initialized: true,
+      workspace: {
+        schemaVersion: 1,
+        cacheId: session.cacheId,
+        projectId: session.projectId,
+        mediaId: session.assetId,
+        trackId: '018f47a2-7c20-7f70-8000-0000000000b2',
+        projectStateVersion: 12,
+      },
+    };
+  });
+
+  await expect(loadDurableNativeMediaSession({ invokeCommand })).resolves.toEqual(session);
+  expect(readNativeMediaSession()).toEqual(session);
+  expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('active_workspace_get', {});
+});
+
+it('honours a native empty tombstone and erases a stale browser mirror after a crash', async () => {
+  const stale = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  writeNativeMediaSession(stale);
+  const persist = vi.fn();
+
+  await expect(loadDurableNativeMediaSession({
+    invokeCommand: vi.fn(async () => ({
+      schemaVersion: 1,
+      initialized: true,
+      workspace: null,
+    })),
+    persist,
+  })).resolves.toBeNull();
+
+  expect(readNativeMediaSession()).toBeNull();
+  expect(persist).not.toHaveBeenCalled();
+});
+
+it('migrates a browser pointer only while native workspace authority is uninitialized', async () => {
+  const legacy = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  writeNativeMediaSession(legacy);
+  const persist = vi.fn(async session => session);
+
+  await expect(loadDurableNativeMediaSession({
+    invokeCommand: vi.fn(async () => ({
+      schemaVersion: 1,
+      initialized: false,
+      workspace: null,
+    })),
+    persist,
+  })).resolves.toEqual(legacy);
+  expect(persist).toHaveBeenCalledExactlyOnceWith(
+    legacy,
+    expect.objectContaining({ rememberMirror: expect.any(Function) }),
+  );
+});
+
+it.each([
+  ['a missing envelope', null],
+  ['an extra field', {
+    schemaVersion: 1, initialized: true, workspace: null, path: 'C:\\private.mp4',
+  }],
+  ['an active workspace marked uninitialized', {
+    schemaVersion: 1,
+    initialized: false,
+    workspace: {
+      schemaVersion: 1,
+      cacheId: URL_ALIAS,
+      projectId: PROJECT_A,
+      mediaId: ASSET_A,
+      trackId: null,
+      projectStateVersion: 1,
+    },
+  }],
+])('refuses %s from the native workspace boundary', async (_label, response) => {
+  await expect(loadDurableNativeMediaSession({
+    invokeCommand: vi.fn(async () => response),
+  })).rejects.toMatchObject({ code: 'nativeMediaOwnershipFailed' });
+});
+
+it('persists only after Rust returns the same exact project and media identity', async () => {
+  const session = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  const invokeCommand = vi.fn()
+    .mockResolvedValueOnce('018f47a2-7c20-7f70-8000-0000000000f1')
+    .mockResolvedValueOnce({
+      schemaVersion: 1,
+      cacheId: session.cacheId,
+      projectId: PROJECT_B,
+      mediaId: session.assetId,
+      trackId: null,
+      projectStateVersion: 1,
+    });
+
+  await expect(persistNativeMediaSession(session, { invokeCommand }))
+    .rejects.toMatchObject({ code: 'nativeMediaOwnershipFailed' });
+  expect(readNativeMediaSession()).toBeNull();
+});
+
+it('ordinary release clears both pointers conditionally and a stale clear preserves a newer winner', async () => {
+  const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  const sessionB = { assetId: ASSET_B, cacheId: 'newer', projectId: PROJECT_B };
+  const intent = '018f47a2-7c20-7f70-8000-0000000000f2';
+  writeNativeMediaSession(sessionA);
+  const clearA = vi.fn()
+    .mockResolvedValueOnce(intent)
+    .mockResolvedValueOnce(true);
+  await expect(forgetNativeMediaSessionDurably({
+    expectedSession: sessionA,
+    invokeCommand: clearA,
+  })).resolves.toBe(true);
+  expect(clearA).toHaveBeenNthCalledWith(1, 'active_workspace_begin', {});
+  expect(clearA).toHaveBeenNthCalledWith(2, 'active_workspace_clear', {
+    expected: { cacheId: URL_ALIAS, projectId: PROJECT_A, mediaId: ASSET_A },
+    intentId: intent,
+  });
+  expect(readNativeMediaSession()).toBeNull();
+
+  writeNativeMediaSession(sessionB);
+  await expect(forgetNativeMediaSessionDurably({
+    expectedSession: sessionA,
+    invokeCommand: vi.fn()
+      .mockResolvedValueOnce(intent)
+      .mockResolvedValueOnce(false),
+  })).resolves.toBe(false);
+  expect(readNativeMediaSession()).toEqual(sessionB);
+});
+
+it('recovers the exact native owner before clearing when the browser mirror is absent', async () => {
+  const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  const intent = '018f47a2-7c20-7f70-8000-0000000000f2';
+  const invokeCommand = vi.fn()
+    .mockResolvedValueOnce({
+      schemaVersion: 1,
+      initialized: true,
+      workspace: {
+        schemaVersion: 1,
+        cacheId: URL_ALIAS,
+        projectId: PROJECT_A,
+        mediaId: ASSET_A,
+        trackId: null,
+        projectStateVersion: 1,
+      },
+    })
+    .mockResolvedValueOnce(intent)
+    .mockResolvedValueOnce(true);
+  const forgetMirror = vi.fn();
+
+  await expect(forgetNativeMediaSessionDurably({
+    expectedSession: null,
+    invokeCommand,
+    forgetMirror,
+  })).resolves.toBe(true);
+
+  expect(invokeCommand).toHaveBeenNthCalledWith(1, 'active_workspace_get', {});
+  expect(invokeCommand).toHaveBeenNthCalledWith(2, 'active_workspace_begin', {});
+  expect(invokeCommand).toHaveBeenNthCalledWith(3, 'active_workspace_clear', {
+    expected: { cacheId: URL_ALIAS, projectId: PROJECT_A, mediaId: ASSET_A },
+    intentId: intent,
+  });
+  expect(forgetMirror).toHaveBeenCalledExactlyOnceWith({ expectedSession: sessionA });
+});
+
+it('does not issue an ownerless clear for an existing native tombstone', async () => {
+  const invokeCommand = vi.fn().mockResolvedValue({
+    schemaVersion: 1,
+    initialized: true,
+    workspace: null,
+  });
+
+  await expect(forgetNativeMediaSessionDurably({
+    expectedSession: null,
+    invokeCommand,
+  })).resolves.toBe(true);
+
+  expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('active_workspace_get', {});
+});
+
+const MEDIA_B = createNativeMediaDescriptor({
+  asset: {
+    displayName: 'fixture.mp4', extension: 'mp4', id: ASSET_B, kind: 'video', sizeBytes: 10,
+  },
+  playback: {
+    byteLength: 10,
+    id: '223e4567-e89b-42d3-a456-426614174000',
+    mimeType: 'video/mp4',
+    playbackUrl: `http://127.0.0.1:49152/asset/223e4567-e89b-42d3-a456-426614174000?token=${'b'.repeat(64)}`,
+  },
+});
+
 it('forgets a session only when the exact captured tuple is still current', () => {
   const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
   writeNativeMediaSession(sessionA);
@@ -109,6 +305,21 @@ it('forgets a session only when the exact captured tuple is still current', () =
 
   expect(forgetNativeMediaSession({ expectedSession: sessionA })).toBe(true);
   expect(readNativeMediaSession()).toBeNull();
+});
+
+it('suppresses an exact stale browser mirror when localStorage cleanup fails', () => {
+  const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
+  const sessionB = { assetId: ASSET_B, cacheId: 'newer', projectId: PROJECT_B };
+  writeNativeMediaSession(sessionA);
+
+  expect(forgetNativeMediaSession({
+    expectedSession: sessionA,
+    removeValue: () => { throw new Error('storage unavailable'); },
+  })).toBe(false);
+  expect(readNativeMediaSession()).toBeNull();
+
+  writeNativeMediaSession(sessionB);
+  expect(readNativeMediaSession()).toEqual(sessionB);
 });
 
 it.each([
@@ -192,6 +403,44 @@ it('does not commit again when the claim already attached the same asset', async
   expect(mutate).not.toHaveBeenCalled();
   expect(resolveProject).toHaveBeenCalledTimes(2);
   expect(rememberSession).toHaveBeenCalledOnce();
+});
+
+it('a slower older activation cannot publish after a newer exact workspace wins', async () => {
+  let releaseA;
+  const waitA = new Promise(resolve => { releaseA = resolve; });
+  const rememberA = vi.fn();
+  const rememberB = vi.fn();
+  const resolvedA = {
+    cacheId: 'local-a', projectId: PROJECT_A,
+    snapshot: snapshotWith([ASSET_RECORD], { projectId: PROJECT_A }),
+  };
+  const resolvedB = {
+    cacheId: 'local-b', projectId: PROJECT_B,
+    snapshot: snapshotWith([ASSET_RECORD_B], { projectId: PROJECT_B }),
+  };
+  let callsA = 0;
+  const older = ensureProjectOwnsNativeMedia({ media: MEDIA_A, cacheId: 'local-a' }, {
+    resolveProject: vi.fn(async () => {
+      callsA += 1;
+      if (callsA === 1) await waitA;
+      return resolvedA;
+    }),
+    mutate: vi.fn(),
+    rememberSession: rememberA,
+  });
+  await vi.waitFor(() => expect(callsA).toBe(1));
+
+  await expect(ensureProjectOwnsNativeMedia({ media: MEDIA_B, cacheId: 'local-b' }, {
+    resolveProject: vi.fn(async () => resolvedB),
+    mutate: vi.fn(),
+    rememberSession: rememberB,
+  })).resolves.toEqual({ assetId: ASSET_B, cacheId: 'local-b', projectId: PROJECT_B });
+  releaseA();
+  await expect(older).rejects.toMatchObject({ code: 'nativeMediaOwnershipFailed' });
+  expect(rememberA).not.toHaveBeenCalled();
+  expect(rememberB).toHaveBeenCalledExactlyOnceWith({
+    assetId: ASSET_B, cacheId: 'local-b', projectId: PROJECT_B,
+  });
 });
 
 it('never records a session when the alias remaps during ownership publication', async () => {

@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../styles/SettingsModal.css';
 import '../../styles/settings/checkbox-fix.css';
@@ -9,6 +15,11 @@ import { clearCache } from '../../platform/cacheService';
 import { clearCredentials } from '../../platform/credentialStateController';
 import { clearMedia } from '../../platform/mediaService';
 import { clearDesktopSettings } from '../../platform/settingsService';
+import {
+  isSettingsResetActive,
+  runTerminalSettingsReset,
+  subscribeSettingsResetState,
+} from '../../platform/settingsMutationCoordinator';
 
 // Import modularized components
 import ApiKeysTab from './tabs/ApiKeysTab';
@@ -33,20 +44,111 @@ import useSettingsState from './hooks/useSettingsState';
 import useSettingsPersistence from './hooks/useSettingsPersistence';
 import { useSettingsTabPillInit, useSettingsTabPillUpdate } from './utils/settingsAnimationHelpers';
 
-export const clearNativeApplicationState = () => Promise.all([
-  clearCache(),
-  clearCredentials(),
-  clearMedia(),
-  clearDesktopSettings(),
+const startResetOperation = (operation) => {
+  try {
+    return Promise.resolve(operation());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+};
+
+const runIdempotentResetOperations = async (operations, { attempts = 2 } = {}) => {
+  const values = new Array(operations.length);
+  let remaining = operations.map((operation, index) => ({ operation, index }));
+  let lastFailures = [];
+
+  for (let attempt = 0; attempt < attempts && remaining.length > 0; attempt += 1) {
+    const batch = remaining;
+    const results = await Promise.allSettled(batch.map(
+      ({ operation }) => startResetOperation(operation),
+    ));
+    const failed = [];
+    results.forEach((result, batchIndex) => {
+      const { operation, index } = batch[batchIndex];
+      if (result.status === 'fulfilled') {
+        values[index] = result.value;
+      } else {
+        failed.push({ operation, index });
+      }
+    });
+    lastFailures = results.filter((result) => result.status === 'rejected');
+    remaining = failed;
+  }
+
+  if (remaining.length > 0) {
+    throw lastFailures[0].reason;
+  }
+  return values;
+};
+
+export const clearNativeApplicationState = () => runIdempotentResetOperations([
+  () => clearCache(),
+  () => clearCredentials(),
+  () => clearMedia(),
+  () => clearDesktopSettings(),
 ]);
+
+const waitForIndexedDbDeletion = (indexedDb, name) => new Promise((resolve, reject) => {
+  const request = indexedDb.deleteDatabase(name);
+  request.onsuccess = () => resolve();
+  request.onerror = () => reject(request.error ?? new Error('IndexedDB reset failed'));
+  request.onblocked = () => reject(new Error('IndexedDB reset was blocked'));
+});
+
+export const clearBrowserApplicationState = async ({
+  storage = globalThis.localStorage,
+  indexedDb = globalThis.indexedDB,
+} = {}) => {
+  const [databases] = await runIdempotentResetOperations([
+    () => indexedDb.databases(),
+  ]);
+  const databaseNames = databases
+    .map((database) => database?.name)
+    .filter((name) => typeof name === 'string' && name.length > 0);
+
+  storage.clear();
+  await runIdempotentResetOperations(databaseNames.map(
+    (name) => () => waitForIndexedDbDeletion(indexedDb, name),
+  ));
+};
+
+export const clearApplicationStateAndReload = async ({
+  clearNative = clearNativeApplicationState,
+  clearBrowser = clearBrowserApplicationState,
+  reload = () => window.location.reload(),
+} = {}) => {
+  let resetFailure = null;
+  try {
+    await runIdempotentResetOperations([clearNative, clearBrowser]);
+  } catch (error) {
+    resetFailure = error;
+  }
+
+  // Navigation is the recovery boundary for both success and partial failure. The terminal
+  // coordinator keeps the old document read-only if the host does not destroy it immediately.
+  reload();
+  if (resetFailure) throw resetFailure;
+};
+
+const SETTINGS_TAB_IDS = new Set([
+  'api-keys',
+  'video-processing',
+  'prompts',
+  'cache',
+  'model-management',
+  'tools',
+  'about',
+]);
+
+export const normalizeSettingsTab = (value) => (
+  SETTINGS_TAB_IDS.has(value) ? value : 'api-keys'
+);
 
 const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => {
-    // Load last active tab from localStorage or default to 'api-keys'
-    const savedTab = localStorage.getItem('settings_last_active_tab');
-    // If the saved tab is 'gemini-settings', redirect to 'api-keys' since we removed that tab
-    return (savedTab === 'gemini-settings') ? 'api-keys' : (savedTab || 'api-keys');
+    // A stale or damaged preference must never produce a modal with no active content.
+    return normalizeSettingsTab(localStorage.getItem('settings_last_active_tab'));
   });
 
   // Reference to the tabs container
@@ -56,12 +158,15 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const [isClosing, setIsClosing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const saveInFlightRef = useRef(false);
-  const factoryResetInFlightRef = useRef(false);
   const closeScheduledRef = useRef(false);
   const closeTimerRef = useRef(null);
+  const isFactoryResetting = useSyncExternalStore(
+    subscribeSettingsResetState,
+    isSettingsResetActive,
+    isSettingsResetActive,
+  );
 
   // State for tracking tab transitions
-  const [previousTab, setPreviousTab] = useState(null);
   const [animationDirection, setAnimationDirection] = useState('center');
 
 
@@ -91,9 +196,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   useSettingsTabPillUpdate({
     tabsRef,
     activeTab,
-    previousTab,
     setAnimationDirection,
-    setPreviousTab,
   });
 
   // All settings state + setters, load/migration effect, and change detection
@@ -123,7 +226,6 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     optimizeVideos, setOptimizeVideos,
     optimizedResolution, setOptimizedResolution,
     useOptimizedPreview, setUseOptimizedPreview,
-    isFactoryResetting, setIsFactoryResetting,
     thinkingBudgets, setThinkingBudgets,
     transcriptionPrompt, setTranscriptionPrompt,
     useCookiesForDownload, setUseCookiesForDownload,
@@ -142,7 +244,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   const scheduleClose = useCallback((allowActiveSave = false) => {
     if (closeScheduledRef.current
-      || factoryResetInFlightRef.current
+      || isSettingsResetActive()
       || (saveInFlightRef.current && !allowActiveSave)) {
       return false;
     }
@@ -194,7 +296,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   // Handle factory reset
   const handleFactoryReset = async () => {
     if (saveInFlightRef.current
-      || factoryResetInFlightRef.current
+      || isSettingsResetActive()
       || closeScheduledRef.current) {
       return;
     }
@@ -211,28 +313,13 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           // The confirmation can outlive the toast invocation. Re-check ownership so an older
           // confirmation cannot race a save or a close that started in the meantime.
           if (saveInFlightRef.current
-            || factoryResetInFlightRef.current
+            || isSettingsResetActive()
             || closeScheduledRef.current) {
             return;
           }
 
-          factoryResetInFlightRef.current = true;
-          setIsFactoryResetting(true);
-
           try {
-            // Native artifacts, credentials, media, and settings live outside WebView storage.
-            await clearNativeApplicationState();
-
-            // 2. Clear all localStorage items
-            localStorage.clear();
-
-            // 3. Clear IndexedDB if used
-            const databases = await window.indexedDB.databases();
-            databases.forEach(db => {
-              window.indexedDB.deleteDatabase(db.name);
-            });
-            // 4. Reload the page to apply changes
-            window.location.reload();
+            await runTerminalSettingsReset(clearApplicationStateAndReload);
           } catch (error) {
             console.error('Error during factory reset:', error);
             window.addToast(
@@ -240,8 +327,6 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
               'error',
               8000
             );
-            factoryResetInFlightRef.current = false;
-            setIsFactoryResetting(false);
           }
         }
       }
@@ -257,7 +342,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
   const handleSaveClick = async () => {
     if (saveInFlightRef.current
-      || factoryResetInFlightRef.current
+      || isSettingsResetActive()
       || closeScheduledRef.current) {
       return;
     }
@@ -297,6 +382,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             <div className="pill-background"></div>
             <button
               className={`settings-tab ${activeTab === 'api-keys' ? 'active' : ''}`}
+              data-settings-tab="api-keys"
               onClick={() => setActiveTab('api-keys')}
             >
               <ApiKeyIcon />
@@ -304,6 +390,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'video-processing' ? 'active' : ''}`}
+              data-settings-tab="video-processing"
               onClick={() => setActiveTab('video-processing')}
             >
               <ProcessingIcon />
@@ -311,6 +398,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'prompts' ? 'active' : ''}`}
+              data-settings-tab="prompts"
               onClick={() => setActiveTab('prompts')}
             >
               <PromptIcon />
@@ -318,6 +406,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'cache' ? 'active' : ''}`}
+              data-settings-tab="cache"
               onClick={() => setActiveTab('cache')}
             >
               <CacheIcon />
@@ -325,6 +414,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'model-management' ? 'active' : ''}`}
+              data-settings-tab="model-management"
               onClick={() => setActiveTab('model-management')}
             >
               <ModelIcon />
@@ -340,6 +430,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
             </button>
             <button
               className={`settings-tab ${activeTab === 'about' ? 'active' : ''}`}
+              data-settings-tab="about"
               onClick={() => {
                 if (activeTab === 'about') {
                   refreshDesktopUpdateCheck().catch(() => undefined);
@@ -531,7 +622,11 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
         <div className="settings-footer">
           <div className="settings-footer-left">
             {/* Theme toggle and language selector */}
-            <SettingsFooterControls isDropup={true} showFontDropdown={true} />
+            <SettingsFooterControls
+              isDropup={true}
+              showFontDropdown={true}
+              disabled={isFactoryResetting}
+            />
 
             {/* Factory reset button */}
             <button

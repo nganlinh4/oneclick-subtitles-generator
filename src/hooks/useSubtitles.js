@@ -73,7 +73,23 @@ export const useSubtitles = (t) => {
         subtitlesRevisionRef.current += 1;
         setSubtitlesDataState(value);
     }, []);
-    const [status, setStatus] = useState({ message: '', type: '' });
+    // A status publication is an event as well as the latest durable value. Keeping an explicit
+    // identity lets presentation surfaces consume it once without clearing workflow state, and it
+    // still distinguishes two legitimate later publications with identical message/type payloads.
+    const [statusPublication, setStatusPublication] = useState(() => ({
+        eventId: 0,
+        value: { message: '', type: '' },
+    }));
+    const status = statusPublication.value;
+    const statusEventId = statusPublication.eventId;
+    const setStatus = useCallback((nextStatus) => {
+        setStatusPublication((current) => ({
+            eventId: current.eventId + 1,
+            value: typeof nextStatus === 'function'
+                ? nextStatus(current.value)
+                : nextStatus,
+        }));
+    }, []);
     const [isGenerating, setIsGenerating] = useState(false);
     const [retryingSegments, setRetryingSegments] = useState([]);
     const currentSourceFileRef = useRef(null);
@@ -116,7 +132,7 @@ export const useSubtitles = (t) => {
         // Subscribe via EventBus helper
         const unsubscribe = subscribe(EVENTS.GEMINI_REQUESTS_ABORTED, () => handleAbort());
         return () => unsubscribe();
-    }, [t]);
+    }, [setStatus, t]);
 
     // Function to update segment status and dispatch event
     const updateSegmentsStatus = useCallback((segments) => {
@@ -857,7 +873,7 @@ export const useSubtitles = (t) => {
                 setIsGenerating(false);
             }
         }
-    }, [t, startQuotaCountdown, setSubtitlesData]);
+    }, [t, startQuotaCountdown, setStatus, setSubtitlesData]);
 
     const { retryGeneration } = useSubtitlesRetryGeneration({
         t,
@@ -886,6 +902,7 @@ export const useSubtitles = (t) => {
         subtitlesData,
         setSubtitlesData,
         status,
+        statusEventId,
         setStatus,
         isGenerating,
         generateSubtitles,

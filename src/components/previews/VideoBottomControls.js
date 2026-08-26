@@ -5,14 +5,16 @@ import WavyProgressIndicator from '../common/WavyProgressIndicator';
 import VolumeControlPill from './controls/VolumeControlPill';
 import PlaybackSpeedMenu from './controls/PlaybackSpeedMenu';
 
+const DEFAULT_KEYBOARD_SEEK_FPS = 30;
+
 const VideoBottomControls = ({
   showCustomControls,
   isFullscreen,
   controlsVisible,
   isVideoHovered,
   isPlaying,
-  setIsPlaying,
   videoRef,
+  frameRate = DEFAULT_KEYBOARD_SEEK_FPS,
   currentTime,
   videoDuration,
   isDragging,
@@ -23,6 +25,7 @@ const VideoBottomControls = ({
   bufferedProgress: _bufferedProgress,
   handleTimelineMouseDown,
   handleTimelineTouchStart,
+  seekTo,
   volume,
   setVolume,
   isMuted,
@@ -45,6 +48,26 @@ const VideoBottomControls = ({
   fileType
 }) => {
   const wavyProgressRef = useRef(null);
+  const authoredFrameRate = Number.isFinite(frameRate) && frameRate > 0
+    ? frameRate
+    : DEFAULT_KEYBOARD_SEEK_FPS;
+
+  const handleTimelineKeyDown = (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const video = videoRef.current;
+    if (video === null || video === undefined || !Number.isFinite(videoDuration) || videoDuration <= 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const currentFrame = Math.round(video.currentTime * authoredFrameRate);
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const finalFrame = Math.max(
+      0,
+      Math.min(Math.floor(videoDuration * authoredFrameRate), currentFrame + direction),
+    );
+    seekTo(finalFrame / authoredFrameRate, { reason: 'focused-frame-step' });
+  };
 
   // Check if the current file is audio
   const isAudioFile = fileType && fileType.startsWith('audio/');
@@ -175,19 +198,16 @@ const VideoBottomControls = ({
           updateOnMouseMove={true}
           aria-label={isPlaying ? 'Pause' : 'Play'}
           onClick={() => {
-            if (videoRef.current) {
-              if (isPlaying) {
-                videoRef.current.pause();
-              } else {
-                videoRef.current.play().catch(console.error);
-              }
-
-              setTimeout(() => {
-                const actuallyPlaying = !videoRef.current.paused;
-                if (actuallyPlaying !== isPlaying) {
-                  setIsPlaying(actuallyPlaying);
-                }
-              }, 50);
+            const video = videoRef.current;
+            if (video === null || video === undefined) return;
+            if (!video.paused) {
+              video.pause();
+              return;
+            }
+            try {
+              Promise.resolve(video.play()).catch(console.error);
+            } catch (error) {
+              console.error(error);
             }
           }}
           style={{
@@ -197,7 +217,7 @@ const VideoBottomControls = ({
             pointerEvents: isFullscreen ? (controlsVisible ? 'auto' : 'none') : (isVideoHovered || controlsVisible) ? 'auto' : 'none'
           }}
         >
-          <div style={{
+          <div data-osg-control="play-pause" style={{
             width: '100%',
             height: '100%',
             display: 'flex',
@@ -210,6 +230,13 @@ const VideoBottomControls = ({
 
         {/* Progress */}
         <div
+          aria-label="Seek video"
+          aria-valuemax={videoDuration > 0 ? videoDuration : 0}
+          aria-valuemin={0}
+          aria-valuenow={isDragging ? dragTime : currentTime}
+          data-osg-control="seek"
+          role="slider"
+          tabIndex={0}
           style={{
             flex: 1,
             marginRight: '15px',
@@ -223,7 +250,12 @@ const VideoBottomControls = ({
             display: 'flex',
             alignItems: 'center'
           }}
-          onMouseDown={handleTimelineMouseDown}
+          onFocus={() => setControlsVisible(true)}
+          onKeyDown={handleTimelineKeyDown}
+          onMouseDown={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            handleTimelineMouseDown(event);
+          }}
           onTouchStart={handleTimelineTouchStart}
         >
           <WavyProgressIndicator

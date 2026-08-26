@@ -2,12 +2,13 @@ import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../common/SliderWithValue';
 import CustomDropdown from '../common/CustomDropdown';
 import { defaultCustomization } from '../SubtitleCustomizationPanel';
+import { patchSubtitleCustomization } from './customizationUpdate';
 
 const PositionControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
 
   const updateCustomization = (updates) => {
-    onChange({ ...customization, ...updates, preset: 'custom' });
+    onChange(patchSubtitleCustomization(updates));
   };
 
   return (
@@ -15,10 +16,11 @@ const PositionControls = ({ customization, onChange }) => {
       {/* Position */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.position', 'Position')}</label>
+          <label htmlFor="subtitle-position">{t('videoRendering.position', 'Position')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="subtitle-position"
             value={customization.position}
             onChange={(value) => updateCustomization({ position: value })}
             options={[
@@ -27,6 +29,7 @@ const PositionControls = ({ customization, onChange }) => {
               { value: 'center', label: t('videoRendering.center', 'Center') },
               { value: 'custom', label: t('videoRendering.custom', 'Custom') }
             ]}
+            dataSetting="position"
             placeholder={t('videoRendering.selectPosition', 'Select Position')}
           />
         </div>

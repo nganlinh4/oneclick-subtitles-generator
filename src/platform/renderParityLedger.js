@@ -1,6 +1,6 @@
 // Every persisted subtitle-customization field, and what the native renderer does with it.
 //
-// The migration away from the shipped renderer is only finished when each of these 54 fields has a
+// The migration away from the shipped renderer is only finished when each of these 56 fields has a
 // deliberate disposition. Prose cannot enforce that, so this ledger is asserted against
 // `defaultCustomization` in renderParityLedger.test.js: a field added to the schema without an
 // entry here fails the suite, and an entry here for a field that no longer exists fails it too.
@@ -70,9 +70,9 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   backgroundColor: native('crates/osg-scene/src/color.rs'),
   backgroundOpacity: fixed(
     'crates/osg-scene/src/color.rs',
-    'Unchanged on screen. The shipped renderer appends hex alpha to the colour string, so an '
-    + '#rrggbbaa background — which every validator accepts — became a 10-digit colour and vanished '
-    + 'with no message. The native renderer reports AlreadyHasAlpha instead of losing it silently.',
+    'The independent opacity multiplies a colour\'s own alpha. Preview and export quantize that '
+    + 'product identically, so #rgba and #rrggbbaa backgrounds remain visible and WYSIWYG instead '
+    + 'of reproducing the shipped renderer\'s invalid string concatenation.',
   ),
 
   // ---- Gradient ------------------------------------------------------------------------------
@@ -132,6 +132,16 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
   shadowLayers: inert('Validated and persisted end to end, with no render effect and no UI.'),
 
   // ---- Box -----------------------------------------------------------------------------------
+  backgroundPaddingX: native(
+    'crates/osg-compositor',
+    'Horizontal reference-pixel padding is persisted explicitly and scaled with the composition. '
+    + 'Older scenes receive the shipped 16px value once at the native contract boundary.',
+  ),
+  backgroundPaddingY: native(
+    'crates/osg-compositor',
+    'Vertical reference-pixel padding is persisted explicitly and scaled with the composition. '
+    + 'Older scenes receive the shipped 8px value once at the native contract boundary.',
+  ),
   borderRadius: native(
     'crates/osg-compositor',
     'A signed-distance rounded box, now the border-box radius once a border is present.',
@@ -222,9 +232,15 @@ export const RENDER_PARITY_LEDGER = Object.freeze({
     + 'UNSETTLED and recorded at crates/osg-scene/src/animation.rs: whether the slide offsets should '
     + 'scale with the composition, which the shipped renderer does not do.',
   ),
-  animationEasing: native(
+  animationEasing: fixed(
     'crates/osg-scene/src/easing.rs',
-    "Including that 'ease' and 'ease-in-out' are the same quadratic and neither is the CSS curve.",
+    'VISIBLE CHANGE, preserving WYSIWYG. The editor exposed `ease` and `ease-in-out` as separate '
+    + 'choices but the legacy renderer mapped both to one quadratic, so one control was redundant. '
+    + '`ease` now follows the standards-defined CSS cubic-bezier(0.25, 0.1, 0.25, 1), while '
+    + '`ease-in-out` retains the established quadratic. Existing projects persisted with `ease` '
+    + 'therefore animate differently. Preview calls the canonical TypeScript curve directly, Rust '
+    + 'export is locked to its generated bit-exact fixture, and the catalog refuses any future pair '
+    + 'of identical curves.',
   ),
   pulseEnabled: inert('Validated and persisted end to end, with no render effect and no UI.'),
   pulseSpeed: inert('Validated and persisted end to end, with no render effect and no UI.'),

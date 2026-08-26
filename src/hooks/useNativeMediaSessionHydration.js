@@ -8,6 +8,7 @@ import {
   restoreMediaAsset,
 } from '../platform/mediaService';
 import {
+  loadDurableNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
 } from '../platform/nativeMediaOwnership';
@@ -30,13 +31,14 @@ export const createNativeMediaSessionHydrator = ({
   read = getSelectedMedia,
   restore = restoreMediaAsset,
   readSession = readNativeMediaSession,
+  loadSession = async () => readSession(),
   resolveOwner = resolveOwnedNativeMediaProject,
   activate = activateResolvedMediaProject,
   apply,
   validate = isNativeMediaDescriptor,
 }) => {
   if (typeof read !== 'function' || typeof restore !== 'function'
-      || typeof readSession !== 'function'
+      || typeof readSession !== 'function' || typeof loadSession !== 'function'
       || typeof resolveOwner !== 'function' || typeof activate !== 'function'
       || typeof apply !== 'function' || typeof validate !== 'function') {
     throw new TypeError('Native media session hydration requires reviewed dependencies');
@@ -51,7 +53,7 @@ export const createNativeMediaSessionHydrator = ({
 
     let session;
     try {
-      session = readSession();
+      session = await loadSession();
       if (session === null) return false;
     } catch {
       return false;
@@ -197,6 +199,7 @@ export const useNativeMediaSessionHydration = ({ setUploadedFile }) => {
   useEffect(() => {
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeMediaSessionHydrator({
+      loadSession: loadDurableNativeMediaSession,
       apply: ({ media, cacheId, projectId, validateOwnership }) => applyNativeMediaSession({
         media,
         cacheId,

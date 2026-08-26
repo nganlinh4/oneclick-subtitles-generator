@@ -11,7 +11,11 @@ const CustomDropdown = ({
   placeholder,
   disabled = false,
   className = '',
-  style = {}
+  style = {},
+  id = undefined,
+  ariaLabel = undefined,
+  ariaLabelledBy = undefined,
+  dataSetting = undefined,
 }) => {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t('common.selectOption', 'Select option...');
@@ -36,6 +40,7 @@ const CustomDropdown = ({
   const isDraggingRef = useRef(false);
   const hoveredIndexRef = useRef(null);
   const pendingSelectionRef = useRef(null);
+  const suppressNextOptionClickRef = useRef(false);
   const calculatePositionRef = useRef(() => {});
   const handleSmoothCloseRef = useRef(() => {});
   const optionsRef = useRef(options);
@@ -415,12 +420,18 @@ const CustomDropdown = ({
       style={style}
     >
       <button
+        id={id}
         type="button"
         className="custom-dropdown-button"
         onClick={handleToggle}
         disabled={isEffectivelyDisabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-controls={id && isOpen ? `${id}-listbox` : undefined}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        data-osg-setting={dataSetting}
+        data-value={String(value ?? '')}
         style={isOpen ? { boxShadow: 'none', borderColor: 'transparent' } : undefined}
       >
         <span className={`dropdown-value ${isOpen ? 'morphing-open' : ''}`}>
@@ -444,7 +455,11 @@ const CustomDropdown = ({
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="custom-dropdown-menu custom-scrollbar-container">
-            <div className="dropdown-options-list" role="listbox">
+            <div
+              id={id ? `${id}-listbox` : undefined}
+              className="dropdown-options-list"
+              role="listbox"
+            >
               {options.map((option) => {
                 const isSelected = option.value === value;
                 const isDisabled = option.disabled || false;
@@ -454,6 +469,8 @@ const CustomDropdown = ({
                     type="button"
                     className={`dropdown-option ${isSelected ? 'selected morphing-item' : ''} ${isDisabled ? 'disabled' : ''}`}
                     disabled={isDisabled}
+                    role="option"
+                    aria-selected={isSelected}
                     onMouseDown={(e) => {
                       e.preventDefault(); e.stopPropagation();
                       if (isDisabled) return;
@@ -465,14 +482,32 @@ const CustomDropdown = ({
                         if (isDraggingRef.current) {
                           isDraggingRef.current = false;
                           menuRef.current?.querySelectorAll('.dropdown-option').forEach(btn => btn.classList.remove('pressed', 'hover-preview'));
-                          if (pendingSelectionRef.current && hoveredIndexRef.current === options.findIndex(o => o.value === pendingSelectionRef.current)) {
-                            const targetOption = options.find(o => o.value === pendingSelectionRef.current);
-                            handleOptionSelect(pendingSelectionRef.current, targetOption?.disabled);
+                          const pendingValue = pendingSelectionRef.current;
+                          const hoveredIndex = hoveredIndexRef.current;
+                          const pendingIndex = options.findIndex(o => o.value === pendingValue);
+                          pendingSelectionRef.current = null;
+                          hoveredIndexRef.current = null;
+                          if (pendingValue !== null && pendingIndex >= 0 && hoveredIndex === pendingIndex) {
+                            // A physical click follows mouseup after the drag gesture has already
+                            // committed. Suppress only that duplicate click; keyboard activation and
+                            // WebDriver's standards-compliant element.click() have no preceding
+                            // mousedown and must still select the semantic button.
+                            suppressNextOptionClickRef.current = true;
+                            setTimeout(() => { suppressNextOptionClickRef.current = false; }, 0);
+                            const targetOption = options[pendingIndex];
+                            handleOptionSelect(pendingValue, targetOption?.disabled);
                           } else { pendingSelectionRef.current = null; hoveredIndexRef.current = null; }
                           document.removeEventListener('mouseup', handleMouseUp);
                         }
                       };
                       document.addEventListener('mouseup', handleMouseUp);
+                    }}
+                    onClick={() => {
+                      if (suppressNextOptionClickRef.current) {
+                        suppressNextOptionClickRef.current = false;
+                        return;
+                      }
+                      handleOptionSelect(option.value, isDisabled);
                     }}
                     onMouseEnter={(_event) => {
                       if (isDraggingRef.current) {
@@ -483,8 +518,6 @@ const CustomDropdown = ({
                       }
                     }}
                     onMouseLeave={(e) => { if (isDraggingRef.current) e.currentTarget.classList.remove('hover-preview'); }}
-                    role="option"
-                    aria-selected={isSelected}
                     style={{ opacity: isDisabled ? 0.7 : 0.999 }}
                   >
                     {option.label}

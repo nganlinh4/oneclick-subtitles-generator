@@ -9,12 +9,16 @@ import './i18n/i18n';
 import './utils/sliderDragHandler';
 import './utils/sliderResetHandler';
 import './utils/sliderDefaults';
-import { getThemeWithFallback, setupSystemThemeListener } from './utils/systemDetection';
+import {
+  initializeEffectiveTheme,
+  subscribeToEffectiveSystemTheme,
+} from './platform/themePreference';
 import { installDesktopExternalLinkGuard } from './platform/externalLinkService';
 import { startNativeJobRecovery } from './platform/jobRecoveryCoordinator';
 import { installLegacyImportKeyboardAction } from './platform/legacyImportService';
 import { revealDesktopWindowWhenReady } from './platform/uiFontBootstrap';
 import { installAppCloseCheckpoint } from './platform/appCloseCheckpoint';
+import { initializeEffectiveAppFont } from './platform/nativeUiPreferences';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -64,36 +68,15 @@ installDesktopExternalLinkGuard();
 installLegacyImportKeyboardAction();
 startNativeJobRecovery().catch(() => undefined);
 
-// Theme initialization
-const initializeTheme = () => {
-  const theme = getThemeWithFallback();
-  document.documentElement.setAttribute('data-theme', theme);
-
-  // Save to localStorage if not already saved
-  if (!localStorage.getItem('theme')) {
-    localStorage.setItem('theme', theme);
-  }
-
-  // Set up system theme change listener
-  setupSystemThemeListener((newTheme) => {
-    const currentStoredTheme = localStorage.getItem('theme');
-    // Only update if user hasn't manually set a preference
-    if (!currentStoredTheme || currentStoredTheme === 'system') {
-      document.documentElement.setAttribute('data-theme', newTheme);
-      if (!currentStoredTheme) {
-        localStorage.setItem('theme', newTheme);
-      }
-    }
-  });
-};
-
 // Disable browser scroll restoration to prevent unwanted scrolling on page refresh
 if (window.history && window.history.scrollRestoration) {
   window.history.scrollRestoration = 'manual';
 }
 
 // Initialize theme
-initializeTheme();
+initializeEffectiveTheme();
+subscribeToEffectiveSystemTheme();
+initializeEffectiveAppFont();
 
 // Mark Material Symbols font ready to avoid showing ligature text
 const markMaterialSymbolsReady = () => {

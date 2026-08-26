@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { v7 as uuidv7 } from 'uuid';
 import CustomModelDialog from '../settings/CustomModelDialog';
 import StandardSlider from '../common/StandardSlider';
 import { formatTime } from '../../utils/timeFormatter';
@@ -215,6 +216,7 @@ const SubtitleSplitModal = ({ isOpen, onClose, lyrics, onSplitSubtitles, selecte
         const chunks = smartSplitText(lyric.text, maxWords);
         const timings = splitTiming(lyric.startTime || lyric.start, lyric.endTime || lyric.end, chunks);
         
+        const retainedId = lyric.id ?? uuidv7();
         chunks.forEach((chunk, index) => {
           const timing = timings[index];
           newLyrics.push({
@@ -224,7 +226,11 @@ const SubtitleSplitModal = ({ isOpen, onClose, lyrics, onSplitSubtitles, selecte
             end: timing.end,
             startTime: timing.start,
             endTime: timing.end,
-            id: `${lyric.id}_${index + 1}`
+            // The first chunk continues the original cue. Every additional chunk is a new durable
+            // cue with a real UUID; synthetic strings such as "1_2" are not native identities and
+            // forced the project adapter to mint a different ID on every subsequent edit.
+            id: index === 0 ? retainedId : uuidv7(),
+            ...(index === 0 ? {} : { originalId: retainedId }),
           });
         });
       }

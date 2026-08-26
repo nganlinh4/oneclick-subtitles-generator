@@ -4,6 +4,7 @@
  */
 
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
+import { normalizeTranscriptionPrompt } from './transcriptionPromptInvariant';
 
 // Default transcription prompts
 export const PROMPT_PRESETS = [
@@ -141,7 +142,10 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
                 p => p?.id === selectedPresetId && typeof p.prompt === 'string'
             );
         if (preset) {
-            basePrompt = preset.prompt.replace('{contentType}', contentType);
+            basePrompt = normalizeTranscriptionPrompt(
+                preset.prompt,
+                DEFAULT_TRANSCRIPTION_PROMPT
+            ).replace('{contentType}', contentType);
 
             // Handle translate-directly preset with custom language
             if (selectedPresetId === 'translate-directly') {
@@ -162,7 +166,10 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
             ? promptContext.settingsPrompt
             : localStorage.getItem('transcription_prompt');
         if (settingsPrompt && settingsPrompt.trim() !== '') {
-            basePrompt = settingsPrompt.replace('{contentType}', contentType);
+            basePrompt = normalizeTranscriptionPrompt(
+                settingsPrompt,
+                DEFAULT_TRANSCRIPTION_PROMPT
+            ).replace('{contentType}', contentType);
         } else {
             basePrompt = PROMPT_PRESETS[0].prompt.replace('{contentType}', contentType);
         }

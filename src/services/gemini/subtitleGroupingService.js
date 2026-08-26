@@ -2,6 +2,7 @@ import { DEFAULT_FAST_TEXT_MODEL_ID } from '../../config/geminiModels';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { isWellFormedUnicode } from './subtitleGroupingSourceReadiness';
 
 export const GROUPING_INTENSITIES = Object.freeze([
   'minimal', 'light', 'balanced', 'moderate', 'enhanced', 'aggressive',
@@ -82,19 +83,6 @@ const assertExactKeys = (descriptors, expected, field) => {
   if (keys.length !== expected.length || expected.some((key) => !descriptors[key])) {
     throw invalid(`${field} has an invalid shape`);
   }
-};
-
-const isWellFormedUnicode = (value) => {
-  if (typeof value !== 'string') return false;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
-      index += 1;
-    } else if (code >= 0xdc00 && code <= 0xdfff) return false;
-  }
-  return true;
 };
 
 const assertIdentifier = (value, field) => {

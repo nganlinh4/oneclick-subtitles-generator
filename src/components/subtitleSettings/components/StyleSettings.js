@@ -84,12 +84,14 @@ const StyleSettings = ({ settings, handleSettingChange, textAlignOptions, textTr
       <div className="setting-group">
         <label htmlFor="text-transform">{t('subtitleSettings.textTransform', 'Text Transform')}</label>
         <CustomDropdown
+          id="text-transform"
           value={settings.textTransform || 'none'}
           onChange={(value) => handleSettingChange('textTransform', value)}
           options={textTransformOptions.map(option => ({
             value: option.value,
             label: option.label
           }))}
+          dataSetting="text-transform"
           placeholder={t('subtitleSettings.selectTextTransform', 'Select Text Transform')}
         />
       </div>

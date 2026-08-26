@@ -363,6 +363,28 @@ export const normalizeLanguageChain = (
   return Object.freeze(normalized);
 };
 
+/**
+ * Produce the exact chain a translation run is allowed to execute and persist.
+ *
+ * The editor intentionally keeps one empty target-language chip as an input affordance. In
+ * format-only mode that chip has no semantic value: mode detection ignores it, and allowing it to
+ * cross the run boundary used to make the button say "Format" while the formatter refused the
+ * request. Strip only empty target placeholders. A non-empty target remains present and is still
+ * rejected by the format-only provider boundary rather than being mistaken for literal text.
+ */
+export const normalizeRunnableLanguageChain = (value, { formatOnly = false } = {}) => {
+  const parsed = normalizeLanguageChain(value, { allowEmptyLanguage: true });
+  const runnable = formatOnly
+    ? parsed.filter((item) => (
+      item.type !== 'language' || item.isOriginal || item.value.trim().length > 0
+    ))
+    : parsed;
+  return normalizeLanguageChain(runnable, {
+    allowEmptyLanguage: !formatOnly,
+    requireRunnable: true,
+  });
+};
+
 const normalizeTranslatedSubtitle = (subtitle, index) => {
   const field = `baseSubtitles[${index}]`;
   const descriptors = dataDescriptors(subtitle, field);

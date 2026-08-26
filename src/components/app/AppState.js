@@ -4,9 +4,8 @@ import { getThemeWithFallback } from '../../utils/systemDetection';
 import { useSubtitles } from '../../hooks/useSubtitles';
 import { getUserProvidedSubtitlesSync } from '../../utils/userSubtitlesStore';
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
-import { PROMPT_PRESETS } from '../../services/geminiService';
 import { cleanupInvalidBlobUrls } from '../../utils/videoUtils';
-import { DEFAULT_GEMINI_MODEL_ID, migrateStoredGeminiModels } from '../../config/geminiModels';
+import { migrateStoredGeminiModels } from '../../config/geminiModels';
 import {
   getCredentialAvailability,
   initializeCredentialState,
@@ -18,6 +17,13 @@ import { readDownloadCookiePreference } from '../../platform/downloadCookiePrefe
 const hasProjectSubtitles = (value) => (
   typeof value === 'string' && value.trim() !== ''
 );
+
+const initialActiveTab = () => {
+  const preferred = localStorage.getItem('userPreferredTab');
+  if (preferred) return preferred;
+  const legacy = localStorage.getItem('lastActiveTab');
+  return legacy && legacy !== 'file-upload' ? legacy : 'unified-url';
+};
 
 /**
  * Custom hook for managing application state
@@ -34,7 +40,7 @@ export const useAppState = () => {
 
   // UI state
   const [showSettings, setShowSettings] = useState(false);
-  const [activeTab, setActiveTab] = useState(localStorage.getItem('userPreferredTab') || 'unified-url');
+  const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [theme, setTheme] = useState(() => getThemeWithFallback());
   const [timeFormat, setTimeFormat] = useState(localStorage.getItem('time_format') || 'hms');
   const [showWaveformLongVideos, setShowWaveformLongVideos] = useState(localStorage.getItem('show_waveform_long_videos') === 'true');
@@ -120,6 +126,7 @@ export const useAppState = () => {
     subtitlesData,
     setSubtitlesData,
     status,
+    statusEventId,
     setStatus,
     isGenerating,
     generateSubtitles,
@@ -133,38 +140,6 @@ export const useAppState = () => {
   // Initialize default values for settings
   useEffect(() => {
     migrateStoredGeminiModels(localStorage);
-    // Migration: If user doesn't have userPreferredTab but has lastActiveTab, migrate it
-    // But only if lastActiveTab is not 'file-upload' (which would be from auto-conversion)
-    if (!localStorage.getItem('userPreferredTab')) {
-      const lastTab = localStorage.getItem('lastActiveTab');
-      if (lastTab && lastTab !== 'file-upload') {
-        localStorage.setItem('userPreferredTab', lastTab);
-      } else {
-        // Default to unified-url if no valid preference exists
-        localStorage.setItem('userPreferredTab', 'unified-url');
-      }
-    }
-
-    // Set onboarding as completed
-    localStorage.setItem('onboarding_completed', 'true');
-
-    // Set default preset if not already set
-    if (!localStorage.getItem('selected_preset_id')) {
-      localStorage.setItem('selected_preset_id', 'general');
-    }
-
-    // Set default model if not already set
-    if (!localStorage.getItem('gemini_model')) {
-      localStorage.setItem('gemini_model', DEFAULT_GEMINI_MODEL_ID);
-    }
-
-    // Set default transcription prompt if not already set
-    if (!localStorage.getItem('transcription_prompt')) {
-      const defaultPreset = PROMPT_PRESETS.find(preset => preset.id === 'general');
-      if (defaultPreset) {
-        localStorage.setItem('transcription_prompt', defaultPreset.prompt);
-      }
-    }
 
     // Clear status messages and video analysis state on mount
     // Clear any lingering status messages on page load
@@ -267,7 +242,7 @@ export const useAppState = () => {
 
     // Subtitles hook
     subtitlesData, setSubtitlesData,
-    status, setStatus,
+    status, statusEventId, setStatus,
     isGenerating,
     generateSubtitles,
     retryGeneration,

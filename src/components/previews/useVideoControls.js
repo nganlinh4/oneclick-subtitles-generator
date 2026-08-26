@@ -21,17 +21,17 @@ const useVideoControls = ({
   hideControlsTimeoutRef,
   videoUrl,
   videoDuration,
-  isDragging,
   isLoaded,
   isFullscreen,
   handleFullscreenExit,
-  setCurrentTime,
   setDuration,
   setVideoDuration,
   setVolume,
   setIsMuted,
   setShowCustomControls,
   setControlsVisible,
+  onDirectionalSeek,
+  seekBy,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -51,15 +51,13 @@ const useVideoControls = ({
       setVolume(videoElement.volume);
       setIsMuted(videoElement.muted);
       setShowCustomControls(true);
+      if (videoElement.buffered.length > 0 && videoElement.duration > 0) {
+        const bufferedEnd = videoElement.buffered.end(videoElement.buffered.length - 1);
+        setBufferedProgress((bufferedEnd / videoElement.duration) * 100);
+      }
     };
 
-    const handleTimeUpdate = () => {
-      // Only update currentTime if we're not dragging
-      if (!isDragging) {
-        setCurrentTime(videoElement.currentTime); // Use existing currentTime prop
-      }
-
-      // Update buffered progress
+    const updateBufferedProgress = () => {
       if (videoElement.buffered.length > 0 && videoDuration > 0) {
         const bufferedEnd = videoElement.buffered.end(videoElement.buffered.length - 1);
         setBufferedProgress((bufferedEnd / videoDuration) * 100);
@@ -97,7 +95,7 @@ const useVideoControls = ({
 
     // Add video event listeners
     videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-    videoElement.addEventListener('timeupdate', handleTimeUpdate);
+    videoElement.addEventListener('progress', updateBufferedProgress);
     videoElement.addEventListener('play', handlePlay);
     videoElement.addEventListener('pause', handlePause);
     videoElement.addEventListener('volumechange', handleVolumeChange);
@@ -108,7 +106,7 @@ const useVideoControls = ({
 
     return () => {
       videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+      videoElement.removeEventListener('progress', updateBufferedProgress);
       videoElement.removeEventListener('play', handlePlay);
       videoElement.removeEventListener('pause', handlePause);
       videoElement.removeEventListener('volumechange', handleVolumeChange);
@@ -120,9 +118,7 @@ const useVideoControls = ({
   }, [
     videoRef,
     videoUrl,
-    isDragging,
     setDuration,
-    setCurrentTime,
     videoDuration,
     setVideoDuration,
     setVolume,
@@ -137,16 +133,25 @@ const useVideoControls = ({
       const validKeys = ['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyM', 'KeyF', 'KeyK'];
       // Safely check event.key - it might be undefined during browser autocomplete
       const eventKey = event.key ? event.key.toLowerCase() : '';
-      if (!validKeys.includes(event.code) && !['j', 'l', 'k', 'm', 'f', ' '].includes(eventKey)) return;
+      if (!validKeys.includes(event.code) && !['k', 'm', 'f', ' '].includes(eventKey)) return;
 
-      // Don't handle spacebar if user is typing in an input field
-      const activeElement = document.activeElement;
-      if (activeElement && (
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.contentEditable === 'true' ||
-        activeElement.isContentEditable
-      )) {
+      // Global playback shortcuts must never steal an application or browser command. In
+      // particular, Ctrl+A/arrow selection and Alt+arrow navigation belong to the focused owner.
+      if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return;
+
+      // Do not consume arrows/space from an interactive or editable owner. Checking the event
+      // target as well as activeElement covers synthetic clicks, range sliders, dropdowns and
+      // focus transitions which have not reached document.activeElement yet.
+      const target = event.target instanceof Element ? event.target : null;
+      const activeElement = document.activeElement instanceof Element
+        ? document.activeElement
+        : null;
+      const interactiveSelector = [
+        'input', 'textarea', 'select', 'button', '[contenteditable="true"]',
+        '[role="slider"]', '[role="spinbutton"]', '[role="combobox"]',
+        '[role="menu"]', '[role="menuitem"]', '[role="option"]',
+      ].join(',');
+      if (target?.closest(interactiveSelector) || activeElement?.closest(interactiveSelector)) {
         return;
       }
 
@@ -166,8 +171,8 @@ const useVideoControls = ({
       const videoPreviewPanel = document.querySelector('.video-preview-panel');
       if (videoRenderingSection && videoPreviewPanel) {
         // Check if the user is interacting with the video rendering section
-        const isInVideoRenderingArea = event.target.closest('.video-rendering-section') ||
-                                      event.target.closest('.video-preview-panel');
+        const isInVideoRenderingArea = target?.closest('.video-rendering-section') ||
+                                      target?.closest('.video-preview-panel');
         if (isInVideoRenderingArea) {
           return; // Let the render tab's preview handle its own spacebar events
         }
@@ -216,6 +221,16 @@ const useVideoControls = ({
             videoElement.muted = true;
             setIsMuted(true);
           }
+          break;
+
+        case 'ArrowLeft':
+          seekBy(-5, { reason: 'global-arrow' });
+          onDirectionalSeek?.('backward');
+          break;
+
+        case 'ArrowRight':
+          seekBy(5, { reason: 'global-arrow' });
+          onDirectionalSeek?.('forward');
           break;
 
         case 'KeyM':
@@ -267,7 +282,17 @@ const useVideoControls = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isLoaded, videoDuration, handleFullscreenExit, videoRef, videoContainerRef, setVolume, setIsMuted]);
+  }, [
+    isLoaded,
+    videoDuration,
+    handleFullscreenExit,
+    videoRef,
+    videoContainerRef,
+    setVolume,
+    setIsMuted,
+    onDirectionalSeek,
+    seekBy,
+  ]);
 
   // Mouse movement with auto-hide in fullscreen
   useEffect(() => {

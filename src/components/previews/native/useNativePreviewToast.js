@@ -7,7 +7,13 @@ import { useFontReadiness } from '../../../services/useFontReadiness';
 const TOAST_KEY = 'native-subtitle-preview';
 
 /** Keep diagnostics out of the picture while making a real refusal visible and recoverable. */
-const useNativePreviewToast = ({ error, dormant = false, onRetry = null, t }) => {
+const useNativePreviewToast = ({
+  error,
+  dormant = false,
+  fontBlocked = false,
+  onRetry = null,
+  t,
+}) => {
   const font = useFontReadiness();
 
   useEffect(() => {
@@ -18,8 +24,11 @@ const useNativePreviewToast = ({ error, dormant = false, onRetry = null, t }) =>
 
     const timer = setTimeout(() => {
       const code = error?.nativeCode ?? error?.code ?? null;
-      const fontBlocked = code === null && font.published && !font.managedPackInstalled;
-      const fontPreparing = fontBlocked && (
+      const managedFontBlocked = code === null
+        && fontBlocked
+        && font.published
+        && !font.managedPackInstalled;
+      const fontPreparing = managedFontBlocked && (
         font.readiness === FONT_READINESS_STATE.resolving
         || font.readiness === FONT_READINESS_STATE.repairing
       );
@@ -27,7 +36,7 @@ const useNativePreviewToast = ({ error, dormant = false, onRetry = null, t }) =>
         ? t('videoPreview.renderError', 'Error rendering subtitles: {{error}}', { error: code })
         : fontPreparing
           ? t('videoPreview.subtitleFontPreparing', 'Preparing the subtitle font. The preview will appear when it is ready.')
-          : fontBlocked
+          : managedFontBlocked
             ? t(
               'videoPreview.subtitleFontUnavailable',
               'The subtitle font could not be installed ({{reason}}), so subtitles cannot be drawn.',
@@ -36,7 +45,7 @@ const useNativePreviewToast = ({ error, dormant = false, onRetry = null, t }) =>
             : t('videoPreview.subtitlePreviewUnavailable', 'Subtitle preview is not ready. Try reopening this video.');
       const button = code !== null && onRetry !== null
         ? { text: t('videoPreview.retrySubtitlePreview', 'Retry'), onClick: onRetry }
-        : fontBlocked && font.retryable
+        : managedFontBlocked && font.retryable
           ? { text: t('videoPreview.retrySubtitleFont', 'Install again'), onClick: retryManagedFont }
           : undefined;
       window.addToast?.(
@@ -49,7 +58,7 @@ const useNativePreviewToast = ({ error, dormant = false, onRetry = null, t }) =>
     }, error === null ? 1200 : 0);
 
     return () => clearTimeout(timer);
-  }, [dormant, error, font, onRetry, t]);
+  }, [dormant, error, font, fontBlocked, onRetry, t]);
 };
 
 export default useNativePreviewToast;

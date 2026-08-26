@@ -24,7 +24,7 @@
  */
 
 import { fail, round4 } from './glyphAtlasCore';
-import { buildProbeFont } from './glyphAtlasRequest';
+import { buildCssFont, buildProbeFont } from './glyphAtlasRequest';
 import { readMeasurement } from './glyphAtlasSurface';
 
 /**
@@ -67,6 +67,28 @@ export const probeFace = (surface, face, families) => {
       ).width
     ),
   }));
+};
+
+/**
+ * One exact-face verdict shared by discovery and baking.
+ *
+ * A positive `FontFaceSet.check()` result is not proof that the named face supplied the glyphs:
+ * browsers may return `true` when the request can be satisfied through fallback. The metric pairs
+ * above are the authority. `isFaceLoaded()` is deliberately consulted only after those metrics and
+ * can only veto an otherwise exact result, which keeps an absent FontFaceSet from becoming a false
+ * negative while preserving a real `false` as a refusal.
+ */
+export const inspectExactFace = (surface, face, families) => {
+  const probes = probeFace(surface, face, families);
+  if (probes.every((probe) => probe.aloneWidthPx === probe.chainedWidthPx)) {
+    return Object.freeze({ exact: false, reason: 'fallback-metrics', probes });
+  }
+  const cssFont = buildCssFont(face, families);
+  if (typeof surface.isFaceLoaded === 'function'
+      && surface.isFaceLoaded(cssFont, FACE_PROBE_TEXT) === false) {
+    return Object.freeze({ exact: false, reason: 'font-face-set-veto', probes });
+  }
+  return Object.freeze({ exact: true, reason: null, probes });
 };
 
 /** Whether the engine fell back to another face for one cell's text. */

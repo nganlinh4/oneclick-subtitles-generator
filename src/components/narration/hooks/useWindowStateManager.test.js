@@ -66,3 +66,33 @@ test('a source-radio change cannot relabel the visible narration results', async
     expect.objectContaining({ source: 'translated', results: [originalResult] }),
   );
 });
+
+test('a blank editor draft clears stale grouping without reporting invalid provider data', async () => {
+  const setGroupedSubtitles = vi.fn();
+  const setUseGroupedSubtitles = vi.fn();
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  try {
+    renderHook(() => useWindowStateManager({
+      generationResults: [],
+      generationResultSource: 'original',
+      subtitleSource: 'original',
+      narrationMethod: 'gtts',
+      originalSubtitles: [{ id: 1, text: '', start: 0, end: 2 }],
+      translatedSubtitles: [],
+      subtitles: [],
+      useGroupedSubtitles: true,
+      groupedSubtitles: [{ id: 1, text: 'stale', start: 0, end: 2 }],
+      setGroupedSubtitles,
+      setUseGroupedSubtitles,
+      groupingIntensity: 'balanced',
+    }));
+
+    await waitFor(() => expect(setGroupedSubtitles).toHaveBeenCalledWith(null));
+    expect(setUseGroupedSubtitles).toHaveBeenCalledWith(false);
+    expect(groupingMocks.loadProjectSubtitleGrouping).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  } finally {
+    consoleError.mockRestore();
+  }
+});

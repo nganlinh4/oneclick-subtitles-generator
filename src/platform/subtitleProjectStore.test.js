@@ -1,7 +1,7 @@
 import {
   createSubtitleProjectStore,
+  MAX_SUBTITLE_PROJECT_ALIASES,
   SUBTITLE_CACHE_TRACK_LABEL,
-  SUBTITLE_PROJECT_INDEX_KEY,
 } from './subtitleProjectStore';
 import {
   readLegacySubtitleTrack,
@@ -51,8 +51,8 @@ const snapshotWithRows = (stateVersion, rows) => replaceLegacySubtitleTrack(
 
 it('creates a project alias once and commits cache rows through the project mutation queue', async () => {
   const invokeCommand = vi.fn(async (command) => {
-    if (command === 'setting_get') return null;
-    if (command === 'setting_set') return undefined;
+    if (command === 'subtitle_project_index_get') return null;
+    if (command === 'subtitle_project_index_set') return undefined;
     throw new Error(`Unexpected command: ${command}`);
   });
   const projects = {
@@ -66,7 +66,7 @@ it('creates a project alias once and commits cache rows through the project muta
       return { snapshot: { ...candidate, stateVersion: 1 } };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 123 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 123 });
 
   const saved = await store.saveSubtitles('cache-id', [
     { id: 1, start: 1.25, end: 2.5, text: 'Stored' },
@@ -83,9 +83,8 @@ it('creates a project alias once and commits cache rows through the project muta
     text: 'Stored',
   });
   expect(projects.createProject).toHaveBeenCalledWith('cache-id');
-  expect(invokeCommand).toHaveBeenCalledWith('setting_set', {
-    key: SUBTITLE_PROJECT_INDEX_KEY,
-    value: {
+  expect(invokeCommand).toHaveBeenCalledWith('subtitle_project_index_set', {
+    index: {
       schemaVersion: 1,
       activeCacheId: 'cache-id',
       entries: [{ cacheId: 'cache-id', projectId: PROJECT_ID, lastOpenedAt: 123 }],
@@ -95,14 +94,14 @@ it('creates a project alias once and commits cache rows through the project muta
 
 it('refuses to mutate an alias that no longer resolves to the captured project', async () => {
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValue(snapshot()),
     createProject: vi.fn(),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 123 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 123 });
 
   await expect(store.saveSubtitles(
     'cache-id',
@@ -120,14 +119,14 @@ it('loads seconds-based rows from an existing canonical cache project', async ()
     entries: [{ cacheId: 'cache-id', projectId: PROJECT_ID, lastOpenedAt: 100 }],
   };
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? persistedIndex : undefined
+    command === 'subtitle_project_index_get' ? persistedIndex : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValue(snapshot(3, [track()])),
     createProject: vi.fn(),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await expect(store.loadSubtitles('cache-id')).resolves.toEqual([
     { id: 1, start: 1.25, end: 2.5, text: 'Stored' },
@@ -145,14 +144,14 @@ it('rejects an exact-project cache read when its project was deleted before alia
     tracks: [],
   };
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
     createProject: vi.fn().mockResolvedValue(replacement),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 300 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 300 });
 
   await expect(store.loadExactProjectSubtitles('cache-id', PROJECT_ID))
     .rejects.toMatchObject({ code: 'projectScopeMismatch' });
@@ -165,23 +164,22 @@ it('rejects an exact-project cache read when its project was deleted before alia
 
 it('recovers a legacy-sync serialized project index without replacing its project', async () => {
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? JSON.stringify(existingIndex()) : undefined
+    command === 'subtitle_project_index_get' ? JSON.stringify(existingIndex()) : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValue(snapshot(3, [track()])),
     createProject: vi.fn(),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await expect(store.loadSubtitles('cache-id')).resolves.toEqual([
     { id: 1, start: 1.25, end: 2.5, text: 'Stored' },
   ]);
   expect(projects.loadProject).toHaveBeenCalledWith(PROJECT_ID);
   expect(projects.createProject).not.toHaveBeenCalled();
-  expect(invokeCommand).toHaveBeenCalledWith('setting_set', {
-    key: SUBTITLE_PROJECT_INDEX_KEY,
-    value: expect.objectContaining({ activeCacheId: 'cache-id' }),
+  expect(invokeCommand).toHaveBeenCalledWith('subtitle_project_index_set', {
+    index: expect.objectContaining({ activeCacheId: 'cache-id' }),
   });
 });
 
@@ -192,7 +190,7 @@ it('clears only the cached subtitle track through an optimistic project revision
     entries: [{ cacheId: 'cache-id', projectId: PROJECT_ID, lastOpenedAt: 100 }],
   };
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? persistedIndex : undefined
+    command === 'subtitle_project_index_get' ? persistedIndex : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValue(snapshot(3, [track()])),
@@ -206,7 +204,7 @@ it('clears only the cached subtitle track through an optimistic project revision
       return { snapshot: { ...candidate, stateVersion: 4 } };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await expect(store.clearSubtitles('cache-id')).resolves.toBe(true);
   expect(projects.mutateProject).toHaveBeenCalledTimes(1);
@@ -215,14 +213,14 @@ it('clears only the cached subtitle track through an optimistic project revision
 
 it('does not create or commit a project when clearing a cache miss', async () => {
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? null : undefined
+    command === 'subtitle_project_index_get' ? null : undefined
   ));
   const projects = {
     loadProject: vi.fn(),
     createProject: vi.fn(),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects });
+  const store = createTestStore({ invokeCommand, projects });
 
   await expect(store.clearSubtitles('not-cached')).resolves.toBe(false);
   expect(projects.createProject).not.toHaveBeenCalled();
@@ -231,14 +229,14 @@ it('does not create or commit a project when clearing a cache miss', async () =>
 
 it('does not create a project during a cache miss', async () => {
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? null : undefined
+    command === 'subtitle_project_index_get' ? null : undefined
   ));
   const projects = {
     loadProject: vi.fn(),
     createProject: vi.fn(),
     mutateProject: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects });
+  const store = createTestStore({ invokeCommand, projects });
 
   await expect(store.loadSubtitles('not-cached')).resolves.toBeNull();
   expect(projects.loadProject).not.toHaveBeenCalled();
@@ -253,7 +251,7 @@ it('atomically replaces only the captured segment while preserving a racing outs
     { start: 9, end: 10, text: 'after' },
   ]);
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -291,7 +289,7 @@ it('atomically replaces only the captured segment while preserving a racing outs
       };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
   const revision = await store.captureSegmentRevision(
     'cache-id',
     { start: 5, end: 8 },
@@ -321,7 +319,7 @@ it('rejects an overlapping manual edit instead of overwriting the newer segment'
     { start: 5, end: 6, text: 'old target' },
   ]);
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -335,7 +333,7 @@ it('rejects an overlapping manual edit instead of overwriting the newer segment'
     })),
     commitProjectTrack: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
   const revision = await store.captureSegmentRevision('cache-id', { start: 5, end: 8 });
   current = snapshotWithRows(5, [
     { start: 5, end: 6, text: 'newer manual target edit' },
@@ -363,7 +361,7 @@ it('repairs an alias whose project was removed before creating a replacement', a
     tracks: [],
   };
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? persistedIndex : undefined
+    command === 'subtitle_project_index_get' ? persistedIndex : undefined
   ));
   const projects = {
     loadProject: vi.fn().mockResolvedValue(null),
@@ -373,7 +371,7 @@ it('repairs an alias whose project was removed before creating a replacement', a
       return { snapshot: { ...candidate, stateVersion: 1 } };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 300 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 300 });
 
   await store.saveSubtitles('cache-id', [{ start: 0, end: 1, text: 'New' }]);
 
@@ -389,7 +387,7 @@ it('repairs an alias whose project was removed before creating a replacement', a
 it('commits a namespaced editor revision from the exact expected durable track', async () => {
   let current = snapshot(3, [track()]);
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -424,7 +422,7 @@ it('commits a namespaced editor revision from the exact expected durable track',
       };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   const result = await store.commitEditorRevision(
     'cache-id',
@@ -447,7 +445,7 @@ it('commits a namespaced editor revision from the exact expected durable track',
 it('commits an unsaved editor baseline and its first edit atomically', async () => {
   let current = snapshot();
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -478,7 +476,7 @@ it('commits an unsaved editor baseline and its first edit atomically', async () 
       };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await store.commitEditorRevision(
     'cache-id',
@@ -495,10 +493,291 @@ it('commits an unsaved editor baseline and its first edit atomically', async () 
   expect(current.tracks[0].cues[0].text).toBe('After');
 });
 
+// The product command mutates the native alias index atomically. Most tests in this file predate
+// that command and intentionally focus on project/track behavior, so this adapter gives their
+// existing read/write spy a faithful in-memory native mutation boundary. Dedicated tests below
+// exercise reordering and exact-owner removal through the public store API.
+const emulateNativeAliasCommands = (legacyInvoke) => {
+  let current = null;
+  const ensureCurrent = async () => {
+    if (current !== null) return current;
+    const raw = await legacyInvoke('subtitle_project_index_get', {});
+    if (typeof raw === 'string') {
+      try { current = JSON.parse(raw); } catch { current = null; }
+    } else current = raw;
+    if (!current?.entries) current = { schemaVersion: 1, activeCacheId: null, entries: [] };
+    current = structuredClone(current);
+    return current;
+  };
+  return vi.fn(async (command, payload) => {
+    if (command === 'subtitle_project_index_get') return ensureCurrent();
+    if (command === 'subtitle_project_alias_activate') {
+      const index = await ensureCurrent();
+      const { entry } = payload;
+      index.entries = index.entries.filter(candidate => (
+        candidate.cacheId !== entry.cacheId && candidate.projectId !== entry.projectId
+      ));
+      index.entries.sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
+      index.entries = index.entries.slice(0, MAX_SUBTITLE_PROJECT_ALIASES - 1);
+      index.entries.push({ ...entry });
+      index.entries.sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
+      index.activeCacheId = entry.cacheId;
+      await legacyInvoke('subtitle_project_index_set', { index: structuredClone(index) });
+      return structuredClone(index);
+    }
+    if (command === 'subtitle_project_alias_remove') {
+      const index = await ensureCurrent();
+      const before = index.entries.length;
+      index.entries = index.entries.filter(entry => (
+        entry.cacheId !== payload.cacheId || entry.projectId !== payload.expectedProjectId
+      ));
+      const changed = index.entries.length !== before;
+      if (changed && index.activeCacheId === payload.cacheId) index.activeCacheId = null;
+      if (changed) {
+        await legacyInvoke('subtitle_project_index_set', { index: structuredClone(index) });
+      }
+      return { changed, index: structuredClone(index) };
+    }
+    return legacyInvoke(command, payload);
+  });
+};
+
+const createTestStore = (options) => createSubtitleProjectStore({
+  ...options,
+  invokeCommand: emulateNativeAliasCommands(options.invokeCommand),
+});
+
+it('rebuilds a reset alias from one exact native project without creating or content matching', async () => {
+  const PROJECT_B = '01890f39-7b62-7c4e-8c9a-000000000211';
+  const projectB = {
+    metadata: { id: PROJECT_B, name: 'same bytes, distinct project' },
+    stateVersion: 9,
+    media: [{ id: '01890f39-7b62-7c4e-8c9a-000000000212', contentHash: 'same' }],
+    tracks: [],
+  };
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async id => (id === PROJECT_B ? projectB : snapshot())),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+  };
+  const store = createTestStore({ invokeCommand, projects, now: () => 444 });
+
+  await expect(store.adoptExactProjectAlias('cache-id', PROJECT_B)).resolves.toEqual({
+    cacheId: 'cache-id', projectId: PROJECT_B, snapshot: projectB,
+  });
+
+  expect(projects.createProject).not.toHaveBeenCalled();
+  expect(projects.loadProject).toHaveBeenCalledExactlyOnceWith(PROJECT_B);
+  expect(invokeCommand).toHaveBeenCalledWith('subtitle_project_index_set', {
+    index: {
+      schemaVersion: 1,
+      activeCacheId: 'cache-id',
+      entries: [{ cacheId: 'cache-id', projectId: PROJECT_B, lastOpenedAt: 444 }],
+    },
+  });
+});
+
+it('uses the authoritative native cue identity when rapidly editing an idless inserted row', async () => {
+  const blankTrack = {
+    ...track(),
+    cues: [{
+      ...track().cues[0],
+      startMs: 0,
+      endMs: 2_000,
+      text: '',
+    }],
+  };
+  let current = snapshot(6, [blankTrack]);
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion: 4,
+      diverged: false,
+      canUndo: true,
+      canRedo: false,
+      undoReason: 'OSG lyrics editor v1: insert',
+      redoReason: null,
+    })),
+    commitProjectTrack: vi.fn(async (request) => {
+      expect(request.beforeTrack).toEqual(blankTrack);
+      expect(request.beforeTrack.cues[0].id).toBe(CUE_ID);
+      current = {
+        ...current,
+        stateVersion: 7,
+        tracks: [request.afterTrack],
+      };
+      return {
+        snapshot: current,
+        status: {
+          stateVersion: 7,
+          historyVersion: 5,
+          diverged: false,
+          canUndo: true,
+          canRedo: false,
+          undoReason: request.reason,
+          redoReason: null,
+        },
+      };
+    }),
+  };
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
+
+  await store.commitEditorRevision(
+    'cache-id',
+    [{ start: 0, end: 2, text: '' }],
+    [{ start: 0, end: 2, text: 'A manually created subtitle' }],
+    'OSG lyrics editor v1: text'
+  );
+
+  expect(projects.commitProjectTrack).toHaveBeenCalledOnce();
+  expect(current.tracks[0].cues[0].text).toBe('A manually created subtitle');
+});
+
+it('rebinds shifted local ordinals across insert and a following edit', async () => {
+  const cueIds = [
+    '01890f39-7b62-7c4e-8c9a-000000000211',
+    '01890f39-7b62-7c4e-8c9a-000000000212',
+    '01890f39-7b62-7c4e-8c9a-000000000213',
+  ];
+  const insertedId = '01890f39-7b62-7c4e-8c9a-000000000214';
+  const initialRows = [
+    { id: 1, start: 0, end: 1, text: 'A' },
+    { id: 2, start: 2, end: 3, text: 'B' },
+    { id: 3, start: 4, end: 5, text: 'C' },
+  ];
+  const insertedRows = [
+    initialRows[0],
+    { id: insertedId, start: 1, end: 2, text: '' },
+    initialRows[1],
+    initialRows[2],
+  ];
+  const initialTrack = {
+    id: TRACK_ID,
+    label: SUBTITLE_CACHE_TRACK_LABEL,
+    origin: 'legacyJson',
+    cues: initialRows.map((row, index) => ({
+      id: cueIds[index],
+      ordinal: index + 1,
+      startMs: row.start * 1_000,
+      endMs: row.end * 1_000,
+      text: row.text,
+      sourceId: null,
+    })),
+  };
+  let current = snapshot(3, [initialTrack]);
+  let historyVersion = 0;
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion,
+      diverged: false,
+      canUndo: historyVersion > 0,
+      canRedo: false,
+      undoReason: historyVersion > 0 ? 'OSG lyrics editor v1: insert' : null,
+      redoReason: null,
+    })),
+    commitProjectTrack: vi.fn(async (request) => {
+      expect(request.beforeTrack).toEqual(current.tracks[0]);
+      historyVersion += 1;
+      current = {
+        ...current,
+        stateVersion: current.stateVersion + 1,
+        tracks: [request.afterTrack],
+      };
+      return {
+        snapshot: current,
+        status: {
+          stateVersion: current.stateVersion,
+          historyVersion,
+          diverged: false,
+          canUndo: true,
+          canRedo: false,
+          undoReason: request.reason,
+          redoReason: null,
+        },
+      };
+    }),
+  };
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
+
+  await store.commitEditorRevision(
+    'cache-id', initialRows, insertedRows, 'OSG lyrics editor v1: insert'
+  );
+  expect(current.tracks[0].cues.map((cue) => cue.id)).toEqual([
+    cueIds[0], insertedId, cueIds[1], cueIds[2],
+  ]);
+
+  const editedRows = insertedRows.map((row, index) => (
+    index === 3 ? { ...row, text: 'C edited after the insert' } : row
+  ));
+  await store.commitEditorRevision(
+    'cache-id', insertedRows, editedRows, 'OSG lyrics editor v1: text'
+  );
+
+  expect(projects.commitProjectTrack).toHaveBeenCalledTimes(2);
+  expect(current.tracks[0].cues.map((cue) => cue.id)).toEqual([
+    cueIds[0], insertedId, cueIds[1], cueIds[2],
+  ]);
+  expect(current.tracks[0].cues[3].text).toBe('C edited after the insert');
+});
+
+it('maps a genuine native track conflict to authoritative subtitle rows', async () => {
+  const current = snapshot(8, [track()]);
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    mutateProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion: 3,
+      diverged: false,
+      canUndo: true,
+      canRedo: false,
+      undoReason: 'OSG lyrics editor v1: insert',
+      redoReason: null,
+    })),
+    commitProjectTrack: vi.fn(async () => {
+      const error = new Error('native CAS refused a newer writer');
+      error.code = 'staleProjectVersion';
+      error.authoritativeSnapshot = current;
+      throw error;
+    }),
+  };
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
+
+  await expect(store.commitEditorRevision(
+    'cache-id',
+    [{ id: 1, start: 1.25, end: 2.5, text: 'Stored' }],
+    [{ id: 1, start: 1.25, end: 2.5, text: 'Edited' }],
+    'OSG lyrics editor v1: text'
+  )).rejects.toMatchObject({
+    code: 'subtitleHistoryDiverged',
+    authoritativeRows: [{ id: 1, start: 1.25, end: 2.5, text: 'Stored' }],
+  });
+});
+
 it('bootstraps before deleting an unsaved last row even though the empty root matches the result', async () => {
   let current = snapshot();
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -526,7 +805,7 @@ it('bootstraps before deleting an unsaved last row even though the empty root ma
       },
     })),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await store.commitEditorRevision(
     'cache-id',
@@ -548,7 +827,7 @@ it('bootstraps before deleting an unsaved last row even though the empty root ma
 it('refuses a stale same-track overwrite and returns only canonical authoritative rows', async () => {
   const current = snapshot(8, [track()]);
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -565,7 +844,7 @@ it('refuses a stale same-track overwrite and returns only canonical authoritativ
     })),
     commitProjectTrack: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await expect(store.commitEditorRevision(
     'cache-id',
@@ -582,7 +861,7 @@ it('refuses a stale same-track overwrite and returns only canonical authoritativ
 it('represents deletion of the last row by removing the canonical track', async () => {
   let current = snapshot(3, [track()]);
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const projects = {
     loadProject: vi.fn(async () => current),
@@ -613,7 +892,7 @@ it('represents deletion of the last row by removing the canonical track', async 
       };
     }),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await store.commitEditorRevision(
     'cache-id',
@@ -631,7 +910,7 @@ it('passes the independent cursor version and reason through guarded navigation'
     cues: [{ ...track().cues[0], text: 'Parent' }],
   };
   const invokeCommand = vi.fn(async (command) => (
-    command === 'setting_get' ? existingIndex() : undefined
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
   ));
   const status = {
     stateVersion: 9,
@@ -661,7 +940,7 @@ it('passes the independent cursor version and reason through guarded navigation'
     })),
     redoProjectTrack: vi.fn(),
   };
-  const store = createSubtitleProjectStore({ invokeCommand, projects, now: () => 200 });
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
   await expect(store.undoEditorRevision(
     'cache-id',
@@ -677,4 +956,25 @@ it('passes the independent cursor version and reason through guarded navigation'
     expectedHistoryVersion: 4,
     expectedReason: 'OSG lyrics editor v1: text',
   });
+});
+
+it('uses the same UTF-16 and Unicode control-character cache bounds as native storage', async () => {
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? null : undefined
+  ));
+  const store = createTestStore({
+    invokeCommand,
+    projects: {
+      loadProject: vi.fn(),
+      createProject: vi.fn(),
+      mutateProject: vi.fn(),
+    },
+  });
+
+  await expect(store.resolveProjectForCache('😀'.repeat(4_096), { create: false }))
+    .resolves.toBeNull();
+  expect(() => store.resolveProjectForCache(`${'😀'.repeat(4_096)}x`, { create: false }))
+    .toThrow(expect.objectContaining({ code: 'invalidCacheId' }));
+  expect(() => store.resolveProjectForCache('cache\u0085id', { create: false }))
+    .toThrow(expect.objectContaining({ code: 'invalidCacheId' }));
 });

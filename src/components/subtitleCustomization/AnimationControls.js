@@ -4,6 +4,7 @@ import CustomDropdown from '../common/CustomDropdown';
 import { formatDecimal } from '../../utils/formatUtils';
 import { getAnimationTypes, getAnimationEasing } from './fontOptions';
 import { defaultCustomization } from '../SubtitleCustomizationPanel';
+import { patchSubtitleCustomization } from './customizationUpdate';
 
 const AnimationControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
@@ -13,7 +14,7 @@ const AnimationControls = ({ customization, onChange }) => {
   const animationEasing = getAnimationEasing(t);
 
   const updateCustomization = (updates) => {
-    onChange({ ...customization, ...updates, preset: 'custom' });
+    onChange(patchSubtitleCustomization(updates));
   };
 
   return (
@@ -21,16 +22,18 @@ const AnimationControls = ({ customization, onChange }) => {
       {/* Animation Type */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.animationType', 'Animation Type')}</label>
+          <label htmlFor="subtitle-animation-type">{t('videoRendering.animationType', 'Animation Type')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="subtitle-animation-type"
             value={customization.animationType}
             onChange={(value) => updateCustomization({ animationType: value })}
             options={animationTypes.map(type => ({
               value: type.value,
               label: type.label
             }))}
+            dataSetting="animation-type"
             placeholder={t('videoRendering.selectAnimation', 'Select Animation')}
           />
         </div>
@@ -39,16 +42,18 @@ const AnimationControls = ({ customization, onChange }) => {
       {/* Animation Easing */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.animationEasing', 'Animation Easing')}</label>
+          <label htmlFor="subtitle-animation-easing">{t('videoRendering.animationEasing', 'Animation Easing')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="subtitle-animation-easing"
             value={customization.animationEasing}
             onChange={(value) => updateCustomization({ animationEasing: value })}
             options={animationEasing.map(easing => ({
               value: easing.value,
               label: easing.label
             }))}
+            dataSetting="animation-easing"
             placeholder={t('videoRendering.selectEasing', 'Select Easing')}
           />
         </div>

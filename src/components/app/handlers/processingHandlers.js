@@ -121,16 +121,6 @@ export const createProcessingHandlers = ({
 
       dbg("[ProcessWithOptions] Passing to generateSubtitles - segmentProcessingDelay:", subtitleOptions.segmentProcessingDelay);
 
-      // Add custom prompt if provided
-      if (options.customPrompt) {
-        // Store the custom prompt temporarily for this processing session
-        sessionStorage.setItem("current_session_prompt", options.customPrompt);
-        dbg(
-          "[ProcessWithOptions] Using custom prompt for this session:",
-          options.promptPreset
-        );
-      }
-
       // Add user-provided subtitles ONLY when the timing-generation preset is selected
       if (options.promptPreset === 'timing-generation') {
         const suppliedSubtitles = options.useUserProvidedSubtitles
@@ -170,11 +160,9 @@ export const createProcessingHandlers = ({
         }
         return generated === true;
       } finally {
-        // Clear the session prompt after processing
+        // Clean up prompt bytes left by pre-authority versions. Current requests
+        // carry an immutable promptContext and never persist a derived prompt.
         sessionStorage.removeItem("current_session_prompt");
-        dbg(
-          "[ProcessWithOptions] Cleared session prompt after processing"
-        );
 
         // Clear processing state when done
         setIsProcessingSegment(false);

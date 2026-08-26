@@ -241,10 +241,10 @@ const VideoRenderingSection = ({
 
   // Get current subtitles based on selection
   const getSubtitlesForSource = (source) => {
-    if (source === 'translated' && translatedSubtitles && translatedSubtitles.length > 0) {
-      return translatedSubtitles;
+    if (source === 'translated') {
+      return Array.isArray(translatedSubtitles) ? translatedSubtitles : [];
     }
-    return subtitlesData || [];
+    return Array.isArray(subtitlesData) ? subtitlesData : [];
   };
   const getCurrentSubtitles = () => getSubtitlesForSource(selectedSubtitles);
 

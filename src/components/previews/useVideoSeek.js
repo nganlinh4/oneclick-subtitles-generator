@@ -1,13 +1,16 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 /**
- * Owns timeline seek-dragging (mouse + touch), volume-slider dragging, the
- * mobile "tap outside to collapse the volume slider" behaviour, and the
- * external seek (when currentTime changes from outside, e.g. LyricsDisplay).
- *
- * Shared refs (videoRef, seekLockRef, lastPlayStateRef, lastTimeUpdateRef) stay
- * in the parent and are passed in. Drag state + the volume-slider state are
- * owned here and returned so the render + VideoBottomControls can consume them.
+ * Owns timeline seek-dragging (mouse + touch), volume-slider dragging, and the
+ * mobile "tap outside to collapse the volume slider" behaviour. Media writes
+ * are delegated to the central seek coordinator; lyric/timeline commands are
+ * not inferred from the published playhead here.
  *
  * Returns { isDragging, setIsDragging, dragTime, setDragTime, dragTimeRef,
  *           isVolumeSliderVisible, setIsVolumeSliderVisible,
@@ -16,13 +19,9 @@ import { useEffect, useState, useRef, useCallback } from 'react';
  */
 const useVideoSeek = ({
   videoRef,
-  seekLockRef,
-  lastPlayStateRef,
-  lastTimeUpdateRef,
   videoDuration,
-  currentTime,
-  isLoaded,
-  setCurrentTime,
+  sourceKey = null,
+  seekTo,
   setVolume,
   setIsMuted,
 }) => {
@@ -31,9 +30,42 @@ const useVideoSeek = ({
   const dragTimeRef = useRef(0);
   const [isVolumeSliderVisible, setIsVolumeSliderVisible] = useState(false);
   const [isVolumeDragging, setIsVolumeDragging] = useState(false);
+  const activeTimelineDragRef = useRef(null);
+  const latestSourceKeyRef = useRef(sourceKey);
+  latestSourceKeyRef.current = sourceKey;
+
+  const cancelTimelineDrag = useCallback((resetState = true) => {
+    const drag = activeTimelineDragRef.current;
+    if (drag === null) return;
+
+    activeTimelineDragRef.current = null;
+    drag.detach();
+    if (resetState) setIsDragging(false);
+  }, []);
+
+  const dragStillOwnsMedia = useCallback((drag) => (
+    activeTimelineDragRef.current === drag
+    && videoRef.current === drag.video
+    && Object.is(latestSourceKeyRef.current, drag.sourceKey)
+  ), [videoRef]);
+
+  // A drag belongs to the exact logical source and video element that began it. A source change
+  // cancels before paint; unmount removes the document listeners without trying to update state.
+  useLayoutEffect(() => {
+    cancelTimelineDrag();
+  }, [cancelTimelineDrag, sourceKey]);
+
+  useEffect(() => () => {
+    cancelTimelineDrag(false);
+  }, [cancelTimelineDrag]);
 
   const handleTimelineMouseDown = useCallback((e) => {
-    if (!videoRef.current || videoDuration === 0) return;
+    const video = videoRef.current;
+    if (!video || videoDuration === 0) return;
+
+    // Only one timeline gesture may own the document listeners. Starting another gesture cancels
+    // the first without applying its partial time.
+    cancelTimelineDrag();
 
     // Store the timeline container reference for consistent dragging
     const timelineContainer = e.currentTarget;
@@ -41,52 +73,60 @@ const useVideoSeek = ({
     const clickX = e.clientX - rect.left;
     const newTime = Math.max(0, Math.min((clickX / rect.width) * videoDuration, videoDuration));
 
-    // Set seek lock to prevent timeupdate interference
-    seekLockRef.current = true;
-
     // Set initial drag state
     setIsDragging(true);
     setDragTime(newTime);
     dragTimeRef.current = newTime;
 
-    // Add global mouse event listeners
-    const handleMouseMove = (e) => {
+    const drag = {
+      detach: () => {},
+      sourceKey,
+      time: newTime,
+      video,
+    };
+
+    const handleMouseMove = (moveEvent) => {
+      if (!dragStillOwnsMedia(drag)) {
+        if (activeTimelineDragRef.current === drag) cancelTimelineDrag();
+        return;
+      }
       // Use the stored timeline container reference instead of searching for it
       const rect = timelineContainer.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const newTime = Math.max(0, Math.min((clickX / rect.width) * videoDuration, videoDuration));
-      setDragTime(newTime);
-      dragTimeRef.current = newTime;
+      const clickX = moveEvent.clientX - rect.left;
+      const movedTime = Math.max(0, Math.min((clickX / rect.width) * videoDuration, videoDuration));
+      drag.time = movedTime;
+      setDragTime(movedTime);
+      dragTimeRef.current = movedTime;
     };
 
     const handleMouseUp = () => {
-      // Always apply the final time, whether moved or just clicked
-      if (videoRef.current) {
-        videoRef.current.currentTime = dragTimeRef.current;
-        setCurrentTime(dragTimeRef.current);
+      if (!dragStillOwnsMedia(drag)) {
+        if (activeTimelineDragRef.current === drag) cancelTimelineDrag();
+        return;
       }
 
-      // Reset drag state
-      setIsDragging(false);
+      // Always apply the final time, whether moved or just clicked
+      const finalTime = drag.time;
+      cancelTimelineDrag();
+      seekTo(finalTime, { reason: 'timeline-pointer' });
+    };
 
-      // Release seek lock after a short delay to allow video to settle
-      setTimeout(() => {
-        seekLockRef.current = false;
-      }, 100);
-
+    drag.detach = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-
+    activeTimelineDragRef.current = drag;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [videoRef, seekLockRef, dragTimeRef, videoDuration, setCurrentTime]);
+  }, [cancelTimelineDrag, dragStillOwnsMedia, sourceKey, videoDuration, videoRef, seekTo]);
 
   // Touch support for timeline
   const handleTimelineTouchStart = useCallback((e) => {
-    if (!videoRef.current || videoDuration === 0) return;
+    const video = videoRef.current;
+    if (!video || videoDuration === 0 || !e.touches[0]) return;
 
     e.preventDefault();
+    cancelTimelineDrag();
     // Store the timeline container reference for consistent dragging
     const timelineContainer = e.currentTarget;
     const rect = timelineContainer.getBoundingClientRect();
@@ -94,49 +134,61 @@ const useVideoSeek = ({
     const touchX = touch.clientX - rect.left;
     const newTime = Math.max(0, Math.min((touchX / rect.width) * videoDuration, videoDuration));
 
-    // Set seek lock to prevent timeupdate interference
-    seekLockRef.current = true;
-
     // Set initial drag state
     setIsDragging(true);
     setDragTime(newTime);
     dragTimeRef.current = newTime;
 
-    // Add global touch event listeners
-    const handleTouchMove = (e) => {
-      e.preventDefault();
+    const drag = {
+      detach: () => {},
+      sourceKey,
+      time: newTime,
+      video,
+    };
+
+    const handleTouchMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      if (!dragStillOwnsMedia(drag)) {
+        if (activeTimelineDragRef.current === drag) cancelTimelineDrag();
+        return;
+      }
       // Use the stored timeline container reference instead of searching for it
-      if (e.touches[0]) {
+      if (moveEvent.touches[0]) {
         const rect = timelineContainer.getBoundingClientRect();
-        const touchX = e.touches[0].clientX - rect.left;
-        const newTime = Math.max(0, Math.min((touchX / rect.width) * videoDuration, videoDuration));
-        setDragTime(newTime);
-        dragTimeRef.current = newTime;
+        const touchX = moveEvent.touches[0].clientX - rect.left;
+        const movedTime = Math.max(0, Math.min((touchX / rect.width) * videoDuration, videoDuration));
+        drag.time = movedTime;
+        setDragTime(movedTime);
+        dragTimeRef.current = movedTime;
       }
     };
 
     const handleTouchEnd = () => {
-      // Always apply the final time
-      if (videoRef.current) {
-        videoRef.current.currentTime = dragTimeRef.current;
-        setCurrentTime(dragTimeRef.current);
+      if (!dragStillOwnsMedia(drag)) {
+        if (activeTimelineDragRef.current === drag) cancelTimelineDrag();
+        return;
       }
 
-      // Reset drag state
-      setIsDragging(false);
-
-      // Release seek lock after a short delay to allow video to settle
-      setTimeout(() => {
-        seekLockRef.current = false;
-      }, 100);
-
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      // Always apply the final time
+      const finalTime = drag.time;
+      cancelTimelineDrag();
+      seekTo(finalTime, { reason: 'timeline-touch' });
     };
 
+    const handleTouchCancel = () => {
+      if (activeTimelineDragRef.current === drag) cancelTimelineDrag();
+    };
+
+    drag.detach = () => {
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchCancel);
+    };
+    activeTimelineDragRef.current = drag;
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
-  }, [videoRef, seekLockRef, dragTimeRef, videoDuration, setCurrentTime]);
+    document.addEventListener('touchcancel', handleTouchCancel);
+  }, [cancelTimelineDrag, dragStillOwnsMedia, sourceKey, videoDuration, videoRef, seekTo]);
 
   // Handle volume slider dragging
   useEffect(() => {
@@ -207,37 +259,6 @@ const useVideoSeek = ({
       document.removeEventListener('touchstart', handleOutside);
     };
   }, [isVolumeSliderVisible, setIsVolumeSliderVisible]);
-
-  // Seek to time when currentTime changes externally (from LyricsDisplay)
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    // Only seek if the difference is significant to avoid loops
-    // Increased threshold to 0.2 seconds to further reduce unnecessary seeks
-    if (Math.abs(videoElement.currentTime - currentTime) > 0.2) {
-      // Set the seek lock to prevent timeupdate from overriding our seek
-      seekLockRef.current = true;
-
-      // Store the playing state
-      const wasPlaying = !videoElement.paused;
-      lastPlayStateRef.current = wasPlaying;
-
-      // Set the new time without pausing first
-      // This reduces the play/pause flickering
-      videoElement.currentTime = currentTime;
-
-      // Update the last time update reference
-      lastTimeUpdateRef.current = performance.now();
-
-      // Release the seek lock after a very short delay
-      setTimeout(() => {
-        seekLockRef.current = false;
-      }, 50);
-    }
-  }, [currentTime, isLoaded, videoRef, seekLockRef, lastPlayStateRef, lastTimeUpdateRef]);
 
   return {
     isDragging,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from '../common/LoadingIndicator';
 import '../../styles/common/material-switch.css';
@@ -15,31 +15,40 @@ import useVideoSeek from './useVideoSeek';
 import useVideoSourceLoading from './useVideoSourceLoading';
 import useVideoSourceSwitching from './useVideoSourceSwitching';
 import useVideoElementEvents from './useVideoElementEvents';
+import useVideoSeekCoordinator from './useVideoSeekCoordinator';
 import useNarrationRefreshEvents from './useNarrationRefreshEvents';
 import useVideoUiSync from './useVideoUiSync';
 import CanvasVideoPreview from './canvas/CanvasVideoPreview';
 import { selectPreviewCue } from './native/nativePreviewScene';
 import useNativePreviewToast from './native/useNativePreviewToast';
+import { EDITOR_PREVIEW_RESOLUTION, translatedSubtitlesForRender } from './previewCueSelection';
 import {
-  EDITOR_PREVIEW_RESOLUTION,
-  createDownloadWithSubtitlesHandler,
-  createDownloadWithTranslatedSubtitlesHandler,
-  previewCustomizationForNativeRender,
-  translatedSubtitlesForRender,
-} from './videoDownloadHandlers';
+  applyPreviewSettingsToProjectScene,
+  previewSettingsFromProjectScene,
+} from './projectPreviewSettings';
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
 import '../../styles/narration/index.css';
 import { SERVER_URL } from '../../config';
-import useVideoSeekControls from '../../hooks/useVideoSeekControls';
-import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../services/fontCapability';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
+import { useProjectRenderScene } from '../../platform/projectRenderScene';
+import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
 
-const ACTIVE_RENDER_TOAST_DURATION_MS = 24 * 60 * 60 * 1000;
+export const admittedPlaybackSourceUrl = (committedSource, requestedUrl) => (
+  committedSource !== null
+  && Object.is(committedSource.requestedUrl, requestedUrl)
+    ? committedSource.actualUrl
+    : null
+);
 
-const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo }) => {
+const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, fileType, onSeek, seekRequest = null, onSeekRequestConsumed = null, translatedSubtitles, subtitlesArray, onVideoUrlReady, onReferenceAudioChange: _onReferenceAudioChange, onRenderVideo }) => {
   const { t } = useTranslation();
   const narrationState = useProjectNarrationState();
+  const {
+    status: renderSceneStatus,
+    scene: projectRenderScene,
+    updateScene: updateProjectRenderScene,
+  } = useProjectRenderScene();
   const videoRef = useRef(null);
   const videoContainerRef = useRef(null); // Ref for the main video container
   const lastBlobUrlRef = useRef(null);
@@ -50,16 +59,9 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     setTimeout(() => setShowSeekIndicator(false), 1000);
   };
 
-  useVideoSeekControls(videoRef, handleSeek);
-
-  const seekLockRef = useRef(false);
-  const lastTimeUpdateRef = useRef(0); // Track last time update to throttle updates
-  const lastPlayStateRef = useRef(false); // Track last play state to avoid redundant updates
   const lastTouchTimeRef = useRef(0);
   const hideControlsTimeoutRef = useRef(null);
   const [isAudioDownloading, setIsAudioDownloading] = useState(false);
-  const [isRenderingVideo, setIsRenderingVideo] = useState(false);
-  const [renderProgress, setRenderProgress] = useState(0);
   const [isRefreshingNarration, setIsRefreshingNarration] = useState(false); // Track narration refresh state
   const [isVideoHovered, setIsVideoHovered] = useState(false); // Track video hover state for showing controls
 
@@ -88,39 +90,107 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   const [seekDirection, setSeekDirection] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
   const [canvasPreviewState, setCanvasPreviewState] = useState({ status: 'idle', code: null });
+  const [canvasPreviewRetryToken, setCanvasPreviewRetryToken] = useState(0);
 
   // Volume-from-narration-menu sync + compact-mode detection.
   useVideoUiSync({ videoRef, isMuted, setVolume, setIsMuted, setIsCompactMode });
 
-  const [subtitleSettings, setSubtitleSettings] = useState(() => {
-    // Try to load settings from localStorage
-    const savedSettings = localStorage.getItem('subtitle_settings');
-    if (savedSettings) {
-      try {
-        return JSON.parse(savedSettings);
-      } catch (e) {
-        console.error('Error parsing saved subtitle settings:', e);
-      }
-    }
-
-    // Default settings if nothing is saved
-    return {
-      fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
-      fontSize: '48',
-      fontWeight: '500',
-      position: '90', // Now a percentage value from 0 (top) to 100 (bottom)
-      boxWidth: '80',
-      backgroundColor: '#000000',
-      opacity: '0.4',
-      textColor: '#ffffff',
-      showTranslatedSubtitles: false,
-      backgroundRadius: '16',
-      textShadow: true,
-      fontVariationSettings: '"ROND" 100'
-    };
+  const requestedVideoSourceUrl = useOptimizedPreview && optimizedVideoUrl
+    ? optimizedVideoUrl
+    : videoUrl;
+  const [committedPlaybackSource, setCommittedPlaybackSource] = useState(null);
+  const handlePlaybackSourceChange = useCallback((nextSource) => {
+    setCommittedPlaybackSource((previous) => (
+      previous !== null
+      && Object.is(previous.actualUrl, nextSource.actualUrl)
+      && Object.is(previous.requestedUrl, nextSource.requestedUrl)
+        ? previous
+        : nextSource
+    ));
+  }, []);
+  // A requested optimized URL and the URL actually committed can differ after automatic fallback.
+  // During the render before the source owner commits a replacement, there is deliberately no
+  // active source identity. Naming the requested URL here would let a child snapshot the outgoing
+  // element's already-decoded pixels and label media A as media B. The layout-phase owner publishes
+  // the actual URL after taking its transport snapshot and assigning the replacement.
+  const activeVideoSourceUrl = admittedPlaybackSourceUrl(
+    committedPlaybackSource,
+    requestedVideoSourceUrl,
+  );
+  const { isSeeking, seekBy, seekTo } = useVideoSeekCoordinator({
+    videoRef,
+    sourceKey: activeVideoSourceUrl,
+    setCurrentTime,
+    onSeek,
   });
-  // We track play state in lastPlayStateRef instead of using state to avoid unnecessary re-renders
+  const handledSeekRequestRef = useRef(null);
+  useEffect(() => {
+    if (seekRequest === null || typeof seekRequest !== 'object') return;
+    if (!Number.isSafeInteger(seekRequest.generation) || !Number.isFinite(seekRequest.time)) return;
+    if (typeof seekRequest.mediaKey !== 'string') return;
+    if (handledSeekRequestRef.current === seekRequest.generation) return;
 
+    // A command belongs to the logical media that was visible when the lyric was clicked. If the
+    // preview was replaced before it could load, consume the obsolete command without applying it
+    // to the new media. This identity is intentionally the parent video source, not an optimized
+    // rendition URL that can change while the logical asset remains the same.
+    if (!Object.is(seekRequest.mediaKey, videoSource)) {
+      handledSeekRequestRef.current = seekRequest.generation;
+      onSeekRequestConsumed?.(seekRequest);
+      return;
+    }
+    // `isLoaded` belongs to the previous render until useVideoSourceLoading's source-change effect
+    // commits. Requiring its source-tagged URL closes the effect-order window where a new command
+    // could otherwise seek the outgoing media element.
+    if (!isLoaded || !Object.is(videoUrl, videoSource) || videoRef.current === null) return;
+
+    const coordinatorGeneration = seekTo(seekRequest.time, { reason: 'lyric-request' });
+    // A loaded element can still reject currentTime assignment after a transport failure. Retain
+    // the source-bound command for a later successful load instead of acknowledging data loss.
+    if (!Number.isSafeInteger(coordinatorGeneration)) return;
+    handledSeekRequestRef.current = seekRequest.generation;
+    onSeekRequestConsumed?.(seekRequest);
+  }, [isLoaded, onSeekRequestConsumed, seekRequest, seekTo, videoSource, videoUrl]);
+
+  // The main editor and Render tab are two views of this one project-owned scene. The browser-era
+  // `subtitle_settings` localStorage record is deliberately not read or mirrored here: it had no
+  // project identity, so project B could inherit project A's style while export used a different
+  // SQLite scene. A loading scene shows the canonical defaults for a few milliseconds; updates made
+  // during loading are queued by the authority and applied to the loaded scene before publication.
+  const subtitleSettings = useMemo(
+    () => previewSettingsFromProjectScene(projectRenderScene),
+    [projectRenderScene],
+  );
+  const handleSubtitleSettingsChange = useCallback((nextSettings) => {
+    try {
+      updateProjectRenderScene((previous) => (
+        applyPreviewSettingsToProjectScene(previous, nextSettings)
+      ));
+    } catch (error) {
+      window.addToast?.(
+        error?.message || t('videoPreview.projectStyleUnavailable', 'Add a video before styling subtitles.'),
+        'error',
+        8000,
+        'project-subtitle-style',
+      );
+    }
+  }, [t, updateProjectRenderScene]);
+  const resetSubtitleSettings = useCallback(() => {
+    try {
+      updateProjectRenderScene((previous) => ({
+        ...previous,
+        selectedSubtitles: 'original',
+        customization: { ...defaultCustomization },
+      }));
+    } catch (error) {
+      window.addToast?.(
+        error?.message || t('videoPreview.projectStyleUnavailable', 'Add a video before styling subtitles.'),
+        'error',
+        8000,
+        'project-subtitle-style',
+      );
+    }
+  }, [t, updateProjectRenderScene]);
   // Timeline/volume seek-drag + external seek (owns drag + volume-slider state)
   const {
     isDragging,
@@ -136,13 +206,9 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     handleTimelineTouchStart,
   } = useVideoSeek({
     videoRef,
-    seekLockRef,
-    lastPlayStateRef,
-    lastTimeUpdateRef,
     videoDuration,
-    currentTime,
-    isLoaded,
-    setCurrentTime,
+    sourceKey: activeVideoSourceUrl,
+    seekTo,
     setVolume,
     setIsMuted,
   });
@@ -173,17 +239,17 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     hideControlsTimeoutRef,
     videoUrl,
     videoDuration,
-    isDragging,
     isLoaded,
     isFullscreen,
     handleFullscreenExit,
-    setCurrentTime,
     setDuration,
     setVideoDuration,
     setVolume,
     setIsMuted,
     setShowCustomControls,
     setControlsVisible,
+    onDirectionalSeek: handleSeek,
+    seekBy,
   });
 
   // Notify parent of the player URL + blob-mirror it, and hot-swap the <video>
@@ -195,12 +261,13 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     optimizedVideoUrl,
     useOptimizedPreview,
     onVideoUrlReady,
-    isPlaying,
+    onPlaybackSourceChange: handlePlaybackSourceChange,
     setIsPlaying,
+    seekTo,
   });
 
-  // Native <video> element events: metadata/error/timeupdate (the playhead) +
-  // seeking/seeked + play-state ref tracking. It resolves no cue and draws nothing.
+  // Native <video> metadata/error + play-state events. Transport time and seek completion belong
+  // exclusively to useVideoSeekCoordinator, so no second listener can publish an older generation.
   useVideoElementEvents({
     videoRef,
     videoUrl,
@@ -208,24 +275,15 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     setError,
     setIsLoaded,
     setDuration,
-    setCurrentTime,
-    seekLockRef,
-    lastTimeUpdateRef,
-    lastPlayStateRef,
-    isDragging,
-    onSeek,
   });
 
   // Aligned-narration event wiring + audio cleanup on unmount.
   useNarrationRefreshEvents({ isRefreshingNarration, setIsRefreshingNarration });
 
-  // The 54-field customization the native compositor draws from, mapped by the SAME bridge the
-  // download handler uses. There is deliberately no second mapping: if the preview and the file it
-  // downloads disagreed about a style, the mapping would be the only place they could.
-  const nativeCustomization = useMemo(
-    () => previewCustomizationForNativeRender(subtitleSettings),
-    [subtitleSettings]
-  );
+  // The native canvas and final export consume the exact same frozen scene object. No conversion is
+  // allowed on this path: a conversion would be another place for a field or default to drift.
+  const sceneAdmitted = renderSceneStatus === 'ready' && projectRenderScene !== null;
+  const nativeCustomization = sceneAdmitted ? projectRenderScene.customization : null;
 
   // WHICH cue list the compositor draws, decided the way the download decides it.
   //
@@ -238,12 +296,10 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // is composed on the ORIGINAL cue's timing, so the frame the user judges is composed from exactly
   // the cue list the file would be written from.
   const previewSubtitles = useMemo(() => {
-    const showTranslated = subtitleSettings.showTranslatedSubtitles
-      && Array.isArray(translatedSubtitles)
-      && translatedSubtitles.length > 0;
-    return showTranslated
+    if (!subtitleSettings.showTranslatedSubtitles) return subtitlesArray;
+    return Array.isArray(translatedSubtitles) && translatedSubtitles.length > 0
       ? translatedSubtitlesForRender(translatedSubtitles, subtitlesArray)
-      : subtitlesArray;
+      : [];
   }, [subtitleSettings.showTranslatedSubtitles, translatedSubtitles, subtitlesArray]);
 
   // Narration alignment follows the same subtitle source the preview and export use. Grouped
@@ -320,12 +376,19 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     },
   ) !== null;
 
-  const subtitlePreviewDormant = previewIdle && previewHasCues && cueCoversNow;
+  const subtitlePreviewDormant = sceneAdmitted && previewHasCues && cueCoversNow && (
+    previewIdle || canvasPreviewState.status === 'font-blocked'
+  );
 
   useNativePreviewToast({
-    error: canvasPreviewState.code === null ? null : { code: canvasPreviewState.code },
+    error: !sceneAdmitted || canvasPreviewState.code === null
+      ? null
+      : { code: canvasPreviewState.code },
     dormant: subtitlePreviewDormant,
-    onRetry: null,
+    fontBlocked: canvasPreviewState.status === 'font-blocked',
+    onRetry: canvasPreviewState.retryable === true
+      ? () => setCanvasPreviewRetryToken(token => token + 1)
+      : null,
     t,
   });
 
@@ -337,21 +400,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     window.addToast?.(error, 'error', 8000, 'video-source-error');
   }, [error]);
 
-  const renderToastProgress = Math.min(100, Math.max(0, Math.floor(renderProgress * 10) * 10));
-  useEffect(() => {
-    const key = 'preview-video-render-status';
-    if (!isRenderingVideo) {
-      window.removeToastByKey?.(key);
-      return;
-    }
-    window.addToast?.(
-      `${t('videoPreview.rendering', 'Rendering video with subtitles...')} (${renderToastProgress}%)`,
-      'info',
-      ACTIVE_RENDER_TOAST_DURATION_MS,
-      key,
-    );
-  }, [isRenderingVideo, renderToastProgress, t]);
-
   /**
    * One bounded word for what the subtitle preview is doing, published on the surface itself.
    *
@@ -361,6 +409,9 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
    * this file already computes.
    */
   const subtitlePreviewState = (() => {
+    if (renderSceneStatus === 'preparing' || renderSceneStatus === 'repairing') {
+      return renderSceneStatus;
+    }
     if (canvasPreviewState.code !== null) return 'refused';
     if (!isLoaded || isVideoLoading) return 'source-loading';
     // Asked before the frame's own status, because "this project has no subtitles" is true whether
@@ -368,35 +419,11 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     if (!previewHasCues) return 'empty';
     if (canvasPreviewState.status === 'ready') return 'ready';
     if (canvasPreviewState.status === 'pending') return 'pending';
+    if (canvasPreviewState.status === 'font-blocked') return 'font-blocked';
     if (canvasPreviewState.status === 'outside-trim') return 'outside-trim';
     if (!cueCoversNow) return 'between-cues';
     return 'dormant';
   })();
-
-  // Handle downloading video with subtitles
-  const handleDownloadWithSubtitles = createDownloadWithSubtitlesHandler({
-    videoUrl,
-    subtitlesArray,
-    subtitleSettings,
-    videoSource,
-    t,
-    setError,
-    setIsRenderingVideo,
-    setRenderProgress,
-  });
-
-  // Handle downloading video with translated subtitles
-  const handleDownloadWithTranslatedSubtitles = createDownloadWithTranslatedSubtitlesHandler({
-    videoUrl,
-    subtitlesArray,
-    translatedSubtitles,
-    subtitleSettings,
-    videoSource,
-    t,
-    setError,
-    setIsRenderingVideo,
-    setRenderProgress,
-  });
 
   return (
     <div className="video-preview">
@@ -409,9 +436,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
         <h3>{t('output.videoPreview', 'Video Preview with Subtitles')}</h3>
         <SubtitleSettings
           settings={subtitleSettings}
-          onSettingsChange={setSubtitleSettings}
-          onDownloadWithSubtitles={handleDownloadWithSubtitles}
-          onDownloadWithTranslatedSubtitles={handleDownloadWithTranslatedSubtitles}
+          onSettingsChange={handleSubtitleSettingsChange}
+          onResetSettings={resetSubtitleSettings}
           hasTranslation={translatedSubtitles && translatedSubtitles.length > 0}
           translatedSubtitles={translatedSubtitles}
           targetLanguage={translatedSubtitles && translatedSubtitles.length > 0 && translatedSubtitles[0].language}
@@ -482,24 +508,25 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                 <VideoPlayerElement
                   videoRef={videoRef}
                   lastTouchTimeRef={lastTouchTimeRef}
-                  isPlaying={isPlaying}
-                  setIsPlaying={setIsPlaying}
                   handleSeek={handleSeek}
-                  useOptimizedPreview={useOptimizedPreview}
-                  optimizedVideoUrl={optimizedVideoUrl}
-                  videoUrl={videoUrl}
+                  seekBy={seekBy}
                   t={t}
                 />
 
                 <CanvasVideoPreview
+                  key={videoSource ?? 'no-logical-media'}
+                  active={sceneAdmitted}
                   videoRef={videoRef}
-                  sourceKey={videoUrl}
+                  sourceKey={activeVideoSourceUrl}
                   playing={isPlaying}
+                  seeking={isSeeking}
                   currentTime={isDragging ? dragTime : currentTime}
+                  frameRate={projectRenderScene?.renderSettings?.frameRate ?? 30}
                   customization={nativeCustomization}
                   subtitles={previewSubtitles}
                   resolution={EDITOR_PREVIEW_RESOLUTION}
                   onStateChange={setCanvasPreviewState}
+                  retryToken={canvasPreviewRetryToken}
                 />
 
                 <SeekIndicator showSeekIndicator={showSeekIndicator} seekDirection={seekDirection} />
@@ -527,8 +554,8 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   controlsVisible={controlsVisible}
                   isVideoHovered={isVideoHovered}
                   isPlaying={isPlaying}
-                  setIsPlaying={setIsPlaying}
                   videoRef={videoRef}
+                  frameRate={projectRenderScene?.renderSettings?.frameRate ?? 30}
                   currentTime={currentTime}
                   videoDuration={videoDuration}
                   isDragging={isDragging}
@@ -539,6 +566,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   bufferedProgress={bufferedProgress}
                   handleTimelineMouseDown={handleTimelineMouseDown}
                   handleTimelineTouchStart={handleTimelineTouchStart}
+                  seekTo={seekTo}
                   volume={volume}
                   setVolume={setVolume}
                   isMuted={isMuted}

@@ -54,7 +54,6 @@ const useSettingsState = () => {
   const [optimizeVideos, setOptimizeVideos] = useState(false); // Default to no optimization
   const [optimizedResolution, setOptimizedResolution] = useState('360p'); // Default to 360p
   const [useOptimizedPreview, setUseOptimizedPreview] = useState(false); // Default to original video in preview
-  const [isFactoryResetting, setIsFactoryResetting] = useState(false); // State for factory reset process
 
   // Thinking budget settings for each model — defaults from central config
   const [thinkingBudgets, setThinkingBudgets] = useState(getDefaultThinkingBudgets);
@@ -373,8 +372,6 @@ const useSettingsState = () => {
     setOptimizedResolution,
     useOptimizedPreview,
     setUseOptimizedPreview,
-    isFactoryResetting,
-    setIsFactoryResetting,
     thinkingBudgets,
     setThinkingBudgets,
     transcriptionPrompt,

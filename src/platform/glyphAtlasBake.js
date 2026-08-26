@@ -41,7 +41,7 @@
 
 import { cellCodePoints, cellKeyOf, measureCell, sortedUniqueCells } from './glyphAtlasCells';
 import { deepFreeze, fail, round4 } from './glyphAtlasCore';
-import { FACE_PROBE_TEXT, METRIC_PROBE_TEXT, probeCluster, probeFace } from './glyphAtlasFace';
+import { METRIC_PROBE_TEXT, inspectExactFace, probeCluster } from './glyphAtlasFace';
 import { bakePage } from './glyphAtlasPage';
 import { packRunAlone, partitionRunsIntoPages } from './glyphAtlasPaging';
 import { buildCssFont, normalizeSharedRequest, normalizeText } from './glyphAtlasRequest';
@@ -92,13 +92,13 @@ export const bakeAtlas = ({ texts, request, limits, version }, options = {}) => 
   const families = [face.family];
   const cssFont = buildCssFont(face, families);
 
-  const probes = probeFace(surface, face, families);
-  const faceSubstituted = probes.every((probe) => probe.aloneWidthPx === probe.chainedWidthPx);
-  if (faceSubstituted) {
+  const faceVerdict = inspectExactFace(surface, face, families);
+  const { probes } = faceVerdict;
+  if (faceVerdict.reason === 'fallback-metrics') {
     fail('glyphAtlasFaceUnavailable', `The face "${face.family}" is not the face the engine would use and was rejected`);
   }
-  if (typeof surface.isFaceLoaded === 'function' && surface.isFaceLoaded(cssFont, FACE_PROBE_TEXT) === false) {
-    fail('glyphAtlasFaceUnavailable', `The face "${face.family}" is not loaded`);
+  if (faceVerdict.reason === 'font-face-set-veto') {
+    fail('glyphAtlasFaceLoading', `The face "${face.family}" is not loaded`);
   }
 
   const faceMetrics = readMeasurement(surface.measure(cssFont, METRIC_PROBE_TEXT), 'face metrics');

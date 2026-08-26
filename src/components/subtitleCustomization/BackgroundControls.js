@@ -2,12 +2,17 @@ import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../common/SliderWithValue';
 import CustomDropdown from '../common/CustomDropdown';
 import { defaultCustomization } from '../SubtitleCustomizationPanel';
+import ColorControl from './ColorControl';
+import { patchSubtitleCustomization } from './customizationUpdate';
 
 const BackgroundControls = ({ customization, onChange }) => {
   const { t } = useTranslation();
 
   const updateCustomization = (updates) => {
-    onChange({ ...customization, ...updates, preset: 'custom' });
+    // Sliders publish on a short timer while a drag is in flight. Applying their field patch to
+    // the latest scene prevents an older callback from restoring every other field it captured
+    // before (most visibly a colour committed while another control was settling).
+    onChange(patchSubtitleCustomization(updates));
   };
 
   return (
@@ -15,24 +20,18 @@ const BackgroundControls = ({ customization, onChange }) => {
       {/* Background Color */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.backgroundColor', 'Background Color')}</label>
+          <label htmlFor="subtitle-background-color">
+            {t('videoRendering.backgroundColor', 'Background Color')}
+          </label>
         </div>
         <div className="row-content">
-          <div className="color-control">
-            <input
-              type="color"
-              value={customization.backgroundColor}
-              onChange={(e) => updateCustomization({ backgroundColor: e.target.value })}
-              className="color-picker"
-            />
-            <input
-              type="text"
-              value={customization.backgroundColor}
-              onChange={(e) => updateCustomization({ backgroundColor: e.target.value })}
-              placeholder="#000000"
-              className="color-input"
-            />
-          </div>
+          <ColorControl
+            id="subtitle-background-color"
+            value={customization.backgroundColor}
+            onChange={value => updateCustomization({ backgroundColor: value })}
+            placeholder="#000000"
+            ariaLabel={t('videoRendering.backgroundColor', 'Background Color')}
+          />
         </div>
       </div>
 
@@ -111,34 +110,29 @@ const BackgroundControls = ({ customization, onChange }) => {
       {/* Border Color */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.borderColor', 'Border Color')}</label>
+          <label htmlFor="subtitle-border-color">
+            {t('videoRendering.borderColor', 'Border Color')}
+          </label>
         </div>
         <div className="row-content">
-          <div className="color-control">
-            <input
-              type="color"
-              value={customization.borderColor}
-              onChange={(e) => updateCustomization({ borderColor: e.target.value })}
-              className="color-picker"
-            />
-            <input
-              type="text"
-              value={customization.borderColor}
-              onChange={(e) => updateCustomization({ borderColor: e.target.value })}
-              placeholder="#ffffff"
-              className="color-input"
-            />
-          </div>
+          <ColorControl
+            id="subtitle-border-color"
+            value={customization.borderColor}
+            onChange={value => updateCustomization({ borderColor: value })}
+            placeholder="#ffffff"
+            ariaLabel={t('videoRendering.borderColor', 'Border Color')}
+          />
         </div>
       </div>
 
       {/* Border Style */}
       <div className="customization-row">
         <div className="row-label">
-          <label>{t('videoRendering.borderStyle', 'Border Style')}</label>
+          <label htmlFor="subtitle-border-style">{t('videoRendering.borderStyle', 'Border Style')}</label>
         </div>
         <div className="row-content">
           <CustomDropdown
+            id="subtitle-border-style"
             value={customization.borderStyle}
             onChange={(value) => updateCustomization({ borderStyle: value })}
             options={[
@@ -148,6 +142,7 @@ const BackgroundControls = ({ customization, onChange }) => {
               { value: 'dotted', label: t('videoRendering.dotted', 'Dotted') },
               { value: 'double', label: t('videoRendering.double', 'Double') }
             ]}
+            dataSetting="border-style"
             placeholder={t('videoRendering.selectBorderStyle', 'Select Border Style')}
           />
         </div>

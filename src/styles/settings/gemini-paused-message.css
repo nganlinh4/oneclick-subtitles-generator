@@ -49,12 +49,6 @@
   opacity: 0.9;
 }
 
-/* UDBM Message specific styles */
-.udbm-message {
-  background-color: var(--success-background, rgba(76, 175, 80, 0.1));
-  border-left-color: var(--success-color, #4caf50);
-}
-
 /* Upcoming Features Message specific styles */
 .upcoming-features-message {
   background-color: var(--warning-background, rgba(255, 152, 0, 0.1));

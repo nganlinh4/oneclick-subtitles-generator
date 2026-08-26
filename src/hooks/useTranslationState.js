@@ -31,7 +31,7 @@ import {
   canonicalTranslationSourcePayload,
   createTranslationAbortError,
   fingerprintTranslationSourcePayload,
-  normalizeLanguageChain,
+  normalizeRunnableLanguageChain,
   snapshotTranslationSource,
 } from '../utils/translationOwnership';
 
@@ -617,9 +617,8 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         setError(t('translation.noSubtitles', 'No subtitles to translate'));
         return { status: 'invalid' };
       }
-      normalizedChain = normalizeLanguageChain(chainItems, {
-        allowEmptyLanguage: true,
-        requireRunnable: true,
+      normalizedChain = normalizeRunnableLanguageChain(chainItems, {
+        formatOnly: languages.length === 0,
       });
       const batchSource = hasBulkFiles ? snapshotBulkTranslationSource(bulkFiles) : null;
       const batchSourcePayload = hasBulkFiles

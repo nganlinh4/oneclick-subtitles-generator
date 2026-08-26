@@ -25,6 +25,7 @@ describe('externalLinkService', () => {
     'javascript:alert(1)',
     'https://github.com.attacker.invalid/nganlinh4',
     'https://github.com/nganlinh4/extra',
+    'https://github.com/nganlinh4/udbm/releases',
     'https://attacker.invalid/?next=https://github.com/nganlinh4',
     'mailto:attacker@example.com',
   ])('rejects unlisted destination %s before IPC', async (destination) => {

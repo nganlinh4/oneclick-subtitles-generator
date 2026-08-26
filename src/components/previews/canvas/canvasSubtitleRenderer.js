@@ -6,15 +6,36 @@ const BACKFILL_BRIGHTNESS = 0.7;
 
 const clamp = (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum);
 
-const rgba = (value, alphaMultiplier = 1) => {
-  if (typeof value !== 'string') return `rgba(0,0,0,${alphaMultiplier})`;
+const colorChannels = (value) => {
+  if (typeof value !== 'string') return {
+    red: 0, green: 0, blue: 0, alpha: 255,
+  };
   const hex = value.slice(1);
   const expanded = hex.length <= 4 ? [...hex].map((part) => `${part}${part}`).join('') : hex;
   const red = Number.parseInt(expanded.slice(0, 2), 16);
   const green = Number.parseInt(expanded.slice(2, 4), 16);
   const blue = Number.parseInt(expanded.slice(4, 6), 16);
-  const ownAlpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6, 8), 16) / 255 : 1;
-  return `rgba(${red},${green},${blue},${ownAlpha * alphaMultiplier})`;
+  const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6, 8), 16) : 255;
+  return { red, green, blue, alpha };
+};
+
+const rgba = (value, alphaMultiplier = 1) => {
+  const color = colorChannels(value);
+  return `rgba(${color.red},${color.green},${color.blue},${color.alpha / 255 * alphaMultiplier})`;
+};
+
+/**
+ * Resolve the independently persisted background colour and opacity to the same quantized alpha
+ * byte as `osg-scene`, then apply the cue's animation alpha. Keeping this conversion explicit is
+ * what makes alpha-bearing colours WYSIWYG instead of valid in preview but refused by export.
+ */
+export const subtitleBackgroundRgba = (value, opacityPercentage, cueAlpha = 1) => {
+  const color = colorChannels(value);
+  const opacityAlpha = Number.isFinite(opacityPercentage) && opacityPercentage > 0
+    ? Math.min(255, Math.round(opacityPercentage * 2.55))
+    : 0;
+  const combinedAlpha = Math.round(color.alpha * opacityAlpha / 255);
+  return `rgba(${color.red},${color.green},${color.blue},${combinedAlpha / 255 * cueAlpha})`;
 };
 
 const roundedRect = (context, rect, radiusValue) => {
@@ -37,6 +58,25 @@ const roundedRect = (context, rect, radiusValue) => {
   context.closePath();
 };
 
+/**
+ * The strips a CSS border occupies, measured inward from the border box's outer edge.
+ *
+ * Rust's compositor defines `double` as two one-third-width rings with a one-third-width gap.
+ * Keeping that split as data makes the canvas path use the same contract instead of accidentally
+ * treating every style other than dashed/dotted as one solid ring.
+ */
+export const subtitleBorderBands = (width, style) => {
+  if (!Number.isFinite(width) || width <= 0) return Object.freeze([]);
+  if (style !== 'double') {
+    return Object.freeze([Object.freeze({ inset: 0, width })]);
+  }
+  const third = width / 3;
+  return Object.freeze([
+    Object.freeze({ inset: 0, width: third }),
+    Object.freeze({ inset: 2 * third, width: third }),
+  ]);
+};
+
 const fitContain = (outerWidth, outerHeight, innerWidth, innerHeight) => {
   const scale = Math.min(outerWidth / innerWidth, outerHeight / innerHeight);
   const width = innerWidth * scale;
@@ -45,9 +85,13 @@ const fitContain = (outerWidth, outerHeight, innerWidth, innerHeight) => {
 };
 
 const drawVideoUnderlay = (context, video, viewport, crop) => {
-  const sourceWidth = video.videoWidth;
-  const sourceHeight = video.videoHeight;
-  if (!(sourceWidth > 0 && sourceHeight > 0 && video.readyState >= 2)) return false;
+  const image = video?.image ?? video;
+  const sourceWidth = video?.videoWidth ?? image?.videoWidth ?? image?.width ?? 0;
+  const sourceHeight = video?.videoHeight ?? image?.videoHeight ?? image?.height ?? 0;
+  const ready = video?.readyState === undefined || video.readyState >= 2;
+  if (image === null || image === undefined || !(sourceWidth > 0 && sourceHeight > 0 && ready)) {
+    return false;
+  }
   const left = Number(crop?.x ?? 0) / 100;
   const top = Number(crop?.y ?? 0) / 100;
   const width = Number(crop?.width ?? 100) / 100;
@@ -66,7 +110,7 @@ const drawVideoUnderlay = (context, video, viewport, crop) => {
     context.save();
     context.filter = `blur(${blur}px) brightness(${BACKFILL_BRIGHTNESS})`;
     context.drawImage(
-      video,
+      image,
       viewport.left + (viewport.width - drawnWidth) / 2,
       viewport.top + (viewport.height - drawnHeight) / 2,
       drawnWidth,
@@ -94,7 +138,7 @@ const drawVideoUnderlay = (context, video, viewport, crop) => {
     context.scale(crop?.flipX ? -1 : 1, crop?.flipY ? -1 : 1);
     context.translate(-(viewport.left + viewport.width / 2), -(viewport.top + viewport.height / 2));
     context.drawImage(
-      video,
+      image,
       intersectionLeft * sourceWidth,
       intersectionTop * sourceHeight,
       (intersectionRight - intersectionLeft) * sourceWidth,
@@ -198,10 +242,14 @@ const transformedPoint = (point, viewport, geometry, cueTransform) => {
   return { x: viewport.left + x * viewport.scale, y: viewport.top + y * viewport.scale };
 };
 
-const gradientPaint = (context, customization, viewport, geometry, cueTransform) => {
-  const degrees = Number.parseInt(customization.gradientDirection, 10) || 0;
+export const subtitleGradientVector = (gradientDirection) => {
+  const degrees = Number.parseInt(gradientDirection, 10) || 0;
   const radians = (degrees * Math.PI) / 180;
-  const direction = { x: Math.sin(radians), y: -Math.cos(radians) };
+  return { x: Math.sin(radians), y: -Math.cos(radians) };
+};
+
+const gradientPaint = (context, customization, viewport, geometry, cueTransform) => {
+  const direction = subtitleGradientVector(customization.gradientDirection);
   const length = Math.abs(geometry.padding.width * direction.x)
     + Math.abs(geometry.padding.height * direction.y);
   const centre = {
@@ -255,32 +303,66 @@ const paintSubtitle = ({
   context.save();
   setCompositionTransform(context, viewport, geometry, cueTransform);
   if (customization.glowEnabled && customization.glowIntensity > 0) {
-    context.shadowColor = rgba(customization.glowColor, alpha);
-    context.shadowBlur = scaleStyleValue(customization.glowIntensity, composition.height) * viewport.scale;
-    context.fillStyle = 'rgba(0,0,0,0.001)';
-    roundedRect(context, geometry.border, geometry.radius);
-    context.fill();
-    context.shadowBlur = 0;
+    // Canvas shadows inherit the source shape's alpha. The old 0.001-alpha source therefore
+    // quantized the whole glow away, so changing Glow Color committed durably while publishing
+    // byte-identical preview pixels. Render the shadow on the scratch surface from an opaque box,
+    // then cut that box back out before compositing. This mirrors osg-compositor's outer-shadow
+    // mask and prevents the glow shining through a translucent subtitle background.
+    scratchContext.save();
+    scratchContext.setTransform(1, 0, 0, 1, 0, 0);
+    scratchContext.clearRect(0, 0, scratchContext.canvas.width, scratchContext.canvas.height);
+    setCompositionTransform(scratchContext, viewport, geometry, cueTransform);
+    scratchContext.globalCompositeOperation = 'source-over';
+    scratchContext.globalAlpha = alpha;
+    scratchContext.shadowColor = rgba(customization.glowColor);
+    scratchContext.shadowBlur = scaleStyleValue(
+      customization.glowIntensity,
+      composition.height,
+    ) * viewport.scale;
+    scratchContext.fillStyle = 'rgba(0,0,0,1)';
+    roundedRect(scratchContext, geometry.border, geometry.radius);
+    scratchContext.fill();
+    scratchContext.shadowBlur = 0;
+    scratchContext.shadowColor = 'rgba(0,0,0,0)';
+    scratchContext.globalAlpha = 1;
+    scratchContext.globalCompositeOperation = 'destination-out';
+    roundedRect(scratchContext, geometry.border, geometry.radius);
+    scratchContext.fill();
+    scratchContext.restore();
+    // The scratch surface already contains the transformed, viewport-positioned glow. Copying that
+    // full-frame surface through the subtitle transform would apply the viewport and cue transform
+    // a second time, shrinking and displacing the glow away from the box that cast it.
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(scratchContext.canvas, 0, 0);
+    context.restore();
   }
   if (!customization.gradientEnabled && customization.backgroundOpacity > 0) {
-    context.fillStyle = rgba(customization.backgroundColor, alpha * customization.backgroundOpacity / 100);
+    context.fillStyle = subtitleBackgroundRgba(
+      customization.backgroundColor,
+      customization.backgroundOpacity,
+      alpha,
+    );
     roundedRect(context, geometry.border, geometry.radius);
     context.fill();
   }
   if (geometry.borderWidth > 0) {
     context.strokeStyle = rgba(customization.borderColor, alpha);
-    context.lineWidth = geometry.borderWidth;
     context.setLineDash(customization.borderStyle === 'dashed'
       ? [geometry.borderWidth * 3, geometry.borderWidth * 3]
       : customization.borderStyle === 'dotted' ? [0, geometry.borderWidth * 2] : []);
     context.lineCap = customization.borderStyle === 'dotted' ? 'round' : 'butt';
-    roundedRect(context, {
-      left: geometry.border.left + geometry.borderWidth / 2,
-      top: geometry.border.top + geometry.borderWidth / 2,
-      width: geometry.border.width - geometry.borderWidth,
-      height: geometry.border.height - geometry.borderWidth,
-    }, Math.max(0, geometry.radius - geometry.borderWidth / 2));
-    context.stroke();
+    for (const band of subtitleBorderBands(geometry.borderWidth, customization.borderStyle)) {
+      const centreInset = band.inset + band.width / 2;
+      context.lineWidth = band.width;
+      roundedRect(context, {
+        left: geometry.border.left + centreInset,
+        top: geometry.border.top + centreInset,
+        width: geometry.border.width - centreInset * 2,
+        height: geometry.border.height - centreInset * 2,
+      }, Math.max(0, geometry.radius - centreInset));
+      context.stroke();
+    }
   }
   context.restore();
 
@@ -360,12 +442,14 @@ export const createCanvasSubtitleRenderer = (canvas) => {
   const mask = document.createElement('canvas');
   const scratch = document.createElement('canvas');
   const staticOverlay = document.createElement('canvas');
+  const sourceFrames = [document.createElement('canvas'), document.createElement('canvas')];
   const frameContext = frame.getContext('2d', { alpha: false });
   const maskContext = mask.getContext('2d', { alpha: true });
   const scratchContext = scratch.getContext('2d', { alpha: true });
   const staticOverlayContext = staticOverlay.getContext('2d', { alpha: true });
+  const sourceFrameContexts = sourceFrames.map(source => source.getContext('2d', { alpha: false }));
   if (frameContext === null || maskContext === null || scratchContext === null
-      || staticOverlayContext === null) {
+      || staticOverlayContext === null || sourceFrameContexts.some(source => source === null)) {
     throw new Error('canvasPreviewUnavailable');
   }
   let staticState = null;
@@ -392,6 +476,26 @@ export const createCanvasSubtitleRenderer = (canvas) => {
   );
 
   return Object.freeze({
+    captureVideoFrame(video, retained = null) {
+      const width = Number(video?.videoWidth ?? 0);
+      const height = Number(video?.videoHeight ?? 0);
+      if (!(width > 0 && height > 0 && video?.readyState >= 2)) return null;
+      const retainedImage = retained?.image ?? retained;
+      const index = sourceFrames[0] === retainedImage ? 1 : 0;
+      const source = sourceFrames[index];
+      const sourceContext = sourceFrameContexts[index];
+      resizeWorkCanvas(source, width, height);
+      sourceContext.setTransform(1, 0, 0, 1, 0, 0);
+      sourceContext.globalAlpha = 1;
+      sourceContext.filter = 'none';
+      sourceContext.drawImage(video, 0, 0, width, height);
+      return Object.freeze({
+        image: source,
+        videoWidth: width,
+        videoHeight: height,
+        readyState: 4,
+      });
+    },
     draw({ video, composition, crop, atlasEntry, customization, active, cueTransform }) {
       const width = canvas.width;
       const height = canvas.height;

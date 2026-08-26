@@ -16,15 +16,6 @@ vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
 }));
 
-const createStorage = (entries) => {
-  const keys = Object.keys(entries);
-  return {
-    length: keys.length,
-    key: (index) => keys[index] ?? null,
-    getItem: (key) => entries[key] ?? null,
-  };
-};
-
 const SECRET_SETTING_KEY_CASES = Object.freeze([
   'gemini_api_key',
   'gemini_blacklisted_keys',
@@ -146,8 +137,8 @@ it('keeps session capabilities, provider caches, and generated results out of se
   expect(isTransientSettingKey('provider.output.path')).toBe(false);
 });
 
-it('collects settings without copying credentials into native persistence', () => {
-  const storage = createStorage({
+it('filters an explicit settings action without copying credentials into native persistence', () => {
+  const explicitValues = {
     theme: 'dark',
     gemini_model: 'gemini-2.5-flash',
     ...Object.fromEntries(
@@ -175,9 +166,9 @@ it('collects settings without copying credentials into native persistence', () =
     use_cookies_for_download: 'true',
     download_cookie_source: 'firefox',
     '../../invalid': 'cannot-poison-the-batch',
-  });
+  };
 
-  expect(collectPersistableSettings(storage)).toEqual({
+  expect(collectPersistableSettings(explicitValues)).toEqual({
     theme: 'dark',
     gemini_model: 'gemini-2.5-flash',
     gemini_max_tokens: '8192',
@@ -188,29 +179,32 @@ it('collects settings without copying credentials into native persistence', () =
   });
 });
 
-it('overlays pending settings before the native write while still excluding secrets', () => {
-  const storage = createStorage({
+it('cannot sweep unrelated browser-mirror values into an explicit action', () => {
+  const ambientBrowserMirror = {
     theme: 'dark',
     download_cookie_source: 'chrome',
     gemini_api_key: 'stored-secret',
-  });
-
-  expect(collectPersistableSettings(storage, {
+  };
+  const explicitValues = {
     download_cookie_source: 'firefox',
     time_format: 'hms',
     youtube_client_secret: 'pending-secret',
     current_file_url: 'http://127.0.0.1/private-capability',
     invalid_object: { nested: true },
-  })).toEqual({
-    theme: 'dark',
+  };
+
+  expect(collectPersistableSettings(explicitValues)).toEqual({
     download_cookie_source: 'firefox',
     time_format: 'hms',
   });
+  expect(collectPersistableSettings(explicitValues)).not.toEqual(
+    expect.objectContaining(ambientBrowserMirror),
+  );
 });
 
 it('writes all non-credential settings through the allowlisted Tauri command', async () => {
   invokeDesktop.mockResolvedValue(undefined);
-  const storage = createStorage({
+  const explicitValues = {
     language: 'ko',
     theme: 'dark',
     gemini_max_tokens: '8192',
@@ -221,9 +215,9 @@ it('writes all non-credential settings through the allowlisted Tauri command', a
     ...Object.fromEntries(
       SECRET_SETTING_KEY_CASES.map((key) => [key, `secret-value-for-${key}`]),
     ),
-  });
+  };
 
-  await expect(persistDesktopSettings(storage)).resolves.toEqual({
+  await expect(persistDesktopSettings(explicitValues)).resolves.toEqual({
     success: true,
     message: 'localStorage data saved successfully',
   });
@@ -240,7 +234,7 @@ it('writes all non-credential settings through the allowlisted Tauri command', a
   });
 });
 
-it('removes poisoned legacy transient keys before submitting the atomic native batch', async () => {
+it('removes poisoned transient keys from an explicit atomic native batch', async () => {
   const nativeRejectedKeys = new Set([
     'Provider-Output-Directory',
     'Provider-Output-Location',
@@ -256,7 +250,7 @@ it('removes poisoned legacy transient keys before submitting the atomic native b
       throw new Error('native rejected a transient setting');
     }
   });
-  const storage = createStorage({
+  const explicitValues = {
     theme: 'dark',
     download_cookie_source: 'firefox',
     'Provider-Output-Directory': 'C:\\private\\output',
@@ -267,9 +261,9 @@ it('removes poisoned legacy transient keys before submitting the atomic native b
     'CURRENT-SESSION': 'private-session-handle',
     'GEMINI-FILE-UPLOAD': 'provider-private-handle',
     'OAUTH-STATE': 'private-oauth-state',
-  });
+  };
 
-  await expect(persistDesktopSettings(storage)).resolves.toEqual({
+  await expect(persistDesktopSettings(explicitValues)).resolves.toEqual({
     success: true,
     message: 'localStorage data saved successfully',
   });
@@ -281,7 +275,7 @@ it('removes poisoned legacy transient keys before submitting the atomic native b
   });
 });
 
-it('matches the native per-value JSON-byte boundary and prioritizes a valid pending replacement', async () => {
+it('matches the native per-value JSON-byte boundary', async () => {
   invokeDesktop.mockResolvedValue(undefined);
   const exactValue = 'x'.repeat(SETTINGS_PERSISTENCE_LIMITS.maxValueJsonBytes - 2);
   const oversizedValue = `${exactValue}x`;
@@ -289,31 +283,26 @@ it('matches the native per-value JSON-byte boundary and prioritizes a valid pend
     Math.floor((SETTINGS_PERSISTENCE_LIMITS.maxValueJsonBytes - 2) / 3)
   );
   const oversizedUtf8Value = `${almostFullUtf8Value}한`;
-  const storage = createStorage({
-    exact_legacy_value: exactValue,
-    transcription_prompt: oversizedValue,
-    poisoned_legacy_value: oversizedValue,
-    multibyte_poisoned_value: oversizedUtf8Value,
-    theme: 'dark',
-  });
 
-  await expect(persistDesktopSettings(storage, {
-    transcription_prompt: 'the edited prompt wins',
+  await expect(persistDesktopSettings({
+    exact_value: exactValue,
   })).resolves.toEqual({
     success: true,
     message: 'localStorage data saved successfully',
   });
   expect(invokeDesktop).toHaveBeenCalledWith('settings_set_many', {
-    values: {
-      transcription_prompt: 'the edited prompt wins',
-      exact_legacy_value: exactValue,
-      theme: 'dark',
-    },
+    values: { exact_value: exactValue },
   });
 
   invokeDesktop.mockClear();
-  await expect(persistDesktopSettings(createStorage({ theme: 'dark' }), {
+  await expect(persistDesktopSettings({
     transcription_prompt: oversizedValue,
+  })).rejects.toMatchObject({
+    name: 'SettingsPersistenceLimitError',
+    code: 'valueTooLarge',
+  });
+  await expect(persistDesktopSettings({
+    transcription_prompt: oversizedUtf8Value,
   })).rejects.toMatchObject({
     name: 'SettingsPersistenceLimitError',
     code: 'valueTooLarge',
@@ -321,38 +310,31 @@ it('matches the native per-value JSON-byte boundary and prioritizes a valid pend
   expect(invokeDesktop).not.toHaveBeenCalled();
 });
 
-it('caps the native entry boundary after reserving pending preferences', async () => {
+it('enforces the native entry boundary for the complete explicit action', async () => {
   invokeDesktop.mockResolvedValue(undefined);
-  const legacyEntries = Object.fromEntries(
+  const exactEntries = Object.fromEntries(
     Array.from(
-      { length: SETTINGS_PERSISTENCE_LIMITS.maxEntries + 1 },
-      (_, index) => [`legacy_${index}`, 'x']
-    )
-  );
-
-  await persistDesktopSettings(createStorage(legacyEntries), { theme: 'dark' });
-
-  const values = invokeDesktop.mock.calls[0][1].values;
-  expect(Object.keys(values)).toHaveLength(SETTINGS_PERSISTENCE_LIMITS.maxEntries);
-  expect(values.theme).toBe('dark');
-  expect(values.legacy_0).toBe('x');
-  expect(values[`legacy_${SETTINGS_PERSISTENCE_LIMITS.maxEntries}`]).toBeUndefined();
-
-  invokeDesktop.mockClear();
-  const requiredEntries = Object.fromEntries(
-    Array.from(
-      { length: SETTINGS_PERSISTENCE_LIMITS.maxEntries + 1 },
+      { length: SETTINGS_PERSISTENCE_LIMITS.maxEntries },
       (_, index) => [`required_${index}`, 'x']
     )
   );
-  const requiredError = await persistDesktopSettings(createStorage({}), requiredEntries)
+
+  await persistDesktopSettings(exactEntries);
+  expect(Object.keys(invokeDesktop.mock.calls[0][1].values))
+    .toHaveLength(SETTINGS_PERSISTENCE_LIMITS.maxEntries);
+
+  invokeDesktop.mockClear();
+  const requiredError = await persistDesktopSettings({
+    ...exactEntries,
+    required_overflow: 'x',
+  })
     .catch((error) => error);
   expect(requiredError).toBeInstanceOf(SettingsPersistenceLimitError);
   expect(requiredError).toMatchObject({ code: 'tooManyEntries' });
   expect(invokeDesktop).not.toHaveBeenCalled();
 });
 
-it('matches the native aggregate-byte boundary and skips only legacy overflow', async () => {
+it('matches the native aggregate-byte boundary without truncating explicit intent', async () => {
   invokeDesktop.mockResolvedValue(undefined);
   const exactAggregateEntries = Object.fromEntries(
     Array.from({ length: 8 }, (_, index) => {
@@ -361,28 +343,15 @@ it('matches the native aggregate-byte boundary and skips only legacy overflow', 
       return [key, 'x'.repeat(contentBytes)];
     })
   );
-  const storage = createStorage({
-    ...exactAggregateEntries,
-    legacy_overflow: 'x',
-  });
-
-  await persistDesktopSettings(storage);
+  await persistDesktopSettings(exactAggregateEntries);
 
   const exactValues = invokeDesktop.mock.calls[0][1].values;
   expect(Object.keys(exactValues)).toHaveLength(8);
   expect(exactValues.aggregate0).toBe(exactAggregateEntries.aggregate0);
   expect(exactValues.aggregate7).toBe(exactAggregateEntries.aggregate7);
-  expect(exactValues.legacy_overflow).toBeUndefined();
 
   invokeDesktop.mockClear();
-  await persistDesktopSettings(createStorage(exactAggregateEntries), { theme: 'dark' });
-  const prioritizedValues = invokeDesktop.mock.calls[0][1].values;
-  expect(prioritizedValues.theme).toBe('dark');
-  expect(Object.keys(prioritizedValues)).toHaveLength(8);
-  expect(prioritizedValues.aggregate7).toBeUndefined();
-
-  invokeDesktop.mockClear();
-  await expect(persistDesktopSettings(createStorage({}), {
+  await expect(persistDesktopSettings({
     ...exactAggregateEntries,
     required_overflow: 'x',
   })).rejects.toMatchObject({
@@ -407,53 +376,12 @@ it('rejects every malformed UTF-16 shape in pending settings before IPC', async 
   ];
 
   for (const malformedValue of malformedValues) {
-    const error = await persistDesktopSettings(createStorage({ theme: 'dark' }), {
+    const error = await persistDesktopSettings({
       transcription_prompt: malformedValue,
     }).catch((caught) => caught);
     expect(error).toBeInstanceOf(SettingsPersistenceLimitError);
     expect(error).toMatchObject({ code: 'invalidUnicode' });
   }
-  expect(invokeDesktop).not.toHaveBeenCalled();
-});
-
-it('skips malformed legacy UTF-16 without consuming limits or dropping surrounding rows', async () => {
-  invokeDesktop.mockResolvedValue(undefined);
-  const malformed = `before${String.fromCharCode(0xD800)}after`;
-
-  await persistDesktopSettings(createStorage({
-    safe_before: 'first',
-    malformed_legacy: malformed,
-    safe_after: 'second',
-  }));
-
-  expect(invokeDesktop).toHaveBeenCalledWith('settings_set_many', {
-    values: {
-      safe_before: 'first',
-      safe_after: 'second',
-    },
-  });
-});
-
-it('lets a valid pending duplicate replace malformed legacy but never falls back from invalid pending', async () => {
-  invokeDesktop.mockResolvedValue(undefined);
-  const malformed = String.fromCharCode(0xD800);
-  const storage = createStorage({ transcription_prompt: malformed, theme: 'dark' });
-
-  await persistDesktopSettings(storage, { transcription_prompt: 'Valid 😀 edit' });
-  expect(invokeDesktop).toHaveBeenCalledWith('settings_set_many', {
-    values: {
-      transcription_prompt: 'Valid 😀 edit',
-      theme: 'dark',
-    },
-  });
-
-  invokeDesktop.mockClear();
-  const invalidPendingError = await persistDesktopSettings(
-    createStorage({ transcription_prompt: 'valid legacy fallback', theme: 'dark' }),
-    { transcription_prompt: malformed }
-  ).catch((error) => error);
-  expect(invalidPendingError).toBeInstanceOf(SettingsPersistenceLimitError);
-  expect(invalidPendingError).toMatchObject({ code: 'invalidUnicode' });
   expect(invokeDesktop).not.toHaveBeenCalled();
 });
 
@@ -467,7 +395,7 @@ it('persists a well-formed mixed Unicode and escaped string at the exact native 
   expect(new TextEncoder().encode(JSON.stringify(exactTransportValue)).byteLength)
     .toBe(SETTINGS_PERSISTENCE_LIMITS.maxValueJsonBytes);
 
-  await persistDesktopSettings(createStorage({}), {
+  await persistDesktopSettings({
     transcription_prompt: exactTransportValue,
   });
 

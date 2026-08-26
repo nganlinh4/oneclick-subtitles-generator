@@ -13,7 +13,10 @@ import { processTranslationResponse } from './translationResponseParser';
 import { buildTranslationPrompt } from './translationPromptBuilder';
 import { buildTranslatedSubtitles } from './translationSubtitleBuilder';
 import { DEFAULT_TRANSLATION_MODEL_ID } from '../../config/geminiModels';
-import { createTranslationAbortError } from '../../utils/translationOwnership';
+import {
+    createTranslationAbortError,
+    normalizeRunnableLanguageChain,
+} from '../../utils/translationOwnership';
 
 const canonicalSourceId = (subtitle, index) => {
     if (typeof subtitle?.originalId === 'string' && subtitle.originalId.length > 0) {
@@ -159,7 +162,10 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
 
     const languageIds = isFormatMode ? Object.freeze([]) : requestedLanguageIds(targetLanguage);
-    if (isFormatMode && Array.isArray(chainItems) && chainItems.some((item) => (
+    const runnableChainItems = isFormatMode && Array.isArray(chainItems)
+        ? normalizeRunnableLanguageChain(chainItems, { formatOnly: true })
+        : chainItems;
+    if (isFormatMode && Array.isArray(runnableChainItems) && runnableChainItems.some((item) => (
         item?.type === 'language' && !item.isOriginal
     ))) {
         throw new TypeError('Format-only translation cannot fabricate a target-language value');
@@ -234,8 +240,8 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         await publishStatus(message);
 
         // Format the subtitles with the chain items if provided, otherwise use the specified delimiter and bracket style
-        const formatted = chainItems
-            ? formatSubtitlesWithChain(sourceSubtitles, chainItems)
+        const formatted = runnableChainItems
+            ? formatSubtitlesWithChain(sourceSubtitles, runnableChainItems)
             : formatSubtitles(sourceSubtitles, delimiter, useParentheses, bracketStyle);
         await assertBoundary();
         return completeTranslationResult(formatted, deliverySink);

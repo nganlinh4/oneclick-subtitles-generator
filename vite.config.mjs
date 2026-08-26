@@ -1,5 +1,6 @@
-import { cpSync, existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, extname, relative, resolve } from 'node:path';
+import { cpSync, existsSync, lstatSync, readFileSync, statSync } from 'node:fs';
+import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import managedBuildContext from './scripts/managed-build-context.js';
 import { defineConfig, loadEnv, transformWithOxc } from 'vite';
 
 import { createFrozenCssCompatibilityPlugin } from './scripts/frozen-css-compatibility.mjs';
@@ -9,6 +10,8 @@ import {
   createFrontendCodeSplitting,
   handleFrontendBuildLog,
 } from './scripts/frontend-bundle-boundary.mjs';
+
+const { assertFrontendInnerInvocation } = managedBuildContext;
 
 const sourceJavaScriptPattern = /[/\\]src[/\\].+\.js$/;
 const allowedPublicEnvironmentKeys = new Set([
@@ -39,7 +42,77 @@ const ignoredLegacyEnvironmentKeys = new Set([
   'REACT_APP_VIDEO_RENDERER_PORT',
   'REACT_APP_WEBSOCKET_PORT',
 ]);
-const promptDjDist = resolve('promptdj-midi/dist');
+const checkedE2ePath = (value, name, kind) => {
+  if (!value || !isAbsolute(value)) {
+    throw new Error(`${name} must be an absolute ${kind} for an E2E frontend build.`);
+  }
+  const absolute = resolve(value);
+  if (!existsSync(absolute)) throw new Error(`${name} does not exist: ${absolute}`);
+  const stat = lstatSync(absolute);
+  if (stat.isSymbolicLink() || (kind === 'file' ? !stat.isFile() : !stat.isDirectory())) {
+    throw new Error(`${name} must be a real ${kind}: ${absolute}`);
+  }
+  return absolute;
+};
+
+const e2eFrontendInputs = (() => {
+  if (process.env.OSG_E2E_FRONTEND_BUILD !== '1') return null;
+  const promptDjDist = checkedE2ePath(
+    process.env.OSG_E2E_PROMPTDJ_DIST,
+    'OSG_E2E_PROMPTDJ_DIST',
+    'directory',
+  );
+  const versionModule = checkedE2ePath(
+    process.env.OSG_E2E_VERSION_MODULE,
+    'OSG_E2E_VERSION_MODULE',
+    'file',
+  );
+  const workspaceRoot = dirname(versionModule);
+  if (promptDjDist !== resolve(workspaceRoot, 'promptdj')) {
+    throw new Error('E2E PromptDJ output must be the exact child of its frontend workspace.');
+  }
+  const cacheDir = process.env.OSG_E2E_VITE_CACHE_DIR;
+  if (!cacheDir || !isAbsolute(cacheDir) || resolve(cacheDir) !== resolve(workspaceRoot, 'vite-cache')) {
+    throw new Error('OSG_E2E_VITE_CACHE_DIR must be the exact Vite cache child of its frontend workspace.');
+  }
+  return Object.freeze({
+    cacheDir: resolve(cacheDir),
+    promptDjDist,
+    versionModule,
+  });
+})();
+
+const managedFrontendInputs = (() => {
+  const rootValue = process.env.OSG_MANAGED_FRONTEND_ROOT;
+  if (rootValue === undefined) return null;
+  if (!isAbsolute(rootValue)) throw new Error('OSG_MANAGED_FRONTEND_ROOT must be absolute.');
+  const root = checkedE2ePath(rootValue, 'OSG_MANAGED_FRONTEND_ROOT', 'directory');
+  const expected = {
+    cacheDir: resolve(root, 'vite-cache'),
+    frontendOutDir: resolve(root, 'build'),
+    promptDjDist: resolve(root, 'promptdj'),
+    versionModule: resolve(root, 'version.js'),
+  };
+  for (const [name, value] of Object.entries(expected).filter(([name]) => name !== 'cacheDir')) {
+    const requested = process.env[{
+      frontendOutDir: 'OSG_FRONTEND_OUT_DIR',
+      promptDjDist: 'OSG_PROMPTDJ_OUT_DIR',
+      versionModule: 'OSG_VERSION_MODULE_PATH',
+    }[name]];
+    if (!requested || !isAbsolute(requested) || resolve(requested) !== value) {
+      throw new Error(`${name} must be the exact managed frontend-cache child ${value}.`);
+    }
+  }
+  return Object.freeze(expected);
+})();
+
+if (e2eFrontendInputs && managedFrontendInputs) {
+  throw new Error('E2E snapshots and ordinary managed frontend builds cannot share one Vite process.');
+}
+const externalFrontendInputs = e2eFrontendInputs ?? managedFrontendInputs;
+const promptDjDist = externalFrontendInputs?.promptDjDist ?? resolve('promptdj-midi/dist');
+const sourceVersionModule = resolve('src/config/version.js');
+const E2E_VERSION_MODULE_ID = '\0osg-e2e-version-metadata';
 const promptDjContentTypes = Object.freeze({
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -68,6 +141,24 @@ const productionDesktopModules = () => ({
       if (replacement) return replacement;
     }
     return null;
+  },
+});
+
+const immutableE2eVersionMetadata = () => ({
+  name: 'osg-immutable-e2e-version-metadata',
+  enforce: 'pre',
+  resolveId(source, importer) {
+    if (!externalFrontendInputs || !importer || !source.startsWith('.')) return null;
+    const importerPath = importer.split('?')[0];
+    const candidate = resolve(dirname(importerPath), source);
+    if (candidate === sourceVersionModule || `${candidate}.js` === sourceVersionModule) {
+      return E2E_VERSION_MODULE_ID;
+    }
+    return null;
+  },
+  load(id) {
+    if (id !== E2E_VERSION_MODULE_ID) return null;
+    return readFileSync(externalFrontendInputs.versionModule, 'utf8');
   },
 });
 
@@ -178,13 +269,18 @@ const publicFrontendEnvironment = (mode) => selectPublicFrontendEnvironment(
   mode,
 );
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  if (!e2eFrontendInputs) {
+    assertFrontendInnerInvocation({ environment: process.env, repositoryRoot: resolve('.') });
+  }
+  return {
   base: './',
+  cacheDir: externalFrontendInputs?.cacheDir,
   build: {
     chunkSizeWarningLimit: FRONTEND_CHUNK_WARNING_LIMIT_KB,
     // Preserve CRA's handling of the frozen legacy transition grammar while the CSS is ported.
     cssMinify: 'esbuild',
-    outDir: 'build',
+    outDir: managedFrontendInputs?.frontendOutDir ?? 'build',
     rolldownOptions: {
       onLog: handleFrontendBuildLog,
       output: {
@@ -210,6 +306,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [
+    immutableE2eVersionMetadata(),
     createFrozenCssCompatibilityPlugin(),
     ...(mode === 'production'
       ? [productionDesktopModules(), foldProductionDesktopBranches()]
@@ -223,4 +320,5 @@ export default defineConfig(({ mode }) => ({
     port: 3030,
     strictPort: true,
   },
-}));
+  };
+});

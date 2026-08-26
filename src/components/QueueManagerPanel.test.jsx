@@ -1,6 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import QueueManagerPanel from './QueueManagerPanel';
+
+const queueManagerCss = readFileSync(
+  resolve('src/styles/QueueManagerPanel.css'),
+  'utf8',
+);
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -62,5 +70,17 @@ describe('render queue cancellation authority', () => {
       />,
     );
     expect(screen.getByText('cancelled')).toBeInTheDocument();
+  });
+});
+
+describe('render queue card layout contract', () => {
+  test('collapses empty grid tracks and keeps each job metadata line intact', () => {
+    expect(queueManagerCss).toMatch(
+      /\.queue-list\.grid-layout\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(26rem,\s*100%\),\s*1fr\)\)/s,
+    );
+    expect(queueManagerCss).toMatch(/\.queue-item-header\s*\{[^}]*flex-wrap:\s*wrap/s);
+    expect(queueManagerCss).toMatch(/\.item-details\s*\{[^}]*min-width:\s*0/s);
+    expect(queueManagerCss).toMatch(/\.item-meta\s*\{[^}]*white-space:\s*nowrap/s);
+    expect(queueManagerCss).toMatch(/\.item-status\s*\{[^}]*flex:\s*0\s+0\s+auto/s);
   });
 });

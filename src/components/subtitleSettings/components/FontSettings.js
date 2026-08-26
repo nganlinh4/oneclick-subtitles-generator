@@ -9,27 +9,49 @@ import CustomDropdown from '../../common/CustomDropdown';
  * @param {Object} props - Component props
  * @param {Object} props.settings - Current subtitle settings
  * @param {Function} props.handleSettingChange - Function to handle setting changes
- * @param {Object} props.fontGroups - Grouped font options
+ * @param {Array} props.fontOptions - Exact renderer-backed font options
  * @param {Array} props.fontWeightOptions - Font weight options
  * @returns {JSX.Element} - Rendered component
  */
-const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOptions }) => {
+const FontSettings = ({
+  settings,
+  handleSettingChange,
+  handleSettingsChange,
+  fontOptions,
+  selectedFontValue,
+  fontWeightOptions,
+}) => {
   const { t } = useTranslation();
+
+  const handleFontFamilyChange = (value) => {
+    const selected = fontOptions.find(option => option.value === value);
+    if (!selected || !Number.isInteger(selected.resolvedWeight)) return;
+    // Family and weight are one face identity. Publishing them separately creates an intermediate
+    // impossible request and the first callback can be overwritten by the second callback's stale
+    // settings closure.
+    handleSettingsChange({
+      fontFamily: selected.value,
+      fontWeight: String(selected.resolvedWeight),
+    });
+  };
 
   return (
     <>
       <div className="setting-group">
-        <label htmlFor="font-family">{t('subtitleSettings.font', 'Font')}</label>
+        <label id="font-family-label" htmlFor="font-family">
+          {t('subtitleSettings.font', 'Font')}
+        </label>
         <CustomDropdown
-          value={settings.fontFamily}
-          onChange={(value) => handleSettingChange('fontFamily', value)}
-          options={Object.entries(fontGroups).flatMap(([_group, fonts]) =>
-            fonts.map(font => ({
-              value: font.value,
-              label: `${font.label} ${font.koreanSupport ? '🇰🇷' : ''}${font.vietnameseSupport ? '🇻🇳' : ''}`
-            }))
-          )}
+          id="font-family"
+          value={selectedFontValue}
+          onChange={handleFontFamilyChange}
+          options={fontOptions.map(font => ({
+            value: font.value,
+            label: `${font.label} ${font.koreanSupport ? '🇰🇷' : ''}${font.vietnameseSupport ? '🇻🇳' : ''}`,
+          }))}
           placeholder={t('subtitleSettings.selectFont', 'Select Font')}
+          dataSetting="font-family"
+          ariaLabelledBy="font-family-label"
         />
 
       </div>
@@ -53,11 +75,16 @@ const FontSettings = ({ settings, handleSettingChange, fontGroups, fontWeightOpt
       </div>
 
       <div className="setting-group">
-        <label htmlFor="font-weight">{t('subtitleSettings.fontWeight', 'Font Weight')}</label>
+        <label id="font-weight-label" htmlFor="font-weight">
+          {t('subtitleSettings.fontWeight', 'Font Weight')}
+        </label>
         <CustomDropdown
+          id="font-weight"
           value={settings.fontWeight}
           onChange={(value) => handleSettingChange('fontWeight', value)}
           options={fontWeightOptions}
+          dataSetting="font-weight"
+          ariaLabelledBy="font-weight-label"
           placeholder={t('subtitleSettings.selectFontWeight', 'Select Font Weight')}
         />
       </div>

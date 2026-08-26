@@ -1,23 +1,5 @@
 import { invokeDesktop } from './desktopRuntime';
 
-export const CACHE_CATEGORY_KEYS = Object.freeze([
-  'subtitles',
-  'videos',
-  'userSubtitles',
-  'rules',
-  'narrationReference',
-  'narrationOutput',
-  'lyrics',
-  'albumArt',
-  'uploads',
-  'output',
-  'videoRendered',
-  'videoTemp',
-  'videoAlbumArt',
-  'videoRendererUploads',
-  'videoRendererOutput',
-]);
-
 const MAX_NATIVE_CACHE_CATEGORIES = 100_000;
 const CACHE_CATEGORY_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const cacheCommandCodes = new Set([
@@ -191,8 +173,7 @@ const normalizeNativeSnapshot = (snapshot) => {
   }
 
   const details = {};
-  const categoryOrder = [...CACHE_CATEGORY_KEYS];
-  for (const key of CACHE_CATEGORY_KEYS) defineOwn(details, key, emptyCategory());
+  const categoryOrder = [];
   const seen = new Set();
   let categoryCount = 0;
   let categorySize = 0;
@@ -214,12 +195,12 @@ const normalizeNativeSnapshot = (snapshot) => {
     if (!Number.isSafeInteger(categoryCount) || !Number.isSafeInteger(categorySize)) {
       throw invalidResponse();
     }
-    if (!Object.hasOwn(details, entry.category)) categoryOrder.push(entry.category);
+    categoryOrder.push(entry.category);
     defineOwn(details, entry.category, categoryDetails(entry.count, entry.sizeBytes));
   }
 
-  // Native totals count distinct artifacts across categories. Legacy CacheTab totals are the sum
-  // of its category rows, so shared artifacts can make the legacy total larger but never smaller.
+  // Category aggregates may count the same artifact more than once. Rust's distinct totals can
+  // therefore be smaller than the row sums, but they can never be larger.
   if (data.totalCount > categoryCount || data.totalSizeBytes > categorySize) {
     throw invalidResponse();
   }
@@ -227,25 +208,23 @@ const normalizeNativeSnapshot = (snapshot) => {
   return Object.freeze({
     details: Object.freeze(details),
     categoryOrder: Object.freeze(categoryOrder),
-    nativeTotalCount: data.totalCount,
-    nativeTotalSizeBytes: data.totalSizeBytes,
-    legacyTotalCount: categoryCount,
-    legacyTotalSizeBytes: categorySize,
+    totalCount: data.totalCount,
+    totalSizeBytes: data.totalSizeBytes,
   });
 };
 
-const toLegacyDetails = (normalized) => {
+const toDisplayDetails = (normalized) => {
   const details = {};
   for (const key of normalized.categoryOrder) defineOwn(details, key, normalized.details[key]);
-  defineOwn(details, 'totalCount', normalized.legacyTotalCount);
-  defineOwn(details, 'totalSize', normalized.legacyTotalSizeBytes);
-  defineOwn(details, 'formattedTotalSize', formatBytes(normalized.legacyTotalSizeBytes));
+  defineOwn(details, 'totalCount', normalized.totalCount);
+  defineOwn(details, 'totalSize', normalized.totalSizeBytes);
+  defineOwn(details, 'formattedTotalSize', formatBytes(normalized.totalSizeBytes));
   return Object.freeze(details);
 };
 
 const normalizeInfoResponse = (snapshot) => Object.freeze({
   success: true,
-  details: toLegacyDetails(normalizeNativeSnapshot(snapshot)),
+  details: toDisplayDetails(normalizeNativeSnapshot(snapshot)),
 });
 
 const normalizeClearResponse = (response, requestedCategory) => {
@@ -273,10 +252,10 @@ const normalizeClearResponse = (response, requestedCategory) => {
     ? null
     : categoryFrom(before.details, requestedCategory);
   const scopedBeforeCount = requestedCategory === null
-    ? before.legacyTotalCount
+    ? before.totalCount
     : beforeRequested.count;
   const scopedBeforeSize = requestedCategory === null
-    ? before.nativeTotalSizeBytes
+    ? before.totalSizeBytes
     : beforeRequested.size;
   const candidateOutcomeCount = data.removedCount
     + data.retainedSharedCount
@@ -284,8 +263,8 @@ const normalizeClearResponse = (response, requestedCategory) => {
   if (!Number.isSafeInteger(candidateOutcomeCount)
       || candidateOutcomeCount > scopedBeforeCount
       || data.removedSizeBytes > scopedBeforeSize
-      || after.nativeTotalCount > before.nativeTotalCount
-      || after.nativeTotalSizeBytes > before.nativeTotalSizeBytes) {
+      || after.totalCount > before.totalCount
+      || after.totalSizeBytes > before.totalSizeBytes) {
     throw invalidResponse();
   }
 
@@ -316,13 +295,11 @@ const normalizeClearResponse = (response, requestedCategory) => {
     });
   }
 
-  const totalCount = categoryOrder.reduce((sum, key) => sum + cleared[key].count, 0);
-  const totalSize = categoryOrder.reduce((sum, key) => sum + cleared[key].size, 0);
   const details = {};
   for (const key of categoryOrder) defineOwn(details, key, cleared[key]);
-  defineOwn(details, 'totalCount', totalCount);
-  defineOwn(details, 'totalSize', totalSize);
-  defineOwn(details, 'formattedTotalSize', formatBytes(totalSize));
+  defineOwn(details, 'totalCount', data.removedCount);
+  defineOwn(details, 'totalSize', data.removedSizeBytes);
+  defineOwn(details, 'formattedTotalSize', formatBytes(data.removedSizeBytes));
   return Object.freeze({
     success: true,
     message: 'Cache cleared successfully',

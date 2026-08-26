@@ -7,6 +7,7 @@ import { useModalHandlers } from './ModalHandlers';
 import { useAppEffects } from './AppEffects';
 import OnboardingFooterReveal from '../OnboardingFooterReveal';
 import ToastPanel from '../common/ToastPanel';
+import ProjectSubtitleFontRepair from './ProjectSubtitleFontRepair';
 import { startStartupUpdateCheck } from '../../platform/startupUpdateCoordinator';
 
 // Import CSS files
@@ -64,7 +65,10 @@ function App() {
       <OnboardingFooterReveal />
 
       {/* Toast notifications panel - moved early to ensure it's available before other components */}
-      <ToastPanel />
+      <ToastPanel backgroundControlsBlocked={appState.showSettings} />
+
+      {/* The scene authority owns repair; this observer only announces its durable receipt. */}
+      <ProjectSubtitleFontRepair />
 
       <AppLayout
         appState={appState}

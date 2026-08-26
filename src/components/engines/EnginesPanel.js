@@ -176,7 +176,11 @@ const EnginesPanel = () => {
   };
 
   return (
-    <div className="engines-panel">
+    <div
+      className="engines-panel"
+      data-asr-package-status={packageGroupStates.asr}
+      data-speech-package-status={packageGroupStates.speech}
+    >
       <div className="engines-panel__header">
         <p className="engines-panel__intro">
           {managedByElectron

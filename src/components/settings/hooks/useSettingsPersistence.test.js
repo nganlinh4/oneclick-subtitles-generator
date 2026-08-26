@@ -22,7 +22,7 @@ const createParams = (overrides = {}) => ({
   timeFormat: 'hms',
   showWaveformLongVideos: false,
   segmentOffsetCorrection: -3,
-  transcriptionPrompt: 'prompt',
+  transcriptionPrompt: 'prompt {contentType}',
   useOAuth: false,
   youtubeClientId: 'oauth-client-id',
   youtubeClientSecret: 'oauth-client-secret',
@@ -49,6 +49,7 @@ const createParams = (overrides = {}) => ({
   setGeniusApiKey: vi.fn(),
   setYoutubeClientId: vi.fn(),
   setYoutubeClientSecret: vi.fn(),
+  setTranscriptionPrompt: vi.fn(),
   onSave: vi.fn(),
   handleClose: vi.fn(),
   ...overrides,
@@ -170,7 +171,7 @@ it('durably writes the complete preference snapshot before success and close', a
   expect(order).toEqual(['sqlite', 'success', 'close']);
   expect(invokeDesktop.mock.calls[0][1].values).toEqual(expect.objectContaining({
     segment_duration: '5',
-    transcription_prompt: 'prompt',
+    transcription_prompt: 'prompt {contentType}',
     use_video_analysis: 'true',
     optimized_resolution: '360p',
     use_cookies_for_download: 'true',
@@ -178,6 +179,39 @@ it('durably writes the complete preference snapshot before success and close', a
     auto_import_site_subtitles: 'true',
     custom_gemini_models: '[]',
   }));
+});
+
+it('normalizes a legacy invalid prompt before it can reach durable settings', async () => {
+  const params = createParams({
+    transcriptionPrompt: 'A legacy prompt with no variable',
+    youtubeClientId: '',
+    youtubeClientSecret: '',
+  });
+
+  await useSettingsPersistence(params).handleSave();
+
+  const normalized = 'A legacy prompt with no variable\n\n{contentType}';
+  expect(invokeDesktop).toHaveBeenCalledWith('settings_set_many', {
+    values: expect.objectContaining({ transcription_prompt: normalized }),
+  });
+  expect(localStorage.getItem('transcription_prompt')).toBe(normalized);
+  expect(params.setTranscriptionPrompt).toHaveBeenCalledWith(normalized);
+  expect(params.setOriginalSettings).toHaveBeenCalledWith(expect.objectContaining({
+    transcriptionPrompt: normalized,
+  }));
+});
+
+it('removes duplicate content-type tokens at the durable save boundary', async () => {
+  const params = createParams({
+    transcriptionPrompt: 'Use {contentType}, never {contentType} twice.',
+    youtubeClientId: '',
+    youtubeClientSecret: '',
+  });
+
+  await useSettingsPersistence(params).handleSave();
+
+  expect(localStorage.getItem('transcription_prompt'))
+    .toBe('Use {contentType}, never  twice.');
 });
 
 it('does not publish browser state, success, or close when SQLite persistence fails', async () => {
@@ -200,6 +234,7 @@ it('does not publish browser state, success, or close when SQLite persistence fa
   expect(localStorage.getItem('use_cookies_for_download')).toBeNull();
   expect(params.onSave).not.toHaveBeenCalled();
   expect(params.setOriginalSettings).not.toHaveBeenCalled();
+  expect(params.setTranscriptionPrompt).not.toHaveBeenCalled();
   expect(params.setHasChanges).not.toHaveBeenCalled();
   expect(params.handleClose).not.toHaveBeenCalled();
 });

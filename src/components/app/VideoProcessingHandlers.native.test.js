@@ -34,9 +34,9 @@ vi.mock('../../platform/nativeMediaOwnership', () => ({
     cacheId,
     projectId: `project:${cacheId}`,
   })),
-  forgetNativeMediaSession: vi.fn(),
+  forgetNativeMediaSessionDurably: vi.fn(async () => true),
+  persistNativeMediaSession: vi.fn(async session => session),
   readNativeMediaSession: vi.fn(() => null),
-  writeNativeMediaSession: vi.fn(),
 }));
 vi.mock('../../platform/subtitleProjectBinding', () => ({
   activateSubtitleProjectBinding: vi.fn(),

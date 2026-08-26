@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { initGeminiButtonEffects, resetAllGeminiButtonEffects, disableGeminiButtonEffects } from '../../utils/geminiEffects';
-import { syncLocalStorageToServer } from '../../services/localStorageService';
 import initTabPillAnimation from '../../utils/tabPillAnimation';
 import { getThemeWithFallback } from '../../utils/systemDetection';
 
@@ -39,14 +38,6 @@ export const useAppEffects = (props) => {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, []);
-
-  // Sync localStorage to server on startup
-  useEffect(() => {
-    // Sync localStorage to server for use by narration service
-    syncLocalStorageToServer()
-
-      .catch(error => console.error('Error syncing localStorage to server:', error));
   }, []);
 
   // Re-initialize Gemini button effects when subtitles data changes
@@ -166,13 +157,6 @@ export const useAppEffects = (props) => {
       if (event.key === 'use_optimized_preview' || !event.key) {
         const newUseOptimizedPreview = localStorage.getItem('use_optimized_preview') === 'true';
         setUseOptimizedPreview(newUseOptimizedPreview);
-      }
-
-      // Sync localStorage to server when API keys change
-      if (event.key === 'gemini_api_key' || event.key === 'gemini_model') {
-        syncLocalStorageToServer()
-
-          .catch(error => console.error('Error syncing localStorage to server:', error));
       }
 
     };

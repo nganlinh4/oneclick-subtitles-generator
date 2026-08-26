@@ -215,6 +215,52 @@ const start = (hook) => hook.current.handleTranslate(
   chain
 );
 
+it('canonicalizes the blank editor target out of a format-only run and durable record', async () => {
+  const view = await mount();
+  const formatChain = [
+    { id: 1, type: 'language', value: '', isOriginal: false },
+    { id: 2, type: 'delimiter', value: 'FMT: ', style: { open: '', close: '' } },
+    { id: 3, type: 'language', value: 'Original', isOriginal: true },
+  ];
+
+  let outcome;
+  await act(async () => {
+    outcome = await view.result.current.handleTranslate(
+      [],
+      '',
+      false,
+      null,
+      formatChain
+    );
+  });
+  expect(outcome).toMatchObject({ status: 'complete' });
+
+  const runnable = [
+    formatChain[1],
+    formatChain[2],
+  ];
+  expect(mocks.translate).toHaveBeenCalledWith(
+    expect.any(Array),
+    [],
+    expect.any(String),
+    null,
+    0,
+    false,
+    '',
+    false,
+    null,
+    runnable,
+    'main',
+    false,
+    expect.any(Object)
+  );
+  expect(mocks.persist).toHaveBeenCalledWith(
+    expect.any(Object),
+    expect.objectContaining({ languageChain: runnable })
+  );
+  view.unmount();
+});
+
 it('acquires a synchronous lease so same-tick double click starts one run', async () => {
   const view = await mount();
   const checkpoint = deferred();

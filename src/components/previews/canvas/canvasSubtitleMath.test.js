@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import fixture from '../../../../crates/osg-scene/tests/fixtures/subtitle-math-golden.json';
+import { applySubtitleAnimationEasing } from '../../../shared/subtitle/subtitleAnimationEasing';
 import {
   activeCueAt,
   cueTransformAt,
@@ -10,6 +11,10 @@ import {
 } from './canvasSubtitleMath';
 
 describe('canvas preview shares the frozen Rust scene maths', () => {
+  it('uses the canonical easing function rather than carrying a preview-only copy', () => {
+    expect(easeSubtitle).toBe(applySubtitleAnimationEasing);
+  });
+
   it('matches every easing sample in the cross-language fixture', () => {
     for (const sample of fixture.easingSamples) {
       expect(easeSubtitle(sample.progress, sample.easing)).toBe(sample.eased);
@@ -96,5 +101,33 @@ describe('canvas cue selection and placement', () => {
     expect(geometry.border.top).toBe(934);
     expect(geometry.border.width).toBe(232);
     expect(geometry.border.height).toBe(76);
+  });
+
+  it('uses the persisted asymmetric padding in pixel geometry instead of old literals', () => {
+    const geometry = resolveSubtitleGeometry({
+      customization: {
+        fontSize: 50,
+        backgroundPaddingX: 30,
+        backgroundPaddingY: 20,
+        borderWidth: 0,
+        borderStyle: 'none',
+        borderRadius: 4,
+        position: 'custom',
+        customPositionX: 50,
+        customPositionY: 90,
+      },
+      composition: { width: 1_920, height: 1_080 },
+      atlas: {
+        face: { fontSizePx: 50 },
+        metrics: { lineHeightPx: 60 },
+        layout: {
+          textAlign: 'center',
+          lines: [{ advanceWidthPx: 200 }],
+        },
+      },
+    });
+
+    expect(geometry.border).toEqual({ left: 830, top: 922, width: 260, height: 100 });
+    expect(geometry.textTop).toBe(942);
   });
 });

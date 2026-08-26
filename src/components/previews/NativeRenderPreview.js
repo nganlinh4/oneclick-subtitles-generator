@@ -6,6 +6,7 @@ import VideoCropControls from '../VideoCropControls';
 import '../../styles/VideoPreviewPanel.css';
 import CanvasVideoPreview from './canvas/CanvasVideoPreview';
 import useNativePreviewToast from './native/useNativePreviewToast';
+import useVideoSeekCoordinator from './useVideoSeekCoordinator';
 
 /**
  * The render tab's preview, drawn by the same compositor that writes the file.
@@ -100,9 +101,9 @@ const NativeRenderPreview = forwardRef(({
 
   const [source, setSource] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isSeeking, setIsSeeking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [canvasPreviewState, setCanvasPreviewState] = useState({ status: 'idle', code: null });
+  const [canvasPreviewRetryToken, setCanvasPreviewRetryToken] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState(null);
@@ -113,7 +114,7 @@ const NativeRenderPreview = forwardRef(({
   useEffect(() => {
     const resolved = resolveVideoSource(videoFile);
     setSource(resolved);
-    setIsSeeking(false);
+    setCurrentTime(0);
     if (resolved === null) {
       setDuration(0);
       setVideoDimensions(null);
@@ -147,13 +148,6 @@ const NativeRenderPreview = forwardRef(({
     );
   }, [onDurationChange]);
 
-  const handleTimeUpdate = useCallback(() => {
-    const element = videoRef.current;
-    if (!element) return;
-    setCurrentTime(element.currentTime);
-    if (onTimeUpdate) onTimeUpdate(element.currentTime);
-  }, [onTimeUpdate]);
-
   // The narration track is a second element rather than a mix, because the mix that matters is the
   // one `crates/osg-audio` performs for the file. This is playback, and it follows the video.
   useEffect(() => {
@@ -184,31 +178,33 @@ const NativeRenderPreview = forwardRef(({
     else element.pause();
   }, []);
 
-  const seek = useCallback((time) => {
-    const element = videoRef.current;
-    if (!element) return;
-    const next = Math.min(Math.max(Number(time) || 0, 0), duration || 0);
-    if (Math.abs(element.currentTime - next) < 0.000_001) {
-      setCurrentTime(next);
-      if (onSeek) onSeek(next);
-      return;
-    }
-    // Keep the last complete composition visible while the media decoder resolves the new
-    // position. Repainting immediately after assigning currentTime can only produce the old frame
-    // or no frame; `seeked` is the first point at which the replacement is safe to publish.
-    setIsSeeking(true);
-    element.currentTime = next;
-    setCurrentTime(next);
-    if (onSeek) onSeek(next);
-  }, [duration, onSeek]);
+  const publishCurrentTime = useCallback((time) => {
+    setCurrentTime(time);
+    if (onTimeUpdate) onTimeUpdate(time);
+  }, [onTimeUpdate]);
 
-  const handleSeeked = useCallback(() => {
+  const handleSeekCompleted = useCallback((time) => {
     const element = videoRef.current;
-    if (!element) return;
-    setCurrentTime(element.currentTime);
-    setIsSeeking(false);
-    syncNarration(!element.paused);
-  }, [syncNarration]);
+    if (element) syncNarration(!element.paused);
+    if (onSeek) onSeek(time);
+  }, [onSeek, syncNarration]);
+
+  // Use the same generation- and source-bound seek authority as the main editor. The previous
+  // render-tab path kept an independent `isSeeking` boolean, so a stale seeked event or a source
+  // replacement could unlock a newer request and let playback overwrite its target.
+  const {
+    isSeeking,
+    seekTo: coordinatedSeekTo,
+  } = useVideoSeekCoordinator({
+    videoRef,
+    sourceKey: source?.url ?? null,
+    setCurrentTime: publishCurrentTime,
+    onSeek: handleSeekCompleted,
+  });
+
+  const seek = useCallback((time) => {
+    coordinatedSeekTo(Number(time), { reason: 'render-control' });
+  }, [coordinatedSeekTo]);
 
   const toggleMute = useCallback(() => {
     const element = videoRef.current;
@@ -227,23 +223,13 @@ const NativeRenderPreview = forwardRef(({
   useImperativeHandle(ref, () => ({
     /** Frames, not seconds: `TrimTimelineRow` speaks the render settings' frame grid. */
     seekTo: (frame) => {
-      const element = videoRef.current;
-      if (!element || !Number.isFinite(frame) || frameRate <= 0) return;
-      const next = Math.max(frame / frameRate, 0);
-      if (Math.abs(element.currentTime - next) < 0.000_001) {
-        setCurrentTime(next);
-        if (onSeek) onSeek(next);
-        return;
-      }
-      setIsSeeking(true);
-      element.currentTime = next;
-      setCurrentTime(element.currentTime);
-      if (onSeek) onSeek(element.currentTime);
+      if (!Number.isFinite(frame) || frameRate <= 0) return;
+      coordinatedSeekTo(Math.max(frame / frameRate, 0), { reason: 'trim-timeline' });
     },
     play: () => videoRef.current?.play().catch(() => undefined),
     pause: () => videoRef.current?.pause(),
     getCurrentFrame: () => Math.floor((videoRef.current?.currentTime ?? 0) * frameRate),
-  }), [frameRate, onSeek]);
+  }), [coordinatedSeekTo, frameRate]);
 
   useEffect(() => {
     const handleSpacebar = (event) => {
@@ -260,8 +246,11 @@ const NativeRenderPreview = forwardRef(({
 
   useNativePreviewToast({
     error: canvasPreviewState.code === null ? null : { code: canvasPreviewState.code },
-    dormant: false,
-    onRetry: null,
+    dormant: canvasPreviewState.status === 'font-blocked',
+    fontBlocked: canvasPreviewState.status === 'font-blocked',
+    onRetry: canvasPreviewState.retryable === true
+      ? () => setCanvasPreviewRetryToken(token => token + 1)
+      : null,
     t,
   });
 
@@ -291,14 +280,19 @@ const NativeRenderPreview = forwardRef(({
   }
 
   return (
-    <div ref={surfaceRef} className="native-render-preview" style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      ref={surfaceRef}
+      className="native-render-preview"
+      data-osg-preview={canvasPreviewState.status}
+      data-osg-preview-code={canvasPreviewState.code ?? ''}
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
       <video
         ref={videoRef}
         src={source.url}
         playsInline
         onClick={togglePlayback}
         onLoadedMetadata={handleMetadata}
-        onTimeUpdate={handleTimeUpdate}
         onPlay={() => {
           setIsPlaying(true);
           syncNarration(true);
@@ -309,8 +303,6 @@ const NativeRenderPreview = forwardRef(({
           syncNarration(false);
           if (onPause) onPause();
         }}
-        onSeeking={() => setIsSeeking(true)}
-        onSeeked={handleSeeked}
         style={{
           width: '100%',
           height: '100%',
@@ -323,11 +315,13 @@ const NativeRenderPreview = forwardRef(({
       />
 
       <CanvasVideoPreview
+        key={source?.url ?? 'no-render-source'}
         videoRef={videoRef}
         sourceKey={source?.url ?? null}
         playing={isPlaying}
         seeking={isSeeking}
         currentTime={currentTime}
+        frameRate={frameRate}
         customization={subtitleCustomization}
         subtitles={subtitles}
         resolution={resolution}
@@ -335,6 +329,7 @@ const NativeRenderPreview = forwardRef(({
         trimStart={trimStart}
         trimEnd={trimEnd}
         onStateChange={setCanvasPreviewState}
+        retryToken={canvasPreviewRetryToken}
         style={{ borderRadius: '8px' }}
       />
 
@@ -360,7 +355,11 @@ const NativeRenderPreview = forwardRef(({
           step={frameRate > 0 ? 1 / frameRate : 0.01}
           value={Math.min(currentTime, duration || 0)}
           aria-label={t('videoPreview.seek', 'Seek video')}
-          onChange={(event) => seek(event.target.value)}
+          // `onInput` is intentional. React's value-tracked `onChange` suppresses a same-value
+          // input when the controlled thumb is one render behind a playing media element. In that
+          // state the UI says 0.9 s while the decoder is already at 2.1 s, and seeking to the public
+          // thumb value must still seek the media rather than silently continuing playback.
+          onInput={(event) => seek(event.currentTarget.value)}
         />
         <span className="native-render-time">{formatTime(duration)}</span>
         <button

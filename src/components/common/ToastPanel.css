@@ -13,11 +13,15 @@
 /* --- Wrapper & Panel --- */
 .toast-panel-wrapper {
     position: fixed;
-    bottom: 0; /* Changed from 20px to align hover area better */
-    right: 0;  /* Changed from 20px */
+    /* Keep live notices above the independent history control. Previously both surfaces owned the
+       same bottom-right pixels, so the history button covered the newest toast's message. */
+    bottom: 64px;
+    right: 0;
     z-index: 100000;
     pointer-events: none;
-    padding: 20px; /* Use padding to create space around the panel */
+    box-sizing: border-box;
+    max-height: calc(100vh - 64px);
+    padding: 20px;
 }
 
 .toast-panel {
@@ -29,8 +33,13 @@
     gap: 0.5rem;
     pointer-events: auto; /* Enable mouse events on the panel itself */
     width: fit-content;
-    height: fit-content;
+    max-height: calc(100vh - 104px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
 }
+
+.toast-panel::-webkit-scrollbar { display: none; }
 
 /* --- Toast Item & Animations --- */
 .toast-item {
@@ -182,13 +191,21 @@
   position: fixed;
   bottom: 0;
   right: 0;
+  width: 96px;
+  height: 96px;
   pointer-events: none;
   z-index: 2147483646;
 }
 
-/* --- Floating History Button (matching floating-settings exactly) --- */
+/* Ambient app chrome must not pierce a modal's visual or pointer boundary. The live toast wrapper
+   remains available because Settings uses it for explicit confirmation actions. */
+.toast-history-button-container[hidden] {
+  display: none;
+}
+
+/* --- Independent history control --- */
 .toast-history-button {
-  position: fixed;
+  position: absolute;
   bottom: 20px;
   right: 24px;
   display: inline-flex;
@@ -207,7 +224,6 @@
   padding: 12px;
   backdrop-filter: blur(12px);
   font-size: 16px !important;
-  position: relative;
   overflow: hidden;
 }
 

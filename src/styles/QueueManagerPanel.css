@@ -125,7 +125,13 @@
 /* Grid Layout for Queue List */
 .queue-list.grid-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /*
+   * A queue header carries a title, three metadata fields and a status badge. Reserving empty
+   * 320px tracks squeezed two real jobs into thirds of the Render panel, which made the metadata
+   * wrap into disconnected fragments. Collapse empty tracks and keep every occupied card wide
+   * enough for that header; min() still lets the card fit a genuinely narrow container.
+   */
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -176,8 +182,11 @@
 /* Queue Item Header */
 .queue-item-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
   margin-bottom: 0.75rem;
 }
 
@@ -185,7 +194,8 @@
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  flex: 1;
+  flex: 1 1 13rem;
+  min-width: 0;
 }
 
 .status-icon {
@@ -195,6 +205,7 @@
 
 .item-details {
   flex: 1;
+  min-width: 0;
 }
 
 .item-title {
@@ -210,6 +221,7 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  white-space: nowrap;
 }
 
 .item-time {
@@ -219,6 +231,8 @@
 .item-status {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .status-badge {

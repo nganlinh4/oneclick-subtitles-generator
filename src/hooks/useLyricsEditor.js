@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { v7 as uuidv7 } from 'uuid';
 import { useLyricsEditorDrag } from './useLyricsEditorDrag';
 import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import { useLyricsEditorHelpers } from './useLyricsEditorHelpers';
@@ -172,10 +173,16 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     showTranslationWarning(t('translation.warningEdited', 'You have edited the text of original subtitles. Translations may be outdated. Please translate again.'));
   };
 
-  const handleInsertLyric = (index) => {
+  // `insertionIndex` identifies a gap, not a row: 0 is before the first row and
+  // lyrics.length is after the last row. This keeps every above/below action distinct.
+  const handleInsertLyric = (insertionIndex) => {
+    if (!Number.isSafeInteger(insertionIndex)
+        || insertionIndex < 0
+        || insertionIndex > lyrics.length) return;
+
     // Handle special case: creating the very first lyric when list is empty
     if (lyrics.length === 0) {
-      const newLyric = { text: '', start: 0, end: 2.0 };
+      const newLyric = { id: uuidv7(), text: '', start: 0, end: 2.0 };
       const updatedLyrics = [newLyric];
       commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
       // Show warning about translations
@@ -184,7 +191,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     }
 
     // Handle special case: inserting at the beginning (before the first lyric)
-    if (index < 0 || (index === 0 && lyrics.length > 0)) {
+    if (insertionIndex === 0) {
       const firstLyric = lyrics[0];
       const minimumDuration = 0.2;
       const shift = Math.max(0, minimumDuration - firstLyric.start);
@@ -197,6 +204,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       const newStartTime = Math.max(0, newEndTime - 2.0);
 
       const newLyric = {
+        id: uuidv7(),
         text: '',
         start: newStartTime,
         end: newEndTime
@@ -211,8 +219,8 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       return;
     }
 
-    const prevLyric = lyrics[index];
-    const nextLyric = lyrics[index + 1];
+    const prevLyric = lyrics[insertionIndex - 1];
+    const nextLyric = lyrics[insertionIndex];
 
     // Handle case when inserting after the last lyric
     if (!nextLyric) {
@@ -221,6 +229,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       const newEndTime = prevLyric.end + 2.0; // Add 2 seconds for the new lyric
 
       const newLyric = {
+        id: uuidv7(),
         text: '',
         start: newStartTime,
         end: newEndTime
@@ -251,7 +260,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
 
       // Update all following lyrics to maintain gaps
       const updatedLyrics = lyrics.map((lyric, i) => {
-        if (i <= index) return lyric;
+        if (i < insertionIndex) return lyric;
         return {
           ...lyric,
           start: lyric.start + lengthToAdd,
@@ -260,15 +269,16 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       });
 
       const newLyric = {
+        id: uuidv7(),
         text: '',
         start: newStartTime,
         end: newEndTime
       };
 
       const finalLyrics = [
-        ...updatedLyrics.slice(0, index + 1),
+        ...updatedLyrics.slice(0, insertionIndex),
         newLyric,
-        ...updatedLyrics.slice(index + 1)
+        ...updatedLyrics.slice(insertionIndex)
       ];
 
       commitLyricsMutation(finalLyrics, LYRICS_EDITOR_ACTIONS.INSERT);
@@ -279,15 +289,16 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
       // If gap is large enough, insert in the middle
       const midPoint = prevLyric.end + gap / 2;
       const newLyric = {
+        id: uuidv7(),
         text: '',
         start: prevLyric.end,
         end: midPoint + (gap / 4) // Give the new lyric 75% of the first half of the gap
       };
 
       const updatedLyrics = [
-        ...lyrics.slice(0, index + 1),
+        ...lyrics.slice(0, insertionIndex),
         newLyric,
-        ...lyrics.slice(index + 1)
+        ...lyrics.slice(insertionIndex)
       ];
 
       commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.INSERT);

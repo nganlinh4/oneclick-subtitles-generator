@@ -1,23 +1,27 @@
 import { SunIcon, MoonIcon } from '../icons/TabIcons';
-import { getThemeWithFallback, setupSystemThemeListener } from '../../../utils/systemDetection';
+import {
+  commitThemePreference,
+  initializeEffectiveTheme,
+  oppositeTheme,
+  subscribeToEffectiveSystemTheme,
+} from '../../../platform/themePreference';
 
 // Function to toggle between light and dark themes
-export const toggleTheme = (theme, setTheme) => {
-  let newTheme;
-  // Simple toggle between light and dark
-  if (theme === 'light' || theme === 'system') {
-    newTheme = 'dark';
+export const toggleTheme = async (
+  theme,
+  setTheme,
+  {
+    commitPreference = commitThemePreference,
+    onProjectionWarning,
+  } = {},
+) => {
+  const newTheme = oppositeTheme(theme);
+  if (onProjectionWarning === undefined) {
+    await commitPreference(newTheme);
   } else {
-    newTheme = 'light';
+    await commitPreference(newTheme, { onProjectionWarning });
   }
-
   setTheme(newTheme);
-  localStorage.setItem('theme', newTheme);
-  document.documentElement.setAttribute('data-theme', newTheme);
-
-  // Force re-render by triggering a storage event
-  window.dispatchEvent(new Event('storage'));
-  
   return newTheme;
 };
 
@@ -33,17 +37,7 @@ export const getThemeLabel = (theme, t) => {
 };
 
 // Initialize theme from localStorage or detect system preference
-export const initializeTheme = () => {
-  const theme = getThemeWithFallback();
-  document.documentElement.setAttribute('data-theme', theme);
-
-  // Save to localStorage if not already saved
-  if (!localStorage.getItem('theme')) {
-    localStorage.setItem('theme', theme);
-  }
-
-  return theme;
-};
+export const initializeTheme = initializeEffectiveTheme;
 
 // Set up system theme change listener (re-exported from systemDetection utility)
-export { setupSystemThemeListener };
+export const setupSystemThemeListener = subscribeToEffectiveSystemTheme;

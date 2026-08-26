@@ -1,5 +1,4 @@
 import {
-  CACHE_CATEGORY_KEYS,
   CacheServiceError,
   createCacheService,
   formatCacheBytes,
@@ -16,32 +15,34 @@ const nativeInfo = (categories = [], overrides = {}) => ({
   ...overrides,
 });
 
-it('normalizes native aggregates into the exact path-free legacy CacheTab shape', async () => {
+it('normalizes only the categories reported by Rust into a path-free display shape', async () => {
   const invokeCommand = vi.fn().mockResolvedValue(nativeInfo([
     { category: 'videos', count: 2, sizeBytes: 1536 },
     { category: 'subtitles', count: 1, sizeBytes: 10 },
   ]));
   const service = createCacheService({ invokeCommand });
 
-  await expect(service.getCacheInfo()).resolves.toEqual({
+  const result = await service.getCacheInfo();
+  expect(result).toEqual({
     success: true,
-    details: expect.objectContaining({
+    details: {
       videos: { count: 2, size: 1536, files: [], formattedSize: '1.5 KB' },
       subtitles: { count: 1, size: 10, files: [], formattedSize: '10 Bytes' },
-      narrationOutput: { count: 0, size: 0, files: [], formattedSize: '0 Bytes' },
       totalCount: 3,
       totalSize: 1546,
       formattedTotalSize: '1.51 KB',
-    }),
+    },
   });
   expect(invokeCommand).toHaveBeenCalledWith('cache_info', {});
-  const result = await service.getCacheInfo();
-  expect(Object.keys(result.details).filter((key) => CACHE_CATEGORY_KEYS.includes(key)))
-    .toEqual(CACHE_CATEGORY_KEYS);
+  expect(Object.keys(result.details)).toEqual([
+    'videos', 'subtitles', 'totalCount', 'totalSize', 'formattedTotalSize',
+  ]);
+  expect(result.details).not.toHaveProperty('videoRendererUploads');
+  expect(result.details).not.toHaveProperty('videoRendererOutput');
   expect(JSON.stringify(result)).not.toMatch(/path|filename|private/i);
 });
 
-it('uses category sums for legacy totals while accepting distinct native totals', async () => {
+it('uses authoritative distinct native totals when one artifact belongs to several categories', async () => {
   const service = createCacheService({
     invokeCommand: vi.fn().mockResolvedValue(nativeInfo([
       { category: 'videos', count: 1, sizeBytes: 100 },
@@ -50,7 +51,12 @@ it('uses category sums for legacy totals while accepting distinct native totals'
   });
 
   await expect(service.getCacheInfo()).resolves.toMatchObject({
-    details: { totalCount: 2, totalSize: 200 },
+    details: {
+      videos: { count: 1, size: 100 },
+      videoTemp: { count: 1, size: 100 },
+      totalCount: 1,
+      totalSize: 100,
+    },
   });
 });
 

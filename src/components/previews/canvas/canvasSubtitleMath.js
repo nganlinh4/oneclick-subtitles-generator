@@ -6,9 +6,10 @@
  * DOM or canvas calls, so fixture tests can lock them to Rust without exercising a UI.
  */
 
+import { applySubtitleAnimationEasing } from '../../../shared/subtitle/subtitleAnimationEasing.ts';
+
 const REFERENCE_WIDTH = 1_920;
 const REFERENCE_HEIGHT = 1_080;
-const BISECTION_STEPS = 40;
 
 export const round2 = (value) => Number(Number(value).toFixed(2));
 
@@ -20,42 +21,9 @@ export const marginFraction = (value, reference) => (
   round2((Number(value) / reference) * 100) / 100
 );
 
-const cubicCoordinate = (parameter, first, second) => {
-  const inverse = 1 - parameter;
-  return (3 * inverse * inverse * parameter * first)
-    + (3 * inverse * parameter * parameter * second)
-    + (parameter * parameter * parameter);
-};
-
-const cubicBezier = (progress, x1, y1, x2, y2) => {
-  if (progress <= 0) return 0;
-  if (progress >= 1) return 1;
-  let lower = 0;
-  let upper = 1;
-  for (let index = 0; index < BISECTION_STEPS; index += 1) {
-    const parameter = (lower + upper) / 2;
-    if (cubicCoordinate(parameter, x1, x2) < progress) lower = parameter;
-    else upper = parameter;
-  }
-  return cubicCoordinate((lower + upper) / 2, y1, y2);
-};
-
-export const easeSubtitle = (progress, easing) => {
-  if (easing === 'ease-in') return progress * progress;
-  if (easing === 'ease-out') return 1 - ((1 - progress) ** 2);
-  if (easing === 'ease' || easing === 'ease-in-out') {
-    return progress < 0.5
-      ? 2 * progress * progress
-      : 1 - (((-2 * progress) + 2) ** 2) / 2;
-  }
-  if (easing === 'cubic-bezier(0.25, 0.46, 0.45, 0.94)') {
-    return cubicBezier(progress, 0.25, 0.46, 0.45, 0.94);
-  }
-  if (easing === 'cubic-bezier(0.68, -0.55, 0.265, 1.55)') {
-    return cubicBezier(progress, 0.68, -0.55, 0.265, 1.55);
-  }
-  return progress;
-};
+// Keep the public preview vocabulary while making the curve implementation singular. Export is
+// bit-locked to this same function through the generated subtitle-math fixture.
+export const easeSubtitle = applySubtitleAnimationEasing;
 
 export const activeCueAtFrom = (cues, instant, fadeInValue, fadeOutValue, startIndex = 0) => {
   const fadeIn = Number.isFinite(fadeInValue) && fadeInValue > 0 ? fadeInValue : 0;
@@ -169,9 +137,10 @@ export const resolveSubtitleGeometry = ({
   else if (align === 'center') blockLeft = left + ((right - left) - textWidth) / 2;
   else blockLeft = left;
 
-  // The export contract carries no padding controls; these are the compositor's shipped literals.
-  const paddingX = scaleStyleValue(customization.backgroundPaddingX ?? 16, height);
-  const paddingY = scaleStyleValue(customization.backgroundPaddingY ?? 8, height);
+  // Padding is part of the durable customization contract. Reading the values directly is
+  // intentional: silently substituting old literals here would let preview and export disagree.
+  const paddingX = scaleStyleValue(customization.backgroundPaddingX, height);
+  const paddingY = scaleStyleValue(customization.backgroundPaddingY, height);
   const borderWidth = customization.borderStyle !== 'none' && customization.borderWidth > 0
     ? scaleStyleValue(customization.borderWidth, height)
     : 0;

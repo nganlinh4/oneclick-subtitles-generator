@@ -1,6 +1,7 @@
 import {
   DEFAULT_CROP_SETTINGS,
   DEFAULT_RENDER_SETTINGS,
+  consumeLegacyRenderScene,
   loadCropSettings,
   loadNarrationSource,
   loadPanelWidth,
@@ -12,6 +13,7 @@ import {
 const storageWith = (values = {}) => ({
   getItem: vi.fn((key) => values[key] ?? null),
   setItem: vi.fn(),
+  removeItem: vi.fn(),
 });
 
 describe('video rendering preferences', () => {
@@ -108,5 +110,58 @@ describe('video rendering preferences', () => {
     const cyclic = {};
     cyclic.self = cyclic;
     expect(storeRenderPreference('json', cyclic, { json: true, storage })).toBe(false);
+  });
+
+  it('consumes the project-less editor style once when no render-tab scene existed', () => {
+    const storage = storageWith({
+      subtitle_settings: JSON.stringify({
+        fontSize: '72',
+        position: '25',
+        opacity: '0.5',
+        showTranslatedSubtitles: true,
+      }),
+      subtitle_language: 'translated',
+    });
+    expect(consumeLegacyRenderScene(storage)).toMatchObject({
+      selectedSubtitles: 'translated',
+      selectedNarration: 'none',
+      customization: {
+        fontSize: 72,
+        position: 'custom',
+        customPositionY: 25,
+        backgroundOpacity: 50,
+      },
+    });
+    expect(storage.removeItem).toHaveBeenCalledWith('subtitle_settings');
+    expect(storage.removeItem).toHaveBeenCalledWith('subtitle_language');
+  });
+
+  it('prefers the more complete render-tab style when both legacy stores disagree', () => {
+    const storage = storageWith({
+      videoRender_subtitleCustomization: JSON.stringify({ fontSize: 64 }),
+      videoRender_selectedSubtitles: 'original',
+      subtitle_settings: JSON.stringify({ fontSize: '99', showTranslatedSubtitles: true }),
+    });
+    expect(consumeLegacyRenderScene(storage)).toMatchObject({
+      selectedSubtitles: 'original',
+      customization: { fontSize: 64 },
+    });
+  });
+
+  it('refuses an unreadable or undeletable legacy scene instead of silently skipping it', () => {
+    const unreadable = { getItem: () => { throw new Error('blocked read'); } };
+    expect(() => consumeLegacyRenderScene(unreadable)).toThrow(expect.objectContaining({
+      name: 'LegacyRenderSceneConsumptionError',
+      code: 'legacyRenderSceneConsumptionFailed',
+    }));
+
+    const undeletable = storageWith({
+      videoRender_selectedSubtitles: 'translated',
+    });
+    undeletable.removeItem.mockImplementation(() => { throw new Error('blocked delete'); });
+    expect(() => consumeLegacyRenderScene(undeletable)).toThrow(expect.objectContaining({
+      name: 'LegacyRenderSceneConsumptionError',
+      code: 'legacyRenderSceneConsumptionFailed',
+    }));
   });
 });

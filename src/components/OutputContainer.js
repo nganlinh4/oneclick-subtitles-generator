@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/OutputContainer.css';
 import '../styles/narration/unifiedNarrationRedesign.css';
@@ -17,6 +17,7 @@ const markSavedOutsideEditor = () => undefined;
 
 const OutputContainer = ({
   status,
+  statusEventId,
   subtitlesData,
   setSubtitlesData,
   selectedVideo,
@@ -46,15 +47,79 @@ const OutputContainer = ({
   onTranslatedSubtitlesChange = null,
 }) => {
   const { t } = useTranslation();
-  const [currentTabIndex, setCurrentTabIndex] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(0);
   const [seekTime, setSeekTime] = useState(null); // Track when seeking happens
+  const [lyricSeekRequest, setLyricSeekRequest] = useState(null);
+  const lyricSeekGenerationRef = useRef(0);
+  const [browserVideoSource, setBrowserVideoSource] = useState('');
+  const [browserFileType, setBrowserFileType] = useState('');
+  const nativeMedia = isNativeMediaDescriptor(uploadedFile) ? uploadedFile : null;
+  // Native activation publishes an opaque playback capability as part of the media descriptor.
+  // Derive it during render so project B can never render with project A's effect-synchronized URL.
+  const videoSource = nativeMedia?.playbackUrl ?? browserVideoSource;
+  const fileType = nativeMedia?.type ?? browserFileType;
+  const [playheadState, setPlayheadState] = useState({ mediaKey: videoSource, time: 0 });
+  const [durationState, setDurationState] = useState({ mediaKey: videoSource, value: 0 });
+  const [actualVideoState, setActualVideoState] = useState({ mediaKey: videoSource, url: '' });
+  const currentTabIndex = Object.is(playheadState.mediaKey, videoSource)
+    ? playheadState.time
+    : 0;
+  const videoDuration = Object.is(durationState.mediaKey, videoSource)
+    ? durationState.value
+    : 0;
+  const actualVideoUrl = Object.is(actualVideoState.mediaKey, videoSource)
+    ? actualVideoState.url
+    : '';
+  const setCurrentTabIndex = useCallback((nextTime) => {
+    setPlayheadState((current) => {
+      const currentTime = Object.is(current.mediaKey, videoSource) ? current.time : 0;
+      const resolvedTime = typeof nextTime === 'function' ? nextTime(currentTime) : nextTime;
+      return { mediaKey: videoSource, time: resolvedTime };
+    });
+  }, [videoSource]);
+  const setVideoDuration = useCallback((nextDuration) => {
+    setDurationState((current) => {
+      const currentDuration = Object.is(current.mediaKey, videoSource) ? current.value : 0;
+      const resolvedDuration = typeof nextDuration === 'function'
+        ? nextDuration(currentDuration)
+        : nextDuration;
+      return { mediaKey: videoSource, value: resolvedDuration };
+    });
+  }, [videoSource]);
+  const setActualVideoUrl = useCallback((nextUrl) => {
+    setActualVideoState((current) => {
+      const currentUrl = Object.is(current.mediaKey, videoSource) ? current.url : '';
+      const resolvedUrl = typeof nextUrl === 'function' ? nextUrl(currentUrl) : nextUrl;
+      return { mediaKey: videoSource, url: resolvedUrl };
+    });
+  }, [videoSource]);
   const [referenceAudio, setReferenceAudio] = useState(null); // Reference audio for narration
-  const [renderedSections, setRenderedSections] = useState({ preview: false, translation: false, narration: false }); // Track staggered rendering
+  const consumedStatusEventRef = useRef({ hasValue: false, identity: undefined });
 
   const handleLyricClick = (time) => {
-    setCurrentTabIndex(time);
+    // SRT-only mode has no media transport to acknowledge a command; preserve its local selection
+    // behavior without pretending that a video seek occurred.
+    if (isSrtOnlyMode) {
+      setCurrentTabIndex(time);
+      return;
+    }
+    lyricSeekGenerationRef.current += 1;
+    setLyricSeekRequest({
+      generation: lyricSeekGenerationRef.current,
+      mediaKey: videoSource,
+      time,
+    });
   };
+
+  const handleLyricSeekConsumed = useCallback((consumedRequest) => {
+    if (!Number.isSafeInteger(consumedRequest?.generation)) return;
+    if (typeof consumedRequest.mediaKey !== 'string') return;
+    setLyricSeekRequest((current) => (
+      current?.generation === consumedRequest.generation
+        && Object.is(current.mediaKey, consumedRequest.mediaKey)
+        ? null
+        : current
+    ));
+  }, []);
 
   const handleVideoSeek = (time) => {
     // Set the seek time to trigger timeline centering
@@ -104,20 +169,14 @@ const OutputContainer = ({
   // Download functionality moved to LyricsDisplay component
 
   // Set video source when a video is selected or file is uploaded
-  const [videoSource, setVideoSource] = useState('');
-  const [actualVideoUrl, setActualVideoUrl] = useState('');
-  const [fileType, setFileType] = useState('');
-  const activeVideoTitle = isNativeMediaDescriptor(uploadedFile)
+  const activeVideoTitle = nativeMedia
     ? uploadedFile.name.replace(/\.[^/.]+$/, '')
     : selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles';
   useEffect(() => {
-    // Reset the actual video URL when the source changes
-    setActualVideoUrl('');
-    setFileType('');
+    setBrowserFileType('');
 
     if (isNativeMediaDescriptor(uploadedFile)) {
-      setVideoSource(uploadedFile.playbackUrl);
-      setFileType(uploadedFile.type);
+      setBrowserVideoSource('');
       return undefined;
     }
 
@@ -125,28 +184,28 @@ const OutputContainer = ({
     // this effect and revoked on replacement; it is never persisted or reused as identity.
     if (!isDesktopRuntime() && uploadedFile instanceof File) {
       const objectUrl = URL.createObjectURL(uploadedFile);
-      setVideoSource(objectUrl);
-      setFileType(uploadedFile.type || '');
+      setBrowserVideoSource(objectUrl);
+      setBrowserFileType(uploadedFile.type || '');
       return () => URL.revokeObjectURL(objectUrl);
     }
 
     if (!isDesktopRuntime() && selectedVideo?.url) {
       // Special case: If we're in SRT-only mode, don't set videoSource
       if (isSrtOnlyMode) {
-        setVideoSource('');
-        setFileType('');
+        setBrowserVideoSource('');
+        setBrowserFileType('');
         return;
       }
 
-      setVideoSource(selectedVideo.url);
+      setBrowserVideoSource(selectedVideo.url);
       // For YouTube/Douyin URLs, assume video
-      setFileType('video/mp4');
+      setBrowserFileType('video/mp4');
       return undefined;
     }
 
     // Clear video source if nothing is selected
-    setVideoSource('');
-    setFileType('');
+    setBrowserVideoSource('');
+    setBrowserFileType('');
     return undefined;
   }, [selectedVideo, uploadedFile, isSrtOnlyMode]);
 
@@ -167,10 +226,19 @@ const OutputContainer = ({
         setVideoDuration(lastSubtitle.end + 10);
       }
     }
-  }, [isSrtOnlyMode, subtitlesData]);
+  }, [isSrtOnlyMode, setVideoDuration, subtitlesData]);
 
   // Show status messages as toasts instead of inline
   useEffect(() => {
+    // Production supplies the monotonic publication ID. Falling back to object identity keeps this
+    // component usable in isolation without turning translation/unrelated rerenders into new events.
+    const eventIdentity = statusEventId ?? status;
+    if (consumedStatusEventRef.current.hasValue
+      && Object.is(consumedStatusEventRef.current.identity, eventIdentity)) {
+      return;
+    }
+    consumedStatusEventRef.current = { hasValue: true, identity: eventIdentity };
+
     if (status?.message) {
       const message = typeof status.message === 'string' ? (
         status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
@@ -178,36 +246,22 @@ const OutputContainer = ({
         status.message
       ) : 'Processing...';
 
-      // Check if onboarding is active before showing toast
-      const hasVisited = localStorage.getItem('has_visited_site') === 'true';
-      const controlsDismissed = localStorage.getItem('onboarding_controls_dismissed') === 'true';
-      const isOnboardingActive = !(hasVisited && controlsDismissed);
-
-      if (!isOnboardingActive) {
-        window.addToast(message, status.type || 'info', 5000, 'output-status');
+      // ToastPanel is the single onboarding policy owner. In particular it keeps warnings, errors
+      // and actionable notices visible; filtering here used to consume a first-run failure before
+      // that policy could ever see it or replay it after onboarding.
+      const toastType = status.type || 'info';
+      if (toastType === 'error' || toastType === 'warning') {
+        // Each failure is an occurrence, not the current value of one progress slot. A stable key
+        // would replace the live toast and its history record, erasing an earlier failure when two
+        // operations finish close together.
+        window.addToast(message, toastType, 5000);
+      } else {
+        window.addToast(message, toastType, 5000, 'output-status');
       }
     } else {
       window.removeToastByKey && window.removeToastByKey('output-status');
     }
-  }, [status?.message, status?.type, t]);
-
-  // Staggered rendering to ease resource burden during expansion
-  const [previousCondition, setPreviousCondition] = useState(false);
-  useEffect(() => {
-    const currentCondition = (subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment'));
-    if (currentCondition && !previousCondition) {
-      // Condition just became true, wait for container animation (500ms) then start staggered rendering
-      setTimeout(() => {
-        setRenderedSections({ preview: true, translation: false, narration: false });
-        setTimeout(() => setRenderedSections(prev => ({ ...prev, translation: true })), 150);
-        setTimeout(() => setRenderedSections(prev => ({ ...prev, narration: true })), 300);
-      }, 500);
-    } else if (!currentCondition && previousCondition) {
-      // Condition became false, reset
-      setRenderedSections({ preview: false, translation: false, narration: false });
-    }
-    setPreviousCondition(currentCondition);
-  }, [subtitlesData, uploadedFile, isUploading, status?.message, previousCondition]);
+  }, [status, statusEventId, t]);
 
   // Background Image Generator functionality moved back to AppLayout
 
@@ -254,7 +308,7 @@ const OutputContainer = ({
 
       {(subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment')) && (
         <>
-          {renderedSections.preview && !isDownloading && (
+          {!isDownloading && (
             <div className="preview-section">
             {/* Check if we should hide sections for URL + SRT without downloaded video */}
             {(() => {
@@ -271,6 +325,8 @@ const OutputContainer = ({
                 fileType={fileType}
                 setDuration={setVideoDuration}
                 onSeek={handleVideoSeek}
+                seekRequest={lyricSeekRequest}
+                onSeekRequestConsumed={handleLyricSeekConsumed}
                 translatedSubtitles={translatedSubtitles}
                 subtitlesArray={subtitlesData}
                 onVideoUrlReady={setActualVideoUrl}
@@ -312,7 +368,7 @@ const OutputContainer = ({
           )}
 
           {/* Translation Section */}
-          {renderedSections.translation && !isDownloading && (
+          {!isDownloading && (
             <TranslationSection
               subtitles={subtitlesData}
               videoTitle={activeVideoTitle}
@@ -321,7 +377,7 @@ const OutputContainer = ({
           )}
 
           {/* Unified Narration Section - Now separate from Translation */}
-          {renderedSections.narration && !isDownloading && (
+          {!isDownloading && (
             <UnifiedNarrationSection
               subtitles={translatedSubtitles || subtitlesData}
               originalSubtitles={subtitlesData}

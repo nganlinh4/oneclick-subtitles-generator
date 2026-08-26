@@ -90,6 +90,19 @@ beforeEach(() => {
   refreshActiveNativeMedia.mockResolvedValue(capability);
 });
 
+test('assigns a new identity to every status publication, including identical payloads', () => {
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+  const success = Object.freeze({ message: 'Import complete', type: 'success' });
+
+  act(() => result.current.setStatus(success));
+  const firstEventId = result.current.statusEventId;
+  expect(result.current.status).toEqual(success);
+
+  act(() => result.current.setStatus(success));
+  expect(result.current.status).toEqual(success);
+  expect(result.current.statusEventId).toBe(firstEventId + 1);
+});
+
 test('does not hide a native streaming failure behind a second Gemini request', async () => {
   processGeminiSegment.mockRejectedValueOnce(new Error('native streaming failed'));
   const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));

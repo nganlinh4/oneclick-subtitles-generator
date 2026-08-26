@@ -3,9 +3,9 @@ import {
   getCredentialStateSnapshot,
   initializeCredentialState,
 } from '../../../platform/credentialStateController';
-import { cancelDownload as cancelNativeDownload } from '../../../platform/downloadService';
+import { cancelNativeVideoDownload } from '../../../platform/nativeUrlDownloadAdapter';
 
-vi.mock('../../../platform/downloadService', () => ({ cancelDownload: vi.fn() }));
+vi.mock('../../../platform/nativeUrlDownloadAdapter', () => ({ cancelNativeVideoDownload: vi.fn() }));
 vi.mock('../../../platform/credentialStateController', async () => {
   const actual = await vi.importActual('../../../platform/credentialStateController');
   return {
@@ -53,30 +53,83 @@ beforeEach(() => {
   });
 });
 
-it('cancels a native download by durable job id without invoking legacy transports', async () => {
+it('requests cancellation by durable job id and leaves presentation cleanup to its owner', async () => {
   const jobId = '0198a8d7-dbf7-7ee0-a949-f13427fdd78a';
-  cancelNativeDownload.mockResolvedValue({ id: jobId, state: 'cancelling' });
+  cancelNativeVideoDownload.mockResolvedValue(true);
   const context = { ...createContext(), currentDownloadId: jobId };
 
   await createSettingsHandlers(context).handleCancelDownload();
 
-  expect(cancelNativeDownload).toHaveBeenCalledWith(jobId);
-  expect(context.setIsDownloading).toHaveBeenCalledWith(false);
-  expect(context.setDownloadProgress).toHaveBeenCalledWith(0);
-  expect(context.setCurrentDownloadId).toHaveBeenCalledWith(null);
-  expect(context.setStatus).toHaveBeenCalledWith({
-    message: 'Download cancelled',
-    type: 'warning',
+  expect(cancelNativeVideoDownload).toHaveBeenCalledWith(jobId);
+  expect(context.setIsDownloading).not.toHaveBeenCalled();
+  expect(context.setDownloadProgress).not.toHaveBeenCalled();
+  expect(context.setCurrentDownloadId).not.toHaveBeenCalled();
+  expect(context.setStatus).not.toHaveBeenCalled();
+});
+
+it('a delayed cancellation for A cannot clear the newer B presentation', async () => {
+  const jobA = '0198a8d7-dbf7-7ee0-a949-f13427fdd78a';
+  const jobB = '0198a8d7-dbf7-7ee0-a949-f13427fdd78b';
+  let resolveCancellation;
+  cancelNativeVideoDownload.mockReturnValue(new Promise((resolve) => {
+    resolveCancellation = resolve;
+  }));
+  const presentation = {
+    currentDownloadId: jobA,
+    downloadProgress: 31,
+    isDownloading: true,
+    status: { message: 'Downloading A', type: 'loading' },
+  };
+  const context = {
+    ...createContext(),
+    currentDownloadId: jobA,
+    setCurrentDownloadId: vi.fn((value) => { presentation.currentDownloadId = value; }),
+    setDownloadProgress: vi.fn((value) => { presentation.downloadProgress = value; }),
+    setIsDownloading: vi.fn((value) => { presentation.isDownloading = value; }),
+    setStatus: vi.fn((value) => { presentation.status = value; }),
+  };
+
+  const cancellingA = createSettingsHandlers(context).handleCancelDownload();
+  await vi.waitFor(() => expect(cancelNativeVideoDownload).toHaveBeenCalledWith(jobA));
+
+  // A new render owner publishes B while Rust is still processing A's cancellation.
+  presentation.currentDownloadId = jobB;
+  presentation.downloadProgress = 12;
+  presentation.isDownloading = true;
+  presentation.status = { message: 'Downloading B', type: 'loading' };
+  resolveCancellation(true);
+  await cancellingA;
+
+  expect(presentation).toEqual({
+    currentDownloadId: jobB,
+    downloadProgress: 12,
+    isDownloading: true,
+    status: { message: 'Downloading B', type: 'loading' },
   });
+  expect(context.setCurrentDownloadId).not.toHaveBeenCalled();
+  expect(context.setDownloadProgress).not.toHaveBeenCalled();
+  expect(context.setIsDownloading).not.toHaveBeenCalled();
+  expect(context.setStatus).not.toHaveBeenCalled();
 });
 
 it('does not claim native cancellation succeeded when the command fails', async () => {
-  cancelNativeDownload.mockRejectedValue(new Error('transport detail'));
+  cancelNativeVideoDownload.mockRejectedValue(new Error('transport detail'));
   const context = { ...createContext(), currentDownloadId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a' };
 
   await createSettingsHandlers(context).handleCancelDownload();
 
   expect(context.setCurrentDownloadId).not.toHaveBeenCalled();
+  expect(context.setStatus).not.toHaveBeenCalled();
+});
+
+it('does not make retry available when the adapter cannot detach that native operation', async () => {
+  cancelNativeVideoDownload.mockResolvedValue(false);
+  const context = { ...createContext(), currentDownloadId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a' };
+
+  await createSettingsHandlers(context).handleCancelDownload();
+
+  expect(context.setCurrentDownloadId).not.toHaveBeenCalled();
+  expect(context.setIsDownloading).not.toHaveBeenCalled();
   expect(context.setStatus).not.toHaveBeenCalled();
 });
 

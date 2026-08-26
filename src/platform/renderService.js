@@ -148,8 +148,9 @@ const ANIMATION_EASINGS = new Set([
 const LINE_BREAK_BEHAVIORS = new Set(['auto', 'manual']);
 const CUSTOMIZATION_KEYS = Object.freeze([
   'fontSize', 'fontFamily', 'fontWeight', 'textColor', 'textAlign', 'lineHeight',
-  'letterSpacing', 'textTransform', 'backgroundColor', 'backgroundOpacity', 'borderRadius',
-  'borderWidth', 'borderColor', 'borderStyle', 'textShadowEnabled', 'textShadowColor',
+  'letterSpacing', 'textTransform', 'backgroundColor', 'backgroundOpacity',
+  'backgroundPaddingX', 'backgroundPaddingY', 'borderRadius', 'borderWidth', 'borderColor',
+  'borderStyle', 'textShadowEnabled', 'textShadowColor',
   'textShadowBlur', 'textShadowOffsetX', 'textShadowOffsetY', 'glowEnabled', 'glowColor',
   'glowIntensity', 'gradientEnabled', 'gradientType', 'gradientDirection',
   'gradientColorStart', 'gradientColorEnd', 'gradientColorMid', 'strokeEnabled',
@@ -164,6 +165,8 @@ const CUSTOMIZATION_NUMBER_BOUNDS = Object.freeze({
   lineHeight: [0.1, 10],
   letterSpacing: [-100, 1_000],
   backgroundOpacity: [0, 100],
+  backgroundPaddingX: [0, 1_000],
+  backgroundPaddingY: [0, 1_000],
   borderRadius: [0, 1_000],
   borderWidth: [0, 100],
   textShadowBlur: [0, 1_000],

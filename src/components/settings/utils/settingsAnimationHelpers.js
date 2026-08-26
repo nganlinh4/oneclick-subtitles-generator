@@ -1,37 +1,61 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 // NOTE: this file lives in src/components/settings/utils/, one level deeper than
 // SettingsModal.js (src/components/settings/), so '../../utils/X' from the modal
 // becomes '../../../utils/X' here.
-import initSettingsTabPillAnimation from '../../../utils/settingsTabPillAnimation';
+import initSettingsTabPillAnimation, {
+  positionPillForActiveTab,
+} from '../../../utils/settingsTabPillAnimation';
 import initSettingsTabsDrag from '../../../utils/settingsTabsDrag';
+import {
+  scrollActiveSettingsTab,
+  settingsTabScrollTarget,
+} from '../../../utils/settingsTabVisibility';
+
+export { scrollActiveSettingsTab, settingsTabScrollTarget };
 
 // Tab order used to derive slide direction for tab-content transitions
-const TAB_ORDER = ['api-keys', 'video-processing', 'prompts', 'cache', 'model-management', 'about'];
+export const SETTINGS_TAB_ORDER = Object.freeze([
+  'api-keys',
+  'video-processing',
+  'prompts',
+  'cache',
+  'model-management',
+  'tools',
+  'about',
+]);
+
+export const getSettingsTabAnimationDirection = (previousTab, activeTab) => {
+  const previousIndex = SETTINGS_TAB_ORDER.indexOf(previousTab);
+  const activeIndex = SETTINGS_TAB_ORDER.indexOf(activeTab);
+
+  if (previousIndex === -1 || activeIndex === -1 || previousIndex === activeIndex) {
+    return 'center';
+  }
+
+  return previousIndex < activeIndex ? 'left' : 'right';
+};
 
 /**
  * Initialize the tab pill animation and drag-to-scroll behavior on mount.
  * @param {React.RefObject} tabsRef - ref to the tabs container element
  */
 export const useSettingsTabPillInit = (tabsRef) => {
-  // Initialize pill position and drag functionality on component mount
   useEffect(() => {
-    if (tabsRef.current) {
-      // Small delay to ensure the DOM is fully rendered
-      setTimeout(() => {
-        initSettingsTabPillAnimation('.settings-tabs');
+    let cleanupPill;
+    let cleanupDrag;
+    const initializationTimer = setTimeout(() => {
+      if (!tabsRef.current) return;
+      cleanupPill = initSettingsTabPillAnimation('.settings-tabs');
+      cleanupDrag = initSettingsTabsDrag('.settings-tabs');
+    }, 50);
 
-        // Initialize drag functionality for tabs
-        const cleanupDrag = initSettingsTabsDrag('.settings-tabs');
-
-        // Return cleanup function
-        return () => {
-          if (cleanupDrag) cleanupDrag();
-        };
-      }, 50);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      clearTimeout(initializationTimer);
+      cleanupDrag?.();
+      cleanupPill?.();
+    };
+  }, [tabsRef]);
 };
 
 /**
@@ -39,59 +63,38 @@ export const useSettingsTabPillInit = (tabsRef) => {
  * @param {Object} params
  * @param {React.RefObject} params.tabsRef - ref to the tabs container element
  * @param {string} params.activeTab - current active tab key
- * @param {string|null} params.previousTab - previously active tab key
  * @param {Function} params.setAnimationDirection - setter for slide direction
- * @param {Function} params.setPreviousTab - setter for previous tab
  */
 export const useSettingsTabPillUpdate = ({
   tabsRef,
   activeTab,
-  previousTab,
   setAnimationDirection,
-  setPreviousTab,
 }) => {
-  // Update pill position when active tab changes
+  const previousTabRef = useRef(activeTab);
+
   useEffect(() => {
-    if (tabsRef.current) {
-      // Reset wasActive and lastActive attributes on all tabs when active tab changes programmatically
-      const tabButtons = tabsRef.current.querySelectorAll('.settings-tab');
-      tabButtons.forEach(tab => {
-        tab.dataset.wasActive = 'false';
-        tab.dataset.lastActive = 'false';
-      });
-
-      // Determine animation direction based on tab order
-      if (previousTab) {
-        const prevIndex = TAB_ORDER.indexOf(previousTab);
-        const currentIndex = TAB_ORDER.indexOf(activeTab);
-
-        if (prevIndex !== -1 && currentIndex !== -1) {
-          if (prevIndex < currentIndex) {
-            setAnimationDirection('left');
-          } else if (prevIndex > currentIndex) {
-            setAnimationDirection('right');
-          } else {
-            setAnimationDirection('center');
-          }
-        } else {
-          setAnimationDirection('center');
-        }
-      }
-
-      // Update previous tab for next change
-      setPreviousTab(activeTab);
-
-      // Small delay to ensure the active class is applied
-      setTimeout(() => {
-        initSettingsTabPillAnimation('.settings-tabs');
-        const activeButton = tabsRef.current?.querySelector('.settings-tab.active');
-        activeButton?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
-      }, 10);
+    const previousTab = previousTabRef.current;
+    if (previousTab !== activeTab) {
+      setAnimationDirection(getSettingsTabAnimationDirection(previousTab, activeTab));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, previousTab]);
+    previousTabRef.current = activeTab;
+
+    const tabs = tabsRef.current;
+    if (!tabs) return undefined;
+
+    const tabButtons = tabs.querySelectorAll('.settings-tab');
+    tabButtons.forEach(tab => {
+      tab.dataset.wasActive = 'false';
+      tab.dataset.lastActive = 'false';
+    });
+
+    const positionTimer = setTimeout(() => {
+      if (tabsRef.current !== tabs) return;
+      positionPillForActiveTab(tabs);
+      const activeButton = tabs.querySelector('.settings-tab.active');
+      scrollActiveSettingsTab(tabs, activeButton);
+    }, 10);
+
+    return () => clearTimeout(positionTimer);
+  }, [activeTab, setAnimationDirection, tabsRef]);
 };

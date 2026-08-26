@@ -90,6 +90,22 @@ beforeEach(() => {
   });
 });
 
+it('keeps clean-install defaults as read-time fallbacks instead of browser preferences', () => {
+  const view = renderAppState();
+
+  expect(view.result.current.activeTab).toBe('unified-url');
+  for (const key of [
+    'gemini_model',
+    'onboarding_completed',
+    'selected_preset_id',
+    'transcription_prompt',
+    'userPreferredTab',
+  ]) {
+    expect(localStorage.getItem(key), key).toBeNull();
+  }
+  view.unmount();
+});
+
 it('derives timing-generation enablement from the hydrated project text only', async () => {
   localStorage.setItem('use_user_provided_subtitles', 'true');
   const view = renderAppState();

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Header from '../Header';
 import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
@@ -18,10 +18,7 @@ import { showErrorToast } from '../../utils/toastUtils';
 import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
 import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
-
-// Settings only mount after the Header gear button flips `showSettings`, so keeping the
-// modal off the startup path costs nothing at first paint.
-const SettingsModal = lazy(() => import('../settings/SettingsModal'));
+import SettingsModal from '../settings/SettingsModal';
 
 /**
  * Main application layout component
@@ -109,7 +106,7 @@ const AppLayout = ({
     useUserProvidedSubtitles,
     transcriptionRules,
     subtitlesData, setSubtitlesData,
-    status, setStatus,
+    status, statusEventId, setStatus,
     timeFormat,
     showWaveformLongVideos,
     useOptimizedPreview,
@@ -423,6 +420,7 @@ const AppLayout = ({
 
             <OutputContainer
               status={status}
+              statusEventId={statusEventId}
               subtitlesData={subtitlesData}
               setSubtitlesData={setSubtitlesData}
               selectedVideo={selectedVideo}
@@ -485,17 +483,15 @@ const AppLayout = ({
       )}
 
       {showSettings && (
-        <Suspense fallback={null}>
-          <SettingsModal
-            onClose={() => setShowSettings(false)}
-            onSave={saveApiKeys}
-            apiKeysSet={apiKeysSet}
-            setApiKeysSet={setApiKeysSet}
-            optimizeVideos={optimizeVideos}
-            optimizedResolution={optimizedResolution}
-            useOptimizedPreview={useOptimizedPreview}
-          />
-        </Suspense>
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onSave={saveApiKeys}
+          apiKeysSet={apiKeysSet}
+          setApiKeysSet={setApiKeysSet}
+          optimizeVideos={optimizeVideos}
+          optimizedResolution={optimizedResolution}
+          useOptimizedPreview={useOptimizedPreview}
+        />
       )}
 
       {/* Transcription Rules Editor */}
@@ -505,17 +501,6 @@ const AppLayout = ({
           onClose={() => setShowRulesEditor(false)}
           initialRules={transcriptionRules}
           onSave={handleSaveRules}
-          onChangePrompt={(preset) => {
-
-            // If we're using a recommended preset from video analysis, update the session storage
-            if (sessionStorage.getItem('current_session_preset_id')) {
-              sessionStorage.setItem('current_session_preset_id', preset.id);
-              sessionStorage.setItem('current_session_prompt', preset.prompt);
-            } else {
-              // Otherwise update the localStorage
-              localStorage.setItem('transcription_prompt', preset.prompt);
-            }
-          }}
         />
       )}
 

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { invokeDesktop } from '../../platform/desktopRuntime';
+import { runExclusiveSettingsReset } from '../../platform/settingsMutationCoordinator';
 import SettingsModal from './SettingsModal';
 
 vi.mock('../../platform/desktopRuntime', async (importOriginal) => ({
@@ -53,6 +54,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   delete window.addToast;
+});
+
+it('repairs an unknown persisted tab instead of opening an empty Settings surface', async () => {
+  localStorage.setItem('settings_last_active_tab', 'removed-or-corrupt-tab');
+  render(
+    <SettingsModal
+      onClose={vi.fn()}
+      onSave={vi.fn()}
+      apiKeysSet={{ gemini: false, youtube: false, genius: false }}
+      setApiKeysSet={vi.fn()}
+    />
+  );
+
+  expect(screen.getByRole('button', { name: 'API Keys' })).toHaveClass('active');
+  await act(async () => { await Promise.resolve(); });
+  expect(localStorage.getItem('settings_last_active_tab')).toBe('api-keys');
 });
 
 it('discards a draft browser selection when Settings is cancelled', async () => {
@@ -201,4 +218,32 @@ it('owns the modal through an in-flight save and closes exactly once after persi
     'published',
     'closed',
   ]);
+});
+
+it('reflects process-wide reset ownership in the modal controls', async () => {
+  let finishReset;
+  const resetWork = new Promise((resolve) => {
+    finishReset = resolve;
+  });
+  const reset = runExclusiveSettingsReset(() => resetWork);
+
+  render(
+    <SettingsModal
+      onClose={vi.fn()}
+      onSave={vi.fn()}
+      apiKeysSet={{ gemini: false, youtube: false, genius: false }}
+      setApiKeysSet={vi.fn()}
+    />
+  );
+
+  expect(screen.getByRole('button', { name: 'Resetting...' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Cancel/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+
+  await act(async () => {
+    finishReset();
+    await reset;
+  });
+
+  expect(screen.getByRole('button', { name: 'Factory Reset' })).toBeEnabled();
 });

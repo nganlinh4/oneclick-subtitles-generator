@@ -2,6 +2,7 @@
 
 import { analyzeVideoWithGemini } from '../../services/videoAnalysisService';
 import { PROMPT_PRESETS } from '../../services/gemini/promptManagement';
+import { applyTranscriptionPromptPresetSelection } from '../../services/gemini/transcriptionPromptPresetSelection';
 import {
   commitVideoAnalysisForCache,
 } from '../transcriptionRulesStore';
@@ -99,12 +100,13 @@ export const commitVideoAnalysisForContext = async ({
   await delivery.acknowledge();
   await requireContext(context);
 
-  localStorage.setItem('video_processing_prompt_preset', recommendedPresetId);
+  applyTranscriptionPromptPresetSelection({
+    requestedPresetId: recommendedPresetId,
+    availablePresets: PROMPT_PRESETS,
+    defaultPrompt: PROMPT_PRESETS[0]?.prompt,
+  });
   sessionStorage.setItem('current_session_preset_id', recommendedPresetId);
   sessionStorage.setItem('current_session_video_fingerprint', context.sourceIdentity);
-  const preset = PROMPT_PRESETS.find(({ id }) => id === recommendedPresetId);
-  if (preset) sessionStorage.setItem('current_session_prompt', preset.prompt);
-  else sessionStorage.removeItem('current_session_prompt');
   await requireContext(context);
   window.dispatchEvent(new CustomEvent('openRulesEditorWithCountdown', {
     detail: {

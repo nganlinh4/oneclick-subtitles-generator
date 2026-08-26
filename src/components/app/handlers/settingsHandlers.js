@@ -1,5 +1,5 @@
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from "../../../config/geminiModels";
-import { cancelDownload as cancelNativeDownload } from "../../../platform/downloadService";
+import { cancelNativeVideoDownload } from "../../../platform/nativeUrlDownloadAdapter";
 import {
   getCredentialAvailability,
   getCredentialStateSnapshot,
@@ -38,9 +38,6 @@ export const createSettingsHandlers = ({
   currentDownloadId,
   setActiveTab,
   setStatus,
-  setIsDownloading,
-  setDownloadProgress,
-  setCurrentDownloadId,
   setTimeFormat,
   setShowWaveformLongVideos,
   setOptimizedResolution,
@@ -54,23 +51,16 @@ export const createSettingsHandlers = ({
    * Handle cancelling the current download
    */
   const handleCancelDownload = () => {
-    if (currentDownloadId) {
-      const resetCancelledState = () => {
-        setIsDownloading(false);
-        setDownloadProgress(0);
-        setCurrentDownloadId(null);
-        setStatus({
-          message: t("download.downloadOnly.cancelled", "Download cancelled"),
-          type: "warning",
-        });
-      };
+    if (!currentDownloadId) return undefined;
 
-      return cancelNativeDownload(currentDownloadId).then(
-        resetCancelledState,
-        () => undefined,
-      );
-    }
-    return undefined;
+    // The native URL adapter settles the exact operation's subscriber before this promise
+    // resolves. `downloadAndPrepareYouTubeVideo` owns the resulting progress/status cleanup behind
+    // its presentation token. Repeating that cleanup here has no ownership check: a delayed Cancel
+    // for A could otherwise clear a newer B which became active while the command was in flight.
+    return cancelNativeVideoDownload(currentDownloadId).then(
+      () => undefined,
+      () => undefined,
+    );
   };
 
   /**

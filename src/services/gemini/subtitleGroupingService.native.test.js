@@ -1,4 +1,5 @@
 import { groupSubtitlesForNarration } from './subtitleGroupingService';
+import { hasCompleteGroupingText } from './subtitleGroupingSourceReadiness';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
 const JOB_ID = '01890f39-7b62-7c4e-8c9a-000000000401';
@@ -128,4 +129,19 @@ test.each([
     code: 'invalidSubtitleGroupingData',
   });
   expect(runNativeGeminiText).not.toHaveBeenCalled();
+});
+
+test('distinguishes an incomplete editor draft from a strict grouping source', () => {
+  const getter = vi.fn(() => 'must not be evaluated');
+  const accessorBacked = { id: 1, start: 0, end: 1 };
+  Object.defineProperty(accessorBacked, 'text', { get: getter, enumerable: true });
+
+  expect(hasCompleteGroupingText([
+    { id: 1, start: 0, end: 1, text: 'Ready' },
+  ])).toBe(true);
+  expect(hasCompleteGroupingText([
+    { id: 1, start: 0, end: 1, text: '   ' },
+  ])).toBe(false);
+  expect(hasCompleteGroupingText([accessorBacked])).toBe(false);
+  expect(getter).not.toHaveBeenCalled();
 });

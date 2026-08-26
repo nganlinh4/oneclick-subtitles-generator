@@ -1,195 +1,212 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clearCache, getCacheInfo } from '../../../platform/cacheService';
 
+const SUMMARY_KEYS = new Set(['totalCount', 'totalSize', 'formattedTotalSize']);
+
+// These labels describe category identifiers already written by supported OSG versions. The list is
+// presentation-only: it does not invent empty categories or restrict newer identifiers returned by
+// Rust. Unknown native categories are displayed with a readable label and remain clearable.
+const CATEGORY_LABELS = Object.freeze({
+  albumArt: ['settings.albumArt', 'Cached Album Art'],
+  alignedNarration: ['settings.alignedNarration', 'Cached Aligned Narration'],
+  downloadedMedia: ['settings.videos', 'Cached Video Data'],
+  generatedBackgroundImage: ['settings.generatedBackgroundImages', 'Cached Generated Background Images'],
+  lyrics: ['settings.lyrics', 'Cached Lyrics'],
+  narrationOutput: ['settings.narrationOutput', 'Cached Narration Output Audio'],
+  narrationReference: ['settings.narrationReference', 'Cached Narration Reference Audio'],
+  output: ['settings.output', 'Cached Generated Video Data'],
+  renderedVideo: ['settings.videoRendered', 'Cached Render Data'],
+  rules: ['settings.rules', 'Cached Transcription Rules'],
+  subtitles: ['settings.subtitles', 'Cached Subtitle Data'],
+  uploads: ['settings.uploads', 'Temporary Upload Copies'],
+  userSubtitles: ['settings.userSubtitles', 'Cached Imported Subtitle Data'],
+  videoAlbumArt: ['settings.videoAlbumArt', 'Cached Video Album Art'],
+  videoRendered: ['settings.videoRendered', 'Cached Render Data'],
+  videos: ['settings.videos', 'Cached Video Data'],
+  videoTemp: ['settings.videoTemp', 'Temporary Video Data'],
+  voiceConversion: ['settings.voiceConversion', 'Cached Voice Conversion Data'],
+  waveform: ['settings.waveform', 'Cached Waveforms'],
+});
+
+const readableCategory = (category) => category
+  .replace(/[._:-]+/g, ' ')
+  .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/^./, (letter) => letter.toUpperCase());
+
+const categoryLabel = (t, category) => {
+  const known = CATEGORY_LABELS[category];
+  return known ? t(known[0], known[1]) : readableCategory(category);
+};
+
+const categoryEntries = (details) => Object.entries(details ?? {}).filter(([key, value]) => (
+  !SUMMARY_KEYS.has(key)
+  && value !== null
+  && typeof value === 'object'
+  && Number.isSafeInteger(value.count)
+  && value.count >= 0
+  && Number.isSafeInteger(value.size)
+  && value.size >= 0
+));
+
 const CacheTab = ({ isActive }) => {
   const { t } = useTranslation();
+  const translationRef = useRef(t);
+  translationRef.current = t;
   const [clearingCache, setClearingCache] = useState(false);
   const [loadingCacheInfo, setLoadingCacheInfo] = useState(false);
   const [cacheDetails, setCacheDetails] = useState(null);
-
-  // Ref to track if we've shown the cache empty toast for the current active state
   const hasShownEmptyToastRef = useRef(false);
 
-  // Function to fetch cache information
-  const fetchCacheInfo = async (showToast = false) => {
-    setLoadingCacheInfo(true);
-
+  const fetchCacheInfoQuietly = useCallback(async () => {
     try {
       const data = await getCacheInfo();
+      if (data.success) setCacheDetails(data.details);
+    } catch (error) {
+      console.error('Error fetching cache info quietly:', error);
+    }
+  }, []);
 
-      if (data.success) {
-        setCacheDetails(data.details);
-
-        // If cache is empty, show a message only if showToast is true and we haven't shown it yet
-        if (data.details.totalCount === 0 && showToast && !hasShownEmptyToastRef.current) {
-          window.addToast(t('settings.cacheEmpty', 'Cache is empty. No files to clear.'), 'info', 5000);
-          hasShownEmptyToastRef.current = true;
-        }
-      } else {
-        throw new Error(data.error || 'Failed to fetch cache information');
+  const fetchCacheInfo = useCallback(async (showToast = false) => {
+    setLoadingCacheInfo(true);
+    try {
+      const data = await getCacheInfo();
+      if (!data.success) throw new Error(data.error || 'Failed to fetch cache information');
+      setCacheDetails(data.details);
+      if (data.details.totalCount === 0 && showToast && !hasShownEmptyToastRef.current) {
+        window.addToast(
+          translationRef.current('settings.cacheEmpty', 'Cache is empty. No files to clear.'),
+          'info',
+          5000
+        );
+        hasShownEmptyToastRef.current = true;
       }
     } catch (error) {
       console.error('Error fetching cache info:', error);
       if (showToast) {
-        window.addToast(t('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
+        window.addToast(
+          translationRef.current('settings.cacheInfoError', 'Error fetching cache information: {{errorMessage}}', {
+            errorMessage: error.message,
+          }),
+          'error',
+          8000
+        );
       }
     } finally {
       setLoadingCacheInfo(false);
     }
-  };
+  }, []);
 
-  // Handle clear cache
   const handleClearCache = async () => {
-    // No confirmation prompt as requested
     setClearingCache(true);
-    // Don't reset cacheDetails here to prevent UI flashing
-
     try {
       const data = await clearCache();
-      if (data.success) {
-        // Clear localStorage video/subtitle related items
-        localStorage.removeItem('current_video_url');
-        localStorage.removeItem('current_file_url');
-        localStorage.removeItem('current_file_cache_id');
+      if (!data.success) throw new Error(data.error || 'Failed to clear cache');
 
-        // Clear narration cache
-        localStorage.removeItem('narration_cache');
+      const totalFiles = data.details?.totalCount ?? 0;
+      const totalSize = data.details?.formattedTotalSize ?? '0 Bytes';
+      window.addToast(
+        t('settings.cacheClearedDetails', 'Cache cleared: {{totalFiles}} files ({{totalSize}})', {
+          totalFiles,
+          totalSize,
+        }),
+        'success',
+        6000
+      );
 
-        // Check if details exist in the response
-        if (data.details) {
-          // Store the cache details for display
-          setCacheDetails(data.details);
-          
-          // Set success message with details
-          const totalFiles = data.details.totalCount || 0;
-          const totalSize = data.details.formattedTotalSize || '0 Bytes';
-          window.addToast(t('settings.cacheClearedDetails', 'Cache cleared: {{totalFiles}} files ({{totalSize}})', { totalFiles, totalSize }), 'success', 6000);
-        } else {
-          // Fallback for when details are missing
-          window.addToast(t('settings.cacheClearedSuccess', 'Cache cleared successfully!'), 'success', 5000);
-    
-          // Fetch updated cache info if details weren't returned
-          // Use a separate function to avoid state flashing
-          await fetchCacheInfoQuietly();
-        }
-      } else {
-        throw new Error(data.error || 'Failed to clear cache');
-      }
+      // cache_clear returns what was removed. The grid represents what exists now, so read the
+      // authoritative post-clear Rust snapshot instead of displaying removal deltas as live cache.
+      await fetchCacheInfoQuietly();
     } catch (error) {
       console.error('Error clearing cache:', error);
-      window.addToast(t('settings.cacheClearError', 'Error clearing cache: {{errorMessage}}', { errorMessage: error.message }), 'error', 8000);
-      
-      // Fetch updated cache info even if there was an error
-      // Use a separate function to avoid state flashing
+      window.addToast(
+        t('settings.cacheClearError', 'Error clearing cache: {{errorMessage}}', {
+          errorMessage: error.message,
+        }),
+        'error',
+        8000
+      );
       await fetchCacheInfoQuietly();
     } finally {
       setClearingCache(false);
     }
   };
 
-  // Handle clear individual cache type
   const handleClearIndividualCache = async (cacheType, displayName) => {
     setClearingCache(true);
-
     try {
       const data = await clearCache(cacheType);
-      if (data.success) {
-        // Clear localStorage for specific types if needed
-        if (cacheType === 'videos' || cacheType === 'subtitles') {
-          localStorage.removeItem('current_video_url');
-          localStorage.removeItem('current_file_url');
-          localStorage.removeItem('current_file_cache_id');
-        }
+      if (!data.success) throw new Error(data.error || `Failed to clear ${displayName}`);
 
-        if (cacheType === 'narrationOutput' || cacheType === 'narrationReference') {
-          localStorage.removeItem('narration_cache');
-        }
-
-        // Set success message
-        const clearedData = data.details[Object.keys(data.details)[0]];
-        const clearedFiles = clearedData?.count || 0;
-        const clearedSize = clearedData?.formattedSize || '0 Bytes';
-
-        window.addToast(t('settings.individualCacheCleared', '{{displayName}} cleared: {{count}} files ({{size}})', {
-          displayName,
-          count: clearedFiles,
-          size: clearedSize
-        }), 'success', 6000);
-        
-        // Refresh cache info to update the display
-        console.log(`🔄 Refreshing cache info after successful clear`);
-        await fetchCacheInfoQuietly();
-        console.log(`✅ Individual cache clear completed successfully`);
-      } else {
-        console.error(`❌ Cache clear failed:`, data);
-        throw new Error(data.error || `Failed to clear ${displayName}`);
-      }
+      const clearedData = data.details?.[cacheType];
+      window.addToast(
+        t(
+          'settings.individualCacheCleared',
+          '{{displayName}} cleared: {{count}} files ({{size}})',
+          {
+            displayName,
+            count: clearedData?.count ?? 0,
+            size: clearedData?.formattedSize ?? '0 Bytes',
+          }
+        ),
+        'success',
+        6000
+      );
+      await fetchCacheInfoQuietly();
     } catch (error) {
-      console.error(`❌ Error clearing ${cacheType} cache:`, error);
-      window.addToast(t('settings.individualCacheClearError', 'Error clearing {{displayName}}: {{errorMessage}}', {
-        displayName,
-        errorMessage: error.message
-      }), 'error', 8000);
+      console.error(`Error clearing ${cacheType} cache:`, error);
+      window.addToast(
+        t('settings.individualCacheClearError', 'Error clearing {{displayName}}: {{errorMessage}}', {
+          displayName,
+          errorMessage: error.message,
+        }),
+        'error',
+        8000
+      );
     } finally {
       setClearingCache(false);
     }
   };
 
-  // Fetch cache info without showing loading state (to prevent UI flashing)
-  const fetchCacheInfoQuietly = async () => {
-    try {
-      const data = await getCacheInfo();
-
-      if (data.success) {
-        setCacheDetails(data.details);
-      }
-    } catch (error) {
-      console.error('Error fetching cache info quietly:', error);
-      // Don't update status message here to avoid overriding the clear cache status
-    }
-  };
-
-  // Reset the toast flag when switching to cache tab
   useEffect(() => {
-    if (isActive) {
-      hasShownEmptyToastRef.current = false;
-    }
+    if (isActive) hasShownEmptyToastRef.current = false;
   }, [isActive]);
 
-  // Fetch cache information when component mounts or isActive changes
   useEffect(() => {
-    // Entering a settings tab is not a user request to refresh the cache. Keep
-    // the empty-cache toast for the explicit Refresh action only.
+    // Entering a settings tab is not a request for a toast. The explicit Refresh action owns it.
     fetchCacheInfo(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [fetchCacheInfo, isActive]);
+
+  const displayedCategories = useMemo(() => categoryEntries(cacheDetails), [cacheDetails]);
 
   return (
-    <div className="settings-section cache-section">
-      {/* Header */}
+    <div
+      className="settings-section cache-section"
+      data-cache-state={clearingCache
+        ? 'clearing'
+        : loadingCacheInfo
+          ? 'checking'
+          : cacheDetails === null ? 'failed' : 'ready'}
+    >
       <div className="cache-content">
-        <div className="cache-section-header">
-        </div>
+        <div className="cache-section-header" />
         <p className="cache-description">
-          {t('settings.cacheDescription', 'Clear all cached files including subtitles, videos, uploaded files, generated content, narration audio, and temporary files to free up space.')}
+          {t(
+            'settings.cacheDescription',
+            'Clear only rebuildable temporary data. Projects, imported source files, downloaded project media, exports, and installed tools or models are never deleted here.'
+          )}
         </p>
       </div>
 
-      {/* Action buttons row */}
       <div className="cache-actions-row">
-
         <div className="cache-actions">
-          <button
-            className="clear-cache-btn"
-            onClick={handleClearCache}
-            disabled={clearingCache}
-          >
+          <button className="clear-cache-btn" onClick={handleClearCache} disabled={clearingCache}>
             {clearingCache
               ? t('settings.clearingCache', 'Clearing Cache...')
               : t('settings.clearCache', 'Clear Cache')}
           </button>
-
           <button
             className="refresh-cache-btn"
             onClick={() => fetchCacheInfo(true)}
@@ -202,14 +219,12 @@ const CacheTab = ({ isActive }) => {
         </div>
       </div>
 
-      {/* Loading indicator - only show when not clearing cache */}
       {loadingCacheInfo && !clearingCache && (
         <div className="cache-loading">
           <p>{t('settings.loadingCache', 'Loading cache information...')}</p>
         </div>
       )}
 
-      {/* Empty cache info when no details are shown */}
       {!cacheDetails && !loadingCacheInfo && !clearingCache && (
         <div className="empty-cache-info">
           <p>{t('settings.cacheEmpty', 'No cache information available.')}</p>
@@ -223,337 +238,61 @@ const CacheTab = ({ isActive }) => {
         </div>
       )}
 
-      {/* Cache details with 2-column grid - show during clearing to prevent flashing */}
       {cacheDetails && (!loadingCacheInfo || clearingCache) && (
         <div className={`cache-details ${clearingCache ? 'clearing' : ''}`}>
           <div className="cache-details-grid-header">
             <div className="cache-details-header">
               <h4>{t('settings.cacheInformation', 'Cache Information')}</h4>
             </div>
-
             <div className="cache-details-summary">
               <p className="cache-total">
-                <strong>{t('settings.totalCache', 'Total Cache: {{count}} files ({{size}})', { count: cacheDetails.totalCount, size: cacheDetails.formattedTotalSize })}</strong>
+                <strong>
+                  {t('settings.totalCache', 'Total Cache: {{count}} files ({{size}})', {
+                    count: cacheDetails.totalCount,
+                    size: cacheDetails.formattedTotalSize,
+                  })}
+                </strong>
               </p>
             </div>
           </div>
 
-          <div className="cache-details-grid">
-            {/* Column 1 */}
-            <div className="cache-details-column">
-              <div className={`cache-details-item ${(cacheDetails.videos?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videos', 'Videos')}:</h4>
-                  {(cacheDetails.videos?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videos', t('settings.videos', 'Videos'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideos', 'Clear Videos')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videosCount', '{{count}} files ({{size}})', { count: cacheDetails.videos?.count || 0, size: cacheDetails.videos?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.subtitles?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.subtitles', 'Subtitles')}:</h4>
-                  {(cacheDetails.subtitles?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('subtitles', t('settings.subtitles', 'Subtitles'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearSubtitles', 'Clear Subtitles')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.subtitlesCount', '{{count}} files ({{size}})', { count: cacheDetails.subtitles?.count || 0, size: cacheDetails.subtitles?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.userSubtitles?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.userSubtitles', 'User Subtitles')}:</h4>
-                  {(cacheDetails.userSubtitles?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('userSubtitles', t('settings.userSubtitles', 'User Subtitles'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearUserSubtitles', 'Clear User Subtitles')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.userSubtitlesCount', '{{count}} files ({{size}})', { count: cacheDetails.userSubtitles?.count || 0, size: cacheDetails.userSubtitles?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.rules?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.rules', 'Transcription Rules')}:</h4>
-                  {(cacheDetails.rules?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('rules', t('settings.rules', 'Transcription Rules'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearRules', 'Clear Transcription Rules')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.rulesCount', '{{count}} files ({{size}})', { count: cacheDetails.rules?.count || 0, size: cacheDetails.rules?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
+          {displayedCategories.length > 0 && (
+            <div className="cache-details-grid">
+              {displayedCategories.map(([category, details]) => {
+                const displayName = categoryLabel(t, category);
+                return (
+                  <div
+                    className={`cache-details-item ${details.count === 0 ? 'empty-cache-item' : ''}`}
+                    data-cache-category={category}
+                    key={category}
+                  >
+                    <div className="cache-item-header">
+                      <h4>{displayName}:</h4>
+                      {details.count > 0 && (
+                        <button
+                          type="button"
+                          className="remove-key"
+                          onClick={() => handleClearIndividualCache(category, displayName)}
+                          disabled={clearingCache}
+                          title={t('settings.clearCacheCategory', 'Clear {{category}}', {
+                            category: displayName,
+                          })}
+                        >
+                          <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
+                        </button>
+                      )}
+                    </div>
+                    <p>
+                      {t('settings.cacheCategoryCount', '{{count}} files ({{size}})', {
+                        count: details.count,
+                        size: details.formattedSize,
+                      })}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Column 2 */}
-            <div className="cache-details-column">
-              <div className={`cache-details-item ${(cacheDetails.lyrics?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.lyrics', 'Lyrics')}:</h4>
-                  {(cacheDetails.lyrics?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('lyrics', t('settings.lyrics', 'Lyrics'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearLyrics', 'Clear Lyrics')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.lyricsCount', '{{count}} files ({{size}})', { count: cacheDetails.lyrics?.count || 0, size: cacheDetails.lyrics?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.albumArt?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.albumArt', 'Album Art')}:</h4>
-                  {(cacheDetails.albumArt?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('albumArt', t('settings.albumArt', 'Album Art'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearAlbumArt', 'Clear Album Art')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.albumArtCount', '{{count}} files ({{size}})', { count: cacheDetails.albumArt?.count || 0, size: cacheDetails.albumArt?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.uploads?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.uploads', 'Uploaded Files')}:</h4>
-                  {(cacheDetails.uploads?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('uploads', t('settings.uploads', 'Uploaded Files'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearUploads', 'Clear Uploaded Files')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.uploadsCount', '{{count}} files ({{size}})', { count: cacheDetails.uploads?.count || 0, size: cacheDetails.uploads?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.output?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.output', 'Generated Videos')}:</h4>
-                  {(cacheDetails.output?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('output', t('settings.output', 'Generated Videos'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearOutput', 'Clear Generated Videos')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.outputCount', '{{count}} files ({{size}})', { count: cacheDetails.output?.count || 0, size: cacheDetails.output?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-            </div>
-
-            {/* Column 3 */}
-            <div className="cache-details-column">
-              <div className={`cache-details-item ${(cacheDetails.narrationReference?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.narrationReference', 'Narration Reference Audio')}:</h4>
-                  {(cacheDetails.narrationReference?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('narrationReference', t('settings.narrationReference', 'Narration Reference Audio'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearNarrationReference', 'Clear Narration Reference Audio')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.narrationReferenceCount', '{{count}} files ({{size}})', { count: cacheDetails.narrationReference?.count || 0, size: cacheDetails.narrationReference?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.narrationOutput?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.narrationOutput', 'Narration Output Audio')}:</h4>
-                  {(cacheDetails.narrationOutput?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => {
-                        console.log('🖱️ Narration Output cache clear button clicked');
-                        handleClearIndividualCache('narrationOutput', t('settings.narrationOutput', 'Narration Output Audio'));
-                      }}
-                      disabled={clearingCache}
-                      title={t('settings.clearNarrationOutput', 'Clear Narration Output Audio')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.narrationOutputCount', '{{count}} files ({{size}})', { count: cacheDetails.narrationOutput?.count || 0, size: cacheDetails.narrationOutput?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.videoRendered?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videoRendered', 'Rendered Videos')}:</h4>
-                  {(cacheDetails.videoRendered?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videoRendered', t('settings.videoRendered', 'Rendered Videos'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideoRendered', 'Clear Rendered Videos')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videoRenderedCount', '{{count}} files ({{size}})', { count: cacheDetails.videoRendered?.count || 0, size: cacheDetails.videoRendered?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.videoTemp?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videoTemp', 'Temporary Videos')}:</h4>
-                  {(cacheDetails.videoTemp?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videoTemp', t('settings.videoTemp', 'Temporary Videos'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideoTemp', 'Clear Temporary Videos')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videoTempCount', '{{count}} files ({{size}})', { count: cacheDetails.videoTemp?.count || 0, size: cacheDetails.videoTemp?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-            </div>
-
-            {/* Column 4 */}
-            <div className="cache-details-column">
-              <div className={`cache-details-item ${(cacheDetails.videoAlbumArt?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videoAlbumArt', 'Video Album Art')}:</h4>
-                  {(cacheDetails.videoAlbumArt?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videoAlbumArt', t('settings.videoAlbumArt', 'Video Album Art'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideoAlbumArt', 'Clear Video Album Art')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videoAlbumArtCount', '{{count}} files ({{size}})', { count: cacheDetails.videoAlbumArt?.count || 0, size: cacheDetails.videoAlbumArt?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.videoRendererUploads?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videoRendererUploads', 'Video Renderer Uploads')}:</h4>
-                  {(cacheDetails.videoRendererUploads?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videoRendererUploads', t('settings.videoRendererUploads', 'Video Renderer Uploads'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideoRendererUploads', 'Clear Video Renderer Uploads')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videoRendererUploadsCount', '{{count}} files ({{size}})', { count: cacheDetails.videoRendererUploads?.count || 0, size: cacheDetails.videoRendererUploads?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-
-              <div className={`cache-details-item ${(cacheDetails.videoRendererOutput?.count || 0) === 0 ? 'empty-cache-item' : ''}`}>
-                <div className="cache-item-header">
-                  <h4>{t('settings.videoRendererOutput', 'Video Renderer Output')}:</h4>
-                  {(cacheDetails.videoRendererOutput?.count || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="remove-key"
-                      onClick={() => handleClearIndividualCache('videoRendererOutput', t('settings.videoRendererOutput', 'Video Renderer Output'))}
-                      disabled={clearingCache}
-                      title={t('settings.clearVideoRendererOutput', 'Clear Video Renderer Output')}
-                    >
-                      <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
-                    </button>
-                  )}
-                </div>
-                <p>
-                  {t('settings.videoRendererOutputCount', '{{count}} files ({{size}})', { count: cacheDetails.videoRendererOutput?.count || 0, size: cacheDetails.videoRendererOutput?.formattedSize || '0 Bytes' })}
-                </p>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

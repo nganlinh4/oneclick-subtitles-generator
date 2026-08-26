@@ -34,6 +34,7 @@
 
 import * as glyphAtlas from '../../../platform/glyphAtlas';
 import { stageGlyphAtlas } from '../../../platform/glyphAtlasStaging';
+import { systemFontProbe } from '../../../platform/systemFontProbe';
 import { compositionSize } from './nativePreviewGeometry';
 import { atlasBakeRequest, previewFace } from './nativePreviewScene';
 
@@ -151,16 +152,7 @@ export const detectExportPlatform = () => {
  * Corroboration only, and only in the rejecting direction: `resolveFontIdentity` treats a `false` as
  * a missing face and never lets a `true` override a declaration it does not have.
  */
-export const systemFaceProbe = () => {
-  if (typeof document !== 'object' || typeof document.fonts?.check !== 'function') return null;
-  return ({ family, weight }) => {
-    try {
-      return document.fonts.check(`${weight} 16px "${family}"`);
-    } catch {
-      return false;
-    }
-  };
-};
+export const systemFaceProbe = systemFontProbe;
 
 /** A playable URL for whatever shape of source the export was handed, and how to give it back. */
 const resolveSourceUrl = (source) => {
@@ -443,7 +435,9 @@ export const stageNativeRenderText = async (request, options = {}) => {
     const code = nestedCode(error);
     // The baker's own substitution verdict is the same refusal `fontIdentity` makes, one measurement
     // later: the family resolved, and then the engine drew something else. Both name the face.
-    if (code === 'glyphAtlasFaceUnavailable' || code === 'glyphAtlasFaceSubstituted') {
+    if (code === 'glyphAtlasFaceUnavailable'
+        || code === 'glyphAtlasFaceLoading'
+        || code === 'glyphAtlasFaceSubstituted') {
       fontUnresolved(
         customization.fontFamily,
         'is not the font this computer would draw the subtitles with',

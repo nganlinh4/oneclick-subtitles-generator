@@ -8,13 +8,29 @@ const enqueuePendingToast = (...args) => {
   return true;
 };
 let toastSessionSequence = 0;
+const SUCCESS_TOAST_DEDUPE_WINDOW_MS = 3_000;
+
+const findRecentIdenticalSuccess = (toasts, { message, type, button, now }) => {
+  if (type !== 'success' || button) return -1;
+
+  return toasts.findIndex((toast) => (
+    toast.type === 'success'
+    && !toast.key
+    && !toast.button
+    && !toast.dismissing
+    && toast.message === message
+    && Number.isFinite(toast.timestamp)
+    && now >= toast.timestamp
+    && now - toast.timestamp <= SUCCESS_TOAST_DEDUPE_WINDOW_MS
+  ));
+};
 
 // Preserve startup failures until the panel mounts instead of acknowledging and discarding them.
 if (typeof window !== 'undefined' && !window.addToast) {
   window.addToast = enqueuePendingToast;
 }
 
-const ToastPanel = () => {
+const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   const { t } = useTranslation();
   const [toasts, setToasts] = useState([]); // Live, active toasts
   const [toastHistory, setToastHistory] = useState(() => {
@@ -99,7 +115,14 @@ const ToastPanel = () => {
           && type !== 'warning'
           && !button) return false;
       const previous = toastsRef.current;
-      const existingIndex = key ? previous.findIndex((toast) => toast.key === key) : -1;
+      const now = Date.now();
+      const keyedIndex = key ? previous.findIndex((toast) => toast.key === key) : -1;
+      // A rapid repeat can represent two legitimate completed actions (for example, two saved
+      // checkpoints). Preserve both actions while refreshing their one identical success notice.
+      // Failures and actionable notifications deliberately remain one-per-occurrence.
+      const existingIndex = keyedIndex >= 0
+        ? keyedIndex
+        : findRecentIdenticalSuccess(previous, { message, type, button, now });
       let published;
       if (existingIndex >= 0) {
         const updatedToasts = [...previous];
@@ -111,7 +134,7 @@ const ToastPanel = () => {
           type,
           duration,
           button,
-          timestamp: Date.now(),
+          timestamp: now,
           timerId: setTimeout(() => removeToast(existingToast.id), duration),
         };
         updatedToasts[existingIndex] = published;
@@ -120,7 +143,7 @@ const ToastPanel = () => {
         const id = `${toastSessionIdRef.current}-${(++toastIdRef.current).toString(36)}`;
         published = {
           id, message, type, duration, key, button,
-          timestamp: Date.now(),
+          timestamp: now,
           timerId: setTimeout(() => removeToast(id), duration),
         };
         publishToasts([published, ...previous]);
@@ -257,7 +280,9 @@ const ToastPanel = () => {
       }
     };
     
-    const showAll = isHistoryPinned || isHistoryHiding;
+    // History is ambient application chrome, not modal content. Keep live/actionable toasts
+    // available for Settings confirmations, but never expose the history surface over a modal.
+    const showAll = !backgroundControlsBlocked && (isHistoryPinned || isHistoryHiding);
     // If showing history, render up to `historyLimit` most recent items (newest at bottom).
     const toastsToRender = showAll
       ? [...toastHistory].slice(0, historyLimit).reverse()
@@ -405,10 +430,16 @@ const ToastPanel = () => {
         </div>
       </div>
 
-      <div className="toast-history-button-container">
+      <div
+        className="toast-history-button-container"
+        hidden={backgroundControlsBlocked}
+        aria-hidden={backgroundControlsBlocked ? 'true' : undefined}
+      >
         <button
           className={`toast-history-button ${showHistoryButton || isHistoryVisible || isHistoryPinned ? 'floating-visible' : 'floating-hidden'} ${isHistoryPinned ? 'active' : ''}`}
           onClick={toggleHistoryPin}
+          disabled={backgroundControlsBlocked}
+          tabIndex={backgroundControlsBlocked ? -1 : 0}
           aria-label={isHistoryPinned ? t('common.hideToastHistory') : t('common.showToastHistory')}
           title={isHistoryPinned ? t('common.hideToastHistory') : t('common.showToastHistory')}
           type="button"

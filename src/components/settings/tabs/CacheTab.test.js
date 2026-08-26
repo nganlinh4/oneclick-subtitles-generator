@@ -16,28 +16,17 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const emptyCategory = Object.freeze({ count: 0, size: 0, files: [], formattedSize: '0 Bytes' });
-
-const cacheDetails = (videos = emptyCategory) => ({
-  subtitles: emptyCategory,
-  videos,
-  userSubtitles: emptyCategory,
-  rules: emptyCategory,
-  narrationReference: emptyCategory,
-  narrationOutput: emptyCategory,
-  lyrics: emptyCategory,
-  albumArt: emptyCategory,
-  uploads: emptyCategory,
-  output: emptyCategory,
-  videoRendered: emptyCategory,
-  videoTemp: emptyCategory,
-  videoAlbumArt: emptyCategory,
-  videoRendererUploads: emptyCategory,
-  videoRendererOutput: emptyCategory,
-  totalCount: videos.count,
-  totalSize: videos.size,
-  formattedTotalSize: videos.formattedSize,
-});
+const cacheDetails = (categories = {}) => {
+  const details = Object.values(categories);
+  const totalCount = details.reduce((sum, category) => sum + category.count, 0);
+  const totalSize = details.reduce((sum, category) => sum + category.size, 0);
+  return {
+    ...categories,
+    totalCount,
+    totalSize,
+    formattedTotalSize: totalSize === 1024 ? '1 KB' : `${totalSize} Bytes`,
+  };
+};
 
 beforeEach(() => {
   getCacheInfo.mockReset();
@@ -50,7 +39,9 @@ beforeEach(() => {
 it('uses only the native cache service in the desktop runtime', async () => {
   getCacheInfo.mockResolvedValue({
     success: true,
-    details: cacheDetails({ count: 1, size: 1024, files: [], formattedSize: '1 KB' }),
+    details: cacheDetails({
+      videos: { count: 1, size: 1024, files: [], formattedSize: '1 KB' },
+    }),
   });
   clearCache.mockResolvedValue({
     success: true,
@@ -60,10 +51,73 @@ it('uses only the native cache service in the desktop runtime', async () => {
   render(<CacheTab isActive />);
 
   await waitFor(() => expect(getCacheInfo).toHaveBeenCalledTimes(1));
-  fireEvent.click(await screen.findByTitle('Clear Videos'));
+  fireEvent.click(await screen.findByTitle('Clear Cached Video Data'));
   await waitFor(() => expect(clearCache).toHaveBeenCalledWith('videos'));
   await waitFor(() => expect(getCacheInfo).toHaveBeenCalledTimes(2));
   expect(window.fetch).not.toHaveBeenCalled();
+});
+
+it('never invalidates the active project media identity when clearing cache data', async () => {
+  const videos = { count: 1, size: 1024, files: [], formattedSize: '1 KB' };
+  getCacheInfo
+    .mockResolvedValueOnce({ success: true, details: cacheDetails({ videos }) })
+    .mockResolvedValueOnce({ success: true, details: cacheDetails() });
+  clearCache.mockResolvedValue({
+    success: true,
+    details: {
+      videos,
+      totalCount: 1,
+      totalSize: 1024,
+      formattedTotalSize: '1 KB',
+    },
+  });
+  localStorage.setItem('current_video_url', 'https://example.test/watch/source');
+  localStorage.setItem('current_file_url', 'http://127.0.0.1:49152/asset/active');
+  localStorage.setItem('current_file_cache_id', 'durable-asset-id');
+  localStorage.setItem('narration_cache', 'active-narration-state');
+
+  render(<CacheTab isActive />);
+
+  await screen.findByText('Cached Video Data:');
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Cache' }));
+  await waitFor(() => expect(clearCache).toHaveBeenCalledWith());
+  await waitFor(() => expect(getCacheInfo).toHaveBeenCalledTimes(2));
+
+  expect(localStorage.getItem('current_video_url'))
+    .toBe('https://example.test/watch/source');
+  expect(localStorage.getItem('current_file_url'))
+    .toBe('http://127.0.0.1:49152/asset/active');
+  expect(localStorage.getItem('current_file_cache_id')).toBe('durable-asset-id');
+  expect(localStorage.getItem('narration_cache')).toBe('active-narration-state');
+});
+
+it('describes cache clearing as rebuildable-only and does not claim source uploads are deleted', async () => {
+  getCacheInfo.mockResolvedValue({ success: true, details: cacheDetails() });
+
+  render(<CacheTab isActive />);
+
+  expect(await screen.findByText(/Clear only rebuildable temporary data/)).toBeInTheDocument();
+  expect(screen.getByText(/imported source files/)).toBeInTheDocument();
+  expect(screen.queryByText(/Clear all cached files including subtitles/)).toBeNull();
+});
+
+it('renders and clears only categories reported by the native cache inventory', async () => {
+  const waveform = { count: 2, size: 512, files: [], formattedSize: '512 Bytes' };
+  getCacheInfo.mockResolvedValue({
+    success: true,
+    details: cacheDetails({ waveform }),
+  });
+  clearCache.mockResolvedValue({ success: true, details: { waveform } });
+
+  const { container } = render(<CacheTab isActive />);
+
+  expect(await screen.findByText('Cached Waveforms:')).toBeInTheDocument();
+  expect(container.querySelector('[data-cache-category="waveform"]')).not.toBeNull();
+  expect(container.querySelector('[data-cache-category="videoRendererUploads"]')).toBeNull();
+  expect(container.querySelector('[data-cache-category="videoRendererOutput"]')).toBeNull();
+
+  fireEvent.click(screen.getByTitle('Clear Cached Waveforms'));
+  await waitFor(() => expect(clearCache).toHaveBeenCalledWith('waveform'));
 });
 
 it('fails closed when native cache inspection is unavailable without probing HTTP', async () => {

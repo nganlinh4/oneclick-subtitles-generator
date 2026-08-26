@@ -41,15 +41,11 @@ const ApiKeysTab = ({
 
   // Notification message visibility
   const [showGeminiPausedMessage, setShowGeminiPausedMessage] = useState(true);
-  const [showUDBMMessage, setShowUDBMMessage] = useState(true);
 
   // Restore dismissed-notification state on mount
   useEffect(() => {
     if (localStorage.getItem('gemini25ProPausedMessageClosed') === 'true') {
       setShowGeminiPausedMessage(false);
-    }
-    if (localStorage.getItem('udbmMessageClosed') === 'true') {
-      setShowUDBMMessage(false);
     }
   }, []);
 
@@ -57,12 +53,6 @@ const ApiKeysTab = ({
   const handleCloseGeminiPausedMessage = () => {
     setShowGeminiPausedMessage(false);
     localStorage.setItem('gemini25ProPausedMessageClosed', 'true');
-  };
-
-  // Handle closing the UDBM message
-  const handleCloseUDBMMessage = () => {
-    setShowUDBMMessage(false);
-    localStorage.setItem('udbmMessageClosed', 'true');
   };
 
   // Refs for editable fields
@@ -99,35 +89,8 @@ const ApiKeysTab = ({
                 </div>
               )}
 
-              {/* UDBM Announcement Message */}
-              {showUDBMMessage && (
-                <div className="gemini-paused-message udbm-message">
-                  <div className="message-content">
-                    <span className="material-symbols-rounded message-icon">celebration</span>
-                    <span>
-                      {t('settings.udbmIntroduction')}
-                      {' '}
-                      <a
-                        href="https://github.com/nganlinh4/udbm/releases"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="message-link"
-                      >
-                        {t('settings.udbmDownloadHere')}
-                      </a>
-                    </span>
-                  </div>
-                  <CloseButton
-                    onClick={handleCloseUDBMMessage}
-                    variant="default"
-                    size="small"
-                    ariaLabel={t('settings.closeMessage')}
-                  />
-                </div>
-              )}
-
               {/* Placeholder when no notifications are visible */}
-              {!showGeminiPausedMessage && !showUDBMMessage && (
+              {!showGeminiPausedMessage && (
                 <div className="notification-placeholder">
                   <div className="placeholder-content">
                     <span>{t('settings.noNewNotifications')}</span>

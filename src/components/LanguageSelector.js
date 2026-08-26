@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import CustomDropdown from './common/CustomDropdown';
+import { PREFERRED_LANGUAGE_PREFERENCE } from '../platform/nativeUiPreferences';
+import { showPreferenceProjectionWarning } from './settings/utils/preferenceProjectionWarning';
 
-const LanguageSelector = () => {
+const LanguageSelector = ({ disabled = false }) => {
   const { t, i18n } = useTranslation();
   const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
+  const languageWriteInFlightRef = useRef(false);
 
   // Language options with their details
   const languages = [
@@ -29,10 +32,26 @@ const LanguageSelector = () => {
   }));
 
   // Function to change the language
-  const handleLanguageChange = (code) => {
-    i18n.changeLanguage(code);
-    setSelectedLanguage(code);
-    localStorage.setItem('preferred_language', code);
+  const handleLanguageChange = async (code) => {
+    if (disabled || languageWriteInFlightRef.current) return;
+    languageWriteInFlightRef.current = true;
+    try {
+      const committedLanguage = await PREFERRED_LANGUAGE_PREFERENCE.commit(code, {
+        apply: (language) => i18n.changeLanguage(language),
+        onProjectionWarning: () => showPreferenceProjectionWarning(t),
+      });
+      // Keep this control aligned with durable native authority even if i18n could not repaint the
+      // rest of this WebView. The keyed warning explains that restart may be needed.
+      setSelectedLanguage(committedLanguage);
+    } catch {
+      window.addToast?.(
+        t('settings.saveFailed', 'Settings could not be saved. Please try again.'),
+        'error',
+        8000,
+      );
+    } finally {
+      languageWriteInFlightRef.current = false;
+    }
   };
 
   // Use effect to sync with i18n language changes
@@ -54,6 +73,7 @@ const LanguageSelector = () => {
       onChange={handleLanguageChange}
       options={dropdownOptions}
       placeholder={t('language.selectLanguage') || 'Select language'}
+      disabled={disabled}
     />
   );
 };

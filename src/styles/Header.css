@@ -114,62 +114,6 @@
   background-clip: text;
 }
 
-/* Floating settings button styles */
-.floating-settings {
-  position: absolute;
-  /* top and right will be set dynamically by JavaScript */
-  z-index: 2147483646; /* Very high z-index to ensure it's above video controls */
-  background: rgba(var(--md-surface-rgb), 0.95) !important;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
-  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3) !important;
-  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
-  transform: scale(0.8);
-  opacity: 0;
-  pointer-events: none;
-  filter: blur(4px);
-  /* Make the floating button larger */
-  padding: 12px 20px !important;
-  font-size: 16px !important;
-  height: 48px !important;
-  min-width: 120px !important;
-}
-
-
-/* Make the icon larger in floating mode */
-.floating-settings svg {
-  width: 20px !important;
-  height: 20px !important;
-  margin-right: 10px !important;
-}
-
-.floating-settings.floating-visible {
-  transform: scale(1);
-  opacity: 1;
-  pointer-events: auto;
-  filter: blur(0px);
-}
-
-.floating-settings.floating-hidden {
-  transform: scale(0.8);
-  opacity: 0;
-  pointer-events: none;
-  filter: blur(4px);
-}
-
-
-/* Hover effect for the floating settings button */
-.floating-settings:hover {
-  background: rgba(var(--md-surface-rgb), 0.98) !important;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2) !important;
-  transform: scale(1.05) !important;
-}
-
-.floating-settings.floating-hidden:hover {
-  transform: scale(0.8) !important;
-}
-
-
 /* Language selector styles removed - now using CustomDropdown component */
 
 /* Material Design 3 theme toggle button */
@@ -270,8 +214,8 @@
   transition: stroke var(--md-duration-medium2) var(--md-easing-standard);
 }
 
-/* Small badge for floating settings button (reuses tab-badge look) */
-.floating-settings .tab-badge {
+/* Small update badge for the settings button. */
+.settings-button .tab-badge {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -301,10 +245,6 @@
     font-size: 0.65em;
   }
 
-  .floating-settings {
-    /* top and right will be set dynamically by JavaScript */
-    /* Responsive adjustments handled by the base button styles */
-  }
 }
 
 @media (max-width: 600px) {
@@ -321,11 +261,6 @@
     width: 40px;
     height: 40px;
     justify-content: center;
-  }
-
-  .floating-settings {
-    /* top and right will be set dynamically by JavaScript */
-    /* Responsive adjustments handled by the base button styles */
   }
 
   .header-title {

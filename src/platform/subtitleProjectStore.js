@@ -31,10 +31,7 @@ const EDITOR_TRACK_SELECTOR = Object.freeze({
 });
 const segmentRevisionTokens = new WeakMap();
 
-const isControlCharacter = (character) => {
-  const codePoint = character.codePointAt(0);
-  return codePoint <= 31 || codePoint === 127;
-};
+const isControlCharacter = character => /\p{Cc}/u.test(character);
 
 export class SubtitleProjectStoreError extends Error {
   constructor(code, message, details = {}) {
@@ -46,7 +43,8 @@ export class SubtitleProjectStoreError extends Error {
 }
 
 const validateCacheId = (cacheId) => {
-  if (typeof cacheId !== 'string' || cacheId.length === 0 || cacheId.length > 8_192) {
+  if (typeof cacheId !== 'string' || cacheId.length === 0 || cacheId.length > 8_192
+      || Array.from(cacheId).some(isControlCharacter)) {
     throw new SubtitleProjectStoreError('invalidCacheId', 'A bounded subtitle cache ID is required');
   }
   return cacheId;
@@ -65,8 +63,6 @@ const emptyIndex = () => ({
   activeCacheId: null,
   entries: [],
 });
-
-const indexSize = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
 const parseSerializedIndex = (value) => {
   if (typeof value !== 'string' || value.length === 0
@@ -91,7 +87,8 @@ const normalizeIndex = (rawValue) => {
   const seenProjectIds = new Set();
   value.entries.forEach((entry) => {
     if (!entry || typeof entry.cacheId !== 'string' || entry.cacheId.length === 0
-        || entry.cacheId.length > 8_192 || !isUuidV7(entry.projectId)
+        || entry.cacheId.length > 8_192 || Array.from(entry.cacheId).some(isControlCharacter)
+        || !isUuidV7(entry.projectId)
         || !Number.isSafeInteger(entry.lastOpenedAt) || entry.lastOpenedAt < 0
         || seenCacheIds.has(entry.cacheId) || seenProjectIds.has(entry.projectId)) {
       return;
@@ -138,31 +135,9 @@ export const createSubtitleProjectStore = ({
 
   const loadIndexDirect = async () => {
     if (index === null) {
-      index = normalizeIndex(await invokeCommand('setting_get', {
-        key: SUBTITLE_PROJECT_INDEX_KEY,
-      }));
+      index = normalizeIndex(await invokeCommand('subtitle_project_index_get', {}));
     }
     return index;
-  };
-
-  const persistIndexDirect = async () => {
-    index = normalizeIndex(index);
-    while (index.entries.length > 1 && indexSize(index) > MAX_SUBTITLE_PROJECT_INDEX_BYTES) {
-      index.entries.pop();
-    }
-    if (!index.entries.some((entry) => entry.cacheId === index.activeCacheId)) {
-      index.activeCacheId = null;
-    }
-    if (indexSize(index) > MAX_SUBTITLE_PROJECT_INDEX_BYTES) {
-      throw new SubtitleProjectStoreError(
-        'projectIndexTooLarge',
-        'The subtitle project alias is too large to persist safely'
-      );
-    }
-    await invokeCommand('setting_set', {
-      key: SUBTITLE_PROJECT_INDEX_KEY,
-      value: index,
-    });
   };
 
   const markActiveDirect = async (entry) => {
@@ -170,11 +145,36 @@ export const createSubtitleProjectStore = ({
     if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
       throw new SubtitleProjectStoreError('invalidClock', 'The project clock is invalid');
     }
-    entry.lastOpenedAt = timestamp;
-    index.activeCacheId = entry.cacheId;
-    index.entries.sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
-    index.entries = index.entries.slice(0, MAX_SUBTITLE_PROJECT_ALIASES);
-    await persistIndexDirect();
+    const persisted = normalizeIndex(await invokeCommand('subtitle_project_alias_activate', {
+      entry: {
+        cacheId: entry.cacheId,
+        projectId: entry.projectId,
+        lastOpenedAt: timestamp,
+      },
+    }));
+    const exact = persisted.entries.find(candidate => candidate.cacheId === entry.cacheId);
+    if (persisted.activeCacheId !== entry.cacheId || exact?.projectId !== entry.projectId) {
+      throw new SubtitleProjectStoreError(
+        'projectScopeMismatch',
+        'The subtitle project alias changed while it was being activated'
+      );
+    }
+    index = persisted;
+    Object.assign(entry, exact);
+  };
+
+  const removeAliasDirect = async (entry) => {
+    const mutation = await invokeCommand('subtitle_project_alias_remove', {
+      cacheId: entry.cacheId,
+      expectedProjectId: entry.projectId,
+    });
+    if (typeof mutation?.changed !== 'boolean') {
+      throw new SubtitleProjectStoreError(
+        'projectScopeMismatch',
+        'The subtitle project alias could not be repaired'
+      );
+    }
+    index = normalizeIndex(mutation.index);
   };
 
   const resolve = (cacheId, { create = false } = {}) => {
@@ -185,10 +185,8 @@ export const createSubtitleProjectStore = ({
       let snapshot = entry == null ? null : await projects.loadProject(entry.projectId);
 
       if (entry !== null && snapshot === null) {
-        index.entries = index.entries.filter((candidate) => candidate !== entry);
-        if (index.activeCacheId === alias) index.activeCacheId = null;
+        await removeAliasDirect(entry);
         entry = null;
-        await persistIndexDirect();
       }
 
       if (entry === null && create) {
@@ -204,6 +202,40 @@ export const createSubtitleProjectStore = ({
       if (entry === null) return null;
       await markActiveDirect(entry);
       return { cacheId: alias, projectId: entry.projectId, snapshot };
+    });
+  };
+
+  /**
+   * Rebuild the browser alias for an exact native workspace after preference reset.
+   *
+   * The native pointer has already been validated against project_state and its active media. This
+   * method never creates or chooses a project and never compares file content: it loads only the
+   * supplied UUID, replaces conflicting derivative aliases, and persists that exact mapping.
+   */
+  const adoptExactProjectAlias = (cacheId, projectId) => {
+    const alias = validateCacheId(cacheId);
+    if (!isUuidV7(projectId)) {
+      throw new SubtitleProjectStoreError(
+        'projectScopeMismatch',
+        'The durable workspace project identity is invalid'
+      );
+    }
+    return enqueueIndex(async () => {
+      await loadIndexDirect();
+      const snapshot = await projects.loadProject(projectId);
+      if (snapshot?.metadata?.id !== projectId) {
+        throw new SubtitleProjectStoreError(
+          'projectScopeMismatch',
+          'The durable workspace project is no longer available'
+        );
+      }
+      index.entries = index.entries.filter((entry) => (
+        entry.cacheId !== alias && entry.projectId !== projectId
+      ));
+      const entry = { cacheId: alias, projectId, lastOpenedAt: now() };
+      index.entries.unshift(entry);
+      await markActiveDirect(entry);
+      return { cacheId: alias, projectId, snapshot };
     });
   };
 
@@ -327,10 +359,72 @@ export const createSubtitleProjectStore = ({
     candidate.origin === 'legacyJson' && candidate.label === SUBTITLE_CACHE_TRACK_LABEL
   )) ?? null;
 
+  const identityFreeTrack = (rows, snapshot) => {
+    if (rows.length === 0) return null;
+    const existing = cachedTrack(snapshot);
+    return legacyRowsToCanonicalTrack(rows, {
+      label: existing?.label ?? SUBTITLE_CACHE_TRACK_LABEL,
+      origin: existing?.origin ?? 'legacyJson',
+    });
+  };
+
   const rowsMatch = (snapshot, rows) => {
-    const candidate = writeRows(snapshot, rows);
-    return JSON.stringify(comparableTrack(cachedTrack(candidate)))
+    // Local numeric IDs are ordinals from the revision in which the editor loaded them. Inserting
+    // a UUID cue shifts later native ordinals, so canonicalizing against the *current* track can
+    // bind local ID 2 to the newly inserted cue and even report a duplicate before semantics are
+    // compared. Validate/canonicalize independently, then compare only timing, text and lineage.
+    return JSON.stringify(comparableTrack(identityFreeTrack(rows, snapshot)))
       === JSON.stringify(comparableTrack(cachedTrack(snapshot)));
+  };
+
+  const localIdentityKey = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && !Number.isFinite(value)) return null;
+    if (typeof value !== 'string' && typeof value !== 'number'
+        && typeof value !== 'boolean') return null;
+    return `${typeof value}:${JSON.stringify(value)}`;
+  };
+
+  const rowStartMs = (row) => Math.round((row.start ?? row.startTime) * 1_000);
+  const rowEndMs = (row) => Math.round((row.end ?? row.endTime) * 1_000);
+
+  /**
+   * Rebind this editor revision's local identities to the exact native baseline.
+   *
+   * Legacy rows expose numeric ordinals while newly-created rows already carry UUIDv7. Ordinals
+   * are not identities after insert/delete/split, so pair the semantically matched, sorted baseline
+   * with its authoritative native cues and translate every identity carried into the replacement.
+   */
+  const bindEditorRowIdentities = (beforeTrack, beforeRows, afterRows) => {
+    if (beforeTrack === null) return afterRows;
+    const orderedBefore = beforeRows.map((row, inputIndex) => ({ row, inputIndex }))
+      .sort((left, right) => (
+        rowStartMs(left.row) - rowStartMs(right.row)
+          || rowEndMs(left.row) - rowEndMs(right.row)
+          || left.inputIndex - right.inputIndex
+      ));
+    if (orderedBefore.length !== beforeTrack.cues.length) return afterRows;
+
+    const nativeIdByLocal = new Map();
+    orderedBefore.forEach(({ row }, index) => {
+      const key = localIdentityKey(row.id);
+      if (key !== null) nativeIdByLocal.set(key, beforeTrack.cues[index].id);
+    });
+    const rebound = (value) => {
+      const key = localIdentityKey(value);
+      return key !== null && nativeIdByLocal.has(key) ? nativeIdByLocal.get(key) : value;
+    };
+    return afterRows.map((row) => {
+      const next = { ...row };
+      if (Object.prototype.hasOwnProperty.call(next, 'id')) next.id = rebound(next.id);
+      if (Object.prototype.hasOwnProperty.call(next, 'originalId')) {
+        next.originalId = rebound(next.originalId);
+      }
+      if (Object.prototype.hasOwnProperty.call(next, 'sourceId')) {
+        next.sourceId = rebound(next.sourceId);
+      }
+      return next;
+    });
   };
 
   const conflict = (snapshot) => new SubtitleProjectStoreError(
@@ -377,6 +471,7 @@ export const createSubtitleProjectStore = ({
       }
     }
 
+    let baselineSnapshot = current;
     if (!rowsMatch(current, beforeRows)) {
       const hasTrack = readLegacySubtitleTrack(current, {
         label: SUBTITLE_CACHE_TRACK_LABEL,
@@ -385,18 +480,32 @@ export const createSubtitleProjectStore = ({
         && beforeRows.length > 0
         && history.historyVersion === 0;
       if (!canBootstrapUnsaved) throw conflict(current);
+      // A pre-native editor could already hold unsaved rows when its project alias was created.
+      // Preserve that one explicit bootstrap baseline so the first native edit remains undoable.
+      baselineSnapshot = writeRows(current, beforeRows);
     }
 
-    const beforeSnapshot = writeRows(current, beforeRows);
-    const afterSnapshot = writeRows(beforeSnapshot, afterRows);
-    const result = await projects.commitProjectTrack({
-      id: resolved.projectId,
-      selector: EDITOR_TRACK_SELECTOR,
-      expectedHistoryVersion: history.historyVersion,
-      beforeTrack: cachedTrack(beforeSnapshot),
-      afterTrack: cachedTrack(afterSnapshot),
-      reason,
-    });
+    // `rowsMatch` deliberately compares the legacy editor's semantic rows rather than native
+    // UUIDs. Rebuilding the before-track from an idless optimistic row would therefore mint a new
+    // cue UUID and make Rust's exact compare-and-swap reject an otherwise valid rapid edit. Once
+    // the semantic baseline has matched, the project snapshot is the only authoritative identity
+    // source: pass its exact track as `beforeTrack` and derive only the replacement from it.
+    const beforeTrack = cachedTrack(baselineSnapshot);
+    const boundAfterRows = bindEditorRowIdentities(beforeTrack, beforeRows, afterRows);
+    const afterSnapshot = writeRows(baselineSnapshot, boundAfterRows);
+    let result;
+    try {
+      result = await projects.commitProjectTrack({
+        id: resolved.projectId,
+        selector: EDITOR_TRACK_SELECTOR,
+        expectedHistoryVersion: history.historyVersion,
+        beforeTrack,
+        afterTrack: cachedTrack(afterSnapshot),
+        reason,
+      });
+    } catch (error) {
+      throw mapHistoryError(error);
+    }
     return {
       snapshot: result.snapshot,
       status: result.status,
@@ -693,14 +802,13 @@ export const createSubtitleProjectStore = ({
     const snapshot = await projects.loadProject(entry.projectId);
     if (snapshot !== null) return { cacheId, projectId: entry.projectId, snapshot };
 
-    index.entries = index.entries.filter((candidate) => candidate !== entry);
-    index.activeCacheId = null;
-    await persistIndexDirect();
+    await removeAliasDirect(entry);
     return null;
   });
 
   return Object.freeze({
     resolveProjectForCache: resolve,
+    adoptExactProjectAlias,
     loadSubtitles,
     loadExactProjectSubtitles,
     saveSubtitles,
@@ -722,6 +830,7 @@ export const createSubtitleProjectStore = ({
 const subtitleProjectStore = createSubtitleProjectStore();
 
 export const resolveProjectForCache = subtitleProjectStore.resolveProjectForCache;
+export const adoptExactSubtitleProjectAlias = subtitleProjectStore.adoptExactProjectAlias;
 export const loadProjectSubtitles = subtitleProjectStore.loadSubtitles;
 export const loadExactProjectSubtitles = subtitleProjectStore.loadExactProjectSubtitles;
 export const saveProjectSubtitles = subtitleProjectStore.saveSubtitles;

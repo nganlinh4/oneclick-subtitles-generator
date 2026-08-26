@@ -15,7 +15,7 @@ import { completeSubtitleCustomization } from './subtitleCustomizationState';
  * The render tab built its export request as `{ ...defaultCustomization, ...subtitleCustomization }`
  * in three places and handed the preview the state object raw. `normalizeCustomization` in
  * `renderService.js` takes an EXACT key set, so a style missing one key — a custom preset saved by an
- * older build, a hand-edited `localStorage` entry, `CustomPresetButtons` spreading a stored preset
+ * older build or a hand-edited `localStorage` entry
  * straight into `onChange` — produced an export request and refused a preview request. The file
  * rendered; the panel went silently dormant. The two agreed only because the value that reached the
  * state had already been merged somewhere else, which is one decision in two places.

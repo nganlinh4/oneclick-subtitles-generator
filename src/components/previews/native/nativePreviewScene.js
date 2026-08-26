@@ -56,6 +56,25 @@ const MAX_ATLAS_FONT_SIZE_PX = 512;
 const MAX_FACE_BYTES = 256;
 const MAX_CUE_TEXT_BYTES = 16 * 1024;
 
+/**
+ * The persisted style fields that can change shaped glyph pixels or line layout.
+ *
+ * This list is deliberately public and closed: the atlas cache key and `atlasBakeRequest` both read
+ * through the same projection below, while the dependency-partition test requires every persisted
+ * customization field to be classified. Adding a field to the product schema therefore cannot
+ * quietly turn a paint-only edit into a rebake (or, worse, omit a new shaping dependency).
+ */
+export const ATLAS_BAKE_CUSTOMIZATION_FIELDS = Object.freeze([
+  'fontSize',
+  'lineHeight',
+  'letterSpacing',
+  'textAlign',
+  'textTransform',
+  'wordWrap',
+  'maxWidth',
+  'rtlSupport',
+]);
+
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum);
 
@@ -66,6 +85,46 @@ const withinFaceBudget = (value) => (
   && utf8.encode(value).length <= MAX_FACE_BYTES
   && !/\p{Cc}/u.test(value)
 );
+
+/** One authority for both the expensive bake and its cache identity. */
+const atlasBakeInputs = ({ customization, text, compositionWidthPx, compositionHeightPx, face }) => {
+  const style = customization ?? {};
+  const projectedStyle = {};
+  for (const field of ATLAS_BAKE_CUSTOMIZATION_FIELDS) projectedStyle[field] = style[field];
+  return Object.freeze({
+    text,
+    compositionWidthPx,
+    compositionHeightPx,
+    faceFamily: face?.family ?? null,
+    faceWeight: face?.weight ?? null,
+    // The CSS selector can remain the same while a managed package advances to different reviewed
+    // bytes. Keep that byte-source identity in the cache key even though the canvas bake request
+    // names the face by family/weight.
+    faceSource: face?.source ?? face?.key ?? null,
+    style: Object.freeze(projectedStyle),
+  });
+};
+
+/**
+ * Content address for a shaped-line atlas.
+ *
+ * JSON is intentional: cue text and face identities may contain any separator a hand-built string
+ * key could confuse. Cue index/timing and every paint/position/animation field are absent because
+ * they do not reach the baker; callers still invalidate and redraw their full scene separately.
+ */
+export const atlasBakeCacheKey = input => {
+  const inputs = atlasBakeInputs(input);
+  return JSON.stringify([
+    1,
+    inputs.text,
+    inputs.compositionWidthPx,
+    inputs.compositionHeightPx,
+    inputs.faceFamily,
+    inputs.faceWeight,
+    inputs.faceSource,
+    ...ATLAS_BAKE_CUSTOMIZATION_FIELDS.map(field => inputs.style[field]),
+  ]);
+};
 
 /**
  * Which cue is on screen at `timeSeconds`.
@@ -162,10 +221,13 @@ export const previewFace = ({
  *   - `{ request: null, refusal }` — a bounded style the baker will not take. Reported, never silent.
  *   - `{ request, refusal: null, glyphScale, atlasFontSizePx }` — the bake.
  */
-export const atlasBakeRequest = ({ customization, text, compositionWidthPx, compositionHeightPx, face }) => {
+export const atlasBakeRequest = (input) => {
+  const {
+    text, compositionWidthPx, compositionHeightPx, faceFamily, faceWeight, style,
+  } = atlasBakeInputs(input);
   const {
     fontSize, lineHeight, letterSpacing, textAlign, textTransform, wordWrap, maxWidth, rtlSupport,
-  } = customization;
+  } = style;
   if (!isFiniteNumber(fontSize) || fontSize <= 0) return null;
   const atlasFontSizePx = clamp(fontSize, MIN_ATLAS_FONT_SIZE_PX, MAX_ATLAS_FONT_SIZE_PX);
   const glyphScale = glyphScaleForComposition({ fontSize, compositionHeightPx, atlasFontSizePx });
@@ -178,7 +240,7 @@ export const atlasBakeRequest = ({ customization, text, compositionWidthPx, comp
   return Object.freeze({
     request: Object.freeze({
       text,
-      face: { family: face.family, weight: face.weight, style: 'normal' },
+      face: { family: faceFamily, weight: faceWeight, style: 'normal' },
       fontSizePx: atlasFontSizePx,
       lineHeightPx: isFiniteNumber(lineHeight) && lineHeight > 0 ? lineHeight * atlasFontSizePx : null,
       letterSpacingPx,
@@ -211,8 +273,9 @@ export const bakePreviewAtlas = (bake, options = undefined) => bakeGlyphAtlas(ba
 /**
  * The audio a preview composes at, which no preview surface chooses.
  *
- * Neither volume reaches a pixel — a preview frame carries no audio — so these are the literals
- * `renderAndExportDesktopPreview` writes its files with rather than a second set to keep in step.
+ * Neither volume reaches a pixel — a preview frame carries no audio — but the native request schema
+ * still requires bounded values. Final export reads its project-owned audio settings on the live
+ * Render path; this preview constant is deliberately not an export authority.
  *
  * THE TRIM IS NOT HERE, and used to be: it was pinned to zero beside these, on the reasoning that
  * both editor surfaces preview the whole source. That was true of the surfaces and false of the
@@ -226,7 +289,7 @@ const PREVIEW_AUDIO = Object.freeze({
   narrationVolume: 0,
 });
 
-/** The whole frame, for a surface that offers no crop. Matches the download handler's own crop. */
+/** The whole frame, for a preview surface whose caller supplies no project crop. */
 export const PREVIEW_FULL_FRAME_CROP = Object.freeze({
   x: 0,
   y: 0,

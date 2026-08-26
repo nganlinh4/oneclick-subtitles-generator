@@ -3,6 +3,8 @@
  * This adds a Material Design 3 style pill background that slides between tabs
  */
 
+import { scrollActiveSettingsTab } from './settingsTabVisibility';
+
 // Standardize goo filter to match the high-quality one from other tabs
 const ensureGooFilter = () => {
   if (document.getElementById('goo-filter-defs')) return;
@@ -102,7 +104,12 @@ export const initSettingsTabPillAnimation = (tabsSelector = '.settings-tabs') =>
   if (!tabContainers.length) return;
   ensureGooFilter();
 
+  const initializedContainers = [];
   tabContainers.forEach(tabContainer => {
+    // A Settings modal can be opened repeatedly in one app session. Replace the
+    // previous lifecycle instead of accumulating click/resize listeners.
+    tabContainer._cleanupSettingsTabPill?.();
+
     if (!tabContainer.querySelector('.pill-overlay')) {
       const overlay = document.createElement('div');
       overlay.className = 'pill-overlay';
@@ -114,26 +121,73 @@ export const initSettingsTabPillAnimation = (tabsSelector = '.settings-tabs') =>
     positionPillForActiveTab(tabContainer);
 
     const tabButtons = tabContainer.querySelectorAll('.settings-tab');
+    const buttonListeners = [];
+    const positionTimers = new Set();
     tabButtons.forEach(button => {
-      button.addEventListener('click', () => {
+      const handleClick = () => {
         tabButtons.forEach(tab => {
           if (tab !== button) {
             tab.dataset.wasActive = 'false';
             tab.dataset.lastActive = 'false';
           }
         });
-        setTimeout(() => positionPillForActiveTab(tabContainer), 10);
-      });
+        const timer = setTimeout(() => {
+          positionTimers.delete(timer);
+          positionPillForActiveTab(tabContainer);
+        }, 10);
+        positionTimers.add(timer);
+      };
+      button.addEventListener('click', handleClick);
+      buttonListeners.push({ button, handleClick });
     });
 
-    window.addEventListener('resize', () => {
+    const handleResize = () => {
       tabButtons.forEach(tab => {
         tab.dataset.wasActive = 'false';
         tab.dataset.lastActive = 'false';
       });
+      scrollActiveSettingsTab(tabContainer, tabContainer.querySelector('.settings-tab.active'));
       positionPillForActiveTab(tabContainer);
-    });
+    };
+    window.addEventListener('resize', handleResize);
+
+    // A locale or application-font change can move and resize the existing tab
+    // elements without changing the active tab key or resizing the window. The
+    // active-pill reclick guard would otherwise keep the previous geometry and
+    // leave a second, empty-looking pill behind. Observe every tab as well as the
+    // strip: a preceding tab changing width can move the active tab even when the
+    // active tab's own width is unchanged.
+    const geometryObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(handleResize)
+      : null;
+    geometryObserver?.observe(tabContainer);
+    tabButtons.forEach(tab => geometryObserver?.observe(tab));
+
+    const cleanupPill = () => {
+      buttonListeners.forEach(({ button, handleClick }) => {
+        button.removeEventListener('click', handleClick);
+      });
+      positionTimers.forEach(clearTimeout);
+      positionTimers.clear();
+      window.removeEventListener('resize', handleResize);
+      geometryObserver?.disconnect();
+
+      const simulation = settingsGooSims.get(tabContainer);
+      if (simulation?.raf) cancelAnimationFrame(simulation.raf);
+      settingsGooSims.delete(tabContainer);
+    };
+    tabContainer._cleanupSettingsTabPill = cleanupPill;
+    initializedContainers.push({ tabContainer, cleanupPill });
   });
+
+  return () => {
+    initializedContainers.forEach(({ tabContainer, cleanupPill }) => {
+      if (tabContainer._cleanupSettingsTabPill === cleanupPill) {
+        cleanupPill();
+        delete tabContainer._cleanupSettingsTabPill;
+      }
+    });
+  };
 };
 
 export const positionPillForActiveTab = (tabContainer) => {

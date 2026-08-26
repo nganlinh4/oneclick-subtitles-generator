@@ -45,8 +45,21 @@ export const FONT_READINESS_STATE = Object.freeze({
 /** The event native emits whenever the record changes. */
 export const FONT_READINESS_EVENT = 'osg://font-readiness';
 
-/** The record shape this build understands. A newer schema is treated as unknown, not guessed at. */
+/** The record shape this build understands. A present incompatible schema is a terminal refusal. */
 export const FONT_READINESS_SCHEMA = 1;
+
+/** A published value that does not satisfy the native protocol is a terminal refusal, not a wait. */
+export const FONT_READINESS_CONTRACT_MISMATCH = 'contract-mismatch';
+
+/** Closed native refusal vocabulary, mirrored from `FontRefusal`. */
+export const FONT_READINESS_REFUSAL = Object.freeze({
+  noUsableSource: 'no-usable-source',
+  integrityFailed: 'integrity-failed',
+  storeUnavailable: 'store-unavailable',
+  versionMismatch: 'version-mismatch',
+  timedOut: 'timed-out',
+  cancelled: 'cancelled',
+});
 
 const READINESS_TO_PACK_STATE = Object.freeze({
   [FONT_READINESS_STATE.ready]: MANAGED_PACK_STATE.installed,
@@ -55,25 +68,91 @@ const READINESS_TO_PACK_STATE = Object.freeze({
   [FONT_READINESS_STATE.repairing]: MANAGED_PACK_STATE.unknown,
 });
 
+const READINESS_RECORD_KEYS = Object.freeze([
+  'schema', 'epoch', 'state', 'family', 'version', 'reason', 'retryable',
+]);
+const REFUSAL_RETRYABILITY = Object.freeze({
+  [FONT_READINESS_REFUSAL.noUsableSource]: true,
+  [FONT_READINESS_REFUSAL.integrityFailed]: false,
+  [FONT_READINESS_REFUSAL.storeUnavailable]: true,
+  [FONT_READINESS_REFUSAL.versionMismatch]: false,
+  [FONT_READINESS_REFUSAL.timedOut]: true,
+  [FONT_READINESS_REFUSAL.cancelled]: false,
+});
+
 const isRecord = (value) => typeof value === 'object' && value !== null;
+
+const plainRecord = (value) => {
+  try {
+    if (!isRecord(value) || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    if (Object.getOwnPropertySymbols(value).length !== 0) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Object.values(descriptors).some(
+      (descriptor) => !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')
+    )) return null;
+    return Object.fromEntries(
+      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value]),
+    );
+  } catch {
+    return null;
+  }
+};
+
+const publishedValue = (globalScope) => {
+  try {
+    if (!isRecord(globalScope)
+        || !Object.hasOwn(globalScope, '__OSG_FONT_READINESS__')) {
+      return Object.freeze({ present: false, value: null });
+    }
+    return Object.freeze({ present: true, value: globalScope.__OSG_FONT_READINESS__ });
+  } catch {
+    // A host that says the property exists but cannot expose it has still published an unusable
+    // contract. Treating that as "not yet" would leave every admission barrier waiting forever.
+    return Object.freeze({ present: true, value: null });
+  }
+};
+
+const recordStateIsValid = (record) => {
+  if (record.state === FONT_READINESS_STATE.ready) {
+    return record.version === MANAGED_FONT_PACKAGE.version
+      && record.reason === null
+      && record.retryable === false;
+  }
+  if (record.state === FONT_READINESS_STATE.refused) {
+    return record.version === null
+      && Object.hasOwn(REFUSAL_RETRYABILITY, record.reason)
+      && record.retryable === REFUSAL_RETRYABILITY[record.reason];
+  }
+  return record.version === null && record.reason === null && record.retryable === false;
+};
+
+const parseFontReadiness = (value) => {
+  const record = plainRecord(value);
+  if (record === null
+      || Object.keys(record).length !== READINESS_RECORD_KEYS.length
+      || !READINESS_RECORD_KEYS.every((key) => Object.hasOwn(record, key))) return null;
+  if (record.schema !== FONT_READINESS_SCHEMA
+      || !Number.isSafeInteger(record.epoch)
+      || record.epoch < 0
+      || !Object.hasOwn(READINESS_TO_PACK_STATE, record.state)
+      || record.family !== MANAGED_FONT_PACKAGE.family
+      || typeof record.retryable !== 'boolean'
+      || !recordStateIsValid(record)) return null;
+  return Object.freeze(record);
+};
 
 /**
  * The readiness record native published, or `null` when there is none this build can read.
  *
- * A record from a newer schema is refused rather than interpreted. Guessing at an unknown shape is
- * how a capability check starts reporting confident nonsense after an upgrade.
+ * A record from a newer schema is rejected rather than interpreted. The capability snapshot keeps
+ * "no publication" distinct from this present-but-incompatible contract, so an export barrier can
+ * fail closed instead of waiting forever.
  */
 export const readFontReadiness = (globalScope) => {
-  if (!isRecord(globalScope)) return null;
-  const record = globalScope.__OSG_FONT_READINESS__;
-  if (!isRecord(record) || record.schema !== FONT_READINESS_SCHEMA) return null;
-  if (!Object.hasOwn(READINESS_TO_PACK_STATE, record.state)) return null;
-  // Every field the contract promises must be present. A truncated record is not a lenient version
-  // of a valid one: accepting `{ schema, state: 'ready' }` would report a font usable on the word of
-  // something that cannot even say which family or which answer it is.
-  if (typeof record.family !== 'string' || record.family.length === 0) return null;
-  if (!Number.isInteger(record.epoch) || record.epoch < 0) return null;
-  return record;
+  const published = publishedValue(globalScope);
+  return published.present ? parseFontReadiness(published.value) : null;
 };
 
 /**
@@ -83,19 +162,35 @@ export const readFontReadiness = (globalScope) => {
  * sides. Nothing here is discovered by measuring the DOM.
  */
 export const fontCapabilitySnapshot = (globalScope = typeof window === 'undefined' ? null : window) => {
-  const record = readFontReadiness(globalScope);
-  const managedPack = record === null
-    ? MANAGED_PACK_STATE.unknown
-    : READINESS_TO_PACK_STATE[record.state];
+  const published = publishedValue(globalScope);
+  const record = published.present ? parseFontReadiness(published.value) : null;
+  const contractMismatch = published.present && record === null;
+  const managedPack = contractMismatch
+    ? MANAGED_PACK_STATE.absent
+    : record === null
+      ? MANAGED_PACK_STATE.unknown
+      : READINESS_TO_PACK_STATE[record.state];
+  const reported = plainRecord(published.value);
 
   return Object.freeze({
     managedPack,
-    managedFamily: MANAGED_FONT_PACKAGE.family,
-    managedVersion: MANAGED_FONT_PACKAGE.version,
+    /** The reviewed identity this build expects; consumers compare requested faces to this. */
+    expectedManagedFamily: MANAGED_FONT_PACKAGE.family,
+    expectedManagedVersion: MANAGED_FONT_PACKAGE.version,
+    /** The validated identity native reported. Never replaced with a contradictory JS constant. */
+    managedFamily: record?.family ?? null,
+    managedVersion: record?.version ?? null,
+    /** Bounded diagnostic identity from an incompatible publication. Never grants capability. */
+    reportedFamily: typeof reported?.family === 'string'
+      ? reported.family.slice(0, 128)
+      : null,
+    reportedVersion: typeof reported?.version === 'string'
+      ? reported.version.slice(0, 128)
+      : null,
     /** True only when native positively confirmed it. `unknown` is deliberately not true. */
     managedPackInstalled: managedPack === MANAGED_PACK_STATE.installed,
     /** True while the answer is still pending, so a caller can show loading rather than failure. */
-    pending: managedPack === MANAGED_PACK_STATE.unknown,
+    pending: !contractMismatch && managedPack === MANAGED_PACK_STATE.unknown,
     /**
      * Whether native has published a readable record at all.
      *
@@ -105,20 +200,24 @@ export const fontCapabilitySnapshot = (globalScope = typeof window === 'undefine
      * that can never advance — the same forever-waiting shape this module exists to remove, only
      * with friendlier wording.
      */
-    published: record !== null,
+    published: published.present,
     /** The native state verbatim, for a caller that must distinguish resolving from repairing. */
-    readiness: record === null ? FONT_READINESS_STATE.resolving : record.state,
+    readiness: contractMismatch
+      ? FONT_READINESS_STATE.refused
+      : record === null ? FONT_READINESS_STATE.resolving : record.state,
     /**
      * Advances on every native change. A consumer compares it to tell a fresh answer from one it
      * already acted on, and to discard work owned by an older answer.
      */
     epoch: record === null ? 0 : record.epoch,
     /** A bounded machine-readable cause, present only when refused. */
-    reason: record === null ? null : (record.reason ?? null),
+    reason: contractMismatch
+      ? FONT_READINESS_CONTRACT_MISMATCH
+      : record === null ? null : record.reason,
     /** Whether offering a retry could plausibly help. Never true unless refused. */
-    retryable: record === null ? false : record.retryable === true,
+    retryable: record === null ? false : record.retryable,
     /** The installed version, present only once verified. */
-    installedVersion: record === null ? null : (record.version ?? null),
+    installedVersion: record?.state === FONT_READINESS_STATE.ready ? record.version : null,
   });
 };
 
@@ -134,9 +233,49 @@ export const subscribeToFontReadiness = (
   { globalScope = typeof window === 'undefined' ? null : window, listen = null } = {},
 ) => {
   if (typeof onChange !== 'function' || !isRecord(globalScope)) return () => {};
+  // Every consumer has its own listener. The first listener to receive epoch N updates the shared
+  // record; the others must still re-render once for that same native publication, while a later
+  // duplicate event must wake none of them. Track delivery per subscriber as well as authority
+  // monotonicity to preserve both guarantees.
+  let lastDeliveredRecord = readFontReadiness(globalScope);
+
+  const preserveMonotonicAuthority = () => {
+    const current = readFontReadiness(globalScope);
+    if (current !== null
+        && (lastDeliveredRecord === null || current.epoch > lastDeliveredRecord.epoch)) {
+      lastDeliveredRecord = current;
+      onChange(fontCapabilitySnapshot(globalScope));
+      return;
+    }
+    if (lastDeliveredRecord !== null) {
+      globalScope.__OSG_FONT_READINESS__ = lastDeliveredRecord;
+    }
+  };
 
   const apply = (record) => {
-    if (isRecord(record)) globalScope.__OSG_FONT_READINESS__ = record;
+    const incoming = parseFontReadiness(record);
+    // Native assigns the window property before dispatching the DOM event. A stale or malformed
+    // announcement has therefore already replaced the shared property by the time this listener
+    // gets a chance to reject it. Restore the last record this subscriber accepted; merely ignoring
+    // the payload would leave direct snapshot readers observing the rejected publication.
+    if (incoming === null) {
+      preserveMonotonicAuthority();
+      return;
+    }
+    if (lastDeliveredRecord !== null && incoming.epoch <= lastDeliveredRecord.epoch) {
+      preserveMonotonicAuthority();
+      return;
+    }
+    const current = readFontReadiness(globalScope);
+    if (current !== null && incoming.epoch < current.epoch) {
+      lastDeliveredRecord = current;
+      onChange(fontCapabilitySnapshot(globalScope));
+      return;
+    }
+    if (current === null || incoming.epoch > current.epoch) {
+      globalScope.__OSG_FONT_READINESS__ = incoming;
+    }
+    lastDeliveredRecord = incoming;
     onChange(fontCapabilitySnapshot(globalScope));
   };
 

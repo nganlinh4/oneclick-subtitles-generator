@@ -8,18 +8,14 @@ import { defaultSettings } from '../constants';
  * @param {Function} onSettingsChange - Callback when settings change
  * @returns {Object} - Settings state and handlers
  */
-const useSubtitleSettings = (initialSettings, onSettingsChange) => {
+const useSubtitleSettings = (initialSettings, onSettingsChange, onResetSettings) => {
   const [isOpen, setIsOpen] = useState(() => {
     // Load isOpen state from localStorage
     const savedIsOpen = localStorage.getItem('subtitle_settings_panel_open');
     return savedIsOpen === 'true';
   });
 
-  const [subtitleLanguage, setSubtitleLanguage] = useState(() => {
-    // Load subtitle language from localStorage
-    const savedLanguage = localStorage.getItem('subtitle_language');
-    return savedLanguage || 'original';
-  });
+  const subtitleLanguage = initialSettings.showTranslatedSubtitles ? 'translated' : 'original';
 
   // Save isOpen state to localStorage when it changes
   useEffect(() => {
@@ -33,48 +29,39 @@ const useSubtitleSettings = (initialSettings, onSettingsChange) => {
     }
   }, []);
 
-  const handleSettingChange = useCallback((setting, value) => {
+  const handleSettingsChange = useCallback((updates) => {
     const updatedSettings = {
       ...initialSettings,
-      [setting]: value
+      ...updates,
     };
 
-    // Save to localStorage
-    localStorage.setItem('subtitle_settings', JSON.stringify(updatedSettings));
-
-    // Update state via parent component
     onSettingsChange(updatedSettings);
   }, [initialSettings, onSettingsChange]);
 
+  const handleSettingChange = useCallback((setting, value) => {
+    handleSettingsChange({ [setting]: value });
+  }, [handleSettingsChange]);
+
   const handleSubtitleLanguageChange = useCallback((e) => {
     const value = e.target.value;
-    setSubtitleLanguage(value);
-
-    // Update the showTranslatedSubtitles setting
     const showTranslated = value === 'translated';
     handleSettingChange('showTranslatedSubtitles', showTranslated);
-
-    // Save the selected language to localStorage
-    localStorage.setItem('subtitle_language', value);
-
-    // Log the change for debugging
-
   }, [handleSettingChange]);
 
   const resetToDefaults = () => {
-    // Save default settings to localStorage
-    localStorage.setItem('subtitle_settings', JSON.stringify(defaultSettings));
-
-    // Update state via parent component
-    onSettingsChange(defaultSettings);
+    if (typeof onResetSettings === 'function') {
+      onResetSettings();
+    } else {
+      onSettingsChange(defaultSettings);
+    }
   };
 
   return {
     isOpen,
     setIsOpen,
     subtitleLanguage,
-    setSubtitleLanguage,
     handleSettingChange,
+    handleSettingsChange,
     handleSubtitleLanguageChange,
     resetToDefaults
   };

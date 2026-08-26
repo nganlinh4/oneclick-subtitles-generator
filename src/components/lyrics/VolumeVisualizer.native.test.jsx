@@ -7,11 +7,6 @@ import {
 import { loadNativeWaveform } from './audioProcessing';
 import VolumeVisualizer from './VolumeVisualizer';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key, fallback, values = {}) => fallback.replace('{{progress}}', values.progress ?? ''),
-  }),
-}));
 vi.mock('../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
 vi.mock('../../platform/activeNativeMedia', () => ({
   resolveActiveNativeMedia: vi.fn(),
@@ -81,7 +76,10 @@ it('runs exactly one request while timeline renders and settles after native com
     />
   );
 
-  expect(await screen.findByText('Processing audio waveform...')).toBeInTheDocument();
+  await waitFor(() => {
+    expect(document.querySelector('[data-osg-waveform-state="processing"]')).not.toBeNull();
+  });
+  expect(screen.queryByText('Processing audio waveform...')).not.toBeInTheDocument();
   view.rerender(
     <VolumeVisualizer
       audioSource={SOURCE_A}
@@ -93,7 +91,6 @@ it('runs exactly one request while timeline renders and settles after native com
 
   await act(async () => finish(nativeWaveform));
   await waitFor(() => expect(document.querySelector('[data-osg-waveform-state="ready"]')).not.toBeNull());
-  expect(screen.queryByText('Processing audio waveform...')).not.toBeInTheDocument();
   expect(refreshActiveNativeMedia).toHaveBeenCalledTimes(1);
   expect(loadNativeWaveform).toHaveBeenCalledTimes(1);
 });

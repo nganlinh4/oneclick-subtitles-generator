@@ -65,6 +65,15 @@ vi.mock('../components/app/VideoProcessingHandlers', () => ({
 }));
 
 const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+};
 
 const mediaCandidate = (assetId) => ({
   asset: {
@@ -102,7 +111,7 @@ const createHarness = (overrides = {}) => {
     handlers = nextHandlers;
     return { id: jobId };
   });
-  const cancel = vi.fn().mockResolvedValue({ id: jobId });
+  const cancel = vi.fn().mockResolvedValue({ id: jobId, state: 'cancelling' });
   const openAsset = vi.fn().mockResolvedValue(descriptor);
   const describeMedia = vi.fn().mockReturnValue(descriptor);
   const discardCandidate = vi.fn().mockResolvedValue(true);
@@ -1105,6 +1114,208 @@ it('bounds repeated execution recovery and never retries permanent failures', as
   await expect(permanentResult).rejects.toMatchObject({ code: 'invalidDownloadRequest' });
   expect(permanent.inspect).toHaveBeenCalledTimes(1);
   expect(permanent.start).toHaveBeenCalledTimes(1);
+});
+
+it('detaches a public cancellation before an immediate same-URL retry can subscribe', async () => {
+  const harness = createHarness();
+  const request = { url: 'https://example.com/cancel-then-retry', cookieSource: 'none' };
+
+  const first = harness.adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  const firstHandlers = harness.getHandlers();
+
+  await expect(harness.adapter.cancelVideo(harness.jobId)).resolves.toBe(true);
+  await expect(first).resolves.toBeNull();
+  expect(harness.cancel).toHaveBeenCalledExactlyOnceWith(harness.jobId);
+
+  // Retry at the first instant the public cancellation resolves. The prior implementation reset
+  // the button here while leaving the adapter operation reusable, so this subscribed to the
+  // cancelling job instead of registering a fresh one.
+  const retried = harness.adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(2));
+  const retryHandlers = harness.getHandlers();
+  expect(retryHandlers).not.toBe(firstHandlers);
+  retryHandlers.onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+
+  await expect(retried).resolves.toBe(harness.descriptor);
+  expect(harness.cancel).toHaveBeenCalledTimes(1);
+});
+
+it('serializes a delayed completion behind a winning public cancellation', async () => {
+  const cancellation = deferred();
+  const cancel = vi.fn(() => cancellation.promise);
+  const harness = createHarness({ cancel });
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/cancel-completion-fence',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+
+  const firstCancel = harness.adapter.cancelVideo(harness.jobId);
+  const duplicateCancel = harness.adapter.cancelVideo(harness.jobId);
+  harness.getHandlers().onCompleted({
+    media: mediaCandidate(harness.assetId),
+    subtitle: null,
+  });
+  await flush();
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(harness.jobId);
+
+  cancellation.resolve({ id: harness.jobId, state: 'cancelling' });
+  await expect(Promise.all([firstCancel, duplicateCancel])).resolves.toEqual([true, true]);
+  await expect(pending).resolves.toBeNull();
+  await vi.waitFor(() => {
+    expect(harness.discardCandidate).toHaveBeenCalledExactlyOnceWith(harness.assetId);
+  });
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+});
+
+it('reports cancellation lost and publishes completion when Rust already committed success', async () => {
+  const cancellation = deferred();
+  const cancel = vi.fn(() => cancellation.promise);
+  const harness = createHarness({ cancel });
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/completion-wins-cancel-race',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+
+  const cancelResult = harness.adapter.cancelVideo(harness.jobId);
+  harness.getHandlers().onCompleted({
+    media: mediaCandidate(harness.assetId),
+    subtitle: null,
+  });
+  await flush();
+  expect(harness.describeMedia).not.toHaveBeenCalled();
+
+  cancellation.resolve({ id: harness.jobId, state: 'succeeded' });
+  await expect(cancelResult).resolves.toBe(false);
+  await expect(pending).resolves.toBe(harness.descriptor);
+  expect(harness.describeMedia).toHaveBeenCalledTimes(1);
+  expect(harness.discardCandidate).not.toHaveBeenCalled();
+});
+
+it('never restores cancellation-lost A over a newer same-key B operation', async () => {
+  const cancellation = deferred();
+  const jobIds = [uuidv7(), uuidv7()];
+  const assetIds = [uuidv7(), uuidv7()];
+  const descriptors = assetIds.map((assetId, index) => Object.freeze({
+    assetId,
+    playbackUrl: `http://127.0.0.1/source-${index + 1}`,
+  }));
+  const handlers = [];
+  const start = vi.fn(async (_request, nextHandlers) => {
+    const index = handlers.length;
+    handlers.push(nextHandlers);
+    return { id: jobIds[index] };
+  });
+  const cancel = vi.fn(() => cancellation.promise);
+  const adapter = createNativeUrlDownloadAdapter({
+    inspect: vi.fn(async () => ({ capability: { id: uuidv7() }, inventory: {} })),
+    start,
+    cancel,
+    claimCandidate: vi.fn(async (candidate) => (
+      descriptors[assetIds.indexOf(candidate.asset.id)]
+    )),
+    discardCandidate: vi.fn().mockResolvedValue(true),
+    resolveCandidateProject: vi.fn(async () => candidateProject(uuidv7(), 1)),
+    activateProject: vi.fn(async () => ({ claimOptions: {}, release() {} })),
+  });
+  const request = { url: 'https://example.com/cancellation-lost-newer-owner', cookieSource: 'none' };
+
+  const first = adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+  const cancelResult = adapter.cancelVideo(jobIds[0]);
+
+  // A is detached while native cancellation is unresolved, so a new caller owns distinct B.
+  const second = adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+  expect(jobIds[1]).not.toBe(jobIds[0]);
+
+  cancellation.resolve({ id: jobIds[0], state: 'succeeded' });
+  await expect(cancelResult).resolves.toBe(false);
+
+  // Cancellation-lost A must not overwrite B's active slot. A third caller therefore joins B.
+  const third = adapter.downloadVideo(request);
+  await flush();
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(jobIds[0]);
+
+  handlers[0].onCompleted({ media: mediaCandidate(assetIds[0]), subtitle: null });
+  handlers[1].onCompleted({ media: mediaCandidate(assetIds[1]), subtitle: null });
+  await expect(first).resolves.toBe(descriptors[0]);
+  await expect(second).resolves.toBe(descriptors[1]);
+  await expect(third).resolves.toBe(descriptors[1]);
+});
+
+it('cancels the logical operation at the failure-to-backoff boundary without retrying dead A', async () => {
+  const harness = createHarness();
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/cancel-at-retry-boundary',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+
+  // The failure event enters the serialized queue first; Cancel enters immediately behind it,
+  // before runOperation has a chance to admit another inspection/start attempt.
+  harness.getHandlers().onFailed({ error: { code: 'downloaderRateLimited' } });
+  const cancelled = harness.adapter.cancelVideo(harness.jobId);
+
+  await expect(cancelled).resolves.toBe(true);
+  await expect(pending).resolves.toBeNull();
+  await flush();
+  expect(harness.cancel).not.toHaveBeenCalled();
+  expect(harness.inspect).toHaveBeenCalledTimes(1);
+  expect(harness.start).toHaveBeenCalledTimes(1);
+});
+
+it('cancels the logical operation during retry delay and never wakes into another attempt', async () => {
+  const retryDelay = deferred();
+  const waitForRetry = vi.fn(() => retryDelay.promise);
+  const harness = createHarness({ waitForRetry });
+  const pending = harness.adapter.downloadVideo({
+    url: 'https://example.com/cancel-during-retry-delay',
+    cookieSource: 'none',
+  });
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+  harness.getHandlers().onFailed({ error: { code: 'downloaderRateLimited' } });
+  await vi.waitFor(() => expect(waitForRetry).toHaveBeenCalledExactlyOnceWith(2_000));
+
+  const cancelled = harness.adapter.cancelVideo(harness.jobId);
+  await expect(cancelled).resolves.toBe(true);
+  await expect(pending).resolves.toBeNull();
+  expect(harness.cancel).not.toHaveBeenCalled();
+
+  retryDelay.resolve();
+  await flush();
+  await flush();
+  expect(harness.inspect).toHaveBeenCalledTimes(1);
+  expect(harness.start).toHaveBeenCalledTimes(1);
+});
+
+it('refuses to claim cancellation for a job the URL adapter does not own', async () => {
+  const harness = createHarness();
+
+  await expect(harness.adapter.cancelVideo(uuidv7())).resolves.toBe(false);
+
+  expect(harness.cancel).not.toHaveBeenCalled();
+});
+
+it('keeps a running operation owned when the native cancel command is rejected', async () => {
+  const cancellationError = new Error('native cancellation channel unavailable');
+  const harness = createHarness({ cancel: vi.fn().mockRejectedValueOnce(cancellationError) });
+  const request = { url: 'https://example.com/cancel-command-rejected', cookieSource: 'none' };
+  const first = harness.adapter.downloadVideo(request);
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledTimes(1));
+
+  await expect(harness.adapter.cancelVideo(harness.jobId)).rejects.toBe(cancellationError);
+  const coalesced = harness.adapter.downloadVideo(request);
+  await flush();
+  expect(harness.start).toHaveBeenCalledTimes(1);
+
+  harness.getHandlers().onCompleted({ media: mediaCandidate(harness.assetId), subtitle: null });
+  await expect(first).resolves.toBe(harness.descriptor);
+  await expect(coalesced).resolves.toBe(harness.descriptor);
 });
 
 it('paces and re-inspects a transient rate limit without misdiagnosing the downloader', async () => {

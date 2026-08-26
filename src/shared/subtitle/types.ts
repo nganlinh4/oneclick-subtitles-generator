@@ -53,6 +53,8 @@ export interface SubtitleCustomization {
   // Background & Border
   backgroundColor: string;
   backgroundOpacity: number;
+  backgroundPaddingX: number;
+  backgroundPaddingY: number;
   borderRadius: number;
   borderWidth: number;
   borderColor: string;

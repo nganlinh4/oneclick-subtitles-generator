@@ -188,5 +188,6 @@
   "audioSampleRateLabel": "Audio sample rate",
   "audioBitrateLabel": "Audio bitrate",
   "containerLabel": "Container",
-  "loadingProjectScene": "Loading this project’s render settings…"
+  "loadingProjectScene": "Loading this project’s render settings…",
+  "subtitleFontRepaired": "Subtitle font repaired: {{oldFont}} → {{newFont}}"
 }

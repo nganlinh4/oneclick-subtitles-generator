@@ -243,5 +243,6 @@
   "trimmingTimeline": "비디오 자르기",
   "validating": "렌더링 필수 조건을 확인하는 중...",
   "queued": "렌더링 대기열에 추가됨",
-  "loadingProjectScene": "이 프로젝트의 렌더링 설정을 불러오는 중…"
+  "loadingProjectScene": "이 프로젝트의 렌더링 설정을 불러오는 중…",
+  "subtitleFontRepaired": "자막 글꼴을 복구했습니다: {{oldFont}} → {{newFont}}"
 }

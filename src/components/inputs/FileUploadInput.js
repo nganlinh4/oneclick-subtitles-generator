@@ -5,7 +5,8 @@ import { nativeMediaDropService, sharedNativeMediaDropService } from '../../plat
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
 import {
   ensureProjectOwnsNativeMedia,
-  forgetNativeMediaSession,
+  forgetNativeMediaSessionDurably,
+  loadDurableNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
 } from '../../platform/nativeMediaOwnership';
@@ -57,7 +58,7 @@ export const releaseSelectedNativeMedia = async ({
   media,
   clear = clearMedia,
   readSession = readNativeMediaSession,
-  forgetSession = forgetNativeMediaSession,
+  forgetSession = forgetNativeMediaSessionDurably,
   restore = restoreMediaAsset,
 }) => {
   if (!isNativeMediaDescriptor(media)
@@ -73,7 +74,7 @@ export const releaseSelectedNativeMedia = async ({
     expectedPlaybackId: media.playbackId,
   });
   if (session === null || session.assetId !== media.assetId) return null;
-  if (forgetSession({ expectedSession: session }) === true) return session;
+  if (await forgetSession({ expectedSession: session }) === true) return session;
 
   const current = readSession();
   if (current === null
@@ -97,7 +98,7 @@ export const releaseSelectedNativeMedia = async ({
   });
 };
 
-const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, subtitlesData, setVideoSegments, setSegmentsStatus }) => {
+const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
   const [fileInfo, setFileInfo] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -216,22 +217,16 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     setUploadedFile(media);
     displayFileInfo(media);
 
-    if (subtitlesData?.length > 0 && setStatus) {
-      setStatus({
-        message: t('output.subtitlesReady', 'Subtitles are ready!'),
-        type: 'success'
-      });
-    }
+    // Media ownership does not imply subtitle-track readiness. In particular, this callback can
+    // still observe source A's React cue array while transactional activation has already made
+    // source B current. The subtitle project/hydration owner publishes its own authoritative state.
   }, [
     displayFileInfo,
     isSrtOnlyMode,
     onVideoSelect,
     setIsSrtOnlyMode,
-    setStatus,
     setUploadedFile,
     setUploadedFileData,
-    subtitlesData,
-    t,
   ]);
 
   useEffect(() => {
@@ -339,7 +334,8 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     const operation = ++nativeOperationRef.current;
     let mounted = true;
 
-    getSelectedMedia()
+    loadDurableNativeMediaSession()
+      .then(() => getSelectedMedia())
       .then((media) => {
         if (!mounted || nativeOperationRef.current !== operation) return undefined;
         if (media) {
@@ -462,19 +458,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
         // Store the processed file for actual processing
         if (setUploadedFileData) setUploadedFileData(null);
         setUploadedFile(processedFile);
-
-        // If we have subtitles data already (from uploaded SRT), no need to prepare segments
-        if (subtitlesData && subtitlesData.length > 0) {
-          // With simplified processing, we don't need to prepare video segments
-          // The subtitles are already available and ready to use
-          console.log('Subtitles already available from uploaded SRT file');
-          if (setStatus) {
-            setStatus({
-              message: t('output.subtitlesReady', 'Subtitles are ready!'),
-              type: 'success'
-            });
-          }
-        }
 
         // Display file info for all file types (both audio and video)
         displayFileInfo(processedFile);

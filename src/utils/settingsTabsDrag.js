@@ -3,9 +3,7 @@
  * This allows users to scroll horizontally through tabs by dragging
  */
 
-import initSettingsTabPillAnimation, {
-  positionPillForActiveTab,
-} from './settingsTabPillAnimation';
+import { positionPillForActiveTab } from './settingsTabPillAnimation';
 
 /**
  * Initialize the drag functionality for the settings tabs
@@ -15,9 +13,10 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
   const tabContainers = document.querySelectorAll(tabsSelector);
   if (!tabContainers.length) return;
 
+  const initializedContainers = [];
   tabContainers.forEach(tabContainer => {
-    // FIX: Run the full initialization only ONCE per container
-    initSettingsTabPillAnimation(tabsSelector);
+    // Re-initializing the same live container must replace, not stack, listeners.
+    tabContainer._cleanupDrag?.();
     
     let isDragging = false;
     let startX = 0;
@@ -86,12 +85,14 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
     tabContainer.addEventListener('mousedown', handleMouseDown);
     tabContainer.addEventListener('touchstart', handleTouchStart, { passive: true }); // passive: true is fine for start
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('mouseup', handleRelease);
     window.addEventListener('touchend', handleRelease);
     tabContainer.addEventListener('scroll', handleScroll, { passive: true });
 
-    tabContainer._cleanupDrag = () => {
+    const cleanupDrag = () => {
+      clearTimeout(scrollDebounceTimer);
+      handleRelease();
       window.removeEventListener('resize', checkOverflow);
       tabContainer.removeEventListener('mousedown', handleMouseDown);
       tabContainer.removeEventListener('touchstart', handleTouchStart);
@@ -101,12 +102,14 @@ export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
       window.removeEventListener('touchend', handleRelease);
       tabContainer.removeEventListener('scroll', handleScroll);
     };
+    tabContainer._cleanupDrag = cleanupDrag;
+    initializedContainers.push({ tabContainer, cleanupDrag });
   });
 
   return () => {
-    document.querySelectorAll(tabsSelector).forEach(tabContainer => {
-      if (tabContainer._cleanupDrag) {
-        tabContainer._cleanupDrag();
+    initializedContainers.forEach(({ tabContainer, cleanupDrag }) => {
+      if (tabContainer._cleanupDrag === cleanupDrag) {
+        cleanupDrag();
         delete tabContainer._cleanupDrag;
       }
     });

@@ -1,7 +1,11 @@
 import { isNativeMediaDescriptor } from './mediaService';
 import { isUuidV7 } from './projectSnapshotAdapter';
 import { mutateProject } from './projectService';
-import { resolveProjectForCache } from './subtitleProjectStore';
+import { invokeDesktop } from './desktopRuntime';
+import {
+  adoptExactSubtitleProjectAlias,
+  resolveProjectForCache,
+} from './subtitleProjectStore';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
 
 /**
@@ -24,7 +28,10 @@ export const NATIVE_MEDIA_SESSION_KEY = 'current_media_session';
 const MAX_CACHE_ID_CHARACTERS = 8_192;
 const SESSION_VERSION = 1;
 const SESSION_KEYS = Object.freeze(['assetId', 'cacheId', 'projectId', 'v']);
+const WORKSPACE_STATE_KEYS = Object.freeze(['initialized', 'schemaVersion', 'workspace']);
 const ATTACH_REASON = 'Associate active media with its subtitle project';
+let latestWorkspacePublication = 0;
+let suppressedBrowserSession = null;
 
 export class NativeMediaOwnershipError extends Error {
   constructor(code, message) {
@@ -41,7 +48,43 @@ const ownershipFailure = () => new NativeMediaOwnershipError(
 
 const isCacheId = (value) => (
   typeof value === 'string' && value.length > 0 && value.length <= MAX_CACHE_ID_CHARACTERS
+  && !Array.from(value).some(character => /\p{Cc}/u.test(character))
 );
+
+const sameSession = (left, right) => (
+  left?.assetId === right?.assetId
+  && left?.cacheId === right?.cacheId
+  && left?.projectId === right?.projectId
+);
+
+const sessionFromWorkspace = (workspace) => {
+  if (workspace === null) return null;
+  if (!workspace || workspace.schemaVersion !== 1
+      || !isUuidV7(workspace.mediaId) || !isUuidV7(workspace.projectId)
+      || !isCacheId(workspace.cacheId)
+      || (workspace.trackId !== null && !isUuidV7(workspace.trackId))
+      || !Number.isSafeInteger(workspace.projectStateVersion)
+      || workspace.projectStateVersion < 0) {
+    throw ownershipFailure();
+  }
+  return Object.freeze({
+    assetId: workspace.mediaId,
+    cacheId: workspace.cacheId,
+    projectId: workspace.projectId,
+  });
+};
+
+const sessionFromWorkspaceState = (state) => {
+  if (!state || typeof state !== 'object' || Array.isArray(state)
+      || Object.keys(state).length !== WORKSPACE_STATE_KEYS.length
+      || Object.keys(state).some(key => !WORKSPACE_STATE_KEYS.includes(key))
+      || state.schemaVersion !== 1 || typeof state.initialized !== 'boolean') {
+    throw ownershipFailure();
+  }
+  const session = sessionFromWorkspace(state.workspace);
+  if (!state.initialized && session !== null) throw ownershipFailure();
+  return Object.freeze({ initialized: state.initialized, session });
+};
 
 /**
  * Project media shape accepted by the native project ABI. Shared with the render source path so a
@@ -93,6 +136,7 @@ export const readNativeMediaSession = ({
   try {
     const raw = readValue();
     if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_CACHE_ID_CHARACTERS * 2) {
+      if (raw === null) suppressedBrowserSession = null;
       return null;
     }
     parsed = JSON.parse(raw);
@@ -110,11 +154,14 @@ export const readNativeMediaSession = ({
       || !isCacheId(parsed.cacheId)) {
     return null;
   }
-  return Object.freeze({
+  const session = Object.freeze({
     assetId: parsed.assetId,
     cacheId: parsed.cacheId,
     projectId: parsed.projectId,
   });
+  if (sameSession(session, suppressedBrowserSession)) return null;
+  suppressedBrowserSession = null;
+  return session;
 };
 
 export const writeNativeMediaSession = (session, {
@@ -129,6 +176,7 @@ export const writeNativeMediaSession = (session, {
     cacheId: session.cacheId,
     projectId: session.projectId,
   }));
+  suppressedBrowserSession = null;
 };
 
 export const forgetNativeMediaSession = ({
@@ -136,8 +184,8 @@ export const forgetNativeMediaSession = ({
   readValue = () => localStorage.getItem(NATIVE_MEDIA_SESSION_KEY),
   removeValue = () => localStorage.removeItem(NATIVE_MEDIA_SESSION_KEY),
 } = {}) => {
+  const current = readNativeMediaSession({ readValue });
   if (expectedSession !== null) {
-    const current = readNativeMediaSession({ readValue });
     if (current === null
         || current.assetId !== expectedSession.assetId
         || current.cacheId !== expectedSession.cacheId
@@ -147,11 +195,96 @@ export const forgetNativeMediaSession = ({
   }
   try {
     removeValue();
+    suppressedBrowserSession = null;
     return true;
   } catch {
-    // A session pointer that cannot be cleared is re-validated on the next read anyway.
+    // Native authority may already contain an empty tombstone. Suppress this exact stale mirror
+    // for the rest of the WebView lifetime so cleanup failure cannot roll the visible app back.
+    suppressedBrowserSession = current;
     return false;
   }
+};
+
+/** Persist the exact pointer through the typed native workspace boundary, then update the browser
+ * mirror used by synchronous ownership checks in the current WebView. */
+export const persistNativeMediaSession = async (session, {
+  invokeCommand = invokeDesktop,
+  rememberMirror = writeNativeMediaSession,
+  intentId = null,
+} = {}) => {
+  if (!isUuidV7(session?.assetId) || !isUuidV7(session?.projectId)
+      || !isCacheId(session?.cacheId)) {
+    throw ownershipFailure();
+  }
+  const activeIntent = intentId ?? await invokeCommand('active_workspace_begin', {});
+  if (!isUuidV7(activeIntent)) throw ownershipFailure();
+  const response = await invokeCommand('active_workspace_set', {
+    workspace: {
+      cacheId: session.cacheId,
+      projectId: session.projectId,
+      mediaId: session.assetId,
+    },
+    intentId: activeIntent,
+  });
+  const stored = sessionFromWorkspace(response);
+  if (!sameSession(stored, session)) throw ownershipFailure();
+  rememberMirror(stored);
+  return stored;
+};
+
+/** Load the native pointer before any media reconciliation. A legacy browser pointer is migrated
+ * only after Rust proves the exact project currently owns that media. */
+export const loadDurableNativeMediaSession = async ({
+  invokeCommand = invokeDesktop,
+  readLegacy = readNativeMediaSession,
+  rememberMirror = writeNativeMediaSession,
+  forgetLegacy = forgetNativeMediaSession,
+  persist = persistNativeMediaSession,
+} = {}) => {
+  const state = sessionFromWorkspaceState(await invokeCommand('active_workspace_get', {}));
+  if (state.session !== null) {
+    const session = state.session;
+    rememberMirror(session);
+    return session;
+  }
+  if (state.initialized) {
+    // A native tombstone means an ordinary user removal already won. Clearing a stale browser
+    // mirror here closes the crash window between native clear and localStorage cleanup.
+    forgetLegacy();
+    return null;
+  }
+  const legacy = readLegacy();
+  if (legacy === null) return null;
+  return persist(legacy, { invokeCommand, rememberMirror });
+};
+
+/** Ordinary media removal clears both authorities conditionally. Factory reset intentionally does
+ * not call this function: it withdraws playback but preserves the customer's active workspace. */
+export const forgetNativeMediaSessionDurably = async ({
+  expectedSession = readNativeMediaSession(),
+  invokeCommand = invokeDesktop,
+  forgetMirror = forgetNativeMediaSession,
+} = {}) => {
+  let target = expectedSession;
+  if (target === null) {
+    const state = sessionFromWorkspaceState(await invokeCommand('active_workspace_get', {}));
+    target = state.session;
+    if (target === null && state.initialized) return true;
+  }
+  const expected = target === null ? null : {
+    cacheId: target.cacheId,
+    projectId: target.projectId,
+    mediaId: target.assetId,
+  };
+  const intentId = await invokeCommand('active_workspace_begin', {});
+  if (!isUuidV7(intentId)) throw ownershipFailure();
+  const cleared = await invokeCommand('active_workspace_clear', { expected, intentId });
+  if (cleared !== true) return false;
+  // Native authority has committed the tombstone. Browser cleanup is conditional so a newer
+  // winner published while IPC was in flight cannot be erased, and cleanup failure cannot turn a
+  // durable success into a rollback request.
+  if (target !== null) forgetMirror({ expectedSession: target });
+  return true;
 };
 
 /**
@@ -168,8 +301,14 @@ export const ensureProjectOwnsNativeMedia = async ({
 }, {
   resolveProject = resolveProjectForCache,
   mutate = mutateProject,
-  rememberSession = writeNativeMediaSession,
+  rememberSession = persistNativeMediaSession,
+  beginIntent = async () => invokeDesktop('active_workspace_begin', {}),
 } = {}) => {
+  latestWorkspacePublication += 1;
+  const publication = latestWorkspacePublication;
+  const nativePublication = rememberSession === persistNativeMediaSession;
+  const intentId = nativePublication ? await beginIntent() : null;
+  if (nativePublication && !isUuidV7(intentId)) throw ownershipFailure();
   const asset = canonicalAssetFromDescriptor(media);
   if (!isCacheId(cacheId)
       || (expectedProjectId !== null && !isUuidV7(expectedProjectId))) {
@@ -208,7 +347,11 @@ export const ensureProjectOwnsNativeMedia = async ({
     throw ownershipFailure();
   }
 
-  rememberSession({ assetId: asset.id, cacheId, projectId: authoritative.projectId });
+  if (publication !== latestWorkspacePublication) throw ownershipFailure();
+  const session = { assetId: asset.id, cacheId, projectId: authoritative.projectId };
+  if (intentId === null) await rememberSession(session);
+  else await rememberSession(session, { intentId });
+  if (publication !== latestWorkspacePublication) throw ownershipFailure();
   return Object.freeze({ assetId: asset.id, cacheId, projectId: authoritative.projectId });
 };
 
@@ -221,6 +364,7 @@ export const ensureProjectOwnsNativeMedia = async ({
  */
 export const resolveOwnedNativeMediaProject = async (session, {
   resolveProject = resolveProjectForCache,
+  adoptProject = adoptExactSubtitleProjectAlias,
 } = {}) => {
   if (!isUuidV7(session?.assetId) || !isUuidV7(session?.projectId) || !isCacheId(session?.cacheId)) {
     return null;
@@ -228,6 +372,9 @@ export const resolveOwnedNativeMediaProject = async (session, {
   let resolved;
   try {
     resolved = await resolveProject(session.cacheId, { create: false });
+    if (resolved === null) {
+      resolved = await adoptProject(session.cacheId, session.projectId);
+    }
   } catch {
     return null;
   }

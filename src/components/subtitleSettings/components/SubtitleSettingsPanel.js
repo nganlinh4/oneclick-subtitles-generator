@@ -3,9 +3,48 @@ import { useTranslation } from 'react-i18next';
 import FontSettings from './FontSettings';
 import PositionSettings from './PositionSettings';
 import StyleSettings from './StyleSettings';
-import { fontOptions, getFontWeightOptions, getTextAlignOptions, getTextTransformOptions } from '../constants';
-import { groupFontsByCategory } from '../utils/fontUtils';
+import { getTextAlignOptions, getTextTransformOptions } from '../constants';
 import CustomDropdown from '../../common/CustomDropdown';
+import { fontOptions, getFontWeightOptions } from '../../subtitleCustomization/fontOptions';
+import {
+  fontSelectionModel,
+  selectableFontWeights,
+  systemFontProbe,
+} from '../../../services/selectableFonts';
+import { useFontReadiness } from '../../../services/useFontReadiness';
+
+/** Mount the renderer probe only while the settings panel is actually visible. */
+const RendererBackedFontSettings = ({ settings, handleSettingChange, handleSettingsChange, t }) => {
+  const fontCapability = useFontReadiness();
+  const isSystemFaceInstalled = React.useMemo(() => systemFontProbe(), []);
+  const requestedWeight = Number(settings.fontWeight);
+  const fontModel = React.useMemo(() => fontSelectionModel(fontOptions, {
+    fontFamily: settings.fontFamily,
+    fontWeight: requestedWeight,
+    capability: fontCapability,
+    isSystemFaceInstalled,
+  }), [fontCapability, isSystemFaceInstalled, requestedWeight, settings.fontFamily]);
+  const exactFontWeights = React.useMemo(() => selectableFontWeights({
+    fontFamily: settings.fontFamily,
+    capability: fontCapability,
+    isSystemFaceInstalled,
+  }), [fontCapability, isSystemFaceInstalled, settings.fontFamily]);
+  const exactWeightSet = new Set(exactFontWeights);
+  const fontWeightOptions = getFontWeightOptions(t)
+    .filter(({ value }) => exactWeightSet.has(value))
+    .map(option => ({ ...option, value: String(option.value) }));
+
+  return (
+    <FontSettings
+      settings={settings}
+      handleSettingChange={handleSettingChange}
+      handleSettingsChange={handleSettingsChange}
+      fontOptions={fontModel.options}
+      selectedFontValue={fontModel.selectedOption?.value ?? settings.fontFamily}
+      fontWeightOptions={fontWeightOptions}
+    />
+  );
+};
 
 /**
  * Subtitle Settings Panel component
@@ -27,6 +66,7 @@ const SubtitleSettingsPanel = ({
   setIsOpen,
   settings,
   handleSettingChange,
+  handleSettingsChange,
   subtitleLanguage,
   handleSubtitleLanguageChange,
   hasTranslation,
@@ -34,9 +74,6 @@ const SubtitleSettingsPanel = ({
   resetToDefaults
 }) => {
   const { t } = useTranslation();
-  
-  // Group fonts for the select element
-  const fontGroups = groupFontsByCategory(fontOptions);
 
   // Handle click outside to close
   React.useEffect(() => {
@@ -81,8 +118,9 @@ const SubtitleSettingsPanel = ({
         <div className="settings-content">
         {/* Subtitle Language Selector - Always shown at the top */}
         <div className="setting-group subtitle-language-group">
-          <label htmlFor="subtitle-language">{t('subtitleSettings.subtitleLanguage', 'Subtitle Language')}</label>
+          <label id="subtitle-language-label" htmlFor="subtitle-language">{t('subtitleSettings.subtitleLanguage', 'Subtitle Language')}</label>
           <CustomDropdown
+            id="subtitle-language"
             value={subtitleLanguage}
             onChange={(value) => handleSubtitleLanguageChange({ target: { value } })}
             disabled={!hasTranslation}
@@ -93,6 +131,8 @@ const SubtitleSettingsPanel = ({
                 label: `${t('subtitleSettings.translated', 'Translated')}${targetLanguage ? ` (${targetLanguage})` : ''}`
               }] : [])
             ]}
+            dataSetting="subtitle-language"
+            ariaLabelledBy="subtitle-language-label"
             placeholder={t('subtitleSettings.selectLanguage', 'Select Language')}
           />
         </div>
@@ -100,11 +140,11 @@ const SubtitleSettingsPanel = ({
         <hr className="settings-divider" />
 
         {/* Font Settings */}
-        <FontSettings
+        <RendererBackedFontSettings
           settings={settings}
           handleSettingChange={handleSettingChange}
-          fontGroups={fontGroups}
-          fontWeightOptions={getFontWeightOptions(t)}
+          handleSettingsChange={handleSettingsChange}
+          t={t}
         />
 
         {/* Position Settings */}

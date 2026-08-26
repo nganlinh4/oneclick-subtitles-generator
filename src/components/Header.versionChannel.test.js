@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import Header from './Header';
 
 vi.mock('react-i18next', () => ({
@@ -24,4 +24,18 @@ test('does not expose the retired source-branch switch as an installed-app actio
 
   expect(container.querySelector('.branch-switch-button')).toBeNull();
   expect(screen.getByRole('button', { name: 'header.settingsAria' })).toBeEnabled();
+});
+
+test('keeps Settings in normal header layout without a scroll-owned floating state machine', () => {
+  const onSettingsClick = vi.fn();
+  const { container } = render(<Header onSettingsClick={onSettingsClick} />);
+  const button = screen.getByRole('button', { name: 'header.settingsAria' });
+
+  expect(button).toHaveClass('settings-button');
+  expect(button).not.toHaveClass('floating-settings');
+  expect(container.querySelector('.app-header > [data-app-action="open-settings"]')).toBe(button);
+
+  fireEvent.click(button);
+  expect(onSettingsClick).toHaveBeenCalledTimes(1);
+  expect(localStorage.getItem('settings_open_count')).toBeNull();
 });

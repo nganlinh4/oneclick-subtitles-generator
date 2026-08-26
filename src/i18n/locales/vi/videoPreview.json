@@ -9,5 +9,6 @@
   "subtitleFontPreparing": "Đang chuẩn bị phông chữ phụ đề. Bản xem trước sẽ hiện khi sẵn sàng.",
   "subtitleFontUnavailable": "Không cài đặt được phông chữ phụ đề ({{reason}}), nên không thể vẽ phụ đề.",
   "retrySubtitleFont": "Cài đặt lại",
-  "subtitlePreviewEmpty": "Chưa có phụ đề. Hãy thêm hoặc tạo phụ đề, chúng sẽ hiện trên video ở đây."
+  "subtitlePreviewEmpty": "Chưa có phụ đề. Hãy thêm hoặc tạo phụ đề, chúng sẽ hiện trên video ở đây.",
+  "projectStyleUnavailable": "Hãy thêm video trước khi chỉnh kiểu phụ đề."
 }

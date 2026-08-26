@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-
 import {
   isMissingAudioFailure,
   loadNativeWaveform,
@@ -80,7 +78,6 @@ const resolveWaveformCapability = async (candidate, signal) => {
  * decodes, chunks, or downsamples media; it only paints Rust's bounded pyramid.
  */
 const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26 }) => {
-  const { t } = useTranslation();
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const lastRenderParamsRef = useRef(null);
@@ -88,7 +85,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
   const requestEpochRef = useRef(0);
   const [waveform, setWaveform] = useState(null);
   const [status, setStatus] = useState('idle');
-  const [processingProgress, setProcessingProgress] = useState(0);
 
   useEffect(() => {
     const requestEpoch = requestEpochRef.current + 1;
@@ -100,7 +96,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
     lastRenderParamsRef.current = null;
     setWaveform(null);
-    setProcessingProgress(0);
     if (!audioSource || !(typeof duration === 'number' && Number.isFinite(duration) && duration > 0)) {
       setStatus('idle');
       return () => controller.abort();
@@ -120,10 +115,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
             assetId: capability.assetId,
             durationSeconds: duration,
             signal: controller.signal,
-            onProgress: (progress) => {
-              if (!isCurrent()) return;
-              setProcessingProgress((current) => Math.max(current, progress));
-            },
             revalidate: () => refreshActiveNativeMedia(capability),
           });
           if (!isCurrent()) return;
@@ -131,7 +122,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
           cacheWaveform(capability.assetId, nextWaveform);
         }
         if (!isCurrent()) return;
-        setProcessingProgress(1);
         setWaveform(nextWaveform);
         setStatus('ready');
       } catch (error) {
@@ -190,12 +180,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
   if (status === 'idle' || status === 'unavailable') return null;
 
-  const loadingText = duration > 300
-    ? t('waveform.processing_long', 'Processing audio ({{progress}}%)...', {
-      progress: Math.round(processingProgress * 100),
-    })
-    : t('waveform.processing', 'Processing audio waveform...');
-
   return (
     <div
       ref={containerRef}
@@ -220,29 +204,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
           display: 'block',
         }}
       />
-      {status === 'processing' && (
-        <div
-          className="volume-visualizer-loading"
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '12px',
-            color: 'var(--md-on-surface)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            zIndex: 10,
-            pointerEvents: 'none',
-          }}
-        >
-          <span className="material-symbols-rounded" style={{ fontSize: '16px', animation: 'spin 1s linear infinite' }}>refresh</span>
-          {loadingText}
-        </div>
-      )}
     </div>
   );
 };

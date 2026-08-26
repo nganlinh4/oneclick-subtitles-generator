@@ -186,6 +186,28 @@ const StandardSlider = ({
     }
   };
 
+  const handleKeyboardChange = useCallback((event) => {
+    if (isDisabled || isRange || !onChange) return;
+    const directions = {
+      ArrowDown: -1,
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: 1,
+    };
+    let nextValue = null;
+    if (Object.prototype.hasOwnProperty.call(directions, event.key)) {
+      nextValue = snapToStep(Number(valueEnd) + directions[event.key] * step);
+    } else if (event.key === 'Home') {
+      nextValue = min;
+    } else if (event.key === 'End') {
+      nextValue = max;
+    }
+    if (nextValue === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onChange(step < 1 ? Number(nextValue.toFixed(2)) : Math.round(nextValue));
+  }, [isDisabled, isRange, max, min, onChange, snapToStep, step, valueEnd]);
+
   const handleDragStart = useCallback((e, thumbIdentifier) => {
     if (isDisabled) return;
     e.preventDefault();
@@ -335,10 +357,22 @@ const StandardSlider = ({
       <div
         ref={trackRef}
         className="standard-slider-track-container"
+        aria-disabled={isDisabled || undefined}
+        aria-label={!isRange ? (ariaLabel || t('common.slider', 'Slider')) : undefined}
+        aria-orientation={!isRange ? (isVertical ? 'vertical' : 'horizontal') : undefined}
+        aria-valuemax={!isRange ? max : undefined}
+        aria-valuemin={!isRange ? min : undefined}
+        aria-valuenow={!isRange ? Number(valueEnd) : undefined}
+        data-osg-control={!isRange ? 'range' : undefined}
+        data-osg-range-id={!isRange && id ? id : undefined}
+        onKeyDown={handleKeyboardChange}
+        role={!isRange ? 'slider' : undefined}
         style={trackContainerStyle}
+        tabIndex={!isRange && !isDisabled ? 0 : undefined}
         onMouseDown={(e) => {
           // Only start drag on primary button
           if (e.button !== 0) return;
+          if (!isRange) e.currentTarget.focus({ preventScroll: true });
           handleDragStart(e);
         }}
         onTouchStart={(e) => {
@@ -372,7 +406,7 @@ const StandardSlider = ({
               <div className="track"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>
-            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={handleChange} className="standard-slider-input" id={id} aria-label={ariaLabel || t('common.slider', 'Slider')} disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} />
+            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={handleChange} className="standard-slider-input" id={id} aria-hidden="true" disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} />
           </>
         ) : (
           <>

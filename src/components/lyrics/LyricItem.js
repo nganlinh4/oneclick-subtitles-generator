@@ -244,18 +244,15 @@ const LyricItem = ({
   const handleInsertAbove = (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // For first lyric, insert at position 0
-    // For other lyrics, insert at the position before the current lyric
-    onInsert(index > 0 ? index - 1 : 0);
+    // Insert callbacks use gap indices: gap 0 is before row 0, gap N is after row N - 1.
+    onInsert(index);
   };
 
   // Handle insert below
   const handleInsertBelow = (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // Always insert at the current position
-    // For last lyric, this will add a new lyric at the end
-    onInsert(index);
+    onInsert(index + 1);
   };
 
   // Handle merge with above

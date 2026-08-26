@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_SUBTITLE_FONT_FAMILY,
   DEFAULT_SUBTITLE_FONT_NAME,
+  FONT_READINESS_CONTRACT_MISMATCH,
   FONT_READINESS_EVENT,
+  FONT_READINESS_REFUSAL,
   FONT_READINESS_SCHEMA,
   FONT_READINESS_STATE,
   MANAGED_PACK_STATE,
@@ -44,6 +46,18 @@ const record = (state, extra = {}) => ({
   ...extra,
 });
 
+const retryableRefusals = new Set([
+  FONT_READINESS_REFUSAL.noUsableSource,
+  FONT_READINESS_REFUSAL.storeUnavailable,
+  FONT_READINESS_REFUSAL.timedOut,
+]);
+
+const refusalRecord = (reason, extra = {}) => record(FONT_READINESS_STATE.refused, {
+  reason,
+  retryable: retryableRefusals.has(reason),
+  ...extra,
+});
+
 /**
  * Stage what native published.
  *
@@ -57,10 +71,7 @@ const stageBootstrap = (value) => {
   }
   if (value === true) globalThis.__OSG_FONT_READINESS__ = record(FONT_READINESS_STATE.ready);
   else if (value === false) {
-    globalThis.__OSG_FONT_READINESS__ = record(FONT_READINESS_STATE.refused, {
-      reason: 'no-usable-source',
-      retryable: true,
-    });
+    globalThis.__OSG_FONT_READINESS__ = refusalRecord(FONT_READINESS_REFUSAL.noUsableSource);
   } else globalThis.__OSG_FONT_READINESS__ = value;
 };
 
@@ -110,18 +121,58 @@ describe('the capability snapshot distinguishes absent from not-yet-known', () =
     expect(snapshot.pending).toBe(false);
   });
 
-  it('reports installed only for a record that says ready', () => {
+  it('reports installed only for the exact reviewed ready record', () => {
     for (const value of ['ready', 1, {}, [], { schema: 1, state: 'ready' }]) {
       stageBootstrap(value);
       expect(fontCapabilitySnapshot(globalThis).managedPackInstalled).toBe(false);
     }
+    stageBootstrap(record(FONT_READINESS_STATE.ready));
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      managedPack: MANAGED_PACK_STATE.installed,
+      managedPackInstalled: true,
+      managedFamily: MANAGED_FONT_PACKAGE.family,
+      managedVersion: MANAGED_FONT_PACKAGE.version,
+      installedVersion: MANAGED_FONT_PACKAGE.version,
+    });
   });
 
-  it('treats a record from a newer schema as unknown rather than guessing at it', () => {
-    stageBootstrap(record(FONT_READINESS_STATE.ready, { schema: FONT_READINESS_SCHEMA + 1 }));
-    const snapshot = fontCapabilitySnapshot(globalThis);
-    expect(snapshot.managedPack).toBe(MANAGED_PACK_STATE.unknown);
-    expect(snapshot.managedPackInstalled).toBe(false);
+  it.each([
+    ['newer schema', { schema: FONT_READINESS_SCHEMA + 1 }],
+    ['wrong family', { family: 'Definitely Not Google Sans' }],
+    ['missing version', { version: null }],
+    ['wrong version', { version: 'v999-unreviewed' }],
+    ['ready reason', { reason: FONT_READINESS_REFUSAL.integrityFailed }],
+    ['ready retry', { retryable: true }],
+    ['fractional epoch', { epoch: 1.5 }],
+    ['extra field', { surprise: true }],
+  ])('turns a present incompatible ready record into a bounded refusal: %s', (_label, patch) => {
+    stageBootstrap(record(FONT_READINESS_STATE.ready, patch));
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      managedPack: MANAGED_PACK_STATE.absent,
+      managedPackInstalled: false,
+      pending: false,
+      published: true,
+      readiness: FONT_READINESS_STATE.refused,
+      reason: FONT_READINESS_CONTRACT_MISMATCH,
+      retryable: false,
+      installedVersion: null,
+    });
+  });
+
+  it('preserves a contradictory reported identity without treating it as the managed package', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.ready, {
+      family: 'Definitely Not Google Sans',
+      version: 'v999-unreviewed',
+    }));
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      expectedManagedFamily: MANAGED_FONT_PACKAGE.family,
+      expectedManagedVersion: MANAGED_FONT_PACKAGE.version,
+      managedFamily: null,
+      managedVersion: null,
+      reportedFamily: 'Definitely Not Google Sans',
+      reportedVersion: 'v999-unreviewed',
+      managedPackInstalled: false,
+    });
   });
 
   it('reports repairing as pending, because work is still happening', () => {
@@ -133,19 +184,38 @@ describe('the capability snapshot distinguishes absent from not-yet-known', () =
   });
 
   it('carries the typed reason and whether a retry is worth offering', () => {
-    stageBootstrap(record(FONT_READINESS_STATE.refused, {
-      reason: 'integrity-failed',
-      retryable: false,
-    }));
+    stageBootstrap(refusalRecord(FONT_READINESS_REFUSAL.integrityFailed));
     const snapshot = fontCapabilitySnapshot(globalThis);
-    expect(snapshot.reason).toBe('integrity-failed');
+    expect(snapshot.reason).toBe(FONT_READINESS_REFUSAL.integrityFailed);
     expect(snapshot.retryable).toBe(false);
 
-    stageBootstrap(record(FONT_READINESS_STATE.refused, {
-      reason: 'no-usable-source',
-      retryable: true,
-    }));
+    stageBootstrap(refusalRecord(FONT_READINESS_REFUSAL.noUsableSource));
     expect(fontCapabilitySnapshot(globalThis).retryable).toBe(true);
+  });
+
+  it.each([
+    ['resolving with a version', FONT_READINESS_STATE.resolving, { version: MANAGED_FONT_PACKAGE.version }],
+    ['repairing with a reason', FONT_READINESS_STATE.repairing, { reason: FONT_READINESS_REFUSAL.timedOut }],
+    ['repairing marked retryable', FONT_READINESS_STATE.repairing, { retryable: true }],
+    ['refused with a version', FONT_READINESS_STATE.refused, {
+      version: MANAGED_FONT_PACKAGE.version,
+      reason: FONT_READINESS_REFUSAL.integrityFailed,
+    }],
+    ['refused without a reason', FONT_READINESS_STATE.refused, {}],
+    ['refused with an unknown reason', FONT_READINESS_STATE.refused, { reason: 'surprise' }],
+    ['refused with wrong retry policy', FONT_READINESS_STATE.refused, {
+      reason: FONT_READINESS_REFUSAL.noUsableSource,
+      retryable: false,
+    }],
+  ])('rejects contradictory state-dependent fields: %s', (_label, state, patch) => {
+    stageBootstrap(record(state, patch));
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      published: true,
+      pending: false,
+      managedPackInstalled: false,
+      readiness: FONT_READINESS_STATE.refused,
+      reason: FONT_READINESS_CONTRACT_MISMATCH,
+    });
   });
 });
 
@@ -268,6 +338,130 @@ describe('a repair that lands after startup', () => {
 
     expect(seen).toHaveLength(0);
   });
+
+  it('rejects stale, duplicate, and malformed publications without regressing the authority', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.ready, { epoch: 5 }));
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot), {
+      globalScope: globalThis,
+    });
+
+    for (const detail of [
+      record(FONT_READINESS_STATE.repairing, { epoch: 4 }),
+      record(FONT_READINESS_STATE.ready, { epoch: 5 }),
+      { schema: FONT_READINESS_SCHEMA, epoch: 6, state: FONT_READINESS_STATE.ready },
+    ]) {
+      globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, { detail }));
+    }
+    expect(seen).toEqual([]);
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      readiness: FONT_READINESS_STATE.ready,
+      epoch: 5,
+      managedPackInstalled: true,
+    });
+
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, {
+      detail: record(FONT_READINESS_STATE.repairing, { epoch: 6 }),
+    }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ readiness: FONT_READINESS_STATE.repairing, epoch: 6 });
+    stop();
+  });
+
+  it('restores the accepted record when native assigned a rejected publication before announcing it', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.ready, { epoch: 5 }));
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot), {
+      globalScope: globalThis,
+    });
+
+    for (const detail of [
+      record(FONT_READINESS_STATE.repairing, { epoch: 4 }),
+      record(FONT_READINESS_STATE.ready, { epoch: 5 }),
+      { schema: FONT_READINESS_SCHEMA, epoch: 6, state: FONT_READINESS_STATE.ready },
+    ]) {
+      // This is the shipping order in `font_readiness_publish_script`: assignment first, event
+      // second. Dispatching the payload alone cannot prove that the shared authority stayed put.
+      globalThis.__OSG_FONT_READINESS__ = detail;
+      globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, { detail }));
+      expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+        readiness: FONT_READINESS_STATE.ready,
+        epoch: 5,
+        managedPackInstalled: true,
+      });
+    }
+    expect(seen).toEqual([]);
+
+    const next = record(FONT_READINESS_STATE.repairing, { epoch: 6 });
+    globalThis.__OSG_FONT_READINESS__ = next;
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, { detail: next }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ readiness: FONT_READINESS_STATE.repairing, epoch: 6 });
+    stop();
+  });
+
+  it('delivers one valid native publication once to every subscriber', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.resolving, { epoch: 1 }));
+    const first = [];
+    const second = [];
+    const stopFirst = subscribeToFontReadiness((snapshot) => first.push(snapshot.epoch), {
+      globalScope: globalThis,
+    });
+    const stopSecond = subscribeToFontReadiness((snapshot) => second.push(snapshot.epoch), {
+      globalScope: globalThis,
+    });
+    const next = record(FONT_READINESS_STATE.ready, { epoch: 2 });
+
+    globalThis.__OSG_FONT_READINESS__ = next;
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, { detail: next }));
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, { detail: next }));
+
+    expect(first).toEqual([2]);
+    expect(second).toEqual([2]);
+    stopFirst();
+    stopSecond();
+  });
+
+  it('does not let a later malformed announcement overwrite a newer valid global record', () => {
+    stageBootstrap(record(FONT_READINESS_STATE.resolving, { epoch: 2 }));
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot.epoch), {
+      globalScope: globalThis,
+    });
+    globalThis.__OSG_FONT_READINESS__ = record(FONT_READINESS_STATE.ready, { epoch: 4 });
+
+    globalThis.dispatchEvent(new CustomEvent(FONT_READINESS_EVENT, {
+      detail: { schema: FONT_READINESS_SCHEMA, epoch: 3, state: 'not-a-state' },
+    }));
+
+    expect(seen).toEqual([4]);
+    expect(fontCapabilitySnapshot(globalThis)).toMatchObject({
+      epoch: 4, readiness: FONT_READINESS_STATE.ready, managedPackInstalled: true,
+    });
+    stop();
+  });
+
+  it('accepts a valid publication after an initially malformed value and still releases transport', async () => {
+    stageBootstrap({ schema: FONT_READINESS_SCHEMA + 1 });
+    let deliver = null;
+    const unlisten = vi.fn();
+    const listen = vi.fn((_event, listener) => {
+      deliver = listener;
+      return unlisten;
+    });
+    const seen = [];
+    const stop = subscribeToFontReadiness((snapshot) => seen.push(snapshot), {
+      globalScope: globalThis,
+      listen,
+    });
+    await Promise.resolve();
+
+    deliver({ payload: record(FONT_READINESS_STATE.ready, { epoch: 1 }) });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ readiness: FONT_READINESS_STATE.ready, epoch: 1 });
+    stop();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
 });
 
 const NEWLINE = String.fromCharCode(10);
@@ -283,6 +477,14 @@ describe('the readiness contract matches the native definition', () => {
     resolve(__dirname, '..', '..', 'apps/desktop/src-tauri/src/font_readiness.rs'),
     'utf8',
   );
+  const catalogSource = readFileSync(
+    resolve(__dirname, '..', '..', 'crates/osg-engine-packages/src/ui_font_catalog.rs'),
+    'utf8',
+  );
+  const deliveryCatalog = JSON.parse(readFileSync(
+    resolve(__dirname, '..', '..', 'crates/osg-engine-packages/delivery/ui-fonts.delivery.json'),
+    'utf8',
+  ));
 
   /** Rust variants under a `kebab-case` rename, as serde will emit them. */
   const variantsOf = (enumName) => {
@@ -303,13 +505,59 @@ describe('the readiness contract matches the native definition', () => {
     expect(reasons.length).toBeGreaterThan(0);
     // Each must survive a round trip through the snapshot rather than being dropped as malformed.
     for (const reason of reasons) {
-      stageBootstrap(record(FONT_READINESS_STATE.refused, { reason }));
+      stageBootstrap(refusalRecord(reason));
       expect(fontCapabilitySnapshot(globalThis).reason).toBe(reason);
     }
+  });
+
+  it('agrees with native about which refusal reasons are retryable', () => {
+    const retryableBody = nativeSource
+      .split('const fn retryable(self) -> bool {')[1]
+      ?.split(NEWLINE + '    }')[0] ?? '';
+    const nativeRetryable = [...retryableBody.matchAll(/Self::([A-Z][A-Za-z]+)/g)]
+      .map(([, variant]) => variant.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase())
+      .sort();
+    expect(nativeRetryable).toEqual([...retryableRefusals].sort());
   });
 
   it('agrees with native about the schema version and the event name', () => {
     expect(nativeSource).toContain(`FONT_READINESS_SCHEMA: u32 = ${FONT_READINESS_SCHEMA}`);
     expect(nativeSource).toContain(`FONT_READINESS_EVENT: &str = "${FONT_READINESS_EVENT}"`);
+  });
+
+  it('accepts exactly every field the camel-cased native record serializes', () => {
+    const body = nativeSource
+      .split('pub(crate) struct FontReadinessRecord {')[1]
+      ?.split(NEWLINE + '}')[0] ?? '';
+    const fields = [...body.matchAll(/^\s+pub ([a-z_]+):/gm)].map(([, field]) => (
+      field.replace(/_([a-z])/g, (_whole, letter) => letter.toUpperCase())
+    ));
+    expect(fields).toEqual([
+      'schema', 'epoch', 'state', 'family', 'version', 'reason', 'retryable',
+    ]);
+    expect(nativeSource.slice(0, nativeSource.indexOf(body)))
+      .toContain('#[serde(rename_all = "camelCase")]');
+  });
+
+  it('serializes native epoch allocation with installation of the authoritative record', () => {
+    const body = nativeSource
+      .split('fn publish(&self, mut record: FontReadinessRecord) -> FontReadinessRecord {')[1]
+      ?.split(NEWLINE + '    }')[0] ?? '';
+    const lock = body.indexOf('let mut current = self.locked()');
+    const epoch = body.indexOf('.checked_add(1)');
+    const install = body.indexOf('*current = record');
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(epoch).toBeGreaterThan(lock);
+    expect(install).toBeGreaterThan(epoch);
+  });
+
+  it('binds the JS identity to the native family and compiled delivery catalog version', () => {
+    expect(nativeSource).toContain(
+      `MANAGED_SUBTITLE_FAMILY: &str = "${MANAGED_FONT_PACKAGE.family}"`,
+    );
+    expect(catalogSource).toContain(`const VERSION: &str = "${MANAGED_FONT_PACKAGE.version}"`);
+    const versions = new Set(Object.values(deliveryCatalog.platforms)
+      .flatMap(({ releases }) => releases.map(({ version }) => version)));
+    expect([...versions]).toEqual([MANAGED_FONT_PACKAGE.version]);
   });
 });

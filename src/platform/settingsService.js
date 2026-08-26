@@ -208,33 +208,33 @@ const isPersistableSettingKey = (key) => (
   && !isTransientSettingKey(key)
 );
 
-export const collectPersistableSettings = (storage, overrides = {}) => {
+// SQLite is the preference authority. This boundary accepts only the values named by the user
+// action that called it; it must never scrape localStorage. Scraping the browser mirror used to
+// turn mount-time fallbacks (for example the detected system theme) into durable user choices and
+// repopulated a freshly cleared database immediately after factory reset.
+export const collectPersistableSettings = (values) => {
   const settings = new Map();
   let aggregateBytes = 0;
 
-  const addSetting = (key, value, required) => {
+  const addSetting = (key, value) => {
     // JSON.stringify preserves lone UTF-16 surrogates as escape sequences, but Rust strings must
     // be Unicode scalar values. Reject them locally instead of silently repairing transport data.
     if (!isWellFormedUtf16(value)) {
-      if (required) throw new SettingsPersistenceLimitError('invalidUnicode');
-      return false;
+      throw new SettingsPersistenceLimitError('invalidUnicode');
     }
 
     const valueJsonBytes = utf8Encoder.encode(JSON.stringify(value)).byteLength;
     if (valueJsonBytes > SETTINGS_PERSISTENCE_LIMITS.maxValueJsonBytes) {
-      if (required) throw new SettingsPersistenceLimitError('valueTooLarge');
-      return false;
+      throw new SettingsPersistenceLimitError('valueTooLarge');
     }
 
     if (settings.size >= SETTINGS_PERSISTENCE_LIMITS.maxEntries) {
-      if (required) throw new SettingsPersistenceLimitError('tooManyEntries');
-      return false;
+      throw new SettingsPersistenceLimitError('tooManyEntries');
     }
 
     const entryBytes = utf8Encoder.encode(key).byteLength + valueJsonBytes;
     if (aggregateBytes + entryBytes > SETTINGS_PERSISTENCE_LIMITS.maxBatchBytes) {
-      if (required) throw new SettingsPersistenceLimitError('batchTooLarge');
-      return false;
+      throw new SettingsPersistenceLimitError('batchTooLarge');
     }
 
     settings.set(key, value);
@@ -242,35 +242,17 @@ export const collectPersistableSettings = (storage, overrides = {}) => {
     return true;
   };
 
-  // Pending form values are the required write. Validate and reserve their native batch budget
-  // before considering compatibility rows, so old localStorage cannot crowd out a user edit.
-  Object.entries(overrides).forEach(([key, value]) => {
+  Object.entries(values).forEach(([key, value]) => {
     if (isPersistableSettingKey(key) && typeof value === 'string') {
-      addSetting(key, value, true);
+      addSetting(key, value);
     }
   });
-
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    if (!isPersistableSettingKey(key) || settings.has(key)) {
-      continue;
-    }
-
-    try {
-      const value = storage.getItem(key);
-      if (typeof value === 'string') {
-        addSetting(key, value, false);
-      }
-    } catch (error) {
-      console.error(`Error reading localStorage key ${key}:`, error);
-    }
-  }
 
   return Object.fromEntries(settings);
 };
 
-export const persistDesktopSettings = async (storage, overrides = {}) => {
-  const values = collectPersistableSettings(storage, overrides);
+export const persistDesktopSettings = async (explicitValues) => {
+  const values = collectPersistableSettings(explicitValues);
   await invokeDesktop('settings_set_many', { values });
 
   // Preserve the legacy service's response contract for callers that inspect the result.

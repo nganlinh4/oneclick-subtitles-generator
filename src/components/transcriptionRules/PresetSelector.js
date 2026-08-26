@@ -1,12 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import CustomDropdown from '../common/CustomDropdown';
 import { PROMPT_PRESETS } from '../../services/geminiService';
+import {
+  applyTranscriptionPromptPresetSelection,
+  normalizeUserTranscriptionPromptPresets,
+} from '../../services/gemini/transcriptionPromptPresetSelection';
 import { getPresetIconComponent, getPresetTitle } from './presetIconMap';
 
 /**
  * The prompt-preset dropdown section of the transcription rules editor.
- * Owns its own change handler, which persists the selection to localStorage
- * and notifies the parent via `onChangePrompt`.
+ * Owns the single normalized preset-selection boundary and notifies the parent
+ * with the resolved selection. The Settings-owned transcription prompt is not
+ * copied or overwritten when the source changes.
  */
 const PresetSelector = ({
   currentPresetId,
@@ -17,33 +22,22 @@ const PresetSelector = ({
   handleUserInteraction
 }) => {
   const { t } = useTranslation();
+  const usableUserPresets = normalizeUserTranscriptionPromptPresets(
+    userPromptPresets,
+    PROMPT_PRESETS.map(({ id }) => id),
+  );
 
   // Handle changing the prompt preset
   const handleChangePrompt = (e) => {
     handleUserInteraction();
     const newPresetId = e.target.value;
-    setCurrentPresetId(newPresetId);
-
-    // SIMPLE: Just save to localStorage directly
-    if (newPresetId === 'custom') {
-      // Custom means use settings prompt
-      localStorage.setItem('video_processing_prompt_preset', 'settings');
-      console.log('[TranscriptionRulesEditor] User selected settings prompt');
-
-      if (onChangePrompt) {
-        onChangePrompt({ id: 'custom' });
-      }
-    } else {
-      // Save the selected preset
-      localStorage.setItem('video_processing_prompt_preset', newPresetId);
-      console.log('[TranscriptionRulesEditor] User selected preset:', newPresetId);
-
-      // Find the preset and notify parent
-      const preset = allPresets.find(p => p.id === newPresetId);
-      if (preset && onChangePrompt) {
-        onChangePrompt(preset);
-      }
-    }
+    const selection = applyTranscriptionPromptPresetSelection({
+      requestedPresetId: newPresetId,
+      availablePresets: allPresets,
+      defaultPrompt: PROMPT_PRESETS[0]?.prompt,
+    });
+    setCurrentPresetId(selection.editorPresetId);
+    onChangePrompt?.(selection);
   };
 
   return (
@@ -91,7 +85,7 @@ const PresetSelector = ({
               };
             }),
             // User presets with user icon
-            ...userPromptPresets.map(preset => ({
+            ...usableUserPresets.map(preset => ({
               value: preset.id,
               label: (
                 <span style={{ display: 'inline-flex', alignItems: 'center' }}>

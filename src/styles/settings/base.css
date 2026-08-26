@@ -14,8 +14,9 @@
   backdrop-filter: blur(3px);
   /* i want short duration */
   transition: opacity 0.2s var(--md-easing-emphasized-accelerate);
-  /* Allow touch scrolling through the modal overlay */
-  pointer-events: none;
+  /* A modal must intercept the background. The settings card opts back into its own controls,
+     while live confirmation toasts intentionally render in their higher, independent layer. */
+  pointer-events: auto;
 }
 
 .settings-modal-overlay.closing {

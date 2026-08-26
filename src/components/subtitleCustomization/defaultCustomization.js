@@ -75,6 +75,8 @@ const customizationValidators = Object.freeze({
   textTransform: enumValidator('none', 'uppercase', 'lowercase', 'capitalize'),
   backgroundColor: colorValidator,
   backgroundOpacity: finiteWithin(0, 100),
+  backgroundPaddingX: finiteWithin(0, 1_000),
+  backgroundPaddingY: finiteWithin(0, 1_000),
   borderRadius: finiteWithin(0, 1_000),
   borderWidth: finiteWithin(0, 100),
   borderColor: colorValidator,

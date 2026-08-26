@@ -4,13 +4,18 @@ import { groupFontsByCategory, getFontSupportFlags, getFontSampleText } from './
 import CloseButton from '../common/CloseButton';
 import CustomDropdown from '../common/CustomDropdown';
 import '../../styles/subtitle-customization/FontSelectionModal.css';
-import { selectableFontOptions } from '../../services/selectableFonts';
+import {
+  fontChoiceMatchesSelection,
+  fontSelectionModel,
+} from '../../services/selectableFonts';
+import { useFontReadiness } from '../../services/useFontReadiness';
 
 const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, onFontSelect }) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [modalHeight] = useState('auto');
+  const fontCapability = useFontReadiness();
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const contentRef = useRef(null);
@@ -96,10 +101,12 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, o
 
   if (!isOpen) return null;
 
-  const groupedFonts = groupFontsByCategory(selectableFontOptions(
-    Object.values(groupFontsByCategory()).flat(),
-    { requestedWeight: fontWeight },
-  ));
+  const selection = fontSelectionModel(Object.values(groupFontsByCategory()).flat(), {
+    fontFamily: selectedFont,
+    fontWeight,
+    capability: fontCapability,
+  });
+  const groupedFonts = groupFontsByCategory(selection.options);
   const categories = ['All', ...Object.keys(groupedFonts)];
 
   // Get translated category name
@@ -175,12 +182,15 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, o
 
           <div className="font-category-filter">
             <CustomDropdown
+              id="font-category-filter"
               value={selectedCategory}
               onChange={(value) => setSelectedCategory(value)}
               options={categories.map(category => ({
                 value: category,
                 label: getCategoryName(category)
               }))}
+              dataSetting="font-category"
+              ariaLabel={t('fontModal.category', 'Font category')}
               placeholder={t('fontModal.selectCategory', 'Select Category')}
             />
           </div>
@@ -195,7 +205,7 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, o
                 {fonts.map(font => (
                   <div
                     key={font.value}
-                    className={`font-card ${font.value === selectedFont ? 'selected' : ''}`}
+                    className={`font-card ${fontChoiceMatchesSelection(font, selection) ? 'selected' : ''}`}
                     onClick={() => handleFontSelect(font)}
                   >
                     <div className="font-info" style={{ fontFamily: font.value }}>
