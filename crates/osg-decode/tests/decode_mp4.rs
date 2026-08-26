@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use osg_decode::{
     DecodeError, DecodeLimits, DecodedFrame, DecoderConfig, SourceRejection, VideoDecoder,
-    open_decoder,
+    exact_time_to_100ns, open_decoder,
 };
 use osg_encode::{
     AudioBlock, AudioConfig, EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder,
@@ -133,11 +133,11 @@ fn assert_frame_is(frame: &DecodedFrame, index: u32) {
     }
 }
 
-/// Encodes the synthetic clip and returns where it landed.
-fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
+/// Encodes the synthetic clip at the requested rate and returns where it landed.
+fn encoded_clip_at_rate(directory: &TempDir, name: &str, fps: u32, frame_count: u32) -> PathBuf {
     let _platform = platform();
     let output = directory.path().join(name);
-    let video = VideoConfig::new(WIDTH, HEIGHT, FPS, 1, FRAMES)
+    let video = VideoConfig::new(WIDTH, HEIGHT, fps, 1, frame_count)
         .expect("a supported configuration")
         .with_bitrate_kbps(8_000)
         .expect("8 Mbit/s is in range")
@@ -146,7 +146,7 @@ fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
 
     let mut encoder = open_encoder(&output, EncoderConfig::video_only(video))
         .expect("Media Foundation must provide an H.264 encoder for these tests to mean anything");
-    for index in 0..FRAMES {
+    for index in 0..frame_count {
         let pixels = synthetic_frame(index);
         let frame = FrameBuffer::new(&pixels, WIDTH, HEIGHT, PixelLayout::Rgba8)
             .expect("a synthetic frame is the configured size");
@@ -157,6 +157,11 @@ fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
     encoder.finalize().expect("the container is closed");
     assert!(output.is_file(), "the encoder produced no file");
     output
+}
+
+/// Encodes the standard one-second, 30fps synthetic clip.
+fn encoded_clip(directory: &TempDir, name: &str) -> PathBuf {
+    encoded_clip_at_rate(directory, name, FPS, FRAMES)
 }
 
 /// Encodes one second of video inside a 1.1-second presentation whose audio has a short tail.
@@ -339,6 +344,80 @@ fn output_frames_land_on_the_source_frames_they_show() {
             index: FRAMES,
             frame_count: FRAMES,
         })
+    );
+}
+
+#[test]
+fn a_fifteen_fps_boundary_is_independent_of_decode_history_on_a_thirty_fps_grid() {
+    // Every source frame spans exactly two output frames. Source frame 14 begins at 14/15s, whose
+    // exact boundary is not representable in Media Foundation's 100ns clock: it becomes 9_333_333.
+    // The frame selected at that rounded boundary must not depend on whether the reader walked to
+    // it or arrived after unrelated forward and backward seeks.
+    const SOURCE_FPS: u32 = 15;
+    const BOUNDARY_SOURCE_INDEX: u32 = 14;
+    const BOUNDARY_OUTPUT_INDEX: u32 = BOUNDARY_SOURCE_INDEX * 2;
+
+    let directory = TempDir::new().expect("a temporary directory");
+    let clip = encoded_clip_at_rate(&directory, "fifteen-fps-boundary.mp4", SOURCE_FPS, FRAMES);
+    let timeline = FrameTimeline::new(FPS, 1, FRAMES * 2, ExactTime::ZERO)
+        .expect("a supported 30fps output timeline");
+    let boundary_time = timeline
+        .frame_time(BOUNDARY_OUTPUT_INDEX)
+        .expect("the boundary is on the output timeline");
+    assert_eq!(boundary_time, ExactTime::new(14, 15).expect("14/15s"));
+    assert_eq!(exact_time_to_100ns(boundary_time), Some(9_333_333));
+
+    let mut sequential = open_decoder(&clip, DecoderConfig::new(timeline))
+        .expect("the 15fps clip opens against a 30fps timeline");
+    assert_eq!(sequential.source().fps_numerator(), SOURCE_FPS);
+    assert_eq!(sequential.source().fps_denominator(), 1);
+    let mut sequential_boundary = None;
+    for output_index in 0..=BOUNDARY_OUTPUT_INDEX {
+        let frame = sequential
+            .frame_for_output(output_index)
+            .expect("sequential sampling decodes the requested frame");
+        assert_eq!(
+            frame.source_index(),
+            u64::from(output_index / 2),
+            "30fps output frame {output_index} selected source frame {}",
+            frame.source_index()
+        );
+        if output_index == BOUNDARY_OUTPUT_INDEX {
+            sequential_boundary = Some(frame);
+        }
+    }
+    let sequential_boundary =
+        sequential_boundary.expect("the sequential walk reached the boundary");
+    assert_frame_is(&sequential_boundary, BOUNDARY_SOURCE_INDEX);
+
+    let mut sought = open_decoder(&clip, DecoderConfig::new(timeline))
+        .expect("the 15fps clip opens for arbitrary sampling");
+    for output_index in [52_u32, 3, 44, 9, 58, 17] {
+        let frame = sought
+            .frame_for_output(output_index)
+            .expect("an arbitrary output request decodes");
+        assert_eq!(
+            frame.source_index(),
+            u64::from(output_index / 2),
+            "arbitrary output frame {output_index} selected source frame {}",
+            frame.source_index()
+        );
+    }
+    let sought_boundary = sought
+        .frame_for_output(BOUNDARY_OUTPUT_INDEX)
+        .expect("the rounded boundary decodes after arbitrary seeks");
+    assert_eq!(
+        sought_boundary.source_index(),
+        u64::from(BOUNDARY_SOURCE_INDEX)
+    );
+    assert_eq!(
+        sought_boundary.pixels(),
+        sequential_boundary.pixels(),
+        "the same quantized boundary produced different pixels after a different decode history"
+    );
+    assert!(
+        sought.stats().seeks() > 0,
+        "the arbitrary history did not exercise the seek path"
     );
 }
 

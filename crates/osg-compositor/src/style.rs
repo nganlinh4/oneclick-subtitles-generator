@@ -173,9 +173,9 @@ impl SubtitleStyle {
     /// Resolve a staged style.
     ///
     /// # Errors
-    /// Returns [`CompositorError::UnsupportedSceneInput`] naming the field that was refused. In
-    /// particular a background colour that already carries its own alpha is refused rather than
-    /// silently disappearing, which is what the shipped renderer does with it.
+    /// Returns [`CompositorError::UnsupportedSceneInput`] naming the field that was refused. A
+    /// supported background colour may carry alpha; it is multiplied by `background_opacity`
+    /// during resolution.
     pub fn resolve(spec: &SubtitleStyleSpec) -> Result<Self, CompositorError> {
         if !bounded(spec.font_size, 1.0, MAX_STYLE_PIXELS) {
             return Err(Rejection::StyleFontSize.into());

@@ -38,10 +38,10 @@
 //!   `null` every time crop mode is entered, and `handleAspectRatioChange` writes **only**
 //!   `x`/`y`/`width`/`height` (plus the two flip flags) back into the crop. The crop object never
 //!   receives an `aspectRatio` key from the control that is named after it.
-//! * Every other writer sets it to `null` and nothing else: the defaults in
-//!   `VideoRenderingSection/renderPreferences.js` and `previews/videoDownloadHandlers.js`, plus the
-//!   crop-clearing handler in the deleted browser preview. `renderService.js` carries whatever it
-//!   finds straight through to the request.
+//! * The canonical default in `VideoRenderingSection/renderPreferences.js` sets it to `null`.
+//!   `platform/projectRenderScene.js` then owns and validates that crop for both live surfaces;
+//!   `previews/previewCueSelection.js` owns only the editor's fixed resolution and never invents a
+//!   second crop. `renderService.js` carries the project crop straight through to the request.
 //! * The button expresses itself by *reshaping the rectangle*. `calculateCropDimensions` solves for
 //!   a rectangle whose own ratio is the selected one, so the selected ratio is already a property of
 //!   `width`/`height`. Deriving the output from the rectangle therefore already reproduces the

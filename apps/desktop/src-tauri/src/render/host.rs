@@ -16,6 +16,7 @@ use osg_media_server::{MediaServer, RegisteredMedia};
 use uuid::Uuid;
 
 use crate::error::{CommandError, CommandResult};
+use osg_runtime_staging::RuntimeStagingAuthority;
 
 /// How many renders may run at once. The `WebView` asserts this is one.
 pub(super) const MAX_CONCURRENT_RENDERS: usize = 1;
@@ -29,6 +30,7 @@ pub(crate) struct RenderRuntimeHost {
 
 struct RenderRuntimeInner {
     staging_root: PathBuf,
+    staging_authority: RuntimeStagingAuthority,
     media_server: MediaServer,
     slots: Arc<SlotLimiter>,
     playbacks: Mutex<PlaybackRegistry>,
@@ -37,13 +39,16 @@ struct RenderRuntimeInner {
 impl RenderRuntimeHost {
     pub(crate) fn new(
         cache_root: impl AsRef<Path>,
+        staging_authority: RuntimeStagingAuthority,
         media_server: MediaServer,
     ) -> std::io::Result<Self> {
         let staging_root = cache_root.as_ref().join("v1/render");
         fs::create_dir_all(&staging_root)?;
+        staging_authority.reconcile_all()?;
         Ok(Self {
             inner: Arc::new(RenderRuntimeInner {
                 staging_root,
+                staging_authority,
                 media_server,
                 slots: SlotLimiter::new(MAX_CONCURRENT_RENDERS),
                 playbacks: Mutex::new(PlaybackRegistry::default()),
@@ -54,6 +59,10 @@ impl RenderRuntimeHost {
     /// Where an export may create its own staging directory.
     pub(super) fn staging_root(&self) -> PathBuf {
         self.inner.staging_root.clone()
+    }
+
+    pub(super) fn staging_authority(&self) -> RuntimeStagingAuthority {
+        self.inner.staging_authority.clone()
     }
 
     /// Takes the one render slot, or refuses.
@@ -197,7 +206,11 @@ mod tests {
     fn the_staging_root_is_created_and_never_rendered_into_a_debug() {
         let root = tempfile::tempdir().expect("root");
         let media_server = MediaServer::start(["tauri://localhost".to_owned()]).expect("server");
-        let runtime = RenderRuntimeHost::new(root.path(), media_server).expect("runtime host");
+        let authority_root = tempfile::tempdir().expect("authority root");
+        let authority =
+            osg_runtime_staging::RuntimeStagingAuthority::prepare(authority_root.path()).unwrap();
+        let runtime =
+            RenderRuntimeHost::new(root.path(), authority, media_server).expect("runtime host");
 
         let staging = runtime.staging_root();
         assert!(staging.is_dir(), "the export needs a staging root to exist");

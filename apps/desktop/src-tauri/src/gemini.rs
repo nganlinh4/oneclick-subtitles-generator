@@ -572,7 +572,7 @@ async fn succeed_with_result(
 )]
 async fn run_gemini(
     credentials: &osg_infrastructure::secrets::CredentialService<
-        osg_infrastructure::secrets::KeyringCredentialBackend,
+        crate::state::DesktopCredentialBackend,
     >,
     request: GeminiStartRequest,
     local_media: Option<LocalMedia>,

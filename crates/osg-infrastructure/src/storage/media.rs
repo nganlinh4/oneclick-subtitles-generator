@@ -1536,8 +1536,8 @@ mod tests {
         path_encoding, platform_name, publish_durable_media, publish_durable_media_candidate,
     };
     use crate::storage::{
-        ArtifactDraft, ArtifactKind, ArtifactRegistration, ArtifactState, CacheCategory, CacheKey,
-        CacheWrite, ContentHash, DatabaseError,
+        ArtifactDraft, ArtifactKind, ArtifactRegistration, ArtifactRetention, ArtifactState,
+        CacheCategory, CacheKey, CacheWrite, ContentHash, DatabaseError,
     };
 
     fn complete_queued_job(database: &super::super::Database, job: &mut JobSnapshot) {
@@ -1632,6 +1632,183 @@ mod tests {
             permissions.set_mode(permissions.mode() | 0o200);
         }
         std::fs::set_permissions(path, permissions).expect("make fixture writable");
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one cache-clear safety scenario verifies every protected storage class and the one disposable class together"
+    )]
+    fn cache_clear_preserves_active_project_media_and_shared_package_roots() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let database_path = directory.path().join("data/db/osg.sqlite3");
+        let artifact_root = directory.path().join("data/artifacts");
+        let source_path = directory.path().join("user-imports/source.mp4");
+        let native_tool_path = directory.path().join("data/native-tools/v1/ffmpeg.exe");
+        let model_path = directory.path().join("cache/v1/asr/model.bin");
+        for parent in [
+            source_path.parent(),
+            native_tool_path.parent(),
+            model_path.parent(),
+        ] {
+            std::fs::create_dir_all(parent.expect("sentinel parent"))
+                .expect("create sentinel root");
+        }
+        let source_bytes = vec![0x53; 32 * 1024];
+        std::fs::write(&source_path, &source_bytes).expect("write source media");
+        std::fs::write(&native_tool_path, b"managed native tool").expect("write tool sentinel");
+        std::fs::write(&model_path, b"managed model package").expect("write model sentinel");
+
+        let database =
+            super::super::Database::open_with_artifact_root(&database_path, &artifact_root)
+                .expect("database");
+        let asset = MediaAsset::new(
+            "downloaded-source.mp4",
+            "mp4",
+            u64::try_from(source_bytes.len()).expect("source size"),
+            MediaKind::Video,
+        )
+        .expect("media asset");
+        let mut job = JobSnapshot::new(JobKind::DownloadMedia);
+        database.create_job(&job).expect("download job");
+        let published = publish_durable_media_candidate(
+            &database,
+            job.id(),
+            ArtifactKind::new("downloadedMedia").expect("download kind"),
+            asset.clone(),
+            &source_path,
+            serde_json::json!({
+                "source": "urlDownload",
+                "filename": asset.display_name(),
+            }),
+        )
+        .expect("publish downloaded media");
+        complete_queued_job(&database, &mut job);
+        let (project, _, attached_version) =
+            attach_media_to_new_project(&database, "cache safety", &asset);
+
+        let media_category = CacheCategory::new("downloadedMedia").expect("media category");
+        let media_key =
+            CacheKey::derive(&media_category, 1, &[b"project-media"]).expect("media cache key");
+        database
+            .put_cache_entry(
+                &CacheWrite::new(media_key, published.artifact_id(), media_category, 1, None)
+                    .expect("media cache edge"),
+            )
+            .expect("put media cache edge");
+
+        // Reproduce the invalid ownership shape accepted by versions before the registration
+        // guard: the bytes are project media, but the artifact row claims cache retention.
+        let legacy = rusqlite::Connection::open(&database_path).expect("legacy repair fixture");
+        assert_eq!(
+            legacy
+                .execute(
+                    "UPDATE artifacts SET retention = 'cache' WHERE id = ?1",
+                    [published.artifact_id().as_uuid()],
+                )
+                .expect("seed legacy cache retention"),
+            1
+        );
+        drop(legacy);
+
+        let transient_bytes = b"rebuildable waveform peaks";
+        let transient_draft = ArtifactDraft::new_cache(
+            ArtifactKind::new("waveform").expect("waveform kind"),
+            ContentHash::digest(transient_bytes),
+            u64::try_from(transient_bytes.len()).expect("transient size"),
+            serde_json::json!({"fixture": true}),
+        )
+        .expect("transient draft");
+        let transient_stage = match database
+            .register_artifact(&transient_draft)
+            .expect("register transient")
+        {
+            ArtifactRegistration::Staging(stage) => stage,
+            ArtifactRegistration::Existing(_) | ArtifactRegistration::Pending(_) => {
+                panic!("transient fixture must be newly staged")
+            }
+        };
+        std::fs::write(transient_stage.path(), transient_bytes).expect("write transient bytes");
+        let transient_id = transient_stage.record().id();
+        database
+            .mark_artifact_ready(transient_id)
+            .expect("publish transient");
+        let transient_category = CacheCategory::new("waveform").expect("waveform category");
+        let transient_key =
+            CacheKey::derive(&transient_category, 1, &[b"waveform"]).expect("waveform cache key");
+        database
+            .put_cache_entry(
+                &CacheWrite::new(transient_key, transient_id, transient_category, 1, None)
+                    .expect("transient cache edge"),
+            )
+            .expect("put transient cache edge");
+
+        let cleared = database.clear_all_cache().expect("clear rebuildable cache");
+        assert_eq!(cleared.removed_count, 1);
+        assert_eq!(cleared.retained_shared_count, 1);
+        assert_eq!(
+            database
+                .get_artifact(published.artifact_id())
+                .expect("durable media artifact lookup")
+                .expect("durable media artifact survives")
+                .retention(),
+            ArtifactRetention::Durable
+        );
+        assert!(
+            database
+                .lookup_cache(media_key)
+                .expect("media cache lookup")
+                .is_none()
+        );
+        assert!(
+            database
+                .lookup_cache(transient_key)
+                .expect("transient cache lookup")
+                .is_none()
+        );
+        assert!(
+            database
+                .get_artifact(transient_id)
+                .expect("transient artifact lookup")
+                .is_none()
+        );
+        let resolved = database
+            .resolve_project_media_revision(project.id(), attached_version, asset.id())
+            .expect("resolve active project media")
+            .expect("active project media survives");
+        assert_eq!(
+            std::fs::read(resolved.path()).expect("read managed media"),
+            source_bytes
+        );
+        let snapshot = database
+            .load_project(project.id())
+            .expect("load project")
+            .expect("project survives");
+        assert_eq!(snapshot.media().len(), 1);
+        assert_eq!(snapshot.media()[0].id(), asset.id());
+        assert_eq!(
+            std::fs::read(&source_path).expect("read imported source"),
+            source_bytes
+        );
+        assert_eq!(
+            std::fs::read(&native_tool_path).expect("read native tool"),
+            b"managed native tool"
+        );
+        assert_eq!(
+            std::fs::read(&model_path).expect("read managed model"),
+            b"managed model package"
+        );
+
+        drop(database);
+        let reopened =
+            super::super::Database::open_with_artifact_root(&database_path, &artifact_root)
+                .expect("reopen database");
+        assert!(
+            reopened
+                .resolve_project_media_revision(project.id(), attached_version, asset.id())
+                .expect("resolve after restart")
+                .is_some()
+        );
     }
 
     #[test]

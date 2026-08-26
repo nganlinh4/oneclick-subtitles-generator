@@ -5,6 +5,13 @@ const COMMANDS: &[&str] = &[
     "app_close_checkpoint_commit",
     "font_readiness_retry",
     "get_session_snapshot",
+    "active_workspace_get",
+    "active_workspace_begin",
+    "active_workspace_set",
+    "active_workspace_clear",
+    "subtitle_project_index_get",
+    "subtitle_project_alias_activate",
+    "subtitle_project_alias_remove",
     "select_media",
     "clear_media",
     "open_media_asset",
@@ -149,7 +156,7 @@ fn main() {
 
 fn verify_ci_updater_fixture_scope() {
     if std::env::var_os("CARGO_FEATURE_CI_UPDATER_FIXTURE").is_none()
-        || std::env::var("PROFILE").as_deref() != Ok("release")
+        || matches!(std::env::var("PROFILE").as_deref(), Ok("debug"))
     {
         return;
     }

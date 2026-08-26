@@ -1,10 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedFrom": {
     "easing": "src/shared/subtitle/subtitleAnimationEasing.ts",
     "visualMath": "src/shared/subtitle/subtitleVisualMath.ts"
   },
-  "note": "Generated from the shipped implementation. Do not hand-edit to make a test pass.",
+  "note": "Generated from canonical subtitle math. Do not hand-edit to make a test pass.",
   "easings": [
     "linear",
     "ease",
@@ -13,6 +13,13 @@
     "ease-in-out",
     "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
     "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+  ],
+  "reviewedInteriorProgressSamples": [
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    0.9
   ],
   "easingSamples": [
     {
@@ -152,15 +159,15 @@
       "easing": "ease",
       "progress": -1,
       "progressBits": "bff0000000000000",
-      "eased": 2,
-      "easedBits": "4000000000000000"
+      "eased": 0,
+      "easedBits": "0000000000000000"
     },
     {
       "easing": "ease",
       "progress": -0.0001,
       "progressBits": "bf1a36e2eb1c432d",
-      "eased": 2e-8,
-      "easedBits": "3e55798ee2308c3a"
+      "eased": 0,
+      "easedBits": "0000000000000000"
     },
     {
       "easing": "ease",
@@ -173,92 +180,92 @@
       "easing": "ease",
       "progress": 0.0001,
       "progressBits": "3f1a36e2eb1c432d",
-      "eased": 2e-8,
-      "easedBits": "3e55798ee2308c3a"
+      "eased": 0.00004004800769085562,
+      "easedBits": "3f04ff271100bbec"
     },
     {
       "easing": "ease",
       "progress": 0.01,
       "progressBits": "3f847ae147ae147b",
-      "eased": 0.0002,
-      "easedBits": "3f2a36e2eb1c432d"
+      "eased": 0.004487815208316428,
+      "easedBits": "3f7261d0b8cda983"
     },
     {
       "easing": "ease",
       "progress": 0.1,
       "progressBits": "3fb999999999999a",
-      "eased": 0.020000000000000004,
-      "easedBits": "3f947ae147ae147c"
+      "eased": 0.09479630571644249,
+      "easedBits": "3fb8449218d56fe0"
     },
     {
       "easing": "ease",
       "progress": 0.25,
       "progressBits": "3fd0000000000000",
-      "eased": 0.125,
-      "easedBits": "3fc0000000000000"
+      "eased": 0.408510591355271,
+      "easedBits": "3fda25099b7c314e"
     },
     {
       "easing": "ease",
       "progress": 0.3333333333333333,
       "progressBits": "3fd5555555555555",
-      "eased": 0.2222222222222222,
-      "easedBits": "3fcc71c71c71c71c"
+      "eased": 0.5758623175772066,
+      "easedBits": "3fe26d76cf9fc594"
     },
     {
       "easing": "ease",
       "progress": 0.49999999999999994,
       "progressBits": "3fdfffffffffffff",
-      "eased": 0.4999999999999999,
-      "easedBits": "3fdffffffffffffe"
+      "eased": 0.8024033875850851,
+      "easedBits": "3fe9ad49de7c14ea"
     },
     {
       "easing": "ease",
       "progress": 0.5,
       "progressBits": "3fe0000000000000",
-      "eased": 0.5,
-      "easedBits": "3fe0000000000000"
+      "eased": 0.8024033875850851,
+      "easedBits": "3fe9ad49de7c14ea"
     },
     {
       "easing": "ease",
       "progress": 0.5000000000000001,
       "progressBits": "3fe0000000000001",
-      "eased": 0.5000000000000002,
-      "easedBits": "3fe0000000000002"
+      "eased": 0.8024033875850851,
+      "easedBits": "3fe9ad49de7c14ea"
     },
     {
       "easing": "ease",
       "progress": 0.6666666666666666,
       "progressBits": "3fe5555555555555",
-      "eased": 0.7777777777777777,
-      "easedBits": "3fe8e38e38e38e38"
+      "eased": 0.9248240118838308,
+      "easedBits": "3fed982886b31717"
     },
     {
       "easing": "ease",
       "progress": 0.75,
       "progressBits": "3fe8000000000000",
-      "eased": 0.875,
-      "easedBits": "3fec000000000000"
+      "eased": 0.9604589783488978,
+      "easedBits": "3feebc1477a50f0f"
     },
     {
       "easing": "ease",
       "progress": 0.9,
       "progressBits": "3feccccccccccccd",
-      "eased": 0.98,
-      "easedBits": "3fef5c28f5c28f5c"
+      "eased": 0.9943164774845752,
+      "easedBits": "3fefd170ca15720a"
     },
     {
       "easing": "ease",
       "progress": 0.99,
       "progressBits": "3fefae147ae147ae",
-      "eased": 0.9998,
-      "easedBits": "3feffe5c91d14e3c"
+      "eased": 0.99994633947892,
+      "easedBits": "3fefff8f773a23d7"
     },
     {
       "easing": "ease",
       "progress": 0.9999,
       "progressBits": "3fefff2e48e8a71e",
-      "eased": 0.99999998,
-      "easedBits": "3feffffff543388f"
+      "eased": 0.9999999946663418,
+      "easedBits": "3feffffffd22f296"
     },
     {
       "easing": "ease",
@@ -271,15 +278,15 @@
       "easing": "ease",
       "progress": 1.0001,
       "progressBits": "3ff00068db8bac71",
-      "eased": 0.99999998,
-      "easedBits": "3feffffff543388f"
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
     },
     {
       "easing": "ease",
       "progress": 2,
       "progressBits": "4000000000000000",
-      "eased": -1,
-      "easedBits": "bff0000000000000"
+      "eased": 1,
+      "easedBits": "3ff0000000000000"
     },
     {
       "easing": "ease-in",

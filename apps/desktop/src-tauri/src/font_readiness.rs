@@ -17,7 +17,6 @@
 //! text never cross this boundary; the reason is a closed enum. Everything here is safe to render,
 //! to log, and to capture in test evidence.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
@@ -118,7 +117,6 @@ impl FontReadinessRecord {
 #[derive(Debug)]
 pub(crate) struct FontReadiness {
     family: &'static str,
-    epoch: AtomicU64,
     current: Mutex<FontReadinessRecord>,
 }
 
@@ -126,7 +124,6 @@ impl FontReadiness {
     pub(crate) fn new(family: &'static str) -> Self {
         Self {
             family,
-            epoch: AtomicU64::new(0),
             current: Mutex::new(FontReadinessRecord::new(FontState::Resolving, family)),
         }
     }
@@ -144,8 +141,16 @@ impl FontReadiness {
     }
 
     fn publish(&self, mut record: FontReadinessRecord) -> FontReadinessRecord {
-        record.epoch = self.epoch.fetch_add(1, Ordering::SeqCst) + 1;
+        // Allocate the epoch while holding the same lock that installs the record. Allocating first
+        // lets two repair completions interleave as: A gets epoch 1, B gets epoch 2 and writes it,
+        // then A acquires the mutex and regresses the authoritative snapshot back to epoch 1.
+        // Retry commands are intentionally allowed to overlap, so that is a production ordering,
+        // not merely a theoretical race.
         let mut current = self.locked();
+        record.epoch = current
+            .epoch
+            .checked_add(1)
+            .expect("font-readiness epoch exhausted");
         *current = record;
         current.clone()
     }

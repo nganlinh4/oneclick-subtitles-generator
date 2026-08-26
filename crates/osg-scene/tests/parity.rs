@@ -1,11 +1,11 @@
-//! Lock the native scene math to the implementation it replaces.
+//! Lock Rust scene math to the canonical TypeScript preview math.
 //!
-//! The fixture is generated from the shipped TypeScript by
+//! The fixture is generated from the canonical TypeScript by
 //! `scripts/generate-render-parity-fixture.mjs`. The same file is asserted from the frontend suite,
 //! so the two implementations are locked to each other rather than merely to their own tests.
 //!
-//! A failure here means the renderer would change what users already see. Regenerate the fixture
-//! only when that change is intended and documented; never to make this pass.
+//! A failure here means preview and export would disagree. Regenerate the fixture only when the
+//! behaviour change is intended and documented; never merely to make this pass.
 
 use serde::Deserialize;
 
@@ -20,6 +20,7 @@ struct Golden {
     #[serde(rename = "note")]
     _note: String,
     easings: Vec<String>,
+    reviewed_interior_progress_samples: Vec<f64>,
     easing_samples: Vec<EasingSample>,
     scale_samples: Vec<ScaleSample>,
 }
@@ -61,21 +62,21 @@ fn from_bits(hex: &str) -> f64 {
 }
 
 #[test]
-fn the_easing_catalog_matches_the_shipped_catalog_exactly() {
+fn the_easing_catalog_matches_the_canonical_catalog_exactly() {
     let golden = golden();
     assert_eq!(
-        golden.schema_version, 1,
+        golden.schema_version, 2,
         "unexpected fixture schema version"
     );
     assert_eq!(
         golden.easings,
         osg_scene::SUBTITLE_ANIMATION_EASINGS,
-        "the reviewed easing catalog drifted from the shipped one"
+        "the reviewed easing catalog drifted from the canonical one"
     );
 }
 
 #[test]
-fn every_easing_sample_reproduces_the_shipped_curve_bit_for_bit() {
+fn every_easing_sample_reproduces_the_canonical_curve_bit_for_bit() {
     let golden = golden();
     assert!(
         !golden.easing_samples.is_empty(),
@@ -88,21 +89,41 @@ fn every_easing_sample_reproduces_the_shipped_curve_bit_for_bit() {
         assert_eq!(
             actual.to_bits(),
             expected.to_bits(),
-            "easing {} at progress {progress} produced {actual} but the shipped renderer produces {expected}",
+            "easing {} at progress {progress} produced {actual} but the canonical TypeScript produces {expected}",
             sample.easing,
         );
     }
 }
 
 #[test]
-fn ease_and_ease_in_out_remain_the_same_curve() {
-    // Reproduced deliberately: the shipped implementation maps both names to one quadratic. If this
-    // ever diverges it is a behaviour change for existing projects, not a bug fix.
-    for progress in [0.0, 0.25, 0.499, 0.5, 0.75, 1.0] {
-        assert_eq!(
-            osg_scene::apply_subtitle_animation_easing(progress, "ease").to_bits(),
-            osg_scene::apply_subtitle_animation_easing(progress, "ease-in-out").to_bits(),
-        );
+fn every_catalog_curve_has_a_distinct_reviewed_interior_signature() {
+    let golden = golden();
+    assert!(
+        !golden.reviewed_interior_progress_samples.is_empty(),
+        "the distinctness invariant needs reviewed interior samples"
+    );
+    assert!(
+        golden
+            .reviewed_interior_progress_samples
+            .iter()
+            .all(|progress| *progress > 0.0 && *progress < 1.0),
+        "distinctness samples must stay inside the animation interval"
+    );
+
+    let mut signatures: Vec<(&str, Vec<u64>)> = Vec::new();
+    for easing in osg_scene::SUBTITLE_ANIMATION_EASINGS {
+        let signature = golden
+            .reviewed_interior_progress_samples
+            .iter()
+            .map(|progress| osg_scene::apply_subtitle_animation_easing(*progress, easing).to_bits())
+            .collect::<Vec<_>>();
+        for (previous_easing, previous_signature) in &signatures {
+            assert_ne!(
+                &signature, previous_signature,
+                "user-visible easing {easing} aliases {previous_easing} at every reviewed interior sample"
+            );
+        }
+        signatures.push((easing, signature));
     }
 }
 

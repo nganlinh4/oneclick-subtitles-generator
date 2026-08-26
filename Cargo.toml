@@ -21,6 +21,7 @@ members = [
   "crates/osg-native-tools",
   "crates/osg-providers",
   "crates/osg-render",
+  "crates/osg-runtime-staging",
   "crates/osg-scene",
   "crates/osg-speech",
 ]
@@ -51,6 +52,7 @@ osg-media-pipeline = { path = "crates/osg-media-pipeline" }
 osg-native-tools = { path = "crates/osg-native-tools" }
 osg-providers = { path = "crates/osg-providers" }
 osg-render = { path = "crates/osg-render" }
+osg-runtime-staging = { path = "crates/osg-runtime-staging" }
 osg-scene = { path = "crates/osg-scene" }
 osg-speech = { path = "crates/osg-speech" }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -78,3 +80,22 @@ lto = "fat"
 opt-level = "z"
 panic = "abort"
 strip = "symbols"
+
+# Hidden real-binary journeys need production control flow without paying the shipping binary's
+# fat-LTO/one-codegen-unit link cost after every frontend or desktop edit. This profile is never a
+# release substitute; installer and distribution proof continue to use `profile.release` above.
+[profile.e2e]
+inherits = "release"
+codegen-units = 16
+incremental = true
+lto = false
+opt-level = 2
+
+# Full Windows PDBs made the ordinary debug lane exceed 34 GiB. Line tables retain source
+# file/line backtraces while keeping routine builds and tests bounded. A one-off full-symbol run can
+# still opt in with CARGO_PROFILE_DEV_DEBUG=2 or CARGO_PROFILE_TEST_DEBUG=2.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"

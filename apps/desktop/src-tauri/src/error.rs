@@ -257,6 +257,7 @@ impl CommandError {
         Self::fixed("updaterCancelled", "The application update was cancelled.")
     }
 
+    #[cfg(not(feature = "e2e-automation"))]
     pub(crate) fn external_link_failed() -> Self {
         Self::fixed(
             "externalLinkUnavailable",
@@ -284,7 +285,10 @@ impl From<DatabaseError> for CommandError {
             | DatabaseError::InvalidCredentialMetadata
             | DatabaseError::SettingTooLarge
             | DatabaseError::InvalidMediaLocation
-            | DatabaseError::MediaAssetMismatch(_)) => database_metadata_error(error),
+            | DatabaseError::MediaAssetMismatch(_)
+            | DatabaseError::InvalidActiveWorkspace
+            | DatabaseError::InvalidProjectAliasIndex
+            | DatabaseError::StaleActiveWorkspaceIntent) => database_metadata_error(error),
             error @ (DatabaseError::InvalidArtifactRoot
             | DatabaseError::ArtifactRootEntryLimitReached
             | DatabaseError::ArtifactPublicationCollision
@@ -375,6 +379,18 @@ fn database_metadata_error(error: &DatabaseError) -> CommandError {
         DatabaseError::SettingTooLarge => {
             CommandError::fixed("settingTooLarge", "The setting value is too large.")
         }
+        DatabaseError::InvalidActiveWorkspace => CommandError::fixed(
+            "activeWorkspaceInvalid",
+            "The active editor workspace is invalid or no longer owns its media.",
+        ),
+        DatabaseError::InvalidProjectAliasIndex => CommandError::fixed(
+            "subtitleProjectIndexInvalid",
+            "The durable subtitle project index is invalid.",
+        ),
+        DatabaseError::StaleActiveWorkspaceIntent => CommandError::fixed(
+            "activeWorkspaceSuperseded",
+            "A newer editor workspace activation superseded this request.",
+        ),
         DatabaseError::InvalidMediaLocation => CommandError::fixed(
             "invalidMediaLocation",
             "The selected media file is unavailable or changed while it was being imported.",

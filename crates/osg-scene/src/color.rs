@@ -1,13 +1,9 @@
-//! Colour resolution, and the place where the shipped renderer loses a user's background.
+//! Colour parsing and subtitle-background alpha composition.
 //!
-//! The background colour is built by appending the opacity to the colour string as two hex digits.
-//! That works for the `#rrggbb` the colour picker produces, but every validator in the chain also
-//! accepts `#rrggbbaa` — and appending to one of those yields a ten-digit colour that no renderer
-//! understands, so the background silently disappears while every other style still applies.
-//!
-//! This module reproduces the composition faithfully and reports the failure instead of hiding it,
-//! so the caller can decide. Returning a typed refusal rather than a transparent background is the
-//! one deliberate improvement: the pixels are unchanged, but the cause becomes visible.
+//! Persisted colours may carry their own alpha (`#rgba` or `#rrggbbaa`). A background also has an
+//! independent opacity control, so those two alpha values multiply. Resolving that interaction here
+//! keeps preview and export on one explicit contract instead of recreating the old renderer's string
+//! concatenation bug, which lost alpha-bearing backgrounds entirely.
 
 /// A straight 8-bit RGBA colour. The renderer works in these; strings stop at this boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,22 +31,14 @@ impl Rgba {
 /// Why a colour could not be resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorError {
-    /// The string is not a `#rgb`, `#rrggbb` or `#rrggbbaa` colour.
+    /// The string is not a `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa` colour.
     Unrecognised,
-    /// The colour already carried its own alpha, so the opacity setting cannot be applied to it.
-    ///
-    /// The shipped renderer produces a ten-digit colour here and the background vanishes with no
-    /// message. Surfacing it changes nothing on screen but makes the cause findable.
-    AlreadyHasAlpha,
 }
 
 impl core::fmt::Display for ColorError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let message = match self {
             Self::Unrecognised => "the colour is not a supported hex colour",
-            Self::AlreadyHasAlpha => {
-                "the colour already carries an alpha channel, so the opacity cannot be applied"
-            }
         };
         formatter.write_str(message)
     }
@@ -58,7 +46,7 @@ impl core::fmt::Display for ColorError {
 
 impl core::error::Error for ColorError {}
 
-/// Parse `#rgb`, `#rrggbb` or `#rrggbbaa`. Anything else is refused.
+/// Parse `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. Anything else is refused.
 ///
 /// # Errors
 /// Returns [`ColorError::Unrecognised`] for any other shape.
@@ -73,8 +61,8 @@ pub fn parse_hex_color(value: &str) -> Result<Rgba, ColorError> {
         // `#rgb` and `#rgba`. The four-digit form is accepted because every validator in the
         // persistence chain accepts it, so a hand-edited or third-party project can carry one, and
         // refusing it here would fail an entire render over a colour the schema calls valid.
-        // Nothing in the application emits it: all 139 colours across the defaults and the 30
-        // shipped presets are six digits.
+        // Defaults, presets and the native picker emit six digits, while the adjacent text control
+        // deliberately accepts this schema-supported form for exact alpha entry.
         3 | 4 => {
             let mut channels = [255_u8; 4];
             for (slot, digit) in channels.iter_mut().zip(digits.bytes()) {
@@ -134,26 +122,20 @@ pub fn opacity_to_alpha_byte(opacity: f64) -> u8 {
 /// A zero or negative opacity is transparent, matching the shipped behaviour of not emitting a
 /// background at all.
 ///
+/// A colour's own alpha and the independent opacity setting multiply. Both are quantized before the
+/// cue's animation alpha is applied, matching the native compositor and the canvas preview.
+///
 /// # Errors
-/// Returns [`ColorError::AlreadyHasAlpha`] when the colour already carries alpha — the case where
-/// the shipped renderer silently loses the background — and [`ColorError::Unrecognised`] when the
-/// colour cannot be parsed.
+/// Returns [`ColorError::Unrecognised`] when the colour cannot be parsed.
 pub fn resolve_background(color: &str, opacity: f64) -> Result<Rgba, ColorError> {
     if !opacity.is_finite() || opacity <= 0.0 {
         return Ok(Rgba::TRANSPARENT);
     }
-    let digits = color.strip_prefix('#').ok_or(ColorError::Unrecognised)?;
-    // Both alpha-carrying shapes are refused, and they fail differently in the shipped renderer.
-    // Appending two digits to `#rrggbbaa` yields a ten-digit colour nothing understands, so the
-    // background vanishes. Appending them to `#rgba` yields `#rgbaXX` — six digits, perfectly
-    // valid, and a completely different colour drawn with no hint that anything went wrong. The
-    // second is the worse of the two, which is why neither is silently accepted here.
-    if digits.len() == 8 || digits.len() == 4 {
-        return Err(ColorError::AlreadyHasAlpha);
-    }
     let parsed = parse_hex_color(color)?;
+    let opacity_alpha = opacity_to_alpha_byte(opacity);
+    let combined_alpha = (u16::from(parsed.alpha) * u16::from(opacity_alpha) + 127) / 255;
     Ok(Rgba {
-        alpha: opacity_to_alpha_byte(opacity),
+        alpha: u8::try_from(combined_alpha).unwrap_or(255),
         ..parsed
     })
 }

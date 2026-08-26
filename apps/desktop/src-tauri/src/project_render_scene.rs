@@ -115,6 +115,13 @@ impl ProjectRenderSettings {
 
 impl ProjectRenderSceneResponse {
     pub(crate) fn matches_request(&self, request: &RenderRequest) -> CommandResult<()> {
+        // Revision zero is the virtual default returned only while a project has no durable scene
+        // row. The WebView materializes it before publishing the scene as ready. Refuse any caller
+        // that bypasses that activation barrier: otherwise an untouched project's pixels could
+        // silently change when a future binary changes its built-in defaults.
+        if self.scene_revision == 0 {
+            return Err(stale_or_mismatched_scene());
+        }
         let settings = self.values.render_settings.native()?;
         let exact = request.project_id == self.project_id
             && request.scene_revision == self.scene_revision
@@ -261,9 +268,10 @@ const DEFAULT_SCENE_INPUT: &str = r##"{
     "originalAudioVolume":100,"narrationVolume":100,"trimStart":0,"trimEnd":0
   },
   "customization":{
-    "fontSize":28,"fontFamily":"'Google Sans', sans-serif","fontWeight":400,
+    "fontSize":48,"fontFamily":"'Google Sans', sans-serif","fontWeight":400,
     "textColor":"#ffffff","textAlign":"center","lineHeight":1.2,"letterSpacing":0,
     "textTransform":"none","backgroundColor":"#000000","backgroundOpacity":70,
+    "backgroundPaddingX":16,"backgroundPaddingY":8,
     "borderRadius":4,"borderWidth":0,"borderColor":"#ffffff","borderStyle":"none",
     "textShadowEnabled":true,"textShadowColor":"#000000","textShadowBlur":4,
     "textShadowOffsetX":0,"textShadowOffsetY":2,"glowEnabled":false,
@@ -336,6 +344,8 @@ mod tests {
             ("renderSettings", "trimStart", json!(-1)),
             ("renderSettings", "trimEnd", json!(90_000)),
             ("customization", "fontSize", json!(0)),
+            ("customization", "backgroundPaddingX", json!(-1)),
+            ("customization", "backgroundPaddingY", json!(1_001)),
             ("crop", "width", json!(0)),
         ] {
             let mut value: Value = serde_json::from_str(DEFAULT_SCENE_INPUT).expect("scene JSON");
@@ -347,8 +357,50 @@ mod tests {
     }
 
     #[test]
+    fn a_scene_saved_before_padding_was_persisted_loads_with_reviewed_defaults() {
+        let mut value: Value = serde_json::from_str(DEFAULT_SCENE_INPUT).expect("scene JSON");
+        value["customization"]
+            .as_object_mut()
+            .expect("customization object")
+            .remove("backgroundPaddingX");
+        value["customization"]
+            .as_object_mut()
+            .expect("customization object")
+            .remove("backgroundPaddingY");
+
+        let legacy: ProjectRenderSceneInput = serde_json::from_value(value).expect("legacy scene");
+        legacy.validate().expect("migrated scene");
+        assert_eq!(
+            legacy.values.customization.background_padding_x.to_bits(),
+            16.0_f64.to_bits()
+        );
+        assert_eq!(
+            legacy.values.customization.background_padding_y.to_bits(),
+            8.0_f64.to_bits()
+        );
+    }
+
+    #[test]
     fn request_must_match_revision_selection_and_every_visual_value() {
         let (_directory, database, project_id) = database();
+        let virtual_scene = get_for_database(&database, project_id).expect("virtual scene");
+        let virtual_request: RenderRequest = serde_json::from_value(json!({
+            "sourceAssetId":AssetId::new(),"projectId":project_id,"sceneRevision":0,
+            "selectedSubtitles":"original","selectedNarration":"none",
+            "narrationArtifactId":null,
+            "lyrics":[{"id":"1","startUs":0,"endUs":1_000_000,"text":"A"}],
+            "settings":virtual_scene.values.render_settings.native().expect("settings"),
+            "customization":virtual_scene.values.customization,"crop":virtual_scene.values.crop
+        }))
+        .expect("virtual request");
+        assert_eq!(
+            virtual_scene
+                .matches_request(&virtual_request)
+                .expect_err("an undurable virtual scene must never admit a render")
+                .code(),
+            "staleProjectRenderScene"
+        );
+
         let scene = put_for_database(&database, project_id, 0, &input()).expect("scene");
         let mut request: RenderRequest = serde_json::from_value(json!({
             "sourceAssetId":AssetId::new(),"projectId":project_id,"sceneRevision":1,

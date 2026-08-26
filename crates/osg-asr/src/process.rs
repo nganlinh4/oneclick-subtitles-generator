@@ -1,8 +1,10 @@
 use crate::protocol::{ReaderMessage, WireRequest, read_event, write_request};
 use crate::{AsrError, Result, WorkerProgram};
 use command_group::{CommandGroup, GroupChild};
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
@@ -15,11 +17,45 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) struct WorkerSession {
     child: GroupChild,
-    _cache_directory: tempfile::TempDir,
+    _cache_directory: WorkerCacheDirectory,
     stdin: ChildStdin,
     receiver: Receiver<ReaderMessage>,
     _stderr_tail: Arc<Mutex<VecDeque<u8>>>,
     reaped: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct WorkerCacheStaging {
+    authority: RuntimeStagingAuthority,
+    root: PathBuf,
+}
+
+impl WorkerCacheStaging {
+    pub(crate) fn new(authority: RuntimeStagingAuthority, root: impl AsRef<Path>) -> Self {
+        Self {
+            authority,
+            root: root.as_ref().to_owned(),
+        }
+    }
+
+    fn begin(&self) -> std::io::Result<WorkerCacheDirectory> {
+        OwnedStagingDirectory::begin(&self.authority, &self.root, StagingKind::AsrWorkerCache)
+            .map(WorkerCacheDirectory::Owned)
+    }
+}
+
+enum WorkerCacheDirectory {
+    Temporary(tempfile::TempDir),
+    Owned(OwnedStagingDirectory),
+}
+
+impl WorkerCacheDirectory {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Temporary(directory) => directory.path(),
+            Self::Owned(directory) => directory.path(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -30,11 +66,18 @@ pub(crate) enum SessionPoll {
 }
 
 impl WorkerSession {
-    pub(crate) fn spawn(program: &WorkerProgram) -> Result<Self> {
-        let cache_directory = tempfile::Builder::new()
-            .prefix("osg-asr-worker-")
-            .tempdir()
-            .map_err(AsrError::Spawn)?;
+    pub(crate) fn spawn(
+        program: &WorkerProgram,
+        staging: Option<&WorkerCacheStaging>,
+    ) -> Result<Self> {
+        let cache_directory = match staging {
+            Some(staging) => staging.begin().map_err(AsrError::Spawn)?,
+            None => tempfile::Builder::new()
+                .prefix("osg-asr-worker-")
+                .tempdir()
+                .map(WorkerCacheDirectory::Temporary)
+                .map_err(AsrError::Spawn)?,
+        };
         let mut command = program.command();
         command.envs([
             (

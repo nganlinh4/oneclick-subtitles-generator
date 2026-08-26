@@ -18,6 +18,19 @@ description = "Allows the main window to read application health and the current
 commands.allow = ["app_health", "get_session_snapshot"]
 
 [[permission]]
+identifier = "manage-active-workspace"
+description = "Allows the main editor to restore and conditionally replace exact native project, media, track, and subtitle-alias ownership."
+commands.allow = [
+  "active_workspace_get",
+  "active_workspace_begin",
+  "active_workspace_set",
+  "active_workspace_clear",
+  "subtitle_project_index_get",
+  "subtitle_project_alias_activate",
+  "subtitle_project_alias_remove",
+]
+
+[[permission]]
 identifier = "select-local-files"
 description = "Allows the native media picker to import, release, and reopen authorized media without exposing paths."
 commands.allow = ["select_media", "clear_media", "open_media_asset"]

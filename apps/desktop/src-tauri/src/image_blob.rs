@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 use osg_domain::{AssetId, ProjectId};
 use osg_gemini::{MAX_REFERENCE_IMAGE_BYTES, ReferenceImage};
 use osg_media_server::{MediaServer, RegisteredImageCopy};
+use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use uuid::Uuid;
 
 use crate::dialog_paths;
@@ -379,8 +380,9 @@ pub(crate) async fn image_reference_export(
             "The album-art export file type is invalid.",
         ));
     }
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        write_reference_image_export(plan.image.bytes(), &destination)?;
+        write_reference_image_export(&staging_authority, plan.image.bytes(), &destination)?;
         plan.image.commit().map_err(CommandError::from)
     })
     .await
@@ -481,7 +483,11 @@ fn canonical_export_name(value: &str, format: ReferenceImageFormat) -> Option<St
     Some(format!("{stem}.{}", format.extension()))
 }
 
-fn write_reference_image_export(bytes: &[u8], destination: &Path) -> CommandResult<()> {
+fn write_reference_image_export(
+    staging_authority: &RuntimeStagingAuthority,
+    bytes: &[u8],
+    destination: &Path,
+) -> CommandResult<()> {
     let mut staged = tempfile::Builder::new()
         .prefix(".osg-album-art-export-")
         .suffix(".part")
@@ -496,6 +502,7 @@ fn write_reference_image_export(bytes: &[u8], destination: &Path) -> CommandResu
         .sync_all()
         .map_err(|_| CommandError::media_export_failed())?;
     copy_export(
+        staging_authority,
         staged.path(),
         destination,
         u64::try_from(bytes.len()).map_err(|_| CommandError::media_export_failed())?,
@@ -721,6 +728,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the test exercises cancellation and preparation rollback as one ownership lifecycle"
+    )]
     fn export_cancel_and_preparation_failure_rollback_pending_provider_ownership() {
         let server = media_server();
         let project_a = ProjectId::new();
@@ -750,8 +761,13 @@ mod tests {
         )
         .expect("cancel rolled binding back");
         let directory = tempdir().expect("tempdir");
+        let authority_directory = tempdir().expect("authority tempdir");
+        let authority =
+            osg_runtime_staging::RuntimeStagingAuthority::prepare(authority_directory.path())
+                .unwrap();
         let destination = directory.path().join("album-art.png");
-        write_reference_image_export(committed.image.bytes(), &destination).expect("write export");
+        write_reference_image_export(&authority, committed.image.bytes(), &destination)
+            .expect("write export");
         committed.image.commit().expect("commit owner");
         assert_eq!(fs::read(destination).expect("export bytes"), png());
         let repeated = prepare_reference_image_export(
@@ -809,8 +825,12 @@ mod tests {
         )
         .expect("write-failure plan");
         assert!(
-            write_reference_image_export(failed_plan.image.bytes(), Path::new("relative.png"))
-                .is_err()
+            write_reference_image_export(
+                &authority,
+                failed_plan.image.bytes(),
+                Path::new("relative.png")
+            )
+            .is_err()
         );
         drop(failed_plan);
         let recovered = server

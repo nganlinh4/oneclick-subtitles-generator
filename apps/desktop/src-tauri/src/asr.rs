@@ -22,6 +22,7 @@ use osg_media::{
     MediaOperation, MediaOutput, MediaTimeRange, ProgressSink as MediaProgressSink,
     RunControl as MediaRunControl,
 };
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{State, ipc::Channel};
@@ -46,6 +47,7 @@ pub(crate) struct AsrPackageCoordinator(Weak<RuntimeManagerInner>);
 
 struct RuntimeManagerInner {
     work_root: PathBuf,
+    staging_authority: RuntimeStagingAuthority,
     resource_root: Option<PathBuf>,
     package_manager: RwLock<Option<EnginePackageManager>>,
     runtime: Mutex<RuntimeState>,
@@ -89,15 +91,30 @@ struct RuntimeResolution {
 }
 
 impl AsrRuntimeManager {
+    #[cfg(test)]
     pub(crate) fn new(
         work_root: impl AsRef<Path>,
         resource_root: Option<PathBuf>,
     ) -> std::io::Result<Self> {
         std::fs::create_dir_all(work_root.as_ref())?;
         let work_root = std::fs::canonicalize(work_root)?;
+        let staging_authority =
+            RuntimeStagingAuthority::prepare(&work_root.join(".runtime-staging-authority"))?;
+        Self::new_with_staging_authority(work_root, resource_root, staging_authority)
+    }
+
+    pub(crate) fn new_with_staging_authority(
+        work_root: impl AsRef<Path>,
+        resource_root: Option<PathBuf>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> std::io::Result<Self> {
+        std::fs::create_dir_all(work_root.as_ref())?;
+        let work_root = std::fs::canonicalize(work_root)?;
+        staging_authority.reconcile_all()?;
         let resource_root = canonical_directory(resource_root);
         Ok(Self(Arc::new(RuntimeManagerInner {
             work_root,
+            staging_authority,
             resource_root,
             package_manager: RwLock::new(None),
             runtime: Mutex::new(RuntimeState::default()),
@@ -156,6 +173,7 @@ impl AsrRuntimeManager {
     }
 
     fn create_service(
+        &self,
         engine: AsrEngineId,
         resolution: RuntimeResolution,
     ) -> Result<CachedService, AsrError> {
@@ -164,7 +182,12 @@ impl AsrRuntimeManager {
         let assets = ModelAssets::new(engine, &paths.model, paths.aligner.as_deref())?;
         Ok(CachedService {
             paths,
-            service: AsrService::new(program, assets),
+            service: AsrService::new_with_staging_authority(
+                program,
+                assets,
+                self.0.staging_authority.clone(),
+                &self.0.work_root,
+            ),
             managed_runtime: resolution.managed_runtime,
         })
     }
@@ -172,7 +195,7 @@ impl AsrRuntimeManager {
     pub(crate) fn start(&self, engine: AsrEngineId) -> Result<(), AsrError> {
         let resolution = self.resolve_runtime(engine)?;
         let resolved_paths = resolution.paths.clone();
-        let candidate = Self::create_service(engine, resolution)?;
+        let candidate = self.create_service(engine, resolution)?;
         let (generation, previous, superseded_start) =
             {
                 let mut runtime = self
@@ -324,10 +347,12 @@ impl AsrRuntimeManager {
         }
     }
 
-    fn work_directory(&self) -> std::io::Result<tempfile::TempDir> {
-        tempfile::Builder::new()
-            .prefix(".osg-asr-job-")
-            .tempdir_in(&self.0.work_root)
+    fn work_directory(&self) -> std::io::Result<OwnedStagingDirectory> {
+        OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &self.0.work_root,
+            StagingKind::AsrJob,
+        )
     }
 
     fn resolve_runtime(&self, engine: AsrEngineId) -> Result<RuntimeResolution, AsrError> {

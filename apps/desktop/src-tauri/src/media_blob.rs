@@ -7,10 +7,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use osg_domain::{AssetId, MediaAsset, MediaKind};
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::{InvokeBody, Request};
-use tempfile::{Builder, NamedTempFile, TempDir};
+use tempfile::{Builder, NamedTempFile};
 
 use crate::error::{CommandError, CommandResult};
 use crate::state::LocalMedia;
@@ -143,9 +144,10 @@ struct BlobRegistry {
 }
 
 struct MediaBlobStoreInner {
-    // Drop the open files before asking TempDir to remove its directory on Windows.
+    // Drop the open files before asking the authenticated directory owner to remove its session on
+    // Windows. A hard-killed process leaves the locked central journal for the next startup.
     registry: Mutex<BlobRegistry>,
-    directory: TempDir,
+    directory: OwnedStagingDirectory,
 }
 
 impl fmt::Debug for MediaBlobStoreInner {
@@ -171,13 +173,28 @@ impl fmt::Debug for MediaBlobStore {
 }
 
 impl MediaBlobStore {
+    #[cfg(test)]
     pub(crate) fn new(cache_root: &Path) -> io::Result<Self> {
+        let authority =
+            RuntimeStagingAuthority::prepare(&cache_root.join(".runtime-staging-authority"))?;
+        Self::new_with_staging_authority(cache_root, &authority)
+    }
+
+    pub(crate) fn new_with_staging_authority(
+        cache_root: &Path,
+        staging_authority: &RuntimeStagingAuthority,
+    ) -> io::Result<Self> {
         fs::create_dir_all(cache_root)?;
         let metadata = fs::symlink_metadata(cache_root)?;
         if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
             return Err(io::Error::other("invalid ephemeral media cache root"));
         }
-        let directory = Builder::new().prefix("session-").tempdir_in(cache_root)?;
+        staging_authority.reconcile_all()?;
+        let directory = OwnedStagingDirectory::begin(
+            staging_authority,
+            cache_root,
+            StagingKind::MediaBlobSession,
+        )?;
         Ok(Self(Arc::new(MediaBlobStoreInner {
             registry: Mutex::new(BlobRegistry::default()),
             directory,
@@ -470,5 +487,28 @@ mod tests {
         let metadata = fs::symlink_metadata(lease.path()).expect("metadata");
         assert!(metadata.file_type().is_file());
         assert!(!metadata.file_type().is_symlink());
+    }
+
+    #[test]
+    fn exact_shaped_unjournaled_session_is_never_adopted_or_deleted() {
+        let parent = tempfile::tempdir().expect("test parent");
+        let cache_root = parent.path().join("ephemeral");
+        fs::create_dir(&cache_root).unwrap();
+        let foreign = cache_root.join("session-0123456789abcdef0123456789abcdef");
+        fs::create_dir(&foreign).unwrap();
+        fs::write(foreign.join("recording.wav"), b"customer").unwrap();
+
+        let store = MediaBlobStore::new(&cache_root).expect("blob store");
+
+        assert_ne!(store.0.directory.path(), foreign);
+        assert_eq!(
+            fs::read(foreign.join("recording.wav")).unwrap(),
+            b"customer"
+        );
+        drop(store);
+        assert_eq!(
+            fs::read(foreign.join("recording.wav")).unwrap(),
+            b"customer"
+        );
     }
 }

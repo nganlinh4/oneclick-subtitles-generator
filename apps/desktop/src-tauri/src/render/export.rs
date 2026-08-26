@@ -6,11 +6,11 @@
 //! Three properties are structural rather than incidental, and each one is why the corresponding
 //! step is written the way it is:
 //!
-//! * **Nothing half-written survives.** The output is written inside a [`TempDir`] this function
-//!   owns, and the encoder refuses to open over an existing file and removes its own partial
-//!   container. A cancelled, failed or timed-out export therefore leaves nothing anywhere that
-//!   could be mistaken for a finished render, and the successful one is copied into the artifact
-//!   store before the directory is dropped.
+//! * **Nothing half-written survives.** The output is written inside a journaled staging directory
+//!   this function owns, and the encoder refuses to open over an existing file and removes its own
+//!   partial container. A cancelled, failed or timed-out export therefore leaves nothing anywhere
+//!   that could be mistaken for a finished render, and a hard-crash residue is reclaimed at the
+//!   next startup before the successful one is copied into the artifact store.
 //! * **The length is the timeline's.** [`osg_export`] takes the frame count from the plan rather
 //!   than from however many frames a decode produced, and the summary is checked against the same
 //!   number the progress stream already told the `WebView`. A file of another length is refused, not
@@ -26,12 +26,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crate::error::{CommandError, CommandResult};
 use osg_export::{ExportCancel, ExportJob, ProgressSink, StagedText, run_export};
 use osg_infrastructure::storage::ContentHash;
 use osg_render::RenderRequest;
-use tempfile::TempDir;
-
-use crate::error::{CommandError, CommandResult};
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 
 use super::refusal;
 
@@ -101,6 +100,8 @@ pub(crate) struct NativeExportInputs {
     pub(crate) narration: Option<PathBuf>,
     /// Where this export may create its own staging directory.
     pub(crate) staging_root: PathBuf,
+    /// Private authority that owns the staging directory across process death.
+    pub(crate) staging_authority: RuntimeStagingAuthority,
     /// The output frame rate the validated plan resolved.
     pub(crate) fps: u16,
     /// The frame count the validated plan resolved, which is the length the file must have.
@@ -126,7 +127,7 @@ impl fmt::Debug for NativeExportInputs {
 /// is removed when this value is dropped, so the only way it outlives the job is to be copied into
 /// the artifact store first.
 pub(crate) struct NativeExport {
-    staging: TempDir,
+    staging: OwnedStagingDirectory,
     output: PathBuf,
     size_bytes: u64,
     content_hash: [u8; 32],
@@ -211,10 +212,13 @@ pub(crate) fn run(
         source,
         narration,
         staging_root,
+        staging_authority,
         fps,
         duration_in_frames,
     } = inputs;
-    let staging = TempDir::new_in(&staging_root).map_err(|_| refusal::staging_unavailable())?;
+    let staging =
+        OwnedStagingDirectory::begin(&staging_authority, &staging_root, StagingKind::Render)
+            .map_err(|_| refusal::staging_unavailable())?;
     let output = staging.path().join(OUTPUT_FILE_NAME);
 
     let summary = run_export(

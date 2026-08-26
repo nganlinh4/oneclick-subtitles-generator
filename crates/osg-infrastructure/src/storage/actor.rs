@@ -26,13 +26,14 @@ use super::error::DatabaseError;
 use super::media::{MediaResolutionPlan, ResolvedMedia};
 use super::migrations::migrations;
 use super::{
-    ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord,
-    ArtifactRegistration, CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey,
-    CacheLeaseId, CacheWrite, ContentHash, JobResultDelivery, JobResultDeliveryDraft,
-    JobResultDeliveryHeader, LeasedArtifact, LegacyImportCandidate, LegacyImportId,
-    LegacyImportItemOutcome, LegacyImportItemState, LegacyImportSourceKind, LegacyImportSummary,
-    ProjectRenderSceneRecord, ProjectRenderSceneWrite, ProjectSpeechReference,
-    ProjectSpeechReferenceWrite, ReconciliationReport, ResolvedArtifact,
+    ActiveWorkspace, ActiveWorkspacePointer, ActiveWorkspaceState, ArtifactDraft,
+    ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord, ArtifactRegistration,
+    CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey, CacheLeaseId,
+    CacheWrite, ContentHash, JobResultDelivery, JobResultDeliveryDraft, JobResultDeliveryHeader,
+    LeasedArtifact, LegacyImportCandidate, LegacyImportId, LegacyImportItemOutcome,
+    LegacyImportItemState, LegacyImportSourceKind, LegacyImportSummary, ProjectAliasEntry,
+    ProjectAliasIndex, ProjectAliasMutation, ProjectRenderSceneRecord, ProjectRenderSceneWrite,
+    ProjectSpeechReference, ProjectSpeechReferenceWrite, ReconciliationReport, ResolvedArtifact,
 };
 use crate::secrets::{CredentialId, CredentialPurpose, CredentialState, CredentialStatus};
 
@@ -141,6 +142,39 @@ enum Request {
         scope: String,
         reply: SyncSender<Result<u64, DatabaseError>>,
     },
+    GetActiveWorkspace {
+        reply: SyncSender<Result<ActiveWorkspaceState, DatabaseError>>,
+    },
+    BeginActiveWorkspaceIntent {
+        intent_id: Uuid,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    SetActiveWorkspace {
+        pointer: ActiveWorkspacePointer,
+        intent_id: Uuid,
+        reply: SyncSender<Result<ActiveWorkspace, DatabaseError>>,
+    },
+    ClearActiveWorkspace {
+        expected: Option<ActiveWorkspacePointer>,
+        intent_id: Uuid,
+        reply: SyncSender<Result<bool, DatabaseError>>,
+    },
+    GetProjectAliasIndex {
+        reply: SyncSender<Result<Option<ProjectAliasIndex>, DatabaseError>>,
+    },
+    SetProjectAliasIndex {
+        index: ProjectAliasIndex,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    ActivateProjectAlias {
+        entry: ProjectAliasEntry,
+        reply: SyncSender<Result<ProjectAliasIndex, DatabaseError>>,
+    },
+    RemoveProjectAlias {
+        cache_id: String,
+        expected_project_id: ProjectId,
+        reply: SyncSender<Result<ProjectAliasMutation, DatabaseError>>,
+    },
     CredentialInsertPending {
         id: CredentialId,
         purpose: CredentialPurpose,
@@ -241,9 +275,17 @@ enum Request {
         write: CacheWrite,
         reply: SyncSender<Result<(), DatabaseError>>,
     },
+    CommitCacheArtifact {
+        write: CacheWrite,
+        reply: SyncSender<Result<ResolvedArtifact, DatabaseError>>,
+    },
     LookupCache {
         key: CacheKey,
         reply: SyncSender<Result<Option<ResolvedArtifact>, DatabaseError>>,
+    },
+    InvalidateCache {
+        key: CacheKey,
+        reply: SyncSender<Result<bool, DatabaseError>>,
     },
     LeaseCache {
         key: CacheKey,
@@ -441,6 +483,14 @@ impl std::fmt::Debug for Request {
             Self::DeleteSetting { .. } => "DeleteSetting",
             Self::DeleteSettings { .. } => "DeleteSettings",
             Self::ClearSettings { .. } => "ClearSettings",
+            Self::GetActiveWorkspace { .. } => "GetActiveWorkspace",
+            Self::BeginActiveWorkspaceIntent { .. } => "BeginActiveWorkspaceIntent",
+            Self::SetActiveWorkspace { .. } => "SetActiveWorkspace",
+            Self::ClearActiveWorkspace { .. } => "ClearActiveWorkspace",
+            Self::GetProjectAliasIndex { .. } => "GetProjectAliasIndex",
+            Self::SetProjectAliasIndex { .. } => "SetProjectAliasIndex",
+            Self::ActivateProjectAlias { .. } => "ActivateProjectAlias",
+            Self::RemoveProjectAlias { .. } => "RemoveProjectAlias",
             Self::CredentialInsertPending { .. } => "CredentialInsertPending",
             Self::CredentialMarkReady { .. } => "CredentialMarkReady",
             Self::CredentialMarkUnavailable { .. } => "CredentialMarkUnavailable",
@@ -462,7 +512,9 @@ impl std::fmt::Debug for Request {
             Self::ResolveArtifact { .. } => "ResolveArtifact",
             Self::RemoveArtifact { .. } => "RemoveArtifact",
             Self::PutCache { .. } => "PutCache",
+            Self::CommitCacheArtifact { .. } => "CommitCacheArtifact",
             Self::LookupCache { .. } => "LookupCache",
+            Self::InvalidateCache { .. } => "InvalidateCache",
             Self::LeaseCache { .. } => "LeaseCache",
             Self::ReleaseCacheLease { .. } => "ReleaseCacheLease",
             Self::CacheInfo { .. } => "CacheInfo",
@@ -670,6 +722,71 @@ impl Database {
         validate_setting_part(scope)?;
         self.request(|reply| Request::ClearSettings {
             scope: scope.to_owned(),
+            reply,
+        })
+    }
+
+    pub fn get_active_workspace(&self) -> Result<ActiveWorkspaceState, DatabaseError> {
+        self.request(|reply| Request::GetActiveWorkspace { reply })
+    }
+
+    pub fn set_active_workspace(
+        &self,
+        pointer: &ActiveWorkspacePointer,
+        intent_id: Uuid,
+    ) -> Result<ActiveWorkspace, DatabaseError> {
+        self.request(|reply| Request::SetActiveWorkspace {
+            pointer: pointer.clone(),
+            intent_id,
+            reply,
+        })
+    }
+
+    pub fn begin_active_workspace_intent(&self, intent_id: Uuid) -> Result<(), DatabaseError> {
+        self.request(|reply| Request::BeginActiveWorkspaceIntent { intent_id, reply })
+    }
+
+    pub fn clear_active_workspace(
+        &self,
+        expected: Option<&ActiveWorkspacePointer>,
+        intent_id: Uuid,
+    ) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::ClearActiveWorkspace {
+            expected: expected.cloned(),
+            intent_id,
+            reply,
+        })
+    }
+
+    pub fn get_project_alias_index(&self) -> Result<Option<ProjectAliasIndex>, DatabaseError> {
+        self.request(|reply| Request::GetProjectAliasIndex { reply })
+    }
+
+    pub fn set_project_alias_index(&self, index: &ProjectAliasIndex) -> Result<(), DatabaseError> {
+        self.request(|reply| Request::SetProjectAliasIndex {
+            index: index.clone(),
+            reply,
+        })
+    }
+
+    pub fn activate_project_alias(
+        &self,
+        entry: &ProjectAliasEntry,
+    ) -> Result<ProjectAliasIndex, DatabaseError> {
+        self.request(|reply| Request::ActivateProjectAlias {
+            entry: entry.clone(),
+            reply,
+        })
+    }
+
+    pub fn remove_project_alias(
+        &self,
+        cache_id: &str,
+        expected_project_id: ProjectId,
+    ) -> Result<ProjectAliasMutation, DatabaseError> {
+        self.request(|reply| Request::RemoveProjectAlias {
+            cache_id: cache_id.to_owned(),
+            expected_project_id,
             reply,
         })
     }
@@ -975,8 +1092,28 @@ impl Database {
         })
     }
 
+    /// Publishes a staged cache artifact and its lookup row as one database transaction.
+    ///
+    /// The content-addressed file is validated and sealed before the transaction. If the process
+    /// stops between those steps, startup reconciliation sees a pending, unreferenced cache
+    /// artifact and removes it; callers never observe a ready artifact without its cache key.
+    pub fn commit_cache_artifact(
+        &self,
+        write: &CacheWrite,
+    ) -> Result<ResolvedArtifact, DatabaseError> {
+        self.request(|reply| Request::CommitCacheArtifact {
+            write: write.clone(),
+            reply,
+        })
+    }
+
     pub fn lookup_cache(&self, key: CacheKey) -> Result<Option<ResolvedArtifact>, DatabaseError> {
         self.request(|reply| Request::LookupCache { key, reply })
+    }
+
+    /// Removes one semantically invalid cache mapping and its now-unreferenced cache bytes.
+    pub fn invalidate_cache(&self, key: CacheKey) -> Result<bool, DatabaseError> {
+        self.request(|reply| Request::InvalidateCache { key, reply })
     }
 
     pub fn lease_cache(
@@ -1533,6 +1670,65 @@ fn run_actor(
             Request::ClearSettings { scope, reply } => {
                 let _ = reply.send(clear_settings(&connection, &scope));
             }
+            Request::GetActiveWorkspace { reply } => {
+                let _ = reply.send(super::active_workspace::get_active_workspace(&connection));
+            }
+            Request::BeginActiveWorkspaceIntent { intent_id, reply } => {
+                let _ = reply.send(super::active_workspace::begin_active_workspace_intent(
+                    &mut connection,
+                    intent_id,
+                ));
+            }
+            Request::SetActiveWorkspace {
+                pointer,
+                intent_id,
+                reply,
+            } => {
+                let _ = reply.send(super::active_workspace::set_active_workspace(
+                    &mut connection,
+                    &pointer,
+                    intent_id,
+                ));
+            }
+            Request::ClearActiveWorkspace {
+                expected,
+                intent_id,
+                reply,
+            } => {
+                let _ = reply.send(super::active_workspace::clear_active_workspace(
+                    &mut connection,
+                    expected.as_ref(),
+                    intent_id,
+                ));
+            }
+            Request::GetProjectAliasIndex { reply } => {
+                let _ = reply.send(super::active_workspace::get_project_alias_index(
+                    &mut connection,
+                ));
+            }
+            Request::SetProjectAliasIndex { index, reply } => {
+                let _ = reply.send(super::active_workspace::set_project_alias_index(
+                    &mut connection,
+                    &index,
+                ));
+            }
+            Request::ActivateProjectAlias { entry, reply } => {
+                let _ = reply.send(super::active_workspace::activate_project_alias(
+                    &mut connection,
+                    &entry,
+                ));
+            }
+            Request::RemoveProjectAlias {
+                cache_id,
+                expected_project_id,
+                reply,
+            } => {
+                let _ = reply.send(super::active_workspace::remove_project_alias(
+                    &mut connection,
+                    &cache_id,
+                    expected_project_id,
+                ));
+            }
             Request::CredentialInsertPending { id, purpose, reply } => {
                 let _ = reply.send(credential_insert_pending(&connection, id, purpose));
             }
@@ -1674,8 +1870,22 @@ fn run_actor(
             Request::PutCache { write, reply } => {
                 let _ = reply.send(super::artifacts::put_cache(&connection, &write));
             }
+            Request::CommitCacheArtifact { write, reply } => {
+                let _ = reply.send(super::artifacts::commit_cache_artifact(
+                    &mut connection,
+                    &artifact_root,
+                    &write,
+                ));
+            }
             Request::LookupCache { key, reply } => {
                 let _ = reply.send(super::artifacts::lookup_cache(
+                    &connection,
+                    &artifact_root,
+                    key,
+                ));
+            }
+            Request::InvalidateCache { key, reply } => {
+                let _ = reply.send(super::artifacts::invalidate_cache(
                     &connection,
                     &artifact_root,
                     key,
@@ -2068,6 +2278,7 @@ fn open_connection(
     connection.pragma_update(None, "journal_size_limit", 64 * 1024 * 1024_i64)?;
     migrations().to_latest(&mut connection)?;
     super::projects::reconcile_revision_retention(&mut connection)?;
+    super::active_workspace::migrate_legacy_project_alias_index(&mut connection)?;
     connection.pragma_update(None, "application_id", APPLICATION_ID)?;
     initialize_runtime_state(&mut connection)?;
     super::legacy::interrupt_running(&connection)?;

@@ -6,6 +6,7 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
@@ -23,9 +24,9 @@ use crate::download::{
     ArchiveFetcher, BundledArchiveFetcher, HttpArchiveFetcher, obtain, obtain_asset,
 };
 use crate::path_security::{
-    acquire_store_lock, cleanup_known_tree, collect_regular_files, ensure_direct_child,
-    initialize_store, is_link_or_reparse, require_directory, require_regular_file, require_store,
-    resolve_owned, scrub_generated_python_cache,
+    acquire_store_lock, cleanup_known_tree, ensure_direct_child, initialize_store,
+    is_link_or_reparse, require_directory, require_regular_file, require_store, resolve_owned,
+    scrub_generated_python_cache,
 };
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
@@ -110,6 +111,7 @@ struct ManagedPackageManager<K: 'static>(Arc<ManagerInner<K>>);
 struct ManagerInner<K: 'static> {
     root: PathBuf,
     _store_lock: fs::File,
+    staging_authority: RuntimeStagingAuthority,
     catalog: &'static PackageCatalog<K>,
     fetcher: Arc<dyn ArchiveFetcher>,
     quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
@@ -120,6 +122,11 @@ struct PreparedDelivery {
     effective: PackageDelivery,
     manifest: delivery_manifest::ValidatedManifest,
     manifest_download: crate::download::DownloadedArchive,
+}
+
+struct QuarantinedPackage {
+    owner: OwnedStagingDirectory,
+    previous: PathBuf,
 }
 
 #[derive(Clone, Copy)]
@@ -304,6 +311,21 @@ impl EnginePackageManager {
         )?))
     }
 
+    pub fn new_with_staging_authority(
+        root: impl AsRef<Path>,
+        coordinator: Arc<dyn RuntimeCoordinator>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        let catalog = DeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |engine| coordinator.quiesce(engine));
+        Ok(Self(ManagedPackageManager::new_with_staging_authority(
+            root.as_ref(),
+            catalog,
+            quiesce,
+            staging_authority,
+        )?))
+    }
+
     #[must_use]
     pub fn statuses(&self) -> Vec<EnginePackageStatus> {
         catalog().iter().map(|info| self.status(info.id)).collect()
@@ -365,6 +387,21 @@ impl SpeechPackageManager {
         )?))
     }
 
+    pub fn new_with_staging_authority(
+        root: impl AsRef<Path>,
+        coordinator: Arc<dyn SpeechRuntimeCoordinator>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        let catalog = SpeechDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |backend| coordinator.quiesce(backend));
+        Ok(Self(ManagedPackageManager::new_with_staging_authority(
+            root.as_ref(),
+            catalog,
+            quiesce,
+            staging_authority,
+        )?))
+    }
+
     #[must_use]
     pub fn statuses(&self) -> Vec<SpeechPackageStatus> {
         speech_catalog()
@@ -419,6 +456,21 @@ impl AssetPackageManager {
         )?))
     }
 
+    pub fn new_with_staging_authority(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        let catalog = AssetDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |_| quiesce());
+        Ok(Self(ManagedPackageManager::new_with_staging_authority(
+            root.as_ref(),
+            catalog,
+            quiesce,
+            staging_authority,
+        )?))
+    }
+
     #[must_use]
     pub fn status(&self) -> AssetPackageStatus {
         self.0.status(AssetPackageId::GeminiVoiceSamples)
@@ -456,6 +508,14 @@ impl UiFontPackageManager {
         Self::with_bundled_sources(root, quiesce, None)
     }
 
+    pub fn new_with_staging_authority(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        Self::with_bundled_sources_and_staging_authority(root, quiesce, None, staging_authority)
+    }
+
     /// As `new`, but installing from font bytes shipped with the application when they are present.
     ///
     /// This is what makes the default subtitle font work on a clean offline install: the same
@@ -474,6 +534,25 @@ impl UiFontPackageManager {
             quiesce,
             bundle,
         )?))
+    }
+
+    pub fn with_bundled_sources_and_staging_authority(
+        root: impl AsRef<Path>,
+        quiesce: Arc<dyn Fn() -> Result<()> + Send + Sync>,
+        bundle: Option<PathBuf>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        let catalog = UiFontDeliveryCatalog::builtin()?;
+        let quiesce = Arc::new(move |_| quiesce());
+        Ok(Self(
+            ManagedPackageManager::with_bundled_sources_and_staging_authority(
+                root.as_ref(),
+                catalog,
+                quiesce,
+                bundle,
+                staging_authority,
+            )?,
+        ))
     }
 
     #[must_use]
@@ -517,6 +596,21 @@ where
         Self::with_bundled_sources(root, catalog, quiesce, None)
     }
 
+    fn new_with_staging_authority(
+        root: &Path,
+        catalog: &'static PackageCatalog<K>,
+        quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        Self::with_bundled_sources_and_optional_staging_authority(
+            root,
+            catalog,
+            quiesce,
+            None,
+            Some(staging_authority),
+        )
+    }
+
     /// As `new`, but preferring digest-matching bytes shipped in `bundle` over the network.
     ///
     /// Only the UI font uses this today, because it is the only package whose absence breaks a
@@ -528,8 +622,46 @@ where
         quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
         bundle: Option<PathBuf>,
     ) -> Result<Self> {
+        Self::with_bundled_sources_and_optional_staging_authority(
+            root, catalog, quiesce, bundle, None,
+        )
+    }
+
+    fn with_bundled_sources_and_staging_authority(
+        root: &Path,
+        catalog: &'static PackageCatalog<K>,
+        quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
+        bundle: Option<PathBuf>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        Self::with_bundled_sources_and_optional_staging_authority(
+            root,
+            catalog,
+            quiesce,
+            bundle,
+            Some(staging_authority),
+        )
+    }
+
+    fn with_bundled_sources_and_optional_staging_authority(
+        root: &Path,
+        catalog: &'static PackageCatalog<K>,
+        quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
+        bundle: Option<PathBuf>,
+        staging_authority: Option<RuntimeStagingAuthority>,
+    ) -> Result<Self> {
         let root = initialize_store(root)?;
         let store_lock = acquire_store_lock(&root)?;
+        let staging_authority = match staging_authority {
+            Some(authority) => {
+                authority
+                    .reconcile_all()
+                    .map_err(|_| PackageError::StoreUnavailable)?;
+                authority
+            }
+            None => RuntimeStagingAuthority::prepare(&root.join(".runtime-staging-authority"))
+                .map_err(|_| PackageError::StoreUnavailable)?,
+        };
         recover_interrupted_mutations(&root, catalog)?;
         let http = Arc::new(HttpArchiveFetcher::new()?);
         let fetcher: Arc<dyn ArchiveFetcher> = match bundle {
@@ -539,6 +671,7 @@ where
         Ok(Self(Arc::new(ManagerInner {
             root,
             _store_lock: store_lock,
+            staging_authority,
             catalog,
             fetcher,
             quiesce,
@@ -734,21 +867,21 @@ where
             return Err(PackageError::StoreUnavailable);
         }
         let staging_parent = self.staging_root()?;
-        let staging = staging_parent.join(format!(
-            "{}-{}-{}",
-            component.as_str(),
-            delivery.version,
-            Uuid::now_v7()
-        ));
-        fs::create_dir(&staging).map_err(|_| PackageError::StoreUnavailable)?;
-        require_directory(&staging)?;
+        let staging = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &staging_parent,
+            StagingKind::EnginePackageInstall,
+        )
+        .map_err(|_| PackageError::StoreUnavailable)?;
+        let staging = staging.path();
+        require_directory(staging)?;
 
         let result = self.populate_install_staging(InstallStaging {
             component,
             delivery,
             effective,
             prepared: effective_delivery.as_ref(),
-            staging: &staging,
+            staging,
             target: &target,
             cancellation,
             progress,
@@ -759,7 +892,7 @@ where
             let _ = prepared.manifest_download.remove_after_success();
         }
         if staging.exists() {
-            let _ = cleanup_known_tree(&staging, &receipt::allowed_tree(effective));
+            let _ = cleanup_known_tree(staging, &receipt::allowed_tree(effective));
         }
         if result.is_err() {
             let _ = self.remove_empty_component_layout(component);
@@ -948,14 +1081,15 @@ where
         if target.parent() != Some(versions.as_path()) {
             return Err(PackageError::InvalidInstall);
         }
-        let staging = self.staging_root()?.join(format!(
-            "adopt-{}-{}-{}",
-            component.as_str(),
-            delivery.version,
-            Uuid::now_v7()
-        ));
-        fs::create_dir(&staging).map_err(|_| PackageError::StoreUnavailable)?;
-        require_directory(&staging)?;
+        let staging_parent = self.staging_root()?;
+        let staging = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &staging_parent,
+            StagingKind::EnginePackageAdoption,
+        )
+        .map_err(|_| PackageError::StoreUnavailable)?;
+        let staging = staging.path();
+        require_directory(staging)?;
 
         let result: Result<()> = (|| {
             let total = delivery.unpacked_size_bytes;
@@ -964,7 +1098,7 @@ where
                 cancellation.check()?;
                 let (source_root, suffix) = layout.source_for(expected.role, &expected.path)?;
                 let source = resolve_owned(source_root, suffix)?;
-                let target_file = crate::path_security::prepare_target(&staging, &expected.path)?;
+                let target_file = crate::path_security::prepare_target(staging, &expected.path)?;
                 copy_verified_legacy_file(
                     &source,
                     &target_file,
@@ -979,14 +1113,14 @@ where
                 )?;
                 copied = copied.saturating_add(expected.size_bytes);
             }
-            receipt::write(&staging, delivery)?;
-            receipt::validate_structure(&staging, delivery)?;
-            self.publish_staged(&staging, &target, delivery, cancellation, progress)?;
+            receipt::write(staging, delivery)?;
+            receipt::validate_structure(staging, delivery)?;
+            self.publish_staged(staging, &target, delivery, cancellation, progress)?;
             self.mark_verified(component, delivery);
             Ok(())
         })();
         if staging.exists() {
-            let _ = cleanup_known_tree(&staging, &receipt::allowed_tree(delivery));
+            let _ = cleanup_known_tree(staging, &receipt::allowed_tree(delivery));
         }
         if result.is_err() {
             let _ = self.remove_empty_component_layout(component);
@@ -1297,48 +1431,56 @@ where
     ) -> Result<()> {
         cancellation.check()?;
         progress.on_progress(OperationProgress::new(OperationPhase::Publishing, 0, 1));
-        let quarantine = self.quarantine_existing_target(target, delivery)?;
+        let mut quarantine = self.quarantine_existing_target(target)?;
         if fs::rename(staging, target).is_err() {
-            Self::restore_quarantine(target, quarantine.as_deref())?;
+            Self::restore_quarantine(target, &mut quarantine)?;
             return Err(PackageError::StoreUnavailable);
         }
         if let Some(parent) = target.parent() {
             sync_directory(parent)?;
         }
         if let Err(error) = receipt::validate_integrity(target, delivery, cancellation) {
-            Self::rollback_publish(staging, target, quarantine.as_deref())?;
+            Self::rollback_publish(staging, target, &mut quarantine)?;
             return Err(error);
+        }
+        if let Some(quarantine) = quarantine.take() {
+            quarantine
+                .owner
+                .remove()
+                .map_err(|_| PackageError::StoreUnavailable)?;
         }
         progress.on_progress(OperationProgress::new(OperationPhase::Publishing, 1, 1));
         Ok(())
     }
 
-    fn quarantine_existing_target(
-        &self,
-        target: &Path,
-        delivery: &PackageDelivery,
-    ) -> Result<Option<PathBuf>> {
+    fn quarantine_existing_target(&self, target: &Path) -> Result<Option<QuarantinedPackage>> {
         match fs::symlink_metadata(target) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(_) => return Err(PackageError::StoreUnavailable),
             Ok(_) => {}
         }
+        require_directory(target)?;
         let quarantine_root = self.quarantine_root()?;
-        let quarantine = quarantine_root.join(format!(
-            "{}-{}-{}",
-            delivery.component,
-            delivery.version,
-            Uuid::now_v7()
-        ));
-        fs::rename(target, &quarantine).map_err(|_| PackageError::StoreUnavailable)?;
+        let owner = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &quarantine_root,
+            StagingKind::EnginePackageQuarantine,
+        )
+        .map_err(|_| PackageError::StoreUnavailable)?;
+        let previous = owner.path().join("previous");
+        fs::rename(target, &previous).map_err(|_| PackageError::StoreUnavailable)?;
         sync_directory(&quarantine_root)?;
         if let Some(parent) = target.parent() {
             sync_directory(parent)?;
         }
-        Ok(Some(quarantine))
+        Ok(Some(QuarantinedPackage { owner, previous }))
     }
 
-    fn rollback_publish(staging: &Path, target: &Path, quarantine: Option<&Path>) -> Result<()> {
+    fn rollback_publish(
+        staging: &Path,
+        target: &Path,
+        quarantine: &mut Option<QuarantinedPackage>,
+    ) -> Result<()> {
         match fs::symlink_metadata(target) {
             Ok(_) => fs::rename(target, staging).map_err(|_| PackageError::StoreUnavailable)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1347,15 +1489,22 @@ where
         Self::restore_quarantine(target, quarantine)
     }
 
-    fn restore_quarantine(target: &Path, quarantine: Option<&Path>) -> Result<()> {
-        if let Some(quarantine) = quarantine {
-            fs::rename(quarantine, target).map_err(|_| PackageError::StoreUnavailable)?;
+    fn restore_quarantine(
+        target: &Path,
+        quarantine: &mut Option<QuarantinedPackage>,
+    ) -> Result<()> {
+        if let Some(quarantine) = quarantine.take() {
+            fs::rename(&quarantine.previous, target).map_err(|_| PackageError::StoreUnavailable)?;
             if let Some(parent) = target.parent() {
                 sync_directory(parent)?;
             }
-            if let Some(parent) = quarantine.parent() {
+            if let Some(parent) = quarantine.owner.path().parent() {
                 sync_directory(parent)?;
             }
+            quarantine
+                .owner
+                .remove()
+                .map_err(|_| PackageError::StoreUnavailable)?;
         }
         Ok(())
     }
@@ -1460,6 +1609,7 @@ where
     K: ManagedPackageKey,
 {
     recover_staging(root, catalog)?;
+    recover_quarantine(root)?;
     recover_downloads(root, catalog)?;
     recover_installed_python_cache(root, catalog);
     recover_trash(root, catalog)
@@ -1560,30 +1710,33 @@ fn recover_staging<K>(root: &Path, catalog: &PackageCatalog<K>) -> Result<()>
 where
     K: ManagedPackageKey,
 {
+    let _ = catalog;
     let staging = ensure_direct_child(root, ".staging")?;
-    for entry in fs::read_dir(&staging).map_err(|_| PackageError::StoreUnavailable)? {
-        let entry = entry.map_err(|_| PackageError::StoreUnavailable)?;
-        let metadata =
-            fs::symlink_metadata(entry.path()).map_err(|_| PackageError::StoreUnavailable)?;
-        let name = entry
-            .file_name()
-            .to_str()
-            .map(str::to_owned)
-            .ok_or(PackageError::StoreUnavailable)?;
-        if !metadata.is_dir()
-            || is_link_or_reparse(&metadata)
-            || !catalog
-                .releases
-                .keys()
-                .copied()
-                .any(|id| valid_mutation_name(&name, id, true))
-        {
-            return Err(PackageError::StoreUnavailable);
-        }
-        let actual = collect_regular_files(&entry.path())?;
-        cleanup_known_tree(&entry.path(), &actual)?;
+    if fs::read_dir(&staging)
+        .map_err(|_| PackageError::StoreUnavailable)?
+        .next()
+        .is_some()
+    {
+        // Historical prefix-shaped trees have no durable per-operation authority. Even a perfect
+        // catalog-shaped lookalike may be foreign, so preserve it and fail closed. New operations
+        // are removed by RuntimeStagingAuthority before this compatibility check runs.
+        return Err(PackageError::StoreUnavailable);
     }
     sync_directory(&staging)
+}
+
+fn recover_quarantine(root: &Path) -> Result<()> {
+    let quarantine = ensure_direct_child(root, ".quarantine")?;
+    if fs::read_dir(&quarantine)
+        .map_err(|_| PackageError::StoreUnavailable)?
+        .next()
+        .is_some()
+    {
+        // Old UUID-named quarantine trees predate authenticated ownership. Preserve them rather
+        // than treating a filename as permission to recursively delete data.
+        return Err(PackageError::StoreUnavailable);
+    }
+    sync_directory(&quarantine)
 }
 
 fn recover_trash<K>(root: &Path, catalog: &PackageCatalog<K>) -> Result<()>
@@ -2327,12 +2480,15 @@ mod tests {
     ) -> EnginePackageManager {
         let root = initialize_store(&temp.path().join("packages")).unwrap();
         let store_lock = acquire_store_lock(&root).unwrap();
+        let staging_authority =
+            RuntimeStagingAuthority::prepare(&root.join(".runtime-staging-authority")).unwrap();
         let catalog = Box::leak(Box::new(catalog));
         recover_interrupted_mutations(&root, catalog).unwrap();
         let quiesce = Arc::new(move |engine| coordinator.quiesce(engine));
         EnginePackageManager(ManagedPackageManager(Arc::new(ManagerInner {
             root,
             _store_lock: store_lock,
+            staging_authority,
             catalog,
             fetcher,
             quiesce,
@@ -2348,12 +2504,15 @@ mod tests {
     ) -> SpeechPackageManager {
         let root = initialize_store(&temp.path().join("speech-packages")).unwrap();
         let store_lock = acquire_store_lock(&root).unwrap();
+        let staging_authority =
+            RuntimeStagingAuthority::prepare(&root.join(".runtime-staging-authority")).unwrap();
         let catalog = Box::leak(Box::new(catalog));
         recover_interrupted_mutations(&root, catalog).unwrap();
         let quiesce = Arc::new(move |backend| coordinator.quiesce(backend));
         SpeechPackageManager(ManagedPackageManager(Arc::new(ManagerInner {
             root,
             _store_lock: store_lock,
+            staging_authority,
             catalog,
             fetcher,
             quiesce,
@@ -2513,11 +2672,7 @@ mod tests {
             EnginePackageState::Installed
         );
         let quarantine = manager.0.0.root.join(".quarantine");
-        let preserved = fs::read_dir(quarantine).unwrap().next().unwrap().unwrap();
-        assert_eq!(
-            fs::read(preserved.path().join(MODEL_PATH)).unwrap(),
-            b"other"
-        );
+        assert!(fs::read_dir(quarantine).unwrap().next().is_none());
     }
 
     #[test]
@@ -2867,7 +3022,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_finishes_verified_trash_and_discards_safe_partial_staging() {
+    fn restart_finishes_verified_trash() {
         let temp = tempfile::tempdir().unwrap();
         let first_fixture = speech_fixture();
         let manager = speech_manager(
@@ -2887,9 +3042,6 @@ mod tests {
         let target = store.join("edge-tts/versions/1.0.0");
         let trash = store.join(format!(".trash/edge-tts-1.0.0-{}", Uuid::now_v7()));
         fs::rename(&target, &trash).unwrap();
-        let staging = store.join(format!(".staging/edge-tts-1.0.0-{}", Uuid::now_v7()));
-        fs::create_dir_all(staging.join("runtime")).unwrap();
-        fs::write(staging.join(PYTHON_PATH), PYTHON_BYTES).unwrap();
         drop(manager);
 
         let second_fixture = speech_fixture();
@@ -2900,7 +3052,6 @@ mod tests {
             Arc::new(TestCoordinator::default()),
         );
         assert!(!trash.exists());
-        assert!(!staging.exists());
         assert_eq!(
             restarted.status(SpeechPackageId::EdgeTts).state,
             SpeechPackageState::Missing
@@ -2915,6 +3066,35 @@ mod tests {
         assert_eq!(
             restarted.status(SpeechPackageId::EdgeTts).state,
             SpeechPackageState::Installed
+        );
+    }
+
+    #[test]
+    fn legacy_prefix_staging_and_quarantine_are_preserved_without_private_authority() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = speech_fixture();
+        let root = initialize_store(&temp.path().join("speech-packages")).unwrap();
+        let staging = root.join(format!(".staging/edge-tts-1.0.0-{}", Uuid::now_v7()));
+        fs::create_dir_all(staging.join("runtime")).unwrap();
+        fs::write(staging.join(PYTHON_PATH), PYTHON_BYTES).unwrap();
+
+        assert_eq!(
+            recover_interrupted_mutations(&root, &fixture.catalog),
+            Err(PackageError::StoreUnavailable)
+        );
+        assert_eq!(fs::read(staging.join(PYTHON_PATH)).unwrap(), PYTHON_BYTES);
+
+        fs::remove_dir_all(&staging).unwrap();
+        let quarantine = root.join(format!(".quarantine/edge-tts-1.0.0-{}", Uuid::now_v7()));
+        fs::create_dir(&quarantine).unwrap();
+        fs::write(quarantine.join("foreign.bin"), b"preserve").unwrap();
+        assert_eq!(
+            recover_interrupted_mutations(&root, &fixture.catalog),
+            Err(PackageError::StoreUnavailable)
+        );
+        assert_eq!(
+            fs::read(quarantine.join("foreign.bin")).unwrap(),
+            b"preserve"
         );
     }
 

@@ -6,7 +6,11 @@ use std::{
 
 use osg_application::{JobRegistry, Session, SessionSnapshot};
 use osg_domain::{AssetId, MediaKind};
-use osg_infrastructure::secrets::{CredentialService, KeyringCredentialBackend};
+use osg_infrastructure::secrets::CredentialService;
+#[cfg(not(feature = "e2e-automation"))]
+use osg_infrastructure::secrets::KeyringCredentialBackend;
+#[cfg(feature = "e2e-automation")]
+use osg_infrastructure::secrets::SessionCredentialBackend;
 use osg_infrastructure::storage::Database;
 use osg_media::MediaEngine;
 use osg_media_server::{MediaServer, RegisteredMedia};
@@ -14,6 +18,11 @@ use osg_providers::{OAuthCoordinator, ProviderClient};
 use serde::Serialize;
 
 use crate::asr::AsrRuntimeManager;
+
+#[cfg(not(feature = "e2e-automation"))]
+pub(crate) type DesktopCredentialBackend = KeyringCredentialBackend;
+#[cfg(feature = "e2e-automation")]
+pub(crate) type DesktopCredentialBackend = Arc<SessionCredentialBackend>;
 
 #[derive(Debug, Default)]
 pub(crate) struct EditorSession {
@@ -143,7 +152,7 @@ pub(crate) struct DesktopState {
     pub(crate) editor: RwLock<EditorSession>,
     pub(crate) asr: AsrRuntimeManager,
     pub(crate) database: Database,
-    pub(crate) credentials: CredentialService<KeyringCredentialBackend>,
+    pub(crate) credentials: CredentialService<DesktopCredentialBackend>,
     pub(crate) jobs: Arc<JobRegistry<Database>>,
     media_engine: Arc<RwLock<Option<MediaEngine>>>,
     pub(crate) media_server: MediaServer,
@@ -159,7 +168,11 @@ impl DesktopState {
         media_engine: Arc<RwLock<Option<MediaEngine>>>,
         media_server: MediaServer,
     ) -> Self {
+        #[cfg(not(feature = "e2e-automation"))]
         let credentials = CredentialService::platform(database.clone());
+        #[cfg(feature = "e2e-automation")]
+        let credentials =
+            CredentialService::new(database.clone(), Arc::new(SessionCredentialBackend::new()));
         Self {
             editor: RwLock::new(EditorSession::default()),
             asr,

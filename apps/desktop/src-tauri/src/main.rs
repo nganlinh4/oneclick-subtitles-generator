@@ -5,10 +5,11 @@
 #[cfg(all(
     not(debug_assertions),
     not(feature = "production"),
-    not(feature = "unsigned-local-build")
+    not(feature = "unsigned-local-build"),
+    not(feature = "e2e-automation")
 ))]
 compile_error!(
-    "release executables must be built with `npm run tauri:build` (or the `unsigned-local-build` channel); plain `cargo build --release` retains the development URL"
+    "release executables must be built through a declared packaged channel; plain `cargo build --release` retains the development URL"
 );
 
 fn main() {

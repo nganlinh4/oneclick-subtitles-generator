@@ -3486,6 +3486,7 @@ version = "2.0.0"
 dependencies = [
  "command-group",
  "osg-engine-packages",
+ "osg-runtime-staging",
  "serde",
  "serde_json",
  "tempfile",
@@ -3551,6 +3552,7 @@ dependencies = [
  "osg-native-tools",
  "osg-providers",
  "osg-render",
+ "osg-runtime-staging",
  "osg-scene",
  "osg-speech",
  "rfd",
@@ -3615,6 +3617,7 @@ name = "osg-engine-packages"
 version = "1.0.0"
 dependencies = [
  "fs2",
+ "osg-runtime-staging",
  "reqwest",
  "serde",
  "serde_json",
@@ -3735,6 +3738,7 @@ name = "osg-media-pipeline"
 version = "1.0.0"
 dependencies = [
  "osg-media",
+ "osg-runtime-staging",
  "serde",
  "tempfile",
  "thiserror 2.0.20",
@@ -3758,6 +3762,7 @@ name = "osg-native-tools"
 version = "2.0.0"
 dependencies = [
  "fs2",
+ "osg-runtime-staging",
  "reqwest",
  "serde",
  "serde_json",
@@ -3804,6 +3809,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "osg-runtime-staging"
+version = "1.0.0"
+dependencies = [
+ "atomicwrites",
+ "blake3",
+ "fs2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "winapi-util",
+]
+
+[[package]]
 name = "osg-scene"
 version = "1.0.0"
 dependencies = [
@@ -3817,6 +3836,7 @@ version = "1.0.0"
 dependencies = [
  "command-group",
  "osg-engine-packages",
+ "osg-runtime-staging",
  "serde",
  "serde_json",
  "tempfile",
@@ -5701,8 +5721,6 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-wdio-webdriver"
 version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ad665bda48567107b6a3d070fe6d58a98e21f3ebf52abe41308fa4d5919f61b"
 dependencies = [
  "async-trait",
  "axum",

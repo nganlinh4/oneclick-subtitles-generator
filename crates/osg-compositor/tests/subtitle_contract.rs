@@ -11,6 +11,7 @@ use osg_compositor::{
     AtlasPages, CompositorError, CueLine, CueRun, Rejection, SubtitleScene, SubtitleStyle,
     SubtitleStyleSpec, TextureTarget,
 };
+use osg_scene::color::Rgba;
 use osg_scene::glyph::{CellAdvanceVerdict, Direction, GlyphAtlasDescriptor, MAX_ATLAS_PAGES};
 
 fn rejection(error: &CompositorError) -> Rejection {
@@ -330,16 +331,24 @@ fn a_page_after_the_first_is_checked_against_the_device_limit() {
     );
 }
 
-/// The shipped renderer concatenates the opacity onto the colour as hex alpha, so an `#rrggbbaa`
-/// background silently disappears. Here it is a refusal instead: same pixels, findable cause.
 #[test]
-fn a_background_that_already_carries_alpha_is_refused() {
+fn a_background_that_carries_alpha_multiplies_it_by_background_opacity() {
     let spec = SubtitleStyleSpec {
         background_color: "#11223344".to_owned(),
         ..style_spec()
     };
-    let error = SubtitleStyle::resolve(&spec).expect_err("an eight-digit background is refused");
-    assert_eq!(rejection(&error), Rejection::StyleBackground);
+    let style = SubtitleStyle::resolve(&spec).expect("an eight-digit background is supported");
+    assert_eq!(
+        style.background(),
+        Rgba {
+            red: 17,
+            green: 34,
+            blue: 51,
+            // style_spec has 50% background opacity: round(68 * 127 / 255).
+            alpha: 34,
+        }
+    );
+    assert!(style.background_visible());
 }
 
 #[test]
@@ -434,15 +443,15 @@ fn out_of_range_style_numbers_are_refused() {
 /// their font choice or their colours.
 #[test]
 fn refusals_name_the_field_and_never_the_value() {
-    let secrets = ["Other Face", "#11223344", "explode", "middle"];
+    let secrets = ["Other Face", "#11223g", "explode", "middle"];
     let errors = [
         stage(atlas("Other Face", WEIGHT), vec![baked(&[INK_CELL])])
             .expect_err("a mismatched face is refused"),
         SubtitleStyle::resolve(&SubtitleStyleSpec {
-            background_color: "#11223344".to_owned(),
+            background_color: "#11223g".to_owned(),
             ..style_spec()
         })
-        .expect_err("an eight-digit background is refused"),
+        .expect_err("an invalid background is refused"),
         SubtitleStyle::resolve(&SubtitleStyleSpec {
             animation: "explode".to_owned(),
             ..style_spec()

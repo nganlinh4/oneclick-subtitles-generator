@@ -9,6 +9,7 @@ license = "MIT"
 
 [dependencies]
 osg-media.workspace = true
+osg-runtime-staging.workspace = true
 serde.workspace = true
 tempfile = "3.27.0"
 thiserror.workspace = true

@@ -7,6 +7,7 @@ use osg_engine_packages::{
     OperationProgress, PackageError, PackageState, ProgressSink, RemovalOutcome,
 };
 use osg_media_server::{MediaServer, RegisteredMedia};
+use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Channel;
@@ -152,9 +153,26 @@ fn overall_basis_points(progress: OperationProgress) -> u16 {
 }
 
 impl VoiceSampleRuntime {
+    #[cfg(test)]
     pub(crate) fn new(
         root: &std::path::Path,
         media_server: MediaServer,
+    ) -> Result<Self, PackageError> {
+        Self::new_inner(root, media_server, None)
+    }
+
+    pub(crate) fn new_with_staging_authority(
+        root: &std::path::Path,
+        media_server: MediaServer,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self, PackageError> {
+        Self::new_inner(root, media_server, Some(staging_authority))
+    }
+
+    fn new_inner(
+        root: &std::path::Path,
+        media_server: MediaServer,
+        staging_authority: Option<RuntimeStagingAuthority>,
     ) -> Result<Self, PackageError> {
         let runtime = Self(Arc::new(RuntimeInner {
             manager: RwLock::new(None),
@@ -164,14 +182,18 @@ impl VoiceSampleRuntime {
             cancellation: Mutex::new(CancellationState::default()),
         }));
         let weak = Arc::downgrade(&runtime.0);
-        let manager = AssetPackageManager::new(
-            root,
+        let quiesce: Arc<dyn Fn() -> Result<(), PackageError> + Send + Sync> =
             Arc::new(move || {
                 weak.upgrade()
                     .ok_or(PackageError::StoreUnavailable)?
                     .quiesce()
-            }),
-        )?;
+            });
+        let manager = match staging_authority {
+            Some(authority) => {
+                AssetPackageManager::new_with_staging_authority(root, quiesce, authority)?
+            }
+            None => AssetPackageManager::new(root, quiesce)?,
+        };
         *runtime
             .0
             .manager

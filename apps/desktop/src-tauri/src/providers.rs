@@ -14,6 +14,7 @@ use osg_providers::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
+#[cfg(not(feature = "e2e-automation"))]
 use tauri_plugin_opener::OpenerExt as _;
 
 use crate::error::{CommandError, CommandResult};
@@ -327,26 +328,36 @@ pub(crate) async fn youtube_oauth_authorize(
     state: State<'_, DesktopState>,
     client_credential_id: CredentialId,
 ) -> CommandResult<YouTubeOAuthStatus> {
-    let secret = resolve_credential(
-        &state,
-        client_credential_id,
-        CredentialPurpose::YouTubeOauthClient,
-    )
-    .await?;
-    let client = YouTubeOAuthClient::from_vault_secret(&secret)?;
-    let tokens = state
-        .youtube_oauth
-        .authorize(&state.providers, &client, move |url| {
-            app.opener()
-                .open_url(url.as_str(), None::<&str>)
-                .map_err(|_| osg_providers::ProviderError::BrowserOpen)
-        })
+    #[cfg(feature = "e2e-automation")]
+    {
+        let _ = (app, state, client_credential_id);
+        Err(CommandError::invalid_input(
+            "The automation build refused to open another desktop application.",
+        ))
+    }
+    #[cfg(not(feature = "e2e-automation"))]
+    {
+        let secret = resolve_credential(
+            &state,
+            client_credential_id,
+            CredentialPurpose::YouTubeOauthClient,
+        )
         .await?;
-    persist_oauth_tokens(&state, &tokens).await?;
-    Ok(YouTubeOAuthStatus {
-        authenticated: true,
-        expires_at_unix_ms: Some(tokens.expires_at_unix_ms()),
-    })
+        let client = YouTubeOAuthClient::from_vault_secret(&secret)?;
+        let tokens = state
+            .youtube_oauth
+            .authorize(&state.providers, &client, move |url| {
+                app.opener()
+                    .open_url(url.as_str(), None::<&str>)
+                    .map_err(|_| osg_providers::ProviderError::BrowserOpen)
+            })
+            .await?;
+        persist_oauth_tokens(&state, &tokens).await?;
+        Ok(YouTubeOAuthStatus {
+            authenticated: true,
+            expires_at_unix_ms: Some(tokens.expires_at_unix_ms()),
+        })
+    }
 }
 
 #[tauri::command]

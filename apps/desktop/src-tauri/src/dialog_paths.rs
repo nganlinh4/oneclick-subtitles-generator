@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::ffi::OsStr;
 #[cfg(any(feature = "e2e-automation", test))]
 use std::path::Path;
+#[cfg(feature = "e2e-automation")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tauri::{AppHandle, WebviewWindow};
 
@@ -16,6 +18,12 @@ use tauri_plugin_dialog::DialogExt;
 fn automation_dialog_refused() -> CommandError {
     CommandError::invalid_input("The automation build refused an unstaged native file dialog.")
 }
+
+#[cfg(feature = "e2e-automation")]
+static STAGED_MEDIA_SELECTION_INDEX: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(any(feature = "e2e-automation", test))]
+const MAX_STAGED_MEDIA_SELECTIONS: usize = 8;
 
 #[cfg(feature = "e2e-automation")]
 fn staged_save_destination(suggested_name: &str) -> CommandResult<PathBuf> {
@@ -93,14 +101,8 @@ pub(crate) fn save_file(
         .transpose()
 }
 
-#[cfg(feature = "e2e-automation")]
-fn staged_media_selection() -> CommandResult<PathBuf> {
-    let root = std::env::var_os("OSG_E2E_FIXTURE_ROOT")
-        .map(PathBuf::from)
-        .ok_or_else(automation_dialog_refused)?;
-    let selection = std::env::var_os("OSG_E2E_MEDIA_SELECTION")
-        .map(PathBuf::from)
-        .ok_or_else(automation_dialog_refused)?;
+#[cfg(any(feature = "e2e-automation", test))]
+fn validate_staged_media_selection(root: &Path, selection: &Path) -> CommandResult<PathBuf> {
     let root = root
         .canonicalize()
         .map_err(|_| automation_dialog_refused())?;
@@ -111,6 +113,40 @@ fn staged_media_selection() -> CommandResult<PathBuf> {
         return Err(automation_dialog_refused());
     }
     Ok(selection)
+}
+
+#[cfg(any(feature = "e2e-automation", test))]
+fn parse_staged_media_sequence(raw: &str) -> CommandResult<Vec<PathBuf>> {
+    let selections: Vec<String> =
+        serde_json::from_str(raw).map_err(|_| automation_dialog_refused())?;
+    if selections.is_empty()
+        || selections.len() > MAX_STAGED_MEDIA_SELECTIONS
+        || selections.iter().any(String::is_empty)
+    {
+        return Err(automation_dialog_refused());
+    }
+    Ok(selections.into_iter().map(PathBuf::from).collect())
+}
+
+#[cfg(feature = "e2e-automation")]
+fn staged_media_selection() -> CommandResult<PathBuf> {
+    let root = std::env::var_os("OSG_E2E_FIXTURE_ROOT")
+        .map(PathBuf::from)
+        .ok_or_else(automation_dialog_refused)?;
+    let selection = if let Some(raw) = std::env::var_os("OSG_E2E_MEDIA_SELECTION_SEQUENCE") {
+        let raw = raw.to_str().ok_or_else(automation_dialog_refused)?;
+        let selections = parse_staged_media_sequence(raw)?;
+        let index = STAGED_MEDIA_SELECTION_INDEX.fetch_add(1, Ordering::SeqCst);
+        selections
+            .get(index)
+            .cloned()
+            .ok_or_else(automation_dialog_refused)?
+    } else {
+        std::env::var_os("OSG_E2E_MEDIA_SELECTION")
+            .map(PathBuf::from)
+            .ok_or_else(automation_dialog_refused)?
+    };
+    validate_staged_media_selection(&root, &selection)
 }
 
 #[cfg(feature = "e2e-automation")]
@@ -184,7 +220,10 @@ pub(crate) fn pick_folder(app: &AppHandle, title: &str) -> CommandResult<Option<
 mod tests {
     use std::path::Path;
 
-    use super::validate_staged_save_destination;
+    use super::{
+        MAX_STAGED_MEDIA_SELECTIONS, parse_staged_media_sequence, validate_staged_media_selection,
+        validate_staged_save_destination,
+    };
 
     fn assert_no_dialog_bypass(directory: &Path) {
         for entry in std::fs::read_dir(directory).expect("read source directory") {
@@ -241,6 +280,35 @@ mod tests {
         let outside = tempfile::tempdir().expect("outside");
         assert!(
             validate_staged_save_destination(root.path(), outside.path(), "voice.m4a").is_err()
+        );
+    }
+
+    #[test]
+    fn staged_media_sequence_is_bounded_and_every_selection_stays_inside_the_root() {
+        let root = tempfile::tempdir().expect("root");
+        let first = root.path().join("first.mp4");
+        let second = root.path().join("second.mp4");
+        std::fs::write(&first, b"first").expect("first");
+        std::fs::write(&second, b"second").expect("second");
+
+        let raw = serde_json::to_string(&vec![&first, &second]).expect("sequence json");
+        let parsed = parse_staged_media_sequence(&raw).expect("valid sequence");
+        assert_eq!(parsed, vec![first.clone(), second.clone()]);
+        assert_eq!(
+            validate_staged_media_selection(root.path(), &parsed[0]).expect("inside root"),
+            first.canonicalize().expect("canonical first")
+        );
+
+        let outside = tempfile::NamedTempFile::new().expect("outside");
+        assert!(validate_staged_media_selection(root.path(), outside.path()).is_err());
+        assert!(parse_staged_media_sequence("[]").is_err());
+        assert!(parse_staged_media_sequence("not-json").is_err());
+        assert!(
+            parse_staged_media_sequence(
+                &serde_json::to_string(&vec!["x"; MAX_STAGED_MEDIA_SELECTIONS + 1])
+                    .expect("long sequence")
+            )
+            .is_err()
         );
     }
 }

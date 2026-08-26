@@ -37,10 +37,12 @@ impl AddressResolver for SystemResolver {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UrlValidator<R = SystemResolver> {
     resolver: R,
     policy: UrlPolicy,
+    #[cfg(feature = "e2e-automation")]
+    exact_automation_urls: Vec<Url>,
 }
 
 impl UrlValidator<SystemResolver> {
@@ -49,14 +51,52 @@ impl UrlValidator<SystemResolver> {
         Self {
             resolver: SystemResolver,
             policy,
+            #[cfg(feature = "e2e-automation")]
+            exact_automation_urls: Vec::new(),
         }
+    }
+
+    /// Constructs the hidden-E2E validator with an exact allow-list of tokenized loopback URLs.
+    ///
+    /// This is deliberately a different constructor from [`Self::system`]. Merely compiling the
+    /// automation feature cannot make a loopback URL valid, and production does not compile this
+    /// constructor at all. Every allowed value must be canonical, use an explicit unprivileged
+    /// port, name an MP4 path, and carry one 256-bit token. Validation and pre-launch revalidation
+    /// both require byte-for-byte membership in this list.
+    #[cfg(feature = "e2e-automation")]
+    pub fn system_with_exact_automation_urls(policy: UrlPolicy, values: &[String]) -> Result<Self> {
+        if values.is_empty() || values.len() > 8 {
+            return Err(DownloadError::InvalidUrl(
+                "the automation URL allow-list is invalid",
+            ));
+        }
+        let mut exact_automation_urls = Vec::with_capacity(values.len());
+        for value in values {
+            let url = parse_exact_automation_url(value)?;
+            if exact_automation_urls.contains(&url) {
+                return Err(DownloadError::InvalidUrl(
+                    "the automation URL allow-list is invalid",
+                ));
+            }
+            exact_automation_urls.push(url);
+        }
+        Ok(Self {
+            resolver: SystemResolver,
+            policy,
+            exact_automation_urls,
+        })
     }
 }
 
 impl<R: AddressResolver> UrlValidator<R> {
     #[must_use]
     pub fn new(resolver: R, policy: UrlPolicy) -> Self {
-        Self { resolver, policy }
+        Self {
+            resolver,
+            policy,
+            #[cfg(feature = "e2e-automation")]
+            exact_automation_urls: Vec::new(),
+        }
     }
 
     pub fn validate(&self, value: &str) -> Result<ValidatedMediaUrl> {
@@ -72,6 +112,14 @@ impl<R: AddressResolver> UrlValidator<R> {
         }
         if !url.username().is_empty() || url.password().is_some() {
             return Err(DownloadError::InvalidUrl("credentials are not allowed"));
+        }
+        #[cfg(feature = "e2e-automation")]
+        if self.is_exact_automation_url(value, &url) {
+            return Ok(ValidatedMediaUrl {
+                url,
+                direct_mp4_passthrough: true,
+                automation_loopback: true,
+            });
         }
         let expected_port = if url.scheme() == "https" { 443 } else { 80 };
         if url.port().is_some_and(|port| port != expected_port) {
@@ -92,12 +140,24 @@ impl<R: AddressResolver> UrlValidator<R> {
                 self.validate_domain(domain, expected_port, is_installed_media_smoke_url)?;
             }
         }
-        Ok(ValidatedMediaUrl { url })
+        Ok(ValidatedMediaUrl {
+            url,
+            direct_mp4_passthrough: is_installed_media_smoke_url,
+            #[cfg(feature = "e2e-automation")]
+            automation_loopback: false,
+        })
     }
 
     /// Repeats DNS/IP checks immediately before process launch to narrow the
     /// DNS-rebinding window between initial UI validation and execution.
     pub(crate) fn revalidate(&self, value: &ValidatedMediaUrl) -> Result<()> {
+        #[cfg(feature = "e2e-automation")]
+        if value.automation_loopback {
+            return self
+                .is_exact_automation_url(value.url.as_str(), &value.url)
+                .then_some(())
+                .ok_or(DownloadError::NonPublicAddress);
+        }
         let host = value
             .url
             .host()
@@ -152,6 +212,65 @@ impl<R: AddressResolver> UrlValidator<R> {
         }
         Ok(())
     }
+
+    #[cfg(feature = "e2e-automation")]
+    fn is_exact_automation_url(&self, value: &str, parsed: &Url) -> bool {
+        parsed.as_str() == value
+            && self
+                .exact_automation_urls
+                .iter()
+                .any(|allowed| allowed == parsed)
+    }
+}
+
+impl<R: fmt::Debug> fmt::Debug for UrlValidator<R> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("UrlValidator");
+        debug
+            .field("resolver", &self.resolver)
+            .field("policy", &self.policy);
+        #[cfg(feature = "e2e-automation")]
+        debug.field(
+            "exact_automation_url_count",
+            &self.exact_automation_urls.len(),
+        );
+        debug.finish()
+    }
+}
+
+#[cfg(feature = "e2e-automation")]
+fn parse_exact_automation_url(value: &str) -> Result<Url> {
+    if value.len() > MAX_URL_LENGTH || value.contains('\\') || value.chars().any(char::is_control) {
+        return Err(DownloadError::InvalidUrl(
+            "the automation URL allow-list is invalid",
+        ));
+    }
+    let url = Url::parse(value)
+        .map_err(|_| DownloadError::InvalidUrl("the automation URL allow-list is invalid"))?;
+    let exact_loopback = url.as_str() == value
+        && url.scheme() == "http"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.host() == Some(Host::Ipv4(Ipv4Addr::LOCALHOST))
+        && url.port().is_some_and(|port| port >= 1_024)
+        && url.fragment().is_none()
+        && std::path::Path::new(url.path())
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("mp4"))
+        && !url.path().contains("..")
+        && !url.path().contains('%')
+        && url.query().is_some_and(|query| !query.contains('%'));
+    let query = url.query_pairs().collect::<Vec<_>>();
+    let exact_token = query.len() == 1
+        && query[0].0 == "token"
+        && query[0].1.len() == 64
+        && query[0].1.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if !exact_loopback || !exact_token {
+        return Err(DownloadError::InvalidUrl(
+            "the automation URL allow-list is invalid",
+        ));
+    }
+    Ok(url)
 }
 
 fn is_exact_installed_media_smoke_url(value: &str, url: &Url) -> bool {
@@ -169,6 +288,9 @@ fn is_exact_installed_media_smoke_url(value: &str, url: &Url) -> bool {
 #[derive(Clone)]
 pub struct ValidatedMediaUrl {
     url: Url,
+    direct_mp4_passthrough: bool,
+    #[cfg(feature = "e2e-automation")]
+    automation_loopback: bool,
 }
 
 impl ValidatedMediaUrl {
@@ -182,18 +304,21 @@ impl ValidatedMediaUrl {
     }
 
     pub(crate) fn allows_direct_mp4_passthrough(&self) -> bool {
-        is_exact_installed_media_smoke_url(self.url.as_str(), &self.url)
+        self.direct_mp4_passthrough
     }
 }
 
 impl fmt::Debug for ValidatedMediaUrl {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ValidatedMediaUrl")
+        let mut debug = formatter.debug_struct("ValidatedMediaUrl");
+        debug
             .field("scheme", &self.url.scheme())
             .field("host", &self.url.host_str().unwrap_or("<missing>"))
             .field("path_and_query", &"<redacted>")
-            .finish()
+            .field("direct_mp4_passthrough", &self.direct_mp4_passthrough);
+        #[cfg(feature = "e2e-automation")]
+        debug.field("automation_loopback", &self.automation_loopback);
+        debug.finish()
     }
 }
 
@@ -393,6 +518,81 @@ mod tests {
             "http://0177.0.0.1/video",
         ] {
             assert!(validator.validate(hostile).is_err(), "accepted {hostile}");
+        }
+    }
+
+    #[test]
+    fn ordinary_validator_rejects_loopback_even_in_an_automation_capable_build() {
+        let validator = UrlValidator::system(UrlPolicy::SupportedSitesOnly);
+        assert!(matches!(
+            validator.validate(
+                "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            Err(DownloadError::InvalidUrl(_) | DownloadError::NonPublicAddress)
+        ));
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn automation_validator_accepts_only_its_canonical_tokenized_exact_urls() {
+        const FIRST: &str = "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const SECOND: &str = "http://127.0.0.1:43123/b.mp4?token=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let values = vec![FIRST.to_owned(), SECOND.to_owned()];
+        let validator =
+            UrlValidator::system_with_exact_automation_urls(UrlPolicy::SupportedSitesOnly, &values)
+                .expect("exact automation validator");
+
+        for value in [FIRST, SECOND] {
+            let validated = validator.validate(value).expect("allowed exact URL");
+            assert!(validated.allows_direct_mp4_passthrough());
+            validator
+                .revalidate(&validated)
+                .expect("exact revalidation");
+        }
+
+        for near_miss in [
+            "http://127.0.0.1:43123/c.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://127.0.0.1:43124/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+            "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&extra=1",
+            "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#fragment",
+            "http://localhost:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            assert!(
+                validator.validate(near_miss).is_err(),
+                "accepted {near_miss}"
+            );
+        }
+
+        let debug = format!("{validator:?}");
+        assert!(debug.contains("exact_automation_url_count"));
+        assert!(!debug.contains("43123"));
+        assert!(!debug.contains("aaaaaaaa"));
+        assert!(!debug.contains("a.mp4"));
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn automation_allow_list_rejects_malformed_or_duplicated_capabilities() {
+        const EXACT: &str = "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let encoded_token = format!("http://127.0.0.1:43123/a.mp4?token=%61{}", "a".repeat(63));
+        for invalid in [
+            Vec::<String>::new(),
+            vec![EXACT.to_owned(), EXACT.to_owned()],
+            vec!["http://127.0.0.1:80/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()],
+            vec!["http://127.0.0.1:43123/a.mp4?token=short".to_owned()],
+            vec!["http://127.0.0.1:43123/a.webm?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()],
+            vec!["http://127.0.0.1:43123/%61.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()],
+            vec![encoded_token],
+        ] {
+            assert!(
+                UrlValidator::system_with_exact_automation_urls(
+                    UrlPolicy::SupportedSitesOnly,
+                    &invalid,
+                )
+                .is_err(),
+                "accepted {invalid:?}"
+            );
         }
     }
 

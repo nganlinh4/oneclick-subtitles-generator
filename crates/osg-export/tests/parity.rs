@@ -98,7 +98,7 @@ fn the_frozen_matrix_covers_every_preset_and_every_persisted_option() {
     );
     assert_eq!(coverage.presets, 30, "the shipped preset count changed");
     assert_eq!(
-        coverage.total_persisted_options, 70,
+        coverage.total_persisted_options, 72,
         "the persisted option count changed"
     );
     assert!(
@@ -185,6 +185,31 @@ fn every_persisted_option_reaches_the_conversion_or_the_staging() {
         refused.is_empty(),
         "these persisted settings validate but the pipeline will not convert them:\n  {}",
         refused.join("\n  ")
+    );
+}
+
+#[test]
+fn asymmetric_background_padding_reaches_the_export_style_without_substitution() {
+    let matrix = matrix::load();
+    let mut customization = sweep::defaults(&matrix);
+    customization["backgroundPaddingX"] = serde_json::json!(37);
+    customization["backgroundPaddingY"] = serde_json::json!(11);
+    let subject = Case::new(
+        "background-padding-contract",
+        customization,
+        matrix.text("latin").text.clone(),
+        "480p",
+        30,
+    );
+
+    let prepared = case::prepare(&subject);
+    assert_eq!(
+        prepared.plan.style().background_padding_x().to_bits(),
+        37.0_f64.to_bits()
+    );
+    assert_eq!(
+        prepared.plan.style().background_padding_y().to_bits(),
+        11.0_f64.to_bits()
     );
 }
 

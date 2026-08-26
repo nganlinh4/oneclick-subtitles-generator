@@ -46,6 +46,12 @@ pub enum DatabaseError {
     CredentialPurposeAlreadyExists(CredentialPurpose),
     #[error("a setting value exceeds the one MiB storage limit")]
     SettingTooLarge,
+    #[error("the active editor workspace is invalid or no longer owns its media")]
+    InvalidActiveWorkspace,
+    #[error("a newer editor workspace activation superseded this request")]
+    StaleActiveWorkspaceIntent,
+    #[error("the durable subtitle project alias index is invalid")]
+    InvalidProjectAliasIndex,
     #[error("the native media location is invalid or no longer matches its asset")]
     InvalidMediaLocation,
     #[error("media asset {0} has different immutable metadata")]

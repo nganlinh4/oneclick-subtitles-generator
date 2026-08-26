@@ -28,6 +28,9 @@ use osg_media::{
     NarrationMixPlan as MediaMixPlan, ProgressSink, RunControl as MediaRunControl,
 };
 use osg_media_server::RegisteredMedia;
+use osg_runtime_staging::{
+    OwnedStagingDirectory, OwnedStagingFile, RuntimeStagingAuthority, StagingKind,
+};
 use osg_speech::{
     AlignmentPlan, AlignmentPolicy, AudioAsset, AudioEditPlan as SpeechAudioEditPlan, AudioFilter,
     AudioFormat, CancellationToken, ChatterboxSettings, EdgeSettings, F5Settings, GeminiSettings,
@@ -39,8 +42,9 @@ use osg_speech::{
 };
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State, ipc::Channel};
-use tempfile::{NamedTempFile, TempDir};
+use tauri::{AppHandle, Manager, State, ipc::Channel};
+#[cfg(test)]
+use tempfile::TempDir;
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
@@ -92,6 +96,7 @@ pub(crate) struct SpeechPackageCoordinator(Weak<SpeechRuntimeInner>);
 struct SpeechRuntimeInner {
     install_root: PathBuf,
     work_root: PathBuf,
+    staging_authority: RuntimeStagingAuthority,
     resource_root: Option<PathBuf>,
     package_manager: RwLock<Option<SpeechPackageManager>>,
     workers: Mutex<HashMap<SpeechBackendRequest, CachedWorker>>,
@@ -143,6 +148,7 @@ struct RuntimeResolution {
 }
 
 impl SpeechRuntime {
+    #[cfg(test)]
     pub(crate) fn new(
         install_root: impl AsRef<Path>,
         work_root: impl AsRef<Path>,
@@ -150,9 +156,26 @@ impl SpeechRuntime {
     ) -> io::Result<Self> {
         fs::create_dir_all(install_root.as_ref())?;
         fs::create_dir_all(work_root.as_ref())?;
+        let work_root = fs::canonicalize(work_root)?;
+        let staging_authority =
+            RuntimeStagingAuthority::prepare(&work_root.join(".runtime-staging-authority"))?;
+        Self::new_with_staging_authority(install_root, work_root, resource_root, staging_authority)
+    }
+
+    pub(crate) fn new_with_staging_authority(
+        install_root: impl AsRef<Path>,
+        work_root: impl AsRef<Path>,
+        resource_root: Option<PathBuf>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> io::Result<Self> {
+        fs::create_dir_all(install_root.as_ref())?;
+        fs::create_dir_all(work_root.as_ref())?;
+        let work_root = fs::canonicalize(work_root)?;
+        staging_authority.reconcile_all()?;
         let runtime = Self(Arc::new(SpeechRuntimeInner {
             install_root: fs::canonicalize(install_root)?,
-            work_root: fs::canonicalize(work_root)?,
+            work_root,
+            staging_authority,
             resource_root: canonical_directory(resource_root),
             package_manager: RwLock::new(None),
             workers: Mutex::new(HashMap::new()),
@@ -160,9 +183,10 @@ impl SpeechRuntime {
             artifact_publication_gates: Mutex::new(HashMap::new()),
             lifecycles: Mutex::new(HashMap::new()),
         }));
-        let manager = SpeechPackageManager::new(
+        let manager = SpeechPackageManager::new_with_staging_authority(
             runtime.0.install_root.join("packages-v1"),
             Arc::new(runtime.package_coordinator()),
+            runtime.0.staging_authority.clone(),
         )
         .map_err(|_| io::Error::other("the managed speech package store is unavailable"))?;
         runtime
@@ -198,10 +222,12 @@ impl SpeechRuntime {
             .ok_or(SpeechError::StateUnavailable)
     }
 
-    fn work_directory(&self) -> io::Result<TempDir> {
-        tempfile::Builder::new()
-            .prefix(".osg-speech-job-")
-            .tempdir_in(&self.0.work_root)
+    fn work_directory(&self) -> io::Result<OwnedStagingDirectory> {
+        OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &self.0.work_root,
+            StagingKind::SpeechJob,
+        )
     }
 
     fn resolve_runtime(
@@ -417,7 +443,8 @@ impl SpeechRuntime {
             WorkerProgram::bootstrap(&paths.python, &paths.bootstrap)?
         };
         let worker = Arc::new(ManagedSpeechWorker {
-            worker: LazySpeechWorker::new(program, backend.native()),
+            worker: LazySpeechWorker::new(program, backend.native())
+                .with_staging_authority(self.0.staging_authority.clone(), &self.0.work_root),
             managed_runtime: resolution.managed_runtime,
         });
         workers.insert(
@@ -477,7 +504,9 @@ impl SpeechRuntime {
             WorkerProgram::bootstrap(&paths.python, &paths.bootstrap)?
         };
         let worker = Arc::new(ManagedSpeechWorker {
-            worker: LazySpeechWorker::new(program, backend.native()).with_provider_secret(secret),
+            worker: LazySpeechWorker::new(program, backend.native())
+                .with_provider_secret(secret)
+                .with_staging_authority(self.0.staging_authority.clone(), &self.0.work_root),
             managed_runtime: resolution.managed_runtime,
         });
         let mut transient = self
@@ -3111,9 +3140,17 @@ pub(crate) async fn speech_artifact_export(
         return Ok(false);
     };
 
-    tauri::async_runtime::spawn_blocking(move || export_speech_plan(&plan, &destination))
-        .await
-        .map_err(|_| CommandError::internal("The narration export task stopped unexpectedly."))??;
+    let staging_authority = app
+        .state::<SpeechRuntime>()
+        .inner()
+        .0
+        .staging_authority
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        export_speech_plan(&staging_authority, &plan, &destination)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The narration export task stopped unexpectedly."))??;
     Ok(true)
 }
 
@@ -3192,20 +3229,30 @@ fn is_safe_export_file_name(value: &str, expected_extension: &str) -> bool {
         && characters.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
-fn export_speech_plan(plan: &SpeechExportPlan, destination: &Path) -> CommandResult<()> {
+fn export_speech_plan(
+    staging_authority: &RuntimeStagingAuthority,
+    plan: &SpeechExportPlan,
+    destination: &Path,
+) -> CommandResult<()> {
     if plan.archive_name.is_none() {
         let source = plan
             .sources
             .first()
             .ok_or_else(CommandError::speech_export_failed)?;
-        let mut staging = speech_export_staging(source)?;
+        let mut staging = speech_export_staging(staging_authority, source)?;
         let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
-        write_verified_speech_source(source, staging.as_file_mut(), &mut buffer)?;
+        write_verified_speech_source(
+            source,
+            staging
+                .file_mut()
+                .map_err(|_| CommandError::speech_export_failed())?,
+            &mut buffer,
+        )?;
         staging
-            .as_file()
             .sync_all()
             .map_err(|_| CommandError::speech_export_failed())?;
         return copy_export(
+            staging_authority,
             staging.path(),
             destination,
             source.expected_bytes,
@@ -3219,17 +3266,16 @@ fn export_speech_plan(plan: &SpeechExportPlan, destination: &Path) -> CommandRes
         .sources
         .first()
         .ok_or_else(CommandError::speech_export_failed)?;
-    let mut staging = speech_export_staging(source)?;
+    let mut staging = speech_export_staging(staging_authority, source)?;
     write_speech_archive(plan, &mut staging)?;
-    let archive_bytes = staging
-        .as_file()
-        .metadata()
+    let archive_bytes = fs::metadata(staging.path())
         .map_err(|_| CommandError::speech_export_failed())?
         .len();
     if archive_bytes == 0 || archive_bytes > MAX_EXPORT_ARCHIVE_BYTES {
         return Err(CommandError::speech_export_failed());
     }
     copy_export(
+        staging_authority,
         staging.path(),
         destination,
         archive_bytes,
@@ -3239,20 +3285,26 @@ fn export_speech_plan(plan: &SpeechExportPlan, destination: &Path) -> CommandRes
     .map_err(|_| CommandError::speech_export_failed())
 }
 
-fn speech_export_staging(source: &SpeechExportSource) -> CommandResult<NamedTempFile> {
+fn speech_export_staging(
+    authority: &RuntimeStagingAuthority,
+    source: &SpeechExportSource,
+) -> CommandResult<OwnedStagingFile> {
     let directory = source
         .path
         .parent()
         .ok_or_else(CommandError::speech_export_failed)?;
-    tempfile::Builder::new()
-        .prefix(".osg-speech-export-")
-        .suffix(".part")
-        .tempfile_in(directory)
+    OwnedStagingFile::begin(authority, directory, StagingKind::MediaExport)
         .map_err(|_| CommandError::speech_export_failed())
 }
 
-fn write_speech_archive(plan: &SpeechExportPlan, staging: &mut NamedTempFile) -> CommandResult<()> {
-    let mut archive = zip::ZipWriter::new(staging.as_file_mut());
+fn write_speech_archive(
+    plan: &SpeechExportPlan,
+    staging: &mut OwnedStagingFile,
+) -> CommandResult<()> {
+    let output = staging
+        .file_mut()
+        .map_err(|_| CommandError::speech_export_failed())?;
+    let mut archive = zip::ZipWriter::new(output);
     let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
@@ -3344,9 +3396,8 @@ pub(crate) fn speech_playback_release(
         .map_err(Into::into)
 }
 
-type NativeCredentialService = osg_infrastructure::secrets::CredentialService<
-    osg_infrastructure::secrets::KeyringCredentialBackend,
->;
+type NativeCredentialService =
+    osg_infrastructure::secrets::CredentialService<crate::state::DesktopCredentialBackend>;
 
 struct SpeechBatchContext<'a> {
     runtime: &'a SpeechRuntime,
@@ -3696,7 +3747,7 @@ fn command_join_result<T, E>(
 async fn resolve_prepared_batch_worker(
     context: &SpeechBatchContext<'_>,
     validated: &mut ValidatedSpeechStart,
-    work: &TempDir,
+    work: &OwnedStagingDirectory,
     cancellation: &CancellationToken,
 ) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
     let worker = resolve_batch_worker(
@@ -3867,7 +3918,7 @@ async fn resolve_batch_worker(
 
 async fn prepare_f5_requests(
     worker: &Arc<ManagedSpeechWorker>,
-    work: &TempDir,
+    work: &OwnedStagingDirectory,
     requests: Vec<SynthesisRequest>,
     reference: AudioAsset,
     cancellation: CancellationToken,
@@ -3912,7 +3963,7 @@ async fn prepare_f5_requests(
 
 async fn synthesize_segment(
     context: &SpeechBatchContext<'_>,
-    work: &TempDir,
+    work: &OwnedStagingDirectory,
     worker: &Arc<ManagedSpeechWorker>,
     request: SynthesisRequest,
     ownership: SpeechLifecycleOwnership,
@@ -5127,7 +5178,7 @@ fn commit_published_reference(
 struct ReferencePublicationContext<'a> {
     runtime: &'a SpeechRuntime,
     media_engine: &'a osg_media::MediaEngine,
-    work: &'a TempDir,
+    work: &'a OwnedStagingDirectory,
     database: &'a Database,
     media_server: &'a osg_media_server::MediaServer,
     project_id: ProjectId,
@@ -7227,7 +7278,7 @@ mod tests {
         )
         .unwrap();
         let destination = directory.path().join("export.zip");
-        export_speech_plan(&plan, &destination).unwrap();
+        export_speech_plan(&runtime.0.staging_authority, &plan, &destination).unwrap();
 
         let mut archive = zip::ZipArchive::new(fs::File::open(destination).unwrap()).unwrap();
         assert_eq!(archive.len(), 2);
@@ -7302,7 +7353,7 @@ mod tests {
         .unwrap();
         let destination = directory.path().join("narration.wav");
 
-        export_speech_plan(&plan, &destination).unwrap();
+        export_speech_plan(&runtime.0.staging_authority, &plan, &destination).unwrap();
 
         assert_eq!(fs::read(destination).unwrap(), b"single narration bytes");
     }
@@ -7326,7 +7377,9 @@ mod tests {
             archive_name: None,
         };
         let destination = directory.path().join("changed.wav");
-        assert!(export_speech_plan(&plan, &destination).is_err());
+        let authority_directory = tempfile::tempdir().unwrap();
+        let authority = RuntimeStagingAuthority::prepare(authority_directory.path()).unwrap();
+        assert!(export_speech_plan(&authority, &plan, &destination).is_err());
         assert!(!destination.exists());
     }
 

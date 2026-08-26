@@ -289,6 +289,18 @@ fn parse_formats(
     url: &ValidatedMediaUrl,
     object: &serde_json::Map<String, Value>,
 ) -> Result<(FormatInventory, Option<String>)> {
+    // The generic extractor in current yt-dlp emits `direct: true` *and* a synthetic one-entry
+    // `formats` array. That entry deliberately has no codec metadata because yt-dlp has only
+    // inspected the HTTP object, not decoded it. Treating it as an ordinary site inventory drops
+    // the entry as unusable and rejects every approved direct MP4 before a download job can exist.
+    //
+    // The direct marker must therefore win over the presence of `formats`. `parse_direct_mp4`
+    // still requires the exact approved URL capability, video media type, and bounded format ID;
+    // a hostile supported-site response cannot use this branch to obtain passthrough privileges.
+    if object.get("direct").and_then(Value::as_bool) == Some(true) {
+        return parse_direct_mp4(url, object)
+            .map(|(formats, format_id)| (formats, Some(format_id)));
+    }
     let Some(raw_formats) = object.get("formats") else {
         return parse_direct_mp4(url, object)
             .map(|(formats, format_id)| (formats, Some(format_id)));
@@ -409,6 +421,42 @@ fn parse_direct_mp4(
         .ok_or(DownloadError::InvalidInventory(
             "direct format ID is invalid",
         ))?;
+    if let Some(raw_formats) = object.get("formats") {
+        let synthetic = raw_formats
+            .as_array()
+            .filter(|formats| formats.len() == 1)
+            .and_then(|formats| formats.first())
+            .and_then(Value::as_object)
+            .ok_or(DownloadError::InvalidInventory(
+                "direct formats are invalid",
+            ))?;
+        if synthetic.get("format_id").and_then(Value::as_str) != Some(format_id) {
+            return Err(DownloadError::InvalidInventory(
+                "direct formats are invalid",
+            ));
+        }
+        let top_extension = object.get("ext").and_then(Value::as_str);
+        let synthetic_extension = synthetic.get("ext").and_then(Value::as_str);
+        if top_extension.is_some()
+            && synthetic_extension.is_some()
+            && top_extension != synthetic_extension
+        {
+            return Err(DownloadError::InvalidInventory(
+                "direct formats are contradictory",
+            ));
+        }
+        if synthetic
+            .get("protocol")
+            .and_then(Value::as_str)
+            .is_some_and(|protocol| !matches!(protocol, "http" | "https"))
+            || synthetic.get("vcodec").and_then(Value::as_str) == Some("none")
+            || synthetic.get("video_ext").and_then(Value::as_str) == Some("none")
+        {
+            return Err(DownloadError::InvalidInventory(
+                "direct formats are contradictory",
+            ));
+        }
+    }
     let container = object
         .get("ext")
         .and_then(Value::as_str)
@@ -659,6 +707,33 @@ mod tests {
     }
 
     #[test]
+    fn accepts_current_yt_dlp_generic_direct_shape_with_synthetic_formats() {
+        let source = url(
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
+             osg-runtime-bundles-v1/osg-installed-media-smoke-v1-aecf6c8ef3977cd4.mp4",
+        );
+        let inventory = MediaInventory::from_json(
+            &source,
+            br#"{
+              "title":"fixture", "direct":true, "_type":"video",
+              "format_id":"mp4", "ext":"mp4", "vcodec":null, "acodec":null,
+              "formats":[{
+                "format_id":"mp4", "ext":"mp4", "protocol":"http",
+                "vcodec":null, "video_ext":"mp4", "audio_ext":"none",
+                "url":"https://redirected.invalid/private"
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(inventory.direct_mp4_format_id(), Some("mp4"));
+        assert_eq!(inventory.formats.video.len(), 1);
+        assert_eq!(inventory.formats.video[0].format_id, "mp4");
+        assert!(inventory.formats.video[0].includes_audio);
+        assert!(inventory.formats.audio.is_empty());
+    }
+
+    #[test]
     fn rejects_unbounded_or_masquerading_direct_inventory() {
         let mp4 = url(
             "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/\
@@ -671,6 +746,14 @@ mod tests {
             br#"{"direct":true,"_type":"video"}"#.as_slice(),
             br#"{"direct":true,"_type":"video","format_id":"0","formats":null}"#.as_slice(),
             br#"{"direct":true,"_type":"video","format_id":"0","formats":[]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[null]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{"format_id":"other"}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{"format_id":"0"},{"format_id":"0"}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","ext":"mp4","formats":[{"format_id":"0","ext":"webm"}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{"format_id":"0","protocol":"file"}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{"format_id":"0","vcodec":"none"}]}"#.as_slice(),
+            br#"{"direct":true,"_type":"video","format_id":"0","formats":[{"format_id":"0","video_ext":"none"}]}"#.as_slice(),
         ];
         for json in invalid {
             assert!(MediaInventory::from_json(&mp4, json).is_err());
@@ -693,6 +776,21 @@ mod tests {
                 .is_err()
             );
         }
+
+        let unapproved = url("https://youtube.com/watch?v=direct");
+        assert!(
+            MediaInventory::from_json(
+                &unapproved,
+                br#"{
+                  "direct":true,"_type":"video","format_id":"mp4","ext":"mp4",
+                  "formats":[{
+                    "format_id":"decoy","ext":"mp4","vcodec":"h264","acodec":"aac"
+                  }]
+                }"#,
+            )
+            .is_err(),
+            "a synthetic usable format must not bypass the approved direct-media capability"
+        );
     }
 
     #[test]

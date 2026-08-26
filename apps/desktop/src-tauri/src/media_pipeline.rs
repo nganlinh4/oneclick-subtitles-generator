@@ -17,9 +17,9 @@ use osg_media::{
 };
 use osg_media_pipeline::{
     MediaInspection, MediaPipeline, PipelineError, PreparationOutcome, PreparedMedia,
-    WaveformOutcome,
 };
 use osg_media_server::{MediaServer, RegisteredMedia};
+use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{State, ipc::Channel};
@@ -27,6 +27,7 @@ use tauri::{State, ipc::Channel};
 use crate::background;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
+use crate::waveform_cache::{self, WaveformCacheSpec};
 
 const INSPECTION_TIMEOUT: Duration = Duration::from_secs(30);
 const OPERATION_TIMEOUT: Duration = Duration::from_hours(24);
@@ -42,6 +43,7 @@ const PUBLISHING_BASIS_POINTS: u16 = 9_700;
 pub(crate) struct MediaPipelineRuntime {
     pipeline: Arc<RwLock<Option<MediaPipeline>>>,
     staging_root: PathBuf,
+    staging_authority: RuntimeStagingAuthority,
     media_server: MediaServer,
     slots: Arc<SlotLimiter>,
     jobs: Arc<RuntimeJobs>,
@@ -52,15 +54,23 @@ impl MediaPipelineRuntime {
     pub(crate) fn new(
         engine: Option<osg_media::MediaEngine>,
         staging_root: impl AsRef<Path>,
+        staging_authority: RuntimeStagingAuthority,
         media_server: MediaServer,
     ) -> Result<Self, PipelineError> {
         let staging_root = staging_root.as_ref().to_owned();
         let pipeline = engine
-            .map(|engine| MediaPipeline::with_staging_root(engine, &staging_root))
+            .map(|engine| {
+                MediaPipeline::with_staging_authority(
+                    engine,
+                    &staging_root,
+                    staging_authority.clone(),
+                )
+            })
             .transpose()?;
         Ok(Self {
             pipeline: Arc::new(RwLock::new(pipeline)),
             staging_root,
+            staging_authority,
             media_server,
             slots: SlotLimiter::new(MAX_CONCURRENT_OPERATIONS),
             jobs: Arc::new(RuntimeJobs::default()),
@@ -78,7 +88,13 @@ impl MediaPipelineRuntime {
 
     pub(crate) fn refresh(&self, engine: Option<osg_media::MediaEngine>) -> CommandResult<()> {
         let pipeline = engine
-            .map(|engine| MediaPipeline::with_staging_root(engine, &self.staging_root))
+            .map(|engine| {
+                MediaPipeline::with_staging_authority(
+                    engine,
+                    &self.staging_root,
+                    self.staging_authority.clone(),
+                )
+            })
             .transpose()?;
         *self
             .pipeline
@@ -546,6 +562,7 @@ pub(crate) enum MediaPipelineResult {
     },
     Waveform {
         asset_id: AssetId,
+        cache_hit: bool,
         waveform: Box<WaveformPyramid>,
     },
 }
@@ -757,12 +774,21 @@ pub(crate) async fn media_pipeline_start(
         let source_asset_id = request.asset_id;
         let publication_metadata = request.operation.publication_metadata(source_asset_id);
         let requested_operation = request.operation;
+        let operation_database = database.clone();
+        let source_content_hash = resolved.content_hash();
         let native_result = tauri::async_runtime::spawn_blocking(move || {
-            execute_operation(&pipeline, input, &requested_operation, &control)
+            execute_operation(
+                &pipeline,
+                input,
+                &requested_operation,
+                &control,
+                &operation_database,
+                source_content_hash,
+            )
         })
         .await
         .map_err(|_| CommandError::internal("The native media operation stopped unexpectedly."))
-        .and_then(|result| result.map_err(Into::into));
+        .and_then(|result| result);
         watcher.abort();
         finish_operation(
             &runtime,
@@ -811,7 +837,11 @@ pub(crate) async fn media_pipeline_cancel(
 enum NativeOperationResult {
     Direct(MediaInspection),
     Prepared(PreparedMedia),
-    Waveform(WaveformOutcome),
+    Waveform {
+        waveform: WaveformPyramid,
+        cache_hit: bool,
+        cache_spec: WaveformCacheSpec,
+    },
 }
 
 struct PublicationContext {
@@ -826,33 +856,56 @@ fn execute_operation(
     input: MediaInput,
     operation: &ValidatedOperation,
     control: &RunControl,
-) -> Result<NativeOperationResult, PipelineError> {
+    database: &Database,
+    source_content_hash: osg_infrastructure::storage::ContentHash,
+) -> CommandResult<NativeOperationResult> {
     match operation {
-        ValidatedOperation::PreparePlayback => {
-            pipeline
-                .prepare_playback(input, control)
-                .map(|outcome| match outcome {
-                    PreparationOutcome::Direct(inspection) => {
-                        NativeOperationResult::Direct(inspection)
-                    }
-                    PreparationOutcome::Prepared(prepared) => {
-                        NativeOperationResult::Prepared(prepared)
-                    }
-                })
-        }
+        ValidatedOperation::PreparePlayback => pipeline
+            .prepare_playback(input, control)
+            .map(|outcome| match outcome {
+                PreparationOutcome::Direct(inspection) => NativeOperationResult::Direct(inspection),
+                PreparationOutcome::Prepared(prepared) => NativeOperationResult::Prepared(prepared),
+            })
+            .map_err(Into::into),
         ValidatedOperation::AnalysisClip { range } => pipeline
             .clip_for_analysis(input, *range, control)
-            .map(NativeOperationResult::Prepared),
+            .map(NativeOperationResult::Prepared)
+            .map_err(Into::into),
         ValidatedOperation::ExtractAudio { format, range } => pipeline
             .extract_audio(input, *format, *range, control)
-            .map(NativeOperationResult::Prepared),
+            .map(NativeOperationResult::Prepared)
+            .map_err(Into::into),
         ValidatedOperation::GenerateWaveform {
             points_per_second,
             max_points,
             range,
-        } => pipeline
-            .generate_waveform(input, *points_per_second, *max_points, *range, control)
-            .map(NativeOperationResult::Waveform),
+        } => {
+            let spec = WaveformCacheSpec::new(
+                source_content_hash,
+                *points_per_second,
+                *max_points,
+                *range,
+            );
+            if let Some(hit) = waveform_cache::lookup(database, spec)? {
+                return Ok(NativeOperationResult::Waveform {
+                    waveform: hit.waveform,
+                    cache_hit: hit.cache_hit,
+                    cache_spec: spec,
+                });
+            }
+            let generated = pipeline.generate_waveform(
+                input,
+                *points_per_second,
+                *max_points,
+                *range,
+                control,
+            )?;
+            Ok(NativeOperationResult::Waveform {
+                waveform: generated.waveform,
+                cache_hit: false,
+                cache_spec: spec,
+            })
+        }
     }
 }
 
@@ -1084,11 +1137,53 @@ fn finalize_native_result(
                 }),
             })
         }
-        NativeOperationResult::Waveform(outcome) => Ok(MediaPipelineResult::Waveform {
-            asset_id: source_asset_id,
-            waveform: Box::new(outcome.waveform),
-        }),
+        NativeOperationResult::Waveform {
+            waveform,
+            cache_hit,
+            cache_spec,
+        } => {
+            // The cache key was derived from the verified source handle before FFmpeg or the cache
+            // reader ran. Revalidate that same handle at publication so an in-place source change
+            // cannot store or return pixels under the prior content identity.
+            source.revalidate_verified_file()?;
+            finalize_waveform_result(
+                source_asset_id,
+                job_id,
+                waveform,
+                cache_hit,
+                cache_spec,
+                |waveform| waveform_cache::publish(database, cache_spec, waveform),
+            )
+        }
     }
+}
+
+fn finalize_waveform_result(
+    source_asset_id: AssetId,
+    job_id: JobId,
+    waveform: WaveformPyramid,
+    cache_hit: bool,
+    cache_spec: WaveformCacheSpec,
+    publish_cache: impl FnOnce(&WaveformPyramid) -> CommandResult<()>,
+) -> CommandResult<MediaPipelineResult> {
+    // IPC validity is not optional: only a storage failure after semantic validation may degrade
+    // to an uncached result. This keeps a full or read-only cache from breaking the editor without
+    // ever allowing malformed generated data to cross the native boundary.
+    waveform_cache::validate_for_ipc(&waveform, cache_spec)?;
+    if !cache_hit && let Err(error) = publish_cache(&waveform) {
+        crate::diagnostics::record(
+            "waveform.cache_publish_failed",
+            &[
+                ("job", job_id.to_string()),
+                ("reason", error.code().to_owned()),
+            ],
+        );
+    }
+    Ok(MediaPipelineResult::Waveform {
+        asset_id: source_asset_id,
+        cache_hit,
+        waveform: Box::new(waveform),
+    })
 }
 
 fn prepared_display_name(operation: MediaPipelineOperation, extension: &str) -> String {
@@ -1149,12 +1244,40 @@ async fn fail_operation(
 #[cfg(test)]
 mod tests {
     use osg_domain::{AssetId, JobId};
+    use osg_infrastructure::storage::ContentHash;
+    use osg_media::{MediaTimeRange, WaveformLevel, WaveformPoint, WaveformPyramid};
     use serde_json::json;
 
     use super::{
-        MAX_OPERATION_TIME_US, MediaPipelineRequest, RuntimeJobs, ValidatedOperation,
-        processing_job_progress,
+        MAX_OPERATION_TIME_US, MediaPipelineRequest, MediaPipelineResult, RuntimeJobs,
+        ValidatedOperation, finalize_waveform_result, processing_job_progress,
     };
+    use crate::error::CommandError;
+    use crate::waveform_cache::WaveformCacheSpec;
+
+    fn valid_waveform() -> WaveformPyramid {
+        WaveformPyramid {
+            duration_us: 1_000_000,
+            source_sample_rate_hz: 400,
+            levels: vec![WaveformLevel {
+                points_per_second: 100.0,
+                points: vec![WaveformPoint {
+                    minimum: -0.5,
+                    maximum: 0.5,
+                    root_mean_square: 0.25,
+                }],
+            }],
+        }
+    }
+
+    fn waveform_spec() -> WaveformCacheSpec {
+        WaveformCacheSpec::new(
+            ContentHash::from_bytes([0x42; 32]),
+            100,
+            10_000,
+            MediaTimeRange::new(0, None).expect("range"),
+        )
+    }
 
     #[test]
     fn wire_requests_reject_paths_unknown_fields_and_unbounded_ranges() {
@@ -1233,5 +1356,41 @@ mod tests {
         drop(permit);
         assert!(jobs.run_if_cancellable(job_id, || Ok(())).is_ok());
         assert!(jobs.run_if_cancellable(JobId::new(), || Ok(())).is_err());
+    }
+
+    #[test]
+    fn valid_waveform_survives_cache_storage_failure_but_invalid_ipc_does_not() {
+        let asset_id = AssetId::new();
+        let result = finalize_waveform_result(
+            asset_id,
+            JobId::new(),
+            valid_waveform(),
+            false,
+            waveform_spec(),
+            |_| Err(CommandError::internal("simulated read-only cache")),
+        )
+        .expect("valid waveform remains usable without cache storage");
+        assert!(matches!(
+            result,
+            MediaPipelineResult::Waveform {
+                asset_id: returned,
+                cache_hit: false,
+                ..
+            } if returned == asset_id
+        ));
+
+        let mut invalid = valid_waveform();
+        invalid.levels[0].points[0].maximum = f32::NAN;
+        assert!(
+            finalize_waveform_result(
+                asset_id,
+                JobId::new(),
+                invalid,
+                false,
+                waveform_spec(),
+                |_| panic!("invalid waveform must be refused before cache publication"),
+            )
+            .is_err()
+        );
     }
 }

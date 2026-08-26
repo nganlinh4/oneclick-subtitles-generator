@@ -340,21 +340,57 @@ mod tests {
         }
     }
 
-    /// Zero degrees points at the top edge and the angle turns clockwise, which is the CSS rule and
-    /// not the mathematical one. Getting it wrong flips or rotates every existing gradient.
+    /// Every public direction follows the CSS rule used by the legacy renderer: zero degrees
+    /// points up and the angle turns clockwise. Getting this wrong flips or rotates every existing
+    /// persisted gradient.
     #[test]
-    fn the_gradient_angle_follows_the_css_convention() {
-        let upward = GradientLine::new(unit_box(), 0.0);
-        assert!(
-            upward.at(50.0, 100.0) < 0.5,
-            "at zero degrees the start colour is at the bottom"
-        );
-        assert!(upward.at(50.0, 0.0) > 0.5, "and the end colour at the top");
+    fn every_public_gradient_angle_follows_the_css_convention() {
+        let directions = [
+            (0.0, (0.0, -1.0), "up"),
+            (90.0, (1.0, 0.0), "right"),
+            (
+                45.0,
+                (
+                    std::f64::consts::FRAC_1_SQRT_2,
+                    -std::f64::consts::FRAC_1_SQRT_2,
+                ),
+                "up-right",
+            ),
+            (
+                135.0,
+                (
+                    std::f64::consts::FRAC_1_SQRT_2,
+                    std::f64::consts::FRAC_1_SQRT_2,
+                ),
+                "down-right",
+            ),
+            (180.0, (0.0, 1.0), "down"),
+            (270.0, (-1.0, 0.0), "left"),
+        ];
 
-        let rightward = GradientLine::new(unit_box(), 90.0);
-        assert!((rightward.at(0.0, 50.0) - 0.0).abs() < 1e-9);
-        assert!((rightward.at(100.0, 50.0) - 1.0).abs() < 1e-9);
-        assert!((rightward.at(50.0, 50.0) - 0.5).abs() < 1e-9);
+        for (degrees, expected, name) in directions {
+            let line = GradientLine::new(unit_box(), degrees);
+            assert!(
+                (line.direction.0 - expected.0).abs() < 1e-12,
+                "{degrees} degrees must point {name} on x"
+            );
+            assert!(
+                (line.direction.1 - expected.1).abs() < 1e-12,
+                "{degrees} degrees must point {name} on y"
+            );
+
+            let start = (
+                line.centre.0 - line.direction.0 * line.length / 2.0,
+                line.centre.1 - line.direction.1 * line.length / 2.0,
+            );
+            let end = (
+                line.centre.0 + line.direction.0 * line.length / 2.0,
+                line.centre.1 + line.direction.1 * line.length / 2.0,
+            );
+            assert!((line.at(start.0, start.1) - 0.0).abs() < 1e-9);
+            assert!((line.at(end.0, end.1) - 1.0).abs() < 1e-9);
+            assert!((line.at(50.0, 50.0) - 0.5).abs() < 1e-9);
+        }
     }
 
     #[test]

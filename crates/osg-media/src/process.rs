@@ -15,6 +15,25 @@ const DEFAULT_STDOUT_LIMIT: usize = 8 * 1024 * 1024;
 const STDERR_TAIL_LIMIT: usize = 64 * 1024;
 const PROGRESS_LINE_LIMIT: usize = 4 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
+const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
+    "__WDIO_TAURI_APP_BINARY__",
+    "__WDIO_TAURI_EMBEDDED__",
+    "OSG_E2E_REUSE_ROOT",
+    "OSG_E2E_CACHE_ROOT",
+    "OSG_E2E_CACHE_ROOT_ID",
+    "OSG_E2E_RUN_ROOT_AUTHORIZATION",
+    "OSG_E2E_STAGING_LEASE_ID",
+    "OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC",
+    "OSG_E2E_STAGING_LEASE_OWNER_PID",
+    "OSG_E2E_STAGING_ROOT",
+    "OSG_E2E_WEBDRIVER_AUTHORIZATION",
+    "OSG_E2E_WEBDRIVER_IDENTITY",
+    "OSG_E2E_WEBDRIVER_RUN_ROOT",
+    "REMOTE_WEBDRIVER_URL",
+    "TAURI_WEBDRIVER_PORT",
+    "WDIO_EMBEDDED_SERVER",
+    "WDIO_WORKER_ID",
+];
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -119,6 +138,7 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
     }
 
     let mut command = Command::new(binary.path());
+    remove_automation_authority_environment(&mut command);
     command
         .args(args)
         .stdin(Stdio::null())
@@ -179,6 +199,12 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
         stderr_tail,
         elapsed: started.elapsed(),
     })
+}
+
+fn remove_automation_authority_environment(command: &mut Command) {
+    for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+        command.env_remove(variable);
+    }
 }
 
 fn spawn_group(command: &mut Command, tool: BinaryKind) -> Result<GroupChild> {
@@ -336,10 +362,25 @@ fn process_io(tool: BinaryKind, message: &'static str) -> MediaError {
 pub(crate) mod test_support {
     use super::*;
     use crate::binary::BinaryOrigin;
+    use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
     use std::sync::OnceLock;
 
     static MOCK: OnceLock<PathBuf> = OnceLock::new();
+
+    #[test]
+    fn media_tool_process_drops_automation_authority() {
+        let mut command = Command::new("not-started");
+        remove_automation_authority_environment(&mut command);
+        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
+                "{variable} would be inherited by the media tool"
+            );
+        }
+    }
 
     pub(crate) fn mock_binary(kind: BinaryKind) -> ResolvedBinary {
         ResolvedBinary {

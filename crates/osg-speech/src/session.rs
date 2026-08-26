@@ -1,8 +1,10 @@
 use crate::protocol::{WorkerResponse, read_frame};
 use crate::{Result, RunControl, SpeechError};
 use command_group::{CommandGroup, GroupChild};
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use std::collections::VecDeque;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, ExitStatus};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -28,7 +30,7 @@ pub(crate) fn spawn_group(command: &mut Command) -> Result<GroupChild> {
 
 pub(crate) struct WorkerSession {
     child: GroupChild,
-    _cache_directory: tempfile::TempDir,
+    _cache_directory: WorkerCacheDirectory,
     pub(crate) stdin: ChildStdin,
     responses: Receiver<Result<WorkerResponse>>,
     reader: Option<JoinHandle<()>>,
@@ -38,8 +40,45 @@ pub(crate) struct WorkerSession {
     reaped: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct WorkerCacheStaging {
+    authority: RuntimeStagingAuthority,
+    root: PathBuf,
+}
+
+impl WorkerCacheStaging {
+    pub(crate) fn new(authority: RuntimeStagingAuthority, root: impl AsRef<Path>) -> Self {
+        Self {
+            authority,
+            root: root.as_ref().to_owned(),
+        }
+    }
+
+    pub(crate) fn begin(&self) -> std::io::Result<WorkerCacheDirectory> {
+        OwnedStagingDirectory::begin(&self.authority, &self.root, StagingKind::SpeechWorkerCache)
+            .map(WorkerCacheDirectory::Owned)
+    }
+}
+
+pub(crate) enum WorkerCacheDirectory {
+    Temporary(tempfile::TempDir),
+    Owned(OwnedStagingDirectory),
+}
+
+impl WorkerCacheDirectory {
+    pub(crate) fn path(&self) -> &Path {
+        match self {
+            Self::Temporary(directory) => directory.path(),
+            Self::Owned(directory) => directory.path(),
+        }
+    }
+}
+
 impl WorkerSession {
-    pub(crate) fn new(mut child: GroupChild, cache_directory: tempfile::TempDir) -> Result<Self> {
+    pub(crate) fn new(
+        mut child: GroupChild,
+        cache_directory: WorkerCacheDirectory,
+    ) -> Result<Self> {
         let stdin = child
             .inner()
             .stdin

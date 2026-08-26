@@ -3,7 +3,10 @@ use crate::program::native_process_path;
 use crate::protocol::{
     CommandFrame, PROTOCOL_VERSION, WirePhase, WorkerCommand, WorkerResponse, write_frame,
 };
-use crate::session::{POLL_INTERVAL, WorkerSession, spawn_group, wait_for_response};
+use crate::session::{
+    POLL_INTERVAL, WorkerCacheDirectory, WorkerCacheStaging, WorkerSession, spawn_group,
+    wait_for_response,
+};
 use crate::{
     AudioFormat, ReferencePreparationPlan, Result, RunControl, SecretValue, SegmentId,
     SpeechArtifact, SpeechBackend, SpeechError, SpeechOutput, SpeechPhase, SpeechProgress,
@@ -11,12 +14,32 @@ use crate::{
 };
 use serde::Serialize;
 use std::fmt;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, TryLockError};
 use std::time::Instant;
 
 const MAX_WORKER_TEXT_BYTES: u32 = 16 * 1024 * 1024;
+const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
+    "__WDIO_TAURI_APP_BINARY__",
+    "__WDIO_TAURI_EMBEDDED__",
+    "OSG_E2E_REUSE_ROOT",
+    "OSG_E2E_CACHE_ROOT",
+    "OSG_E2E_CACHE_ROOT_ID",
+    "OSG_E2E_RUN_ROOT_AUTHORIZATION",
+    "OSG_E2E_STAGING_LEASE_ID",
+    "OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC",
+    "OSG_E2E_STAGING_LEASE_OWNER_PID",
+    "OSG_E2E_STAGING_ROOT",
+    "OSG_E2E_WEBDRIVER_AUTHORIZATION",
+    "OSG_E2E_WEBDRIVER_IDENTITY",
+    "OSG_E2E_WEBDRIVER_RUN_ROOT",
+    "REMOTE_WEBDRIVER_URL",
+    "TAURI_WEBDRIVER_PORT",
+    "WDIO_EMBEDDED_SERVER",
+    "WDIO_WORKER_ID",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +56,7 @@ pub struct LazySpeechWorker {
     program: WorkerProgram,
     backend: SpeechBackend,
     provider_secret: Option<SecretValue>,
+    worker_cache: Option<WorkerCacheStaging>,
     next_request_id: AtomicU64,
     session: Mutex<Option<WorkerSession>>,
 }
@@ -44,6 +68,7 @@ impl LazySpeechWorker {
             program,
             backend,
             provider_secret: None,
+            worker_cache: None,
             next_request_id: AtomicU64::new(1),
             session: Mutex::new(None),
         }
@@ -54,6 +79,17 @@ impl LazySpeechWorker {
     #[must_use]
     pub fn with_provider_secret(mut self, secret: SecretValue) -> Self {
         self.provider_secret = Some(secret);
+        self
+    }
+
+    /// Routes compiler caches through authenticated process-crash staging.
+    #[must_use]
+    pub fn with_staging_authority(
+        mut self,
+        authority: osg_runtime_staging::RuntimeStagingAuthority,
+        root: impl AsRef<Path>,
+    ) -> Self {
+        self.worker_cache = Some(WorkerCacheStaging::new(authority, root));
         self
     }
 
@@ -337,10 +373,14 @@ impl LazySpeechWorker {
             return Err(SpeechError::Cancelled);
         }
         self.program.revalidate()?;
-        let cache_directory = tempfile::Builder::new()
-            .prefix("osg-speech-worker-")
-            .tempdir()
-            .map_err(SpeechError::Spawn)?;
+        let cache_directory = match &self.worker_cache {
+            Some(staging) => staging.begin().map_err(SpeechError::Spawn)?,
+            None => tempfile::Builder::new()
+                .prefix("osg-speech-worker-")
+                .tempdir()
+                .map(WorkerCacheDirectory::Temporary)
+                .map_err(SpeechError::Spawn)?,
+        };
         let mut command = Command::new(native_process_path(self.program.executable())?);
         if let Some(bootstrap) = self.program.bootstrap_path() {
             // Isolated mode ignores PYTHON* injection and user site packages; `-B` also keeps the
@@ -373,6 +413,7 @@ impl LazySpeechWorker {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        remove_automation_authority_environment(&mut command);
         if let Some(secret) = &self.provider_secret {
             command.env("OSG_SPEECH_PROVIDER_SECRET", secret.expose());
         }
@@ -434,6 +475,32 @@ impl LazySpeechWorker {
             && let Some(mut session) = state.take()
         {
             session.terminate();
+        }
+    }
+}
+
+fn remove_automation_authority_environment(command: &mut Command) {
+    for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+        command.env_remove(variable);
+    }
+}
+
+#[cfg(test)]
+mod automation_authority_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn speech_worker_drops_automation_authority() {
+        let mut command = Command::new("not-started");
+        remove_automation_authority_environment(&mut command);
+        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
+                "{variable} would be inherited by the speech worker"
+            );
         }
     }
 }

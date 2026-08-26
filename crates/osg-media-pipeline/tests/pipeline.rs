@@ -236,26 +236,20 @@ fn native_paths_support_unicode_and_shell_metacharacters_on_every_os() {
 }
 
 #[test]
-fn managed_staging_reconciles_crash_leftovers_but_refuses_unknown_trees() {
+fn managed_staging_preserves_unjournaled_lookalikes() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let staging = directory.path().join("pipeline-staging");
     let pipeline = MediaPipeline::with_staging_root(media_engine(), &staging).expect("staging");
     drop(pipeline);
 
-    let stale = staging.join("job-stale-after-crash");
-    std::fs::create_dir(&stale).expect("stale job directory");
-    std::fs::write(stale.join("prepared.mp4"), b"partial").expect("partial output");
-    let recovered =
-        MediaPipeline::with_staging_root(media_engine(), &staging).expect("reconcile stale job");
-    assert!(!stale.exists());
-    drop(recovered);
-
-    let unknown = staging.join("job-unexpected");
+    let unknown = staging.join(".osg-media-pipeline-job-unowned");
     std::fs::create_dir(&unknown).expect("unknown job");
     std::fs::create_dir(unknown.join("nested")).expect("unexpected nested directory");
-    assert!(MediaPipeline::with_staging_root(media_engine(), &staging).is_err());
+    let reopened =
+        MediaPipeline::with_staging_root(media_engine(), &staging).expect("reopen staging");
+    drop(reopened);
     assert!(
         unknown.exists(),
-        "unknown tree must fail closed, not be deleted"
+        "an unjournaled lookalike must never be deleted"
     );
 }

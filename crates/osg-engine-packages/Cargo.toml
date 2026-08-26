@@ -9,6 +9,7 @@ license = "MIT"
 
 [dependencies]
 fs2 = "=0.4.3"
+osg-runtime-staging.workspace = true
 reqwest = { version = "=0.13.4", default-features = false, features = ["blocking", "rustls"] }
 serde.workspace = true
 serde_json.workspace = true

@@ -1,5 +1,17 @@
+// The automation server is not a production diagnostic switch. Put the refusal in the library root
+// (not only the executable) so `cargo check --lib --features production,e2e-automation` cannot
+// compile the loopback server or any test-only state seam either.
+#[cfg(all(feature = "production", feature = "e2e-automation"))]
+compile_error!("the production and e2e-automation channels are mutually exclusive");
+#[cfg(all(feature = "unsigned-local-build", feature = "e2e-automation"))]
+compile_error!("the unsigned-local-build and e2e-automation channels are mutually exclusive");
+#[cfg(all(feature = "ci-updater-fixture", feature = "e2e-automation"))]
+compile_error!("the ci-updater-fixture and e2e-automation channels are mutually exclusive");
+
 mod app_close;
 mod asr;
+#[cfg(any(feature = "e2e-automation", test))]
+mod automation_window;
 mod background;
 mod cache;
 #[cfg(feature = "ci-updater-fixture")]
@@ -35,6 +47,7 @@ mod state;
 mod ui_fonts;
 mod updater;
 mod voice_samples;
+mod waveform_cache;
 
 use std::collections::BTreeMap;
 use std::{
@@ -50,12 +63,14 @@ use app_close::{
 use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
 use commands::{
+    active_workspace_begin, active_workspace_clear, active_workspace_get, active_workspace_set,
     app_health, clear_media, credential_delete, credential_set, credential_status,
     credential_upsert, discard_media_candidate, get_session_snapshot, job_cancel, job_get,
     jobs_list, open_media_asset, project_commit, project_create, project_history_status,
     project_load, project_redo, project_track_commit, project_track_history_status,
     project_track_redo, project_track_undo, project_undo, select_media, setting_delete,
-    setting_get, setting_set, settings_clear, settings_set_many,
+    setting_get, setting_set, settings_clear, settings_set_many, subtitle_project_alias_activate,
+    subtitle_project_alias_remove, subtitle_project_index_get,
 };
 use document_export::{generated_file_export, subtitle_archive_export, subtitle_document_export};
 use download::{
@@ -111,6 +126,7 @@ use osg_infrastructure::storage::{Database, is_secret_setting_key};
 use osg_media::{BinarySearch, MediaEngine, ToolchainResolver};
 use osg_media_server::MediaServer;
 use osg_native_tools::{ExecutableRole, NativeToolId};
+use osg_runtime_staging::RuntimeStagingAuthority;
 use project_render_scene::{project_render_scene_get, project_render_scene_put};
 use providers::{
     genius_lyrics, youtube_oauth_authorize, youtube_oauth_cancel, youtube_oauth_clear,
@@ -151,6 +167,9 @@ use voice_samples::{
     reason = "the complete Tauri command allowlist is intentionally visible in one audited handler"
 )]
 pub fn run() {
+    #[cfg(feature = "e2e-automation")]
+    automation_window::require_harness_environment()
+        .unwrap_or_else(|error| panic!("unsafe E2E automation launch: {error}"));
     #[cfg(feature = "ci-updater-fixture")]
     ci_updater_fixture::initialize_from_process_arguments()
         .unwrap_or_else(|error| panic!("invalid CI updater fixture arguments: {error}"));
@@ -162,7 +181,13 @@ pub fn run() {
     // and which every release artifact is asserted not to contain.
     #[cfg(feature = "e2e-automation")]
     let builder = builder
-        .plugin(tauri_plugin_wdio_webdriver::init())
+        .plugin(tauri_plugin_wdio_webdriver::init_with_window_guard(
+            |window| {
+                automation_window::isolate(window)
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            },
+        ))
         .plugin(tauri_plugin_wdio::init());
     let app = builder
         .plugin(tauri_plugin_dialog::init())
@@ -195,14 +220,25 @@ pub fn run() {
             if webview.label() == "main" && matches!(payload.event(), PageLoadEvent::Finished) {
                 diagnostics::record("app.page_load_finished", &[]);
                 let window = webview.window().clone();
-                // Windows recenters a newly-created window whose configured position is entirely
-                // outside every monitor. Moving the already-created surface succeeds and happens
-                // before WebDriver's `before` guard permits a journey to interact.
+                // Automation is intentionally isolated from the interactive desktop. A configured
+                // off-screen position is not sufficient on Windows: the shell may recenter a new
+                // native window before Tauri applies it. Move the already-created surface again,
+                // but never focus it or move it on-screen in this channel. WebDriver may make the
+                // compositor surface technically visible so video keeps advancing; a rectangle
+                // beyond the complete virtual desktop is therefore the enforceable safety boundary,
+                // not an inaccurate visibility claim.
                 #[cfg(feature = "e2e-automation")]
-                if std::env::var_os("OSG_E2E_OFFSCREEN_WINDOW").is_some_and(|value| value == "1") {
-                    window
-                        .set_position(tauri::PhysicalPosition::new(-10_000, 0))
+                if automation_window::offscreen_requested() {
+                    let placement = automation_window::isolate(&window)
                         .expect("the automation window must leave the interactive desktop");
+                    diagnostics::record(
+                        "automation.window_offscreen",
+                        &[
+                            ("x", placement.x.to_string()),
+                            ("y", placement.y.to_string()),
+                        ],
+                    );
+                    return;
                 }
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -222,6 +258,13 @@ pub fn run() {
             app_close_checkpoint_commit,
             font_readiness_retry,
             get_session_snapshot,
+            active_workspace_get,
+            active_workspace_begin,
+            active_workspace_set,
+            active_workspace_clear,
+            subtitle_project_index_get,
+            subtitle_project_alias_activate,
+            subtitle_project_alias_remove,
             select_media,
             clear_media,
             open_media_asset,
@@ -367,6 +410,19 @@ fn handle_application_run_event(_app: &tauri::AppHandle, event: &tauri::RunEvent
 }
 
 fn handle_application_window_event(window: &Window, event: &WindowEvent) {
+    #[cfg(feature = "e2e-automation")]
+    if window.label() == "main"
+        && matches!(
+            event,
+            WindowEvent::Moved(_)
+                | WindowEvent::Resized(_)
+                | WindowEvent::ScaleFactorChanged { .. }
+                | WindowEvent::Focused(true)
+        )
+    {
+        automation_window::isolate(window)
+            .expect("the automation window must remain outside the interactive desktop");
+    }
     handle_native_media_drop_event(window, event);
     if let WindowEvent::CloseRequested { api, .. } = event
         && is_main_window_close_request(window.label(), true)
@@ -383,6 +439,10 @@ fn is_main_window_close_request(window_label: &str, close_requested: bool) -> bo
     window_label == "main" && close_requested
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "application setup keeps resource construction and Tauri state registration in one auditable order"
+)]
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let harness_root = harness_data_root();
     let local_data_dir = match &harness_root {
@@ -399,6 +459,17 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     diagnostics::initialize(&log_dir)?;
     record_application_environment(app);
+    let (runtime_staging_authority, staging_report) = RuntimeStagingAuthority::prepare_with_report(
+        &cache_dir.join("v1/runtime-staging-authority"),
+    )?;
+    diagnostics::record(
+        "runtime-staging.reconciled",
+        &[
+            ("reclaimed", staging_report.reclaimed.to_string()),
+            ("deferred", staging_report.deferred.to_string()),
+            ("active", staging_report.active.to_string()),
+        ],
+    );
     let font_readiness =
         std::sync::Arc::new(FontReadiness::new(font_readiness::MANAGED_SUBTITLE_FAMILY));
     let font_bundle = app
@@ -413,17 +484,28 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let SpeechSetup {
         runtime: speech_runtime,
         resource_dir,
-    } = prepare_speech_runtime(app, &local_data_dir, &cache_dir)?;
-    let asr = AsrRuntimeManager::new(cache_dir.join("v1/asr"), resource_dir.clone())?;
-    let engine_package_manager = EnginePackageManager::new(
+    } = prepare_speech_runtime(
+        app,
+        &local_data_dir,
+        &cache_dir,
+        runtime_staging_authority.clone(),
+    )?;
+    let asr = AsrRuntimeManager::new_with_staging_authority(
+        cache_dir.join("v1/asr"),
+        resource_dir.clone(),
+        runtime_staging_authority.clone(),
+    )?;
+    let engine_package_manager = EnginePackageManager::new_with_staging_authority(
         local_data_dir.join("engine-packages/v1"),
         Arc::new(asr.package_coordinator()),
+        runtime_staging_authority.clone(),
     )?;
     asr.attach_package_manager(engine_package_manager.clone())?;
     let media_server = MediaServer::start(media_server_allowed_origins(cfg!(debug_assertions)))?;
-    let voice_sample_runtime = VoiceSampleRuntime::new(
+    let voice_sample_runtime = VoiceSampleRuntime::new_with_staging_authority(
         &local_data_dir.join("asset-packages/v1"),
         media_server.clone(),
+        runtime_staging_authority.clone(),
     )?;
     let mut settings = database.list_settings("app")?;
     let disallowed_settings = settings
@@ -438,18 +520,31 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let jobs = Arc::new(JobRegistry::restore(Arc::new(database.clone()))?);
-    let media_blob_store = MediaBlobStore::new(&cache_dir.join("v1/ephemeral-audio"))?;
+    let media_blob_store = MediaBlobStore::new_with_staging_authority(
+        &cache_dir.join("v1/ephemeral-audio"),
+        &runtime_staging_authority,
+    )?;
     let engine_package_runtime =
         EnginePackageRuntime::new(engine_package_manager, database.clone(), Arc::clone(&jobs))?;
     let speech_package_runtime =
         SpeechPackageRuntime::new(speech_runtime.package_manager()?, Arc::clone(&jobs));
-    let native_tool_runtime = NativeToolRuntime::new(
+    let native_tool_runtime = NativeToolRuntime::new_with_staging_authority(
         &local_data_dir.join("native-tools/v1"),
         database.clone(),
         Arc::clone(&jobs),
+        runtime_staging_authority.clone(),
     )?;
-    let media_runtimes = prepare_media_runtimes(&cache_dir, &media_server, &native_tool_runtime)?;
-    let render_runtime = RenderRuntimeHost::new(&cache_dir, media_server.clone())?;
+    let media_runtimes = prepare_media_runtimes(
+        &cache_dir,
+        &media_server,
+        &native_tool_runtime,
+        runtime_staging_authority.clone(),
+    )?;
+    let render_runtime = RenderRuntimeHost::new(
+        &cache_dir,
+        runtime_staging_authority.clone(),
+        media_server.clone(),
+    )?;
     attach_media_runtime_activator(&native_tool_runtime, &media_runtimes, &render_runtime)?;
     app.manage(media_runtimes.download);
     app.manage(media_runtimes.pipeline);
@@ -461,6 +556,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(speech_runtime);
     app.manage(media_blob_store);
     app.manage(media_server.clone());
+    app.manage(runtime_staging_authority);
     app.manage(DesktopState::new(
         asr,
         database,
@@ -624,6 +720,7 @@ fn build_main_window(
         .first()
         .cloned()
         .ok_or_else(|| io::Error::other("the main window configuration is missing"))?;
+    #[cfg(not(feature = "e2e-automation"))]
     if has_saved_main_window_state(app) {
         // Start neutral so a saved non-maximized window is not overridden by the
         // maximized first-launch default. The plugin restores the saved state when
@@ -631,25 +728,40 @@ fn build_main_window(
         window_config.maximized = false;
     }
     #[cfg(feature = "e2e-automation")]
-    apply_automation_window_placement(
-        &mut window_config,
-        std::env::var_os("OSG_E2E_OFFSCREEN_WINDOW").is_some_and(|value| value == "1"),
-    );
+    apply_automation_window_placement(&mut window_config, automation_window::offscreen_requested());
     let window_builder = WebviewWindowBuilder::from_config(app, &window_config)?;
-    #[cfg(feature = "ci-updater-fixture")]
-    let window_builder =
-        if let Some(arguments) = ci_updater_fixture::configuration().browser_arguments() {
-            window_builder.additional_browser_args(&arguments)
-        } else {
-            window_builder
-        };
-    window_builder
+    #[cfg(all(feature = "ci-updater-fixture", not(feature = "e2e-automation")))]
+    let browser_arguments = ci_updater_fixture::configuration().browser_arguments();
+    #[cfg(all(not(feature = "ci-updater-fixture"), not(feature = "e2e-automation")))]
+    let browser_arguments: Option<String> = None;
+    #[cfg(feature = "e2e-automation")]
+    let browser_arguments = Some(automation_window::automation_browser_arguments());
+    let window_builder = if let Some(arguments) = browser_arguments {
+        window_builder.additional_browser_args(&arguments)
+    } else {
+        window_builder
+    };
+    #[cfg(feature = "e2e-automation")]
+    let window_builder = window_builder
+        .initialization_script(automation_window::AUTOMATION_INTERACTION_GUARD_SCRIPT);
+    let window = window_builder
         .initialization_script(window_initialization_script(
             settings,
             ui_font_css,
             readiness,
         )?)
         .build()?;
+    #[cfg(not(feature = "e2e-automation"))]
+    let _ = &window;
+    // Apply the native position only after creation as well as in the declarative config. Windows
+    // can ignore an entirely off-screen initial coordinate and recenter it, but it accepts the same
+    // coordinate once the HWND exists. The surface remains outside the interactive desktop for the
+    // entire automation run even if WebDriver makes its compositor-visible HWND technically visible.
+    #[cfg(feature = "e2e-automation")]
+    if automation_window::offscreen_requested() {
+        let native_window = window.as_ref().window();
+        automation_window::isolate(&native_window)?;
+    }
     Ok(())
 }
 
@@ -670,6 +782,7 @@ fn apply_automation_window_placement(
     window.y = Some(0.0);
     window.prevent_overflow = Some(tauri::utils::config::PreventOverflowConfig::Enable(false));
     window.maximized = false;
+    window.visible = false;
     window.focus = false;
     window.skip_taskbar = true;
 }
@@ -690,6 +803,7 @@ fn attach_media_runtime_activator(
         .map_err(|_| io::Error::other("the native tool activator could not be initialized"))
 }
 
+#[cfg(any(not(feature = "e2e-automation"), test))]
 fn has_saved_main_window_state(app: &tauri::App) -> bool {
     let Ok(config_dir) = app.path().app_config_dir() else {
         return false;
@@ -705,6 +819,7 @@ fn has_saved_main_window_state(app: &tauri::App) -> bool {
     has_valid_main_window_state(&saved_states)
 }
 
+#[cfg(any(not(feature = "e2e-automation"), test))]
 fn has_valid_main_window_state(saved_states: &Value) -> bool {
     saved_states.get("main").is_some_and(|state| {
         state
@@ -806,6 +921,7 @@ fn prepare_media_runtimes(
     cache_dir: &std::path::Path,
     media_server: &MediaServer,
     native_tools: &NativeToolRuntime,
+    staging_authority: RuntimeStagingAuthority,
 ) -> Result<MediaRuntimes, osg_media_pipeline::PipelineError> {
     let mut media_search = BinarySearch::default();
     let mut download_search = YtDlpSearch::default();
@@ -834,10 +950,12 @@ fn prepare_media_runtimes(
     let media_pipeline_runtime = MediaPipelineRuntime::new(
         media_engine.clone(),
         cache_dir.join("v1/media-pipeline"),
+        staging_authority.clone(),
         media_server.clone(),
     )?;
     let download_runtime = DownloadRuntime::resolve(
         cache_dir,
+        staging_authority,
         download_search,
         js_runtime_search,
         ffmpeg_directory,
@@ -858,12 +976,14 @@ fn prepare_speech_runtime(
     app: &tauri::App,
     local_data_dir: &std::path::Path,
     cache_dir: &std::path::Path,
+    staging_authority: RuntimeStagingAuthority,
 ) -> io::Result<SpeechSetup> {
     let resource_dir = app.path().resource_dir().ok();
-    let runtime = SpeechRuntime::new(
+    let runtime = SpeechRuntime::new_with_staging_authority(
         local_data_dir.join("engines/speech"),
         cache_dir.join("v1/speech"),
         resource_dir.clone(),
+        staging_authority,
     )?;
     Ok(SpeechSetup {
         runtime,
@@ -958,14 +1078,15 @@ fn is_webview_bootstrap_setting_key(key: &str) -> bool {
 /// real directory instead. So a harness that must not touch a developer's projects needs the
 /// application to accept a root, and there is no way to provide one from outside the process.
 ///
-/// This exists ONLY in the `unsigned-local-build` channel. There is no `cfg` in this function that
-/// a release build compiles: `production` does not enable that feature, no workflow builds it, and
-/// `scripts/check-release-readiness.js` asserts both. The path is required to be absolute so a
-/// relative value cannot quietly resolve against whatever directory the harness happened to start
-/// in, and creation failure is fatal rather than a silent fall back to the real root — falling back
-/// is precisely the behaviour that would write test data into someone's live database.
-#[cfg(feature = "unsigned-local-build")]
-fn harness_data_root() -> Option<std::path::PathBuf> {
+/// This exists ONLY in the two test-only channels. There is no `cfg` in this function that a
+/// production build compiles: `production` enables neither feature, no release workflow builds
+/// either, and `scripts/check-release-readiness.js` asserts both. The path is required to be
+/// absolute so a relative value cannot quietly resolve against whatever directory the harness
+/// happened to start in, and creation failure is fatal rather than a silent fall back to the real
+/// root — falling back is precisely the behaviour that would write test data into someone's live
+/// database.
+#[cfg(any(feature = "unsigned-local-build", feature = "e2e-automation"))]
+pub(crate) fn harness_data_root() -> Option<std::path::PathBuf> {
     let raw = std::env::var_os("OSG_E2E_DATA_ROOT")?;
     let root = std::path::PathBuf::from(raw);
     assert!(
@@ -976,8 +1097,8 @@ fn harness_data_root() -> Option<std::path::PathBuf> {
     Some(root)
 }
 
-#[cfg(not(feature = "unsigned-local-build"))]
-const fn harness_data_root() -> Option<std::path::PathBuf> {
+#[cfg(not(any(feature = "unsigned-local-build", feature = "e2e-automation")))]
+pub(crate) const fn harness_data_root() -> Option<std::path::PathBuf> {
     None
 }
 
@@ -1010,6 +1131,7 @@ mod tests {
         assert_eq!(window.y, Some(0.0));
         assert!(!window.center);
         assert!(!window.maximized);
+        assert!(!window.visible);
         assert!(!window.focus);
         assert!(window.skip_taskbar);
         assert_eq!(

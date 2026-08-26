@@ -32,6 +32,19 @@ impl DownloadEngine<SystemResolver> {
             UrlValidator::system(policy),
         ))
     }
+
+    /// Resolves the same native engine with a compile-time-hidden exact loopback allow-list.
+    #[cfg(feature = "e2e-automation")]
+    pub fn resolve_with_exact_automation_urls(
+        search: YtDlpSearch,
+        policy: UrlPolicy,
+        values: &[String],
+    ) -> Result<Self> {
+        Ok(Self::new(
+            YtDlpResolver::new(search).resolve()?,
+            UrlValidator::system_with_exact_automation_urls(policy, values)?,
+        ))
+    }
 }
 
 impl<R: AddressResolver> DownloadEngine<R> {

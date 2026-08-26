@@ -3,9 +3,10 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::Deserialize;
-use tauri::AppHandle;
 use tauri::ipc::{InvokeBody, Request};
+use tauri::{AppHandle, Manager};
 
 use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
@@ -169,9 +170,12 @@ pub(crate) async fn subtitle_document_export(
         ));
     }
 
-    tauri::async_runtime::spawn_blocking(move || write_document(&request.content, &destination))
-        .await
-        .map_err(|_| CommandError::internal("The subtitle export task stopped unexpectedly."))??;
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_document(&staging_authority, &request.content, &destination)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The subtitle export task stopped unexpectedly."))??;
     Ok(true)
 }
 
@@ -207,9 +211,12 @@ pub(crate) async fn subtitle_archive_export(
         ));
     }
 
-    tauri::async_runtime::spawn_blocking(move || write_archive(&request.entries, &destination))
-        .await
-        .map_err(|_| CommandError::internal("The subtitle archive task stopped unexpectedly."))??;
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_archive(&staging_authority, &request.entries, &destination)
+    })
+    .await
+    .map_err(|_| CommandError::internal("The subtitle archive task stopped unexpectedly."))??;
     Ok(true)
 }
 
@@ -263,11 +270,14 @@ pub(crate) async fn generated_file_export(
             "The generated file type is invalid.",
         ));
     }
-    tauri::async_runtime::spawn_blocking(move || write_bytes(&bytes, &destination))
-        .await
-        .map_err(|_| {
-            CommandError::internal("The generated-file export task stopped unexpectedly.")
-        })??;
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_bytes(&staging_authority, &bytes, &destination)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::internal("The generated-file export task stopped unexpectedly.")
+    })??;
     Ok(true)
 }
 
@@ -378,7 +388,11 @@ fn validate_archive_request(request: &SubtitleArchiveExportRequest) -> CommandRe
     Ok(())
 }
 
-fn write_archive(entries: &[SubtitleArchiveEntry], destination: &Path) -> CommandResult<()> {
+fn write_archive(
+    staging_authority: &RuntimeStagingAuthority,
+    entries: &[SubtitleArchiveEntry],
+    destination: &Path,
+) -> CommandResult<()> {
     let mut source = tempfile::Builder::new()
         .prefix(".osg-subtitle-archive-")
         .suffix(".part")
@@ -409,15 +423,30 @@ fn write_archive(entries: &[SubtitleArchiveEntry], destination: &Path) -> Comman
         .metadata()
         .map_err(|_| CommandError::subtitle_export_failed())?
         .len();
-    copy_export(source.path(), destination, length, || false, |_, _| Ok(()))
-        .map_err(|_| CommandError::subtitle_export_failed())
+    copy_export(
+        staging_authority,
+        source.path(),
+        destination,
+        length,
+        || false,
+        |_, _| Ok(()),
+    )
+    .map_err(|_| CommandError::subtitle_export_failed())
 }
 
-fn write_document(content: &str, destination: &Path) -> CommandResult<()> {
-    write_bytes(content.as_bytes(), destination)
+fn write_document(
+    staging_authority: &RuntimeStagingAuthority,
+    content: &str,
+    destination: &Path,
+) -> CommandResult<()> {
+    write_bytes(staging_authority, content.as_bytes(), destination)
 }
 
-fn write_bytes(bytes: &[u8], destination: &Path) -> CommandResult<()> {
+fn write_bytes(
+    staging_authority: &RuntimeStagingAuthority,
+    bytes: &[u8],
+    destination: &Path,
+) -> CommandResult<()> {
     let mut source = tempfile::Builder::new()
         .prefix(".osg-subtitle-export-")
         .suffix(".part")
@@ -432,6 +461,7 @@ fn write_bytes(bytes: &[u8], destination: &Path) -> CommandResult<()> {
         .sync_all()
         .map_err(|_| CommandError::subtitle_export_failed())?;
     copy_export(
+        staging_authority,
         source.path(),
         destination,
         u64::try_from(bytes.len()).map_err(|_| CommandError::subtitle_export_failed())?,
@@ -492,10 +522,13 @@ mod tests {
     #[test]
     fn writes_utf8_with_atomic_replacement() {
         let directory = tempfile::tempdir().unwrap();
+        let authority_directory = tempfile::tempdir().unwrap();
+        let authority = RuntimeStagingAuthority::prepare(authority_directory.path()).unwrap();
         let destination = directory.path().join("captions.srt");
         fs::write(&destination, b"old").unwrap();
 
         write_document(
+            &authority,
             "1\n00:00:00,000 --> 00:00:01,000\n안녕하세요\n",
             &destination,
         )
@@ -559,13 +592,15 @@ mod tests {
     #[test]
     fn creates_a_native_zip_from_validated_entries() {
         let directory = tempfile::tempdir().unwrap();
+        let authority_directory = tempfile::tempdir().unwrap();
+        let authority = RuntimeStagingAuthority::prepare(authority_directory.path()).unwrap();
         let destination = directory.path().join("captions.zip");
         let entries = vec![SubtitleArchiveEntry {
             suggested_name: "captions.srt".to_owned(),
             format: SubtitleDocumentFormat::Srt,
             content: "1\n00:00:00,000 --> 00:00:01,000\n안녕하세요".to_owned(),
         }];
-        write_archive(&entries, &destination).unwrap();
+        write_archive(&authority, &entries, &destination).unwrap();
         let file = fs::File::open(destination).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let mut content = String::new();

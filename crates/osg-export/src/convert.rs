@@ -30,4 +30,3 @@ pub use audio::{AUDIO_BITRATE_KBPS, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, AudioP
 pub use crop::EXPORT_CANVAS_GROUND;
 pub use font::primary_font_family;
 pub use plan::ExportPlan;
-pub use style::{BACKGROUND_PADDING_X, BACKGROUND_PADDING_Y};

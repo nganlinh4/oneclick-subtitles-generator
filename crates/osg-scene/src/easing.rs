@@ -1,9 +1,9 @@
 //! Subtitle animation easing.
 //!
-//! A deliberate twin of the shipped TypeScript implementation, locked to it by a generated golden
-//! fixture rather than by inspection. Two properties here are surprising and are reproduced on
-//! purpose: `ease` and `ease-in-out` are the same quadratic and neither is the CSS `ease` curve,
-//! and any unrecognised easing falls through to linear.
+//! A deliberate twin of the canonical TypeScript implementation, locked to it by a generated golden
+//! fixture rather than by inspection. `ease` deliberately follows the CSS keyword's
+//! `cubic-bezier(0.25, 0.1, 0.25, 1)` semantics, while `ease-in-out` retains the established
+//! quadratic. Any unrecognised easing falls through to linear.
 
 /// The reviewed easing catalog, in the order the editor presents it.
 pub const SUBTITLE_ANIMATION_EASINGS: [&str; 7] = [
@@ -54,14 +54,15 @@ fn evaluate_cubic_bezier(progress: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f
     cubic_coordinate((lower + upper) / 2.0, y1, y2)
 }
 
-/// Ease `progress` by the named curve. Unknown curves are linear, matching the shipped behaviour.
+/// Ease `progress` by the named curve. Unknown curves are linear by contract.
 #[must_use]
 pub fn apply_subtitle_animation_easing(progress: f64, easing: &str) -> f64 {
     match easing {
         "ease-in" => progress * progress,
         "ease-out" => 1.0 - (1.0 - progress).powi(2),
-        // Not a mistake: the shipped implementation maps both to the same quadratic.
-        "ease" | "ease-in-out" => {
+        // CSS Easing Functions Level 1 defines the `ease` keyword as this cubic Bezier.
+        "ease" => evaluate_cubic_bezier(progress, 0.25, 0.1, 0.25, 1.0),
+        "ease-in-out" => {
             if progress < 0.5 {
                 2.0 * progress * progress
             } else {

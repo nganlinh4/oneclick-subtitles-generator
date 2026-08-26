@@ -233,10 +233,13 @@ pub(crate) async fn legacy_import_select(
 }
 
 fn acquire_process_import_lock(app: &AppHandle) -> CommandResult<File> {
-    let local_data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| CommandError::internal("the legacy migration lock is unavailable"))?;
+    let local_data = match crate::harness_data_root() {
+        Some(root) => root.join("data"),
+        None => app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| CommandError::internal("the legacy migration lock is unavailable"))?,
+    };
     fs::create_dir_all(&local_data)
         .map_err(|_| CommandError::internal("the legacy migration lock is unavailable"))?;
     let lock_path = local_data.join(".legacy-import-v1.lock");

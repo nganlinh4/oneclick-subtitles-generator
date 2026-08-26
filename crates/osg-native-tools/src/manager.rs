@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize as TestAtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -65,6 +66,7 @@ pub struct NativeToolManager(Arc<ManagerInner>);
 struct ManagerInner {
     root: PathBuf,
     _store_lock: fs::File,
+    staging_authority: RuntimeStagingAuthority,
     catalog: &'static DeliveryCatalog,
     fetcher: Arc<dyn FileFetcher>,
     coordinator: Arc<dyn RuntimeCoordinator>,
@@ -162,6 +164,29 @@ impl NativeToolManager {
         Self::with_parts(root.as_ref(), coordinator, catalog, fetcher, ytdlp_releases)
     }
 
+    /// Creates a manager using the application's private crash-recovery authority.
+    ///
+    /// The authority journal is locked before archive or extraction directories are created, so a
+    /// hard-killed installer cannot leave an unbounded full archive plus an unpacked copy behind.
+    pub fn new_with_staging_authority(
+        root: impl AsRef<Path>,
+        coordinator: Arc<dyn RuntimeCoordinator>,
+        staging_authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        let catalog = DeliveryCatalog::builtin()?;
+        let fetcher = Arc::new(HttpFileFetcher::new()?);
+        let ytdlp_releases = Arc::new(GitHubYtDlpReleaseResolver::new()?);
+        Self::with_parts_config_and_authority(
+            root.as_ref(),
+            coordinator,
+            catalog,
+            fetcher,
+            ytdlp_releases,
+            false,
+            Some(staging_authority),
+        )
+    }
+
     fn with_parts(
         root: &Path,
         coordinator: Arc<dyn RuntimeCoordinator>,
@@ -180,14 +205,46 @@ impl NativeToolManager {
         ytdlp_releases: Arc<dyn YtDlpReleaseResolver>,
         force_startup_cleanup_failure: bool,
     ) -> Result<Self> {
+        Self::with_parts_config_and_authority(
+            root,
+            coordinator,
+            catalog,
+            fetcher,
+            ytdlp_releases,
+            force_startup_cleanup_failure,
+            None,
+        )
+    }
+
+    fn with_parts_config_and_authority(
+        root: &Path,
+        coordinator: Arc<dyn RuntimeCoordinator>,
+        catalog: &'static DeliveryCatalog,
+        fetcher: Arc<dyn FileFetcher>,
+        ytdlp_releases: Arc<dyn YtDlpReleaseResolver>,
+        force_startup_cleanup_failure: bool,
+        staging_authority: Option<RuntimeStagingAuthority>,
+    ) -> Result<Self> {
         #[cfg(not(test))]
         let _ = force_startup_cleanup_failure;
         let root = initialize_store(root)?;
         let store_lock = acquire_store_lock(&root)?;
+        let staging_authority = match staging_authority {
+            Some(authority) => {
+                authority
+                    .reconcile_all()
+                    .map_err(|_| NativeToolError::StoreUnavailable)?;
+                authority
+            }
+            None => RuntimeStagingAuthority::prepare(&root.join(".runtime-staging-authority"))
+                .map_err(|_| NativeToolError::StoreUnavailable)?,
+        };
+        refuse_unowned_large_work_trees(&root)?;
         let dynamic_ytdlp = crate::update::load_installed(&root, catalog.platform())?;
         let manager = Self(Arc::new(ManagerInner {
             root,
             _store_lock: store_lock,
+            staging_authority,
             catalog,
             fetcher,
             coordinator,
@@ -294,7 +351,7 @@ impl NativeToolManager {
                     Err(NativeToolError::Cancelled) => return Err(NativeToolError::Cancelled),
                     Err(_) => {
                         self.forget_verified(&delivery);
-                        self.quarantine_invalid_install(&target, &delivery)?;
+                        self.quarantine_invalid_install(&target)?;
                     }
                 }
             }
@@ -303,18 +360,26 @@ impl NativeToolManager {
         }
         progress.on_progress(OperationProgress::new(OperationPhase::Preparing, 0, 1));
 
-        let operation_name = format!("{}-{}-{}", tool.as_str(), delivery.version, Uuid::now_v7());
         let staging_parent = self.0.root.join(".staging");
         let downloads_parent = self.0.root.join(".downloads");
         require_directory(&staging_parent)?;
         require_directory(&downloads_parent)?;
-        let staging = staging_parent.join(&operation_name);
-        let downloads = downloads_parent.join(&operation_name);
-        fs::create_dir(&staging).map_err(|_| NativeToolError::StoreUnavailable)?;
-        fs::create_dir(&downloads).map_err(|_| NativeToolError::StoreUnavailable)?;
-        require_directory(&staging)?;
-        require_directory(&downloads)?;
-        let mut work = WorkGuard::new(staging.clone(), downloads.clone());
+        let downloads = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &downloads_parent,
+            StagingKind::NativeToolDownload,
+        )
+        .map_err(|_| NativeToolError::StoreUnavailable)?;
+        let staging = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &staging_parent,
+            StagingKind::NativeToolExtraction,
+        )
+        .map_err(|_| NativeToolError::StoreUnavailable)?;
+        let downloads = downloads.path();
+        let staging = staging.path();
+        require_directory(staging)?;
+        require_directory(downloads)?;
 
         let artifact_path = downloads.join(&delivery.asset);
         self.0.fetcher.fetch(
@@ -329,7 +394,7 @@ impl NativeToolManager {
         )?;
         for notice in &delivery.notices {
             cancellation.check()?;
-            let target = crate::path_security::prepare_target(&downloads, &notice.install_path)?;
+            let target = crate::path_security::prepare_target(downloads, &notice.install_path)?;
             self.0.fetcher.fetch(
                 RemoteFile {
                     url: &notice.source_url,
@@ -341,18 +406,17 @@ impl NativeToolManager {
                 progress,
             )?;
         }
-        install_artifact(&artifact_path, &staging, &delivery, cancellation, progress)?;
+        install_artifact(&artifact_path, staging, &delivery, cancellation, progress)?;
         for notice in &delivery.notices {
             cancellation.check()?;
-            let source = resolve_owned(&downloads, &notice.install_path)?;
-            let target = crate::path_security::prepare_target(&staging, &notice.install_path)?;
+            let source = resolve_owned(downloads, &notice.install_path)?;
+            let target = crate::path_security::prepare_target(staging, &notice.install_path)?;
             fs::rename(source, &target).map_err(|_| NativeToolError::StoreUnavailable)?;
             set_permissions(&target, false)?;
         }
-        cleanup_empty_work_tree(&downloads)?;
-        work.downloads_cleaned = true;
-        receipt::write(&staging, &delivery)?;
-        let _ = receipt::validate_integrity(&staging, &delivery, cancellation)?;
+        cleanup_empty_work_tree(downloads)?;
+        receipt::write(staging, &delivery)?;
+        let _ = receipt::validate_integrity(staging, &delivery, cancellation)?;
 
         if !self.has_active_leases(tool)? {
             self.0.coordinator.quiesce(tool)?;
@@ -364,8 +428,7 @@ impl NativeToolManager {
             return Err(NativeToolError::InvalidInstall);
         }
         progress.on_progress(OperationProgress::new(OperationPhase::Publishing, 0, 1));
-        fs::rename(&staging, &target).map_err(|_| NativeToolError::StoreUnavailable)?;
-        work.staging_published = true;
+        fs::rename(staging, &target).map_err(|_| NativeToolError::StoreUnavailable)?;
         let identity = receipt::validate_integrity(&target, &delivery, cancellation)?;
         self.remember_verified(&delivery, identity)?;
         self.activate_dynamic_delivery(&delivery)?;
@@ -790,16 +853,22 @@ impl NativeToolManager {
         ensure_direct_child(&tool_root, "versions")
     }
 
-    fn quarantine_invalid_install(&self, target: &Path, delivery: &ToolDelivery) -> Result<()> {
+    fn quarantine_invalid_install(&self, target: &Path) -> Result<()> {
         require_directory(target).map_err(|_| NativeToolError::InvalidInstall)?;
         let quarantine_root = ensure_direct_child(&self.0.root, ".quarantine")?;
-        let quarantine = quarantine_root.join(format!(
-            "{}-{}-{}",
-            delivery.tool.as_str(),
-            delivery.version,
-            Uuid::now_v7()
-        ));
-        fs::rename(target, quarantine).map_err(|_| NativeToolError::StoreUnavailable)
+        let quarantine = OwnedStagingDirectory::begin(
+            &self.0.staging_authority,
+            &quarantine_root,
+            StagingKind::NativeToolQuarantine,
+        )
+        .map_err(|_| NativeToolError::StoreUnavailable)?;
+        let invalid = quarantine.path().join("invalid");
+        fs::rename(target, invalid).map_err(|_| NativeToolError::StoreUnavailable)?;
+        // Dropping the authenticated owner retires the corrupt managed cache immediately. If the
+        // process is killed after the rename, its durable journal reclaims the same tree next run.
+        quarantine
+            .remove()
+            .map_err(|_| NativeToolError::StoreUnavailable)
     }
 
     fn move_verified_to_trash(&self, target: &Path, delivery: &ToolDelivery) -> Result<PathBuf> {
@@ -943,7 +1012,7 @@ impl NativeToolManager {
                         },
                         Err(_) => {
                             self.forget_verified(&delivery);
-                            if self.quarantine_invalid_install(&target, &delivery).is_ok() {
+                            if self.quarantine_invalid_install(&target).is_ok() {
                                 if trash_cleanup.can_forget(&delivery) {
                                     let _ =
                                         crate::update::remove_persisted(&self.0.root, &delivery);
@@ -964,6 +1033,23 @@ impl NativeToolManager {
     }
 }
 
+fn refuse_unowned_large_work_trees(root: &Path) -> Result<()> {
+    for name in [".downloads", ".staging", ".quarantine"] {
+        let work_root = ensure_direct_child(root, name)?;
+        if fs::read_dir(&work_root)
+            .map_err(|_| NativeToolError::StoreUnavailable)?
+            .next()
+            .is_some()
+        {
+            // Prefixes and UUIDs are not deletion authority. New entries have already been
+            // reconciled through their private journal; anything left here predates that scheme or
+            // is foreign and is therefore preserved for explicit inspection.
+            return Err(NativeToolError::StoreUnavailable);
+        }
+    }
+    Ok(())
+}
+
 struct OperationGuard {
     inner: Arc<ManagerInner>,
     tool: NativeToolId,
@@ -973,35 +1059,6 @@ impl Drop for OperationGuard {
     fn drop(&mut self) {
         if let Ok(mut activity) = self.inner.activity.lock() {
             activity.operations.remove(&self.tool);
-        }
-    }
-}
-
-struct WorkGuard {
-    staging: PathBuf,
-    downloads: PathBuf,
-    staging_published: bool,
-    downloads_cleaned: bool,
-}
-
-impl WorkGuard {
-    fn new(staging: PathBuf, downloads: PathBuf) -> Self {
-        Self {
-            staging,
-            downloads,
-            staging_published: false,
-            downloads_cleaned: false,
-        }
-    }
-}
-
-impl Drop for WorkGuard {
-    fn drop(&mut self) {
-        if !self.downloads_cleaned {
-            let _ = cleanup_empty_work_tree(&self.downloads);
-        }
-        if !self.staging_published {
-            let _ = cleanup_empty_work_tree(&self.staging);
         }
     }
 }
@@ -1435,11 +1492,31 @@ mod tests {
             .unwrap()
             .collect::<std::io::Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(quarantined.len(), 1);
-        assert_eq!(
-            fs::read(quarantined[0].path().join("bin/yt-dlp.exe")).unwrap(),
-            b"modified"
-        );
+        assert!(quarantined.is_empty());
+    }
+
+    #[test]
+    fn startup_preserves_and_refuses_unjournaled_large_work_tree_lookalikes() {
+        for (parent, leaf) in [
+            (".downloads", "yt-dlp-2026.08.26-fake"),
+            (".staging", "yt-dlp-2026.08.26-fake"),
+            (".quarantine", "yt-dlp-2026.08.26-fake"),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = initialize_store(temp.path()).unwrap();
+            let lookalike = root.join(parent).join(leaf);
+            fs::create_dir(&lookalike).unwrap();
+            fs::write(lookalike.join("customer.bin"), b"preserve").unwrap();
+
+            assert_eq!(
+                NativeToolManager::new(temp.path(), Arc::new(TestCoordinator::default())).err(),
+                Some(NativeToolError::StoreUnavailable)
+            );
+            assert_eq!(
+                fs::read(lookalike.join("customer.bin")).unwrap(),
+                b"preserve"
+            );
+        }
     }
 
     #[test]

@@ -9,6 +9,7 @@ license = "MIT"
 
 [dependencies]
 command-group = "=5.0.1"
+osg-runtime-staging.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "=3.27.0"

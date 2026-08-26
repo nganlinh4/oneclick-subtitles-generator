@@ -96,7 +96,7 @@ pub(crate) fn initialize_store(root: &Path) -> Result<PathBuf> {
         }
         Err(_) => return Err(PackageError::StoreUnavailable),
     }
-    for name in [".downloads", ".staging", ".trash"] {
+    for name in [".downloads", ".staging", ".trash", ".quarantine"] {
         ensure_direct_child(&canonical, name)?;
     }
     Ok(canonical)

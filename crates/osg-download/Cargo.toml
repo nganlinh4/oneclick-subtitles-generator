@@ -6,6 +6,13 @@ rust-version = "1.97"
 description = "Typed, SSRF-aware yt-dlp download pipeline for OSG"
 license = "MIT"
 
+[features]
+default = []
+# Compile-time test seam used only by osg-desktop's hidden E2E channel. It does not weaken the
+# ordinary validator: callers must opt into a separate constructor with exact, tokenized loopback
+# URLs fixed before process launch.
+e2e-automation = []
+
 [dependencies]
 command-group = "=5.0.1"
 serde = { version = "=1.0.229", features = ["derive"] }

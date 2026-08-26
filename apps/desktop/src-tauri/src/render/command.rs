@@ -65,7 +65,8 @@ pub(crate) fn render_runtime_status() -> RenderRuntimeStatusResponse {
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
-    reason = "Tauri injects State and Channel as owned command extractors"
+    clippy::too_many_lines,
+    reason = "Tauri injects owned extractors, and render admission/finalization intentionally remains one ordered transaction"
 )]
 pub(crate) async fn render_start(
     state: State<'_, DesktopState>,
@@ -80,11 +81,21 @@ pub(crate) async fn render_start(
         .ok_or_else(CommandError::render_busy)?;
     let text = text.ok_or_else(refusal::text_not_staged)?;
     let staging_root = runtime.staging_root();
+    let staging_authority = runtime.staging_authority();
     let database = state.database.clone();
     let validated = tauri::async_runtime::spawn_blocking({
         let database = database.clone();
         let atlases = atlases.inner().clone();
-        move || prepare::prepare(&database, &atlases, request, text, staging_root)
+        move || {
+            prepare::prepare(
+                &database,
+                &atlases,
+                request,
+                text,
+                staging_root,
+                staging_authority,
+            )
+        }
     })
     .await
     .map_err(|_| CommandError::internal("The render validation task stopped unexpectedly."))??;

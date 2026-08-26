@@ -30,6 +30,7 @@ use crate::commands::MediaCandidateResponse;
 use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 const INSPECTION_TIMEOUT: Duration = Duration::from_mins(2);
@@ -37,6 +38,8 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_hours(6);
 const MAX_CONCURRENT_INSPECTIONS: usize = 4;
 const MAX_CONCURRENT_DOWNLOADS: usize = 4;
 const MAX_SUBTITLE_IPC_BYTES: u64 = 8 * 1024 * 1024;
+#[cfg(feature = "e2e-automation")]
+const EXACT_AUTOMATION_DOWNLOAD_URLS_ENV: &str = "OSG_E2E_EXACT_DOWNLOAD_URLS";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,6 +100,18 @@ impl From<CookieSourceRequest> for BrowserCookieSource {
             CookieSourceRequest::Whale => Self::Whale,
         }
     }
+}
+
+#[cfg(feature = "e2e-automation")]
+fn resolve_browser_cookie_source(
+    request: CookieSourceRequest,
+) -> CommandResult<BrowserCookieSource> {
+    if request != CookieSourceRequest::None {
+        return Err(CommandError::invalid_input(
+            "The automation build refused access to a live browser profile.",
+        ));
+    }
+    Ok(BrowserCookieSource::None)
 }
 
 #[derive(Deserialize)]
@@ -262,14 +277,23 @@ pub(crate) enum DownloadJobEvent {
 }
 
 #[derive(Clone)]
-struct DownloadCacheRoot(PathBuf);
+struct DownloadCacheRoot {
+    path: PathBuf,
+    authority: RuntimeStagingAuthority,
+}
 
 impl DownloadCacheRoot {
-    fn prepare(cache_directory: &Path) -> Option<Self> {
+    fn prepare(cache_directory: &Path, authority: RuntimeStagingAuthority) -> Option<Self> {
         let root = cache_directory.join("downloads").join("v1");
         fs::create_dir_all(&root).ok()?;
         let root = fs::canonicalize(root).ok()?;
-        root.is_dir().then_some(Self(root))
+        if !root.is_dir() || authority.reconcile_all().is_err() {
+            return None;
+        }
+        Some(Self {
+            path: root,
+            authority,
+        })
     }
 
     fn destination(
@@ -277,15 +301,23 @@ impl DownloadCacheRoot {
         output_id: Uuid,
         suggested_name: &str,
     ) -> Result<(DownloadDestination, OutputDirectory), DownloadError> {
-        let directory = self.0.join(output_id.simple().to_string());
-        fs::create_dir(&directory).map_err(|_| {
-            DownloadError::InvalidDestination("output directory could not be created")
-        })?;
-        let destination = DownloadDestination::within_root(&directory, &self.0, suggested_name)
-            .inspect_err(|_| {
-                let _ = fs::remove_dir(&directory);
-            })?;
-        Ok((destination, OutputDirectory(directory)))
+        let directory =
+            OwnedStagingDirectory::begin(&self.authority, &self.path, StagingKind::Download)
+                .map_err(|_| {
+                    DownloadError::InvalidDestination("output directory could not be created")
+                })?;
+        // The externally supplied inventory title controls only the eventual leaf name. The
+        // attempt directory itself is a locked, journaled capability whose random identifier is
+        // independent of both the title and the WebView-provided inventory id.
+        let _ = output_id;
+        let destination =
+            DownloadDestination::within_root(directory.path(), &self.path, suggested_name)?;
+        Ok((
+            destination,
+            OutputDirectory {
+                _directory: directory,
+            },
+        ))
     }
 }
 
@@ -298,12 +330,8 @@ impl fmt::Debug for DownloadCacheRoot {
     }
 }
 
-struct OutputDirectory(PathBuf);
-
-impl OutputDirectory {
-    fn remove_if_empty(&self) {
-        let _ = fs::remove_dir(&self.0);
-    }
+struct OutputDirectory {
+    _directory: OwnedStagingDirectory,
 }
 
 impl fmt::Debug for OutputDirectory {
@@ -470,6 +498,7 @@ impl DownloadRuntime {
     #[must_use]
     pub(crate) fn resolve(
         cache_directory: &Path,
+        staging_authority: RuntimeStagingAuthority,
         search: YtDlpSearch,
         js_search: JsRuntimeSearch,
         ffmpeg: Option<FfmpegDirectory>,
@@ -477,7 +506,7 @@ impl DownloadRuntime {
         let tools = Self::resolve_tools(search, js_search, ffmpeg);
         Self {
             tools: Arc::new(RwLock::new(tools)),
-            cache_root: DownloadCacheRoot::prepare(cache_directory),
+            cache_root: DownloadCacheRoot::prepare(cache_directory, staging_authority),
             inventories: InventoryRegistry::new(),
             inspection_slots: SlotLimiter::new(MAX_CONCURRENT_INSPECTIONS),
             download_slots: SlotLimiter::new(MAX_CONCURRENT_DOWNLOADS),
@@ -493,17 +522,15 @@ impl DownloadRuntime {
         let ffmpeg_available = ffmpeg.is_some();
         let js_runtime = JsRuntimeResolver::new(js_search).resolve().ok();
         let js_runtime_available = js_runtime.is_some();
-        let engine = DownloadEngine::resolve(search, UrlPolicy::SupportedSitesOnly)
-            .ok()
-            .map(|mut engine| {
-                if let Some(ffmpeg) = ffmpeg {
-                    engine = engine.with_ffmpeg(ffmpeg);
-                }
-                if let Some(js_runtime) = js_runtime {
-                    engine = engine.with_js_runtime(js_runtime);
-                }
-                engine
-            });
+        let engine = resolve_download_engine(search).ok().map(|mut engine| {
+            if let Some(ffmpeg) = ffmpeg {
+                engine = engine.with_ffmpeg(ffmpeg);
+            }
+            if let Some(js_runtime) = js_runtime {
+                engine = engine.with_js_runtime(js_runtime);
+            }
+            engine
+        });
         DownloadTools {
             engine,
             ffmpeg_available,
@@ -555,6 +582,40 @@ impl DownloadRuntime {
             .ok_or_else(|| CommandError::internal("The native download cache is unavailable."))?;
         Ok((engine, root))
     }
+}
+
+#[cfg(not(feature = "e2e-automation"))]
+fn resolve_download_engine(search: YtDlpSearch) -> Result<DownloadEngine, DownloadError> {
+    DownloadEngine::resolve(search, UrlPolicy::SupportedSitesOnly)
+}
+
+#[cfg(feature = "e2e-automation")]
+fn resolve_download_engine(search: YtDlpSearch) -> Result<DownloadEngine, DownloadError> {
+    let Some(value) = std::env::var_os(EXACT_AUTOMATION_DOWNLOAD_URLS_ENV) else {
+        return DownloadEngine::resolve(search, UrlPolicy::SupportedSitesOnly);
+    };
+    let value = value.to_str().ok_or(DownloadError::InvalidUrl(
+        "the automation URL allow-list is invalid",
+    ))?;
+    let urls = parse_exact_automation_download_urls(value)?;
+    DownloadEngine::resolve_with_exact_automation_urls(search, UrlPolicy::SupportedSitesOnly, &urls)
+}
+
+#[cfg(feature = "e2e-automation")]
+fn parse_exact_automation_download_urls(value: &str) -> Result<Vec<String>, DownloadError> {
+    if value.len() > 70_000 {
+        return Err(DownloadError::InvalidUrl(
+            "the automation URL allow-list is invalid",
+        ));
+    }
+    let urls = serde_json::from_str::<Vec<String>>(value)
+        .map_err(|_| DownloadError::InvalidUrl("the automation URL allow-list is invalid"))?;
+    if urls.is_empty() || urls.len() > 8 {
+        return Err(DownloadError::InvalidUrl(
+            "the automation URL allow-list is invalid",
+        ));
+    }
+    Ok(urls)
 }
 
 impl fmt::Debug for DownloadRuntime {
@@ -678,6 +739,14 @@ pub(crate) async fn download_inspect(
     request: DownloadInspectRequest,
 ) -> CommandResult<DownloadInspectionResponse> {
     diagnostics::record("download.inspection_requested", &[]);
+    // Browser-cookie extraction reaches outside the isolated E2E profile and may read a customer's
+    // live Chrome, Edge, or Firefox data. The automation build therefore fails before it resolves
+    // the download engine or starts any worker. A future cookie-file fixture must be a separately
+    // typed path staged beneath OSG_E2E_FIXTURE_ROOT; it must not weaken this boundary.
+    #[cfg(feature = "e2e-automation")]
+    let cookies = resolve_browser_cookie_source(request.cookie_source)?;
+    #[cfg(not(feature = "e2e-automation"))]
+    let cookies = BrowserCookieSource::from(request.cookie_source);
     let engine = runtime.engine().inspect_err(|error| {
         record_download_inspection_failure("runtime-unavailable", Some(error.code()));
     })?;
@@ -685,7 +754,6 @@ pub(crate) async fn download_inspect(
         record_download_inspection_failure("inspection-slots-full", Some("internal"));
         CommandError::internal("Too many media inspections are already running.")
     })?;
-    let cookies = BrowserCookieSource::from(request.cookie_source);
     let (url, inventory) = tauri::async_runtime::spawn_blocking(move || {
         let url = engine.validate_url(&request.url)?;
         let control = RunControl::new(INSPECTION_TIMEOUT)?;
@@ -734,7 +802,6 @@ pub(crate) async fn download_start(
 ) -> CommandResult<JobSnapshot> {
     let (engine, output_directory, plan) = prepare_download_start(&runtime, request)?;
     let Some(permit) = runtime.download_slots.acquire() else {
-        output_directory.remove_if_empty();
         record_download_admission_failure("download-slots-full", Some("internal"));
         return Err(CommandError::internal(
             "Too many media downloads are already running.",
@@ -744,7 +811,6 @@ pub(crate) async fn download_start(
     let ticket = match background::register_running(&jobs, JobKind::DownloadMedia).await {
         Ok(ticket) => ticket,
         Err(error) => {
-            output_directory.remove_if_empty();
             record_download_admission_failure("job-registration", Some(error.code()));
             return Err(error);
         }
@@ -757,6 +823,10 @@ pub(crate) async fn download_start(
 
     tauri::async_runtime::spawn(async move {
         let _permit = permit;
+        // Keep the authenticated staging journal and directory alive until download finalization
+        // has either published the media or cleaned the failed attempt. Dropping this guard before
+        // the task runs removes the directory out from under yt-dlp.
+        let _output_directory = output_directory;
         let process_cancellation = CancellationToken::default();
         let cancellation_bridge = process_cancellation.clone();
         let watcher = tauri::async_runtime::spawn(async move {
@@ -774,7 +844,6 @@ pub(crate) async fn download_start(
                 .with_progress(reporter),
             Err(error) => {
                 watcher.abort();
-                output_directory.remove_if_empty();
                 finish_download(
                     &app,
                     &jobs,
@@ -801,9 +870,6 @@ pub(crate) async fn download_start(
         })
         .and_then(|result| result);
         watcher.abort();
-        if result.is_err() {
-            output_directory.remove_if_empty();
-        }
         finish_download(&app, &jobs, job_id, result, &on_event, &finalizing).await;
     });
 
@@ -848,7 +914,6 @@ fn prepare_download_start(
     let plan = match create_plan(&capability, destination, request) {
         Ok(plan) => plan,
         Err(error) => {
-            output_directory.remove_if_empty();
             let mapped = map_download_error(&error);
             record_download_admission_failure(
                 download_error_diagnostic(&error),
@@ -1402,7 +1467,7 @@ fn record_download_inspection_failure(reason: &'static str, code: Option<&str>) 
     );
 }
 
-const fn download_error_diagnostic(error: &DownloadError) -> &'static str {
+fn download_error_diagnostic(error: &DownloadError) -> &'static str {
     match error {
         DownloadError::InvalidUrl(_) => "invalid-url",
         DownloadError::UnsupportedSite => "unsupported-site",
@@ -1427,13 +1492,35 @@ const fn download_error_diagnostic(error: &DownloadError) -> &'static str {
         DownloadError::TimedOut { .. } => "timed-out",
         DownloadError::OutputLimit => "output-limit",
         DownloadError::InventoryJson(_) => "inventory-json",
-        DownloadError::InvalidInventory(_) => "invalid-inventory",
+        DownloadError::InvalidInventory(reason) => invalid_inventory_diagnostic(reason),
         DownloadError::InventoryRegistryUnavailable => "inventory-registry-unavailable",
         DownloadError::OutputExists => "output-exists",
         DownloadError::MissingArtifact => "missing-artifact",
         DownloadError::InvalidSubtitleArtifact => "invalid-subtitle-artifact",
         DownloadError::SubtitleArtifactTooLarge => "subtitle-artifact-too-large",
         DownloadError::Publish(_) => "publish-failed",
+    }
+}
+
+fn invalid_inventory_diagnostic(reason: &'static str) -> &'static str {
+    // `InvalidInventory` only carries compile-time strings owned by osg-download. Keep diagnostics
+    // bounded and path/URL-free while distinguishing parser drift from size/shape attacks.
+    match reason {
+        "top level must be an object" => "invalid-inventory-top-level",
+        "formats are missing" => "invalid-inventory-formats-missing",
+        "formats are invalid" => "invalid-inventory-formats-shape",
+        "too many formats" => "invalid-inventory-format-limit",
+        "duplicate format ID" => "invalid-inventory-duplicate-format",
+        "no usable formats" => "invalid-inventory-no-usable-formats",
+        "direct media type is invalid" => "invalid-inventory-direct-type",
+        "direct media passthrough is not approved" => "invalid-inventory-direct-unapproved",
+        "direct format ID is invalid" => "invalid-inventory-direct-format",
+        "direct formats are invalid" => "invalid-inventory-direct-formats",
+        "direct formats are contradictory" => "invalid-inventory-direct-contradiction",
+        "too many subtitle tracks" => "invalid-inventory-subtitle-limit",
+        "too many subtitle representations" => "invalid-inventory-subtitle-representation-limit",
+        "yt-dlp returned an invalid version" => "invalid-inventory-version",
+        _ => "invalid-inventory",
     }
 }
 
@@ -1448,6 +1535,8 @@ mod tests {
     use osg_infrastructure::storage::Database;
     use uuid::Uuid;
 
+    #[cfg(feature = "e2e-automation")]
+    use super::parse_exact_automation_download_urls;
     use super::{
         DownloadError, DownloadInspectRequest, DownloadRuntime, FinalizationRegistry,
         MAX_SUBTITLE_IPC_BYTES, SlotLimiter, download_error_diagnostic, map_download_error,
@@ -1474,6 +1563,30 @@ mod tests {
             r#"{{"inventoryId":"{inventory_id}","media":{{"kind":"video","quality":{{"mode":"best"}},"outputPath":"C:\\private"}},"subtitle":null}}"#
         );
         assert!(serde_json::from_str::<super::DownloadStartRequest>(&path_request).is_err());
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn automation_download_url_environment_is_a_bounded_json_array() {
+        let url = "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        assert_eq!(
+            parse_exact_automation_download_urls(&serde_json::json!([url]).to_string())
+                .expect("bounded array"),
+            vec![url]
+        );
+        for invalid in [
+            "",
+            "null",
+            "{}",
+            "[]",
+            "[1]",
+            r#"["a","b","c","d","e","f","g","h","i"]"#,
+        ] {
+            assert!(
+                parse_exact_automation_download_urls(invalid).is_err(),
+                "accepted {invalid}"
+            );
+        }
     }
 
     #[test]
@@ -1513,6 +1626,14 @@ mod tests {
                 timeout: std::time::Duration::from_secs(1),
             }),
             "timed-out"
+        );
+        assert_eq!(
+            download_error_diagnostic(&DownloadError::InvalidInventory("no usable formats")),
+            "invalid-inventory-no-usable-formats"
+        );
+        assert_eq!(
+            download_error_diagnostic(&DownloadError::InvalidInventory("future bounded reason")),
+            "invalid-inventory"
         );
         assert!(!spawn.to_string().contains("private"));
         assert!(!process.to_string().contains('1'));

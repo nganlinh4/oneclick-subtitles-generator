@@ -11,19 +11,18 @@ use osg_gemini::{
     ApiKey, GeminiClient, ImageAspectRatio, ImageGenerateRequest, ImageModel, ImageSize,
     ReferenceImage,
 };
-use osg_infrastructure::secrets::{
-    CredentialId, CredentialPurpose, CredentialService, KeyringCredentialBackend,
-};
+use osg_infrastructure::secrets::{CredentialId, CredentialPurpose, CredentialService};
 use osg_infrastructure::storage::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord,
     ArtifactRegistration, ArtifactRetention, ArtifactState, ContentHash, Database,
     ResolvedArtifact,
 };
 use osg_media_server::{MediaServer, RegisteredMedia};
+use osg_runtime_staging::RuntimeStagingAuthority;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use crate::background;
@@ -31,7 +30,7 @@ use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::image_blob::ImageBlobStore;
 use crate::media_export::copy_export;
-use crate::state::DesktopState;
+use crate::state::{DesktopCredentialBackend, DesktopState};
 
 const MAX_GENERATED_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_IMAGES: usize = 64;
@@ -95,7 +94,7 @@ impl GeneratedImageRuntime {
 
 #[derive(Clone)]
 struct GeneratedImageServices {
-    credentials: CredentialService<KeyringCredentialBackend>,
+    credentials: CredentialService<DesktopCredentialBackend>,
     database: Database,
     media_server: MediaServer,
     runtime: GeneratedImageRuntime,
@@ -1038,8 +1037,10 @@ pub(crate) async fn generated_image_export(
             "The generated-image export file type is invalid.",
         ));
     }
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         copy_export(
+            &staging_authority,
             plan.staging.path(),
             &destination,
             plan.size_bytes,

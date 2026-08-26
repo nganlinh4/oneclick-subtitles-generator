@@ -22,6 +22,7 @@ use super::super::events::RenderPhaseResponse;
 use super::super::export::{self, ExportControl, NativeExportInputs};
 use super::super::fixtures;
 use super::super::progress::RenderProgressReport;
+use osg_runtime_staging::RuntimeStagingAuthority;
 
 /// Records every report an export emits, so the stream can be asserted afterwards.
 #[derive(Debug, Default)]
@@ -53,11 +54,14 @@ fn request(value: &Value) -> RenderRequest {
 }
 
 fn inputs(source: &std::path::Path, staging: &TempDir, value: &Value) -> NativeExportInputs {
+    let authority_root = staging.path().join("authority");
+    let staging_authority = RuntimeStagingAuthority::prepare(&authority_root).unwrap();
     NativeExportInputs {
         request: request(value),
         source: source.to_owned(),
         narration: None,
         staging_root: staging.path().to_owned(),
+        staging_authority,
         fps: 30,
         duration_in_frames: fixtures::EXPORT_FRAMES,
     }

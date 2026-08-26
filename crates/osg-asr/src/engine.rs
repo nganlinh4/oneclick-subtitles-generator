@@ -1,4 +1,4 @@
-use crate::process::{SessionPoll, WorkerSession};
+use crate::process::{SessionPoll, WorkerCacheStaging, WorkerSession};
 use crate::protocol::{
     PROTOCOL_VERSION, ReaderMessage, WireBackend, WireEvent, WirePhase, WireRequest, WireWord,
 };
@@ -9,6 +9,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::fmt;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::time::{Duration, Instant};
@@ -171,6 +172,7 @@ pub struct AsrService(Arc<ServiceInner>);
 struct ServiceInner {
     program: WorkerProgram,
     assets: ModelAssets,
+    worker_cache: Option<WorkerCacheStaging>,
     state: Mutex<WorkerState>,
     warm: AtomicBool,
     shutdown_requested: AtomicBool,
@@ -188,6 +190,25 @@ impl AsrService {
         Self(Arc::new(ServiceInner {
             program,
             assets,
+            worker_cache: None,
+            state: Mutex::new(WorkerState::default()),
+            warm: AtomicBool::new(false),
+            shutdown_requested: AtomicBool::new(false),
+        }))
+    }
+
+    /// Uses authenticated process-crash staging for compiler caches created by the worker.
+    #[must_use]
+    pub fn new_with_staging_authority(
+        program: WorkerProgram,
+        assets: ModelAssets,
+        authority: osg_runtime_staging::RuntimeStagingAuthority,
+        root: impl AsRef<Path>,
+    ) -> Self {
+        Self(Arc::new(ServiceInner {
+            program,
+            assets,
+            worker_cache: Some(WorkerCacheStaging::new(authority, root)),
             state: Mutex::new(WorkerState::default()),
             warm: AtomicBool::new(false),
             shutdown_requested: AtomicBool::new(false),
@@ -248,7 +269,10 @@ impl AsrService {
             invalidate_session(&self.0, &mut state);
         }
         if state.session.is_none() {
-            state.session = Some(WorkerSession::spawn(&self.0.program)?);
+            state.session = Some(WorkerSession::spawn(
+                &self.0.program,
+                self.0.worker_cache.as_ref(),
+            )?);
         }
         state.next_request_id = state.next_request_id.wrapping_add(1).max(1);
         let request_id = state.next_request_id;
@@ -282,7 +306,10 @@ impl AsrService {
         let mut state = self.lock_cancellable(control, started)?;
         request.audio.revalidate()?;
         if state.session.is_none() {
-            state.session = Some(WorkerSession::spawn(&self.0.program)?);
+            state.session = Some(WorkerSession::spawn(
+                &self.0.program,
+                self.0.worker_cache.as_ref(),
+            )?);
             self.0.warm.store(false, Ordering::Release);
         }
         state.next_request_id = state.next_request_id.wrapping_add(1).max(1);

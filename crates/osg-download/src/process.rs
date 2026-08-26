@@ -16,6 +16,25 @@ pub(crate) const DOWNLOAD_STDOUT_LIMIT: usize = 1024 * 1024;
 const STDERR_TAIL_LIMIT: usize = 64 * 1024;
 const PROGRESS_LINE_LIMIT: usize = 4 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
+const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
+    "__WDIO_TAURI_APP_BINARY__",
+    "__WDIO_TAURI_EMBEDDED__",
+    "OSG_E2E_REUSE_ROOT",
+    "OSG_E2E_CACHE_ROOT",
+    "OSG_E2E_CACHE_ROOT_ID",
+    "OSG_E2E_RUN_ROOT_AUTHORIZATION",
+    "OSG_E2E_STAGING_LEASE_ID",
+    "OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC",
+    "OSG_E2E_STAGING_LEASE_OWNER_PID",
+    "OSG_E2E_STAGING_ROOT",
+    "OSG_E2E_WEBDRIVER_AUTHORIZATION",
+    "OSG_E2E_WEBDRIVER_IDENTITY",
+    "OSG_E2E_WEBDRIVER_RUN_ROOT",
+    "REMOTE_WEBDRIVER_URL",
+    "TAURI_WEBDRIVER_PORT",
+    "WDIO_EMBEDDED_SERVER",
+    "WDIO_WORKER_ID",
+];
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -118,6 +137,7 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
     }
 
     let mut command = Command::new(request.binary);
+    remove_automation_authority_environment(&mut command);
     command
         .args(request.arguments)
         .env("PYTHONUTF8", "1")
@@ -188,6 +208,12 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
         stdout_truncated: stdout.truncated,
         stderr_tail: stderr.bytes,
     })
+}
+
+fn remove_automation_authority_environment(command: &mut Command) {
+    for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+        command.env_remove(variable);
+    }
 }
 
 fn spawn_group(command: &mut Command) -> Result<GroupChild> {
@@ -340,11 +366,26 @@ fn process_io(message: &'static str) -> DownloadError {
 pub(crate) mod test_support {
     use super::*;
     use crate::{ResolvedYtDlp, YtDlpResolver, YtDlpSearch};
+    use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
     use std::sync::OnceLock;
 
     static MOCK: OnceLock<PathBuf> = OnceLock::new();
+
+    #[test]
+    fn downloader_process_drops_automation_authority() {
+        let mut command = Command::new("not-started");
+        remove_automation_authority_environment(&mut command);
+        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
+                "{variable} would be inherited by the downloader"
+            );
+        }
+    }
 
     pub(crate) fn mock_binary() -> ResolvedYtDlp {
         YtDlpResolver::new(YtDlpSearch::default().configured(MOCK.get_or_init(compile_mock)))

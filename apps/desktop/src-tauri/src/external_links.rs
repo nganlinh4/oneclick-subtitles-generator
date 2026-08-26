@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use tauri::AppHandle;
+#[cfg(not(feature = "e2e-automation"))]
 use tauri_plugin_opener::OpenerExt as _;
 
 use crate::error::{CommandError, CommandResult};
@@ -16,12 +17,12 @@ pub(crate) enum ExternalLink {
     GeminiVideoDocumentation,
     GeniusApiClients,
     GoogleCloudCredentials,
-    UdbmReleases,
     YoutubeApiOverview,
     YtDlpSupportedSites,
 }
 
 impl ExternalLink {
+    #[cfg(any(not(feature = "e2e-automation"), test))]
     const fn url(self) -> &'static str {
         match self {
             Self::AiStudioApiKeys => "https://aistudio.google.com/app/apikey",
@@ -37,7 +38,6 @@ impl ExternalLink {
             }
             Self::GeniusApiClients => "https://genius.com/api-clients",
             Self::GoogleCloudCredentials => "https://console.cloud.google.com/apis/credentials",
-            Self::UdbmReleases => "https://github.com/nganlinh4/udbm/releases",
             Self::YoutubeApiOverview => {
                 "https://console.developers.google.com/apis/api/youtube.googleapis.com/overview"
             }
@@ -53,6 +53,19 @@ impl ExternalLink {
     clippy::needless_pass_by_value,
     reason = "Tauri injects AppHandle as an owned command extractor"
 )]
+#[cfg(feature = "e2e-automation")]
+pub(crate) fn open_external_link(_app: AppHandle, _link: ExternalLink) -> CommandResult<()> {
+    Err(CommandError::invalid_input(
+        "The automation build refused to open another desktop application.",
+    ))
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects AppHandle as an owned command extractor"
+)]
+#[cfg(not(feature = "e2e-automation"))]
 pub(crate) fn open_external_link(app: AppHandle, link: ExternalLink) -> CommandResult<()> {
     app.opener()
         .open_url(link.url(), None::<&str>)
@@ -77,7 +90,6 @@ mod tests {
             ExternalLink::GeminiVideoDocumentation,
             ExternalLink::GeniusApiClients,
             ExternalLink::GoogleCloudCredentials,
-            ExternalLink::UdbmReleases,
             ExternalLink::YoutubeApiOverview,
             ExternalLink::YtDlpSupportedSites,
         ];

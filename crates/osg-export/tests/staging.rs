@@ -201,13 +201,15 @@ fn a_style_value_outside_what_the_compositor_draws_is_refused_by_name() {
         margins["customization"]["marginTop"] = json!(extreme);
         converted(margins);
     }
+}
 
-    let mut background = request_json();
-    background["customization"]["backgroundColor"] = json!("#11223344");
-    assert!(
-        matches!(refusal(background), ExportError::CompositionRejected { .. }),
-        "a background that already carries alpha is reported, not silently lost"
-    );
+#[test]
+fn an_alpha_bearing_subtitle_background_crosses_export_conversion() {
+    for colour in ["#11223344", "#1234"] {
+        let mut request = request_json();
+        request["customization"]["backgroundColor"] = json!(colour);
+        converted(request);
+    }
 }
 
 // ---- The font -----------------------------------------------------------------------------

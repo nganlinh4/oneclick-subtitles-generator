@@ -13,6 +13,16 @@ const MAX_RENDER_DURATION_US: u64 = 24 * 60 * 60 * 1_000_000;
 const MAX_RENDER_FRAMES: u64 = 1_000_000;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
 const MAX_PRESET_BYTES: usize = 128;
+const DEFAULT_BACKGROUND_PADDING_X: f64 = 16.0;
+const DEFAULT_BACKGROUND_PADDING_Y: f64 = 8.0;
+
+const fn default_background_padding_x() -> f64 {
+    DEFAULT_BACKGROUND_PADDING_X
+}
+
+const fn default_background_padding_y() -> f64 {
+    DEFAULT_BACKGROUND_PADDING_Y
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -366,6 +376,10 @@ pub struct SubtitleCustomization {
     pub text_transform: TextTransform,
     pub background_color: String,
     pub background_opacity: f64,
+    #[serde(default = "default_background_padding_x")]
+    pub background_padding_x: f64,
+    #[serde(default = "default_background_padding_y")]
+    pub background_padding_y: f64,
     pub border_radius: f64,
     pub border_width: f64,
     pub border_color: String,
@@ -444,6 +458,8 @@ impl SubtitleCustomization {
             (self.line_height, 0.1, 10.0),
             (self.letter_spacing, -100.0, 1_000.0),
             (self.background_opacity, 0.0, 100.0),
+            (self.background_padding_x, 0.0, 1_000.0),
+            (self.background_padding_y, 0.0, 1_000.0),
             (self.border_radius, 0.0, 1_000.0),
             (self.border_width, 0.0, 100.0),
             (self.text_shadow_blur, 0.0, 1_000.0),
@@ -580,7 +596,8 @@ mod tests {
                 "fontSize":28,"fontFamily":"'Inter', sans-serif","fontWeight":600,
                 "textColor":"#ffffff","textAlign":"center","lineHeight":1.2,
                 "letterSpacing":0,"textTransform":"none","backgroundColor":"#000000",
-                "backgroundOpacity":50,"borderRadius":4,"borderWidth":0,
+                "backgroundOpacity":50,"backgroundPaddingX":16,"backgroundPaddingY":8,
+                "borderRadius":4,"borderWidth":0,
                 "borderColor":"#ffffff","borderStyle":"none","textShadowEnabled":true,
                 "textShadowColor":"#000000","textShadowBlur":4,"textShadowOffsetX":0,
                 "textShadowOffsetY":2,"glowEnabled":false,"glowColor":"#ffffff",
@@ -635,6 +652,41 @@ mod tests {
         request
             .validate(1_920, 1_080, 5_000_000)
             .expect("valid render plan");
+    }
+
+    #[test]
+    fn padding_is_bounded_and_old_persisted_customizations_get_the_reviewed_defaults() {
+        let mut legacy = request_json();
+        legacy["customization"]
+            .as_object_mut()
+            .expect("customization object")
+            .remove("backgroundPaddingX");
+        legacy["customization"]
+            .as_object_mut()
+            .expect("customization object")
+            .remove("backgroundPaddingY");
+        let legacy: RenderRequest = serde_json::from_value(legacy).expect("legacy request");
+        assert_eq!(
+            legacy.customization.background_padding_x.to_bits(),
+            16.0_f64.to_bits()
+        );
+        assert_eq!(
+            legacy.customization.background_padding_y.to_bits(),
+            8.0_f64.to_bits()
+        );
+
+        for (field, value) in [
+            ("backgroundPaddingX", -0.01),
+            ("backgroundPaddingY", 1_000.01),
+        ] {
+            let mut invalid = request_json();
+            invalid["customization"][field] = json!(value);
+            let request: RenderRequest = serde_json::from_value(invalid).expect("typed request");
+            assert!(matches!(
+                request.validate(1_920, 1_080, 5_000_000),
+                Err(RenderError::InvalidRequest)
+            ));
+        }
     }
 
     #[test]

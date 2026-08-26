@@ -14,7 +14,7 @@
 //!
 //! # How many cases the default run renders
 //!
-//! The full cross product is 30 presets by 9 texts by 4 output shapes before the 147 field values
+//! The full cross product is 30 presets by 9 texts by 4 output shapes before the 155 field values
 //! are swept at all, which is thousands of compositions and minutes of wall clock. That is the
 //! wrong default: a gate nobody runs is not a gate. So the default run covers every preset at least
 //! once, every field value at least once, every text at least once and every output shape at least

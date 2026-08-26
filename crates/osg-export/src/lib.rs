@@ -98,8 +98,8 @@ mod stage;
 
 pub use cancel::ExportCancel;
 pub use convert::{
-    AUDIO_BITRATE_KBPS, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, AudioPlan, BACKGROUND_PADDING_X,
-    BACKGROUND_PADDING_Y, EXPORT_CANVAS_GROUND, ExportPlan, primary_font_family,
+    AUDIO_BITRATE_KBPS, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, AudioPlan, EXPORT_CANVAS_GROUND,
+    ExportPlan, primary_font_family,
 };
 pub use error::ExportError;
 pub use frames::FrameRenderer;

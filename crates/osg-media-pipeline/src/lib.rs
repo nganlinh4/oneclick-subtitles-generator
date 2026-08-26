@@ -6,7 +6,6 @@
 
 use std::fmt;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -17,15 +16,10 @@ use osg_media::{
     MediaOperation, MediaOutput, MediaTimeRange, RunControl, VideoClipPlan, WaveformPlan,
     WaveformPyramid,
 };
+use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
-
-const STAGING_MARKER: &str = ".osg-media-pipeline-v1";
-const STAGING_MARKER_BYTES: &[u8] = b"oneclick-subtitles-generator:media-pipeline:v1\n";
-const STAGING_DIRECTORY_PREFIX: &str = "job-";
-const MAX_STAGING_JOBS: usize = 1_024;
-const MAX_STAGING_FILES_PER_JOB: usize = 16;
 
 pub type Result<T> = std::result::Result<T, PipelineError>;
 
@@ -62,7 +56,7 @@ pub enum PreparedMediaKind {
 /// A staged native artifact. It is deleted on drop unless a trusted caller
 /// copies it into the application's content-addressed artifact store first.
 pub struct PreparedMedia {
-    directory: TempDir,
+    directory: StagingDirectory,
     path: PathBuf,
     extension: &'static str,
     kind: PreparedMediaKind,
@@ -137,14 +131,31 @@ pub struct MediaPipeline {
 #[derive(Clone)]
 enum StagingMode {
     SystemTemporary,
-    Managed(Arc<PathBuf>),
+    Managed {
+        root: Arc<PathBuf>,
+        authority: RuntimeStagingAuthority,
+    },
+}
+
+enum StagingDirectory {
+    System(TempDir),
+    Managed(OwnedStagingDirectory),
+}
+
+impl StagingDirectory {
+    fn path(&self) -> &Path {
+        match self {
+            Self::System(directory) => directory.path(),
+            Self::Managed(directory) => directory.path(),
+        }
+    }
 }
 
 impl fmt::Debug for StagingMode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SystemTemporary => formatter.write_str("SystemTemporary"),
-            Self::Managed(_) => formatter.write_str("Managed(<redacted>)"),
+            Self::Managed { .. } => formatter.write_str("Managed(<redacted>)"),
         }
     }
 }
@@ -168,24 +179,43 @@ impl MediaPipeline {
         }
     }
 
-    /// Opens an application-owned staging root and removes bounded stale jobs
-    /// left by a prior crash. Unknown entries fail closed instead of being
-    /// recursively deleted.
+    /// Opens a self-contained staging root with a private authenticated authority.
     pub fn with_staging_root(engine: MediaEngine, root: impl AsRef<Path>) -> Result<Self> {
-        let root = prepare_staging_root(root.as_ref())?;
-        let pipeline = Self {
+        fs::create_dir_all(root.as_ref()).map_err(|_| PipelineError::StagingUnavailable)?;
+        let root = fs::canonicalize(root).map_err(|_| PipelineError::StagingUnavailable)?;
+        let authority = RuntimeStagingAuthority::prepare(&root.join(".runtime-staging-authority"))
+            .map_err(|_| PipelineError::StagingUnavailable)?;
+        Self::with_staging_authority(engine, root, authority)
+    }
+
+    /// Uses a caller-owned central authority so every runtime residue is reconciled at startup.
+    pub fn with_staging_authority(
+        engine: MediaEngine,
+        root: impl AsRef<Path>,
+        authority: RuntimeStagingAuthority,
+    ) -> Result<Self> {
+        fs::create_dir_all(root.as_ref()).map_err(|_| PipelineError::StagingUnavailable)?;
+        let root = fs::canonicalize(root).map_err(|_| PipelineError::StagingUnavailable)?;
+        authority
+            .reconcile_all()
+            .map_err(|_| PipelineError::StagingUnavailable)?;
+        Ok(Self {
             engine,
-            staging: StagingMode::Managed(Arc::new(root)),
-        };
-        pipeline.reconcile_staging()?;
-        Ok(pipeline)
+            staging: StagingMode::Managed {
+                root: Arc::new(root),
+                authority,
+            },
+        })
     }
 
     pub fn reconcile_staging(&self) -> Result<()> {
-        let StagingMode::Managed(root) = &self.staging else {
+        let StagingMode::Managed { authority, .. } = &self.staging else {
             return Ok(());
         };
-        reconcile_staging_root(root)
+        authority
+            .reconcile_all()
+            .map(|_| ())
+            .map_err(|_| PipelineError::StagingUnavailable)
     }
 
     pub fn inspect(&self, input: &MediaInput, control: &RunControl) -> Result<MediaInspection> {
@@ -375,16 +405,18 @@ impl MediaPipeline {
         })
     }
 
-    fn create_staging_directory(&self) -> Result<TempDir> {
-        let mut builder = tempfile::Builder::new();
-        builder.prefix(STAGING_DIRECTORY_PREFIX);
+    fn create_staging_directory(&self) -> Result<StagingDirectory> {
         match &self.staging {
-            StagingMode::SystemTemporary => builder
-                .tempdir()
+            StagingMode::SystemTemporary => tempfile::tempdir()
+                .map(StagingDirectory::System)
                 .map_err(|_| PipelineError::StagingUnavailable),
-            StagingMode::Managed(root) => builder
-                .tempdir_in(root.as_path())
-                .map_err(|_| PipelineError::StagingUnavailable),
+            StagingMode::Managed { root, authority } => OwnedStagingDirectory::begin(
+                authority,
+                root.as_path(),
+                StagingKind::MediaPipelineJob,
+            )
+            .map(StagingDirectory::Managed)
+            .map_err(|_| PipelineError::StagingUnavailable),
         }
     }
 }
@@ -413,85 +445,4 @@ fn validate_clip_range(metadata: &MediaMetadata, range: MediaTimeRange) -> Resul
         return Err(PipelineError::InvalidClipRange);
     }
     Ok(())
-}
-
-fn prepare_staging_root(root: &Path) -> Result<PathBuf> {
-    fs::create_dir_all(root).map_err(|_| PipelineError::StagingUnavailable)?;
-    let root_metadata =
-        fs::symlink_metadata(root).map_err(|_| PipelineError::StagingUnavailable)?;
-    if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
-        return Err(PipelineError::StagingUnavailable);
-    }
-    let root = fs::canonicalize(root).map_err(|_| PipelineError::StagingUnavailable)?;
-    let marker = root.join(STAGING_MARKER);
-    match fs::read(&marker) {
-        Ok(bytes) if bytes == STAGING_MARKER_BYTES => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let mut entries = fs::read_dir(&root).map_err(|_| PipelineError::StagingUnavailable)?;
-            if entries.next().is_some() {
-                return Err(PipelineError::StagingUnavailable);
-            }
-            let mut marker_file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&marker)
-                .map_err(|_| PipelineError::StagingUnavailable)?;
-            marker_file
-                .write_all(STAGING_MARKER_BYTES)
-                .and_then(|()| marker_file.sync_all())
-                .map_err(|_| PipelineError::StagingUnavailable)?;
-        }
-        Ok(_) | Err(_) => return Err(PipelineError::StagingUnavailable),
-    }
-    Ok(root)
-}
-
-fn reconcile_staging_root(root: &Path) -> Result<()> {
-    let mut entries = fs::read_dir(root).map_err(|_| PipelineError::StagingUnavailable)?;
-    for index in 0..=MAX_STAGING_JOBS {
-        let Some(entry) = entries.next() else {
-            return Ok(());
-        };
-        let entry = entry.map_err(|_| PipelineError::StagingUnavailable)?;
-        if index == MAX_STAGING_JOBS {
-            return Err(PipelineError::StagingUnavailable);
-        }
-        let name = entry.file_name();
-        if name == STAGING_MARKER {
-            continue;
-        }
-        let Some(name) = name.to_str() else {
-            return Err(PipelineError::StagingUnavailable);
-        };
-        if !name.starts_with(STAGING_DIRECTORY_PREFIX) {
-            return Err(PipelineError::StagingUnavailable);
-        }
-        remove_stale_job_directory(&entry.path())?;
-    }
-    Err(PipelineError::StagingUnavailable)
-}
-
-fn remove_stale_job_directory(path: &Path) -> Result<()> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| PipelineError::StagingUnavailable)?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err(PipelineError::StagingUnavailable);
-    }
-    let mut entries = fs::read_dir(path).map_err(|_| PipelineError::StagingUnavailable)?;
-    for index in 0..=MAX_STAGING_FILES_PER_JOB {
-        let Some(entry) = entries.next() else {
-            fs::remove_dir(path).map_err(|_| PipelineError::StagingUnavailable)?;
-            return Ok(());
-        };
-        let entry = entry.map_err(|_| PipelineError::StagingUnavailable)?;
-        if index == MAX_STAGING_FILES_PER_JOB {
-            return Err(PipelineError::StagingUnavailable);
-        }
-        let entry_metadata =
-            fs::symlink_metadata(entry.path()).map_err(|_| PipelineError::StagingUnavailable)?;
-        if entry_metadata.is_dir() && !entry_metadata.file_type().is_symlink() {
-            return Err(PipelineError::StagingUnavailable);
-        }
-        fs::remove_file(entry.path()).map_err(|_| PipelineError::StagingUnavailable)?;
-    }
-    Err(PipelineError::StagingUnavailable)
 }

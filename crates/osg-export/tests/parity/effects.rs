@@ -15,8 +15,8 @@
 //!
 //! The list is an assertion in both directions: an entry that starts changing the picture fails the
 //! gate as loudly as a value that stops changing it, because either one means somebody should look.
-//! It is deliberately a table in source rather than a generated file — it is one line long, that
-//! line is a claim a reviewer can check against the ledger, and nothing regenerates it.
+//! It is deliberately a table in source rather than a generated file. It is empty now that the
+//! redundant `ease`/`ease-in-out` alias was corrected; a future exception must justify itself here.
 
 /// One value that reaches the pipeline and leaves the probe frame alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,15 +30,7 @@ pub(crate) struct Invisible {
 }
 
 /// The reviewed list.
-pub(crate) const INVISIBLE: &[Invisible] = &[Invisible {
-    field: "animationEasing",
-    value: "ease-in-out",
-    reason: "`ease` and `ease-in-out` are the same quadratic on purpose. \
-             `crates/osg-scene/src/easing.rs` reproduces the shipped renderer, which maps both \
-             names to `2t^2` / `1-2(1-t)^2` and neither to the CSS `ease` cubic. Selecting \
-             `ease-in-out` when the default is `ease` therefore cannot change a pixel, and a gate \
-             that demanded it change one would be demanding a divergence from the ledger.",
-}];
+pub(crate) const INVISIBLE: &[Invisible] = &[];
 
 /// The reason this value is expected to leave the picture alone, when it is expected to.
 pub(crate) fn expected_invisible(field: &str, value: &str) -> Option<&'static str> {

@@ -43,15 +43,18 @@ fn the_four_digit_shorthand_repeats_each_digit_including_alpha() {
 }
 
 #[test]
-fn a_four_digit_background_is_refused_rather_than_drawn_as_a_different_colour() {
-    // The shipped renderer appends the opacity to the string, so "#abcd" becomes "#abcd80" — six
-    // digits, perfectly valid, and a completely different colour drawn with no hint of a problem.
-    // That is worse than the ten-digit case, which at least disappears visibly.
+fn a_four_digit_background_multiplies_its_own_alpha_by_the_opacity_control() {
+    // #abcd expands to #aabbccdd. At 50%, the independently quantized opacity byte is 127;
+    // round(221 * 127 / 255) is 110. The colour channels must not be reinterpreted as #abcd7f.
     assert_eq!(
         resolve_background("#abcd", 50.0),
-        Err(ColorError::AlreadyHasAlpha)
+        Ok(Rgba {
+            red: 170,
+            green: 187,
+            blue: 204,
+            alpha: 110,
+        })
     );
-    // Still transparent rather than an error when the background is off entirely.
     assert_eq!(resolve_background("#abcd", 0.0), Ok(Rgba::TRANSPARENT));
 }
 
@@ -145,15 +148,21 @@ fn zero_opacity_is_transparent_rather_than_an_error() {
 }
 
 #[test]
-fn a_colour_that_already_has_alpha_is_reported_instead_of_silently_vanishing() {
-    // The shipped renderer appends two more hex digits here, producing a ten-digit colour that no
-    // renderer understands, so the background disappears with no message while every other style
-    // still applies. The pixels are the same; the difference is that the cause is now findable.
+fn an_eight_digit_background_multiplies_both_alpha_controls() {
     assert_eq!(
         resolve_background("#10182080", 50.0),
-        Err(ColorError::AlreadyHasAlpha)
+        Ok(Rgba {
+            red: 16,
+            green: 24,
+            blue: 32,
+            alpha: 64,
+        })
     );
-    assert!(ColorError::AlreadyHasAlpha.to_string().contains("alpha"));
+    // At full background opacity the colour's own alpha is preserved exactly.
+    assert_eq!(
+        resolve_background("#10182080", 100.0),
+        parse_hex_color("#10182080")
+    );
 }
 
 #[test]

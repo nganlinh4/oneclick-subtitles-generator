@@ -1,3 +1,4 @@
+mod active_workspace;
 mod actor;
 mod artifacts;
 mod error;
@@ -11,6 +12,10 @@ mod project_speech_references;
 mod projects;
 mod track_history;
 
+pub use active_workspace::{
+    ActiveWorkspace, ActiveWorkspacePointer, ActiveWorkspaceState, ProjectAliasEntry,
+    ProjectAliasIndex, ProjectAliasMutation,
+};
 pub use actor::{Database, DatabaseHealth, is_secret_setting_key};
 pub use artifacts::{
     ArtifactDraft, ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord,

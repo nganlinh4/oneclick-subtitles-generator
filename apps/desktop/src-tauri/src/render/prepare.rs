@@ -24,6 +24,7 @@ use crate::project_render_scene;
 use super::export::NativeExportInputs;
 use super::refusal;
 use super::text::{ExportTextRequest, StagedAtlases};
+use osg_runtime_staging::RuntimeStagingAuthority;
 
 /// 100ns units per microsecond, which is the only unit conversion this module performs.
 const HUNDRED_NANOS_PER_MICRO: i64 = 10;
@@ -48,6 +49,7 @@ pub(super) fn prepare(
     request: RenderRequest,
     text: ExportTextRequest,
     staging_root: PathBuf,
+    staging_authority: RuntimeStagingAuthority,
 ) -> CommandResult<ValidatedStart> {
     let project = database.load_project(request.project_id)?.ok_or(
         osg_infrastructure::storage::DatabaseError::ProjectNotFound(request.project_id),
@@ -99,6 +101,7 @@ pub(super) fn prepare(
         source: source.path().to_owned(),
         narration,
         staging_root,
+        staging_authority,
         fps: plan.settings.frame_rate.value(),
         duration_in_frames: plan.duration_frames,
     };

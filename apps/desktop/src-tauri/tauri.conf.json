@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "identifier": "io.github.nganlinh4.oneclicksubtitles",
   "build": {
-    "beforeDevCommand": "npm run dev:vite",
+    "beforeDevCommand": "npm run dev:vite:inner",
     "devUrl": "http://127.0.0.1:3030",
-    "beforeBuildCommand": "npm run build:frontend",
+    "beforeBuildCommand": "npm run build:frontend:inner",
     "frontendDist": "../../../build",
     "removeUnusedCommands": true
   },

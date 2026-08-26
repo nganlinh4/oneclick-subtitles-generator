@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "read-session",
+    "manage-active-workspace",
     "checkpoint-app-close",
     "repair-managed-font",
     "select-local-files",

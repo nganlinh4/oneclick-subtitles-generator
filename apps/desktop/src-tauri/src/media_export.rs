@@ -11,7 +11,7 @@ use osg_infrastructure::storage::Database;
 use same_file::Handle;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::background;
@@ -19,6 +19,7 @@ use crate::diagnostics;
 use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
+use osg_runtime_staging::{OwnedStagingFile, RuntimeStagingAuthority, StagingKind};
 
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 const PROGRESS_STEP_BASIS_POINTS: u16 = 25;
@@ -167,6 +168,7 @@ pub(crate) async fn media_export_start(
     let cancellation = ticket.cancellation().clone();
     let source = resolved.path().to_owned();
     let expected_bytes = resolved.asset().size_bytes();
+    let staging_authority = app.state::<RuntimeStagingAuthority>().inner().clone();
 
     tauri::async_runtime::spawn(async move {
         let worker_jobs = Arc::clone(&jobs);
@@ -181,6 +183,7 @@ pub(crate) async fn media_export_start(
                 last_basis_points: 0,
             };
             copy_export(
+                &staging_authority,
                 &source,
                 &destination,
                 expected_bytes,
@@ -265,6 +268,7 @@ fn command_error(error: ExportCopyError) -> CommandError {
 }
 
 pub(crate) fn copy_export(
+    staging_authority: &RuntimeStagingAuthority,
     source_path: &Path,
     destination_path: &Path,
     expected_bytes: u64,
@@ -275,11 +279,12 @@ pub(crate) fn copy_export(
     let source_path = path_with_canonical_parent(source_path, ExportCopyError::SourceChanged)?;
     let mut source = open_source(&source_path, expected_bytes)?;
     let destination = DestinationPlan::new(destination_path, &source.identity)?;
-    let mut staged = tempfile::Builder::new()
-        .prefix(".osg-export-")
-        .suffix(".part")
-        .tempfile_in(&destination.directory)
-        .map_err(|_| ExportCopyError::Io)?;
+    let mut staged = OwnedStagingFile::begin(
+        staging_authority,
+        &destination.directory,
+        StagingKind::MediaExport,
+    )
+    .map_err(|_| ExportCopyError::Io)?;
     reject_unsafe_metadata(
         &fs::symlink_metadata(staged.path()).map_err(|_| ExportCopyError::Io)?,
         false,
@@ -306,7 +311,8 @@ pub(crate) fn copy_export(
             .filter(|value| *value <= expected_bytes)
             .ok_or(ExportCopyError::SourceChanged)?;
         staged
-            .as_file_mut()
+            .file_mut()
+            .map_err(|_| failure_or_cancelled(&is_cancelled, ExportCopyError::Io))?
             .write_all(&buffer[..count])
             .map_err(|_| failure_or_cancelled(&is_cancelled, ExportCopyError::Io))?;
         copied_hash.update(&buffer[..count]);
@@ -316,7 +322,6 @@ pub(crate) fn copy_export(
         return Err(ExportCopyError::SourceChanged);
     }
     staged
-        .as_file()
         .sync_all()
         .map_err(|_| failure_or_cancelled(&is_cancelled, ExportCopyError::Io))?;
     verify_source(&source_path, &source, expected_bytes)?;
@@ -352,8 +357,8 @@ pub(crate) fn copy_export(
     check_cancellation(&is_cancelled)?;
     let destination_path = destination.into_verified_destination(&source.identity)?;
 
-    let staged_path = staged.into_temp_path();
-    atomicwrites::replace_atomic(staged_path.as_ref(), &destination_path)
+    staged
+        .replace_atomic(&destination_path)
         .map_err(|_| failure_or_cancelled(&is_cancelled, ExportCopyError::Io))?;
     Ok(())
 }
@@ -631,6 +636,10 @@ mod tests {
         fs::write(path, vec![byte; count]).expect("write fixture");
     }
 
+    fn staging_authority(root: &Path) -> RuntimeStagingAuthority {
+        RuntimeStagingAuthority::prepare(&root.join("staging-authority")).unwrap()
+    }
+
     #[test]
     fn staged_copy_atomically_replaces_an_existing_regular_file() {
         let root = tempfile::tempdir().expect("tempdir");
@@ -639,8 +648,10 @@ mod tests {
         write_bytes(&source, 7, COPY_BUFFER_BYTES + 31);
         write_bytes(&destination, 2, 8);
         let mut progress = Vec::new();
+        let authority = staging_authority(root.path());
 
         copy_export(
+            &authority,
             &source,
             &destination,
             COPY_BUFFER_BYTES as u64 + 31,
@@ -674,8 +685,10 @@ mod tests {
         write_bytes(&source, 7, COPY_BUFFER_BYTES * 2);
         write_bytes(&destination, 2, 8);
         let cancelled = Cell::new(false);
+        let authority = staging_authority(root.path());
 
         let result = copy_export(
+            &authority,
             &source,
             &destination,
             (COPY_BUFFER_BYTES * 2) as u64,
@@ -697,8 +710,10 @@ mod tests {
         let destination = root.path().join("export.mp4");
         write_bytes(&source, 7, COPY_BUFFER_BYTES * 2);
         let mutated = Cell::new(false);
+        let authority = staging_authority(root.path());
 
         let result = copy_export(
+            &authority,
             &source,
             &destination,
             (COPY_BUFFER_BYTES * 2) as u64,
@@ -720,9 +735,10 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let source = root.path().join("source.mp4");
         write_bytes(&source, 7, 32);
+        let authority = staging_authority(root.path());
 
         assert_eq!(
-            copy_export(&source, &source, 32, || false, |_, _| Ok(())),
+            copy_export(&authority, &source, &source, 32, || false, |_, _| Ok(())),
             Err(ExportCopyError::UnsafeDestination)
         );
         assert_eq!(fs::read(&source).expect("source"), vec![7; 32]);
@@ -742,9 +758,11 @@ mod tests {
         write_bytes(&real_destination, 2, 8);
         symlink(&real_source, &source_link).expect("source symlink");
         symlink(&real_destination, &destination_link).expect("destination symlink");
+        let authority = staging_authority(root.path());
 
         assert_eq!(
             copy_export(
+                &authority,
                 &source_link,
                 &root.path().join("fresh.mp4"),
                 32,
@@ -754,7 +772,14 @@ mod tests {
             Err(ExportCopyError::SourceChanged)
         );
         assert_eq!(
-            copy_export(&real_source, &destination_link, 32, || false, |_, _| Ok(())),
+            copy_export(
+                &authority,
+                &real_source,
+                &destination_link,
+                32,
+                || false,
+                |_, _| Ok(())
+            ),
             Err(ExportCopyError::UnsafeDestination)
         );
     }
@@ -772,9 +797,17 @@ mod tests {
         let source = alias.join("source.mp4");
         let destination = alias.join("export.mp4");
         write_bytes(&source, 7, 32);
+        let authority = staging_authority(root.path());
 
-        copy_export(&source, &destination, 32, || false, |_, _| Ok(()))
-            .expect("export through canonical parent");
+        copy_export(
+            &authority,
+            &source,
+            &destination,
+            32,
+            || false,
+            |_, _| Ok(()),
+        )
+        .expect("export through canonical parent");
 
         assert_eq!(
             fs::read(real.join("export.mp4")).expect("read export"),

@@ -9,9 +9,8 @@
 //!
 //! * The contract's `fade` animation becomes `osg-scene`'s `none`. `fade` is the absence of a
 //!   transform, not a transform: the fade itself is the opacity curve the cue always carries.
-//! * The background padding is not a persisted field. The shipped composition hard-codes
-//!   `padding: ${scale(8)}px ${scale(16)}px`, so those two reference-pixel numbers are carried here
-//!   and scaled by the same rule as every other size.
+//! * Background padding is persisted explicitly on both axes. Older scenes receive the reviewed
+//!   shipped defaults at the render-contract boundary; this conversion never substitutes them.
 
 use osg_compositor::{SubtitleDecorationSpec, SubtitleStyle, SubtitleStyleSpec};
 use osg_render::{
@@ -20,16 +19,6 @@ use osg_render::{
 use osg_scene::layout::Margins;
 
 use crate::error::ExportError;
-
-/// Horizontal padding between the text and the background box, in reference pixels.
-///
-/// From `padding: ... ${getResponsiveScaledValue(16)}px` in the shipped composition.
-pub const BACKGROUND_PADDING_X: f64 = 16.0;
-
-/// Vertical padding between the text and the background box, in reference pixels.
-///
-/// From `padding: ${getResponsiveScaledValue(8)}px ...` in the shipped composition.
-pub const BACKGROUND_PADDING_Y: f64 = 8.0;
 
 /// The flat cue opacity. The persisted vocabulary has no such control, so it is fully opaque and
 /// the fade curve is the only thing that changes a cue's alpha.
@@ -44,8 +33,8 @@ pub(crate) fn style_spec(customization: &SubtitleCustomization) -> SubtitleStyle
         gradient_enabled: customization.gradient_enabled,
         background_color: customization.background_color.clone(),
         background_opacity: customization.background_opacity,
-        background_padding_x: BACKGROUND_PADDING_X,
-        background_padding_y: BACKGROUND_PADDING_Y,
+        background_padding_x: customization.background_padding_x,
+        background_padding_y: customization.background_padding_y,
         border_radius: customization.border_radius,
         position: position_name(customization.position).to_owned(),
         margins: Margins {

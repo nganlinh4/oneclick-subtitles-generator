@@ -58,7 +58,10 @@ impl UpdateChannelState {
 /// meant to update, the other says a build that was meant to cannot verify what it downloads. A
 /// user reading the second when the first is true would reasonably think something is broken.
 pub(crate) fn update_channel_state() -> UpdateChannelState {
-    if cfg!(feature = "unsigned-local-build") {
+    if cfg!(any(
+        feature = "unsigned-local-build",
+        feature = "e2e-automation"
+    )) {
         return UpdateChannelState::Disabled;
     }
     if has_configured_signing_key() {
@@ -586,7 +589,10 @@ mod tests {
     /// than depending on the key being absent, which is the mistake the handoff warns against.
     #[test]
     fn the_compiled_channel_matches_this_builds_features() {
-        if cfg!(feature = "unsigned-local-build") {
+        if cfg!(any(
+            feature = "unsigned-local-build",
+            feature = "e2e-automation"
+        )) {
             assert_eq!(update_channel_state(), UpdateChannelState::Disabled);
             assert!(
                 has_configured_signing_key(),
