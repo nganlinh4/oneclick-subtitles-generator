@@ -74,7 +74,7 @@ jobs:
           node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
 
       - name: Build the frozen frontend once
-        run: npm run build:frontend
+        run: npm run build:frontend:inner
 
       - name: Fetch the locked Windows Rust dependency graph
         run: cargo fetch --locked --target x86_64-pc-windows-msvc
@@ -87,7 +87,7 @@ jobs:
         run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked
 
       - name: Bundle unsigned base installer
-        run: npm --prefix apps/desktop run tauri -- bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
+        run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
 
       - name: Validate and preserve the base installer
         shell: pwsh

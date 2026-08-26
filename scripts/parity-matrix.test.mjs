@@ -1,7 +1,7 @@
 // The parity matrix must describe the real catalog, or the removal gate under-covers silently.
 //
 // The gate that authorises deleting the old renderer has to exercise all 30 shipped presets and all
-// 70 persisted options. Those definitions live in JavaScript and the gate runs in Rust, so a
+// 72 persisted options. Those definitions live in JavaScript and the gate runs in Rust, so a
 // generated fixture bridges them — and a generated fixture is exactly the kind of artifact that goes
 // stale without anyone noticing. This checks the committed fixture still matches what the modules
 // say today, so adding a preset or renaming a field fails here rather than quietly falling outside
@@ -53,8 +53,8 @@ test('every shipped preset is present and fully merged', () => {
     // Merged, not sparse: the gate renders what a user gets, and a preset stores only overrides.
     assert.equal(
       Object.keys(preset.customization).length,
-      54,
-      `${preset.id} must carry all 54 fields after merging`,
+      56,
+      `${preset.id} must carry all 56 fields after merging`,
     );
   }
 
@@ -62,11 +62,11 @@ test('every shipped preset is present and fully merged', () => {
   assert.equal(new Set(ids).size, ids.length, 'preset ids must be unique');
 });
 
-test('the matrix covers all 70 persisted options', () => {
+test('the matrix covers all 72 persisted options', () => {
   const { fieldMatrix, outputFields, coverage } = committed();
-  assert.equal(fieldMatrix.length, 54);
+  assert.equal(fieldMatrix.length, 56);
   assert.equal(outputFields.length, 16);
-  assert.equal(coverage.totalPersistedOptions, 70);
+  assert.equal(coverage.totalPersistedOptions, 72);
 
   for (const entry of fieldMatrix) {
     assert.ok(entry.values.length >= 1, `${entry.field} must contribute at least one render`);

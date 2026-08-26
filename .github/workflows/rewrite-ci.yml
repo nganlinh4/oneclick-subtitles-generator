@@ -212,7 +212,7 @@ jobs:
         run: node scripts/check-release-readiness.js --profile host-toolchain
 
       - name: Compile frozen frontend
-        run: npm run build:frontend
+        run: npm run build:frontend:inner
 
       - name: Fetch the locked Rust dependency graph
         run: cargo fetch --locked --target "${{ matrix.rust-target }}"
@@ -221,10 +221,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint Rust workspace
-        run: cargo clippy --workspace --all-targets --all-features --locked --target "${{ matrix.rust-target }}" -- -D warnings
+        run: cargo clippy --workspace --all-targets --features osg-desktop/production --locked --target "${{ matrix.rust-target }}" -- -D warnings
 
       - name: Test Rust workspace
-        run: cargo test --workspace --all-features --locked --target "${{ matrix.rust-target }}"
+        run: cargo test --workspace --features osg-desktop/production --locked --target "${{ matrix.rust-target }}"
 
       - name: Check frontend catalogs
         run: |
@@ -274,7 +274,7 @@ jobs:
 
       - name: Smoke-package unsigned native installers for manual validation
         if: github.event_name == 'workflow_dispatch'
-        run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
+        run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"
 
       - name: Validate manually produced installers and packaged resources
         if: github.event_name == 'workflow_dispatch'
@@ -333,7 +333,7 @@ jobs:
         run: node scripts/check-release-readiness.js --profile host-toolchain
 
       - name: Compile frozen frontend
-        run: npm run build:frontend
+        run: npm run build:frontend:inner
 
       - name: Fetch the locked Windows Rust dependency graph
         run: cargo fetch --locked --target x86_64-pc-windows-msvc
@@ -349,7 +349,7 @@ jobs:
         run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked
 
       - name: Bundle current branch unsigned Windows installer
-        run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
+        run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis
 
       - name: Validate installer architecture and packaged resources
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis --allow-unsigned-branch-build

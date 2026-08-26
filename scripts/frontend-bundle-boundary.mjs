@@ -48,7 +48,8 @@ export const REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES = Object.freeze({
   'src/services/lifecycleOrchestrator.js': Object.freeze({
     'src/components/app/hooks/useAutoGenerateFlow.js': 1,
     'src/hooks/runAsrGeneration.js': 1,
-    'src/hooks/useSubtitles.js': 2,
+    'src/hooks/useSubtitles.js': 1,
+    'src/hooks/useSubtitlesRetryGeneration.js': 1,
     'src/hooks/useSubtitlesSegmentRetry.js': 1,
     'src/hooks/useTranslationState.js': 1,
   }),

@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // Freeze the subtitle math that the native renderer must reproduce.
 //
-// The fixture is generated from the CURRENT shipped implementation, by bundling the real TypeScript
-// source rather than reimplementing it, so it records behaviour as it actually is — including the
-// quirks the migration has to decide about deliberately. Both the TypeScript and the Rust renderer
-// assert against this one file, which is what locks them to each other.
+// The fixture is generated from the canonical TypeScript implementation, by bundling the real
+// source rather than reimplementing it. Both TypeScript preview and Rust export assert against this
+// one file, which locks an intentional behaviour change to the same pixels on both paths.
 //
 // Regenerate deliberately, never to make a failing test pass:
 //   node scripts/generate-render-parity-fixture.mjs
@@ -71,6 +70,27 @@ const main = async () => {
     if (!Array.isArray(easings) || easings.length === 0) {
       throw new Error('The easing catalog is empty; refusing to write an empty fixture');
     }
+    const reviewedInteriorProgressSamples =
+      easingModule.SUBTITLE_ANIMATION_EASING_REVIEW_SAMPLES;
+    if (!Array.isArray(reviewedInteriorProgressSamples)
+      || reviewedInteriorProgressSamples.length === 0
+      || reviewedInteriorProgressSamples.some(progress => progress <= 0 || progress >= 1)) {
+      throw new Error('Easing distinctness samples must be a non-empty list inside (0, 1)');
+    }
+
+    const signatures = new Map();
+    for (const easing of easings) {
+      const signature = reviewedInteriorProgressSamples
+        .map(progress => bitsOf(easingModule.applySubtitleAnimationEasing(progress, easing)))
+        .join(':');
+      const alias = signatures.get(signature);
+      if (alias) {
+        throw new Error(
+          `User-visible easing ${easing} aliases ${alias} at every reviewed interior sample`,
+        );
+      }
+      signatures.set(signature, easing);
+    }
 
     const easingSamples = [];
     // 'unknown-easing' pins the documented fall-through to linear.
@@ -103,10 +123,11 @@ const main = async () => {
     }
 
     const fixture = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedFrom: SOURCES,
-      note: 'Generated from the shipped implementation. Do not hand-edit to make a test pass.',
+      note: 'Generated from canonical subtitle math. Do not hand-edit to make a test pass.',
       easings: [...easings],
+      reviewedInteriorProgressSamples: [...reviewedInteriorProgressSamples],
       easingSamples,
       scaleSamples,
     };

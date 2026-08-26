@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Freeze the customization matrix the exhaustive parity gate has to cover.
 //
-// The removal gate must exercise all 30 shipped presets and all 70 persisted options. Those live in
+// The removal gate must exercise all 30 shipped presets and all 72 persisted options. Those live in
 // JavaScript — the presets are React-adjacent data and the schema authority is the renderer package
 // — while the gate that compares native frames against decoded exports is Rust. This script is the
 // bridge, and it is generated from the real modules rather than transcribed, so a preset added or a
@@ -11,9 +11,9 @@
 //
 //   * `presets`     — every shipped preset, fully merged against the defaults, so the gate renders
 //                     what a user actually gets rather than the sparse override the preset stores.
-//   * `fieldMatrix` — for each of the 54 subtitle fields, the values worth rendering: the default,
+//   * `fieldMatrix` — for each of the 56 subtitle fields, the values worth rendering: the default,
 //                     the bounds the validator accepts, and any value the parity ledger calls out as
-//                     behaving unusually. This is what turns "all 70 fields" into a finite run.
+//                     behaving unusually. This is what turns "all 72 fields" into a finite run.
 //   * `coverage`    — the arithmetic that proves nothing was skipped, asserted by the gate itself.
 //
 // Regenerate deliberately, never to make a failing gate pass:
@@ -69,6 +69,8 @@ const INTERESTING = Object.freeze({
   textAlign: ['left', 'center', 'right', 'justify'],
   // The ledger records that opacity 50 lands on 127, not 128, because 2.55 is not representable.
   backgroundOpacity: [0, 1, 50, 99, 100],
+  backgroundPaddingX: [0, 16, 30, 100],
+  backgroundPaddingY: [0, 8, 30, 100],
   // #rgba is accepted by every validator and parses; as a background it is refused deliberately.
   backgroundColor: ['#000000', '#101820', '#abc'],
   borderRadius: [0, 4, 100],

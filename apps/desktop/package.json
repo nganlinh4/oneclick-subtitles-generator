@@ -9,10 +9,12 @@
   },
   "scripts": {
     "dev:vite": "npm --prefix ../.. run dev:vite",
+    "dev:vite:inner": "npm --prefix ../.. run dev:vite:inner",
     "build:frontend": "npm --prefix ../.. run build:frontend",
-    "tauri": "tauri",
-    "tauri:build": "tauri build --features production",
-    "tauri:dev": "tauri dev"
+    "build:frontend:inner": "npm --prefix ../.. run build:frontend:inner",
+    "tauri": "node ../../scripts/run-tauri-cli.js",
+    "tauri:build": "node ../../scripts/run-tauri-cli.js build --features production",
+    "tauri:dev": "node ../../scripts/run-tauri-cli.js dev"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4"

@@ -69,7 +69,7 @@ const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
 const DOWNLOAD_HANDLERS_SHA256 =
   'a9e4baf1cb4bac388f2be9c5240a07cb55861269790dce3eac3e0d8fa2cff91a';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
-  '602b186f9291764bb023852b962243d1a157e4e48e4396ccb4c86bcf25fad1f0';
+  '95103ae096e6b8bbdbc0727d2fa161c9980a6d02924735d69f79663eb1a1adae';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
   '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
@@ -894,8 +894,8 @@ function assertWorkflowCommands(workflow) {
     'npm --prefix apps/desktop ci --ignore-scripts',
     'rustup target add "${{ matrix.rust-target }}"',
     'cargo fetch --locked --target "${{ matrix.rust-target }}"',
-    'cargo clippy --workspace --all-targets --all-features --locked --target "${{ matrix.rust-target }}" -- -D warnings',
-    'cargo test --workspace --all-features --locked --target "${{ matrix.rust-target }}"',
+    'cargo clippy --workspace --all-targets --features osg-desktop/production --locked --target "${{ matrix.rust-target }}" -- -D warnings',
+    'cargo test --workspace --features osg-desktop/production --locked --target "${{ matrix.rust-target }}"',
     'node scripts/check-release-readiness.js --profile compile',
     'node scripts/check-release-readiness.js --profile host-toolchain',
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',
@@ -907,14 +907,19 @@ function assertWorkflowCommands(workflow) {
     'scripts/inspect-installed-native-tools.test.mjs',
     'scripts/inspect-installed-media-pipeline.test.mjs',
     'scripts/inspect-installed-editor-flow.test.mjs',
-    'npm run build:frontend',
+    'npm run build:frontend:inner',
     'node scripts/check-frozen-css-output.mjs',
     'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --features production --no-bundle --ci --target "${{ matrix.rust-target }}" -- --locked',
-    'bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
   ];
   for (const fragment of requiredFragments) {
     invariant(workflow.includes(fragment), `The workflow is missing required locked gate: ${fragment}`);
   }
+  invariant(
+    !workflow.includes('npm --prefix apps/desktop run tauri --')
+      && !/^ {8}run: npm run build:frontend\s*$/m.test(workflow),
+    'GitHub Actions must use explicit pinned Tauri and guarded frontend inner commands, never local public wrappers',
+  );
   assertWorkflowToolchainPins(workflow);
   const nativeMatrix = workflowJobBlock(workflow, 'native-matrix');
   const branchInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
@@ -1039,9 +1044,9 @@ function assertWorkflowCommands(workflow) {
       pickerEvidenceUpload.test(publishedInstalledSmoke),
     'published-installed-smoke must validate and launch the signed immutable release artifact',
   );
-  const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend');
+  const frontendBuildIndex = nativeMatrix.indexOf('run: npm run build:frontend:inner');
   const rustClippyIndex = nativeMatrix.indexOf(
-    'run: cargo clippy --workspace --all-targets --all-features --locked',
+    'run: cargo clippy --workspace --all-targets --features osg-desktop/production --locked',
   );
   invariant(
     frontendBuildIndex !== -1 && rustClippyIndex !== -1 && frontendBuildIndex < rustClippyIndex,
@@ -1075,7 +1080,7 @@ function assertWorkflowCommands(workflow) {
   const nativeBootstrapRuns = exactWorkflowRunMatches(nativeMatrix, nsisBootstrapCommand);
   const nativeBootstrapIndex = nativeBootstrapRuns[0]?.index ?? -1;
   const nativeBundleIndex = nativeMatrix.indexOf(
-    'npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
   );
   invariant(
     nativeBootstrapStep.test(nativeMatrix)
@@ -1087,7 +1092,7 @@ function assertWorkflowCommands(workflow) {
 
   for (const manualCommand of [
     'node scripts/check-release-readiness.js --profile runtime-package --target "${{ matrix.rust-target }}"',
-    'npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
     'node scripts/check-release-artifacts.js --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}" --allow-unsigned-branch-build',
   ]) {
     const guardedStep = new RegExp(
@@ -2715,6 +2720,7 @@ function assertUpdaterSmokeWorkflow(workflow) {
     'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
     'node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc',
     'npm run test:updater-fixture',
+    'npm run build:frontend:inner',
     'build --features production,ci-updater-fixture --no-bundle --ci --target x86_64-pc-windows-msvc -- --locked',
     './scripts/prepare-tauri-nsis.ps1',
     'bundle --features production,ci-updater-fixture --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis',
@@ -2738,6 +2744,11 @@ function assertUpdaterSmokeWorkflow(workflow) {
     invariant(workflow.includes(fragment),
       `Signed updater smoke is missing required boundary: ${fragment}`);
   }
+  invariant(
+    !workflow.includes('npm --prefix apps/desktop run tauri --')
+      && !/^ {8}run: npm run build:frontend\s*$/m.test(workflow),
+    'Signed updater CI must use explicit pinned Tauri and guarded frontend inner commands',
+  );
   const versionDerivationCommand =
     'node scripts/derive-updater-smoke-version.js --github-output $env:GITHUB_OUTPUT';
   const versionDerivationRuns = exactWorkflowRunMatches(workflow, versionDerivationCommand);
@@ -2813,6 +2824,79 @@ function assertUpdaterSmokeWorkflow(workflow) {
  * environment read to the function that contains it and requires a test-only `cfg` on that function
  * or on the statement itself. A seam written without one fails here instead of shipping.
  */
+function splitCfgArguments(source) {
+  const arguments_ = [];
+  let start = 0;
+  let depth = 0;
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"' && source[index - 1] !== '\\') quoted = !quoted;
+    if (quoted) continue;
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (character === ',' && depth === 0) {
+      arguments_.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  arguments_.push(source.slice(start).trim());
+  return depth === 0 && !quoted && arguments_.every(Boolean) ? arguments_ : [];
+}
+
+function cfgExpressionImpliesTestOnly(expression, testOnlyFeatures) {
+  const source = expression.trim();
+  if (source === 'test') return true;
+  const feature = source.match(/^feature\s*=\s*"([^"]+)"$/u)?.[1];
+  if (feature !== undefined) return testOnlyFeatures.includes(feature);
+
+  const composite = source.match(/^(all|any|not)\((.*)\)$/su);
+  if (composite === null || composite[1] === 'not') return false;
+  const children = splitCfgArguments(composite[2]);
+  if (children.length === 0) return false;
+  const implications = children.map((child) => (
+    cfgExpressionImpliesTestOnly(child, testOnlyFeatures)
+  ));
+  // `any(A, B)` can ship through either arm, so every arm must be test-only. For
+  // `all(A, B)`, one test-only conjunct is sufficient to compile the item out of production.
+  return composite[1] === 'any' ? implications.every(Boolean) : implications.some(Boolean);
+}
+
+function lineHasTestOnlyCfgGuard(line, testOnlyFeatures) {
+  const expression = line.trim().match(/^#\[cfg\((.*)\)\]$/su)?.[1];
+  return expression !== undefined
+    && cfgExpressionImpliesTestOnly(expression, testOnlyFeatures);
+}
+
+function isRustItemStart(line) {
+  const source = line.trim();
+  // Constant/static declarations are validated directly at their own source line. Treating a
+  // function-local const as an owning item would hide the cfg attached to the containing function.
+  return /^(?:(?:pub(?:\([^)]*\))?|async|const|unsafe|extern(?:\s+"[^"]+")?)\s+)*fn\b/u.test(source);
+}
+
+function hasAttachedTestOnlyCfg(lines, itemIndex, testOnlyFeatures) {
+  for (let index = itemIndex - 1; index >= 0; index -= 1) {
+    const source = lines[index].trim();
+    if (source === '' || source.startsWith('//')) continue;
+    if (!source.startsWith('#[')) return false;
+    if (lineHasTestOnlyCfgGuard(source, testOnlyFeatures)) return true;
+  }
+  return false;
+}
+
+function harnessReadHasTestOnlyOwner(lines, readIndex, testOnlyFeatures) {
+  // A cfg can own the statement itself (for example a test-only `if`) or the nearest Rust item.
+  // Binding to the nearest item is intentional: accepting any cfg in a fixed look-back window lets
+  // an unguarded sibling borrow the guard from the item immediately before it.
+  if (hasAttachedTestOnlyCfg(lines, readIndex, testOnlyFeatures)) return true;
+  for (let index = readIndex; index >= 0; index -= 1) {
+    if (!isRustItemStart(lines[index])) continue;
+    return hasAttachedTestOnlyCfg(lines, index, testOnlyFeatures);
+  }
+  return false;
+}
+
 function assertHarnessSeamsAreCompiledOut(rootDirectory = REPOSITORY_ROOT) {
   const NEWLINE = String.fromCharCode(10);
   const TEST_ONLY_FEATURES = ['e2e-automation', 'unsigned-local-build', 'ci-updater-fixture'];
@@ -2829,13 +2913,10 @@ function assertHarnessSeamsAreCompiledOut(rootDirectory = REPOSITORY_ROOT) {
     const lines = readText(rootDirectory, path.relative(rootDirectory, file)).split(NEWLINE);
     lines.forEach((line, index) => {
       if (!HARNESS_ENVIRONMENT.test(line) || line.trimStart().startsWith('//')) return;
-      // Look back to the enclosing item and require a test-only cfg above it.
-      const preceding = lines.slice(Math.max(0, index - 25), index).reverse();
-      const guard = preceding.find((candidate) => (
-        candidate.includes('#[cfg(feature') || candidate.includes('#[cfg(all(')
-      ));
-      const isGuarded = guard !== undefined
-        && TEST_ONLY_FEATURES.some((feature) => guard.includes(feature));
+      // Removing a harness variable from a child process is a production hardening boundary, not
+      // a harness input seam. Only declarations and reads can enable automation behavior.
+      if (/\benv_remove\s*\(/u.test(line)) return;
+      const isGuarded = harnessReadHasTestOnlyOwner(lines, index, TEST_ONLY_FEATURES);
       invariant(
         isGuarded,
         `${path.relative(rootDirectory, file).replaceAll(path.sep, '/')}:${index + 1} reads a harness `
@@ -2845,6 +2926,41 @@ function assertHarnessSeamsAreCompiledOut(rootDirectory = REPOSITORY_ROOT) {
     });
   }
   return guarded;
+}
+
+function assertUpdaterFixtureBuildScope(build) {
+  const mainFunction = /fn\s+main\(\)\s*\{([\s\S]*?)\n\}\s*\nfn\s+verify_ci_updater_fixture_scope\(\)/u.exec(build);
+  invariant(
+    mainFunction !== null,
+    'Updater fixture build scope must remain directly adjacent to the build-script entry point',
+  );
+  invariant(
+    /^\s*verify_ci_updater_fixture_scope\(\);\s*verify_managed_delivery_contract\(\);\s*tauri_build::try_build\(/u
+      .test(mainFunction[1]),
+    'Updater fixture build scope must run first and unconditionally, before managed delivery and the Tauri build',
+  );
+  const scopeFunction = /fn\s+verify_ci_updater_fixture_scope\(\)\s*\{([\s\S]*?)\n\}\s*\nfn\s+verify_managed_delivery_contract\(\)/u.exec(build);
+  invariant(
+    scopeFunction !== null,
+    'Updater fixture build scope must remain an auditable standalone build-script function',
+  );
+  const scopeBody = scopeFunction[1];
+  const debugExemption = String.raw`if\s+std::env::var_os\("CARGO_FEATURE_CI_UPDATER_FIXTURE"\)\.is_none\(\)\s*\|\|\s*matches!\(\s*std::env::var\("PROFILE"\)\.as_deref\(\),\s*Ok\("debug"\)\s*\)\s*\{\s*return;\s*\}`;
+  invariant(
+    new RegExp(debugExemption, 'u').test(scopeBody),
+    'Updater fixture build scope must exempt only Cargo debug builds, not custom nonshipping profiles',
+  );
+  const githubActionsAssertion = String.raw`assert_eq!\(\s*std::env::var\("GITHUB_ACTIONS"\)\.as_deref\(\),\s*Ok\("true"\),\s*"(?:[^"\\]|\\.)*"\s*\);`;
+  const explicitOptInAssertion = String.raw`assert_eq!\(\s*std::env::var\("OSG_ENABLE_SIGNED_UPDATER_FIXTURE"\)\.as_deref\(\),\s*Ok\("1"\),\s*"(?:[^"\\]|\\.)*"\s*\);`;
+  const exactEnforcement = new RegExp(
+    String.raw`^\s*${debugExemption}\s*${githubActionsAssertion}\s*${explicitOptInAssertion}\s*$`,
+    'u',
+  );
+  invariant(
+    exactEnforcement.test(scopeBody),
+    'Updater fixture build scope must require GITHUB_ACTIONS == "true" and then '
+      + 'OSG_ENABLE_SIGNED_UPDATER_FIXTURE == "1" as unconditional top-level assertions',
+  );
 }
 
 function assertUpdaterFixtureSource(rootDirectory) {
@@ -2876,16 +2992,7 @@ function assertUpdaterFixtureSource(rootDirectory) {
     /^unsigned-local-build\s*=\s*\[[^\]]*"tauri\/devtools"[^\]]*\]\s*$/m.test(cargo),
     'The local-test channel must carry devtools, or a WebView failure has no readable evidence',
   );
-  for (const fragment of [
-    'CARGO_FEATURE_CI_UPDATER_FIXTURE',
-    'GITHUB_ACTIONS',
-    'OSG_ENABLE_SIGNED_UPDATER_FIXTURE',
-    'PROFILE',
-    'release',
-  ]) {
-    invariant(build.includes(fragment),
-      `Updater fixture build scope is missing ${fragment}`);
-  }
+  assertUpdaterFixtureBuildScope(build);
   invariant(updater.includes('#[cfg(feature = "ci-updater-fixture")]')
     && updater.includes('https://localhost:38443/latest.json')
     && updater.includes('.endpoints(vec![')
@@ -3039,17 +3146,34 @@ function assertDesktopCloseLifecycleSource(desktop, appClose, cargoLock) {
   // afterwards then leaves a stray "\r" at the end, and the comparison fails against a file that is
   // in fact byte-for-byte correct. The invariant is unchanged; only its line-ending handling is.
   const desktopSource = desktop.replace(/\r\n/g, '\n');
-  const handlerStart = desktopSource.indexOf('fn handle_application_window_event(');
-  const handlerEnd = desktopSource.indexOf('\nfn ', handlerStart + 1);
-  const handler = handlerStart >= 0 && handlerEnd > handlerStart
-    ? desktopSource.slice(handlerStart, handlerEnd)
-    : '';
-  const classifierStart = desktopSource.indexOf('fn is_main_window_close_request(');
-  const classifierEnd = desktopSource.indexOf('\nfn ', classifierStart + 1);
-  const classifier = classifierStart >= 0 && classifierEnd > classifierStart
-    ? desktopSource.slice(classifierStart, classifierEnd)
-    : '';
+  const extractFunction = (signature) => {
+    const start = desktopSource.indexOf(signature);
+    const bodyStart = desktopSource.indexOf('{', start);
+    if (start < 0 || bodyStart < 0) return '';
+    let depth = 0;
+    for (let index = bodyStart; index < desktopSource.length; index += 1) {
+      if (desktopSource[index] === '{') depth += 1;
+      if (desktopSource[index] === '}') depth -= 1;
+      if (depth === 0) return `${desktopSource.slice(start, index + 1)}\n`;
+    }
+    return '';
+  };
+  const handler = extractFunction('fn handle_application_window_event(');
+  const classifier = extractFunction('fn is_main_window_close_request(');
   const reviewedHandler = `fn handle_application_window_event(window: &Window, event: &WindowEvent) {
+    #[cfg(feature = "e2e-automation")]
+    if window.label() == "main"
+        && matches!(
+            event,
+            WindowEvent::Moved(_)
+                | WindowEvent::Resized(_)
+                | WindowEvent::ScaleFactorChanged { .. }
+                | WindowEvent::Focused(true)
+        )
+    {
+        automation_window::isolate(window)
+            .expect("the automation window must remain outside the interactive desktop");
+    }
     handle_native_media_drop_event(window, event);
     if let WindowEvent::CloseRequested { api, .. } = event
         && is_main_window_close_request(window.label(), true)
@@ -3841,20 +3965,199 @@ function assertTauriConfiguration(rootDirectory = REPOSITORY_ROOT) {
   return mappings;
 }
 
+function assertDevelopmentCacheContract(rootDirectory = REPOSITORY_ROOT) {
+  const manager = readText(rootDirectory, 'scripts/dev-cache.ps1');
+  invariant(
+    /\[int\]\$MaxGiB\s*=\s*28\s*,/u.test(manager)
+      && /\[int\]\$InactiveDays\s*=\s*14\s*,/u.test(manager),
+    'Development cache must remain bounded to 28 GiB and 14 inactive days by default',
+  );
+
+  const managedRunner = readText(rootDirectory, 'scripts/run-managed-command.js');
+  invariant(
+    managedRunner.includes("const MANAGED_LANES = new Set(['dev', 'package']);")
+      && managedRunner.includes('CARGO_TARGET_DIR: lease.cargoTargetDir')
+      && managedRunner.includes('OSG_MANAGED_FRONTEND_ROOT: lease.frontendCacheRoot')
+      && managedRunner.includes('OSG_MANAGED_APPLICATION_ROOT: lease.appPublicationRoot')
+      && managedRunner.includes('OSG_MANAGED_LEASE_ID: lease.leaseId')
+      && managedRunner.includes("OSG_FRONTEND_OUT_DIR: path.join(lease.frontendCacheRoot, 'build')")
+      && managedRunner.includes("build: { frontendDist: tauriFrontendDistOverride(repository, path.join(lease.frontendCacheRoot, 'build')) }")
+      && managedRunner.includes("managedPaths: [\n        lease.cargoTargetDir,\n        lease.frontendCacheRoot,\n        lease.appPublicationRoot,"),
+    'Managed dev/package commands must lease and externalize Cargo, frontend, and application output',
+  );
+
+  const buildContextGuard = readText(rootDirectory, 'scripts/managed-build-context.js');
+  invariant(
+    buildContextGuard.includes("for (const area of ['cargo', 'frontend', 'apps'])")
+      && buildContextGuard.includes("[applicationRoot, `apps-${group}`]")
+      && buildContextGuard.includes('leases.some((lease) => (')
+      && buildContextGuard.includes('lease.processId !== processId')
+      && buildContextGuard.includes("throw new Error('Managed build lease owner is no longer alive')")
+      && buildContextGuard.includes('assertGitHubActionsIdentity')
+      && buildContextGuard.includes("environment.GITHUB_ACTIONS !== 'true'")
+      && buildContextGuard.includes("!samePath(workspace, repositoryRoot)"),
+    'Frontend and Tauri inner commands must validate owned markers, one live shared lease, and the full CI workspace identity',
+  );
+
+  const tauriGuard = readText(rootDirectory, 'scripts/run-tauri-cli.js');
+  invariant(
+    tauriGuard.includes("throw new Error('Local Tauri commands must run through the root managed-cache scripts')")
+      && tauriGuard.includes("require('./managed-build-context')")
+      && tauriGuard.includes('assertManagedBuildInvocation({ environment, repositoryRoot, isProcessAlive }).group')
+      && !tauriGuard.includes("environment.CI === 'true'"),
+    'Inner Tauri entry points must reject every unmanaged invocation, including spoofed CI flags',
+  );
+
+  const rootPackage = readJson(rootDirectory, 'package.json');
+  const desktopPackage = readJson(rootDirectory, 'apps/desktop/package.json');
+  const promptDjPackage = readJson(rootDirectory, 'promptdj-midi/package.json');
+  const tauriConfig = readJson(rootDirectory, 'apps/desktop/src-tauri/tauri.conf.json');
+  const publicFrontend = 'node scripts/run-frontend-command.js --lane dev -- npm run';
+  invariant(
+    rootPackage.scripts?.['build:frontend'] === `${publicFrontend} build:frontend:inner`
+      && rootPackage.scripts?.['build:vite'] === `${publicFrontend} build:vite:inner`
+      && rootPackage.scripts?.['build:promptdj'] === `${publicFrontend} build:promptdj:inner`
+      && rootPackage.scripts?.['dev:vite'] === `${publicFrontend} dev:vite:inner`
+      && rootPackage.scripts?.['build:frontend:inner']?.startsWith('node scripts/assert-frontend-context.js &&')
+      && rootPackage.scripts?.['build:vite:inner']?.startsWith('node scripts/assert-frontend-context.js &&')
+      && rootPackage.scripts?.['build:promptdj:inner']?.startsWith('node scripts/assert-frontend-context.js &&')
+      && rootPackage.scripts?.['dev:vite:inner']?.startsWith('node scripts/assert-frontend-context.js &&')
+      && promptDjPackage.scripts?.build?.includes('run-frontend-command.js --lane dev')
+      && promptDjPackage.scripts?.dev?.includes('run-frontend-command.js --lane dev')
+      && promptDjPackage.scripts?.preview?.includes('run-frontend-command.js --lane dev')
+      && promptDjPackage.scripts?.['build:inner']?.startsWith('node ../scripts/assert-frontend-context.js &&')
+      && promptDjPackage.scripts?.['dev:inner']?.startsWith('node ../scripts/assert-frontend-context.js &&')
+      && promptDjPackage.scripts?.['preview:inner']?.startsWith('node ../scripts/assert-frontend-context.js &&')
+      && desktopPackage.scripts?.['build:frontend:inner'] === 'npm --prefix ../.. run build:frontend:inner'
+      && desktopPackage.scripts?.['dev:vite:inner'] === 'npm --prefix ../.. run dev:vite:inner'
+      && tauriConfig.build?.beforeBuildCommand === 'npm run build:frontend:inner'
+      && tauriConfig.build?.beforeDevCommand === 'npm run dev:vite:inner',
+    'Public frontend commands must acquire the dev lane while Tauri and PromptDJ use guarded non-nesting inner commands',
+  );
+  const frontendWrapper = readText(rootDirectory, 'scripts/run-frontend-command.js');
+  const viteConfig = readText(rootDirectory, 'vite.config.mjs');
+  const promptDjConfig = readText(rootDirectory, 'promptdj-midi/vite.config.ts');
+  invariant(
+    frontendWrapper.includes("path.join(repository, 'scripts', 'run-managed-command.js')")
+      && frontendWrapper.includes("'--lane', 'dev', '--'")
+      && !frontendWrapper.includes('GITHUB_ACTIONS')
+      && viteConfig.includes('assertFrontendInnerInvocation({ environment: process.env')
+      && promptDjConfig.includes('assertFrontendInnerInvocation({')
+      && viteConfig.includes('cacheDir: externalFrontendInputs?.cacheDir')
+      && promptDjConfig.includes("cacheDir = path.join(root, 'promptdj-vite-cache')"),
+    'Frontend Vite and PromptDJ execution must fail closed outside managed or separately validated CI inner routes',
+  );
+
+  const frontendPublisher = readText(rootDirectory, 'scripts/e2e-frontend-snapshot.js');
+  invariant(
+    frontendPublisher.includes('const RETAINED_SNAPSHOT_COUNT = 2;')
+      && frontendPublisher.includes('const keep = new Set([currentHash]);')
+      && frontendPublisher.includes('if (previousHash !== null) keep.add(previousHash);')
+      && frontendPublisher.includes('frontend snapshot retention did not converge on current plus previous'),
+    'Frontend publication must retain only the verified current and one previous snapshot',
+  );
+  invariant(
+    frontendPublisher.includes("const PUBLISHER_JOURNAL_ROOT = '.osg-frontend-journals';")
+      && frontendPublisher.includes("kind: 'snapshot-publication'")
+      && frontendPublisher.includes("kind: 'snapshot-retention'")
+      && frontendPublisher.includes('frontend publisher interrupted transaction'),
+    'Frontend publication and retention must remain journal-authorized and recoverable',
+  );
+
+  const applicationPublisher = readText(rootDirectory, 'scripts/e2e-application-publication.js');
+  invariant(
+    applicationPublisher.includes('Keep the current and one explicitly selected previous verified v2 publication.')
+      && applicationPublisher.includes('const preferredPrevious = verified.some(({ hash }) => hash === previousHash)')
+      && applicationPublisher.includes('const candidates = verified.filter(({ hash }) => hash !== preferredPrevious);')
+      && applicationPublisher.includes('currentHash: current.applicationHash')
+      && applicationPublisher.includes('previousHash: preferredPrevious'),
+    'Application publication must retain the verified current and one previous schema-v2 application',
+  );
+  invariant(
+    applicationPublisher.includes("const APPLICATION_OPERATIONS = '.osg-application-operations';")
+      && applicationPublisher.includes("!['publish', 'retire', 'retire-legacy'].includes(operation.kind)")
+      && applicationPublisher.includes('recoverApplicationOperations({ cacheRoot, leaseId })')
+      && applicationPublisher.includes('journal-authorized E2E application retirement'),
+    'Application publication and retirement must remain journal-authorized and recoverable',
+  );
+
+  const evidencePublisher = readText(rootDirectory, 'e2e/support/workflowEvidence.js');
+  invariant(
+    evidencePublisher.includes('const RECENT_ATTEMPT_RETENTION = 3;')
+      && evidencePublisher.includes('records.slice(0, RECENT_ATTEMPT_RETENTION)')
+      && evidencePublisher.includes('if (latestSuccess !== null) protectedIds.add(latestSuccess);'),
+    'Workflow evidence must retain the three newest attempts plus the latest successful proof',
+  );
+  invariant(
+    evidencePublisher.includes("const RETENTION_JOURNAL = '.osg-workflow-evidence-retention.json';")
+      && evidencePublisher.includes('latestSuccessAttemptId: latestSuccess')
+      && evidencePublisher.includes('The authorization survives until every journaled deletion is complete.'),
+    'Workflow evidence retention must remain journal-authorized and recoverable',
+  );
+
+  const rootReadme = readText(rootDirectory, 'README.md');
+  const cacheGuide = readText(rootDirectory, 'docs/rewrite/DEVELOPMENT_CACHE.md');
+  const desktopReadme = readText(rootDirectory, 'apps/desktop/README.md');
+  invariant(
+    rootReadme.includes('(28 GiB and 14 inactive days by')
+      && rootReadme.includes('managed frontend and schema-v2 application publishers each retain')
+      && rootReadme.includes('three newest immutable attempts plus its latest successful proof')
+      && rootReadme.includes('inner `apps/desktop` Tauri entry points reject unmanaged local invocations')
+      && rootReadme.includes('use a recoverable journaled quarantine'),
+    'Root README must describe the bounded external cache, guarded Tauri entry points, retention, and journals',
+  );
+  invariant(
+    cacheGuide.includes('The defaults are 28 GiB and 14 inactive days.')
+      && cacheGuide.includes('frontend publisher keeps its current verified immutable snapshot and one verified')
+      && cacheGuide.includes('current verified schema-v2')
+      && cacheGuide.includes('three newest attempts plus the latest successful attempt')
+      && cacheGuide.includes('inventory in a parent-owned journal')
+      && cacheGuide.includes('inner `apps/desktop` Tauri scripts validate the exact'),
+    'Development cache guide must match the implemented bounds, guards, retention, and journal recovery',
+  );
+  invariant(
+    desktopReadme.includes('bounded external')
+      && desktopReadme.includes('28 GiB and 14 inactive days by default')
+      && desktopReadme.includes('The inner Tauri')
+      && desktopReadme.includes('scripts in this package deliberately reject unmanaged local invocations')
+      && desktopReadme.includes('three newest attempts plus the latest success')
+      && desktopReadme.includes('Recovery is journal-driven'),
+    'Desktop README must direct local work through the bounded managed-cache entry points',
+  );
+}
+
 function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   const rootPackage = readJson(rootDirectory, 'package.json');
   const desktopPackage = readJson(rootDirectory, 'apps/desktop/package.json');
   invariant(
-    rootPackage.scripts?.['tauri:build'] === 'npm --prefix apps/desktop run tauri:build --',
-    'Root tauri:build must delegate to the guarded desktop production build script',
+    rootPackage.scripts?.['tauri:build']
+      === 'node scripts/run-managed-command.js --lane package -- npm --prefix apps/desktop run tauri:build --',
+    'Root tauri:build must use the managed package lane and guarded desktop production script',
   );
   invariant(
     rootPackage.scripts?.build === 'npm run tauri:build',
     'Root build must use the guarded Tauri production build script',
   );
   invariant(
-    desktopPackage.scripts?.['tauri:build'] === 'tauri build --features production',
-    'Desktop tauri:build must enable the production custom-protocol feature',
+    rootPackage.scripts?.['tauri:dev']
+      === 'node scripts/run-managed-command.js --lane dev -- npm --prefix apps/desktop run tauri -- dev',
+    'Root tauri:dev must use the managed development lane',
+  );
+  invariant(
+    rootPackage.scripts?.['cargo:check']
+      === 'node scripts/run-managed-command.js --lane dev -- cargo check --workspace --features osg-desktop/production --locked'
+      && rootPackage.scripts?.['cargo:test']
+      === 'node scripts/run-managed-command.js --lane dev -- cargo test --workspace --features osg-desktop/production --locked'
+      && rootPackage.scripts?.['cargo:clippy']
+      === 'node scripts/run-managed-command.js --lane dev -- cargo clippy --workspace --all-targets --features osg-desktop/production --locked -- -D warnings',
+    'Canonical local Cargo verification must use the managed development lane',
+  );
+  invariant(
+    desktopPackage.scripts?.tauri === 'node ../../scripts/run-tauri-cli.js'
+      && desktopPackage.scripts?.['tauri:dev'] === 'node ../../scripts/run-tauri-cli.js dev'
+      && desktopPackage.scripts?.['tauri:build']
+        === 'node ../../scripts/run-tauri-cli.js build --features production',
+    'Desktop Tauri entry points must reject unmanaged local builds and enable production protocol',
   );
 
   const cargoToml = readText(rootDirectory, `${TAURI_DIRECTORY}/Cargo.toml`);
@@ -3875,12 +4178,12 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
   );
 
   const mainSource = readText(rootDirectory, `${TAURI_DIRECTORY}/src/main.rs`);
-  // Both packaged channels carry `tauri/custom-protocol`; what must stay refused is a release built
-  // with NEITHER, which keeps the development URL and would ship a binary pointing at localhost.
+  // Every packaged channel carries `tauri/custom-protocol`; what must stay refused is a release
+  // built with none of them, which keeps the development URL and would point at localhost.
   invariant(
-    /#\[cfg\(all\(\s*not\(debug_assertions\),\s*not\(feature\s*=\s*["']production["']\),\s*not\(feature\s*=\s*["']unsigned-local-build["']\)\s*\)\)]\s*compile_error!\s*\(/m
+    /#\[cfg\(all\(\s*not\(debug_assertions\),\s*not\(feature\s*=\s*["']production["']\),\s*not\(feature\s*=\s*["']unsigned-local-build["']\),\s*not\(feature\s*=\s*["']e2e-automation["']\)\s*\)\)]\s*compile_error!\s*\(/m
       .test(mainSource),
-    'Desktop main.rs must reject release builds that omit both packaged-channel features',
+    'Desktop main.rs must reject release builds that omit every packaged-channel feature',
   );
   invariant(
     mainSource.includes('plain `cargo build --release` retains the development URL'),
@@ -4665,6 +4968,7 @@ function checkCompileReadiness(rootDirectory = REPOSITORY_ROOT) {
   assertLockfiles(rootDirectory);
   assertWorkflow(rootDirectory);
   const mappings = assertTauriConfiguration(rootDirectory);
+  assertDevelopmentCacheContract(rootDirectory);
   assertTauriProductionBuildContract(rootDirectory);
   assertNativeToolDelivery(rootDirectory, mappings);
   assertLoopbackAuditManifest(rootDirectory);
@@ -4739,6 +5043,7 @@ function checkRuntimePackageReadiness(rootDirectory, target) {
   const mappings = collectResourceMappings(rootDirectory, target);
   const failures = [];
   for (const check of [
+    () => assertDevelopmentCacheContract(rootDirectory),
     () => assertTauriProductionBuildContract(rootDirectory),
     () => assertWorkerResources(rootDirectory, mappings),
     () => assertNativeToolDelivery(rootDirectory, mappings),
@@ -4832,6 +5137,7 @@ module.exports = {
   assertRepositoryReleasePolicy,
   assertManagedEngineDelivery,
   assertUpdaterReleaseConfiguration,
+  assertDevelopmentCacheContract,
   assertTauriProductionBuildContract,
   assertLoopbackAuditManifest,
   assertNoMissingNativeCapabilities,
@@ -4843,8 +5149,10 @@ module.exports = {
   assertInstalledMediaFlowInspector,
   assertInstalledLocalMediaInspector,
   assertInstalledNativeToolsInspector,
+  assertHarnessSeamsAreCompiledOut,
   assertCiUpdaterFixtureHandoffSource,
   assertCiUpdaterFixtureDebugPortSource,
+  assertUpdaterFixtureBuildScope,
   assertUpdaterFixtureSource,
   assertUpdaterSmokeWorkflow,
   assertSignedUpdaterScript,

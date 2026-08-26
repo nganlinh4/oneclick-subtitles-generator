@@ -1,8 +1,8 @@
 // The other half of the parity lock.
 //
 // crates/osg-scene/tests/parity.rs asserts the Rust renderer against this fixture; this asserts the
-// shipped TypeScript against the same file. Together they pin the two implementations to each other,
-// so neither can drift silently while the native renderer replaces the old one.
+// canonical TypeScript against the same file. Together they pin preview and export to each other,
+// so neither can drift silently.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -50,17 +50,35 @@ const visualMathModule = await load(FIXTURE.generatedFrom.visualMath);
 test.after(() => rmSync(temporaryDirectory, { force: true, recursive: true }));
 
 test('the fixture is not vacuous', () => {
-  assert.equal(FIXTURE.schemaVersion, 1);
+  assert.equal(FIXTURE.schemaVersion, 2);
   assert.ok(FIXTURE.easingSamples.length > 0, 'no easing samples');
   assert.ok(FIXTURE.scaleSamples.length > 0, 'no scale samples');
   assert.deepEqual(
     [...easingModule.SUBTITLE_ANIMATION_EASINGS],
     FIXTURE.easings,
-    'the shipped easing catalog drifted from the fixture',
+    'the canonical easing catalog drifted from the fixture',
   );
 });
 
-test('the shipped easing reproduces every recorded sample bit for bit', () => {
+test('every user-visible easing has a distinct reviewed interior signature', () => {
+  assert.ok(FIXTURE.reviewedInteriorProgressSamples.length > 0);
+  assert.ok(FIXTURE.reviewedInteriorProgressSamples.every(progress => progress > 0 && progress < 1));
+
+  const signatures = new Map();
+  for (const easing of easingModule.SUBTITLE_ANIMATION_EASINGS) {
+    const signature = FIXTURE.reviewedInteriorProgressSamples
+      .map(progress => bitsOf(easingModule.applySubtitleAnimationEasing(progress, easing)))
+      .join(':');
+    assert.equal(
+      signatures.has(signature),
+      false,
+      `${easing} aliases ${signatures.get(signature)} at every reviewed interior sample`,
+    );
+    signatures.set(signature, easing);
+  }
+});
+
+test('the canonical TypeScript easing reproduces every recorded sample bit for bit', () => {
   for (const sample of FIXTURE.easingSamples) {
     const eased = easingModule.applySubtitleAnimationEasing(
       fromBits(sample.progressBits),

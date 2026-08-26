@@ -17,8 +17,10 @@ const {
   assertInstalledMediaFlowInspector,
   assertInstalledLocalMediaInspector,
   assertInstalledNativeToolsInspector,
+  assertHarnessSeamsAreCompiledOut,
   assertNativePickerEvidenceScripts,
   assertCiUpdaterFixtureDebugPortSource,
+  assertUpdaterFixtureBuildScope,
   assertCiUpdaterFixtureHandoffSource,
   assertDesktopCloseLifecycleSource,
   assertLoopbackAuditManifest,
@@ -34,6 +36,7 @@ const {
   assertUpdaterSmokeWorkflow,
   assertSignedUpdaterScript,
   assertTauriNsisBootstrapScript,
+  assertDevelopmentCacheContract,
   assertTauriProductionBuildContract,
   assertWorkerResources,
   assertWorkflowCommands,
@@ -44,6 +47,76 @@ const {
   normalizeDestination,
   parseArguments,
 } = require('./check-release-readiness');
+
+test('harness seam guard accepts a test-or-automation cfg and rejects an unguarded read', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-harness-seam-readiness-'));
+  context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  const sourceDirectory = path.join(root, 'apps', 'desktop', 'src-tauri', 'src');
+  const sourcePath = path.join(sourceDirectory, 'automation.rs');
+  fs.mkdirSync(sourceDirectory, { recursive: true });
+  fs.writeFileSync(
+    sourcePath,
+    '#[cfg(any(feature = "e2e-automation", test))]\nconst TOKEN: &str = "OSG_E2E_TOKEN";\n',
+  );
+  assert.equal(assertHarnessSeamsAreCompiledOut(root), 1);
+
+  fs.writeFileSync(
+    sourcePath,
+    '#[cfg(feature = "e2e-automation")]\n'
+      + 'const TOKEN: &str = "OSG_E2E_TOKEN";\n'
+      + 'fn sanitize(command: &mut std::process::Command) {\n'
+      + '    command.env_remove("OSG_E2E_TOKEN");\n'
+      + '}\n',
+  );
+  assert.equal(
+    assertHarnessSeamsAreCompiledOut(root),
+    1,
+    'removing a harness variable from a child process is not an automation input seam',
+  );
+
+  fs.writeFileSync(sourcePath, 'const TOKEN: &str = "OSG_E2E_TOKEN";\n');
+  assert.throws(
+    () => assertHarnessSeamsAreCompiledOut(root),
+    /without a test-only cfg guard above it/u,
+  );
+
+  for (const unsafeGuard of [
+    '#[cfg(any(feature = "e2e-automation", feature = "production"))]',
+    '#[cfg(any(feature = "e2e-automation", not(test)))]',
+    '#[cfg(feature = "production")]',
+  ]) {
+    fs.writeFileSync(sourcePath, `${unsafeGuard}\nconst TOKEN: &str = "OSG_E2E_TOKEN";\n`);
+    assert.throws(
+      () => assertHarnessSeamsAreCompiledOut(root),
+      /without a test-only cfg guard above it/u,
+      `${unsafeGuard} can compile the harness seam into production`,
+    );
+  }
+
+  fs.writeFileSync(
+    sourcePath,
+    '#[cfg(all(target_os = "windows", feature = "e2e-automation"))]\n'
+      + 'fn guarded_with_local_const() {\n'
+      + '    const CREATE_NO_WINDOW: u32 = 1;\n'
+      + '    let _ = (CREATE_NO_WINDOW, "OSG_E2E_TOKEN");\n'
+      + '}\n',
+  );
+  assert.equal(assertHarnessSeamsAreCompiledOut(root), 1);
+
+  fs.writeFileSync(
+    sourcePath,
+    '#[cfg(feature = "e2e-automation")]\n'
+      + 'fn guarded_sibling() { let _ = "not an environment read"; }\n\n'
+      + 'fn production_sibling() {\n'
+      + '    let _ = std::env::var_os("OSG_E2E_TOKEN");\n'
+      + '}\n',
+  );
+  assert.throws(
+    () => assertHarnessSeamsAreCompiledOut(root),
+    /without a test-only cfg guard above it/u,
+    'an unguarded item borrowed the preceding sibling guard',
+  );
+});
 
 const {
   CR,
@@ -100,6 +173,9 @@ const CI_UPDATER_ARGUMENT_SOURCE = readMutableSource(
 const UPDATER_SOURCE = readMutableSource(
   __dirname, '..', 'apps', 'desktop', 'src-tauri', 'src', 'updater.rs',
 );
+const DESKTOP_BUILD_SOURCE = readMutableSource(
+  __dirname, '..', 'apps', 'desktop', 'src-tauri', 'build.rs',
+);
 const CARGO_LOCK_SOURCE = readMutableSource(__dirname, '..', 'Cargo.lock');
 
 function createTauriProductionBuildFixture() {
@@ -107,11 +183,19 @@ function createTauriProductionBuildFixture() {
   writeFile(root, 'package.json', JSON.stringify({
     scripts: {
       build: 'npm run tauri:build',
-      'tauri:build': 'npm --prefix apps/desktop run tauri:build --',
+      'tauri:dev': 'node scripts/run-managed-command.js --lane dev -- npm --prefix apps/desktop run tauri -- dev',
+      'tauri:build': 'node scripts/run-managed-command.js --lane package -- npm --prefix apps/desktop run tauri:build --',
+      'cargo:check': 'node scripts/run-managed-command.js --lane dev -- cargo check --workspace --features osg-desktop/production --locked',
+      'cargo:test': 'node scripts/run-managed-command.js --lane dev -- cargo test --workspace --features osg-desktop/production --locked',
+      'cargo:clippy': 'node scripts/run-managed-command.js --lane dev -- cargo clippy --workspace --all-targets --features osg-desktop/production --locked -- -D warnings',
     },
   }));
   writeFile(root, 'apps/desktop/package.json', JSON.stringify({
-    scripts: { 'tauri:build': 'tauri build --features production' },
+    scripts: {
+      tauri: 'node ../../scripts/run-tauri-cli.js',
+      'tauri:dev': 'node ../../scripts/run-tauri-cli.js dev',
+      'tauri:build': 'node ../../scripts/run-tauri-cli.js build --features production',
+    },
   }));
   writeFile(
     root,
@@ -122,7 +206,7 @@ function createTauriProductionBuildFixture() {
   writeFile(
     root,
     'apps/desktop/src-tauri/src/main.rs',
-    '#[cfg(all(not(debug_assertions), not(feature = "production"), not(feature = "unsigned-local-build")))]\n'
+    '#[cfg(all(not(debug_assertions), not(feature = "production"), not(feature = "unsigned-local-build"), not(feature = "e2e-automation")))]\n'
       + 'compile_error!("release executables must be built with `npm run tauri:build`; '
       + 'plain `cargo build --release` retains the development URL");\n',
   );
@@ -166,6 +250,34 @@ function createTauriProductionBuildFixture() {
       + '#[cfg(feature = "e2e-automation")]\n'
       + 'pub(crate) fn pick_file() {}\n',
   );
+  return root;
+}
+
+const DEVELOPMENT_CACHE_CONTRACT_FILES = [
+  'README.md',
+  'apps/desktop/README.md',
+  'apps/desktop/package.json',
+  'apps/desktop/src-tauri/tauri.conf.json',
+  'docs/rewrite/DEVELOPMENT_CACHE.md',
+  'package.json',
+  'promptdj-midi/package.json',
+  'promptdj-midi/vite.config.ts',
+  'scripts/dev-cache.ps1',
+  'scripts/managed-build-context.js',
+  'scripts/run-frontend-command.js',
+  'scripts/run-managed-command.js',
+  'scripts/run-tauri-cli.js',
+  'scripts/e2e-frontend-snapshot.js',
+  'scripts/e2e-application-publication.js',
+  'e2e/support/workflowEvidence.js',
+  'vite.config.mjs',
+];
+
+function createDevelopmentCacheContractFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-development-cache-contract-'));
+  for (const relativePath of DEVELOPMENT_CACHE_CONTRACT_FILES) {
+    writeFile(root, relativePath, readMutableSource(__dirname, '..', relativePath));
+  }
   return root;
 }
 
@@ -1786,6 +1898,11 @@ test('signed updater smoke is isolated, signed, installed, and persistent', () =
   assert.throws(() => assertUpdaterSmokeWorkflow(
     weaken(UPDATER_SMOKE_WORKFLOW, 'workflow_dispatch:', 'pull_request_target:'),
   ), /workflow_dispatch/);
+  assert.throws(() => assertUpdaterSmokeWorkflow(weaken(
+    UPDATER_SMOKE_WORKFLOW,
+    'node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --features production,ci-updater-fixture --ci --no-sign',
+    'npm --prefix apps/desktop run tauri -- bundle --features production,ci-updater-fixture --ci --no-sign',
+  )), /Signed updater CI must use explicit pinned Tauri/u);
   assert.throws(() => assertUpdaterSmokeWorkflow(
     `${UPDATER_SMOKE_WORKFLOW}\n# \${{ secrets.UNREVIEWED_SECRET }}\n`,
   ), /two reviewed updater signing secrets/);
@@ -1853,6 +1970,136 @@ test('package scripts name inspector contracts honestly and exercise updater der
 });
 
 test('updater fixture source remains compile-time isolated from production releases', () => {
+  assert.doesNotThrow(() => assertUpdaterFixtureBuildScope(DESKTOP_BUILD_SOURCE));
+  const updaterScopeCall = '    verify_ci_updater_fixture_scope();';
+  const managedDeliveryCall = '    verify_managed_delivery_contract();';
+  const tauriBuildCompletion = [
+    '    )',
+    '    .expect("failed to generate the Tauri application manifest");',
+  ].join(LF);
+  const mainCallMutations = [
+    ['deleting the updater-scope call', weaken(
+      DESKTOP_BUILD_SOURCE,
+      `${updaterScopeCall}${LF}`,
+      '',
+    )],
+    ['running the updater-scope call after managed-delivery verification', weaken(
+      DESKTOP_BUILD_SOURCE,
+      `${updaterScopeCall}${LF}${managedDeliveryCall}`,
+      `${managedDeliveryCall}${LF}${updaterScopeCall}`,
+    )],
+    ['running the updater-scope call only after the Tauri build', weaken(
+      weaken(DESKTOP_BUILD_SOURCE, `${updaterScopeCall}${LF}`, ''),
+      tauriBuildCompletion,
+      `${tauriBuildCompletion}${LF}${updaterScopeCall}`,
+    )],
+    ['making the updater-scope call conditional', weaken(
+      DESKTOP_BUILD_SOURCE,
+      updaterScopeCall,
+      [
+        '    if std::env::var_os("CI").is_some() {',
+        `    ${updaterScopeCall}`,
+        '    }',
+      ].join(LF),
+    )],
+    ['hiding the updater-scope call in unreachable control flow', weaken(
+      DESKTOP_BUILD_SOURCE,
+      updaterScopeCall,
+      [
+        '    if false {',
+        `    ${updaterScopeCall}`,
+        '    }',
+      ].join(LF),
+    )],
+  ];
+  for (const [label, weakened] of mainCallMutations) {
+    assert.throws(
+      () => assertUpdaterFixtureBuildScope(weakened),
+      /must run first and unconditionally, before managed delivery and the Tauri build/u,
+      label,
+    );
+  }
+  for (const weakened of [
+    weaken(DESKTOP_BUILD_SOURCE, 'Ok("debug")', 'Ok("release")'),
+    weaken(
+      DESKTOP_BUILD_SOURCE,
+      '|| matches!(std::env::var("PROFILE").as_deref(), Ok("debug"))',
+      '|| std::env::var("PROFILE").as_deref() != Ok("release")',
+    ),
+    weaken(
+      DESKTOP_BUILD_SOURCE,
+      '|| matches!(std::env::var("PROFILE").as_deref(), Ok("debug"))',
+      '',
+    ),
+  ]) {
+    assert.throws(
+      () => assertUpdaterFixtureBuildScope(weakened),
+      /exempt only Cargo debug builds/u,
+    );
+  }
+  const githubActionsAssertion = [
+    '    assert_eq!(',
+    '        std::env::var("GITHUB_ACTIONS").as_deref(),',
+    '        Ok("true"),',
+    '        "the signed updater fixture may be compiled only on GitHub Actions"',
+    '    );',
+  ].join(LF);
+  const explicitOptInAssertion = [
+    '    assert_eq!(',
+    '        std::env::var("OSG_ENABLE_SIGNED_UPDATER_FIXTURE").as_deref(),',
+    '        Ok("1"),',
+    '        "the signed updater fixture requires an explicit isolated-workflow opt-in"',
+    '    );',
+  ].join(LF);
+  const assertionMutations = [
+    ['deleting the GitHub Actions assertion', weaken(
+      DESKTOP_BUILD_SOURCE,
+      githubActionsAssertion,
+      '',
+    )],
+    ['replacing the GitHub Actions assertion with a value reference', weaken(
+      DESKTOP_BUILD_SOURCE,
+      githubActionsAssertion,
+      '    let _ = ("GITHUB_ACTIONS", Ok("true"));',
+    )],
+    ['accepting a non-GitHub truthy spelling', weaken(
+      DESKTOP_BUILD_SOURCE,
+      githubActionsAssertion,
+      githubActionsAssertion.replace('Ok("true")', 'Ok("1")'),
+    )],
+    ['deleting the explicit opt-in assertion', weaken(
+      DESKTOP_BUILD_SOURCE,
+      explicitOptInAssertion,
+      '',
+    )],
+    ['replacing the explicit opt-in assertion with a value reference', weaken(
+      DESKTOP_BUILD_SOURCE,
+      explicitOptInAssertion,
+      '    let _ = ("OSG_ENABLE_SIGNED_UPDATER_FIXTURE", Ok("1"));',
+    )],
+    ['accepting a non-explicit opt-in spelling', weaken(
+      DESKTOP_BUILD_SOURCE,
+      explicitOptInAssertion,
+      explicitOptInAssertion.replace('Ok("1")', 'Ok("true")'),
+    )],
+    ['putting the explicit opt-in before the GitHub Actions assertion', weaken(
+      DESKTOP_BUILD_SOURCE,
+      `${githubActionsAssertion}${LF}${explicitOptInAssertion}`,
+      `${explicitOptInAssertion}${LF}${githubActionsAssertion}`,
+    )],
+    ['hiding an exact GitHub Actions assertion in an unreachable branch', weaken(
+      DESKTOP_BUILD_SOURCE,
+      githubActionsAssertion,
+      `    if false {${LF}${githubActionsAssertion}${LF}    }`,
+    )],
+  ];
+  for (const [label, weakened] of assertionMutations) {
+    assert.throws(
+      () => assertUpdaterFixtureBuildScope(weakened),
+      /must require GITHUB_ACTIONS == "true".*OSG_ENABLE_SIGNED_UPDATER_FIXTURE == "1"/u,
+      label,
+    );
+  }
   assert.doesNotThrow(() => assertUpdaterFixtureSource(path.join(__dirname, '..')));
   assert.doesNotThrow(() => assertDesktopCloseLifecycleSource(
     DESKTOP_SOURCE,
@@ -2788,7 +3035,7 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     () => assertWorkflowCommands(publishedWithoutStructuredEvidenceCheck),
     /published-installed-smoke must validate and launch the signed immutable release artifact/,
   );
-  const buildLine = '        run: npm run build:frontend\n';
+  const buildLine = '        run: npm run build:frontend:inner\n';
   const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {
     assert.ok(job.includes(buildLine));
     return weaken(job, buildLine, '') + `\n${buildLine}`;
@@ -2804,6 +3051,13 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     )),
     /(?:required locked gate.*(?:tauri:build|tauri\.js)|production-feature Tauri wrapper)/,
   );
+  assert.throws(
+    () => assertWorkflowCommands(weaken(workflow,
+      'run: node apps/desktop/node_modules/@tauri-apps/cli/tauri.js bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+      'run: npm --prefix apps/desktop run tauri -- bundle --ci --no-sign --target "${{ matrix.rust-target }}" --bundles "${{ matrix.bundles }}"',
+    )),
+    /(?:required locked gate.*tauri\.js bundle|explicit pinned Tauri)/u,
+  );
   for (const gate of [
     'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
     'node scripts/check-frozen-css-output.mjs',
@@ -2816,7 +3070,7 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
   const nativeWithoutFrontendBuild = transformWorkflowJob(
     workflow,
     'native-matrix',
-    (job) => weaken(job, 'npm run build:frontend', 'frontend build intentionally removed'),
+    (job) => weaken(job, 'npm run build:frontend:inner', 'frontend build intentionally removed'),
   );
   assert.throws(
     () => assertWorkflowCommands(nativeWithoutFrontendBuild),
@@ -2984,6 +3238,115 @@ test('signed updater release gate pins the shipped transport and Windows install
   assert.doesNotThrow(() => assertUpdaterReleaseConfiguration(path.resolve(__dirname, '..')));
 });
 
+test('development cache contract pins external output, bounded retention, and journal recovery', (context) => {
+  assert.doesNotThrow(() => assertDevelopmentCacheContract(path.resolve(__dirname, '..')));
+
+  const mutations = [
+    {
+      file: 'scripts/dev-cache.ps1',
+      search: '[int]$MaxGiB = 28,',
+      replacement: '[int]$MaxGiB = 29,',
+      expected: /28 GiB and 14 inactive days/u,
+    },
+    {
+      file: 'scripts/run-managed-command.js',
+      search: 'CARGO_TARGET_DIR: lease.cargoTargetDir,',
+      replacement: 'CARGO_TARGET_DIR: path.join(repository, \'target\'),',
+      expected: /externalize Cargo, frontend, and application output/u,
+    },
+    {
+      file: 'scripts/managed-build-context.js',
+      search: 'lease.processId !== processId',
+      replacement: 'false',
+      expected: /one live shared lease/u,
+    },
+    {
+      file: 'package.json',
+      search: 'node scripts/run-frontend-command.js --lane dev -- npm run build:frontend:inner',
+      replacement: 'npm run build:frontend:inner',
+      expected: /Public frontend commands must acquire the dev lane/u,
+    },
+    {
+      file: 'apps/desktop/src-tauri/tauri.conf.json',
+      search: 'npm run build:frontend:inner',
+      replacement: 'npm run build:frontend',
+      expected: /Tauri and PromptDJ use guarded non-nesting inner commands/u,
+    },
+    {
+      file: 'vite.config.mjs',
+      search: 'assertFrontendInnerInvocation({ environment: process.env, repositoryRoot: resolve(\'.\') });',
+      replacement: '// unmanaged Vite execution accepted',
+      expected: /Vite and PromptDJ execution must fail closed/u,
+    },
+    {
+      file: 'scripts/e2e-frontend-snapshot.js',
+      search: 'const RETAINED_SNAPSHOT_COUNT = 2;',
+      replacement: 'const RETAINED_SNAPSHOT_COUNT = 3;',
+      expected: /current and one previous snapshot/u,
+    },
+    {
+      file: 'scripts/e2e-frontend-snapshot.js',
+      search: "const PUBLISHER_JOURNAL_ROOT = '.osg-frontend-journals';",
+      replacement: "const PUBLISHER_JOURNAL_ROOT = '.unreviewed-journals';",
+      expected: /Frontend publication and retention must remain journal-authorized/u,
+    },
+    {
+      file: 'scripts/e2e-application-publication.js',
+      search: 'const candidates = verified.filter(({ hash }) => hash !== preferredPrevious);',
+      replacement: 'const candidates = [];',
+      expected: /current and one previous schema-v2 application/u,
+    },
+    {
+      file: 'scripts/e2e-application-publication.js',
+      search: "const APPLICATION_OPERATIONS = '.osg-application-operations';",
+      replacement: "const APPLICATION_OPERATIONS = '.unreviewed-operations';",
+      expected: /Application publication and retirement must remain journal-authorized/u,
+    },
+    {
+      file: 'e2e/support/workflowEvidence.js',
+      search: 'const RECENT_ATTEMPT_RETENTION = 3;',
+      replacement: 'const RECENT_ATTEMPT_RETENTION = 30;',
+      expected: /three newest attempts plus the latest successful proof/u,
+    },
+    {
+      file: 'e2e/support/workflowEvidence.js',
+      search: "const RETENTION_JOURNAL = '.osg-workflow-evidence-retention.json';",
+      replacement: "const RETENTION_JOURNAL = '.unreviewed-retention.json';",
+      expected: /Workflow evidence retention must remain journal-authorized/u,
+    },
+    {
+      file: 'README.md',
+      search: 'inner `apps/desktop` Tauri entry points reject unmanaged local invocations',
+      replacement: 'inner Tauri entry points may be invoked directly',
+      expected: /Root README must describe the bounded external cache/u,
+    },
+    {
+      file: 'docs/rewrite/DEVELOPMENT_CACHE.md',
+      search: 'Each workflow retains its three newest attempts plus the latest successful attempt',
+      replacement: 'Each workflow retains every attempt forever',
+      expected: /Development cache guide must match the implemented bounds/u,
+    },
+    {
+      file: 'apps/desktop/README.md',
+      search: 'scripts in this package deliberately reject unmanaged local invocations',
+      replacement: 'scripts in this package allow unmanaged local invocations',
+      expected: /Desktop README must direct local work through the bounded managed-cache entry points/u,
+    },
+  ];
+
+  for (const mutation of mutations) {
+    const root = createDevelopmentCacheContractFixture();
+    context.after(() => fs.rmSync(root, { force: true, recursive: true }));
+    const source = readMutableSource(root, mutation.file);
+    writeFile(root, mutation.file, weaken(source, mutation.search, mutation.replacement));
+    assert.throws(
+      () => assertDevelopmentCacheContract(root),
+      mutation.expected,
+      `${mutation.file} mutation must make readiness red`,
+    );
+  }
+});
+
 test('Tauri production build contract embeds the frontend instead of retaining the dev URL', (context) => {
   const root = createTauriProductionBuildFixture();
   context.after(() => fs.rmSync(root, { force: true, recursive: true }));
@@ -3019,7 +3382,7 @@ test('Tauri production build contract rejects dev-server releases and weakened n
   writeFile(rootScript, 'package.json', JSON.stringify(rootPackage));
   assert.throws(
     () => assertTauriProductionBuildContract(rootScript),
-    /Root tauri:build must delegate/,
+    /Root tauri:build must use the managed package lane/,
   );
 
   const desktopPackage = JSON.parse(
@@ -3029,7 +3392,7 @@ test('Tauri production build contract rejects dev-server releases and weakened n
   writeFile(desktopScript, 'apps/desktop/package.json', JSON.stringify(desktopPackage));
   assert.throws(
     () => assertTauriProductionBuildContract(desktopScript),
-    /must enable the production custom-protocol feature/,
+    /must reject unmanaged local builds and enable production protocol/,
   );
 
   writeFile(

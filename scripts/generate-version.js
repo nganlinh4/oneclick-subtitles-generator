@@ -9,6 +9,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { assertManagedBuildInvocation } = require('./managed-build-context.js');
 
 /**
  * Execute git command and return the result
@@ -130,8 +131,32 @@ function formatGitVersion(dateString, shortHash) {
  * @param {Object} gitInfo - Git information object
  */
 function generateVersionFile(gitInfo) {
-  const configDir = path.join(__dirname, '..', 'src', 'config');
-  const versionFile = path.join(configDir, 'version.js');
+  const managedRootValue = process.env.OSG_MANAGED_FRONTEND_ROOT;
+  const managedOutputValue = process.env.OSG_VERSION_MODULE_PATH;
+  if ((managedRootValue === undefined) !== (managedOutputValue === undefined)) {
+    throw new Error('Managed version output requires both frontend-root environment values');
+  }
+  let configDir;
+  let versionFile;
+  if (managedRootValue !== undefined) {
+    const managedContext = assertManagedBuildInvocation({
+      environment: process.env,
+      repositoryRoot: path.join(__dirname, '..'),
+    });
+    const managedRoot = managedContext.frontendRoot;
+    versionFile = path.resolve(managedOutputValue);
+    if (!path.isAbsolute(managedRootValue) || versionFile !== path.join(managedRoot, 'version.js')) {
+      throw new Error('Managed version output escaped its exact frontend cache root');
+    }
+    const status = fs.lstatSync(managedRoot);
+    if (!status.isDirectory() || status.isSymbolicLink()) {
+      throw new Error('Managed frontend cache root must be a real directory');
+    }
+    configDir = managedRoot;
+  } else {
+    configDir = path.join(__dirname, '..', 'src', 'config');
+    versionFile = path.join(configDir, 'version.js');
+  }
   
   // Ensure config directory exists
   if (!fs.existsSync(configDir)) {
