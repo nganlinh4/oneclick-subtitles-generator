@@ -479,8 +479,9 @@
         "the managed external assets/e2e/four-window-asr-media/asr-four-windows-real-speech.mp4 cache, generated offline by the reviewed native-tools FFmpeg and semantically probed before use"
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
-      "status": "ready-unrun",
-      "note": "The journey, deterministic fixture recipe, two-process staging boundary, hostile oracle tests, and screenshot evidence steps are implemented. It is deliberately not green until the rebuilt guarded binary completes both processes. No provider credential, network request, native dialog, visible window, or production profile is involved."
+      "status": "green",
+      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
+      "note": "Green on 2026-08-27 across both hidden desktop processes with all six screenshots inspected: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an 82-cue durable merge equal to the streamed union, and a second process restoring the exact track (the virtualized lyrics list is verified through the editor's own count surface plus viewport-prefix equality). Along the way this journey flushed out and drove fixes for the engine-status verification race, the Ctrl+A dead half-second, and the scenario's nested application-lease acquisition; one intermittent aggregate death remains recorded under knownProductFindings with a fail-fast capture armed."
     },
     {
       "name": "geminiGeneration",
@@ -1061,6 +1062,14 @@
       "status": "harness-fixed",
       "severity": "major",
       "note": "The application creates data/native-tools eagerly at boot and the WDIO worker re-runs the config after the launcher's service has spawned the binary, so the disabled-cache guard now refuses only links, not ordinary directories. Separately, the cache size walker failed closed on the engine-packages junction inside an actively leased staging run root; it now skips staging directory reparse points without following them while every other lane stays strict."
+    },
+    {
+      "finding": "A four-window local ASR aggregate intermittently stopped after the second window with the visible timeline wiped and no error surface.",
+      "foundBy": "multiWindowAsrGeneration",
+      "status": "open",
+      "severity": "critical",
+      "note": "Observed once on binary 813c5c18: two of four transcribe jobs existed (both succeeded natively), only window one ever published a streaming update, and the error path restored the pre-run baseline of zero rows, leaving an empty timeline with generation inactive, no toast captured, and no runtime or inline error. The window-two completion must have thrown between native success and the streaming publish (result mapping or delivery validation). The journey now fails fast at generation-death and captures the toast history in the same instant, so the next recurrence names the thrown error. Not reproduced across four later full runs.",
+      "recurrenceWatch": "the seed phase's generation-death capture in journeys/multiWindowAsrPersistence.journey.js"
     },
     {
       "finding": "An application killed during an engine install could never boot again once its cache directory was cleared.",

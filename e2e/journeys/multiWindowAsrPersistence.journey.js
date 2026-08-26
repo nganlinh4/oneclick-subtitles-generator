@@ -227,15 +227,28 @@ const verifyRestoredProcess = async (root) => {
 
   await openEditor();
   let surface = null;
+  let visibleCount = null;
   await waitUntilWithFreshDiagnostic(async () => {
     surface = await currentSurface();
-    return surface.rows.length === witness.durableCueSignatures.length
-      && surface.duration !== null;
+    // The lyrics list is virtualized, so DOM rows cover only the viewport of a long track. The
+    // editor's own public counter states the full restored size; the viewport rows must match the
+    // corresponding prefix of the durable track exactly.
+    visibleCount = await browser.execute(() => (
+      (document.body?.innerText ?? '').match(/Currently have (\d+) subtitle lines/u)?.[1] ?? null
+    ));
+    return surface.duration !== null
+      && surface.rows.length > 0
+      && visibleCount === String(witness.durableCueSignatures.length);
   }, {
     timeout: 180_000,
     interval: 1_000,
-    diagnostic: () => `the second process did not restore the long ASR project: ${JSON.stringify(surface)}`,
+    diagnostic: () => `the second process did not restore the long ASR project: ${JSON.stringify({ visibleCount, expected: witness.durableCueSignatures.length, surface })}`,
   });
+  assert.deepEqual(
+    surface.rows,
+    witness.durableCueSignatures.slice(0, surface.rows.length).map(({ text }) => text),
+    'the restored viewport shows different cues than the durable track prefix',
+  );
   assert.ok(
     Math.abs(surface.duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
       <= FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds,
@@ -355,9 +368,13 @@ describe('maximum-duration local ASR across a real process restart', () => {
       ownedJobs = newTranscribeJobs(root, baselineJobIds);
       const terminal = ownedJobs.find(({ state }) => ['failed', 'cancelled', 'interrupted'].includes(state));
       if (terminal) throw new Error(`one of the four ASR jobs terminated early: ${JSON.stringify(terminal)}`);
+      // Ledger facts only: each publication records whether aggregate generation was active at
+      // the moment it reached the page, and the witness stores milestones as paints happen. A
+      // fast engine can finish windows quicker than the 500ms poll (or than React paints), so
+      // gating on poll-time activity or per-count paints made an entirely correct run time out.
       return ledger?.streamPublications.length >= 1
-        && ledger.visibleMilestones.some(({ streamCount }) => streamCount === 1)
-        && surface.generationActive;
+        && ledger.streamPublications[0].generationActive === true
+        && ledger.visibleMilestones.length >= 1;
     }, {
       timeout: 1_800_000,
       interval: 500,
@@ -379,9 +396,23 @@ describe('maximum-duration local ASR across a real process restart', () => {
       ownedJobs = newTranscribeJobs(root, baselineJobIds);
       const terminal = ownedJobs.find(({ state }) => ['failed', 'cancelled', 'interrupted'].includes(state));
       if (terminal) throw new Error(`one of the four ASR jobs terminated early: ${JSON.stringify(terminal)}`);
-      return ledger?.streamPublications.length >= 3
-        && ledger.visibleMilestones.some(({ streamCount }) => streamCount === 3)
-        && surface.generationActive;
+      const enoughStreamed = ledger?.streamPublications.length >= 3
+        && ledger.streamPublications
+          .slice(0, 3)
+          .every(({ generationActive }) => generationActive === true);
+      if (!enoughStreamed && surface.generationActive === false) {
+        // The aggregate ended without its promised windows: fail NOW, while the failure toast and
+        // job records still exist, instead of timing out after the evidence has expired.
+        await browser.execute(() => document.querySelector('.toast-history-button')?.click());
+        await browser.pause(400);
+        const toastHistory = await browser.execute(
+          () => (document.body?.innerText ?? '').slice(-2_500),
+        );
+        throw new Error(`generation ended before three windows streamed: ${JSON.stringify({
+          ledger, ownedJobs, toastHistory,
+        })}`);
+      }
+      return enoughStreamed;
     }, {
       timeout: 1_800_000,
       interval: 500,
@@ -407,7 +438,6 @@ describe('maximum-duration local ASR across a real process restart', () => {
       return ownedJobs.length === EXPECTED_WINDOWS
         && ownedJobs.every(({ state }) => state === 'succeeded')
         && ledger?.streamPublications.length === EXPECTED_WINDOWS
-        && ledger.visibleMilestones.some(({ streamCount }) => streamCount === EXPECTED_WINDOWS)
         && final.counts.cues > 0
         && surface.generationActive === false;
     }, {

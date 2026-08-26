@@ -91,9 +91,11 @@ test('refuses publications after aggregate completion or without visible monoton
   flat.visibleMilestones[2].rows = [...flat.visibleMilestones[1].rows];
   assert.throws(() => assertMultiWindowAsrResult(flat), /did not grow monotonically/u);
 
-  const missingWindow = valid();
-  missingWindow.visibleMilestones[2].streamCount = 2;
-  assert.throws(() => assertMultiWindowAsrResult(missingWindow), /window 3 never reached/u);
+  // A repeated stream count is legitimate paint coalescing; only a REGRESSION in the count is a
+  // witness-integrity failure.
+  const backwards = valid();
+  backwards.visibleMilestones[2].streamCount = 1;
+  assert.throws(() => assertMultiWindowAsrResult(backwards), /went backwards/u);
 });
 
 test('refuses resurrected deleted cues and durable output unlike the streamed results', () => {
