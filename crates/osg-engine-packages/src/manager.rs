@@ -1298,7 +1298,7 @@ where
         // readers; the lease prevents a reader-versus-writer race.
         let _verification_lease = self.acquire_lease(component)?;
         let key = (component, delivery.version.clone());
-        {
+        loop {
             let mut activity = self
                 .0
                 .activity
@@ -1311,11 +1311,19 @@ where
             {
                 return Ok(());
             }
-            if activity.operations.contains(&component)
-                || !activity.verifying_versions.insert(key.clone())
-            {
+            if activity.operations.contains(&component) {
                 return Err(PackageError::RuntimeBusy);
             }
+            if activity.verifying_versions.insert(key.clone()) {
+                break;
+            }
+            // Another status probe is already reading this exact tree. Waiting for its verdict is
+            // the only truthful answer: mapping the collision to an error made the racing caller
+            // report a fully installed multi-gigabyte engine as missing, and the UI settled on
+            // "not installed" while the winning probe was still hashing.
+            drop(activity);
+            cancellation.check()?;
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
         let result =
@@ -2945,13 +2953,17 @@ mod tests {
             .verifying_versions
             .insert(key.clone());
 
-        let concurrent_status = manager.status(EngineId::Parakeet);
-        assert_eq!(concurrent_status.state, EnginePackageState::Missing);
-        assert_eq!(
-            manager
-                .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
-                .err(),
-            Some(PackageError::RuntimeBusy)
+        // A probe that collides with an in-flight verification WAITS for its verdict rather than
+        // inventing one: reporting the collision as an error once made a racing status call show a
+        // fully installed engine as missing while the winning probe was still hashing.
+        let waiter = {
+            let manager = manager.clone();
+            std::thread::spawn(move || manager.status(EngineId::Parakeet))
+        };
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        assert!(
+            !waiter.is_finished(),
+            "a concurrent status probe must wait for the in-flight verification, not answer early",
         );
         assert!(!manager.0.is_verified(EngineId::Parakeet, delivery));
 
@@ -2963,6 +2975,8 @@ mod tests {
             .unwrap()
             .verifying_versions
             .remove(&key);
+        let concurrent_status = waiter.join().unwrap();
+        assert_eq!(concurrent_status.state, EnginePackageState::Installed);
         assert_eq!(
             manager.status(EngineId::Parakeet).state,
             EnginePackageState::Installed

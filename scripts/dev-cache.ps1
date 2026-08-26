@@ -1482,7 +1482,10 @@ function Acquire-ManagedLease {
             throw "Managed cache lane has a corrupt or foreign lease that must be inspected manually: $($laneSpec.Path)"
         }
         if ($state.Active) {
-            throw "Managed cache lane is already leased by a live process: $($laneSpec.Path)"
+            $ownerDetail = if ($null -ne $state.Marker) {
+                "leaseId=$($state.Marker.leaseId) ownerPid=$($state.Marker.processId) created=$($state.Marker.processCreatedUtc)"
+            } else { "reason=$($state.Reason)" }
+            throw "Managed cache lane is already leased by a live process: $($laneSpec.Path) [$ownerDetail]"
         }
         if ($state.Stale) {
             $staleLeases.Add([pscustomobject]@{ Path = $leasePath; LanePath = $laneSpec.Path })

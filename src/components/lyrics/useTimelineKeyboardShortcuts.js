@@ -88,9 +88,18 @@ export const useTimelineKeyboardShortcuts = ({
                 // Force re-render to show selection
                 renderTimeline();
 
+                const rangeHasSubtitles = Array.isArray(lyrics)
+                    && lyrics.some(l => cueOverlapsTimelineRange(l, startTime, endTime));
+                if (rangeHasSubtitles) {
+                    // The selection is live the moment it is announced. Arming the action bar only
+                    // after the highlight animation left a half-second dead window in which
+                    // Ctrl+A followed immediately by Delete silently deleted nothing.
+                    setActionBarRange({ start: startTime, end: endTime });
+                    setHiddenActionBarRange({ start: startTime, end: endTime });
+                }
 
-
-                // Show selection for 500ms, then open modal
+                // The delay is purely cosmetic: it holds the blue highlight before the drag state
+                // clears (and, for an empty range, before the processing modal opens).
                 setTimeout(() => {
                     // Clean up drag state
                     setIsDraggingSegment(false);
@@ -100,18 +109,7 @@ export const useTimelineKeyboardShortcuts = ({
                     dragCurrentRef.current = null;
                     isDraggingRef.current = false;
 
-                    // Helper function to check if there are subtitles in the range
-                    const checkForSubtitles = (start, end) => {
-                        if (!lyrics || lyrics.length === 0) return false;
-                        return lyrics.some(l => cueOverlapsTimelineRange(l, start, end));
-                    };
-
-                    // Check if there are subtitles in the range
-                    if (checkForSubtitles(startTime, endTime)) {
-                        // Show action bar instead of opening modal
-                        setActionBarRange({ start: startTime, end: endTime });
-                        setHiddenActionBarRange({ start: startTime, end: endTime });
-                    } else {
+                    if (!rangeHasSubtitles) {
                         // Open video processing modal for entire range
                         sessionStorage.setItem('processing_modal_open_reason', 'drag-selection');
                         onSegmentSelect({ start: startTime, end: endTime });

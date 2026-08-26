@@ -5,7 +5,7 @@ import process from 'node:process';
 import {
   createRunRoot, removeRunRoot, runRootAuthorization,
 } from '../support/environment.js';
-import { withFourWindowAsrVideo } from '../support/fourWindowAsrFixture.js';
+import { stagedFourWindowAsrVideo } from '../support/fourWindowAsrFixture.js';
 import { runScenarioProcesses, withScenarioLeases } from '../support/twoProcessScenario.js';
 import {
   finalizeWorkflowEvidence, resetWorkflowEvidence, workflowNameForJourney,
@@ -19,10 +19,15 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
   const rootAuthorization = runRootAuthorization(root);
   const attemptDirectory = resetWorkflowEvidence(workflow);
   const attemptId = attemptDirectory.split(/[\\/]/u).at(-1);
-  const stagedMediaSelection = withFourWindowAsrVideo((source) => {
-    const staged = join(root, 'input', basename(source));
-    copyFileSync(source, staged);
-    return staged;
+  // The scenario's own live application lease already covers the asset lane; the fixture helper
+  // must not acquire a second time against it.
+  const stagedMediaSelection = stagedFourWindowAsrVideo({
+    inheritedApplication,
+    stage: (source) => {
+      const staged = join(root, 'input', basename(source));
+      copyFileSync(source, staged);
+      return staged;
+    },
   });
   let succeeded = false;
   try {

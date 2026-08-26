@@ -167,7 +167,17 @@ export const ensureFourWindowAsrVideo = ({
   withApplicationLease = withE2eApplicationLease,
 } = {}) => withApplicationLease(ensureFourWindowAsrVideoWhileLeased);
 
-/** Keep the generated asset leased until a scenario has copied it into its disposable input root. */
-export const withFourWindowAsrVideo = (operation) => withE2eApplicationLease(
-  () => operation(ensureFourWindowAsrVideoWhileLeased()),
-);
+/**
+ * Build and stage the asset under an application lease the caller ALREADY holds.
+ *
+ * A scenario runs inside `withScenarioLeases`, whose live application lease covers the asset lane
+ * for its whole run; acquiring here again refuses against that same live hold. The caller proves
+ * the hold with the serialized inherited-application lease the scenario distributes to its worker
+ * processes, so the asset stays protected until the staged copy exists in the disposable root.
+ */
+export const stagedFourWindowAsrVideo = ({ inheritedApplication, stage }) => {
+  if (typeof inheritedApplication !== 'string' || inheritedApplication.length === 0) {
+    throw new Error("the four-window fixture requires the holder's serialized application lease");
+  }
+  return stage(ensureFourWindowAsrVideoWhileLeased());
+};
