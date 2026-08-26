@@ -109,6 +109,15 @@ export const seekPreviewTo = async (seconds) => {
   await browser.execute((target) => {
     const video = document.querySelector('.video-preview video.video-player');
     if (video === null) throw new Error('the editor video is missing');
+    // Wakeup counters read back by waitForCanvasSubtitleFrame's failure diagnostic: a stuck
+    // compositor is only diagnosable if we know whether the seek ever presented a frame.
+    const probe = { seeked: 0, rvfc: 0, nudged: false };
+    window.__OSG_SEEK_PROBE__ = probe;
+    video.addEventListener('seeked', () => { probe.seeked += 1; });
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      const arm = () => video.requestVideoFrameCallback(() => { probe.rvfc += 1; arm(); });
+      arm();
+    }
     video.pause();
     video.currentTime = target;
   }, seconds);
@@ -161,7 +170,37 @@ export const waitForCanvasSubtitleFrame = async (timeout = 90_000) => {
       { timeout, interval: 250, timeoutMsg: 'the canvas compositor never drew a ready subtitle frame' },
     );
   } catch (error) {
-    throw new Error(`${error.message}; last=${JSON.stringify(last)}`, { cause: error });
+    // Failure diagnostic only: report which wakeups fired, then test whether one more presented
+    // frame recovers the compositor. The journey still fails; the nudge result names the defect
+    // class (missed one-shot wakeup vs. a dead pipeline) instead of a bare timeout.
+    let nudge = null;
+    try {
+      nudge = await browser.execute(() => {
+        const video = document.querySelector('.video-preview video.video-player');
+        const probe = window.__OSG_SEEK_PROBE__ ?? null;
+        if (video !== null) {
+          if (probe !== null) probe.nudged = true;
+          video.currentTime += 0.01;
+        }
+        return probe;
+      });
+      await browser.pause(2_000);
+      nudge = {
+        probe: nudge,
+        afterNudge: await browser.execute(() => ({
+          state: document.querySelector('.video-preview [data-osg-preview]')
+            ?.getAttribute('data-osg-preview') ?? null,
+          revision: document.querySelector(
+            '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
+          )?.dataset.osgFrameRevision ?? null,
+          probe: window.__OSG_SEEK_PROBE__ ?? null,
+        })),
+      };
+    } catch { /* diagnostics stay best-effort */ }
+    throw new Error(
+      `${error.message}; last=${JSON.stringify(last)}; nudge=${JSON.stringify(nudge)}`,
+      { cause: error },
+    );
   }
 };
 

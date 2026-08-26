@@ -1,78 +1,81 @@
-// Enumerate what the real editor exposes, so journeys target ground truth.
-//
-// Not an assertion of product behaviour and deliberately not part of the default glob: it exists so
-// a customer journey can be written against the controls the application really renders rather than
-// against names guessed from source. Run it with `npm --prefix e2e run recon` when the UI moves.
+// TEMPORARY DIAGNOSTIC (replaces the control-survey probe; original preserved in the session
+// scratchpad). Reproduces the localAsrGeneration compositor stick without the engine: import
+// cues, let the paused editor go quiescent, seek into a cue, and if the canvas never reaches
+// `ready`, record which wakeups fired and whether a nudge seek recovers it.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { openProjectWithMedia, importSubtitles, seekPreviewTo } from '../support/workflow.js';
 
-import { clickControl, openEditor } from '../support/editor.js';
-import { FIXTURE_ROOT } from '../support/environment.js';
+/* global browser, console, describe, document, it, MutationObserver */
 
-const survey = () => browser.execute(() => {
-  const visible = (node) => {
-    const rect = node.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  };
-  const label = (node) => (
-    node.getAttribute('aria-label')
-    || node.getAttribute('title')
-    || (node.innerText || '').trim().slice(0, 50)
-    || node.getAttribute('placeholder')
-    || ''
-  );
-  const describe = (node) => ({
-    label: label(node),
-    className: (node.getAttribute('class') || '').slice(0, 60),
-    disabled: node.disabled === true,
-  });
-
-  const firstCueRow = document.querySelector('[class*="lyric-item" i], [class*="lyric-row" i], [class*="lyric" i]');
+const canvasState = () => browser.execute(() => {
+  const surface = document.querySelector('.video-preview canvas[data-osg-preview-engine="canvas-atlas"]');
+  const video = document.querySelector('.video-preview video.video-player');
   return {
-    buttons: [...document.querySelectorAll('button')].filter(visible).map(describe),
-    inputs: [...document.querySelectorAll('input, textarea, select, [contenteditable="true"]')]
-      .filter(visible).map(describe),
-    // The structure of one cue row, which is what an edit has to drive.
-    firstCueRow: firstCueRow === null ? null : {
-      className: firstCueRow.getAttribute('class'),
-      html: firstCueRow.outerHTML.slice(0, 900),
+    state: document.querySelector('.video-preview [data-osg-preview]')?.getAttribute('data-osg-preview') ?? null,
+    revision: surface?.dataset.osgFrameRevision ?? null,
+    cue: surface?.dataset.osgCueIndex ?? null,
+    probes: window.__OSG_PROBE__ ?? null,
+    video: video === null ? null : {
+      currentTime: video.currentTime,
+      paused: video.paused,
+      readyState: video.readyState,
+      seeking: video.seeking,
     },
   };
 });
 
-const show = (label, value) => console.log(`=== ${label} ===\n${JSON.stringify(value, null, 2)}`);
+const pollUntilReadyOr = async (milliseconds) => {
+  const deadline = Date.now() + milliseconds;
+  let last = await canvasState();
+  while (Date.now() < deadline && last.state !== 'ready') {
+    await browser.pause(250);
+    last = await canvasState();
+  }
+  return last;
+};
 
-describe('the editor surface', () => {
-  it('reports the controls reachable once a project has media and subtitles', async () => {
-    await openEditor();
-    await clickControl('[data-input-tab="file-upload"]');
-    await clickControl('.file-upload-input');
+describe('canvas stick reconnaissance', () => {
+  it('measures wakeups around a paused seek into a cue', async () => {
+    await openProjectWithMedia();
+    await importSubtitles();
 
-    await browser.waitUntil(
-      async () => (await browser.execute(() => document.querySelector('video') !== null)),
-      { timeout: 120_000, interval: 1_000, timeoutMsg: 'media never activated' },
-    );
-
-    const subtitles = readFileSync(join(FIXTURE_ROOT, 'cues-6s.srt'), 'utf8');
-    await browser.execute((text, name) => {
-      const target = document.querySelector('.srt-upload-button-container');
-      const file = new File([text], name, { type: 'application/x-subrip' });
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      for (const type of ['dragover', 'drop']) {
-        target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    await browser.execute(() => {
+      const video = document.querySelector('.video-preview video.video-player');
+      const surface = document.querySelector('.video-preview canvas[data-osg-preview-engine="canvas-atlas"]');
+      const probe = { seeked: 0, rvfc: 0, revisions: [], states: [] };
+      window.__OSG_PROBE__ = probe;
+      video.addEventListener('seeked', () => { probe.seeked += 1; });
+      const arm = () => video.requestVideoFrameCallback(() => { probe.rvfc += 1; arm(); });
+      if (typeof video.requestVideoFrameCallback === 'function') arm();
+      const observer = new MutationObserver(() => {
+        probe.revisions.push(surface?.dataset.osgFrameRevision ?? null);
+      });
+      if (surface !== null) observer.observe(surface, { attributes: true });
+      const stateNode = document.querySelector('.video-preview [data-osg-preview]');
+      const stateObserver = new MutationObserver(() => {
+        probe.states.push(stateNode?.getAttribute('data-osg-preview') ?? null);
+      });
+      if (stateNode !== null) {
+        stateObserver.observe(stateNode, { attributes: true, attributeFilter: ['data-osg-preview'] });
       }
-    }, subtitles, 'cues-6s.srt');
+    });
 
-    await browser.waitUntil(
-      async () => (await browser.execute(
-        () => (document.body?.innerText || '').includes('First cue for the preview'),
-      )),
-      { timeout: 60_000, interval: 1_000, timeoutMsg: 'subtitles never appeared' },
-    );
-    await browser.pause(3_000);
+    console.log(`=== after import ===\n${JSON.stringify(await canvasState())}`);
+    // Let post-import scene churn settle the way the long ASR phase does.
+    await browser.pause(20_000);
+    console.log(`=== after quiescence ===\n${JSON.stringify(await canvasState())}`);
 
-    show('with media and subtitles', await survey());
+    await seekPreviewTo(1.75);
+    const afterSeek = await pollUntilReadyOr(15_000);
+    console.log(`=== after seek(1.75) ===\n${JSON.stringify(afterSeek)}`);
+
+    if (afterSeek.state !== 'ready') {
+      await browser.execute(() => {
+        const video = document.querySelector('.video-preview video.video-player');
+        video.currentTime += 0.01;
+      });
+      const afterNudge = await pollUntilReadyOr(5_000);
+      console.log(`=== after nudge ===\n${JSON.stringify(afterNudge)}`);
+    }
   });
 });

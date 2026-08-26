@@ -452,6 +452,14 @@ const CanvasVideoPreview = ({
         const candidate = captureCandidate(video, null, generation);
         if (candidate !== null) {
           publishCandidate(candidate);
+          // The paused-publication dedupe can accept the candidate without repainting when the
+          // refs already name this exact frame. A retry exists precisely because the screen is
+          // owed a frame: when the publication still says so, resolve the current scene against
+          // the refreshed pixels — and only then, so an ordinary retry never manufactures a
+          // duplicate visual revision of the same content.
+          if (publishedRef.current === '' || publishedRef.current.startsWith('pending')) {
+            drawRef.current();
+          }
           return;
         }
         captureRetryAttempts += 1;
@@ -665,7 +673,17 @@ const CanvasVideoPreview = ({
           ? committedPixelFrameRef.current
           : null;
         const pixelFrame = presentedPixels ?? desiredPixels?.source ?? committedPixels?.source ?? null;
-        if (hasFrameCallback && pixelFrame === null) return;
+        if (hasFrameCallback && pixelFrame === null) {
+          // No pixels to compose and, while paused, no future video frame to deliver any. Returning
+          // silently here left the published state frozen (a customer-visible stuck "pending" after
+          // a paused seek raced a lifecycle reset). The bounded capture retry re-snapshots the
+          // paused element and ends in a typed canvasPreviewUnavailable refusal rather than an
+          // eternal wait, so a lost one-shot wakeup can no longer wedge the preview.
+          if (!video.seeking && video.readyState >= 2) {
+            scheduleCaptureRetry(video, videoFrameGeneration);
+          }
+          return;
+        }
         let entry = null;
         let activeWithEasing = null;
         let cueTransform = { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 };
@@ -677,6 +695,13 @@ const CanvasVideoPreview = ({
             // video while its atlas is queued creates a flash at every cue/style boundary. Holding
             // the last complete canvas for one microtask is both shorter and visually atomic.
             publish({ status: 'pending', code: null });
+            // While paused there may never be another presented frame, and the bake completion's
+            // redraw has been observed to lose a race with a lifecycle reset — leaving this
+            // "pending" on screen forever. Pending is a promise of a frame: arm the bounded
+            // capture retry so the promise is kept or becomes a typed refusal.
+            if (!video.seeking && !snapshot.playing && video.readyState >= 2) {
+              scheduleCaptureRetry(video, videoFrameGeneration);
+            }
             return;
           }
           entry = cached?.atlas ? cached : null;
@@ -757,7 +782,14 @@ const CanvasVideoPreview = ({
             retryable: failure.retryable === true,
           });
         }
-        else if (entry === null) publish({ status: 'pending', code: null });
+        else if (entry === null) {
+          publish({ status: 'pending', code: null });
+          // Same promise as the pre-draw pending above: never leave "pending" without a wakeup
+          // that does not depend on the paused video presenting another frame.
+          if (!video.seeking && !snapshot.playing && video.readyState >= 2) {
+            scheduleCaptureRetry(video, videoFrameGeneration);
+          }
+        }
         else publish({ status: 'ready', code: null });
       } finally {
         drawing = false;
