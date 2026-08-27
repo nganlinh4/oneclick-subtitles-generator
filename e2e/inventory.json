@@ -1332,7 +1332,14 @@
       "foundBy": "urlLocalAsrPreview",
       "status": "fixed",
       "severity": "major",
-      "note": "Resolving the active native media captured the local project revision and demanded the durable owner and every later local read match it exactly, so a same-project cue write landing mid-resolve read as a media change and failed the whole auto flow while the subtitles sat correctly on screen. Turbulence whose end state still names the captured project, asset and alias session AND whose revision genuinely advanced now retries a bounded full re-capture; an A-to-B switch, an A-to-B-to-A replacement (same revision restored), an undo (revision regressed), an alias remap and exhaustion all keep failing closed. Eleven resolver tests pin both directions; the mid-generation four-window ASR break carries the same error family and is expected to share this root - its instrumented rerun decides."
+      "note": "Resolving the active native media captured the local project revision and demanded the durable owner and every later local read match it exactly, so a same-project cue write landing mid-resolve read as a media change and failed the whole auto flow while the subtitles sat correctly on screen. Turbulence whose end state still names the captured project, asset and alias session AND whose revision genuinely advanced now retries a bounded full re-capture; an A-to-B switch, an A-to-B-to-A replacement (same revision restored), an undo (revision regressed), an alias remap and exhaustion all keep failing closed. Eleven resolver tests pin both directions. The four-window ASR break turned out to be a different root: see the zero-length tail segment finding."
+    },
+    {
+      "finding": "A windowed local transcription lost a whole window to 'Processing failed: The desktop host returned invalid ASR data' whenever the model's final word started at or past the window's decoded audio end.",
+      "foundBy": "multiWindowAsrPersistence, named by its instrumented error-toast ledger",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The host clamps a tail word's end to the decoded duration but permits its start to equal it, so a segment built from that word carried zero extent. The WebView boundary validator rightly refuses a payload holding a no-extent cue, the aggregate errored after the native job had already recorded success, and the visible rows reset to the empty baseline. The host now publishes only segments with extent; a Rust regression pins the exact offending payload (start 1000ms, end clamped to 1000ms) and fails without the fix."
     }
   ],
   "fixtures": {
