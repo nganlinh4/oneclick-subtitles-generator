@@ -506,8 +506,10 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     )?;
     asr.attach_package_manager(engine_package_manager.clone())?;
     let media_server = MediaServer::start(media_server_allowed_origins(cfg!(debug_assertions)))?;
-    let voice_sample_runtime =
-        VoiceSampleRuntime::new(&local_data_dir.join("asset-packages/v1"), media_server.clone())?;
+    let voice_sample_runtime = VoiceSampleRuntime::new(
+        &local_data_dir.join("asset-packages/v1"),
+        media_server.clone(),
+    )?;
     let mut settings = database.list_settings("app")?;
     let disallowed_settings = settings
         .keys()
