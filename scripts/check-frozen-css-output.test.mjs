@@ -109,9 +109,17 @@ test('pins split base and narration CSS and checks their combined surface invent
     parity: { customSliderCount: 2 },
   };
   sourceFiles.forEach(([fileName, contents]) => writeFileSync(join(assets, fileName), contents));
-  writeFileSync(join(assets, 'SettingsModal-unrelated.css'), 'ignored');
 
   assert.deepEqual(verifyFrozenCssArtifacts(assets, expected).files, expected.files);
+  // A stylesheet under ANY novel name is a contract violation, not background noise: a
+  // code-split settings chunk once shipped unreviewed because the scan ignored names outside
+  // the pinned prefixes.
+  writeFileSync(join(assets, 'SettingsModal-unpinned.css'), '.unpinned{}');
+  assert.throws(
+    () => verifyFrozenCssArtifacts(assets, expected),
+    /frozen CSS artifact set drifted/,
+  );
+  rmSync(join(assets, 'SettingsModal-unpinned.css'));
   writeFileSync(join(assets, 'narration-unreviewed.css'), '.unreviewed{}');
   assert.throws(
     () => verifyFrozenCssArtifacts(assets, expected),

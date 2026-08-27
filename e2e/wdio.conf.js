@@ -221,7 +221,8 @@ export const config = {
   logLevel: 'warn',
   // The backend-stream forwarder logs raw stderr lines at their parsed level, which defaults to
   // info for unstructured text such as a panic message; the global 'warn' level would swallow
-  // exactly the lines the capture exists for. Open only that one channel.
+  // exactly the lines the capture exists for. Observed: this key opens every tauri-service:*
+  // channel, not only :service — the extra debug lines are accepted as failure context.
   logLevels: { 'tauri-service:service': 'trace' },
 
   onPrepare: () => {

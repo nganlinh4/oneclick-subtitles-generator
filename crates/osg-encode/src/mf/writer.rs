@@ -218,10 +218,13 @@ impl MediaFoundationEncoder {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             match fs::remove_file(&self.output) {
-                Ok(()) => break,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-                Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
-                Err(_) => break,
+                Err(error)
+                    if error.kind() != std::io::ErrorKind::NotFound
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                _ => break,
             }
         }
         self.state = state;

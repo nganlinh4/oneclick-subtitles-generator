@@ -33,13 +33,24 @@ import { fileURLToPath } from 'node:url';
  * `.rendering-progress`, and `.rendering-text` rules. Render progress now belongs to the toast
  * channel and those selectors have no shipping consumer. Two clean production builds emitted the
  * same bytes, while every semantic inventory count below remained unchanged.
+ *
+ * REPINNED after the native-ownership alignment made the settings modal a static import: its
+ * previously separate `SettingsModal-*.css` chunk (91,798 bytes, which the older prefix-based
+ * candidate scan never inspected) now merges into the base artifact, and the same commit pruned
+ * the legacy transport rules from six stylesheets. Verified rather than assumed: a detached
+ * build of the previous pin's own revision reproduces the old base artifact byte-for-byte, and
+ * the combined semantic inventory of ALL THREE old files equals the combined inventory of the
+ * two current files on every surface below. The two count changes therefore record the settings
+ * chunk becoming visible to this contract, not new styling: its `.custom-slider` selector and
+ * its twelve runtime-themed `--md-*` uses were always shipped. The narration artifact is
+ * byte-identical across the change.
  */
 export const FROZEN_CSS_ARTIFACTS = Object.freeze({
   files: Object.freeze([
     Object.freeze({
-      fileName: 'index-gzhNp-em.css',
-      sha256: 'f746d1f0d58494c5bd5a8e1fadbd41b2e2c89801296438606d666cd60a84442c',
-      sizeBytes: 500_498,
+      fileName: 'index-Bebnduw6.css',
+      sha256: '23c7acd3ba083ff2be5f2f94f75fe8ead13124c99ad55fd47fb6067440995751',
+      sizeBytes: 579_620,
     }),
     Object.freeze({
       fileName: 'narration-OoOluj4s.css',
@@ -49,13 +60,13 @@ export const FROZEN_CSS_ARTIFACTS = Object.freeze({
   ]),
   parity: Object.freeze({
     albumArtCount: 22,
-    customSliderCount: 54,
+    customSliderCount: 55,
     floatingScrollbarCount: 19,
     fontFaceCount: 0,
     googleSansFlexCount: 0,
     liquidGlassCount: 50,
     materialDefinitionCount: 151,
-    materialUnresolvedCount: 32,
+    materialUnresolvedCount: 44,
   }),
 });
 export const FROZEN_CSS_ARTIFACT = FROZEN_CSS_ARTIFACTS.files[0];
@@ -152,10 +163,12 @@ export function verifyFrozenCssArtifacts(assetsDirectory, expected = FROZEN_CSS_
   invariant(Array.isArray(expected.files) && expected.files.length > 0,
     'at least one frozen CSS artifact is required');
 
-  const prefixes = expected.files.map(({ fileName }) => fileName.replace(/-[^-]+\.css$/, '-'));
+  // Every emitted stylesheet is in scope. The previous prefix-derived scan had two blind spots:
+  // a Vite content hash containing a dash truncated the prefix past the hash (so a renamed base
+  // artifact read as "missing" instead of "drifted"), and a code-split chunk under a novel name
+  // was never inspected at all — a settings-modal chunk shipped unpinned for weeks that way.
   const candidates = readdirSync(assetsDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isFile()
-      && prefixes.some((prefix) => entry.name.startsWith(prefix) && entry.name.endsWith('.css')))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.css'))
     .map((entry) => entry.name)
     .sort();
   const expectedNames = expected.files.map(({ fileName }) => fileName).sort();
