@@ -176,6 +176,39 @@ const attemptDirectory = (workflow, attemptId) => {
   return insideDirectory(join(root, 'attempts'), directory, 'attempt');
 };
 
+// Windows antivirus can hold a just-named file briefly, surfacing as EPERM (or EBUSY) on open —
+// on creation of a recently-seen name and on the read-back reopen of just-written bytes alike.
+// One bounded retry loop keeps a real permission problem fatal while riding out the scan window.
+const openRetryingOnScan = (path, flags, mode) => {
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return openSync(path, flags, mode);
+    } catch (error) {
+      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
+      lastError = error;
+      const untilMs = Date.now() + 40 + attempt * 40;
+      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
+    }
+  }
+  throw lastError;
+};
+
+const copyRetryingOnScan = (source, destination) => {
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return copyFileSync(source, destination);
+    } catch (error) {
+      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
+      lastError = error;
+      const untilMs = Date.now() + 40 + attempt * 40;
+      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
+    }
+  }
+  throw lastError;
+};
+
 const atomicWriteFile = (path, contents) => {
   mkdirSync(dirname(path), { recursive: true });
   recoverAtomicSidecarsForTarget(path);
@@ -185,7 +218,7 @@ const atomicWriteFile = (path, contents) => {
   );
   let descriptor = null;
   try {
-    descriptor = openSync(temporary, 'wx', 0o600);
+    descriptor = openRetryingOnScan(temporary, 'wx', 0o600);
     writeFileSync(descriptor, contents);
     fsyncSync(descriptor);
     closeSync(descriptor);
@@ -819,7 +852,7 @@ const sealAttemptOperationPayload = (operation, path) => {
   assert.ok(payload, 'evidence operation tried to seal an unknown payload');
   assert.equal(payload.sealed, false, 'evidence operation payload was sealed twice');
   assertOrdinaryPath(path, 'file', `evidence operation staged ${payload.destination}`);
-  const descriptor = openSync(path, 'r+');
+  const descriptor = openRetryingOnScan(path, 'r+');
   try {
     fsyncSync(descriptor);
   } finally {
@@ -843,29 +876,12 @@ const abandonAttemptOperationPayload = (operation, path) => {
   publishStagingAttemptOperation(operation);
 };
 
-// Windows antivirus can hold a just-named file briefly, surfacing as EPERM on open; one bounded
-// retry loop keeps a real permission problem fatal while riding out the scan window.
-const openPayloadDescriptor = (path) => {
-  let lastError = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      return openSync(path, 'wx', 0o600);
-    } catch (error) {
-      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
-      lastError = error;
-      const untilMs = Date.now() + 40 + attempt * 40;
-      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
-    }
-  }
-  throw lastError;
-};
-
 const stageAttemptOperationContents = (operation, destination, contents) => {
   const path = allocateAttemptOperationPayload(operation, destination);
   let descriptor = null;
   let sealed = false;
   try {
-    descriptor = openPayloadDescriptor(path);
+    descriptor = openRetryingOnScan(path, 'wx', 0o600);
     writeFileSync(descriptor, contents);
     fsyncSync(descriptor);
     closeSync(descriptor);
@@ -2175,7 +2191,7 @@ export const copyWorkflowArtifact = ({ workflow, name, source, description }) =>
   });
   try {
     const stagedArtifact = allocateAttemptOperationPayload(operation, file);
-    copyFileSync(source, stagedArtifact);
+    copyRetryingOnScan(source, stagedArtifact);
     sealAttemptOperationPayload(operation, stagedArtifact);
     manifest.artifacts.push({ name, file, description });
     manifest.artifacts.sort((left, right) => left.name.localeCompare(right.name));
