@@ -3,8 +3,8 @@ import { Buffer } from 'node:buffer';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
-  realpathSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync,
+  chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
+  readFileSync, realpathSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import {
@@ -209,9 +209,14 @@ const retryOnScan = (operation) => {
 
 const openRetryingOnScan = (path, flags, mode) => retryOnScan(() => openSync(path, flags, mode));
 
-const copyRetryingOnScan = (source, destination) => retryOnScan(
-  () => copyFileSync(source, destination),
-);
+const copyRetryingOnScan = (source, destination) => {
+  retryOnScan(() => copyFileSync(source, destination));
+  // Windows CopyFile propagates the source's read-only attribute. The application deliberately
+  // publishes its owned artifacts read-only (no-clobber), so a staged copy of one arrived
+  // read-only too and the seal's write-mode fsync reopen was denied deterministically — an EPERM
+  // no scan-window retry can cure. Staged evidence bytes belong to this store: own them.
+  chmodSync(destination, 0o600);
+};
 
 const atomicWriteFile = (path, contents) => {
   mkdirSync(dirname(path), { recursive: true });
