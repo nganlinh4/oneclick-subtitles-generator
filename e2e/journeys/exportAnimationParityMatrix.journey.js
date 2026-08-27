@@ -39,6 +39,7 @@ import {
   savePreviewSourceFrame,
 } from '../support/nativeMediaOracle.js';
 import { actuateNativeRange } from '../support/nativeRange.js';
+import { revealMainTransportControls } from '../support/previewTransport.js';
 import {
   importSubtitleDocument,
   openProjectWithMedia,
@@ -524,8 +525,11 @@ const waitForExactCanvas = async ({
   let state = null;
   await waitUntilWithFreshDiagnostic(async () => {
     state = await canvasState(canvasSelector, videoSelector, stateSelector);
+    // No overlay-rebuild demand here: the cached static overlay only rebuilds for static
+    // subtitles, and these samples deliberately land inside animated entry/exit phases, which
+    // paint directly. Subtitle presence is proven by the source-vs-composed pixel mask that
+    // follows every sample, not by a counter that animation legitimately never touches.
     return state.revision > beforeRevision
-      && state.overlayRebuilds > 0
       && state.cue === String(cueIndex)
       && Math.abs(state.currentTime - seconds) <= 0.000_001
       && Number.isFinite(state.transportTime)
@@ -651,7 +655,9 @@ const seekThroughPublicControl = async ({ surface, frame, cueIndex }) => {
   const seekSelector = main ? MAIN_SEEK : RENDER_SEEK;
   const playPauseSelector = main ? MAIN_PLAY_PAUSE : '.video-preview-panel [data-osg-control="play-pause"]';
   if (main) {
-    await $(MAIN_VIDEO).moveTo();
+    // The Main transport is hover-gated; the pointer-move shortcut does not reliably produce the
+    // hover state in the hidden window, so cross the product's real mouseover reveal boundary.
+    await revealMainTransportControls();
   }
   const control = await $(seekSelector);
   await control.waitForDisplayed({ timeout: 30_000, timeoutMsg: `${surface}: public seek is absent` });

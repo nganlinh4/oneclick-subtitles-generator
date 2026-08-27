@@ -273,6 +273,15 @@ test('FFmpeg volume evidence parses real levels and preserves explicit silence',
     peakVolumeDb: Number.NEGATIVE_INFINITY,
   });
   assert.throws(() => parseVolumeDetect('max_volume: -3 dB'), /no bounded audio-energy/u);
+  // FFmpeg 8 flushes a sample-less graph-setup instance before the instance that saw the audio;
+  // the final flush is the measurement.
+  assert.deepEqual(parseVolumeDetect([
+    '[Parsed_volumedetect_0 @ 0x1] n_samples: 0',
+    'Stream mapping:',
+    '[Parsed_volumedetect_0 @ 0x2] n_samples: 1825248',
+    '[Parsed_volumedetect_0 @ 0x2] mean_volume: -25.9 dB',
+    '[Parsed_volumedetect_0 @ 0x2] max_volume: -7.4 dB',
+  ].join('\n')), { samples: 1_825_248, meanVolumeDb: -25.9, peakVolumeDb: -7.4 });
 });
 
 test('a complete decoded, durable and pixel-matched observation passes', () => {

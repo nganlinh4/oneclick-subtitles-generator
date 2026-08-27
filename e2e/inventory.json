@@ -308,6 +308,25 @@
       "note": "Green in off-screen real-binary attempt 20260825155018591-64168-fab31072 against automation binary af9691ba1b57f4055b15ec541a5407ff10e3563f2e66d79420308237647e9ff1. All five screenshots were inspected. The run proved an aborted partial A transfer, a distinct successful retry, exact source bytes, early A withdrawal during B, distinct durable A/B projects, and exact ownership of both download and waveform-cache artifacts."
     },
     {
+      "name": "failedDownloadNoStale",
+      "kind": "workflow",
+      "file": "journeys/failedDownloadNoStale.journey.js",
+      "capability": "When a replacement URL download fails after real inspection, the previously playing source is withdrawn honestly: one typed failure toast, history-only residue, and never resurrected or fabricated media.",
+      "oracles": [
+        "a launcher-owned exact loopback origin whose path-free event ledger proves the real transfer shapes: source A fully ranged and played, source C inspected once then rejected with real HTTP 503",
+        "public WebView controls only, with a DOM stale-media sweep proving no visible or playable media survives the failure",
+        "read-only SQLite durability state proving source A remains solely historical and source C published nothing",
+        "four inspected screenshots under the managed external evidence lane/failed-download-no-stale"
+      ],
+      "substitutes": [
+        "the remote byte origin only, through the compile-time exact loopback capability"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "green",
+      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
+      "note": "Green in off-screen real-binary attempt 20260826234117169-59440-d6f71134 (exe sha256 0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028). All four screenshots inspected. The origin ledger shows A's complete 4372373-byte ranged transfer, then C passing yt-dlp's real inspection before three genuine 503 rejections; the customer saw exactly one typed download-failure toast, no stale or fabricated media, and A surviving only as history."
+    },
+    {
       "name": "editPersistRelaunch",
       "kind": "workflow",
       "file": "journeys/editPersistRelaunch.journey.js",
@@ -846,11 +865,20 @@
     },
     {
       "name": "subtitleCustomizationPreview",
-      "kind": "workflow",
+      "kind": "workflow-visual",
+      "file": "journeys/subtitleCustomizationPreview.journey.js",
       "capability": "Every shipped preset plus text, font, background, effect, position and animation control produces stable native preview pixels for Latin, Vietnamese, Korean, emoji and bidi text.",
-      "status": "unproven",
-      "recommendedJourney": "previewCustomizationMatrix",
-      "note": "nativeExportDecoded proves one Arial/border/glow/shadow/background combination. It is not coverage of the preset and control matrix."
+      "status": "green",
+      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
+      "oracles": [
+        "the shipped preset matrix and public Render controls only, actuated through native range surfaces in the guarded off-screen binary",
+        "read-only SQLite render-scene revisions after every claimed style change",
+        "independently captured native canvas frames compared per transition, with live-playback and Default-preset restoration checks",
+        "a MutationObserver visible-error ledger rejecting even transient error surfaces",
+        "screenshot evidence under the managed external evidence lane/subtitle-customization-preview"
+      ],
+      "runsAgainst": "e2e-binary",
+      "note": "Green in off-screen real-binary attempt 20260826234612825-63040-81a2259f (exe sha256 0b443bb8d34b7b82…). All thirty shipped presets drew distinct durable native frames over the real video, seven individual controls (exact weight, system font, size, background colour, opacity, radius, width) each changed pixels cumulatively and independently, live Classic playback stayed continuous, and Default restored its original pixels. Sample frames (Neon glow, Vaporwave gradient, narrow-width wrap) inspected."
     },
     {
       "name": "subtitleMaterialAndAnimation",
@@ -909,12 +937,28 @@
       "note": "narrationAlignment validates a standalone aligned M4A and nativeExportDecoded validates source audio; neither proves the combined final-video mix controls."
     },
     {
+      "name": "renderCancelRetryExport",
+      "kind": "workflow",
+      "file": "journeys/renderCancelRetryExport.journey.js",
+      "capability": "A customer cancels one admitted native render, retries the same project through the public Render control, and saves a successful result that is byte-identical to the durable artifact and independently decodable, while the cancelled job leaves no partial or stale bytes.",
+      "oracles": [
+        "public Render controls in the guarded off-screen binary, with distinct public settings making the two queue rows visually identifiable",
+        "the read-only SQLite job ledger supplying the native job IDs the UI intentionally hides",
+        "a managed artifact-root walk reconciling every media file to its owning job with no cancelled-job residue",
+        "independent ffprobe/FFmpeg decode plus frame comparison of the staged customer save against the durable artifact",
+        "screenshot evidence under the managed external evidence lane/render-cancel-retry-export"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "ready-unrun",
+      "note": "Deliberately a single-process queue journey: relaunch/recovery needs two application processes and lives in scenario coverage, because pretending to prove it inside one WebDriver session would only exercise React state. Not green until the current guarded binary completes it and the evidence is inspected."
+    },
+    {
       "name": "renderQueueCancelRetryAndRelaunch",
       "kind": "workflow",
       "capability": "Queued renders, cancellation, retry, failure cleanup and relaunch recovery never publish partial or stale artifacts.",
       "status": "unproven",
       "recommendedJourney": "renderControlsAndRecovery",
-      "note": "One successful render is green. Queue ordering and every recovery boundary remain without real-binary proof."
+      "note": "One successful render is green and renderCancelRetryExport covers single-process cancel/retry/save. Multi-render queue ordering and every relaunch-recovery boundary remain without real-binary proof."
     },
     {
       "name": "backgroundImageGeneration",
@@ -979,15 +1023,15 @@
       "kind": "workflow",
       "file": "journeys/cacheClearSafety.journey.js",
       "capability": "Native cache inventory and Clear Cache report real bytes and never delete active project media, subtitles or render scenes.",
-      "status": "unproven",
-      "recommendedJourney": "settingsAndRecovery",
+      "status": "green",
+      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
       "oracles": [
         "the actual Settings > Cache controls and compiled cache_info/cache_clear commands in an off-screen isolated binary",
         "read-only SQLite identity for active project, track, cues, scene, revisions, media ownership and durable artifacts before/after",
         "SHA-256 and byte length of every active media location plus the staged real source before/after",
         "four screenshot steps covering the active preview, native inventory, clear completion and post-clear playable preview"
       ],
-      "note": "The preservation journey is written but has not run against the rebuilt guarded binary, so this remains unproven. Static production-callsite inspection currently finds no product path that registers a disposable cache_entries artifact; the journey therefore labels byte deletion unproven unless real product behavior creates one. It never fabricates a cache row or invokes a private command to manufacture coverage. Per-category removal and the explicit Refresh button remain separate unproven interactions if the native inventory is empty."
+      "note": "Green in off-screen real-binary attempt 20260826234400342-56756-4d1138fa (exe sha256 0b443bb8d34b7b82…). All four screenshots inspected. The earlier worry that no product path registers a disposable artifact resolved itself: importing real media registered one 11.25 KB waveform cache entry, the Cache tab reported exactly it, Clear Cache deleted exactly it, and every protected SQLite identity and source byte stayed identical while the same project seeked and drew its cue natively afterwards (waveform rebuilt on demand). Per-category removal with several distinct populated categories remains a separate unproven interaction."
     },
     {
       "name": "settingsNarrationModelManagement",

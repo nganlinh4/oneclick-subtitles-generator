@@ -13,6 +13,7 @@ import process from 'node:process';
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { compareFrames, savePreviewElementFrame } from '../support/nativeMediaOracle.js';
+import { revealMainTransportControls } from '../support/previewTransport.js';
 import { SOURCE_SWITCH_VIDEO } from '../support/realMedia.js';
 import {
   importSubtitles,
@@ -119,27 +120,10 @@ const visiblePreviewState = () => browser.execute(() => {
   };
 });
 
-const hoverPreview = async () => {
-  const container = await $(`${PREVIEW} .native-video-container`);
-  await container.waitForDisplayed({ timeout: 30_000 });
-  const hovered = await browser.execute((target) => {
-    const node = document.querySelector(target);
-    if (node === null) return false;
-    node.dispatchEvent(new window.MouseEvent('mouseover', {
-      bubbles: true, cancelable: true, composed: true, view: window,
-    }));
-    return true;
-  }, `${PREVIEW} .native-video-container`);
-  assert.equal(hovered, true, 'the native preview disappeared before its hover boundary');
-  await browser.waitUntil(async () => browser.execute((target) => {
-    const control = document.querySelector(target);
-    return control !== null && getComputedStyle(control).pointerEvents !== 'none';
-  }, `${CONTROLS} [aria-label="Play"], ${CONTROLS} [aria-label="Pause"]`), {
-    timeout: 10_000,
-    interval: 50,
-    timeoutMsg: 'the public preview hover did not reveal its transport controls',
-  });
-};
+const hoverPreview = () => revealMainTransportControls({
+  previewSelector: PREVIEW,
+  controlsSelector: CONTROLS,
+});
 
 const seekWithCustomerProgress = async (fraction) => {
   assert.ok(fraction > 0 && fraction < 1, 'seek fraction must stay inside the media');

@@ -65,7 +65,12 @@ const assertFreshFrontendBeforeCargo = (build, source = read('scripts', 'build-e
     'the canonical E2E binary must lease, build frontend, build Cargo, publish, verify, then release',
   );
   assert.match(source, /TAURI_CONFIG:\s*tauriOverride/u);
-  assert.match(source, /frontendDist:\s*frontend\.snapshotRoot/u);
+  // frontendDist must go through the shared override helper: Tauri parses an absolute Windows
+  // path as a URL, which embeds nothing, so only the validated relative form is acceptable.
+  assert.match(
+    source,
+    /frontendDist:\s*tauriFrontendDistOverride\(repository,\s*frontend\.snapshotRoot\)/u,
+  );
   assert.match(source, /cacheRoot:\s*lease\.frontendCacheRoot/u);
   assert.match(source, /'--target-dir',\s*cargoTargetDir/u);
   assert.match(source, /applicationsCacheRoot:\s*lease\.appPublicationRoot/u);

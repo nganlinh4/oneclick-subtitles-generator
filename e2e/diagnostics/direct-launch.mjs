@@ -60,6 +60,15 @@ try {
   environment.OSG_E2E_MEDIA_DESTINATION = dialogs.mediaDestination;
   Object.assign(environment, isolationEnvironment(runRoot));
 
+  for (const store of ['engine-packages', 'native-tools']) {
+    const through = join(runRoot, 'data', store, 'v1');
+    process.stdout.write(`=== ${store} through junction ===\n`);
+    try {
+      for (const entry of readdirSync(through)) process.stdout.write(`  ${entry}\n`);
+    } catch (error) {
+      process.stdout.write(`  unreadable: ${error.message}\n`);
+    }
+  }
   process.stdout.write(`launching ${publication.binaryPath}\n`);
   const child = spawn(publication.binaryPath, [], {
     env: environment,
@@ -139,6 +148,40 @@ try {
     await step('probe root after navigation', executeSync(
       'return { rootChildren: document.querySelector("#root")?.childElementCount ?? null, readyState: document.readyState }',
     ));
+    await step('open settings', executeSync(
+      'document.querySelector(\'[data-app-action="open-settings"]\')?.click(); return true',
+    ));
+    await new Promise((resolveWait) => { setTimeout(resolveWait, 2_000); });
+    await step('open tools tab', executeSync(
+      'document.querySelector(\'[data-settings-tab="tools"]\')?.click(); return true',
+    ));
+    await new Promise((resolveWait) => { setTimeout(resolveWait, 8_000); });
+    await step('engine cards', executeSync(`
+      return [...document.querySelectorAll('[data-engine-id]')].map((card) => ({
+        id: card.getAttribute('data-engine-id'),
+        state: card.getAttribute('data-engine-state'),
+      }));
+    `));
+    await step('engine_packages_status invoke', async () => json(await fetch(
+      `${base}/session/${sessionId}/execute/async`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          script: `
+            const done = arguments[arguments.length - 1];
+            window.__TAURI__.core.invoke('engine_packages_status').then(
+              (result) => done({ ok: result.map((s) => ({
+                id: s.id, state: s.state, installed: s.installed, version: s.version,
+                installedBytes: s.installedBytes ?? s.installed_bytes,
+              })) }),
+              (error) => done({ err: String(error) }),
+            );
+          `,
+          args: [],
+        }),
+      },
+    )));
   }
   await new Promise((resolveWait) => { setTimeout(resolveWait, 4_000); });
   const result = await exited();
@@ -149,6 +192,20 @@ try {
   } else {
     process.stdout.write(`EXITED code=${result.code} signal=${result.signal}\n`);
   }
+  process.stdout.write('=== run root data tree after app ===\n');
+  const walk = (dir, depth) => {
+    if (depth > 3) return;
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const child = join(dir, entry.name);
+      const kind = entry.isSymbolicLink() ? 'LINK' : entry.isDirectory() ? 'dir' : 'file';
+      process.stdout.write(`  ${'  '.repeat(depth)}${kind} ${entry.name}\n`);
+      if (entry.isDirectory() && !entry.isSymbolicLink()
+          && entry.name !== 'EBWebView' && entry.name !== 'webview') walk(child, depth + 1);
+    }
+  };
+  walk(join(runRoot, 'data'), 0);
   process.stdout.write(`=== STDOUT ===\n${out}\n=== STDERR ===\n${err}\n`);
   dumpLogs(runRoot);
 } finally {

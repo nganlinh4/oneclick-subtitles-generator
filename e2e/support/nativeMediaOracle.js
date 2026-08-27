@@ -759,13 +759,17 @@ export const probeMedia = (path) => JSON.parse(execFileSync(ffprobe(), [
 
 export const parseVolumeDetect = (output) => {
   const text = String(output ?? '');
+  // FFmpeg 8 flushes every volumedetect instance it constructed, and graph setup can construct one
+  // that never receives samples: its `n_samples: 0` line precedes the real measurement. The LAST
+  // occurrence of each metric is the final flush of the instance that actually saw the audio.
   const parseLevel = (name) => {
-    const match = new RegExp(`${name}:\\s*(-?inf|-?\\d+(?:\\.\\d+)?)\\s*dB`, 'iu').exec(text);
-    if (match === null) return null;
+    const matches = [...text.matchAll(new RegExp(`${name}:\\s*(-?inf|-?\\d+(?:\\.\\d+)?)\\s*dB`, 'giu'))];
+    const match = matches.at(-1);
+    if (match === undefined) return null;
     return /^-inf$/iu.test(match[1]) ? Number.NEGATIVE_INFINITY : Number(match[1]);
   };
-  const sampleMatch = /n_samples:\s*(\d+)/iu.exec(text);
-  const samples = sampleMatch === null ? null : Number(sampleMatch[1]);
+  const sampleMatch = [...text.matchAll(/n_samples:\s*(\d+)/giu)].at(-1);
+  const samples = sampleMatch === undefined ? null : Number(sampleMatch[1]);
   const meanVolumeDb = parseLevel('mean_volume');
   const peakVolumeDb = parseLevel('max_volume');
   if (!Number.isSafeInteger(samples) || samples <= 0
