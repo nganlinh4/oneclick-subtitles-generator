@@ -583,6 +583,11 @@ fn build_transcription(
         .map_err(|_| AsrError::InvalidOutput)?;
     let words = validate_words(wire_words, request.audio.duration_ms())?;
     let mut segments = segment_words(&words, request.options.segmentation(), join_without_spaces);
+    // A model may place its final word at or past the decoded audio end; the clamp above then
+    // collapses it to a zero-length tail. A cue without extent is meaningless on every consumer's
+    // timeline and the WebView boundary rightly refuses the whole payload over one — a real
+    // four-window run lost its last window exactly that way. Publish only segments with extent.
+    segments.retain(|segment| segment.end_ms > segment.start_ms);
     let text = transcript.trim().to_owned();
     if segments.is_empty() && !text.is_empty() {
         segments.push(crate::Segment {
@@ -656,4 +661,64 @@ fn seconds_to_milliseconds(seconds: f64) -> Result<u64> {
         return Err(AsrError::InvalidOutput);
     }
     Ok(milliseconds.round() as u64)
+}
+
+#[cfg(test)]
+mod transcription_tests {
+    use super::*;
+    use crate::audio::test_support::write_wav;
+
+    #[test]
+    fn a_tail_word_clamped_to_the_audio_end_never_publishes_a_zero_length_segment() {
+        // A model may start its final word at the decoded audio end; the clamp collapses it to a
+        // zero-length tail that every consumer's timeline contract refuses. It must be dropped,
+        // not published — a real four-window run lost its last window over exactly this payload.
+        let directory = std::env::temp_dir().join(format!(
+            "osg-asr-tail-clamp-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let wav = directory.join("one-second.wav");
+        write_wav(&wav, 1_000);
+        let audio = NormalizedAudio::open(&wav).unwrap();
+        assert_eq!(audio.duration_ms(), 1_000);
+        // One word per segment: the tail word must not be able to hide inside a wider segment.
+        let segmentation = crate::SegmentationOptions::new(
+            crate::SegmentStrategy::Sentence,
+            60,
+            Some(1),
+            800,
+        )
+        .unwrap();
+        let request = TranscriptionRequest::new(audio, TranscriptionOptions::new(segmentation));
+        let transcription = build_transcription(
+            AsrEngineId::FasterWhisperTurbo,
+            &request,
+            "hello world",
+            Some("en"),
+            WireBackend::Cpu,
+            vec![
+                WireWord {
+                    text: "hello".to_owned(),
+                    start_seconds: 0.0,
+                    end_seconds: 0.6,
+                },
+                WireWord {
+                    text: "world".to_owned(),
+                    start_seconds: 1.0,
+                    end_seconds: 1.4,
+                },
+            ],
+            false,
+        )
+        .expect("a tail-clamped payload must remain publishable");
+        assert!(!transcription.segments.is_empty(), "the real words vanished");
+        for segment in &transcription.segments {
+            assert!(
+                segment.end_ms > segment.start_ms,
+                "published a zero-length segment: {segment:?}"
+            );
+        }
+        std::fs::remove_dir_all(&directory).ok();
+    }
 }
