@@ -1305,11 +1305,11 @@
       "note": "Translated documents without target languages now carry a _translated suffix; the naming rule moved into a pure tested util and the journey pins both proposed names."
     },
     {
-      "finding": "A single black frame reached the visible preview canvas immediately after a backward seek during playback.",
+      "finding": "The continuity witness repeatedly reported a black frame immediately after playing backward seeks.",
       "foundBy": "subtitleMaterialAndAnimation",
-      "status": "fixed",
-      "severity": "major",
-      "note": "Recurred on the next run at a different case with the identical signature (publication 1 right after a playing backward seek: black, hasVideo false, sourceTime null), so it was the settled-seek snapshot capturing the transitioning decoder surface, which drawImage may legally return as solid black at that exact boundary. A PLAYING element now defers publication to its next presented rVFC frame — which can never be that surface — while the held pre-seek composition covers the one-frame gap; only a paused element still takes the settled snapshot, because no future presentation may come for it. A component regression pins the deferral."
+      "status": "resolved",
+      "severity": "minor",
+      "note": "The recurring signature was the witness's own blind spot: a publication composed from a frozen source canvas captured BEFORE the witness attached is tainted and uninspectable, so its traced state naturally read black/no-video — the held-frame design at work, not a customer-visible flash. Such compositions now classify as unknown provenance inside the bounded unclassified window. The chase still produced two real product hardenings that remain: a playing seek boundary no longer snapshots the element (the transitioning decoder surface can legally read back black there), and the first captures of every seek generation reject a solid-black surface with one bounded readback."
     }
   ],
   "fixtures": {

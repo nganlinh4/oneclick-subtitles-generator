@@ -85,6 +85,8 @@ const region = ({ signature = '1a2b3c4d', centroid = { x: 240, y: 300 } } = {}) 
   exportMaskPixels: 455,
   exportMaskRatio: 455 / 172_800,
   exportSubtitleMaskCoverage: 0.90,
+  exportMainMaskCoverage: 0.88,
+  exportRenderMaskCoverage: 0.86,
   mainRenderMaskOverlap: 0.82,
   maskSignature: signature,
   maskCentroid: centroid,
@@ -613,4 +615,20 @@ test('mask agreement branches: strong masks demand overlap, faint masks demand c
   const faintLowOverlap = { entry: region(), exit: region() };
   faintLowOverlap.entry.mainRenderMaskOverlap = 0.22;
   verifyExportAnimationParityObservation({ ...valid, regions: faintLowOverlap });
+
+  // Export coverage is judged against a real surface, not the divergence-inflated union: strong
+  // agreement with one surface passes even when the union dilutes, and agreeing with neither
+  // fails regardless of the union number.
+  const unionDiluted = { entry: region(), exit: region() };
+  unionDiluted.entry.exportSubtitleMaskCoverage = 0.496;
+  unionDiluted.entry.exportMainMaskCoverage = 0.81;
+  unionDiluted.entry.exportRenderMaskCoverage = 0.34;
+  verifyExportAnimationParityObservation({ ...valid, regions: unionDiluted });
+
+  const coversNeither = { entry: region(), exit: region() };
+  coversNeither.entry.exportMainMaskCoverage = 0.40;
+  coversNeither.entry.exportRenderMaskCoverage = 0.38;
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...valid, regions: coversNeither,
+  }), /covers only .* of the stronger surface subtitle mask/u);
 });
