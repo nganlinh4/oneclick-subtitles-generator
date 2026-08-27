@@ -1326,6 +1326,13 @@
       "status": "fixed",
       "severity": "major",
       "note": "loadeddata and canplay arrive in one task burst over the paused replacement source. Each runs the settled-capture boundary: the first's black-looking capture was skipped and armed a bounded retry, then the second bumped the capture generation without cancelling that pending retry. The stale handle blocked the new generation from arming its own retry while its callback exited on the generation mismatch without rescheduling, so no capture path remained for a paused element. The settled boundary now invalidates the pending retry exactly as the seek boundary always has; a component regression reproduces the burst and fails on the unfixed component, and the preserved journey screenshot shows the blank preview with the element at readyState 4."
+    },
+    {
+      "finding": "A successful media preparation could toast 'Processing failed: The active native media changed or is unavailable' when its own site-subtitle import was still persisting as generation started.",
+      "foundBy": "urlLocalAsrPreview",
+      "status": "fixed",
+      "severity": "major",
+      "note": "Resolving the active native media captured the local project revision and demanded the durable owner and every later local read match it exactly, so a same-project cue write landing mid-resolve read as a media change and failed the whole auto flow while the subtitles sat correctly on screen. Turbulence whose end state still names the captured project, asset and alias session AND whose revision genuinely advanced now retries a bounded full re-capture; an A-to-B switch, an A-to-B-to-A replacement (same revision restored), an undo (revision regressed), an alias remap and exhaustion all keep failing closed. Eleven resolver tests pin both directions; the mid-generation four-window ASR break carries the same error family and is expected to share this root - its instrumented rerun decides."
     }
   ],
   "fixtures": {
