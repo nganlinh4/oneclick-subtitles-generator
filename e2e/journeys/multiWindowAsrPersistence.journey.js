@@ -84,6 +84,7 @@ const installStreamingWitness = () => browser.execute((limit) => {
     streamPublications: [],
     visibleMilestones: [],
     inlineErrors: [],
+    errorToasts: [],
     runtimeErrors: [],
     overflow: false,
   };
@@ -118,6 +119,12 @@ const installStreamingWitness = () => browser.execute((limit) => {
       if (!ledger.inlineErrors.some((existing) => JSON.stringify(existing) === JSON.stringify(problem))) {
         boundedPush(ledger.inlineErrors, problem);
       }
+    }
+    // Toasts are transient: a mid-generation failure names itself there and nowhere else. One
+    // aggregate break was undiagnosable because the toast had expired before any probe read it.
+    for (const node of document.querySelectorAll('.toast-error')) {
+      const text = (node.innerText || '').trim().slice(0, 500);
+      if (text && !ledger.errorToasts.includes(text)) boundedPush(ledger.errorToasts, text);
     }
   };
   const onRanges = (event) => {
@@ -388,6 +395,10 @@ describe('maximum-duration local ASR across a real process restart', () => {
       focusSelector: '.lyrics-container-wrapper',
     });
 
+    // A throw inside a waitUntil predicate is swallowed by WebdriverIO as one more falsy poll, so
+    // the old fail-fast branch silently retried for thirty minutes while the failure toast it
+    // wanted to capture expired. Record the early end as data, exit the wait, and throw outside.
+    let endedEarly = null;
     await waitUntilWithFreshDiagnostic(async () => {
       ledger = await readStreamingWitness();
       surface = await currentSurface();
@@ -401,16 +412,15 @@ describe('maximum-duration local ASR across a real process restart', () => {
           .slice(0, 3)
           .every(({ generationActive }) => generationActive === true);
       if (!enoughStreamed && surface.generationActive === false) {
-        // The aggregate ended without its promised windows: fail NOW, while the failure toast and
-        // job records still exist, instead of timing out after the evidence has expired.
+        // The aggregate ended without its promised windows: capture the failure surfaces NOW,
+        // while the toast and job records still exist, instead of timing out after they expire.
         await browser.execute(() => document.querySelector('.toast-history-button')?.click());
         await browser.pause(400);
         const toastHistory = await browser.execute(
           () => (document.body?.innerText ?? '').slice(-2_500),
         );
-        throw new Error(`generation ended before three windows streamed: ${JSON.stringify({
-          ledger, ownedJobs, toastHistory,
-        })}`);
+        endedEarly = { ledger, ownedJobs, toastHistory };
+        return true;
       }
       return enoughStreamed;
     }, {
@@ -418,6 +428,11 @@ describe('maximum-duration local ASR across a real process restart', () => {
       interval: 500,
       diagnostic: () => `window three never streamed before aggregate completion: ${JSON.stringify({ ledger, ownedJobs, surface })}`,
     });
+    if (endedEarly !== null) {
+      throw new Error(
+        `generation ended before three windows streamed: ${JSON.stringify(endedEarly)}`,
+      );
+    }
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '04-third-window-streaming',
