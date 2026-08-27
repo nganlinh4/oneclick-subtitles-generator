@@ -534,13 +534,18 @@ const activateTab = async (tab) => {
     });
   }
   if (tab === 'tools') {
+    // The first status probe per process deliberately hashes the COMPLETE published engine tree
+    // before reporting anything installed (verify-once, then cached). That tree is ~7 GB here,
+    // and a cold antivirus-scanned read of it has been measured beyond three minutes on a day of
+    // heavy cache churn — a metadata-only walk alone exceeded two. The wait must outlast an
+    // honest full-tree verification, not assume a warm disk.
     await browser.waitUntil(async () => {
       const panel = await $('.engines-panel');
       const asr = await panel.getAttribute('data-asr-package-status');
       const speech = await panel.getAttribute('data-speech-package-status');
       return asr !== 'checking' && speech !== 'checking';
     }, {
-      timeout: 180_000,
+      timeout: 600_000,
       interval: 250,
       timeoutMsg: 'Native tool inventories never settled before their screenshot',
     });
