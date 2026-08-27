@@ -88,6 +88,8 @@ const region = ({ signature = '1a2b3c4d', centroid = { x: 240, y: 300 } } = {}) 
   mainRenderMaskOverlap: 0.82,
   maskSignature: signature,
   maskCentroid: centroid,
+  mainMaskCentroid: { x: centroid.x - 2, y: centroid.y + 1 },
+  renderMaskCentroid: { x: centroid.x + 2, y: centroid.y - 1 },
   pairs: {
     mainRender: measurement(),
     mainExport: measurement(),
@@ -591,4 +593,28 @@ test('durable cue text and rational times cannot drift behind a convincing pictu
   assert.throws(() => verifyExportAnimationParityObservation({
     ...valid, durableCues: cues,
   }), /durable cue 0 text drifted/u);
+});
+
+test('mask agreement branches: strong masks demand overlap, faint masks demand co-location', () => {
+  const definition = EXPORT_ANIMATION_PARITY_CASES[0];
+  const valid = observation(definition);
+
+  const strongLowOverlap = { entry: region(), exit: region() };
+  strongLowOverlap.entry.mainMaskPixels = 5_000;
+  strongLowOverlap.entry.renderMaskPixels = 5_200;
+  strongLowOverlap.entry.mainRenderMaskOverlap = 0.22;
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...valid, regions: strongLowOverlap,
+  }), /subtitle-mask overlap .* is too low/u);
+
+  const faintApart = { entry: region(), exit: region() };
+  faintApart.entry.mainMaskCentroid = { x: 60, y: 60 };
+  faintApart.entry.renderMaskCentroid = { x: 400, y: 300 };
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...valid, regions: faintApart,
+  }), /faint Main\/Render subtitle masks are .* of the frame apart/u);
+
+  const faintTogetherLowOverlap = { entry: region(), exit: region() };
+  faintTogetherLowOverlap.entry.mainRenderMaskOverlap = 0.22;
+  verifyExportAnimationParityObservation({ ...valid, regions: faintTogetherLowOverlap });
 });
