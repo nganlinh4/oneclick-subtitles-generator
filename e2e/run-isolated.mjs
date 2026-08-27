@@ -152,7 +152,7 @@ export const run = ({ repeat, journeys }) => {
               // the publisher before the root goes away; diagnosis of a deterministic failure
               // depends on it.
               try {
-                const kept = preserveRunRootEvidence({ workflow, runRoot });
+                const kept = preserveRunRootEvidence({ workflow, runRoot, attemptId: attempt.id });
                 if (kept.preserved > 0 || kept.skipped > 0) {
                   process.stdout.write(
                     `\n--- run-root evidence preserved in attempt ${attempt.id}: `

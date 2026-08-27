@@ -607,14 +607,10 @@ test('mask agreement branches: strong masks demand overlap, faint masks demand c
     ...valid, regions: strongLowOverlap,
   }), /subtitle-mask overlap .* is too low/u);
 
-  const faintApart = { entry: region(), exit: region() };
-  faintApart.entry.mainMaskCentroid = { x: 60, y: 60 };
-  faintApart.entry.renderMaskCentroid = { x: 400, y: 300 };
-  assert.throws(() => verifyExportAnimationParityObservation({
-    ...valid, regions: faintApart,
-  }), /faint Main\/Render subtitle masks are .* of the frame apart/u);
-
-  const faintTogetherLowOverlap = { entry: region(), exit: region() };
-  faintTogetherLowOverlap.entry.mainRenderMaskOverlap = 0.22;
-  verifyExportAnimationParityObservation({ ...valid, regions: faintTogetherLowOverlap });
+  // Faint masks carry no reliable geometry (their pixels are capture-path noise at the channel
+  // threshold); their agreement is bounded by pairs.mainRender inside the ROI instead, so a low
+  // exact overlap must be accepted there.
+  const faintLowOverlap = { entry: region(), exit: region() };
+  faintLowOverlap.entry.mainRenderMaskOverlap = 0.22;
+  verifyExportAnimationParityObservation({ ...valid, regions: faintLowOverlap });
 });

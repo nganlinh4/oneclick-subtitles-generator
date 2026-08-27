@@ -2078,11 +2078,28 @@ export const runRootArtifactName = (relativePath) => {
 export const preserveRunRootEvidence = ({
   workflow,
   runRoot,
+  attemptId = null,
   maximumFiles = 200,
   maximumBytes = 512 * 1024 * 1024,
 }) => {
   const sourceRoot = join(runRoot, 'evidence');
   if (!existsSync(sourceRoot)) return Object.freeze({ preserved: 0, skipped: 0 });
+  // The artifact copier resolves its attempt from the environment; the isolated runner sets that
+  // variable only on its CHILD, so without pinning it here the preserved files would land in a
+  // freshly minted implicit attempt beside the one that actually failed.
+  const priorAttempt = process.env[ATTEMPT_ENVIRONMENT_KEY];
+  if (attemptId !== null) process.env[ATTEMPT_ENVIRONMENT_KEY] = attemptId;
+  try {
+    return preserveInto({ workflow, sourceRoot, maximumFiles, maximumBytes });
+  } finally {
+    if (attemptId !== null) {
+      if (priorAttempt === undefined) delete process.env[ATTEMPT_ENVIRONMENT_KEY];
+      else process.env[ATTEMPT_ENVIRONMENT_KEY] = priorAttempt;
+    }
+  }
+};
+
+const preserveInto = ({ workflow, sourceRoot, maximumFiles, maximumBytes }) => {
   const files = [];
   const pending = [sourceRoot];
   while (pending.length > 0) {

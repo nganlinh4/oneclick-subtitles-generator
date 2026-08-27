@@ -649,7 +649,7 @@ const assertCompleteVisibleSample = (sample, context, expectsSubtitleInk = true)
   ));
 };
 
-const assertVisualContinuity = (samples, context, easing = null) => {
+const assertVisualContinuity = (samples, context, easing = null, animationType = null) => {
   const classified = samples.filter(sample => sample.visual?.classified === true);
   assert.ok(classified.length >= samples.length * 0.95, (
     `${context}: visual publication sentinel stayed unclassified for too many frames`
@@ -676,6 +676,15 @@ const assertVisualContinuity = (samples, context, easing = null) => {
     const expectsSubtitleInk = easing === null
       ? true
       : (() => {
+        // Typewriter reveals glyphs cumulatively through the fade-in: at low progress ZERO
+        // characters are typed yet, so an inkless overlay is correct product behavior for an
+        // unknowable slice of the ramp (the reveal boundary depends on cluster widths). The
+        // per-phase frame proofs still pin that typewriter entry carries fewer pixels than
+        // holding, so accepting either publication during its fade-in loses no coverage.
+        if (animationType === 'typewriter') {
+          const active = activeAnimationCueAt(pixelTime);
+          if (active !== null && active.phase === 'fadingIn') return null;
+        }
         const atPixels = inkOwedAt(pixelTime);
         const atScene = inkOwedAt(pixelTime + SOURCE_PIXEL_CLOCK_LAG_SECONDS);
         return atPixels === atScene ? atPixels : null;
@@ -751,7 +760,7 @@ const assertPlaybackContinuity = (samples, mediaEvents, animation) => {
     `${context}: compositor plateaued`
   ));
   return Object.freeze({
-    ...assertVisualContinuity(samples, context, animation.easing),
+    ...assertVisualContinuity(samples, context, animation.easing, animation.type),
     waitingRecoveries: recoveries,
   });
 };
