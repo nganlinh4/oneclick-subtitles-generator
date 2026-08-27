@@ -112,6 +112,38 @@ it('refuses an A to B to A activation even when every visible identifier returns
   });
 });
 
+it('converges when its own project publication lands while resolution is in flight', async () => {
+  const { state, dependencies, resolver } = createHarness();
+  // A cue write commits durable revision 8 while the local snapshot still says 7 — the exact race
+  // that made a successful transcription toast "media changed". The local publication (and its
+  // epoch bump) lands before the bounded re-capture, which must then succeed on the new revision.
+  dependencies.resolveOwner.mockImplementationOnce(async () => {
+    const advanced = project(PROJECT_A, 8, asset(ASSET_A));
+    setTimeout(() => {
+      state.active = advanced;
+      state.owner = Object.freeze({ cacheId: 'alias-a', projectId: PROJECT_A, snapshot: advanced });
+      state.epoch += 1;
+    }, 0);
+    return Object.freeze({ cacheId: 'alias-a', projectId: PROJECT_A, snapshot: advanced });
+  });
+  const result = await resolver.resolve();
+  expect(result.stateVersion).toBe(8);
+});
+
+it('still refuses a mid-flight revision regression such as an undo', async () => {
+  const { state, dependencies, resolver } = createHarness();
+  dependencies.getPlayback.mockImplementationOnce(async () => {
+    const regressed = project(PROJECT_A, 6, asset(ASSET_A));
+    state.active = regressed;
+    state.owner = Object.freeze({ cacheId: 'alias-a', projectId: PROJECT_A, snapshot: regressed });
+    state.epoch += 1;
+    return state.playback;
+  });
+  await expect(resolver.resolve()).rejects.toMatchObject({
+    code: 'activeNativeMediaChanged',
+  });
+});
+
 it('refuses an alias remap that wins after native playback resolution', async () => {
   const { state, dependencies, resolver } = createHarness();
   dependencies.resolveOwner

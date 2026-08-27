@@ -135,7 +135,34 @@ export const createActiveNativeMediaResolver = ({
     throw new TypeError('Active native media resolution requires reviewed dependencies');
   }
 
-  const resolve = async ({ candidate = null, restore = false } = {}) => {
+  // A concurrent FORWARD publication of the SAME project — a cue write landing, or the durable
+  // owner read returning one revision ahead of the just-captured local snapshot — is convergence,
+  // not a media change: every attempt below re-captures from scratch, so retrying is exactly what
+  // a fresh caller-side resolve would do. Retryable turbulence therefore requires both that the
+  // end state still names the captured project, asset, and alias session AND that a revision
+  // genuinely advanced. An A-to-B-to-A replacement restores the SAME revision and an undo
+  // regresses it, so both keep failing closed exactly as before; so does any exhaustion.
+  const turbulence = (identity, { durableStateVersion = null } = {}) => {
+    try {
+      const snapshot = getActiveSnapshot();
+      const namesSameMedia = snapshot?.metadata?.id === identity.projectId
+        && Array.isArray(snapshot.media)
+        && snapshot.media.length === 1
+        && sameAsset(snapshot.media[0], identity.asset)
+        && sameSession(readSession(), identity);
+      const advanced = (isSafeStateVersion(snapshot?.stateVersion)
+          && snapshot.stateVersion > identity.stateVersion)
+        || (isSafeStateVersion(durableStateVersion)
+          && durableStateVersion > identity.stateVersion);
+      return unavailable(namesSameMedia && advanced
+        ? 'activeNativeMediaRevisionSkew'
+        : 'activeNativeMediaChanged');
+    } catch {
+      return unavailable('activeNativeMediaChanged');
+    }
+  };
+
+  const resolveOnce = async ({ candidate = null, restore = false } = {}) => {
     if (isDesktop() !== true) throw unavailable('nativeRuntimeRequired');
 
     const capturedProject = getActiveSnapshot();
@@ -160,7 +187,7 @@ export const createActiveNativeMediaResolver = ({
       if (readActivationEpoch() !== identity.epoch
           || !sameProjectRevision(getActiveSnapshot(), identity)
           || !sameSession(readSession(), identity)) {
-        throw unavailable('activeNativeMediaChanged');
+        throw turbulence(identity);
       }
     };
 
@@ -173,7 +200,7 @@ export const createActiveNativeMediaResolver = ({
           || !Array.isArray(owner.snapshot?.media)
           || owner.snapshot.media.length !== 1
           || !sameAsset(owner.snapshot.media[0], identity.asset)) {
-        throw unavailable('activeNativeMediaChanged');
+        throw turbulence(identity, { durableStateVersion: owner?.snapshot?.stateVersion ?? null });
       }
     };
 
@@ -199,6 +226,18 @@ export const createActiveNativeMediaResolver = ({
       assetId: identity.asset.id,
       media: descriptor,
     });
+  };
+
+  const resolve = async (input = {}) => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await resolveOnce(input);
+      } catch (error) {
+        if (error?.code !== 'activeNativeMediaRevisionSkew') throw error;
+        if (attempt >= 3) throw unavailable('activeNativeMediaChanged');
+        await new Promise((settle) => { setTimeout(settle, 50 * attempt); });
+      }
+    }
   };
 
   const revalidate = async (capability) => {
