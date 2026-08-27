@@ -668,8 +668,14 @@ const verifyRegion = (region, definition, phase, expectedGeometry) => {
     assert.ok(measurement.meanRgbDistance >= MIN_SOURCE_SIGNAL_MEAN_DISTANCE, (
       `${label}: ${surface} is indistinguishable from independently decoded source`
     ));
-    assert.ok(measurement.changedPixels >= MIN_SOURCE_SIGNAL_PIXELS, (
-      `${label}: ${surface} changes only ${measurement.changedPixels} ROI pixels against the decoded source`
+    // A tiny animation-entry ROI (a bounce or scale cue at low progress) can be smaller than the
+    // fixed floor itself; distinguishability there means a meaningful fraction of that small ROI.
+    const signalFloor = Math.min(
+      MIN_SOURCE_SIGNAL_PIXELS,
+      Math.max(24, Math.floor(region.roiPixels / 4)),
+    );
+    assert.ok(measurement.changedPixels >= signalFloor, (
+      `${label}: ${surface} changes only ${measurement.changedPixels} ROI pixels against the decoded source (floor ${signalFloor})`
     ));
   }
 };
