@@ -1335,6 +1335,13 @@
       "note": "Resolving the active native media captured the local project revision and demanded the durable owner and every later local read match it exactly, so a same-project cue write landing mid-resolve read as a media change and failed the whole auto flow while the subtitles sat correctly on screen. Turbulence whose end state still names the captured project, asset and alias session AND whose revision genuinely advanced now retries a bounded full re-capture; an A-to-B switch, an A-to-B-to-A replacement (same revision restored), an undo (revision regressed), an alias remap and exhaustion all keep failing closed. Eleven resolver tests pin both directions. The four-window ASR break turned out to be a different root (see the zero-length tail segment finding), and the toast RECURRED on the fixed binary through some second thrower sharing the message, seconds after a successful generation - the journey now ledgers every console.error so the next occurrence names that path's exact code and stack."
     },
     {
+      "finding": "The first engine-status probe of a process content-verifies every published engine tree - over 41,000 files for one engine's Python runtime alone - so on a cold antivirus cache the tools tab and engine readiness can sit at 'checking' for tens of minutes.",
+      "foundBy": "settingsSurface and localAsrGeneration engine-settle timeouts; measured directly (one tree: 41,507 files, a cold walk exceeding 6m40s while a single 1.6GB file hashes at 220MB/s)",
+      "status": "open",
+      "severity": "major",
+      "note": "Verify-once-per-process full-tree integrity is a deliberate delivery-contract property, and the cost is per-file open under real-time antivirus, not per byte. A customer's first session after installing an engine pays it in full on the settings tab and on first transcription readiness. Candidate designs - receipt-driven fast paths, verification at install time with cheap size/mtime attestation afterward, or per-engine incremental status - all touch the reviewed delivery contract and need an owner decision. The suite warms the store's file cache before engine journeys so its own claims stay about the product rather than the antivirus."
+    },
+    {
       "finding": "A windowed local transcription lost a whole window to 'Processing failed: The desktop host returned invalid ASR data' whenever the model's final word started at or past the window's decoded audio end.",
       "foundBy": "multiWindowAsrPersistence, named by its instrumented error-toast ledger",
       "status": "fixed",
