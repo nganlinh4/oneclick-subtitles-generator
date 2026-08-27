@@ -1307,9 +1307,9 @@
     {
       "finding": "A single black frame reached the visible preview canvas immediately after a backward seek during playback.",
       "foundBy": "subtitleMaterialAndAnimation",
-      "status": "open",
-      "severity": "minor",
-      "recurrenceWatch": "One occurrence (attempt 20260827021426962-53856-17916ed8, case slide-up/ease-out, publication 1 at 8.7ms after witness attach: black, hasVideo false, sourceTime null). The signature matches a settled-seek snapshot capturing the decoder surface mid-transition, which Chromium can legally hand back black; the same case passed in the surrounding runs. The continuity witness fails fast and preserves the trace whenever it recurs."
+      "status": "fixed",
+      "severity": "major",
+      "note": "Recurred on the next run at a different case with the identical signature (publication 1 right after a playing backward seek: black, hasVideo false, sourceTime null), so it was the settled-seek snapshot capturing the transitioning decoder surface, which drawImage may legally return as solid black at that exact boundary. A PLAYING element now defers publication to its next presented rVFC frame — which can never be that surface — while the held pre-seek composition covers the one-frame gap; only a paused element still takes the settled snapshot, because no future presentation may come for it. A component regression pins the deferral."
     }
   ],
   "fixtures": {

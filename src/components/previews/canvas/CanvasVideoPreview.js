@@ -877,6 +877,16 @@ const CanvasVideoPreview = ({
         videoWithFrameCallback.cancelVideoFrameCallback(videoFrameHandle);
       }
       videoFrameHandle = null;
+      // Only a PAUSED element needs the settled snapshot, because no future presentation may ever
+      // come for it. A PLAYING video re-enters the presentation loop immediately, and its next
+      // rVFC delivers the first decoded post-seek frame — while drawImage at this exact settled
+      // boundary can still legally hand back the transitioning decoder surface as solid black,
+      // which is precisely the one-frame black flash the continuity witness caught after playing
+      // backward seeks. The held pre-seek composition covers the one-frame gap.
+      if (!video.paused) {
+        schedule();
+        return;
+      }
       const candidate = captureCandidate(
         video,
         null,

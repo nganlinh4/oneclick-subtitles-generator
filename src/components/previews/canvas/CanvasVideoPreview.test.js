@@ -959,6 +959,80 @@ describe('canvas preview geometry boundary', () => {
     expect(canvas.dataset.osgSceneTime).toBe('2.8');
   });
 
+  it('defers a PLAYING seek to the next presented frame instead of snapshotting the element', async () => {
+    // drawImage at the settled boundary of a playing seek can legally hand back the transitioning
+    // decoder surface as solid black — the one-frame flash the continuity witness caught. The
+    // presentation loop delivers a real decoded frame immediately, so a playing seeked must not
+    // snapshot; the held pre-seek composition covers the gap.
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    let currentTime = 2.0;
+    let readyState = 4;
+    let nativeSeeking = false;
+    let callbackSequence = 0;
+    const callbacks = new Map();
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, get: () => currentTime },
+      readyState: { configurable: true, get: () => readyState },
+      seeking: { configurable: true, get: () => nativeSeeking },
+      paused: { configurable: true, value: false },
+      requestVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn((callback) => {
+          callbackSequence += 1;
+          callbacks.set(callbackSequence, callback);
+          return callbackSequence;
+        }),
+      },
+      cancelVideoFrameCallback: { configurable: true, value: vi.fn() },
+    });
+    const fireLatestFrame = async (mediaTime) => {
+      const handle = [...callbacks.keys()].at(-1);
+      const callback = callbacks.get(handle);
+      callbacks.delete(handle);
+      await act(async () => callback(performance.now(), { mediaTime, presentedFrames: handle }));
+    };
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="playing-seek-defers"
+      playing
+      currentTime={currentTime}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+    />);
+    const canvas = container.querySelector('canvas');
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalled());
+    await fireLatestFrame(2.0);
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('1'));
+
+    nativeSeeking = true;
+    currentTime = 0.9;
+    act(() => video.dispatchEvent(new Event('seeking')));
+    const capturesBeforeSeeked = captureVideoFrame.mock.calls.length;
+    nativeSeeking = false;
+    act(() => video.dispatchEvent(new Event('seeked')));
+    // No settled snapshot for a playing element: the capture count is unchanged and the held
+    // composition remains the published one.
+    expect(captureVideoFrame).toHaveBeenCalledTimes(capturesBeforeSeeked);
+    expect(canvas.dataset.osgFrameRevision).toBe('1');
+
+    await fireLatestFrame(0.9);
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('2'));
+    expect(canvas.dataset.osgSourceClockProvenance).toBe('rvfc');
+    expect(Number(canvas.dataset.osgSourceMediaTime)).toBeCloseTo(0.9, 12);
+  });
+
   it('publishes only generation-current presented frames and keeps metadata time atomic with pixels', async () => {
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
     window.__OSG_FONT_READINESS__ = {
@@ -970,6 +1044,17 @@ describe('canvas preview geometry boundary', () => {
       retryable: false,
       version: MANAGED_FONT_PACKAGE.version,
     };
+    // The bounded capture retry arms real animation frames; jsdom fires those on its own timer,
+    // which would nondeterministically insert captures and shift this test's exact presentation
+    // handle choreography. Collect them unfired so only explicit fireFrame calls advance state.
+    const suppressedAnimationFrames = new Map();
+    let suppressedAnimationSequence = 0;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+      suppressedAnimationSequence += 1;
+      suppressedAnimationFrames.set(suppressedAnimationSequence, callback);
+      return suppressedAnimationSequence;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn(handle => suppressedAnimationFrames.delete(handle)));
     let currentTime = 0.5;
     let readyState = 1;
     let nativeSeeking = false;
