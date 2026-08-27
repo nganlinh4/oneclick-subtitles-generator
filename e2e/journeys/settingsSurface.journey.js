@@ -11,6 +11,10 @@ import {
 } from 'node:path';
 
 import { clickControl, openEditor, waitForEditorReady } from '../support/editor.js';
+import {
+  appearanceSnapshot,
+  selectAlternateDropdownOption,
+} from '../support/settingsAppearance.js';
 import { withDatabase } from '../support/database.js';
 import { ENGINE_PACKAGES_CACHE, NATIVE_TOOLS_CACHE } from '../support/environment.js';
 import { digestFrameRgbaRegion } from '../support/nativeMediaOracle.js';
@@ -579,58 +583,6 @@ const activeControlMap = (rootSelector, requiredSelectors) => browser.execute((
     externalLinks: root === null ? 0 : root.querySelectorAll('a[target="_blank"]').length,
   };
 }, rootSelector, requiredSelectors);
-
-const appearanceSnapshot = () => browser.execute(() => ({
-  theme: localStorage.getItem('theme'),
-  documentTheme: document.documentElement.getAttribute('data-theme'),
-  font: localStorage.getItem('app_font'),
-  primaryFont: document.documentElement.style.getPropertyValue('--font-primary'),
-  language: localStorage.getItem('preferred_language'),
-  fontLabel: document.querySelector(
-    '.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button .dropdown-value',
-  )?.textContent?.trim() ?? null,
-  languageLabel: document.querySelector(
-    '.settings-footer-controls > .custom-dropdown:not(.app-font-dropdown)'
-      + ' > .custom-dropdown-button .dropdown-value',
-  )?.textContent?.trim() ?? null,
-}));
-
-const selectAlternateDropdownOption = async (buttonSelector) => {
-  const before = await $(`${buttonSelector} .dropdown-value`).getText();
-  await clickControl(buttonSelector);
-  const menu = await $('.custom-dropdown-clipper');
-  await menu.waitForDisplayed({ timeout: 10_000, timeoutMsg: `${buttonSelector} did not open` });
-  const options = await $$('.custom-dropdown-clipper .dropdown-option:not(.disabled)');
-  let optionIndex = -1;
-  for (let index = 0; index < options.length; index += 1) {
-    if (!(await options[index].getAttribute('class')).includes('selected')) {
-      optionIndex = index;
-      break;
-    }
-  }
-  assert.ok(optionIndex >= 0, `${buttonSelector} has no alternate public option`);
-  const choice = options[optionIndex];
-  const selected = await choice.getText();
-  await browser.action('pointer')
-    .move({ origin: choice })
-    .down({ button: 0 })
-    .pause(100)
-    .up({ button: 0 })
-    .perform();
-  await browser.waitUntil(async () => (
-    (await $(`${buttonSelector} .dropdown-value`).getText()) !== before
-  ), {
-    timeout: 10_000,
-    interval: 100,
-    timeoutMsg: `${buttonSelector} did not commit its selected option`,
-  });
-  await menu.waitForExist({
-    reverse: true,
-    timeout: 10_000,
-    timeoutMsg: `${buttonSelector} left its selection portal open`,
-  });
-  return { before, selected, optionIndex };
-};
 
 const switchSelected = (selector) => browser.execute(
   (target) => document.querySelector(target)?.selected ?? null,

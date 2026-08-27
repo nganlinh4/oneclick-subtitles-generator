@@ -43,6 +43,16 @@ const ACTIVATION_TIMEOUT_MS = 180_000;
  */
 export const openProjectWithMedia = async () => {
   await openEditor();
+  await selectStagedMediaFile();
+};
+
+/**
+ * Drive only the media selection itself: the real Upload File tab, the real drop zone, the actual
+ * `select_media` command. Separate from `openProjectWithMedia` because a journey that already
+ * holds an editor session — for example one that imported a subtitle document first — attaches
+ * media through exactly this flow without re-running onboarding.
+ */
+export const selectStagedMediaFile = async () => {
   await clickControl('[data-input-tab="file-upload"]');
   await clickControl('.file-upload-input');
 

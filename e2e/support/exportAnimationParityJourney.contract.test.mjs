@@ -93,9 +93,11 @@ test('preview admission distinguishes decoded-source time from the exported scen
 
 test('the two imported setup helpers cannot hide product-state mutation', () => {
   const openMedia = exportedHelper('openProjectWithMedia');
+  const selectMedia = exportedHelper('selectStagedMediaFile');
   const importDocument = exportedHelper('importSubtitleDocument');
-  assert.match(openMedia, /clickControl\('\[data-input-tab="file-upload"\]'\)/u);
-  assert.match(openMedia, /clickControl\('\.file-upload-input'\)/u);
+  assert.match(openMedia, /selectStagedMediaFile\(\)/u);
+  assert.match(selectMedia, /clickControl\('\[data-input-tab="file-upload"\]'\)/u);
+  assert.match(selectMedia, /clickControl\('\.file-upload-input'\)/u);
   assert.match(importDocument, /\.srt-upload-button-container/u);
   assert.match(importDocument, /new File\(/u);
   assert.match(importDocument, /new DataTransfer\(/u);
@@ -108,6 +110,7 @@ test('the two imported setup helpers cannot hide product-state mutation', () => 
     ['React internals', /__react|reactProps|reactFiber/iu],
   ]) {
     assert.doesNotMatch(openMedia, forbidden, `openProjectWithMedia contains ${label}`);
+    assert.doesNotMatch(selectMedia, forbidden, `selectStagedMediaFile contains ${label}`);
     assert.doesNotMatch(importDocument, forbidden, `importSubtitleDocument contains ${label}`);
   }
 });
