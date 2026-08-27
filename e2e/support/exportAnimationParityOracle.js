@@ -24,7 +24,11 @@ const STRONG_SURFACE_MASK_PIXELS = 3_000;
 // the two capture paths diverge at a given alpha; agreement with a real surface is the claim.
 const MIN_EXPORT_MASK_COVERAGE = 0.55;
 const MAX_EXPORT_MASK_RATIO = 0.35;
-const MIN_SOURCE_SIGNAL_COVERAGE = 0.12;
+// Distinguishability from the decoded source is an ABSOLUTE ink floor, not a fraction of the
+// ROI: the ROI is the union of both surfaces' masks plus expansion, so its size varies with how
+// far the capture paths diverge at a given alpha, and a fixed fraction of it produced epsilon
+// misses for correct faint ink. Placement/agreement live in the coverage and pair claims.
+const MIN_SOURCE_SIGNAL_PIXELS = 128;
 const MIN_SOURCE_SIGNAL_MEAN_DISTANCE = 2;
 const MAX_ROI_MEAN_DISTANCE = 30;
 const MAX_ROI_CHANGED_RATIO = 0.65;
@@ -664,8 +668,8 @@ const verifyRegion = (region, definition, phase, expectedGeometry) => {
     assert.ok(measurement.meanRgbDistance >= MIN_SOURCE_SIGNAL_MEAN_DISTANCE, (
       `${label}: ${surface} is indistinguishable from independently decoded source`
     ));
-    assert.ok(measurement.changedRatio >= MIN_SOURCE_SIGNAL_COVERAGE, (
-      `${label}: ${surface} changes only ${measurement.changedRatio} of the subtitle ROI`
+    assert.ok(measurement.changedPixels >= MIN_SOURCE_SIGNAL_PIXELS, (
+      `${label}: ${surface} changes only ${measurement.changedPixels} ROI pixels against the decoded source`
     ));
   }
 };

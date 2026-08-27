@@ -910,7 +910,7 @@
       "kind": "workflow-visual",
       "file": "journeys/subtitleMaterialAndAnimation.journey.js",
       "capability": "Every public subtitle material, typography, alignment, transform, colour, background, five border styles, shadow, glow, six gradient directions, stroke, anchor, margin, custom placement, width and timing control persists cumulatively into the project-owned scene and changes native pixels; a bounded sixteen-case sweep proves all seven easings on one fixed animation plus each of the other nine animations through uninterrupted multilingual playback.",
-      "status": "unproven",
+      "status": "green",
       "recommendedJourney": "previewCustomizationMatrix",
       "oracles": [
         "public controls only in one guarded off-screen/non-focusable/muted embedded-WebDriver binary",
@@ -920,7 +920,8 @@
         "same-instant composed/source-only screenshots independently decoded for pixel centroid, area and energy plus temporal entry/mid/exit deltas",
         "a pre-setup MutationObserver ledger that rejects even transient visible errors or nonempty native preview refusal codes"
       ],
-      "note": "The journey and hostile pure contracts are written but deliberately remain unproven until a freshly rebuilt guarded binary completes the matrix and publishes the seven grouped material plus three representative animation artifacts under the managed external evidence lane/subtitle-material-and-animation. Written source, mocked UI and an uninspected screenshot must not promote this entry to green."
+      "note": "Green in off-screen real-binary attempt 20260827033637334-63664-23411c41 (exe sha256 9c240437a41d…), all seven grouped material frames and three representative animation frames inspected: the cumulative 56-field customization drew the multilingual cue (Vietnamese, Korean, inline Arabic, ZWJ emoji, combining marks) through typography, five borders, shadow/glow, six gradient directions with stroke, anchors/margins, custom placement/wrap and timing, and the sweep proved all seven easings on slide-up plus the other nine animations through uninterrupted playback — the typewriter entry frame shows the partial reveal mid-type. Getting here surfaced and fixed two real preview defects (the idle paused Render surface and the black transitioning-surface capture at seek boundaries) and taught the continuity witness to classify pre-attach compositions as unknown provenance instead of reporting the held-frame design as a black flash.",
+      "lastGreenBinary": "30ad351a761946b91a826a7458099aff4e14f6a2087ea0c0b6a0b074c73604e1"
     },
     {
       "name": "exportAnimationParityMatrix",
