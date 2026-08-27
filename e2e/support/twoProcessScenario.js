@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import {
@@ -27,6 +28,48 @@ const E2E_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WDIO = join(E2E_ROOT, 'node_modules', '@wdio', 'cli', 'bin', 'wdio.js');
 const require = createRequire(import.meta.url);
 const { runSupervisedSync } = require('../../scripts/windows-job-supervisor.js');
+
+const sleepSync = (milliseconds) => {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+  } catch {
+    const untilMs = Date.now() + milliseconds;
+    while (Date.now() < untilMs) { /* fallback busy-wait */ }
+  }
+};
+
+const webviewProfileBusy = (root) => {
+  try {
+    const output = execFileSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      '@(Get-CimInstance Win32_Process -Filter "Name=\'msedgewebview2.exe\'"'
+      + ' | Where-Object { $_.CommandLine -match [regex]::Escape($env:OSG_E2E_WEBVIEW_PROFILE) }).Count',
+    ], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      windowsHide: true,
+      env: { ...process.env, OSG_E2E_WEBVIEW_PROFILE: join(root, 'webview') },
+    });
+    return Number(output.trim()) > 0;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * A relaunch phase reuses the seed phase's WebView2 user-data folder, and Edge's browser
+ * subprocesses release that profile asynchronously after the seed application exits. A fresh
+ * process opening the profile during that release has twice fail-fasted silently at startup
+ * (0xC0000409, nothing on stderr, an empty run root) — once in a stress iteration, once in this
+ * exact seed-to-verify handoff. Wait, bounded, for every WebView process still naming the profile
+ * to leave before launching the next phase.
+ */
+const awaitWebviewProfileRelease = (root) => {
+  if (process.platform !== 'win32') return;
+  for (let waitedMs = 0; waitedMs < 30_000 && webviewProfileBusy(root); waitedMs += 500) {
+    sleepSync(500);
+  }
+};
 
 export const runScenarioProcesses = ({
   label,
@@ -89,7 +132,10 @@ export const runScenarioProcesses = ({
   };
 
   try {
+    let firstPhase = true;
     for (const phase of phases) {
+      if (!firstPhase) awaitWebviewProfileRelease(root);
+      firstPhase = false;
       const result = runPhase(phase);
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error(`${phase} process failed with exit ${result.status}`);
