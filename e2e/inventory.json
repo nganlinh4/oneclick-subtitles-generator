@@ -422,9 +422,17 @@
     {
       "name": "localFileImport",
       "kind": "workflow",
+      "file": "journeys/localFileImport.journey.js",
       "capability": "A customer opens a video already on their disk.",
-      "status": "covered-indirectly",
-      "note": "editPersistRelaunch and unicodeCues both open the real video through the real file control, so the import path is exercised. There is no journey whose SUBJECT is import, so a defect that only affects import without affecting persistence would be reported by the wrong journey."
+      "status": "ready-unrun",
+      "oracles": [
+        "ffprobe and SHA-256 of the staged source, read before the application ever sees the file",
+        "the app's reported duration/dimensions against the independent probe, plus the private native media-server URL shape",
+        "read-only SQLite media identity and the persisted windows-utf16le location pointer, decoded, contained to the owned artifact store, and re-hashed independently against the selected bytes",
+        "three screenshots under the managed external evidence lane/local-file-import"
+      ],
+      "runsAgainst": "e2e-binary",
+      "note": "Import is now its own subject: editPersistRelaunch and unicodeCues exercise the path incidentally, but a defect that only affects import would be reported by the wrong journey. Authored with a unit-tested location-pointer oracle; not green until the current guarded binary completes it and the evidence is inspected."
     },
     {
       "name": "timelineBoundary",
@@ -654,10 +662,17 @@
     {
       "name": "srtOnlyAndJsonImport",
       "kind": "workflow",
+      "file": "journeys/srtOnlyMediaAttach.journey.js",
       "capability": "SRT-only mode and JSON subtitle import work without a video, and later attachment to media preserves the track.",
-      "status": "unproven",
-      "recommendedJourney": "editorCrudAndSubtitleDocuments",
-      "note": "Media-free JSON import and explicit SRT-only editing are green in subtitleDocumentRoundTrip. This broader compound claim stays unproven because attaching that document to later media has not yet been exercised."
+      "status": "ready-unrun",
+      "oracles": [
+        "the explicit public SRT-only mode and visible cue list before any media exists",
+        "the same staged-selection media flow every other journey uses, entered mid-session",
+        "read-only SQLite proving the exact authored cue order survived attachment with no failed job",
+        "the native canvas drawing a pre-authored cue over the attached video, with two screenshots under the managed external evidence lane/srt-only-media-attach"
+      ],
+      "runsAgainst": "e2e-binary",
+      "note": "Media-free JSON import and the three document exports are green in subtitleDocumentRoundTrip; the authored journey owns the remaining compound half — a track authored before any media surviving the later attachment. Not green until the current guarded binary completes it and the evidence is inspected."
     },
     {
       "name": "subtitleDocumentRoundTrip",
@@ -954,11 +969,19 @@
     },
     {
       "name": "renderQueueCancelRetryAndRelaunch",
-      "kind": "workflow",
+      "kind": "workflow-persistence",
+      "file": "journeys/renderInterruptRecovery.journey.js",
       "capability": "Queued renders, cancellation, retry, failure cleanup and relaunch recovery never publish partial or stale artifacts.",
-      "status": "unproven",
-      "recommendedJourney": "renderControlsAndRecovery",
-      "note": "One successful render is green and renderCancelRetryExport covers single-process cancel/retry/save. Multi-render queue ordering and every relaunch-recovery boundary remain without real-binary proof."
+      "status": "ready-unrun",
+      "oracles": [
+        "one admitted running native render whose seed process is torn down mid-flight, exactly as a crash would",
+        "read-only SQLite proving the killed job restores terminal (never a zombie or a promoted success) via the boot-time interrupt/reconcile boundary",
+        "the artifact-root reconciliation proving no partial bytes survive as downloadable output",
+        "a second process completing an ordinary render to success with an exactly reconciled artifact",
+        "three screenshots under the managed external evidence lane/render-interrupt-recovery"
+      ],
+      "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
+      "note": "renderCancelRetryExport is green for single-process cancel/retry/save; the authored interruption scenario owns the relaunch half. Multi-render queue ORDERING remains uncovered by both. Not green until both hidden desktop processes complete and the evidence is inspected."
     },
     {
       "name": "backgroundImageGeneration",
@@ -1016,7 +1039,7 @@
       "capability": "Segment duration, model, time format, waveform, video optimization, cookies, search, subtitle import, analysis, effects, thinking budgets, custom models and prompts save and affect only their documented consumers.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "No real-binary journey traverses or persists the Video Processing and Prompts tabs."
+      "note": "settingsSurface (green) traverses both tabs, persists time format, the waveform preference and an edited prompt to SQLite and restores them in-process; the settingsAppearancePersistence scenario carries their relaunch hydration. The broader claim that every listed control affects only its documented consumers remains unproven."
     },
     {
       "name": "settingsCacheManagement",
@@ -1039,19 +1062,22 @@
       "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "dependencies": {
-        "owner": "project-delivery",
-        "requires": "a reviewed model catalog and signed package operations",
-        "note": "A source audit found the UI advertises custom/alternate model operations while modelService currently accepts only f5tts-v1-base. This remains unproven, not green, until a real journey resolves the contract."
-      }
+      "note": "The earlier contract mismatch is resolved in source: the tab now advertises exactly the one catalog-verified F5-TTS v1 Base package with install/update/repair/remove/cancel/refresh, matching modelService and the native speech boundary; the old custom/alternate model dialogs are gone (CustomModelDialog survives only as a generic modal shell used by the split modal). Still unproven because no real-binary journey drives the visible tab through install, cancel, remove and repair against the signed delivery; narrationGeneration proves the package delivery itself."
     },
     {
       "name": "settingsAppearanceAndPersistence",
-      "kind": "workflow",
+      "kind": "workflow-persistence",
+      "file": "journeys/settingsAppearancePersistence.journey.js",
       "capability": "Theme, language and application font changes apply across the complete UI and survive a process restart.",
-      "status": "unproven",
-      "recommendedJourney": "settingsAndRecovery",
-      "note": "freshInstallVisual captures the preference screen and defaultFont proves one subtitle font package; neither proves Settings changes and relaunch persistence."
+      "status": "ready-unrun",
+      "oracles": [
+        "the same shared footer controls the green Settings surface journey drives",
+        "read-only SQLite app_settings before and after the public Save",
+        "a second independently launched desktop process whose verify phase derives every expectation from the database alone",
+        "three screenshots under the managed external evidence lane/settings-appearance-persistence"
+      ],
+      "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
+      "note": "settingsSurface proves the controls change, save and restore inside one process; the authored scenario owns the relaunch half and also carries the Video Processing and Prompts keys (time format, waveform preference, transcription prompt) so both settings capabilities gain their restart proof from one pair of processes. Not green until both hidden desktop processes complete and the evidence is inspected."
     },
     {
       "name": "settingsToolsRemoveAndFactoryReset",
@@ -1244,6 +1270,13 @@
       "foundBy": "editPersistRelaunch",
       "status": "harness-fixed",
       "note": "The original occurrence was not reproducible after the sole WebView handle was explicitly selected. The durability claim is now separately proven by two application processes; active-window recovery is no longer conflated with relaunch coverage."
+    },
+    {
+      "finding": "Opening Render on a paused project could leave the native preview permanently idle until the customer seeked or played.",
+      "foundBy": "subtitleMaterialAndAnimation",
+      "status": "fixed",
+      "severity": "major",
+      "note": "A paused element's only presentation can predate the armed requestVideoFrameCallback, and an occluded surface may never composite another frame; the load events only re-armed the callback and the no-clock draw guard returned bare, freezing the published state at idle. Load events on a settled paused element now run the same settled-snapshot publication as the seeked boundary, and the no-clock guard arms the bounded capture retry. Two component regressions pin both paths; the journey rerun against a rebuilt binary owns the end-to-end proof."
     }
   ],
   "fixtures": {

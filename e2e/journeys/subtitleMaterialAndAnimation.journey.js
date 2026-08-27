@@ -240,6 +240,18 @@ const publicSeek = async (seconds, paused, { cue = '0', status = 'ready' } = {})
   assert.ok(Math.abs(reachableSeconds - seconds) <= step / 2 + Number.EPSILON, (
     `seek target ${seconds} cannot be represented by public step ${step}`
   ));
+  // A seek issued while PLAYING can only be verified as a jump, never as a settled instant: the
+  // playhead moves on immediately, so demanding exact equality is a poll race the journey loses
+  // whenever the sampling interval misses the one matching frame. Every playing seek here jumps
+  // BACKWARDS to a witness start, so the window below is reachable only through the actual jump —
+  // ordinary monotonic playback from the pre-seek position can never re-enter it.
+  if (!paused) {
+    assert.ok(before.video !== null && seconds < before.video.currentTime - 0.1,
+      `a playing public seek must jump backwards to its witness start (${seconds}s from ${before.video?.currentTime}s)`);
+  }
+  const playingWindowEnd = paused
+    ? Number.NaN
+    : Math.min(seconds + 1.5, before.video.currentTime - 0.05);
   await actuateNativeRange({
     driver: browser,
     selector: SEEK,
@@ -250,22 +262,27 @@ const publicSeek = async (seconds, paused, { cue = '0', status = 'ready' } = {})
   try {
     await browser.waitUntil(async () => {
       state = await previewState();
-      return state.video !== null
-        && state.video.paused === paused
-        && !state.video.seeking
-        && Math.abs(state.video.currentTime - seconds) <= 0.05
-        && state.canvas?.revision > before.canvas.revision
+      if (state.video === null || state.video.paused !== paused || state.video.seeking) return false;
+      const shared = state.canvas?.revision > before.canvas.revision
         && Number.isFinite(state.canvas.transportTime)
         && Number.isFinite(state.canvas.sceneTime)
-        && Math.abs(state.canvas.sceneTime - seconds) <= 0.05
-        && Math.abs(state.canvas.transportTime - reachableSeconds) <= 0.000_001
         && state.canvas.sceneTime <= state.canvas.transportTime + 0.000_001
-        && state.canvas.transportTime - state.canvas.sceneTime <= step + 0.000_001
         && (state.canvas.sourceClockProvenance === 'rvfc'
           ? Number.isFinite(state.canvas.sourceMediaTime)
           : state.canvas.sourceMediaTime === null)
         && state.canvas.cue === cue
         && state.preview?.status === status;
+      if (!shared) return false;
+      if (paused) {
+        return Math.abs(state.video.currentTime - seconds) <= 0.05
+          && Math.abs(state.canvas.sceneTime - seconds) <= 0.05
+          && Math.abs(state.canvas.transportTime - reachableSeconds) <= 0.000_001
+          && state.canvas.transportTime - state.canvas.sceneTime <= step + 0.000_001;
+      }
+      return state.video.currentTime >= seconds - 0.05
+        && state.video.currentTime <= playingWindowEnd
+        && state.canvas.transportTime >= seconds - 0.05
+        && state.canvas.transportTime <= playingWindowEnd + 0.1;
     }, {
       timeout: 30_000,
       interval: 50,

@@ -1,8 +1,9 @@
 // A customer opens a video already on their disk. Import IS the subject here: other green journeys
 // open a local file on their way to persistence or glyph coverage, so a defect that only affects
 // import — a wrong size, a dishonest durable pointer, a fabricated cue, a silent decode substitute —
-// would be reported by the wrong journey or not at all. This one proves the selected file itself
-// becomes the sole durable, playable media, identified byte-for-byte.
+// would be reported by the wrong journey or not at all. The application imports by OWNED COPY into
+// its content-addressed artifact store; this journey proves that copy is byte-exactly the selected
+// file and becomes the sole durable, playable media.
 //
 // The ONLY substitution is the operating system's file dialog, which a WebDriver session cannot
 // drive; the application resolves the staged selection and runs exactly the import a person's click
@@ -13,7 +14,7 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import process from 'node:process';
 
 import { durableState, withDatabase } from '../support/database.js';
@@ -140,19 +141,22 @@ describe('opening a video already on disk', () => {
     assert.ok(durable.jobs.every(({ state }) => state !== 'failed'),
       `import left a failed job: ${JSON.stringify(durable.latestJob)}`);
 
-    // The persisted pointer must name the customer's actual file, and that file must still hold
-    // the exact bytes that were selected: the application references media in place.
+    // The application imports by OWNED COPY: the durable location must live inside the project's
+    // own artifact store — never point back at the arbitrary customer path, whose file can move
+    // or vanish — and the owned copy must hold exactly the bytes the customer selected.
     const locations = durableMediaLocations(root);
     assert.equal(locations.length, 1, 'exactly one media location must be recorded');
     assert.equal(locations[0].mediaId, media.id, 'the location does not belong to the imported media');
     assert.equal(locations[0].available, 1, 'the imported location must be marked available');
-    assert.equal(
-      comparableWindowsPath(locations[0].decodedPath),
-      comparableWindowsPath(staged),
-      'the durable location does not point at the selected file',
+    const ownedStore = `${comparableWindowsPath(join(root, 'data', 'artifacts'))}\\`;
+    assert.ok(
+      comparableWindowsPath(locations[0].decodedPath).startsWith(ownedStore),
+      `the durable location escaped the owned artifact store: ${locations[0].decodedPath}`,
     );
+    assert.equal(statSync(locations[0].decodedPath).size, sourceBytes,
+      'the owned copy does not have the selected byte count');
     assert.equal(sha256OfFile(locations[0].decodedPath), sourceSha256,
-      'the file at the durable location no longer holds the selected bytes');
+      'the owned copy no longer holds the selected bytes');
 
     await captureWorkflowStep({
       workflow: WORKFLOW,

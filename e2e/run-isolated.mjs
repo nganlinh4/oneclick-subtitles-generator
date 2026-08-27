@@ -34,6 +34,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'multiWindowAsrPersistence.journey.js',
   'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',
+  'renderInterruptRecovery.journey.js',
   'settingsAppearancePersistence.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',

@@ -586,16 +586,6 @@ const pointerSeek = async ({ control, controlSelector, minimum, maximum, seconds
   );
 };
 
-const nativeRangeSeek = async ({ controlSelector, seconds, label }) => {
-  const result = await actuateNativeRange({
-    driver: browser,
-    selector: controlSelector,
-    value: seconds,
-    label,
-  });
-  assert.equal(result.focused, true, `${label}: public native seek input did not receive focus`);
-};
-
 const exactFrameKeys = async ({
   canvasSelector, videoSelector, stateSelector, frame, label, maximumFrame,
 }) => {
@@ -674,6 +664,12 @@ const seekThroughPublicControl = async ({ surface, frame, cueIndex }) => {
       `Render: public seek step is not the exact ${EXPORT_PARITY_FPS}-fps grid: ${step}`
     ));
   }
+  // Main seeks through a real pointer press on its slider, which both quantizes near the target
+  // and grants genuine keyboard focus for the exact-frame arrow correction. The Render surface's
+  // native range cannot rely on keyboard focus in the hidden non-activatable window (neither a JS
+  // focus() nor a trusted click reliably delivers later key events there), so it takes the exact
+  // rational value through the native value setter instead: the seek lands on the 30-fps grid
+  // directly and the 1e-6 transport gate below still pins exactness.
   if (main) {
     await pointerSeek({
       control,
@@ -684,11 +680,14 @@ const seekThroughPublicControl = async ({ surface, frame, cueIndex }) => {
       label: `${surface} frame ${frame}`,
     });
   } else {
-    await nativeRangeSeek({
-      controlSelector: seekSelector,
-      seconds,
+    const actuated = await actuateNativeRange({
+      driver: browser,
+      selector: seekSelector,
+      value: seconds,
       label: `${surface} frame ${frame}`,
     });
+    assert.ok(Math.abs(actuated.value - seconds) <= 0.000_001,
+      `${surface} frame ${frame}: the native range did not commit the exact grid value`);
   }
   let pointerState = null;
   await waitUntilWithFreshDiagnostic(async () => {
@@ -703,14 +702,16 @@ const seekThroughPublicControl = async ({ surface, frame, cueIndex }) => {
     diagnostic: () => `${surface}: pointer seek did not settle near ${seconds}: `
       + JSON.stringify(pointerState),
   });
-  const keySequence = await exactFrameKeys({
-    canvasSelector,
-    videoSelector,
-    stateSelector,
-    frame,
-    label: `${surface} frame ${frame}/${EXPORT_PARITY_FPS}`,
-    maximumFrame: Math.floor(maximum * EXPORT_PARITY_FPS),
-  });
+  const keySequence = main
+    ? await exactFrameKeys({
+      canvasSelector,
+      videoSelector,
+      stateSelector,
+      frame,
+      label: `${surface} frame ${frame}/${EXPORT_PARITY_FPS}`,
+      maximumFrame: Math.floor(maximum * EXPORT_PARITY_FPS),
+    })
+    : Object.freeze([]);
   const state = await waitForExactCanvas({
     canvasSelector,
     videoSelector,
