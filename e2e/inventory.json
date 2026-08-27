@@ -1319,6 +1319,13 @@
       "status": "open-unreproduced",
       "severity": "minor",
       "note": "The retained run root held only the WebView2 profile directory the Edge runtime had begun populating; no OSG file existed yet, Windows recorded no Application-log or WER entry, and the harness discarded the spawned process's stderr, so the crash left zero attributable evidence. 0xC0000409 on Windows is the generic fail-fast code shared by Rust aborts (a panic inside a non-unwinding native callback prints its message to stderr first), CRT stack-cookie checks, and WebView2 initialization failures. The suite now forwards the application's backend streams into the runner log (captureBackendLogs with the tauri-service:service channel opened past the global warn filter) so any recurrence names its own cause. Not reproduced in the surrounding sixty-plus launches of the identical binary."
+    },
+    {
+      "finding": "Switching a playing project to a second file whose first frame is genuinely black left the main preview permanently blank over fully decoded media until the customer seeked or played.",
+      "foundBy": "mainPreviewControlsAndFullscreen",
+      "status": "fixed",
+      "severity": "major",
+      "note": "loadeddata and canplay arrive in one task burst over the paused replacement source. Each runs the settled-capture boundary: the first's black-looking capture was skipped and armed a bounded retry, then the second bumped the capture generation without cancelling that pending retry. The stale handle blocked the new generation from arming its own retry while its callback exited on the generation mismatch without rescheduling, so no capture path remained for a paused element. The settled boundary now invalidates the pending retry exactly as the seek boundary always has; a component regression reproduces the burst and fails on the unfixed component, and the preserved journey screenshot shows the blank preview with the element at readyState 4."
     }
   ],
   "fixtures": {
