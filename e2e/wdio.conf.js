@@ -199,6 +199,12 @@ export const config = {
     'wdio:tauriServiceOptions': {
       embeddedPort: webdriverBinding.port,
       env: guardedWebDriverEnvironment(webdriverBinding),
+      // A startup fail-fast (observed once: exit 0xC0000409 before the embedded server was
+      // ready, with the run root still empty) leaves evidence ONLY on the app's stderr — a Rust
+      // panic that aborts inside a non-unwinding callback prints there before dying. Forward the
+      // backend streams so a recurrence names its own cause.
+      captureBackendLogs: true,
+      backendLogLevel: 'trace',
     },
   }],
   reporters: ['spec'],
@@ -213,6 +219,10 @@ export const config = {
     require: ['./support/mochaHooks.js'],
   },
   logLevel: 'warn',
+  // The backend-stream forwarder logs raw stderr lines at their parsed level, which defaults to
+  // info for unstructured text such as a panic message; the global 'warn' level would swallow
+  // exactly the lines the capture exists for. Open only that one channel.
+  logLevels: { 'tauri-service:service': 'trace' },
 
   onPrepare: () => {
     if (process.env.OSG_E2E_DATA_ROOT !== runRoot) {

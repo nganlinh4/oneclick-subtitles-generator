@@ -1312,6 +1312,13 @@
       "status": "resolved",
       "severity": "minor",
       "note": "The recurring signature was the witness's own blind spot: a publication composed from a frozen source canvas captured BEFORE the witness attached is tainted and uninspectable, so its traced state naturally read black/no-video — the held-frame design at work, not a customer-visible flash. Such compositions now classify as unknown provenance inside the bounded unclassified window. The chase still produced two real product hardenings that remain: a playing seek boundary no longer snapshots the element (the transitioning decoder surface can legally read back black there), and the first captures of every seek generation reject a solid-black surface with one bounded readback."
+    },
+    {
+      "finding": "One application launch in roughly sixty fail-fasted at startup (exit 0xC0000409) before the embedded WebDriver server became ready, before any log, data, or evidence file was written.",
+      "foundBy": "editPersistRelaunch stress iteration 6/8, 2026-08-27",
+      "status": "open-unreproduced",
+      "severity": "minor",
+      "note": "The retained run root held only the WebView2 profile directory the Edge runtime had begun populating; no OSG file existed yet, Windows recorded no Application-log or WER entry, and the harness discarded the spawned process's stderr, so the crash left zero attributable evidence. 0xC0000409 on Windows is the generic fail-fast code shared by Rust aborts (a panic inside a non-unwinding native callback prints its message to stderr first), CRT stack-cookie checks, and WebView2 initialization failures. The suite now forwards the application's backend streams into the runner log (captureBackendLogs with the tauri-service:service channel opened past the global warn filter) so any recurrence names its own cause. Not reproduced in the surrounding sixty-plus launches of the identical binary."
     }
   ],
   "fixtures": {
