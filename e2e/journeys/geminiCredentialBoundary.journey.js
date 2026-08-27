@@ -121,6 +121,12 @@ describe('Gemini generation refuses safely without a credential', () => {
       step: '03-actionable-refusal',
       description: 'A missing credential produces a visible refusal and returns controls to idle without side effects.',
       details: { errorToasts: surface.errorToasts },
+      allowVisibleProblems: {
+        errorToasts: surface.errorToasts.map((toast) => ({
+          text: toast,
+          reason: 'The visible missing-credential refusal is the customer state under test.',
+        })),
+      },
     });
   });
 });
