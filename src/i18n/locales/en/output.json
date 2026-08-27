@@ -33,6 +33,7 @@
   "noSubtitlesDetected": "No subtitles were returned. The media may contain no detectable speech; otherwise, try again or choose another model.",
   "subtitlesLoadedFromCache": "Subtitles loaded from cache!",
   "subtitlesCacheLoadFailed": "Media is ready, but saved subtitles could not be loaded.",
+  "srtFirstPersistFailed": "The subtitles authored before this video could not be saved into its project.",
   "subtitlesCacheSaveFailed": "Subtitles were generated, but they could not be saved.",
   "videoPreview": "Video Preview with Subtitles",
   "subtitlesPreview": "Subtitles Preview",

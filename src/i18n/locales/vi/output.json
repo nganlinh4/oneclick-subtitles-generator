@@ -34,6 +34,7 @@
   "noSubtitlesDetected": "Không có phụ đề nào được trả về. Video có thể không có lời nói rõ ràng; nếu không, hãy thử lại hoặc chọn mô hình khác.",
   "subtitlesLoadedFromCache": "Đã tải phụ đề từ bộ nhớ đệm!",
   "subtitlesCacheLoadFailed": "Phương tiện đã sẵn sàng, nhưng không thể tải phụ đề đã lưu.",
+  "srtFirstPersistFailed": "Không thể lưu phụ đề đã soạn trước video này vào dự án của nó.",
   "subtitlesCacheSaveFailed": "Phụ đề đã được tạo, nhưng không thể lưu lại.",
   "videoPreview": "Xem trước video với phụ đề",
   "subtitlesPreview": "Xem trước phụ đề",

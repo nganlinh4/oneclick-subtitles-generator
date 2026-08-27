@@ -34,6 +34,7 @@
   "noSubtitlesDetected": "반환된 자막이 없습니다. 미디어에 감지 가능한 음성이 없을 수 있습니다. 아니라면 다시 시도하거나 다른 모델을 선택하세요.",
   "subtitlesLoadedFromCache": "캐시에서 자막을 불러왔습니다!",
   "subtitlesCacheLoadFailed": "미디어는 준비되었지만 저장된 자막을 불러오지 못했습니다.",
+  "srtFirstPersistFailed": "이 비디오 전에 작성한 자막을 프로젝트에 저장하지 못했습니다.",
   "subtitlesCacheSaveFailed": "자막은 생성되었지만 저장하지 못했습니다.",
   "videoPreview": "자막이 있는 비디오 미리보기",
   "subtitlesPreview": "자막 미리보기",

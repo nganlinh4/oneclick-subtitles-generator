@@ -72,6 +72,35 @@ it('preserves SRT-first rows when the first media association has no native trac
   expect(apply).not.toHaveBeenCalled();
 });
 
+it('preserves SRT-first rows when the first media association scaffolds an EMPTY track', async () => {
+  // A freshly created media project can return [] rather than a null miss; that empty scaffold
+  // used to wipe the authored rows on attachment.
+  localStorage.setItem('uploaded_srt_info', JSON.stringify(explicitSrtInfo));
+  const apply = vi.fn();
+  const hydrator = createNativeSubtitleHydrator({
+    load: async () => [],
+    readCurrentCacheId: () => 'asset-b',
+    readRevision: () => 0,
+    apply,
+  });
+
+  await expect(hydrator.activate('asset-b', { previousCacheId: null })).resolves.toBe(false);
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('still applies an authoritative empty track outside the SRT-first window', async () => {
+  const apply = vi.fn();
+  const hydrator = createNativeSubtitleHydrator({
+    load: async () => [],
+    readCurrentCacheId: () => 'asset-b',
+    readRevision: () => 0,
+    apply,
+  });
+
+  await expect(hydrator.activate('asset-b', { previousCacheId: null })).resolves.toBe(true);
+  expect(apply).toHaveBeenCalledExactlyOnceWith([]);
+});
+
 it('does not treat an initial reload hydration as a new SRT-first association', async () => {
   localStorage.setItem('uploaded_srt_info', JSON.stringify(explicitSrtInfo));
   const apply = vi.fn();

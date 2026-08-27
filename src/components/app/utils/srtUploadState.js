@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 
+import i18n from '../../../i18n/i18n';
 import {
   bindPendingSubtitleImportProvenance,
   clearSubtitleImportProvenance,
   readSubtitleImportProvenance,
   writeSubtitleImportProvenance,
 } from '../../../platform/subtitleImportProvenance';
+import { persistImportedSubtitlesForActiveProject } from '../../../utils/importedSubtitlePersistence';
 import {
   getCurrentCacheId,
   subscribeCurrentCacheId,
@@ -29,21 +31,42 @@ export const useSrtUploadState = ({
   subtitlesData,
   handleSrtUpload,
   handleSrtClear,
+  persistPendingImport = persistImportedSubtitlesForActiveProject,
 }) => {
   const [uploadedSrtInfo, setUploadedSrtInfo] = useState(() => (
     uiInfo(readSubtitleImportProvenance(), getCurrentCacheId())
   ));
 
   useEffect(() => subscribeCurrentCacheId((cacheId) => {
-    let provenance = readSubtitleImportProvenance();
+    const provenance = readSubtitleImportProvenance();
     if (cacheId !== null
         && provenance?.cacheId === null
         && Array.isArray(subtitlesData)
         && subtitlesData.length > 0) {
-      provenance = bindPendingSubtitleImportProvenance(cacheId);
+      // An SRT-first track has been waiting for exactly this media association. The rows lived
+      // only in the editor until now — persist them into the newly active project through the
+      // same path an ordinary upload uses, and claim the badge only after they are durably
+      // owned. Binding first would advertise ownership the project does not have.
+      void (async () => {
+        try {
+          await persistPendingImport(subtitlesData);
+          const bound = bindPendingSubtitleImportProvenance(cacheId);
+          setUploadedSrtInfo(uiInfo(bound, getCurrentCacheId()));
+        } catch {
+          globalThis.window?.addToast?.(
+            i18n.t(
+              'output.srtFirstPersistFailed',
+              'The subtitles authored before this video could not be saved into its project.'
+            ),
+            'error',
+            8_000,
+            'srt-first-persist-failed'
+          );
+        }
+      })();
     }
     setUploadedSrtInfo(uiInfo(provenance, cacheId));
-  }), [subtitlesData]);
+  }), [persistPendingImport, subtitlesData]);
 
   const handleSrtUploadWithState = async (content, fileName) => {
     const result = await handleSrtUpload(content, fileName);

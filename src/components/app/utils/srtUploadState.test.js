@@ -92,6 +92,57 @@ it('scopes the upload badge to its exact project alias', async () => {
   expect(hook.result.current.uploadedSrtInfo.fileName).toBe('a.srt');
 });
 
+it('persists SRT-first rows into the first media project before claiming the badge', async () => {
+  // The SRT arrived before any media: provenance is pending (null cacheId) and the rows exist
+  // only in the editor. The first media association must save them into the new project through
+  // the ordinary import persistence, and only then bind the badge.
+  const rows = [{ id: 1, start: 0, end: 1, text: 'authored before the video' }];
+  localStorage.setItem('uploaded_srt_info', JSON.stringify({
+    v: 2, cacheId: null, fileName: 'authored.srt',
+  }));
+  let persisted;
+  const persistPendingImport = vi.fn(() => new Promise((resolve) => { persisted = resolve; }));
+  const hook = renderHook(() => useSrtUploadState({
+    subtitlesData: rows,
+    handleSrtUpload: vi.fn(),
+    handleSrtClear: vi.fn(),
+    persistPendingImport,
+  }));
+
+  act(() => publishCache('asset-video'));
+  expect(persistPendingImport).toHaveBeenCalledExactlyOnceWith(rows);
+  expect(hook.result.current.uploadedSrtInfo.hasUploaded).toBe(false);
+
+  await act(async () => { persisted({ status: 'saved', cacheId: 'asset-video' }); });
+  expect(hook.result.current.uploadedSrtInfo).toEqual({
+    hasUploaded: true,
+    fileName: 'authored.srt',
+    source: 'srt',
+  });
+  expect(JSON.parse(localStorage.getItem('uploaded_srt_info')).cacheId).toBe('asset-video');
+});
+
+it('keeps the badge unclaimed and notifies when SRT-first persistence fails', async () => {
+  localStorage.setItem('uploaded_srt_info', JSON.stringify({
+    v: 2, cacheId: null, fileName: 'authored.srt',
+  }));
+  const addToast = vi.fn();
+  window.addToast = addToast;
+  try {
+    renderHook(() => useSrtUploadState({
+      subtitlesData: [{ id: 1, start: 0, end: 1, text: 'A' }],
+      handleSrtUpload: vi.fn(),
+      handleSrtClear: vi.fn(),
+      persistPendingImport: vi.fn(async () => { throw new Error('save refused'); }),
+    }));
+    await act(async () => publishCache('asset-video'));
+    expect(JSON.parse(localStorage.getItem('uploaded_srt_info')).cacheId).toBeNull();
+    expect(addToast).toHaveBeenCalledOnce();
+  } finally {
+    delete window.addToast;
+  }
+});
+
 it('waits for the exact durable clear before withdrawing provenance', async () => {
   store.cacheId = 'asset-a';
   let clear;

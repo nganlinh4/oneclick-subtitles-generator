@@ -106,7 +106,12 @@ export const createNativeSubtitleHydrator = ({
       return false;
     }
 
-    if (rows === null) {
+    if (rows === null || (Array.isArray(rows) && rows.length === 0)) {
+      // A freshly created media project can scaffold an EMPTY subtitle track, which still means
+      // "no customer rows exist here yet". During the explicit SRT-first window the live rows are
+      // waiting for exactly this media, so neither a miss nor an empty scaffold may wipe them —
+      // wiping here was how a track authored before the video silently vanished on attachment.
+      // Outside that window an empty result stays authoritative and clears as before.
       let shouldPreserve = false;
       try {
         shouldPreserve = preserveOnMiss({ cacheId, previousCacheId }) === true;
@@ -114,8 +119,10 @@ export const createNativeSubtitleHydrator = ({
         // A missing or malformed provenance signal is not authority to retain another media's rows.
       }
       if (shouldPreserve) return false;
-      if (!clearsPriorMedia) apply(null);
-      return true;
+      if (rows === null) {
+        if (!clearsPriorMedia) apply(null);
+        return true;
+      }
     }
 
     if (!Array.isArray(rows)) {
