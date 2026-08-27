@@ -208,6 +208,121 @@ describe('canvas preview geometry boundary', () => {
     expect(Number(canvas.dataset.osgSceneTime)).toBeCloseTo(2 / 30, 12);
   });
 
+  it('publishes the settled first frame when a paused element loads after rVFC was armed', async () => {
+    // The only presentation of a paused element can predate the armed callback (and an occluded
+    // surface may never composite another), so `loadeddata` on a settled paused element must use
+    // the settled-snapshot publication instead of waiting forever: a customer opening Render on a
+    // paused project saw a permanently idle preview.
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    let readyState = 1;
+    let callbackSequence = 0;
+    const videoCallbacks = new Map();
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, value: 0 },
+      readyState: { configurable: true, get: () => readyState },
+      seeking: { configurable: true, value: false },
+      paused: { configurable: true, value: true },
+      requestVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn((callback) => {
+          callbackSequence += 1;
+          videoCallbacks.set(callbackSequence, callback);
+          return callbackSequence;
+        }),
+      },
+      cancelVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn(handle => videoCallbacks.delete(handle)),
+      },
+    });
+    const states = [];
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="paused-load-settles"
+      currentTime={0}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+      onStateChange={state => states.push(state)}
+    />);
+    const canvas = container.querySelector('canvas');
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalled());
+    expect(canvas.dataset.osgFrameRevision ?? '0').toBe('0');
+
+    readyState = 4;
+    await act(async () => video.dispatchEvent(new Event('loadeddata')));
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('1'));
+    expect(states.at(-1)).toEqual({ status: 'empty', code: null });
+  });
+
+  it('arms the bounded capture retry when a scene draw runs before any frame was captured', async () => {
+    // The deeper net for the same wedge: a repaint with no presentation clock and no prior frame
+    // used to return bare, freezing the published state at whatever it was. While the paused
+    // element is settled it must instead arm the bounded snapshot retry.
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    const animationCallbacks = new Map();
+    let animationSequence = 0;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+      animationSequence += 1;
+      animationCallbacks.set(animationSequence, callback);
+      return animationSequence;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn(handle => animationCallbacks.delete(handle)));
+    let readyState = 1;
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, value: 0 },
+      readyState: { configurable: true, get: () => readyState },
+      seeking: { configurable: true, value: false },
+      paused: { configurable: true, value: true },
+      requestVideoFrameCallback: { configurable: true, value: vi.fn(() => 1) },
+      cancelVideoFrameCallback: { configurable: true, value: vi.fn() },
+    });
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="silent-settle-retry"
+      currentTime={0}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+    />);
+    const canvas = container.querySelector('canvas');
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalled());
+
+    // The element settles without any media event or presentation callback reaching the preview.
+    readyState = 4;
+    animationCallbacks.clear();
+    await act(async () => window.dispatchEvent(new Event('resize')));
+    await waitFor(() => expect(animationCallbacks.size).toBeGreaterThan(0));
+
+    const handle = [...animationCallbacks.keys()].at(-1);
+    const retry = animationCallbacks.get(handle);
+    animationCallbacks.delete(handle);
+    await act(async () => retry(performance.now()));
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('1'));
+  });
+
   it('re-resolves the preview face when native font readiness advances', async () => {
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 jsdom');
     window.__OSG_FONT_READINESS__ = {

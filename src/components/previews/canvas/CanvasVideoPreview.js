@@ -643,7 +643,16 @@ const CanvasVideoPreview = ({
         // browsers without requestVideoFrameCallback, where `seeked` is the publication boundary.
         if (callbackTransportTime === null
             && !Number.isFinite(priorFrame?.transportTime)
-            && hasFrameCallback) return;
+            && hasFrameCallback) {
+          // No pixels have ever been captured for this source. While paused and settled there may
+          // be no future presentation to deliver them, so returning bare would freeze the
+          // published state (a customer opening Render on a paused project saw a permanent idle
+          // preview). The bounded retry snapshots the settled element or ends in a typed refusal.
+          if (!video.seeking && !snapshot.playing && video.readyState >= 2) {
+            scheduleCaptureRetry(video, videoFrameGeneration);
+          }
+          return;
+        }
         const fallbackTransportTime = Number.isFinite(video.currentTime)
           ? video.currentTime
           : snapshot.currentTime;
@@ -814,7 +823,16 @@ const CanvasVideoPreview = ({
     const wakeForDecodedFrame = () => {
       // rVFC is the stronger boundary and is already armed. The media events can precede actual
       // presentation, so using them as a second publication path recreates the stale-frame race.
-      if (hasFrameCallback) schedule();
+      // One exception: a PAUSED element that settles after this effect armed rVFC may already have
+      // made its only presentation (arming raced it, or an occluded surface never composites
+      // another), so waiting for a callback would freeze the preview at idle until the customer
+      // seeks. The settled-snapshot publication `seeked` uses is deterministic for that case too;
+      // playback and in-flight seeks still belong to the stronger callbacks.
+      if (hasFrameCallback) {
+        if (video !== null && video.paused && !video.seeking && video.readyState >= 2
+            && latestRef.current?.playing !== true) completeSeek();
+        else schedule();
+      }
       else draw(
         {
           mediaTime: null,
