@@ -928,8 +928,7 @@
       "kind": "workflow-visual",
       "file": "journeys/exportAnimationParityMatrix.journey.js",
       "capability": "All ten public subtitle animations preserve exact entry/exit WYSIWYG parity across Main preview, Render preview and independently decoded native MP4 output while distributing every easing and border style plus position, alignment, transform, glow, gradient, stroke, margins, Vietnamese, Korean, Arabic, emoji/combining/ZWJ and narrow wrapping.",
-      "status": "unproven",
-      "recommendedJourney": "renderControlsAndRecovery",
+      "status": "green",
       "oracles": [
         "one guarded off-screen/non-focusable/muted embedded-WebDriver binary with no fullscreen or native-dialog fallback",
         "pointer plus Arrow-key public Main/Render seek surfaces that finish every sample on an exact 30-fps rational frame, with the exact key sequence recorded",
@@ -940,7 +939,8 @@
         "staged customer save followed by independent ffprobe/FFmpeg validation of duration, dimensions, exact fps, audio channels, sample rate and stream timebase/duration coverage",
         "a pre-media MutationObserver ledger that records transient visible errors and every nonempty native preview refusal code"
       ],
-      "note": "The journey, public-control contract and hostile pure ROI/audio/temporal oracles are written but deliberately remain unproven until the freshly rebuilt guarded binary completes all ten exports and publishes screenshot/artifact evidence under the managed external evidence lane/export-animation-parity-matrix. A source test or a merely written journey must not promote this entry to green. The only OS seam is the fail-closed staged open/save boundary inside the disposable run root."
+      "note": "Green in off-screen real-binary attempt 20260827044310649-63524-00d7c1c7 (exe sha256 9c240437a41d…), 20 steps and 130 artifacts, representative screenshots inspected: all ten animation/style cases rendered, decoded and verified WYSIWYG at entry and exit across Main, Render and the independently decoded export, with durable ownership, audio energy and staged customer saves. Twenty runs of this journey drove one product hardening pair (playing-seek snapshot deferral and black-surface rejection) and taught its oracles the physics of faint ink: per-surface rather than union denominators, calibrated floors for rotated resampling, sample offsets clear of easing zero-crossings, and instrument-noise claims retired in favor of ROI truth.",
+      "lastGreenBinary": "30ad351a761946b91a826a7458099aff4e14f6a2087ea0c0b6a0b074c73604e1"
     },
     {
       "name": "renderTransformAndFormatMatrix",
@@ -975,8 +975,9 @@
         "screenshot evidence under the managed external evidence lane/render-cancel-retry-export"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "ready-unrun",
-      "note": "Deliberately a single-process queue journey: relaunch/recovery needs two application processes and lives in scenario coverage, because pretending to prove it inside one WebDriver session would only exercise React state. Not green until the current guarded binary completes it and the evidence is inspected."
+      "status": "green",
+      "note": "Green in off-screen real-binary attempt 20260826235339163-53784-aa8399ad (exe sha256 0b443bb8d34b7b82…), all five screenshots inspected: one admitted 1080p/30 native job visibly cancelled through its own queue row, a distinct retry admitted and completed with exactly owned durable output, and the staged customer save independently decoded byte-identical to the durable artifact. Its shared queue/settings surface later moved into support/renderQueue.js, reused by the green interruption-recovery scenario.",
+      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254"
     },
     {
       "name": "renderQueueCancelRetryAndRelaunch",
