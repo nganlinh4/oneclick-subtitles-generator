@@ -122,8 +122,11 @@ describe('Gemini generation refuses safely without a credential', () => {
       description: 'A missing credential produces a visible refusal and returns controls to idle without side effects.',
       details: { errorToasts: surface.errorToasts },
       allowVisibleProblems: {
+        // The screenshot guard reads toast text single-spaced (trim + collapse); the journey's own
+        // probe keeps innerText newlines. Normalize identically or the exact-text allowance
+        // silently never matches.
         errorToasts: surface.errorToasts.map((toast) => ({
-          text: toast,
+          text: toast.replace(/\s+/g, ' ').trim(),
           reason: 'The visible missing-credential refusal is the customer state under test.',
         })),
       },
