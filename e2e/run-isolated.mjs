@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -145,6 +145,27 @@ export const run = ({ repeat, journeys }) => {
               ],
             });
             const passed = !result.error && result.status === 0;
+            if (!passed) {
+              // The old architecture claimed a failed run root was "kept", but this finally has
+              // always removed it, so the per-case artifacts a journey staged under
+              // <root>/evidence died with the root. Promote that subtree into the durable attempt
+              // before the root goes away; diagnosis of a deterministic failure depends on it.
+              const stagedEvidence = join(runRoot, 'evidence');
+              if (existsSync(stagedEvidence)) {
+                try {
+                  cpSync(stagedEvidence, join(attempt.directory, 'run-root-evidence'), {
+                    recursive: true,
+                  });
+                  process.stdout.write(
+                    `\n--- run-root evidence preserved in attempt ${attempt.id} ---\n`,
+                  );
+                } catch (error) {
+                  process.stdout.write(
+                    `\n--- run-root evidence could not be preserved: ${error.message} ---\n`,
+                  );
+                }
+              }
+            }
             finalizeWorkflowEvidence({
               workflow,
               attemptId: attempt.id,

@@ -67,7 +67,7 @@ export const runScenarioProcesses = ({
       OSG_E2E_DATA_ROOT: root,
       OSG_E2E_REUSE_ROOT: '1',
       OSG_E2E_RUN_ROOT_AUTHORIZATION: runRootAuthorization(root),
-      OSG_E2E_KEEP_ROOT: '1',
+
       OSG_E2E_WORKFLOW: workflow,
       ...(process.env.OSG_E2E_EVIDENCE_ATTEMPT === undefined
         ? {}

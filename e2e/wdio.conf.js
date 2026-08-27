@@ -314,7 +314,8 @@ export const config = {
         console.log(`\n--- immutable failure evidence unavailable: ${error.message} ---`);
       }
     }
-    console.log(`\n--- evidence kept at: ${runRoot} ---`);
-    process.env.OSG_E2E_KEEP_ROOT = '1';
+    // The isolated runner removes the run root unconditionally; what survives a failure is the
+    // workflow evidence attempt, into which the runner promotes the root's staged evidence.
+    console.log(`\n--- failure evidence retained in the workflow evidence lane (run root: ${runRoot}) ---`);
   },
 };
