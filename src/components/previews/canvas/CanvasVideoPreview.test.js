@@ -1111,6 +1111,89 @@ describe('canvas preview geometry boundary', () => {
     expect(Number(canvas.dataset.osgSourceMediaTime)).toBeCloseTo(0.933, 12);
   });
 
+  it('publishes genuinely black first pixels after back-to-back load events on a paused source', async () => {
+    // An A->B source switch delivers `loadeddata` and `canplay` in one task burst over a paused
+    // element whose first frame is legally black. The second settled boundary invalidates the
+    // first's black-skip retry; its stale pending handle must not block the new generation from
+    // arming its own retry, or the canvas stays blank until the customer seeks or plays.
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    const looksBlack = vi.fn(() => true);
+    createCanvasSubtitleRenderer.mockImplementation(() => ({
+      captureVideoFrame,
+      captureLooksBlack: looksBlack,
+      draw: drawFrame,
+    }));
+    const suppressedAnimationFrames = new Map();
+    let suppressedAnimationSequence = 0;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+      suppressedAnimationSequence += 1;
+      suppressedAnimationFrames.set(suppressedAnimationSequence, callback);
+      return suppressedAnimationSequence;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn(handle => suppressedAnimationFrames.delete(handle)));
+    let readyState = 1;
+    let callbackSequence = 0;
+    const callbacks = new Map();
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, value: 0 },
+      readyState: { configurable: true, get: () => readyState },
+      seeking: { configurable: true, value: false },
+      paused: { configurable: true, value: true },
+      requestVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn((callback) => {
+          callbackSequence += 1;
+          callbacks.set(callbackSequence, callback);
+          return callbackSequence;
+        }),
+      },
+      cancelVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn(handle => { callbacks.delete(handle); }),
+      },
+    });
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="paused-black-switch"
+      playing={false}
+      currentTime={0}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+    />);
+    const canvas = container.querySelector('canvas');
+
+    readyState = 4;
+    await act(async () => {
+      video.dispatchEvent(new Event('loadeddata'));
+      video.dispatchEvent(new Event('canplay'));
+    });
+
+    // Drain armed animation frames; each bounded retry may arm the next one.
+    for (let round = 0; round < 6 && suppressedAnimationFrames.size > 0; round += 1) {
+      const pending = [...suppressedAnimationFrames.entries()];
+      for (const [handle] of pending) suppressedAnimationFrames.delete(handle);
+      await act(async () => {
+        for (const [, callback] of pending) callback(performance.now());
+      });
+    }
+
+    // After two bounded rejections the black picture is accepted as this source's real content.
+    expect(looksBlack).toHaveBeenCalled();
+    expect(canvas.dataset.osgFrameRevision).toBe('1');
+  });
+
   it('publishes only generation-current presented frames and keeps metadata time atomic with pixels', async () => {
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
     window.__OSG_FONT_READINESS__ = {

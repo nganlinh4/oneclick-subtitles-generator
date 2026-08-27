@@ -896,6 +896,16 @@ const CanvasVideoPreview = ({
       videoFrameGeneration += 1;
       publishedFrameThisGeneration = false;
       blackSkipsThisGeneration = 0;
+      captureRetryAttempts = 0;
+      // A retry armed for the invalidated generation must not survive this boundary: its callback
+      // exits on the generation mismatch without rescheduling, yet its pending handle blocks the
+      // new generation from arming its own retry. With `loadeddata` and `canplay` arriving in one
+      // task burst over a paused source whose first frame is genuinely black, that stale handle
+      // left the canvas permanently blank after an A-to-B source switch.
+      if (captureRetryHandle !== null) {
+        cancelAnimationFrame(captureRetryHandle);
+        captureRetryHandle = null;
+      }
       if (videoFrameHandle !== null
           && typeof videoWithFrameCallback?.cancelVideoFrameCallback === 'function') {
         videoWithFrameCallback.cancelVideoFrameCallback(videoFrameHandle);
