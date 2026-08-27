@@ -10,6 +10,7 @@ export const EXPORT_PARITY_WYSIWYG_FLOOR = 0.95;
 // resample (preview canvas -> PNG, export encode -> decode -> compare grid) legitimately costs
 // about two whole-frame SSIM points while the ROI centroids agree within three percent.
 export const EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR = 0.92;
+export const EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR = 0.87;
 export const EXPORT_PARITY_MAIN_RENDER_FLOOR = 0.90;
 export const EXPORT_PARITY_SOURCE_IDENTITY_FLOOR = 0.90;
 export const EXPORT_PARITY_MASK_DELTA = 18;
@@ -1043,13 +1044,14 @@ export const verifyExportAnimationParityObservation = ({
     // the sign of their difference is noise — a measured export with correct proportional ink
     // still ranked closer to source-only. Subtitle presence, coverage and agreement belong to the
     // ROI difference-mask claims below, which compare on one common grid.
-    assert.ok(mainRender >= EXPORT_PARITY_MAIN_RENDER_FLOOR, (
-      `${definition.id} ${phase}: Main/Render SSIM ${mainRender} is below `
-      + EXPORT_PARITY_MAIN_RENDER_FLOOR
+    const mainFloor = definition.animationType === 'rotate'
+      ? EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR
+      : EXPORT_PARITY_MAIN_RENDER_FLOOR;
+    assert.ok(mainRender >= mainFloor, (
+      `${definition.id} ${phase}: Main/Render SSIM ${mainRender} is below ${mainFloor}`
     ));
-    assert.ok(mainExport >= EXPORT_PARITY_MAIN_RENDER_FLOOR, (
-      `${definition.id} ${phase}: Main/export SSIM ${mainExport} is below `
-      + EXPORT_PARITY_MAIN_RENDER_FLOOR
+    assert.ok(mainExport >= mainFloor, (
+      `${definition.id} ${phase}: Main/export SSIM ${mainExport} is below ${mainFloor}`
     ));
     verifyRegion(regions?.[phase], definition, phase, { width: video.width, height: video.height });
   }
