@@ -1303,6 +1303,13 @@
       "status": "fixed",
       "severity": "minor",
       "note": "Translated documents without target languages now carry a _translated suffix; the naming rule moved into a pure tested util and the journey pins both proposed names."
+    },
+    {
+      "finding": "A single black frame reached the visible preview canvas immediately after a backward seek during playback.",
+      "foundBy": "subtitleMaterialAndAnimation",
+      "status": "open",
+      "severity": "minor",
+      "recurrenceWatch": "One occurrence (attempt 20260827021426962-53856-17916ed8, case slide-up/ease-out, publication 1 at 8.7ms after witness attach: black, hasVideo false, sourceTime null). The signature matches a settled-seek snapshot capturing the decoder surface mid-transition, which Chromium can legally hand back black; the same case passed in the surrounding runs. The continuity witness fails fast and preserves the trace whenever it recurs."
     }
   ],
   "fixtures": {

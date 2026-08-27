@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -13,7 +13,7 @@ import {
 import { withEvidenceLease } from './support/evidenceLease.js';
 import { withStagingLease } from './support/stagingLease.js';
 import {
-  beginWorkflowEvidence, finalizeWorkflowEvidence, workflowNameForJourney,
+  beginWorkflowEvidence, finalizeWorkflowEvidence, preserveRunRootEvidence, workflowNameForJourney,
 } from './support/workflowEvidence.js';
 import { createRequire } from 'node:module';
 
@@ -148,22 +148,21 @@ export const run = ({ repeat, journeys }) => {
             if (!passed) {
               // The old architecture claimed a failed run root was "kept", but this finally has
               // always removed it, so the per-case artifacts a journey staged under
-              // <root>/evidence died with the root. Promote that subtree into the durable attempt
-              // before the root goes away; diagnosis of a deterministic failure depends on it.
-              const stagedEvidence = join(runRoot, 'evidence');
-              if (existsSync(stagedEvidence)) {
-                try {
-                  cpSync(stagedEvidence, join(attempt.directory, 'run-root-evidence'), {
-                    recursive: true,
-                  });
+              // <root>/evidence died with the root. Promote them into the durable attempt through
+              // the publisher before the root goes away; diagnosis of a deterministic failure
+              // depends on it.
+              try {
+                const kept = preserveRunRootEvidence({ workflow, runRoot });
+                if (kept.preserved > 0 || kept.skipped > 0) {
                   process.stdout.write(
-                    `\n--- run-root evidence preserved in attempt ${attempt.id} ---\n`,
-                  );
-                } catch (error) {
-                  process.stdout.write(
-                    `\n--- run-root evidence could not be preserved: ${error.message} ---\n`,
+                    `\n--- run-root evidence preserved in attempt ${attempt.id}: `
+                    + `${kept.preserved} file(s), ${kept.skipped} skipped ---\n`,
                   );
                 }
+              } catch (error) {
+                process.stdout.write(
+                  `\n--- run-root evidence could not be preserved: ${error.message} ---\n`,
+                );
               }
             }
             finalizeWorkflowEvidence({

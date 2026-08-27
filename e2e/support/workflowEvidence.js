@@ -2058,6 +2058,71 @@ export const captureWorkflowStep = async ({
   }
 };
 
+/** One bounded artifact slug for a file preserved from a failed run root. */
+export const runRootArtifactName = (relativePath) => {
+  const stem = relativePath.replace(/\.[^./\\]+$/u, '');
+  const slug = `run-root-${stem}`.toLowerCase().replace(/[^a-z0-9]+/gu, '-')
+    .slice(0, 80).replace(/^-+|-+$/gu, '');
+  safeSegment(slug, 'preserved run-root artifact name');
+  return slug;
+};
+
+/**
+ * Promote a failed run root's staged evidence into the durable attempt THROUGH the publisher.
+ *
+ * The attempt tree is publisher-owned: every file must be journaled and manifest-recorded, so a
+ * raw directory copy is (correctly) refused at finalization. Each preserved file therefore goes
+ * through the same artifact operation a journey uses, with a bounded count and byte budget so a
+ * pathological run cannot flood the evidence lane.
+ */
+export const preserveRunRootEvidence = ({
+  workflow,
+  runRoot,
+  maximumFiles = 200,
+  maximumBytes = 512 * 1024 * 1024,
+}) => {
+  const sourceRoot = join(runRoot, 'evidence');
+  if (!existsSync(sourceRoot)) return Object.freeze({ preserved: 0, skipped: 0 });
+  const files = [];
+  const pending = [sourceRoot];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile()) {
+        files.push({ path, relativePath: relative(sourceRoot, path).split(sep).join('/') });
+      }
+    }
+  }
+  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  let preserved = 0;
+  let skipped = 0;
+  let bytes = 0;
+  for (const file of files) {
+    const size = statSync(file.path).size;
+    if (preserved >= maximumFiles || bytes + size > maximumBytes) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      copyWorkflowArtifact({
+        workflow,
+        name: runRootArtifactName(file.relativePath),
+        source: file.path,
+        description: `Preserved from the failed run root: ${file.relativePath}`,
+      });
+      preserved += 1;
+      bytes += size;
+    } catch {
+      // A name collision or refused file must not abort preservation of the remaining evidence.
+      skipped += 1;
+    }
+  }
+  return Object.freeze({ preserved, skipped });
+};
+
 export const copyWorkflowArtifact = ({ workflow, name, source, description }) => {
   safeSegment(name, 'artifact name');
   assert.ok(existsSync(source), `workflow artifact does not exist: ${source}`);

@@ -29,6 +29,7 @@ const {
   recordWorkflowTestFailure,
   refreshWorkflowEvidenceIndex,
   resetWorkflowEvidence,
+  runRootArtifactName,
   validateVisibleState,
   workflowEvidenceDirectory,
   workflowFailureStepForTest,
@@ -1395,4 +1396,14 @@ test('a pre-checkpoint failure promotes the fallback screenshot and diagnostics 
     rmSync(scratch, { recursive: true, force: true });
     refreshWorkflowEvidenceIndex();
   }
+});
+
+test('preserved run-root files get bounded publisher slugs', () => {
+  assert.equal(
+    runRootArtifactName('export-animation-parity-matrix/03-slide-down-arabic-glow/exit-decoded-export.png'),
+    'run-root-export-animation-parity-matrix-03-slide-down-arabic-glow-exit-decoded-e',
+  );
+  assert.equal(runRootArtifactName('a.png'), 'run-root-a');
+  assert.equal(runRootArtifactName('Case X/File.Name.PNG'), 'run-root-case-x-file-name');
+  assert.ok(runRootArtifactName(`${'x'.repeat(200)}.png`).length <= 80);
 });
