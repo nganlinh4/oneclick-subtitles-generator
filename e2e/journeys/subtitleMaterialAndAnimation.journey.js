@@ -1302,7 +1302,19 @@ describe('subtitle material and animation real preview', () => {
     let gamingWitness = null;
     let gamingTransition = null;
     try {
-      await browser.pause(120);
+      // The pre-change marker demands classified pixels, and a publication that consumed
+      // pre-attach sources stays honestly unclassifiable until the first post-attach capture
+      // publishes. That first capture needs a presented frame; under load the decoder's first
+      // presentation can lag far past a fixed pause, so wait for classification itself.
+      await browser.waitUntil(async () => browser.execute(() => {
+        const witness = window.__OSG_E2E_ANIMATION_WITNESS__;
+        const latest = witness?.samples?.at(-1);
+        return witness?.active === true && latest?.visual?.classified === true;
+      }), {
+        timeout: 15_000,
+        interval: 100,
+        timeoutMsg: 'no classified post-attach publication before the preset transition',
+      });
       gamingTransition = await markAnimationWitnessTransition();
       await gaming.click();
       state = await waitForReady({
