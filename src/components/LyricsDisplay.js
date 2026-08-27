@@ -13,6 +13,7 @@ import {
   downloadTXT,
   downloadTextDocument,
 } from '../utils/fileUtils';
+import { generateSubtitleFilename } from '../utils/subtitleFilename';
 import { summarizeDocument } from '../services/geminiService';
 import { completeDocumentWithResult } from '../services/gemini/consolidationService';
 import LyricsVirtualizedList from './LyricsVirtualizedList';
@@ -244,38 +245,9 @@ const LyricsDisplay = ({
   }, [seekTime]);
 
   // Generate comprehensive filename based on priority system
-  const generateFilename = (source, namingInfo = {}) => {
-    const { sourceSubtitleName = '', videoName = '', targetLanguages = [] } = namingInfo;
-
-    // Priority 1: Source subtitle name (remove extension)
-    let baseName = '';
-    if (sourceSubtitleName) {
-      baseName = sourceSubtitleName.replace(/\.(srt|json)$/i, '');
-    }
-    // Priority 2: Video name (remove extension)
-    else if (videoName) {
-      baseName = videoName.replace(/\.[^/.]+$/, '');
-    }
-    // Fallback: Use video title or default
-    else {
-      baseName = videoTitle || 'subtitles';
-    }
-
-    // Add language suffix for translations
-    let langSuffix = '';
-    if (source === 'translated' && targetLanguages.length > 0) {
-      if (targetLanguages.length === 1) {
-        // Single language: use the language name
-        const langName = targetLanguages[0].value || targetLanguages[0];
-        langSuffix = `_${langName.toLowerCase().replace(/\s+/g, '_')}`;
-      } else {
-        // Multiple languages: use multi_lang
-        langSuffix = '_multi_lang';
-      }
-    }
-
-    return `${baseName}${langSuffix}`;
-  };
+  const generateFilename = (source, namingInfo = {}) => (
+    generateSubtitleFilename({ source, videoTitle, ...namingInfo })
+  );
 
   // Handle download request from modal
   const handleDownload = async (source, format, namingInfo = {}) => {
