@@ -783,6 +783,10 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
     hasGlyphInk: false,
     backdrop: 'unknown',
     sourceTime: null,
+    // Set when a composition consumed a canvas whose contents predate this witness: a tainted
+    // frozen source captured before attach can never be inspected, so a publication built from it
+    // must classify as unknown provenance rather than as a black/no-video frame.
+    unknownSource: false,
   });
   const canvasState = (target) => {
     let state = canvasStates.get(target);
@@ -814,6 +818,7 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
       hasGlyphInk: state.hasGlyphInk,
       backdrop: state.backdrop,
       sourceTime: state.sourceTime,
+      unknownSource: state.unknownSource === true,
     };
   };
   const inspectOriginCleanCanvas = (source) => {
@@ -868,6 +873,7 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
       hasGlyphInk: false,
       backdrop: 'transparent',
       sourceTime: null,
+      unknownSource: false,
     });
     if (context === visibleContext) publishVisibleState('clearRect');
   });
@@ -884,6 +890,7 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
         hasGlyphInk: false,
         backdrop: blackPaint(context.fillStyle) ? 'black' : 'paint',
         sourceTime: null,
+        unknownSource: false,
       });
     } else if (state.hasVideo || state.hasOverlay || context.globalCompositeOperation !== 'source-over') {
       state.known = true;
@@ -937,6 +944,9 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
         target.hasVideo ||= sourceState.hasVideo;
         target.hasOverlay ||= sourceState.hasOverlay;
         target.hasGlyphInk ||= sourceState.hasGlyphInk;
+        if (sourceState.known !== true || sourceState.unknownSource === true) {
+          target.unknownSource = true;
+        }
         if (sourceState.hasVideo) target.sourceTime = sourceState.sourceTime;
       }
     }
@@ -980,7 +990,10 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
   };
   const visualSample = () => {
     const pixels = pixelSample();
-    const classified = publication !== null;
+    // A publication that consumed pre-attach pixels is honestly unclassifiable: the trace never
+    // observed the video enter that tainted canvas. The continuity gate tolerates the bounded
+    // unclassified window until the first post-attach capture publishes.
+    const classified = publication !== null && publication.unknownSource !== true;
     const hasVideo = publication?.hasVideo === true;
     const hasGlyphInk = publication?.hasGlyphInk === true;
     const style = getComputedStyle(canvas);
