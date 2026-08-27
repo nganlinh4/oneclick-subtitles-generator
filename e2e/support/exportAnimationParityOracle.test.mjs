@@ -321,7 +321,15 @@ test('source-closer pixels, durable drift and transient errors are hard failures
   };
   assert.throws(() => verifyExportAnimationParityObservation({
     ...valid, scores: sourceCloser,
-  }), /not closer/u);
+  }), /decisively closer to source-only/u);
+  // A sub-noise difference must NOT fail: at a faint sample the whole-frame tiebreak sits below
+  // encode noise in both directions and the ROI mask owns subtitle presence.
+  const withinNoise = scores();
+  withinNoise.entry = {
+    renderExport: 0.972587, sourceExport: 0.972779, mainRender: 0.94, mainExport: 0.95,
+    mainSourceSelected: 0.98, renderSourceSelected: 0.98,
+  };
+  verifyExportAnimationParityObservation({ ...valid, scores: withinNoise });
   const drifted = scene(definition);
   drifted.scene.customization.animationType = 'rotate';
   assert.throws(() => verifyExportAnimationParityObservation({

@@ -593,6 +593,10 @@ const assertTemporalPhase = (samples, phase, context) => {
   ));
 };
 
+// The fixture video decodes at 15 fps, so the compositor's SCENE clock (which owns cue selection
+// and eased alpha) can lead the decoded pixel clock by up to one source frame plus timer jitter.
+const SOURCE_PIXEL_CLOCK_LAG_SECONDS = (1 / 15) + 0.005;
+
 const assertCompleteVisibleSample = (sample, context, expectsSubtitleInk = true) => {
   const visual = sample?.visual;
   const failureFrame = JSON.stringify({
@@ -617,6 +621,10 @@ const assertCompleteVisibleSample = (sample, context, expectsSubtitleInk = true)
   assert.equal(visual.black, false, `${context}: black frame reached the visible canvas: ${failureFrame}`);
   assert.equal(visual.visible, true, `${context}: composed canvas became invisible: ${failureFrame}`);
   assert.equal(visual.hasVideo, true, `${context}: visible frame has no decoded video: ${failureFrame}`);
+  // `null` marks a zero-crossing window where the scene clock and the pixel clock straddle the
+  // eased-opacity boundary: either an inked or a source-only publication is mathematically
+  // legitimate there, and only the completeness claims above apply.
+  if (expectsSubtitleInk === null) return;
   if (expectsSubtitleInk) {
     assert.equal(visual.sourceOnly, false, (
       `${context}: source-only frame reached the visible canvas: ${failureFrame}`
@@ -655,14 +663,24 @@ const assertVisualContinuity = (samples, context, easing = null) => {
   for (const [index, sample] of classified.entries()) {
     const visual = sample.visual;
     // Bind subtitle expectations to the clock recorded when drawImage(video) actually published
-    // these pixels. The surrounding rAF witness runs later and its live `video.currentTime` can
-    // cross the overshoot curve's zero-opacity boundary while the sampled canvas still represents
-    // the preceding decoded frame. Using that later clock manufactured a one-frame "blink" in the
-    // oracle even though the traced publication was mathematically source-only.
+    // these pixels — the later rAF witness clock manufactured a one-frame "blink" — but the eased
+    // ALPHA the composition used follows the SCENE clock, which legitimately leads the decoded
+    // pixel clock by up to one source frame. Demand ink only when the whole clock window owes it,
+    // demand source-only only when the whole window is at non-positive opacity, and accept either
+    // publication inside a window that straddles the zero crossing.
     const pixelTime = Number.isFinite(visual.sourceTime) ? visual.sourceTime : sample.mediaTime;
-    const active = easing === null ? null : activeAnimationCueAt(pixelTime);
-    const expectsSubtitleInk = active === null || easeSubtitle(active.progress, easing) > 0;
-    if (!expectsSubtitleInk) intentionalZeroOpacitySamples += 1;
+    const inkOwedAt = (instant) => {
+      const active = activeAnimationCueAt(instant);
+      return active === null || easeSubtitle(active.progress, easing) > 0;
+    };
+    const expectsSubtitleInk = easing === null
+      ? true
+      : (() => {
+        const atPixels = inkOwedAt(pixelTime);
+        const atScene = inkOwedAt(pixelTime + SOURCE_PIXEL_CLOCK_LAG_SECONDS);
+        return atPixels === atScene ? atPixels : null;
+      })();
+    if (expectsSubtitleInk !== true && visual.sourceOnly === true) intentionalZeroOpacitySamples += 1;
     assertCompleteVisibleSample(sample, context, expectsSubtitleInk);
     if (index > 0) {
       assert.ok(visual.publication >= classified[index - 1].visual.publication, (

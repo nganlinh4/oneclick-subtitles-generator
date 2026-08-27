@@ -665,7 +665,7 @@
       "kind": "workflow",
       "file": "journeys/srtOnlyMediaAttach.journey.js",
       "capability": "SRT-only mode and JSON subtitle import work without a video, and later attachment to media preserves the track.",
-      "status": "ready-unrun",
+      "status": "green",
       "oracles": [
         "the explicit public SRT-only mode and visible cue list before any media exists",
         "the same staged-selection media flow every other journey uses, entered mid-session",
@@ -673,7 +673,8 @@
         "the native canvas drawing a pre-authored cue over the attached video, with two screenshots under the managed external evidence lane/srt-only-media-attach"
       ],
       "runsAgainst": "e2e-binary",
-      "note": "Media-free JSON import and the three document exports are green in subtitleDocumentRoundTrip; the authored journey owns the remaining compound half — a track authored before any media surviving the later attachment. Its first run exposed the real loss (an empty scaffold track wiped the live rows and nothing persisted them), fixed at the hydration and provenance seams. A track typed manually media-free (without an uploaded document) carries no import provenance and remains OUTSIDE the carry-over; that edge is deliberately still open. Not green until the rebuilt guarded binary completes the journey and the evidence is inspected."
+      "note": "Green in off-screen real-binary attempt 20260827011455660-29212-d916bd64 (exe sha256 a4f06dc1307e…), both screenshots inspected: the three cues authored in SRT-only mode stayed visible and IN ORDER after the video arrived, became durable under the media project with no failed job, and the native canvas drew the first authored cue over the real frame. The journey first exposed the real loss (an empty scaffold track wiped the live rows and nothing persisted them), fixed at the hydration and provenance seams. A track typed manually media-free (without an uploaded document) carries no import provenance and remains OUTSIDE the carry-over; that edge is deliberately still open.",
+      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132"
     },
     {
       "name": "subtitleDocumentRoundTrip",
@@ -738,9 +739,17 @@
       "name": "subtitleDocumentExports",
       "kind": "workflow",
       "capability": "Original and translated tracks save as valid SRT, JSON and timing-free TXT with the proposed customer filename.",
-      "status": "unproven",
-      "recommendedJourney": "editorCrudAndSubtitleDocuments",
-      "note": "The automation-safe save boundary exists, but no current real-binary journey validates the bytes and semantics of these six export combinations."
+      "status": "green",
+      "note": "Both halves now green: subtitleDocumentRoundTrip owns the original track saves; attempt 20260827011724168-70116-f2430726 (exe a4f06dc1307e…) saved the formatted translation as valid SRT, JSON and timing-free TXT plus the untouched original SRT, each independently parsed with exact texts and timings and distinct bytes. The journey first exposed the filename collision between a language-free translated SRT and the original.",
+      "file": "journeys/translatedDocumentExports.journey.js",
+      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132",
+      "oracles": [
+        "the provider-free public Format mode producing the translated track, durable before any export",
+        "the Download Center Subtitle Source selector, honestly disabled before a translation exists",
+        "every saved SRT/JSON/TXT parsed by the independent Node oracle against exact expected cues and timings",
+        "the proposed customer filenames pinned: cues-ascii_translated.* for the translated track, cues-ascii.srt for the original, byte-distinct",
+        "export artifacts and two screenshots under the managed external evidence lane/translated-document-exports"
+      ]
     },
     {
       "name": "geminiDocumentConsolidateAndSummarize",
@@ -1071,7 +1080,7 @@
       "kind": "workflow-persistence",
       "file": "journeys/settingsAppearancePersistence.journey.js",
       "capability": "Theme, language and application font changes apply across the complete UI and survive a process restart.",
-      "status": "ready-unrun",
+      "status": "green",
       "oracles": [
         "the same shared footer controls the green Settings surface journey drives",
         "read-only SQLite app_settings before and after the public Save",
@@ -1079,7 +1088,8 @@
         "three screenshots under the managed external evidence lane/settings-appearance-persistence"
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
-      "note": "settingsSurface proves the controls change, save and restore inside one process; the authored scenario owns the relaunch half and also carries the Video Processing and Prompts keys (time format, waveform preference, transcription prompt) so both settings capabilities gain their restart proof from one pair of processes. Not green until both hidden desktop processes complete and the evidence is inspected."
+      "note": "Green across both hidden desktop processes in attempt 20260827013231033-57828-3407bfd4, all three screenshots inspected. The seed changed theme to light, application font to System UI, language to Korean, the time format, the waveform preference and the transcription prompt through real controls and Saved; SQLite held exactly those six values; a fresh process repainted the light theme and System UI font, rendered the complete Settings surface in Korean, and hydrated the processing controls and the marker-bearing prompt from the database alone.",
+      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132"
     },
     {
       "name": "settingsToolsRemoveAndFactoryReset",
@@ -1279,6 +1289,20 @@
       "status": "fixed",
       "severity": "major",
       "note": "A paused element's only presentation can predate the armed requestVideoFrameCallback, and an occluded surface may never composite another frame; the load events only re-armed the callback and the no-clock draw guard returned bare, freezing the published state at idle. Load events on a settled paused element now run the same settled-snapshot publication as the seeked boundary, and the no-clock guard arms the bounded capture retry. Two component regressions pin both paths; the journey rerun against a rebuilt binary owns the end-to-end proof."
+    },
+    {
+      "finding": "A subtitle track authored before any video vanished from the editor the moment a video was opened.",
+      "foundBy": "srtOnlyMediaAttach",
+      "status": "fixed",
+      "severity": "critical",
+      "note": "The designed SRT-first preserve only recognized a null cache miss, but a freshly created media project scaffolds an EMPTY track, so hydration applied [] over the live rows; and nothing persisted the preserved rows into the new project, leaving even a surviving track one relaunch from loss. The hydrator now treats an empty scaffold inside the explicit SRT-first window like a miss, and the provenance seam persists the pending rows through the ordinary import path before claiming the badge. Proven end to end by the green srtOnlyMediaAttach run; manual media-free authoring without an uploaded document remains outside the carry-over and is recorded in that entry."
+    },
+    {
+      "finding": "A language-free (Format-mode) translated document proposed exactly the original track filename, so saving both as the same format collided and the second save produced nothing.",
+      "foundBy": "translatedDocumentExports",
+      "status": "fixed",
+      "severity": "minor",
+      "note": "Translated documents without target languages now carry a _translated suffix; the naming rule moved into a pure tested util and the journey pins both proposed names."
     }
   ],
   "fixtures": {
