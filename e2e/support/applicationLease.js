@@ -152,7 +152,12 @@ export const readInheritedApplicationLease = ({
       processCreatedUtc: inherited.leaseOwnerProcessCreatedUtc,
     });
   } catch (error) {
-    throw new Error('the E2E application lease owner identity is stale or was reused', {
+    // A failed probe is not a verdict: only a completed identity read that DISAGREES proves
+    // staleness. Name the two situations apart so a loaded machine reads as what it is.
+    const verdict = /reused|creation identity changed/.test(error?.message ?? '');
+    throw new Error(verdict
+      ? 'the E2E application lease owner identity is stale or was reused'
+      : 'the E2E application lease owner identity could not be verified', {
       cause: error,
     });
   }

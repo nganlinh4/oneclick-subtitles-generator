@@ -28,13 +28,20 @@ const readWindowsProcessIdentity = ({
     "$created = ([DateTime]$records[0].CreationDate).ToUniversalTime().ToString('O')",
     '$created',
   ].join('; ');
-  const result = spawn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8',
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 5_000,
-    maxBuffer: 16 * 1024,
-  });
+  // A cold pwsh start plus a CIM query can legally exceed five seconds on a loaded machine, and
+  // treating that probe timeout as a verdict once failed a whole journey as "lease owner stale".
+  // A timeout means "could not check", so check again with more room before concluding anything.
+  let result = null;
+  for (const timeout of [5_000, 15_000, 30_000]) {
+    result = spawn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout,
+      maxBuffer: 16 * 1024,
+    });
+    if (result.error?.code !== 'ETIMEDOUT') break;
+  }
   if (result.error) throw result.error;
   const processCreatedUtc = String(result.stdout ?? '').trim();
   if (result.status !== 0 || !WINDOWS_PROCESS_CREATION_PATTERN.test(processCreatedUtc)) {

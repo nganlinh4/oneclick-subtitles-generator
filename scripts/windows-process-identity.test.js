@@ -51,6 +51,31 @@ test('the query transport is injectable without weakening production verificatio
   assert.equal(calls[0].options.maxBuffer, 16 * 1024);
 });
 
+test('a probe timeout is retried with more room instead of becoming a verdict', () => {
+  const timeouts = [];
+  const spawn = (command, args, options) => {
+    timeouts.push(options.timeout);
+    if (timeouts.length < 3) {
+      return { error: Object.assign(new Error('spawnSync pwsh ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+    }
+    return { status: 0, stdout: '2026-08-26T01:02:03.0000000Z\n', stderr: '' };
+  };
+  const identity = readWindowsProcessIdentity({ processId: 1234, spawn });
+  assert.deepEqual(identity, {
+    processId: 1234,
+    processCreatedUtc: '2026-08-26T01:02:03.0000000Z',
+  });
+  assert.deepEqual(timeouts, [5_000, 15_000, 30_000]);
+
+  const exhausted = () => ({
+    error: Object.assign(new Error('spawnSync pwsh ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+  });
+  assert.throws(
+    () => readWindowsProcessIdentity({ processId: 1234, spawn: exhausted }),
+    /ETIMEDOUT/u,
+  );
+});
+
 test('an external PID is queried again so reuse cannot inherit a cached identity', () => {
   const outputs = [
     '2026-08-26T01:02:03.0000000Z\n',
