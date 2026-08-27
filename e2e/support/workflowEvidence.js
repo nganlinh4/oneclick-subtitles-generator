@@ -843,12 +843,29 @@ const abandonAttemptOperationPayload = (operation, path) => {
   publishStagingAttemptOperation(operation);
 };
 
+// Windows antivirus can hold a just-named file briefly, surfacing as EPERM on open; one bounded
+// retry loop keeps a real permission problem fatal while riding out the scan window.
+const openPayloadDescriptor = (path) => {
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return openSync(path, 'wx', 0o600);
+    } catch (error) {
+      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
+      lastError = error;
+      const untilMs = Date.now() + 40 + attempt * 40;
+      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
+    }
+  }
+  throw lastError;
+};
+
 const stageAttemptOperationContents = (operation, destination, contents) => {
   const path = allocateAttemptOperationPayload(operation, destination);
   let descriptor = null;
   let sealed = false;
   try {
-    descriptor = openSync(path, 'wx', 0o600);
+    descriptor = openPayloadDescriptor(path);
     writeFileSync(descriptor, contents);
     fsyncSync(descriptor);
     closeSync(descriptor);

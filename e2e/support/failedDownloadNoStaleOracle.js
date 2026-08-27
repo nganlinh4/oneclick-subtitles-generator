@@ -55,7 +55,23 @@ export const failedDownloadDurabilityState = (runRoot) => Object.freeze({
  */
 export const assertFailedDownloadLeavesOnlyHistory = (before, after) => {
   for (const key of STABLE_LEDGER_KEYS) {
+    if (key === 'alias') continue;
     assert.deepEqual(after[key], before[key], `failed download mutated durable ${key}`);
+  }
+  // The alias claim pins BINDING identity. `lastOpenedAt` is open-bookkeeping any legitimate
+  // resolve advances (a 64ms drift between two touches failed a correct run), so it is compared
+  // for monotonicity only while every identity field must match exactly.
+  const withoutOpenTimes = (alias) => (alias === null ? null : {
+    ...alias,
+    entries: (alias.entries ?? []).map(({ lastOpenedAt, ...entry }) => entry),
+  });
+  assert.deepEqual(withoutOpenTimes(after.alias), withoutOpenTimes(before.alias),
+    'failed download mutated durable alias');
+  for (const entry of after.alias?.entries ?? []) {
+    const prior = (before.alias?.entries ?? []).find(({ cacheId }) => cacheId === entry.cacheId);
+    if (!Number.isFinite(prior?.lastOpenedAt) || !Number.isFinite(entry.lastOpenedAt)) continue;
+    assert.ok(entry.lastOpenedAt >= prior.lastOpenedAt,
+      `alias entry ${entry.cacheId} moved its lastOpenedAt backwards`);
   }
   assert.deepEqual(after.managedDisk, before.managedDisk,
     'failed download changed the managed artifact bytes on disk');

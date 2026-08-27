@@ -173,8 +173,13 @@ export const run = ({ repeat, journeys }) => {
               signal: result.signal,
               failure: result.error?.message ?? null,
             });
-            if (result.error) fail(`${label} could not start: ${result.error.message}`);
-            if (!passed) failures.push({ label, status: result.status });
+            // A supervisor-level error on ONE journey must not abort the remaining suite: the old
+            // throw here unwound every lease and silently dropped seventeen queued journeys when
+            // a single spawn failed mid-suite. Record it loudly and keep going.
+            if (result.error) {
+              process.stdout.write(`\nFAILED ${label}: supervisor error: ${result.error.message}\n`);
+            }
+            if (!passed) failures.push({ label, status: result.status ?? 'supervisor-error' });
           } finally {
             removeRunRoot(runRoot, runAuthorization);
           }
