@@ -60,6 +60,30 @@ describe('a customer turns a real URL into visible subtitles', () => {
       details: { videoId: REAL_VIDEO.id },
     });
 
+    // A late ownership refusal has twice surfaced only as its customer toast, after the product
+    // logged the underlying error object to the console where nothing recorded it. Ledger every
+    // console.error so a recurrence names its own code and stack in the failure evidence.
+    await browser.execute(() => {
+      const ledger = [];
+      const original = console.error.bind(console);
+      window.__OSG_E2E_CONSOLE_ERRORS__ = ledger;
+      console.error = (...parts) => {
+        if (ledger.length < 32) {
+          ledger.push(parts.map((part) => {
+            if (part instanceof Error) {
+              return `${part.name}[${part.code ?? ''}]: ${part.message}\n${(part.stack ?? '').slice(0, 1_500)}`;
+            }
+            try {
+              return typeof part === 'string' ? part.slice(0, 500) : JSON.stringify(part).slice(0, 500);
+            } catch {
+              return String(part).slice(0, 500);
+            }
+          }).join(' | '));
+        }
+        original(...parts);
+      };
+    });
+
     await clickControl('[data-osg-action="generate-subtitles"]');
     const timeline = await $('.subtitle-timeline');
     await timeline.waitForDisplayed({
@@ -126,17 +150,25 @@ describe('a customer turns a real URL into visible subtitles', () => {
     durable = durableState(process.env.OSG_E2E_DATA_ROOT);
     assert.equal(durable.counts.projects, 1, 'one URL workflow created more than one subtitle project');
     assert.ok(durable.counts.cues > 0, 'visible URL-generated cues were not durable');
-    await captureWorkflowStep({
-      workflow: WORKFLOW,
-      step: '02-subtitles-on-video',
-      description: 'The downloaded URL owns one durable project and its generated subtitles are drawn on video.',
-      details: {
-        cueCount: durable.counts.cues,
-        projectCount: durable.counts.projects,
-        subtitleSource: usedLocalAsr ? 'local-asr' : 'provider-track',
-      },
-      focusSelector: '.video-preview .video-container',
-    });
+    try {
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '02-subtitles-on-video',
+        description: 'The downloaded URL owns one durable project and its generated subtitles are drawn on video.',
+        details: {
+          cueCount: durable.counts.cues,
+          projectCount: durable.counts.projects,
+          subtitleSource: usedLocalAsr ? 'local-asr' : 'provider-track',
+        },
+        focusSelector: '.video-preview .video-container',
+      });
+    } catch (error) {
+      const consoleErrors = await browser.execute(() => window.__OSG_E2E_CONSOLE_ERRORS__ ?? []);
+      throw new Error(
+        `${error.message}\nledgered console errors: ${JSON.stringify(consoleErrors, null, 1)}`,
+        { cause: error },
+      );
+    }
   });
 });
 
