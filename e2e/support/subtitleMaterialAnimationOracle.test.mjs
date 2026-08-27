@@ -634,7 +634,21 @@ test('animation proof rejects holding-window samples, frame reuse, transient ref
 
 test('the overshoot easing admits only its mathematically zero-opacity source frames', () => {
   const overshoot = ANIMATION_CASES.find(item => item.easing === 'cubic-bezier(0.68, -0.55, 0.265, 1.55)');
-  const input = animationObservationInput(overshoot);
+  // At exit-sample progress the overshoot easing has already driven the slide offset to ≈0, so a
+  // truthful exit frame sits AT the holding position; the generic fixture's displaced exit would
+  // now (correctly) be rejected as a stray.
+  const settleOvershootExit = (fixture) => {
+    fixture.frameProofs.exit.subtitleGeometry.centroidYRatio = (
+      fixture.frameProofs.steady.subtitleGeometry.centroidYRatio + 0.005
+    );
+    return fixture;
+  };
+  const strayedExit = animationObservationInput(overshoot);
+  assert.throws(
+    () => verifyAnimationObservation(strayedExit),
+    /strayed from holding at a near-zero eased offset/u,
+  );
+  const input = settleOvershootExit(animationObservationInput(overshoot));
   let expectedInvisible = 0;
   for (const sample of input.continuitySamples) {
     const active = activeAnimationCueAt(sample.mediaTime);
@@ -651,7 +665,7 @@ test('the overshoot easing admits only its mathematically zero-opacity source fr
   const verified = verifyAnimationObservation(input);
   assert.equal(verified.visualSummary.intentionalZeroOpacitySamples, expectedInvisible);
 
-  const missingInkAfterOpacityBecamePositive = animationObservationInput(overshoot);
+  const missingInkAfterOpacityBecamePositive = settleOvershootExit(animationObservationInput(overshoot));
   for (const sample of missingInkAfterOpacityBecamePositive.continuitySamples) {
     const active = activeAnimationCueAt(sample.mediaTime);
     if (active === null || easeSubtitle(active.progress, overshoot.easing) > 0) continue;
@@ -677,7 +691,7 @@ test('the overshoot easing admits only its mathematically zero-opacity source fr
     /source-only frame reached/u,
   );
 
-  const crossedBetweenPublicationAndWitness = animationObservationInput(overshoot);
+  const crossedBetweenPublicationAndWitness = settleOvershootExit(animationObservationInput(overshoot));
   for (const sample of crossedBetweenPublicationAndWitness.continuitySamples) {
     const active = activeAnimationCueAt(sample.visual.sourceTime);
     if (active === null || easeSubtitle(active.progress, overshoot.easing) > 0) continue;
@@ -705,7 +719,7 @@ test('the overshoot easing admits only its mathematically zero-opacity source fr
   };
   assert.doesNotThrow(() => verifyAnimationObservation(crossedBetweenPublicationAndWitness));
 
-  const missingInkAtPublishedPositiveOpacity = animationObservationInput(overshoot);
+  const missingInkAtPublishedPositiveOpacity = settleOvershootExit(animationObservationInput(overshoot));
   for (const sample of missingInkAtPublishedPositiveOpacity.continuitySamples) {
     const active = activeAnimationCueAt(sample.visual.sourceTime);
     if (active === null || easeSubtitle(active.progress, overshoot.easing) > 0) continue;

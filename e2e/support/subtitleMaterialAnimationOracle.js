@@ -40,6 +40,48 @@ export const ANIMATION_EASING_VALUES = Object.freeze([
   'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
 ]);
 
+const CSS_NAMED_BEZIERS = Object.freeze({
+  ease: Object.freeze([0.25, 0.1, 0.25, 1]),
+  'ease-in': Object.freeze([0.42, 0, 1, 1]),
+  'ease-out': Object.freeze([0, 0, 0.58, 1]),
+  'ease-in-out': Object.freeze([0.42, 0, 0.58, 1]),
+});
+
+const cubicBezierValue = (p1x, p1y, p2x, p2y, progress) => {
+  const xAt = t => 3 * t * (1 - t) ** 2 * p1x + 3 * t * t * (1 - t) * p2x + t ** 3;
+  const yAt = t => 3 * t * (1 - t) ** 2 * p1y + 3 * t * t * (1 - t) * p2y + t ** 3;
+  let low = 0;
+  let high = 1;
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const mid = (low + high) / 2;
+    if (xAt(mid) < progress) low = mid;
+    else high = mid;
+  }
+  return yAt((low + high) / 2);
+};
+
+/**
+ * Independent CSS-easing authority for the sweep. The slide displacement at a sampled instant is
+ * `1 - eased(progress)` of the full offset, so its DIRECTION and whether it is measurable at all
+ * depend on the easing: the overshoot bezier is already ≈1 (or beyond) at exit-sample progress,
+ * where a fixed "must be above holding" claim is simply false. This evaluator is deliberately not
+ * the product's implementation.
+ */
+export const sweepEasedProgress = (easing, progress) => {
+  if (!Number.isFinite(progress)) throw new Error(`sweep progress is not finite: ${progress}`);
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  if (easing === 'linear') return progress;
+  const named = CSS_NAMED_BEZIERS[easing];
+  if (named !== undefined) return cubicBezierValue(...named, progress);
+  const custom = /^cubic-bezier\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/u
+    .exec(easing);
+  if (custom === null) throw new Error(`sweep easing is not evaluable: ${easing}`);
+  return cubicBezierValue(
+    Number(custom[1]), Number(custom[2]), Number(custom[3]), Number(custom[4]), progress,
+  );
+};
+
 /**
  * Non-Cartesian customer edits. Dormant fields are deliberately ordered behind an active Gaming
  * preset, so every action changes drawable pixels instead of merely changing a hidden value.
@@ -915,34 +957,58 @@ export const verifyAnimationObservation = ({
   const steady = frameProofs.steady.subtitleGeometry;
   const exit = frameProofs.exit.subtitleGeometry;
   const minimumShift = 0.001;
-  if (animation.type === 'slide-up') {
-    assert.ok(entry.centroidYRatio > steady.centroidYRatio + minimumShift, (
-      `${animation.id}: slide-up entry did not start below its holding position`
+  // The measurable slide displacement at each sampled instant is `1 - eased(progress)` of the
+  // full offset. A decisive factor demands its direction; a factor the easing has already driven
+  // to ≈0 at the sample instant demands nearness to the holding position instead; an overshoot
+  // factor (negative) demands the opposite direction. Sample progress values mirror
+  // ANIMATION_PHASES (entry 0.4, exit 0.6).
+  const DECISIVE_SLIDE_FACTOR = 0.15;
+  const NEAR_HOLD_RATIO = 0.02;
+  const slidePhaseClaim = ({ phase, sign, sample, steadyRatio, awayLabel, towardLabel }) => {
+    const phaseProgress = phase === 'entry' ? 0.4 : 0.6;
+    const factor = 1 - sweepEasedProgress(animation.easing, phaseProgress);
+    const shift = sample - steadyRatio;
+    if (factor >= DECISIVE_SLIDE_FACTOR) {
+      assert.ok(sign * shift > minimumShift, (
+        `${animation.id}: ${animation.type} ${phase} did not ${awayLabel}`
+      ));
+      return;
+    }
+    if (factor <= -DECISIVE_SLIDE_FACTOR) {
+      assert.ok(sign * shift < -minimumShift, (
+        `${animation.id}: ${animation.type} ${phase} did not overshoot ${towardLabel}`
+      ));
+      return;
+    }
+    assert.ok(Math.abs(shift) <= NEAR_HOLD_RATIO, (
+      `${animation.id}: ${animation.type} ${phase} strayed from holding at a near-zero eased offset (factor ${factor.toFixed(4)}, shift ${shift.toFixed(4)})`
     ));
-    assert.ok(exit.centroidYRatio < steady.centroidYRatio - minimumShift, (
-      `${animation.id}: slide-up exit did not leave above its holding position`
-    ));
-  } else if (animation.type === 'slide-down') {
-    assert.ok(entry.centroidYRatio < steady.centroidYRatio - minimumShift, (
-      `${animation.id}: slide-down entry did not start above its holding position`
-    ));
-    assert.ok(exit.centroidYRatio > steady.centroidYRatio + minimumShift, (
-      `${animation.id}: slide-down exit did not leave below its holding position`
-    ));
-  } else if (animation.type === 'slide-left') {
-    assert.ok(entry.centroidXRatio > steady.centroidXRatio + minimumShift, (
-      `${animation.id}: slide-left entry did not start to the right`
-    ));
-    assert.ok(exit.centroidXRatio < steady.centroidXRatio - minimumShift, (
-      `${animation.id}: slide-left exit did not leave to the left`
-    ));
-  } else if (animation.type === 'slide-right') {
-    assert.ok(entry.centroidXRatio < steady.centroidXRatio - minimumShift, (
-      `${animation.id}: slide-right entry did not start to the left`
-    ));
-    assert.ok(exit.centroidXRatio > steady.centroidXRatio + minimumShift, (
-      `${animation.id}: slide-right exit did not leave to the right`
-    ));
+  };
+  const SLIDE_AXES = {
+    'slide-up': { axis: 'y', entrySign: 1, exitSign: -1, entryAway: 'start below its holding position', exitAway: 'leave above its holding position' },
+    'slide-down': { axis: 'y', entrySign: -1, exitSign: 1, entryAway: 'start above its holding position', exitAway: 'leave below its holding position' },
+    'slide-left': { axis: 'x', entrySign: 1, exitSign: -1, entryAway: 'start to the right', exitAway: 'leave to the left' },
+    'slide-right': { axis: 'x', entrySign: -1, exitSign: 1, entryAway: 'start to the left', exitAway: 'leave to the right' },
+  };
+  if (SLIDE_AXES[animation.type] !== undefined) {
+    const spec = SLIDE_AXES[animation.type];
+    const read = geometry => (spec.axis === 'y' ? geometry.centroidYRatio : geometry.centroidXRatio);
+    slidePhaseClaim({
+      phase: 'entry',
+      sign: spec.entrySign,
+      sample: read(entry),
+      steadyRatio: read(steady),
+      awayLabel: spec.entryAway,
+      towardLabel: 'past its holding position',
+    });
+    slidePhaseClaim({
+      phase: 'exit',
+      sign: spec.exitSign,
+      sample: read(exit),
+      steadyRatio: read(steady),
+      awayLabel: spec.exitAway,
+      towardLabel: 'past its holding position',
+    });
   } else if (animation.type === 'scale') {
     assert.ok(entry.bounds.areaPixels < steady.bounds.areaPixels * 0.98, (
       `${animation.id}: scale entry did not occupy a smaller area`

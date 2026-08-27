@@ -424,7 +424,7 @@
       "kind": "workflow",
       "file": "journeys/localFileImport.journey.js",
       "capability": "A customer opens a video already on their disk.",
-      "status": "ready-unrun",
+      "status": "green",
       "oracles": [
         "ffprobe and SHA-256 of the staged source, read before the application ever sees the file",
         "the app's reported duration/dimensions against the independent probe, plus the private native media-server URL shape",
@@ -432,7 +432,8 @@
         "three screenshots under the managed external evidence lane/local-file-import"
       ],
       "runsAgainst": "e2e-binary",
-      "note": "Import is now its own subject: editPersistRelaunch and unicodeCues exercise the path incidentally, but a defect that only affects import would be reported by the wrong journey. Authored with a unit-tested location-pointer oracle; not green until the current guarded binary completes it and the evidence is inspected."
+      "note": "Green in off-screen real-binary attempt 20260827010107629-34704-9ec306f1 (exe sha256 f47148d4fee0…). All three screenshots inspected. Import is by owned copy: the persisted windows-utf16le location pointer decoded to a content-addressed file inside the isolated artifact store holding exactly the selected 440628 bytes (SHA-256 equal), the editor reported the probe-exact 19.014s duration and dimensions, streamed from the private native media server, showed the customer their file name, fabricated no cues, and decoded a real mid-file frame with a ready waveform. The first run corrected the journey itself: it assumed in-place references where the product correctly copies.",
+      "lastGreenBinary": "26a26c44b8f30c863147aa7cb9d54d6c06ac2fd585db3a75bc4754e82969bd72"
     },
     {
       "name": "timelineBoundary",
@@ -672,7 +673,7 @@
         "the native canvas drawing a pre-authored cue over the attached video, with two screenshots under the managed external evidence lane/srt-only-media-attach"
       ],
       "runsAgainst": "e2e-binary",
-      "note": "Media-free JSON import and the three document exports are green in subtitleDocumentRoundTrip; the authored journey owns the remaining compound half — a track authored before any media surviving the later attachment. Not green until the current guarded binary completes it and the evidence is inspected."
+      "note": "Media-free JSON import and the three document exports are green in subtitleDocumentRoundTrip; the authored journey owns the remaining compound half — a track authored before any media surviving the later attachment. Its first run exposed the real loss (an empty scaffold track wiped the live rows and nothing persisted them), fixed at the hydration and provenance seams. A track typed manually media-free (without an uploaded document) carries no import provenance and remains OUTSIDE the carry-over; that edge is deliberately still open. Not green until the rebuilt guarded binary completes the journey and the evidence is inspected."
     },
     {
       "name": "subtitleDocumentRoundTrip",
@@ -972,7 +973,7 @@
       "kind": "workflow-persistence",
       "file": "journeys/renderInterruptRecovery.journey.js",
       "capability": "Queued renders, cancellation, retry, failure cleanup and relaunch recovery never publish partial or stale artifacts.",
-      "status": "ready-unrun",
+      "status": "green",
       "oracles": [
         "one admitted running native render whose seed process is torn down mid-flight, exactly as a crash would",
         "read-only SQLite proving the killed job restores terminal (never a zombie or a promoted success) via the boot-time interrupt/reconcile boundary",
@@ -981,7 +982,8 @@
         "three screenshots under the managed external evidence lane/render-interrupt-recovery"
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
-      "note": "renderCancelRetryExport is green for single-process cancel/retry/save; the authored interruption scenario owns the relaunch half. Multi-render queue ORDERING remains uncovered by both. Not green until both hidden desktop processes complete and the evidence is inspected."
+      "note": "Green on the first two-process run, attempt 20260827010609373-54188-2bfab445, all three screenshots inspected. The seed process was torn down around a running 1080p/30 native render; the next process restored that exact job as interrupted — never a zombie or a promoted success — with no phantom queue progress, no partial bytes surviving as downloadable output, and an exactly reconciled artifact root; a distinct second render then succeeded and reconciled. renderCancelRetryExport separately holds the single-process cancel/retry/save half. Multi-render queue ORDERING remains the one uncovered corner of this capability.",
+      "lastGreenBinary": "26a26c44b8f30c863147aa7cb9d54d6c06ac2fd585db3a75bc4754e82969bd72"
     },
     {
       "name": "backgroundImageGeneration",

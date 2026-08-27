@@ -113,16 +113,18 @@ const temporalDelta = () => ({
 
 const phaseBinding = (definition = EXPORT_ANIMATION_PARITY_CASES[0]) => ({
   frames: { entry: definition.entryFrame, exit: definition.exitFrame },
+  // Main proves its grid landing with a bounded arrow correction; the Render native range commits
+  // the exact rational value directly and legitimately records no keys.
   publicSeeks: Object.fromEntries(['main', 'render'].map(surface => [surface, {
     entry: {
       frame: definition.entryFrame,
       seconds: definition.entryFrame / EXPORT_PARITY_FPS,
-      keys: ['ArrowRight', 'ArrowLeft'],
+      keys: surface === 'main' ? ['ArrowRight', 'ArrowLeft'] : [],
     },
     exit: {
       frame: definition.exitFrame,
       seconds: definition.exitFrame / EXPORT_PARITY_FPS,
-      keys: ['ArrowRight', 'ArrowLeft'],
+      keys: surface === 'main' ? ['ArrowRight', 'ArrowLeft'] : [],
     },
   }])),
   hashes: Object.fromEntries(['main', 'render', 'exported', 'independentSource'].map(
@@ -532,7 +534,13 @@ test('entry and exit must bind to distinct bytes and independently changing sour
   privateSeek.publicSeeks.main.entry.keys = [];
   assert.throws(() => verifyExportAnimationParityObservation({
     ...valid, phaseBinding: privateSeek,
-  }), /no bounded public keyboard seek proof/u);
+  }), /lacks its expected public seek proof shape/u);
+
+  const renderKeyboard = structuredClone(valid.phaseBinding);
+  renderKeyboard.publicSeeks.render.exit.keys = ['ArrowRight'];
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...valid, phaseBinding: renderKeyboard,
+  }), /lacks its expected public seek proof shape/u);
 });
 
 test('implausible or truncated ffprobe audio is a hard failure', () => {

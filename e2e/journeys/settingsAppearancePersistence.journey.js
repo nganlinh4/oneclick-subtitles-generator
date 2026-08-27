@@ -66,10 +66,17 @@ const selectedDropdownIndex = async (buttonSelector) => {
   const index = await browser.execute(() => [...document.querySelectorAll(
     '.custom-dropdown-clipper .dropdown-option',
   )].findIndex(option => option.classList.contains('selected')));
-  // Close by toggling the same public button. Escape would also dismiss the Settings modal —
-  // the modal's own ESC affordance fires alongside the dropdown's — and the modal must survive
-  // this inspection.
-  await clickControl(buttonSelector);
+  assert.ok(index >= 0, `${buttonSelector} shows no selected option to inspect`);
+  // Close by re-committing the already-selected option — a customer no-op that leaves the value
+  // untouched. Escape would also dismiss the Settings modal, and the open menu morphs over the
+  // button itself, so neither of those can close it here.
+  const selected = await $('.custom-dropdown-clipper .dropdown-option.selected');
+  await browser.action('pointer')
+    .move({ origin: selected })
+    .down({ button: 0 })
+    .pause(75)
+    .up({ button: 0 })
+    .perform();
   await menu.waitForExist({
     reverse: true,
     timeout: 10_000,
