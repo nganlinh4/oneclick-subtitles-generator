@@ -176,38 +176,42 @@ const attemptDirectory = (workflow, attemptId) => {
   return insideDirectory(join(root, 'attempts'), directory, 'attempt');
 };
 
-// Windows antivirus can hold a just-named file briefly, surfacing as EPERM (or EBUSY) on open —
-// on creation of a recently-seen name and on the read-back reopen of just-written bytes alike.
-// One bounded retry loop keeps a real permission problem fatal while riding out the scan window.
-const openRetryingOnScan = (path, flags, mode) => {
+// Windows antivirus can hold a just-named file, surfacing as EPERM (or EBUSY) on open — on
+// creation of a recently-seen name and on the read-back reopen of just-written bytes alike. The
+// hold scales with content size: scanning a staged media artifact takes seconds, not the
+// milliseconds a first bounded retry assumed, and one exhausted 400ms window failed an
+// otherwise-green journey. Retry across ~15 seconds total, sleeping without burning a core,
+// while keeping a real permission problem fatal with its original error.
+const SCAN_RETRY_DELAYS_MS = Object.freeze([50, 100, 200, 400, 800, 1_600, 3_200, 4_000, 4_000]);
+
+const sleepSync = (milliseconds) => {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+  } catch {
+    const untilMs = Date.now() + milliseconds;
+    while (Date.now() < untilMs) { /* fallback busy-wait */ }
+  }
+};
+
+const retryOnScan = (operation) => {
   let lastError = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (const delayMs of [0, ...SCAN_RETRY_DELAYS_MS]) {
+    if (delayMs > 0) sleepSync(delayMs);
     try {
-      return openSync(path, flags, mode);
+      return operation();
     } catch (error) {
       if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
       lastError = error;
-      const untilMs = Date.now() + 40 + attempt * 40;
-      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
     }
   }
   throw lastError;
 };
 
-const copyRetryingOnScan = (source, destination) => {
-  let lastError = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      return copyFileSync(source, destination);
-    } catch (error) {
-      if (error?.code !== 'EPERM' && error?.code !== 'EBUSY') throw error;
-      lastError = error;
-      const untilMs = Date.now() + 40 + attempt * 40;
-      while (Date.now() < untilMs) { /* bounded busy-wait; the sync API has no sleep */ }
-    }
-  }
-  throw lastError;
-};
+const openRetryingOnScan = (path, flags, mode) => retryOnScan(() => openSync(path, flags, mode));
+
+const copyRetryingOnScan = (source, destination) => retryOnScan(
+  () => copyFileSync(source, destination),
+);
 
 const atomicWriteFile = (path, contents) => {
   mkdirSync(dirname(path), { recursive: true });
