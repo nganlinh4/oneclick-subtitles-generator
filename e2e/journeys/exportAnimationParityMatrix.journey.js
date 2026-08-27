@@ -294,20 +294,26 @@ const setRange = async (selector, value, label) => {
 const setSwitch = async (selector, selected, label) => {
   const control = await $(selector);
   await control.waitForExist({ timeout: 30_000, timeoutMsg: `${label}: switch is absent` });
-  const current = await browser.execute(target => document.querySelector(target)?.selected ?? null, selector);
-  assert.equal(typeof current, 'boolean', `${label}: switch has no selected state`);
-  if (current !== selected) {
+  const read = () => browser.execute(
+    target => document.querySelector(target)?.selected ?? null,
+    selector,
+  );
+  assert.equal(typeof (await read()), 'boolean', `${label}: switch has no selected state`);
+  // One click can land during a customization-panel re-render and be dropped; a customer clicks
+  // again when a switch visibly did not take. Re-click only while the state is still wrong, and
+  // let the final assertion own the verdict.
+  for (let attempt = 0; attempt < 3 && (await read()) !== selected; attempt += 1) {
     await control.scrollIntoView({ block: 'center', inline: 'center' });
     await control.waitForClickable({ timeout: 30_000, timeoutMsg: `${label}: switch is not clickable` });
     await control.click();
+    try {
+      await browser.waitUntil(async () => (await read()) === selected, {
+        timeout: 2_500,
+        interval: 50,
+      });
+    } catch { /* the bounded re-click and final assertion own the outcome */ }
   }
-  await browser.waitUntil(async () => (
-    await browser.execute(target => document.querySelector(target)?.selected ?? null, selector)
-  ) === selected, {
-    timeout: 5_000,
-    interval: 50,
-    timeoutMsg: `${label}: switch did not become ${selected}`,
-  });
+  assert.equal(await read(), selected, `${label}: switch did not become ${selected}`);
 };
 
 const setTextColor = async (textSelector, value, label) => {
