@@ -917,21 +917,34 @@ export const savePreviewElementFrame = async (path, selector) => {
     await browser.pause(100);
     let geometry = null;
     let stable = false;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
       geometry = await readGeometry();
       if (geometry === null) {
         throw new Error(`the preview exposed no bounded composition viewport: ${JSON.stringify(geometry)}`);
       }
       await browser.saveScreenshot(raw);
       const after = await readGeometry();
+      // Clock stability alone is not enough: a layout still settling after a style change can
+      // move the element between the geometry read and the compositor screenshot, so the crop
+      // rectangle names a rect the pixels no longer occupy. A restored-Default capture measured
+      // that way carried a 2px strip of page background and failed an SSIM claim about ink that
+      // had restored perfectly. Pixels and rectangle must describe the same settled instant.
       stable = after !== null
         && after.clock.revision === geometry.clock.revision
         && Object.is(after.clock.sourceMediaTime, geometry.clock.sourceMediaTime)
         && Object.is(after.clock.transportTime, geometry.clock.transportTime)
         && Object.is(after.clock.sceneTime, geometry.clock.sceneTime)
-        && Object.is(after.clock.sourceClockProvenance, geometry.clock.sourceClockProvenance);
+        && Object.is(after.clock.sourceClockProvenance, geometry.clock.sourceClockProvenance)
+        && after.bounds.left === geometry.bounds.left
+        && after.bounds.top === geometry.bounds.top
+        && after.bounds.width === geometry.bounds.width
+        && after.bounds.height === geometry.bounds.height
+        && after.left === geometry.left
+        && after.top === geometry.top
+        && after.width === geometry.width
+        && after.height === geometry.height;
       if (stable) break;
-      if (attempt < 3) await browser.pause(50);
+      if (attempt < 5) await browser.pause(50);
     }
     if (!stable) {
       throw new Error('the preview changed while WebDriver captured its compositor frame');
