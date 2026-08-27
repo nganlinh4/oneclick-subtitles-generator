@@ -87,6 +87,7 @@ const caseDefinition = ({
   effects = [],
   customPositionX = 50,
   customPositionY = 80,
+  sampleOffsetFrames = EXPORT_PARITY_SAMPLE_OFFSET_FRAMES,
   fontSize = 72,
   marginBottom = 80,
   marginTop = 80,
@@ -108,8 +109,9 @@ const caseDefinition = ({
     textFeatures: Object.freeze([...textFeatures]),
     startFrame,
     endFrame,
-    entryFrame: startFrame - EXPORT_PARITY_SAMPLE_OFFSET_FRAMES,
-    exitFrame: endFrame + EXPORT_PARITY_SAMPLE_OFFSET_FRAMES,
+    sampleOffsetFrames,
+    entryFrame: startFrame - sampleOffsetFrames,
+    exitFrame: endFrame + sampleOffsetFrames,
     effects: Object.freeze([...effects]),
     customization: Object.freeze({
       animationType,
@@ -250,6 +252,10 @@ export const EXPORT_ANIMATION_PARITY_CASES = Object.freeze([
     effects: ['glow'],
     marginBottom: 96,
     marginRight: 36,
+    // The default 12-frame offset samples this overshoot bezier at progress 1/3 — its eased-zero
+    // crossing, where the product correctly draws nothing. Six frames sample at progress 2/3,
+    // where the same easing is at full ink, so every claim stays strong instead of vacuous.
+    sampleOffsetFrames: 6,
   }),
   caseDefinition({
     id: '08-flip-custom-stroke',
@@ -792,14 +798,20 @@ export const validateExportAnimationParityMatrix = (cases = EXPORT_ANIMATION_PAR
         `${entry.id}: ${field} is not exactly representable in SRT milliseconds`
       ));
     }
+    assert.ok(
+      Number.isSafeInteger(entry.sampleOffsetFrames)
+        && entry.sampleOffsetFrames >= 3
+        && entry.sampleOffsetFrames < EXPORT_PARITY_FADE_FRAMES,
+      `${entry.id}: sample offset must sit strictly inside the fade window`,
+    );
     assert.equal(
       entry.entryFrame,
-      entry.startFrame - EXPORT_PARITY_SAMPLE_OFFSET_FRAMES,
+      entry.startFrame - entry.sampleOffsetFrames,
       `${entry.id}: entry sample offset changed`,
     );
     assert.equal(
       entry.exitFrame,
-      entry.endFrame + EXPORT_PARITY_SAMPLE_OFFSET_FRAMES,
+      entry.endFrame + entry.sampleOffsetFrames,
       `${entry.id}: exit sample offset changed`,
     );
     assert.ok(entry.endFrame > entry.startFrame, `${entry.id}: cue has no authored duration`);
