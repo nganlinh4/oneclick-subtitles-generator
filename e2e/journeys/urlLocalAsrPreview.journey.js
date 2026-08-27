@@ -22,7 +22,17 @@ const visibleState = () => browser.execute(() => ({
   cueCount: document.querySelectorAll('.lyric-text').length,
   frame: document.querySelector('.video-preview [data-osg-preview-engine="canvas-atlas"]')
     ?.getAttribute('data-osg-frame-revision') ?? null,
-  projectCacheId: localStorage.getItem('current_file_cache_id'),
+  // Native media publishes its identity through the owned session record; the flat cache-id key
+  // is written only for browser-mode file hashing and stays absent for a native download.
+  projectCacheId: (() => {
+    try {
+      const session = JSON.parse(localStorage.getItem('current_media_session') ?? 'null');
+      if (session !== null && typeof session.cacheId === 'string' && session.cacheId !== '') {
+        return session.cacheId;
+      }
+    } catch { /* fall through to the browser-mode key */ }
+    return localStorage.getItem('current_file_cache_id');
+  })(),
   sourceUrl: localStorage.getItem('current_video_url'),
 }));
 
