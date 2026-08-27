@@ -496,6 +496,35 @@ export const createCanvasSubtitleRenderer = (canvas) => {
         readyState: 4,
       });
     },
+    /**
+     * Whether a captured frame looks like the solid-black transitioning decoder surface that
+     * drawImage may legally return around a seek boundary. Nine sampled pixels, one readback —
+     * callers gate this to the first capture(s) of a seek generation so steady playback never
+     * pays for it. Real black CONTENT also matches, which is why callers reject at most a bounded
+     * number of captures before accepting the picture as truth.
+     */
+    captureLooksBlack(captured) {
+      const image = captured?.image ?? captured;
+      const width = Number(captured?.videoWidth ?? image?.width ?? 0);
+      const height = Number(captured?.videoHeight ?? image?.height ?? 0);
+      if (!(width > 0 && height > 0) || typeof image?.getContext !== 'function') return false;
+      const context = image.getContext('2d');
+      if (context === null) return false;
+      for (const xRatio of [0.1, 0.5, 0.9]) {
+        for (const yRatio of [0.1, 0.5, 0.9]) {
+          const x = Math.min(width - 1, Math.round(width * xRatio));
+          const y = Math.min(height - 1, Math.round(height * yRatio));
+          let data;
+          try {
+            data = context.getImageData(x, y, 1, 1).data;
+          } catch {
+            return false;
+          }
+          if (data[0] + data[1] + data[2] > 24) return false;
+        }
+      }
+      return true;
+    },
     draw({ video, composition, crop, atlasEntry, customization, active, cueTransform }) {
       const width = canvas.width;
       const height = canvas.height;

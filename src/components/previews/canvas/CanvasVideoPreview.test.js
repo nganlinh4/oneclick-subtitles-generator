@@ -1033,6 +1033,84 @@ describe('canvas preview geometry boundary', () => {
     expect(Number(canvas.dataset.osgSourceMediaTime)).toBeCloseTo(0.9, 12);
   });
 
+  it('rejects a black transitioning surface from the first post-seek presentation', async () => {
+    // Even a presentation callback delivered just after `seeking` clears can capture the decoder
+    // surface as solid black. The first capture of a seek generation runs one bounded readback;
+    // a black result is dropped so the NEXT presented frame publishes instead.
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    const looksBlack = vi.fn(() => false);
+    createCanvasSubtitleRenderer.mockImplementation(() => ({
+      captureVideoFrame,
+      captureLooksBlack: looksBlack,
+      draw: drawFrame,
+    }));
+    let currentTime = 2.0;
+    let nativeSeeking = false;
+    let callbackSequence = 0;
+    const callbacks = new Map();
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, get: () => currentTime },
+      readyState: { configurable: true, value: 4 },
+      seeking: { configurable: true, get: () => nativeSeeking },
+      paused: { configurable: true, value: false },
+      requestVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn((callback) => {
+          callbackSequence += 1;
+          callbacks.set(callbackSequence, callback);
+          return callbackSequence;
+        }),
+      },
+      cancelVideoFrameCallback: { configurable: true, value: vi.fn() },
+    });
+    const fireLatestFrame = async (mediaTime) => {
+      const handle = [...callbacks.keys()].at(-1);
+      const callback = callbacks.get(handle);
+      callbacks.delete(handle);
+      await act(async () => callback(performance.now(), { mediaTime, presentedFrames: handle }));
+    };
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="black-surface-rejected"
+      playing
+      currentTime={currentTime}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+    />);
+    const canvas = container.querySelector('canvas');
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalled());
+    await fireLatestFrame(2.0);
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('1'));
+
+    nativeSeeking = true;
+    currentTime = 0.9;
+    act(() => video.dispatchEvent(new Event('seeking')));
+    nativeSeeking = false;
+    act(() => video.dispatchEvent(new Event('seeked')));
+
+    // First post-seek presentation captures black: dropped, the held frame stays published.
+    looksBlack.mockReturnValueOnce(true);
+    await fireLatestFrame(0.9);
+    expect(canvas.dataset.osgFrameRevision).toBe('1');
+
+    // The next presentation carries real pixels and publishes.
+    await fireLatestFrame(0.933);
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('2'));
+    expect(Number(canvas.dataset.osgSourceMediaTime)).toBeCloseTo(0.933, 12);
+  });
+
   it('publishes only generation-current presented frames and keeps metadata time atomic with pixels', async () => {
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
     window.__OSG_FONT_READINESS__ = {

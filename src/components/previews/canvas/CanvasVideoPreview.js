@@ -309,6 +309,10 @@ const CanvasVideoPreview = ({
     let captureRetryAttempts = 0;
     let stopped = false;
     let drawing = false;
+    // Black-surface rejection bookkeeping, reset with every seek generation: the check runs only
+    // until a generation publishes its first frame, so steady playback never pays a readback.
+    let publishedFrameThisGeneration = false;
+    let blackSkipsThisGeneration = 0;
 
     // A changed source identity invalidates every previously presented timestamp before any layout
     // effect is allowed to repaint. Native `loadstart`/`emptied` below also cover in-place fallback
@@ -377,6 +381,22 @@ const CanvasVideoPreview = ({
           && Object.is(published.time, sceneTime)
           && Object.is(priorFrame.sourceKey, candidate.sourceKey)
           && Object.is(priorFrame.transportTime, transportTime)) return true;
+      // The first capture(s) after a seek can legally be the transitioning decoder surface —
+      // solid black — whichever boundary delivered them; the witness caught that flash both from
+      // the settled snapshot and from the first post-seek presentation callback. One bounded
+      // readback per seek generation rejects the surface and lets the next frame publish; after
+      // two rejections the picture is accepted as real black content, and after a generation's
+      // first accepted frame the check never runs again.
+      if (!publishedFrameThisGeneration
+          && blackSkipsThisGeneration < 2
+          && rendererRef.current?.captureLooksBlack?.(candidate.source) === true) {
+        blackSkipsThisGeneration += 1;
+        if (!snapshot?.playing && !candidate.video.seeking && candidate.video.readyState >= 2) {
+          scheduleCaptureRetry(candidate.video, candidate.generation);
+        }
+        return false;
+      }
+      publishedFrameThisGeneration = true;
       desiredPixelFrameRef.current = {
         sourceKey: candidate.sourceKey,
         source: candidate.source,
@@ -474,6 +494,8 @@ const CanvasVideoPreview = ({
 
     const supersedePendingFrame = () => {
       videoFrameGeneration += 1;
+      publishedFrameThisGeneration = false;
+      blackSkipsThisGeneration = 0;
       captureRetryAttempts = 0;
       if (captureRetryHandle !== null) {
         cancelAnimationFrame(captureRetryHandle);
@@ -872,6 +894,8 @@ const CanvasVideoPreview = ({
         return;
       }
       videoFrameGeneration += 1;
+      publishedFrameThisGeneration = false;
+      blackSkipsThisGeneration = 0;
       if (videoFrameHandle !== null
           && typeof videoWithFrameCallback?.cancelVideoFrameCallback === 'function') {
         videoWithFrameCallback.cancelVideoFrameCallback(videoFrameHandle);
