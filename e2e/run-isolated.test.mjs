@@ -67,6 +67,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'manualLyricsAndGeniusBoundary.journey.js',
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
+    'referenceVoiceAndPerCueNarration.journey.js',
     'renderAudioNarrationMix.journey.js',
     'renderCancelRetryExport.journey.js',
     'renderFormatTransformMatrix.journey.js',

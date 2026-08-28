@@ -28,7 +28,10 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 
 // These are intentionally not part of the ordinary product suite. The damaged-font journey needs a
 // staged application assembled by its scenario runner; the other two are diagnostic probes whose
-// output is useful only while narrowing a known failure.
+// output is useful only while narrowing a known failure. transcriptionRulesAndAnalysis runs the
+// reviewed local ASR engine to full completion TWICE end to end (once per compared segmentation
+// setting) in one process -- like nativeToolsInstall, it is a real single-process journey a
+// developer can still run directly by name, just not on every ordinary pass.
 const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
@@ -39,6 +42,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'settingsAppearancePersistence.journey.js',
   'settingsNarrationModelManagement.journey.js',
   'settingsToolsRemoveAndFactoryReset.journey.js',
+  'transcriptionRulesAndAnalysis.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',
 ]);

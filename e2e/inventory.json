@@ -898,13 +898,23 @@
     {
       "name": "transcriptionSegmentationRulesAndVideoAnalysis",
       "kind": "workflow",
-      "capability": "Language, segmentation strategy, max request duration, custom transcription rules and optional Gemini media analysis change only the intended job and persist after relaunch.",
-      "status": "unproven",
+      "file": "journeys/transcriptionRulesAndAnalysis.journey.js",
+      "capability": "Video analysis and its transcription-rules toggle refuse honestly without a Gemini credential; the public local-ASR segmentation settings (strategy/max words) change the SHAPE of durably transcribed cues in the documented direction.",
+      "oracles": [
+        "the real Video Analysis button (ButtonsContainer.jsx/VideoAnalysisButton.js) and its visible toast/idle-state surface",
+        "the Gemini panel's real 'Use transcription rules from analysis' toggle (#use-transcription-rules), read only",
+        "the application's own SQLite jobs and cues, read only",
+        "the native diagnostic log, requiring no Gemini request lifecycle event",
+        "the application's own SQLite cues table, read only, compared across two full local-ASR runs on the same media"
+      ],
+      "runsAgainst": "e2e-binary, requires the Faster-Whisper Turbo package already installed in the shared managed engine cache (allowInstall: false, same precedent as multiWindowAsrPersistence)",
+      "status": "authored-unproven",
       "recommendedJourney": "providerTranscriptionAndRecovery",
+      "note": "Authored and statically validated by support/transcriptionRulesAndAnalysisJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE: video analysis (VideoAnalysisButton.js's 'Add analysis') has NO credential-free success path -- videoAnalysisService.js's analyzeVideoWithGemini calls runNativeGeminiMediaAnalysis, which resolves a credential through the exact same createNativeGeminiJobRunner (nativeGeminiJobLifecycle.js) every other native Gemini command uses; with no credential its attempt loop breaks immediately and throws the fixed geminiCredentialUnavailable error before any request reaches the network, matching the same refusal shape geminiCredentialBoundary.journey.js already proves for transcription. 'Edit rules' (TranscriptionRulesEditor) is reachable only once hasAnalysis is already true, i.e. only after a successful Gemini analysis -- there is no 'start from a blank rules form' entry point the way manual lyrics/subtitles has one (manualLyricsAndGeniusBoundary.journey.js), so manual rule authoring inherits the same Gemini gate rather than being a separate credential-free surface. The Gemini panel's 'Use transcription rules from analysis' toggle (VideoProcessingModalGeminiPanel.js's #use-transcription-rules) is wired ONLY into the Gemini panel and stays disabled (transcriptionRulesAvailable === false) on a fresh profile, honestly proven rather than assumed; useTranscriptionRules never reaches local ASR at all (AsrProcessingOptions.js has no such prop). The credential-free SEGMENTATION-SHAPE half is real: AsrProcessingOptions.js's public 'Splitting method' dropdown, its max-words slider (id=asr-max-words, fed through wordsSlider) and its 'preserve full sentences' switch (id=asr-preserve-sentences) map exactly onto osg-asr's SegmentationOptions through runVideoProcess.js (asrMaxWords becomes the -1/null sentinel exactly when strategy==='sentence' && preserveSentences) and AsrAdapter.js's native request; crates/osg-asr/src/segment.rs's limited_segments enforces the word-strategy cap precisely (a segment ends once it holds max_words words, a pause boundary, or input ends), which is the exact, checkable upper bound this journey asserts on every word-capped cue, not merely a 'shorter on average' claim. pauseThresholdMs has no customer control at all (AsrAdapter.js hardcodes 800) and is out of scope. The journey runs the reviewed, already-green Faster-Whisper Turbo engine to full completion TWICE on the same short real-speech clip -- once with a tight word cap, once with full sentences preserved -- and proves the documented direction (more, shorter cues from the word cap) against SQLite, which is why it is marked heavy/ASR-shard and kept out of the ordinary default suite in run-isolated.mjs's NON_DEFAULT_JOURNEYS (own npm script: test:transcription-rules-analysis), the same precedent nativeToolsInstall/reconnaissance already set for a heavy single-process journey run explicitly by name.",
       "dependencies": {
         "owner": "user-or-test-secret-provider",
-        "requires": "Gemini credentials/network for media analysis; local segmentation rules must also be proven offline",
-        "note": "No current journey verifies the customer-selected request windows or analysis/rules UI."
+        "requires": "a budget-bounded Gemini credential and network access to prove a SUCCESSFUL video analysis, saved custom rules actually influencing a completed Gemini transcription, and Gemini's own request-window splitting (owned by the separate geminiTranscriptionSuccessAndWindowing tracker)",
+        "note": "This journey proves the complete credential-free half: the analysis/rules refusal boundary and the local-ASR segmentation-shape direction. Successful Gemini analysis, rule-influenced transcription output, and Gemini's own max-request-duration windowing remain separately credential-gated and unproven; local ASR's own max-duration-per-request window splitting is already proven green by multiWindowAsrGeneration."
       }
     },
     {
@@ -961,13 +971,23 @@
     {
       "name": "narrationReferenceVoiceAndCueControls",
       "kind": "workflow",
-      "capability": "Reference-audio selection/recording, per-cue play/download/regenerate, speed controls, source selection and cache restoration behave durably.",
-      "status": "unproven",
+      "file": "journeys/referenceVoiceAndPerCueNarration.journey.js",
+      "capability": "Reference-voice cloning controls are present but honestly unreachable without their engine package; per-cue regenerate and play controls behave durably, with regeneration proven to rebind only the regenerated cue.",
+      "oracles": [
+        "the real narration-method radio inputs/labels (NarrationMethodSelection.js) and a DOM-wide check that reference-audio upload/record controls never mount",
+        "the application's own SQLite jobs and artifact ownership, read only",
+        "the revision-owned narration checkpoint (projectNarration), read only, before and after a single-cue regenerate",
+        "independent SHA-256 and ffprobe of every cue's durable MP3 artifact, before and after regeneration",
+        "the real hidden <audio> element's paused/src state for play/pause"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
       "recommendedJourney": "narrationEngineMatrix",
+      "note": "Authored and statically validated by support/referenceVoiceAndPerCueNarrationJourney.contract.test.mjs plus support/narrationControlOracle.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE: reference-voice cloning (F5-TTS/Chatterbox) needs its own multi-gigabyte native engine package this lane cannot install, but the boundary proven is stronger than 'the upload button is disabled' -- NarrationMethodSelection.js disables the METHOD RADIO ITSELF (disabled={isGenerating || !isF5Available}) until the engine is ready, so ReferenceAudioSection.js/AudioControls.js (upload/record/use-example) never mount in the DOM at all while it is absent; a customer cannot even open that method's tab. The journey proves this by reading the disabled/unavailable-class/tooltip state, dispatching a raw script click at the disabled radio (which a native <input> ignores, firing no change event), and asserting the reference-audio controls stay absent from the whole page throughout. Per-cue narration controls are proven with the reviewed gTTS provider smoke (gTTS has no reference-voice UI at all, confirmed from GTTSNarrationSection.js, so this half necessarily runs a different method than the boundary check). ResultRow.js exposes exactly play/download/regenerate for a succeeded cue and no delete control -- there is no per-cue delete in the shipped UI, so (matching editorCueCrudAndHistory's precedent of not fabricating a missing command) the journey does not invent one; useNativeNarrationController.js's retry() already gives 'regenerate' the delete+recreate semantics a customer needs (run(method, [subtitle], { replace: false }) publishes exactly one new native job/artifact for that one subtitle and persists the merged results). The ownership claim this journey proves precisely: regenerating the middle of three cues rebinds only that cue's checkpoint entry to a new artifact id while the sibling cues' entries and on-disk bytes (independently re-hashed) never change.",
       "dependencies": {
         "owner": "test-hardware",
-        "requires": "a deterministic reference-audio file; microphone capture requires an explicitly isolated audio device and must not use the developer microphone",
-        "note": "narrationGeneration proves generated files and one aligned mix, not the rest of the narration control surface."
+        "requires": "the reviewed F5-TTS or Chatterbox managed package (several GB) installed and running to prove reference-audio upload/record/use-example interaction and voice-cloned generation; microphone capture additionally requires an explicitly isolated audio device and must not use the developer microphone",
+        "note": "This journey proves the complete credential-free/engine-free half: the honest reference-voice boundary and durable per-cue regenerate/play ownership with gTTS. Actual reference-audio upload interaction, recording, and voice-cloned narration output remain gated behind installing F5-TTS/Chatterbox and are separately unproven, tracked by alternateNarrationEngines."
       }
     },
     {
