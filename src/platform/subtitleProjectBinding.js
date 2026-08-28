@@ -58,7 +58,7 @@ const rollback = (outcomes) => {
  * The returned receipt means both stores either hydrated from, or persisted their staged value to,
  * the same exact durable project. Callers must await it before publishing media or a success state.
  */
-export const activateSubtitleProjectBinding = async (cacheId, {
+const performSubtitleProjectBindingActivation = async (cacheId, {
   expectedProjectId = null,
   create = true,
 } = {}) => {
@@ -135,6 +135,38 @@ export const activateSubtitleProjectBinding = async (cacheId, {
       // forcing the older snapshot over it.
     }
     throw error;
+  }
+};
+
+// The auxiliary stores flip their public cacheId synchronously as soon as this activation reaches
+// them (see bindUserSubtitlesProject), well before the activation above is durable — a rollback or
+// a newer intent can still change it again. A consumer that must treat the cacheId as ground truth
+// (persisting an imported subtitle file, for example) races that window if it reads the store while
+// an activation is still in flight. Track the most recently started activation's settlement so such
+// a consumer can wait it out instead of refusing on a transient, self-inflicted mismatch.
+let latestActivationSettle = null;
+
+export const activateSubtitleProjectBinding = async (cacheId, options) => {
+  const attempt = performSubtitleProjectBindingActivation(cacheId, options);
+  const settleMarker = attempt.then(() => undefined, () => undefined);
+  latestActivationSettle = settleMarker;
+  try {
+    return await attempt;
+  } finally {
+    // Only clear the marker if no newer activation has since started; that newer one owns it now.
+    if (latestActivationSettle === settleMarker) latestActivationSettle = null;
+  }
+};
+
+/**
+ * Resolve once every subtitle-project activation started so far has settled (succeeded, failed, or
+ * rolled back). Does not wait for activations started after it is called.
+ */
+export const awaitSubtitleProjectBindingSettled = async () => {
+  let observed = latestActivationSettle;
+  while (observed) {
+    await observed;
+    observed = latestActivationSettle;
   }
 };
 

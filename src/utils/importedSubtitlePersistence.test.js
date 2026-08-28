@@ -68,6 +68,41 @@ describe('imported subtitle persistence', () => {
 
     await expect(persist(rows)).rejects.toMatchObject({ code: 'projectScopeMismatch' });
   });
+
+  it('waits out a still-settling native media binding instead of racing its cache ID', async () => {
+    // A drop that lands right after its media is opened can be scheduled while the media's own
+    // subtitle-project binding is still in flight. That binding flips the store's cache ID early,
+    // long before it is durable -- reading it as ground truth at that moment is exactly the race
+    // that used to make this import refuse with nothing published. Without the awaitBinding gate,
+    // readCacheId below would already be observed (returning the stale value) by the time this
+    // test's first microtask tick runs.
+    let settleBinding;
+    const awaitBinding = vi.fn(() => new Promise((resolve) => { settleBinding = resolve; }));
+    let cacheId = 'asset-stale';
+    const readCacheId = vi.fn(() => cacheId);
+    const resolveProject = vi.fn(async () => ({ projectId: 'project-new' }));
+    const save = vi.fn(async () => ({
+      success: true, cacheId: 'asset-new', projectId: 'project-new', subtitleCount: rows.length,
+    }));
+    const persist = createImportedSubtitlePersistence({
+      desktop: () => true, readCacheId, resolveProject, save, awaitBinding,
+    });
+
+    const pending = persist(rows);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(readCacheId).not.toHaveBeenCalled();
+    expect(resolveProject).not.toHaveBeenCalled();
+
+    // The binding settles and the store's cache ID becomes durable only now.
+    cacheId = 'asset-new';
+    settleBinding();
+
+    await expect(pending).resolves.toMatchObject({
+      cacheId: 'asset-new', projectId: 'project-new', subtitleCount: rows.length,
+    });
+    expect(save).toHaveBeenCalledWith('asset-new', rows, { expectedProjectId: 'project-new' });
+  });
 });
 
 describe('imported subtitle clear', () => {
@@ -112,5 +147,31 @@ describe('imported subtitle clear', () => {
     });
 
     await expect(clear()).rejects.toMatchObject({ code: 'projectScopeMismatch' });
+  });
+
+  it('waits out a still-settling native media binding instead of racing its cache ID', async () => {
+    let settleBinding;
+    const awaitBinding = vi.fn(() => new Promise((resolve) => { settleBinding = resolve; }));
+    let cacheId = 'asset-stale';
+    const readCacheId = vi.fn(() => cacheId);
+    const resolveProject = vi.fn(async () => ({ projectId: 'project-new' }));
+    const save = vi.fn(async () => ({
+      success: true, cacheId: 'asset-new', projectId: 'project-new', subtitleCount: 0,
+    }));
+    const clear = createImportedSubtitleClear({
+      desktop: () => true, readCacheId, resolveProject, save, awaitBinding,
+    });
+
+    const pending = clear();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(readCacheId).not.toHaveBeenCalled();
+    expect(resolveProject).not.toHaveBeenCalled();
+
+    cacheId = 'asset-new';
+    settleBinding();
+
+    await expect(pending).resolves.toMatchObject({ cacheId: 'asset-new', projectId: 'project-new' });
+    expect(save).toHaveBeenCalledWith('asset-new', [], { expectedProjectId: 'project-new' });
   });
 });
