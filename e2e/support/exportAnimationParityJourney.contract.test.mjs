@@ -206,7 +206,10 @@ test('every parity threshold is pinned so a relaxation cannot pass unnoticed', (
     ['STRONG_SURFACE_MASK_PIXELS', '3_000'],
     ['MIN_SURFACE_MASK_OVERLAP', '0.30'],
   ]) {
-    const declaration = new RegExp(`(?:export )?const ${name} = ${value.replace('.', '\.')};`, 'u');
+    // The decimal point must reach the REGEX as an escaped dot, which needs a literal backslash in
+    // the string: '\.' in a JS string literal is just '.', so the naive form left the point as an
+    // unescaped wildcard that would have accepted 0X95 in place of 0.95.
+    const declaration = new RegExp(`(?:export )?const ${name} = ${value.replace('.', '\\.')};`, 'u');
     assert.match(oracle, declaration, `${name} must stay pinned at ${value}`);
   }
 });
