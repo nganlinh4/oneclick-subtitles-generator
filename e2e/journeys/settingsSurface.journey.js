@@ -5,9 +5,8 @@
 
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import {
-  basename, isAbsolute, join, relative, resolve, sep,
+  basename, join, resolve,
 } from 'node:path';
 
 import { clickControl, openEditor, waitForEditorReady } from '../support/editor.js';
@@ -16,7 +15,9 @@ import {
   selectAlternateDropdownOption,
 } from '../support/settingsAppearance.js';
 import { withDatabase } from '../support/database.js';
-import { ENGINE_PACKAGES_CACHE, NATIVE_TOOLS_CACHE } from '../support/environment.js';
+import {
+  ENGINE_PACKAGES_CACHE, NATIVE_TOOLS_CACHE, runRootAuthorization,
+} from '../support/environment.js';
 import { digestFrameRgbaRegion } from '../support/nativeMediaOracle.js';
 import {
   directoryShapeDigest,
@@ -78,14 +79,21 @@ const assertSettingsChromePixels = (step, baseline) => {
 
 const assertDisposableFactoryResetRoot = (root) => {
   const canonicalRoot = resolve(root);
-  const canonicalTemp = resolve(tmpdir());
-  const fromTemp = relative(canonicalTemp, canonicalRoot);
+  // Factory reset is destructive, so it may only ever run against a root this harness owns.
+  // The ownership proof is the managed run-root contract itself -- authorized parent, the
+  // managed staging lane, the exact private layout and a live authority token -- which
+  // runRootAuthorization validates and refuses. An earlier version required the root to sit
+  // under %TEMP%; run roots moved into the managed staging lane, so that test refused every
+  // legitimate root while proving strictly less about ownership than the authority does.
+  try {
+    runRootAuthorization(canonicalRoot);
+  } catch (error) {
+    assert.fail(
+      `factory reset refuses a run root this harness does not own: ${canonicalRoot} (${error.message})`,
+    );
+  }
   assert.ok(
-    fromTemp !== ''
-      && fromTemp !== '..'
-      && !fromTemp.startsWith(`..${sep}`)
-      && !isAbsolute(fromTemp)
-      && basename(canonicalRoot).startsWith('osg-e2e-'),
+    basename(canonicalRoot).startsWith('osg-e2e-run-'),
     `factory reset refuses a non-disposable run root: ${canonicalRoot}`,
   );
   const credentialReferences = withDatabase(root, database => Number(
