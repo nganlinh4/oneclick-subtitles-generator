@@ -72,6 +72,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'subtitleCustomizationPreview.journey.js',
     'subtitleDocumentRoundTrip.journey.js',
     'subtitleMaterialAndAnimation.journey.js',
+    'timelineAdvancedEditing.journey.js',
     'timelineBoundary.journey.js',
     'translatedDocumentExports.journey.js',
     'urlLocalAsrPreview.journey.js',
