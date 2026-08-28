@@ -12,6 +12,7 @@ import {
   snapshotOutputDirectory,
   verifySubtitleDocumentExport,
   waitForNewDocumentExport,
+  waitForNewDocumentExports,
 } from './subtitleDocumentOracle.js';
 
 const EXPECTED = Object.freeze([
@@ -154,3 +155,43 @@ test('refuses an unexpected extension or multiple files from one save action', a
     );
   });
 });
+
+test('waits for exactly N stable outputs from one bulk save action, sorted by name', async () => withRoot(
+  async (output) => {
+    const before = snapshotOutputDirectory(output);
+    setTimeout(() => {
+      writeFileSync(join(output, 'b-second.json'), 'bulk two');
+      writeFileSync(join(output, 'a-first.srt'), 'bulk one');
+    }, 20);
+    assert.deepEqual(
+      await waitForNewDocumentExports({
+        directory: output, before, count: 2, timeoutMs: 1_000, intervalMs: 20,
+      }),
+      [join(output, 'a-first.srt'), join(output, 'b-second.json')],
+    );
+  },
+));
+
+test('a bulk wait rejects a short-lived third file and never settles on the wrong count', async () => withRoot(
+  async (output) => {
+    const before = snapshotOutputDirectory(output);
+    writeFileSync(join(output, 'only-one.srt'), 'not enough yet');
+    await assert.rejects(
+      waitForNewDocumentExports({
+        directory: output, before, count: 2, timeoutMs: 60, intervalMs: 10,
+      }),
+      /2 stable documents never appeared/,
+    );
+
+    const overshootBefore = snapshotOutputDirectory(output);
+    writeFileSync(join(output, 'extra-one.srt'), 'x');
+    writeFileSync(join(output, 'extra-two.srt'), 'y');
+    writeFileSync(join(output, 'extra-three.srt'), 'z');
+    await assert.rejects(
+      waitForNewDocumentExports({
+        directory: output, before: overshootBefore, count: 2, timeoutMs: 60, intervalMs: 10,
+      }),
+      /created more outputs than expected/,
+    );
+  },
+));

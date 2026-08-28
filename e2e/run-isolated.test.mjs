@@ -48,6 +48,7 @@ const guardedWindowsGuiFixture = (guards, subsystem = 2) => {
 test('discovers every product journey while excluding scenario-only diagnostics', () => {
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
+    'bulkTranslationFileIO.journey.js',
     'cacheClearSafety.journey.js',
     'canvasPlaybackPerformance.journey.js',
     'defaultFont.journey.js',
@@ -63,6 +64,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'localFileImport.journey.js',
     'mainPreviewControlsAndFullscreen.journey.js',
     'mainPreviewRenderHandoff.journey.js',
+    'manualLyricsAndGeniusBoundary.journey.js',
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'renderAudioNarrationMix.journey.js',

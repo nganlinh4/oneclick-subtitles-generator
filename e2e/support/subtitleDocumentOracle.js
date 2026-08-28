@@ -196,3 +196,50 @@ export const waitForNewDocumentExport = async ({
   }
   throw new Error(`no stable .${format} document appeared in ${directory}`);
 };
+
+/**
+ * Wait for exactly `count` new stable documents (a bulk "Download All" writes several files from
+ * one customer click, sequentially, through the same native save boundary as a single export).
+ * Returns the settled paths sorted by name. Fails closed the moment more files than expected
+ * appear, exactly as `waitForNewDocumentExport` does for one.
+ */
+export const waitForNewDocumentExports = async ({
+  directory,
+  before,
+  count,
+  timeoutMs = 30_000,
+  intervalMs = 100,
+}) => {
+  assert.ok(before instanceof Set, 'the output snapshot must be a Set');
+  assert.ok(Number.isSafeInteger(count) && count >= 1 && count <= 25, 'unsupported export count');
+  assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 120_000);
+  assert.ok(Number.isSafeInteger(intervalMs) && intervalMs > 0 && intervalMs <= 1_000);
+  const deadline = Date.now() + timeoutMs;
+  let stableSignature = null;
+
+  while (Date.now() <= deadline) {
+    const createdNames = readdirSync(directory).filter((name) => !before.has(name)).sort();
+    assert.ok(
+      createdNames.length <= count,
+      `one bulk export created more outputs than expected: ${createdNames.join(', ')}`,
+    );
+    if (createdNames.length === count) {
+      const observed = createdNames.map((name) => {
+        const path = join(directory, name);
+        assert.ok(FORMATS.has(extname(name).toLowerCase().slice(1)), `unsupported export file: ${name}`);
+        const stat = lstatSync(path);
+        assert.ok(stat.isFile() && !stat.isSymbolicLink(), `save did not create a regular file: ${path}`);
+        if (stat.size === 0) return null;
+        const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
+        return { path, observation: `${stat.size}:${stat.mtimeMs}:${digest}` };
+      });
+      if (observed.every((entry) => entry !== null)) {
+        const signature = observed.map(({ path, observation }) => `${path}=${observation}`).join('|');
+        if (stableSignature === signature) return observed.map(({ path }) => path).sort();
+        stableSignature = signature;
+      }
+    }
+    await delay(intervalMs);
+  }
+  throw new Error(`${count} stable documents never appeared in ${directory}`);
+};

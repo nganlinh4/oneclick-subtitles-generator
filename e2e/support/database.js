@@ -122,6 +122,22 @@ export const durableTranslations = (root) => withDatabase(root, (database) => (
   })
 ));
 
+/**
+ * The project-owned manual/pasted "Add subtitles" reference text, decoded independently from the
+ * app's JSON reader. Lives in the exact same auxiliary row as `durableTranslations` above
+ * (`projectAuxiliaryStore.js`'s `userSubtitles` field) -- it is reference text for a future
+ * generation match, not a subtitle track, so it has no `cues` row of its own.
+ */
+export const durableUserSubtitles = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    "SELECT key, value_json FROM app_settings WHERE scope = 'app'"
+      + " AND key LIKE 'project.legacyAux.v1.%' ORDER BY key",
+  ).all().map(({ key, value_json: valueJson }) => {
+    const auxiliary = JSON.parse(valueJson);
+    return { key, userSubtitles: auxiliary?.userSubtitles ?? null };
+  })
+));
+
 /** Project-owned render scenes, decoded independently from the app's command boundary. */
 export const durableRenderScenes = (root) => withDatabase(root, (database) => (
   database.prepare(
