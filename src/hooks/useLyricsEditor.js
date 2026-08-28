@@ -24,6 +24,17 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
   const awaitingCacheRowsRef = useRef(false);
   initialLyricsRef.current = initialLyrics;
 
+  // handleDeleteLyric/handleTextEdit/handleInsertLyric/handleMergeLyrics below reach LyricItem
+  // rows as the onDelete/onTextEdit/onInsert/onMerge props, and LyricItem is wrapped in a
+  // React.memo comparator that skips a row's re-render for most prop changes (see LyricItem.js).
+  // A row that hasn't independently re-rendered keeps whatever version of these handlers it last
+  // mounted with; if that version closed over `lyrics` by value, clicking e.g. delete on that row
+  // would filter a stale snapshot and silently discard any edit made elsewhere since. Reading the
+  // live array through this ref instead -- same shape as the `dragInfo`/`isStickyRef` pattern in
+  // useLyricsEditorDrag -- makes the mutation correct regardless of which closure vintage fired it.
+  const lyricsRef = useRef(lyrics);
+  lyricsRef.current = lyrics;
+
   const handleCacheIdChange = useCallback(() => {
     // The parent subtitle hydration is asynchronous. Remember the old prop identity so the child
     // cannot repopulate media A's rows during the intervening reset render.
@@ -156,7 +167,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
   }, [lyrics, savedLyrics]);
 
   const handleDeleteLyric = (index) => {
-    const updatedLyrics = lyrics.filter((_, i) => i !== index);
+    const updatedLyrics = lyricsRef.current.filter((_, i) => i !== index);
     commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.DELETE);
 
     // Show warning about translations
@@ -164,7 +175,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
   };
 
   const handleTextEdit = (index, newText) => {
-    const updatedLyrics = lyrics.map((lyric, i) =>
+    const updatedLyrics = lyricsRef.current.map((lyric, i) =>
       i === index ? { ...lyric, text: newText } : lyric
     );
     commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.TEXT);
@@ -176,6 +187,10 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
   // `insertionIndex` identifies a gap, not a row: 0 is before the first row and
   // lyrics.length is after the last row. This keeps every above/below action distinct.
   const handleInsertLyric = (insertionIndex) => {
+    // Read the live array (not the closed-over `lyrics` state variable): see the lyricsRef comment
+    // above the ref declaration for why. This shadows `lyrics` for the rest of the function on
+    // purpose, so every reference below already resolves to the fresh snapshot.
+    const lyrics = lyricsRef.current;
     if (!Number.isSafeInteger(insertionIndex)
         || insertionIndex < 0
         || insertionIndex > lyrics.length) return;
@@ -310,6 +325,8 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
 
   // Merge the current lyric with the next one
   const handleMergeLyrics = (index) => {
+    // See the lyricsRef comment above: read the live array, not the closed-over state variable.
+    const lyrics = lyricsRef.current;
     // Make sure there's a next lyric to merge with
     if (index >= lyrics.length - 1) return;
 

@@ -37,6 +37,18 @@ export const useLyricsEditorDrag = ({
     latest: null,
   });
 
+  // `updateTimings`/`handleDrag` are handed down through LyricsDisplay -> useLyricsDrag ->
+  // LyricItem's onMouseDown, and LyricItem is wrapped in a React.memo comparator that does not
+  // compare handler identity. Toggling sticky changes nothing that comparator checks (lyric
+  // identity, isCurrentLyric, currentTime-while-current, isDragging), so a row that hasn't
+  // otherwise re-rendered keeps its pre-toggle onMouseDown closure forever -- if that closure
+  // captured `isSticky` directly, it would go on dragging with the old value indefinitely. Reading
+  // it through a ref that every render keeps current sidesteps the memo boundary entirely: it
+  // doesn't matter which "vintage" of handler a row is still bound to, they all read the same
+  // live cell. Mirrors the `dragInfo` ref above, which already uses this shape for drag state.
+  const isStickyRef = useRef(isSticky);
+  isStickyRef.current = isSticky;
+
   // Keep track of the last updated value to avoid unnecessary updates
   const lastUpdatedValueRef = useRef({ index: -1, field: null, value: 0 });
 
@@ -54,6 +66,12 @@ export const useLyricsEditorDrag = ({
 
     // Update the last updated value
     lastUpdatedValueRef.current = { index, field, value: newValue };
+
+    // Read live, every call, off isStickyRef -- not the `isSticky` closed over from this
+    // useCallback's creation render -- so the cascade below is always correct regardless of
+    // which "vintage" of updateTimings a memoized LyricItem row is still bound to (see the
+    // isStickyRef comment above).
+    const isSticky = isStickyRef.current;
 
     const oldLyrics = [...lyrics];
     const currentLyric = oldLyrics[index]; // Avoid unnecessary spread
@@ -142,7 +160,9 @@ export const useLyricsEditorDrag = ({
         updatedLyrics
       }
     }));
-  }, [lyrics, setLyrics, onUpdateLyrics, isSticky]);
+    // The hook's `isSticky` param is deliberately not a dep: this callback reads it live off
+    // isStickyRef instead (see the local `const isSticky` above and the isStickyRef comment).
+  }, [lyrics, setLyrics, onUpdateLyrics]);
 
   const startDrag = useCallback((index, field, startX, startValue) => {
     const baseline = JSON.parse(JSON.stringify(lyrics));
@@ -161,6 +181,9 @@ export const useLyricsEditorDrag = ({
   const handleDrag = useCallback((clientX, duration) => {
     const { dragging, index, field, startX, startValue } = dragInfo.current;
     if (!dragging) return;
+
+    // Read live, every call -- see the isStickyRef comment above.
+    const isSticky = isStickyRef.current;
 
     // Calculate the new value
     const deltaX = clientX - startX;
@@ -197,7 +220,7 @@ export const useLyricsEditorDrag = ({
     // Update immediately if enough time has passed
     lastUpdateTimeRef.current = now;
     updateTimings(index, field, newValue, duration);
-  }, [isSticky, lyrics, updateTimings]);
+  }, [lyrics, updateTimings]);
 
   const endDrag = useCallback(() => {
     // Cancel any pending animation frame
