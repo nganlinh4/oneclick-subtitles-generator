@@ -7,7 +7,7 @@ import {
 import { durableRenderScenes, durableState } from './database.js';
 import { managedArtifactFiles } from './downloadJourneyOracle.js';
 
-/* global $, $$, browser, document, getComputedStyle, window */
+/* global $, $$, MutationObserver, browser, document, getComputedStyle, window */
 
 /**
  * The public render queue surface and its two settings dropdowns, shared by every journey that
@@ -17,6 +17,78 @@ import { managedArtifactFiles } from './downloadJourneyOracle.js';
 
 export const RENDER_ROW = '.video-rendering-section .rendering-row:has([data-osg-action="render-video"])';
 export const RENDER_BUTTON = `${RENDER_ROW} [data-osg-action="render-video"]`;
+
+const DEFAULT_MAX_RECORDED_RENDER_ERRORS = 32;
+
+/**
+ * A bounded MutationObserver ledger over the render section's error/warning surfaces.
+ *
+ * `queueSurface()` only reads what is currently visible; a toast that appeared and auto-dismissed
+ * between two polls would never be observed. Installing this once at the start of a render journey
+ * makes `assertNoRenderFailure` reject that transient failure too, through the same
+ * `recordedErrors`/`recordedErrorOverflow` fields `queueSurface()` already exposes.
+ */
+export const installTransientRenderErrorLedger = (
+  maximumEvents = DEFAULT_MAX_RECORDED_RENDER_ERRORS,
+) => browser.execute((maximum) => {
+  window.__OSG_E2E_RENDER_ERROR_LEDGER__?.observer?.disconnect?.();
+  const events = [];
+  let overflow = 0;
+  const selector = [
+    '.video-rendering-section [role="alert"]',
+    '.video-rendering-section .error',
+    '.video-rendering-section .error-message',
+    '.video-rendering-section .video-error',
+    '.toast-item.live .toast-error',
+    '.toast-item.live .toast-warning',
+  ].join(',');
+  const visible = (node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden'
+      && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+  };
+  const record = (node, requireVisible) => {
+    if (requireVisible && !visible(node)) return;
+    const message = (node.innerText || node.textContent || '')
+      .trim().replace(/\s+/g, ' ').slice(0, 400);
+    if (!message || events.includes(message)) return;
+    if (events.length >= maximum) {
+      overflow += 1;
+      return;
+    }
+    events.push(message);
+  };
+  const inspect = (candidate, requireVisible) => {
+    const node = candidate?.nodeType === 1 ? candidate : candidate?.parentElement;
+    if (node === null || node === undefined) return;
+    if (node.matches?.(selector)) record(node, requireVisible);
+    for (const descendant of node.querySelectorAll?.(selector) ?? []) {
+      record(descendant, requireVisible);
+    }
+  };
+  const captureVisible = () => {
+    for (const node of document.querySelectorAll(selector)) record(node, true);
+  };
+  const observer = new MutationObserver((records) => {
+    for (const mutation of records) {
+      inspect(mutation.target, true);
+      for (const added of mutation.addedNodes) inspect(added, false);
+    }
+    captureVisible();
+  });
+  observer.observe(document.body, {
+    attributes: true,
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  window.__OSG_E2E_RENDER_ERROR_LEDGER__ = {
+    events, get overflow() { return overflow; }, observer,
+  };
+  captureVisible();
+  return true;
+}, maximumEvents);
 
 export const queueSurface = () => browser.execute(() => {
   const visible = (node) => {

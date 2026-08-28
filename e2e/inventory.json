@@ -1017,24 +1017,39 @@
       "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
-      "name": "renderTransformAndFormatMatrix",
+      "name": "renderFormatTransformMatrix",
       "kind": "workflow",
+      "file": "journeys/renderFormatTransformMatrix.journey.js",
       "capability": "Trim, crop, scale, position, source rotation, 24-120 fps and 360p-8K choices produce correctly timed, independently decodable output or an honest hardware refusal.",
+      "oracles": [
+        "the public Resolution/Frame Rate dropdowns (renderQueue.js's chooseRenderSetting/setRenderSettings) and the click-only crop aspect-ratio-preset/Apply controls in VideoCropControls.js",
+        "read-only SQLite proving each of five renders owns one succeeded renderVideo job and one ready renderedVideo artifact under the same project",
+        "independent ffprobe geometry: exact canonical height, the even-edge width crates/osg-export/src/convert/dimensions.rs's own composed_width formula predicts (folding the durably persisted crop percentages, not an assumed ratio), decoded frame rate, and duration against the timeline",
+        "a managed artifact-root walk reconciling every exported file to its owning job",
+        "ordered screenshots and five copied exports under the managed external evidence lane/render-format-transform-matrix"
+      ],
+      "runsAgainst": "e2e-binary",
       "status": "unproven",
-      "recommendedJourney": "renderControlsAndRecovery",
-      "dependencies": {
-        "owner": "test-hardware",
-        "requires": "GPU/encoder capability fixtures; unsupported 4K/8K/120 fps combinations must be typed refusals rather than false green",
-        "note": "The green export journey covers one short default-format render and pixel comparison."
-      }
+      "note": "AUTHORED, NOT EXECUTED in this pass -- no app run. Covers exactly what the public render surface offers, enumerated by reading RenderSettingsRow.js rather than assumed: a 2 resolution (360p/720p) x 2 frame rate (24/60fps) matrix, the only two public render-settings dropdowns that exist, plus one click-only 1:1 crop-aspect-preset case verified against the exact contract formula in crates/osg-export/src/convert/dimensions.rs (which reshapes the output frame's own aspect; crop.aspectRatio is intentionally never read). There is no public container/codec control anywhere in the render surface and crates/osg-render/src/contract.rs's RenderRequest carries no such field, so that axis has exactly one option and every case covers it by construction rather than iterating a choice that does not exist. Trim, non-centered crop position, flip, source rotation (no public rotation control exists at all), 1080p/1440p/4K/8K, 50/120fps, and any hardware-capability refusal remain unproven by this journey; the broader renderControlsAndRecovery scope is intentionally not claimed here.",
+      "recommendedJourney": "renderControlsAndRecovery"
     },
     {
       "name": "renderAudioNarrationMix",
       "kind": "workflow",
+      "file": "journeys/renderAudioNarrationMix.journey.js",
       "capability": "Original-audio and narration selection/volume controls produce the expected independently measured mix in the final video.",
+      "oracles": [
+        "the public narration-source radios and the render section's own Refresh control (InputSelectionRow.js / VideoRenderingSection/useNarration.js)",
+        "read-only SQLite proving two distinct renderVideo jobs and renderedVideo artifacts, plus one alignNarration job and alignedNarration artifact, all owned by the same project",
+        "independent ffprobe stream/geometry/duration parity between the two renders",
+        "independent decoded PCM16 RMS energy compared in every narration cue's alignment-placement window, reusing narrationJourneyOracle.js's own placement math rather than a new one",
+        "a managed artifact-root walk reconciling both exported files to their owning jobs",
+        "ordered screenshots and both copied exports under the managed external evidence lane/render-audio-narration-mix"
+      ],
+      "runsAgainst": "e2e-binary",
       "status": "unproven",
-      "recommendedJourney": "renderControlsAndRecovery",
-      "note": "narrationAlignment validates a standalone aligned M4A and nativeExportDecoded validates source audio; neither proves the combined final-video mix controls."
+      "note": "AUTHORED, NOT EXECUTED in this pass -- no app run. Fixture strategy: e2e/fixtures has no narration/voice audio asset and alignedNarrationService.js has no compile-time fixture seam, so this journey generates real per-cue speech through the credential-free gTTS provider smoke -- the same network-dependent, no-API-key path narrationGeneration.journey.js already proves green -- then aligns it through the render section's own public Refresh control (InputSelectionRow.js), not the separate narration-section export button that journey uses. It renders the SAME project twice, narration off then on, with every other public setting held fixed, and proves the two exports differ measurably in decoded audio energy at each cue's placement window, deliberately without assuming a mixing direction (an implementation may duck the original track under narration rather than sum onto it). narrationAlignment (narrationGeneration.journey.js) separately proves a standalone aligned M4A and a narration-ONLY (source-muted) export; this journey is the one that toggles the render section's own mix control on an otherwise-unchanged project and compares the A/B result.",
+      "recommendedJourney": "renderControlsAndRecovery"
     },
     {
       "name": "renderCancelRetryExport",
