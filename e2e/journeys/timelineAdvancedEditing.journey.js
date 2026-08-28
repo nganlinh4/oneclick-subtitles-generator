@@ -34,7 +34,7 @@ const CUE_STICKY_BASE = 'Sticky cascade base cue';
 const CUE_STICKY_FOLLOWER = 'Sticky cascade follower cue';
 
 // Absolute seconds, independent of the real media's measured duration (checked only to be > 8.5s
-// below). Only the two boundary-overshoot drags and the zoom control need the live `duration`.
+// below). Only the three boundary-overshoot drags and the zoom control need the live `duration`.
 const IMPORTED_CUES = Object.freeze([
   Object.freeze({ start: 1.0, end: 2.0, text: CUE_DRAG }),
   Object.freeze({ start: 3.0, end: 4.0, text: CUE_RANGE_A }),
@@ -47,6 +47,7 @@ const EPSILON_MS = 25;
 const START_CLAMP_OVERSHOOT_SECONDS = 3; // 1.0s start dragged to -2.0s must clamp to 0.
 const END_CLAMP_OVERSHOOT_SECONDS = 25; // 2.0s end dragged to 27s must clamp to real duration.
 const STICKY_SHIFT_SECONDS = 1.0;
+const CASCADE_BOUNDARY_OVERSHOOT_SECONDS = 25; // exceeds any plausible remaining headroom to duration.
 const RANGE_MOVE_OVERSHOOT_SECONDS = 25; // exceeds any plausible remaining headroom to duration.
 const ZOOM_DRAG_PX = 80;
 
@@ -89,6 +90,21 @@ const visibleCueTexts = () => browser.execute(() => (
     ))
     .map((row) => (row.querySelector('.lyric-text')?.innerText ?? '').trim())
 ));
+
+// LyricItem renders a time-control's own clock text via formatTime, in whichever of the two
+// formats the customer's timeFormat setting selects: "SS.ccs" (seconds) or "M:SS.cc" /
+// "H:MM:SS.cc" (hms_ms). Both are colon-separated, most-significant-first, so a generic
+// positional reduce (after stripping the "seconds" format's trailing "s") recovers total seconds
+// regardless of which one is active -- this is the customer's own rendered value, not a
+// recomputation of it.
+const parseVisibleClockSeconds = (text) => (text ?? '').trim().replace(/s$/u, '')
+  .split(':').reduce((total, part) => (total * 60) + Number(part), 0);
+
+const visibleTimeControlSeconds = async (index, field) => {
+  const selector = `.lyric-item[data-lyric-index="${index}"] .time-control.${field === 'start' ? 'start-time' : 'end-time'}`;
+  const text = await browser.execute((sel) => document.querySelector(sel)?.textContent ?? null, selector);
+  return text === null ? null : parseVisibleClockSeconds(text);
+};
 
 const closeTo = (actual, expected, tolerance = EPSILON_MS) => Math.abs(actual - expected) <= tolerance;
 
@@ -323,6 +339,55 @@ describe('customer advanced timeline editing', () => {
     });
     const afterSticky = records;
 
+    // With sticky still on, drag cue 4's end far past media duration. The cascade shares ONE delta
+    // with cue 5 (the already-cascaded follower, whose end sits closer to the boundary), so that
+    // shared delta -- not cue 4's own end -- is what must clamp: cue 4's own end stays short of
+    // duration while cue 5's lands exactly at it, and the gap between them is unchanged.
+    const followerLeadMs = afterSticky[4].end - afterSticky[3].end;
+    await dragTimeControl(3, 'end', CASCADE_BOUNDARY_OVERSHOOT_SECONDS);
+    records = await waitForDurableCueRecords(
+      root,
+      (rows) => rows[4].end >= durationMs - 1_500,
+      'the sticky cascade drag past media duration did not clamp durably',
+    );
+    assert.ok(records[3].end <= durationMs + EPSILON_MS, `sticky-dragged cue end exceeded media duration: ${records[3].end}`);
+    assert.ok(records[4].end <= durationMs + EPSILON_MS, `cascaded follower end exceeded media duration: ${records[4].end}`);
+    assert.ok(closeTo(records[4].end, durationMs, EPSILON_MS), `cascaded follower end did not clamp exactly to duration: ${records[4].end} vs ${durationMs}`);
+    assert.ok(closeTo(records[4].end - records[3].end, followerLeadMs, EPSILON_MS), (
+      `the boundary clamp changed the gap between the dragged cue and its cascaded follower: ${records[4].end - records[3].end}ms vs ${followerLeadMs}ms`
+    ));
+    assertUnchanged(records, [0, 1, 2], afterSticky, 'sticky cascade boundary clamp drag');
+    assert.equal(latestRevisionReason(root), REASON_TIMING_DRAG, 'the cascade boundary clamp left the wrong revision reason');
+    assert.deepEqual(await visibleCueTexts(), IMPORTED_CUES.map((cue) => cue.text), (
+      'the visible cue list changed after the cascade boundary clamp drag'
+    ));
+    const visibleDraggedEndSeconds = await visibleTimeControlSeconds(3, 'end');
+    const visibleFollowerEndSeconds = await visibleTimeControlSeconds(4, 'end');
+    assert.ok(visibleDraggedEndSeconds !== null, 'the dragged cue\'s end-time control never rendered');
+    assert.ok(visibleFollowerEndSeconds !== null, 'the cascaded follower\'s end-time control never rendered');
+    assert.ok(visibleDraggedEndSeconds * 1_000 <= durationMs + EPSILON_MS, (
+      `the visible dragged-cue end-time control shows a value beyond media duration: ${visibleDraggedEndSeconds}s vs ${duration}s`
+    ));
+    assert.ok(visibleFollowerEndSeconds * 1_000 <= durationMs + EPSILON_MS, (
+      `the visible follower end-time control shows a value beyond media duration: ${visibleFollowerEndSeconds}s vs ${duration}s`
+    ));
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '05-sticky-cascade-clamps-at-media-boundary',
+      description: 'With sticky timing on, dragging a cue end far past media duration clamps the shared cascade delta so the later, already-cascaded follower cue never crosses real duration either -- in both the visible rows and durable SQLite -- and the gap between them is preserved.',
+      details: { draggedCueEndMs: records[3].end, cascadedFollowerEndMs: records[4].end, durationMs },
+      focusSelector: '.lyrics-container-wrapper',
+    });
+
+    // Undo this boundary probe immediately: the mixed undo/redo walk below must still start from
+    // exactly the sticky-cascade checkpoint captured above, not from this one-off boundary check.
+    await waitForHistoryControl('.undo-btn', true);
+    await clickControl('.undo-btn');
+    await waitForDurableCueRecords(root, (rows) => (
+      rows.every((row, index) => closeTo(row.start, afterSticky[index].start)
+        && closeTo(row.end, afterSticky[index].end) && row.text === afterSticky[index].text)
+    ), 'undo did not reverse the cascade boundary clamp probe drag');
+
     // Select the two move-together cues as one pointer range and drag the range action bar's move
     // handle far past media end. Both cues must shift by the SAME delta, clamped so neither cue ends
     // beyond real media duration -- the multi-cue counterpart of the single-row clamp above.
@@ -347,7 +412,7 @@ describe('customer advanced timeline editing', () => {
     assert.equal(latestRevisionReason(root), REASON_MOVE_RANGE, 'the range move left the wrong revision reason');
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '05-multi-cue-range-move-clamped-at-duration',
+      step: '06-multi-cue-range-move-clamped-at-duration',
       description: 'Dragging the range move handle far past media end shifts both selected cues by one identical delta, clamped at real duration.',
       details: { deltaMs: deltaA, movedCueBEndMs: records[2].end, durationMs },
       focusSelector: '.lyrics-container-wrapper',
@@ -382,7 +447,7 @@ describe('customer advanced timeline editing', () => {
     ));
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '06-undo-walk-reaches-imported-baseline',
+      step: '07-undo-walk-reaches-imported-baseline',
       description: 'Four undos across a mixed drag/cascade/range-move sequence restore the exact imported baseline.',
       details: { undoSteps: 4 },
       focusSelector: '.lyrics-container-wrapper',
@@ -394,7 +459,7 @@ describe('customer advanced timeline editing', () => {
     await redoTo(afterRangeMove, 'redo did not replay the multi-cue range move');
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '07-redo-walk-restores-final-mixed-state',
+      step: '08-redo-walk-restores-final-mixed-state',
       description: 'Four redos replay the same mixed sequence and land back on the exact final durable state.',
       details: { redoSteps: 4, finalCueCount: afterRangeMove.length },
       focusSelector: '.lyrics-container-wrapper',
@@ -443,7 +508,7 @@ describe('customer advanced timeline editing', () => {
     assert.deepEqual(await boundedErrors(), [], 'zooming the timeline raised a witnessed error');
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '08-zoom-preserves-cue-and-playback-state',
+      step: '09-zoom-preserves-cue-and-playback-state',
       description: 'Dragging the zoom control changes zoom level alone: cues, durable state and playback stay exactly as they were.',
       details: { beforeZoomPercent, afterZoomPercent },
       focusSelector: '.timeline-container',

@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
+import { clampTimelineMoveDelta } from '../components/lyrics/utils/timelineDomain';
 
 /**
  * Drag mechanics for the lyrics editor.
@@ -43,7 +44,7 @@ export const useLyricsEditorDrag = ({
   const lastUpdateTimeRef = useRef(0);
   const pendingUpdateRef = useRef(null);
 
-  const updateTimings = useCallback((index, field, newValue, _duration) => {
+  const updateTimings = useCallback((index, field, newValue, duration) => {
     // Skip if the value hasn't changed significantly
     if (lastUpdatedValueRef.current.index === index &&
         lastUpdatedValueRef.current.field === field &&
@@ -56,9 +57,32 @@ export const useLyricsEditorDrag = ({
 
     const oldLyrics = [...lyrics];
     const currentLyric = oldLyrics[index]; // Avoid unnecessary spread
-    const delta = newValue - currentLyric[field];
+    let delta = newValue - currentLyric[field];
 
     if (Math.abs(delta) < 0.001) return;
+
+    // Sticky mode cascades this same delta onto every later cue below (i > index): the
+    // dragged cue's own field is already floor/ceiling-clamped by handleDrag (start >= 0,
+    // end <= duration), but that clamp alone does not stop a forward cascade from pushing a
+    // LATER cue's end past the media boundary even while the dragged cue's own field stays in
+    // bounds. Clamp the shared delta itself -- reusing the same clamp the multi-cue range move
+    // uses -- instead of flooring/ceiling each cascaded cue independently, which would destroy
+    // the cascade's relative spacing. Only later cues ever cascade (earlier cues are untouched
+    // in both directions), and a backward/shrinking delta can only pull the cascaded group
+    // closer to zero, never past the boundary, so only the forward direction needs clamping.
+    if (isSticky && delta > 0) {
+      let trailingEnd = currentLyric.end;
+      for (let j = index + 1; j < oldLyrics.length; j++) {
+        if (oldLyrics[j].end > trailingEnd) trailingEnd = oldLyrics[j].end;
+      }
+      delta = clampTimelineMoveDelta(
+        { start: currentLyric.start, end: trailingEnd },
+        delta,
+        { selectableEnd: duration || 9999 },
+      );
+      if (delta < 0.001) return;
+      newValue = currentLyric[field] + delta;
+    }
 
     // Create a new array only if we're actually changing something
     const updatedLyrics = [];

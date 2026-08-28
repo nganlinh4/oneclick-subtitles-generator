@@ -43,7 +43,7 @@ test('every advanced control the journey drives is a real, shipped public contro
   assert.match(journey, /'\.timeline-container > \.liquid-glass'/u);
 });
 
-test('the two boundary clamps the journey asserts are the ones the product actually implements', () => {
+test('the three boundary clamps the journey asserts are the ones the product actually implements', () => {
   assert.match(editorDrag, /newValue = Math\.max\(0, newValue\)/u);
   assert.match(editorDrag, /Math\.min\(duration \|\| 9999, newValue\)/u);
   assert.match(editorHelpers, /Math\.max\(0, l\.start \+ delta\)/u);
@@ -53,6 +53,15 @@ test('the two boundary clamps the journey asserts are the ones the product actua
   // Duration must come from the real <video>, never a guessed constant.
   assert.match(journey, /video\.duration/u);
   assert.doesNotMatch(journey, /duration\s*=\s*19/u);
+
+  // The cascade's own delta clamp (once the unclamped gap this journey used to leave unproven):
+  // the shared cascade delta reuses clampTimelineMoveDelta, the same helper the range move uses,
+  // rather than flooring/ceiling each cascaded cue independently.
+  assert.match(editorDrag, /import \{ clampTimelineMoveDelta \} from '\.\.\/components\/lyrics\/utils\/timelineDomain'/u);
+  assert.match(editorDrag, /isSticky && delta > 0/u);
+  assert.match(journey, /CASCADE_BOUNDARY_OVERSHOOT_SECONDS/u);
+  assert.match(journey, /cascade boundary clamp/u);
+  assert.match(journey, /did not clamp exactly to duration/u);
 });
 
 test('sticky cascade is exercised deliberately, starting from the product\'s own default-on state', () => {
