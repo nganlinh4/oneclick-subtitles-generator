@@ -594,8 +594,9 @@
       "status": "green",
       "note": "Green on 2026-08-27 across both hidden desktop processes with all six screenshots inspected: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an 82-cue durable merge equal to the streamed union, and a second process restoring the exact track (the virtualized lyrics list is verified through the editor's own count surface plus viewport-prefix equality). Along the way this journey flushed out and drove fixes for the engine-status verification race, the Ctrl+A dead half-second, and the scenario's nested application-lease acquisition; one intermittent aggregate death remains recorded under knownProductFindings with a fail-fast capture armed.",
       "evidenceWorkflow": "multi-window-asr-persistence",
-      "attemptId": "20260826233541870-75840-74c4fa6e",
-      "binaryDigest": "0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028"
+      "attemptId": "20260828071007597-78160-6cab189d",
+      "lastGreenBinary": "9484e4a8e60cf2729e5db6a9e0ba384d7c44b3d6a8e575bf0436edd17af4c742",
+      "binaryDigest": "9484e4a8e60cf2729e5db6a9e0ba384d7c44b3d6a8e575bf0436edd17af4c742"
     },
     {
       "name": "geminiGeneration",
