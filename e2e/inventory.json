@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "A small IPC payload sent during subtitle timeline editing carries null where the native boundary requires an unsigned integer, so the operation is rejected and the only trace is a console line.",
+      "foundBy": "timelineAdvancedEditing on candidates 19 and 20",
+      "status": "open-under-investigation",
+      "severity": "major",
+      "note": "Recorded twice on candidate 20 at JSON offsets 85 and 101, and once on candidate 19, always during the multi-cue range-move step, so it is repeatable rather than the ambient noise an earlier investigation concluded. The subtitle track contract was cleared by that investigation, and the offsets are far too small for a full track, so the payload is something narrower - the glyph-atlas staging structs carry exactly this shape of unsigned pixel field and are re-baked while cues change. Being traced on both sides of the boundary; the customer-visible consequence is unknown and part of the same task, since a rejected staging call could silently drop rendered ink."
+    },
+    {
       "finding": "Importing a subtitle document moments after opening media could be refused for a project-scope mismatch the customer never caused, because the binding publishes its cache id synchronously long before that binding is durable.",
       "foundBy": "referenceVoiceAndPerCueNarration first real-binary execution on candidate 19",
       "status": "fixed",
@@ -1429,7 +1436,7 @@
       "foundBy": "timelineAdvancedEditing on candidate 19",
       "status": "fixed",
       "severity": "major",
-      "note": "The move path reused the any-overlap predicate written for clear and regenerate. In the failing run an earlier clamp step had left one cue spanning the entire media, so every range move swept it in, and because that cue already ended at the media boundary the clamp reduced the whole move to zero - the two selected cues stayed exactly where they were with nothing reported. The move now requires a cue to be fully inside the selection, while overlap remains correct for clear and regenerate. Separately, durable subtitle edit failures reached only console.error, so any rejected write was invisible; they now raise one deduped bounded toast. The invalid-type-null-expected-u32 line captured in that run could not be reproduced anywhere in the commit path and is recorded as unexplained ambient noise rather than a diagnosed cause; Rust tests now lock that wire contract either way."
+      "note": "The move path reused the any-overlap predicate written for clear and regenerate. In the failing run an earlier clamp step had left one cue spanning the entire media, so every range move swept it in, and because that cue already ended at the media boundary the clamp reduced the whole move to zero - the two selected cues stayed exactly where they were with nothing reported. The move now requires a cue to be fully inside the selection, while overlap remains correct for clear and regenerate. Separately, durable subtitle edit failures reached only console.error, so any rejected write was invisible; they now raise one deduped bounded toast. The invalid-type-null-expected-u32 line was first recorded as unexplained noise because it could not be reproduced in the subtitle commit path; candidate 20 then produced it TWICE at different JSON offsets during the same step, so it is a real repeatable boundary failure in a different, small payload and is now tracked as its own finding. Rust tests lock the subtitle track contract either way."
     },
     {
       "finding": "Applying an aspect-ratio crop preset silently lost the crop: Apply threw uncaught, the overlay stayed open, and nothing durable changed or was reported.",
