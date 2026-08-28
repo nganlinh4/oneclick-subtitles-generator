@@ -34,6 +34,33 @@ use crate::webdriver::Timeouts;
 /// Handler name used for postMessage calls
 const HANDLER_NAME: &str = "webdriver_async";
 
+/// The single object property that carries one async-script report.
+///
+/// The wrapper posts an OBJECT, never a string. `window.chrome.webview.postMessage` is a shared
+/// broadcast: every registered `WebMessageReceived` handler sees it, and in a Tauri app one of them
+/// is always wry's IPC bridge (`tauri::manager::webview` installs
+/// `tauri::ipc::protocol::message_handler` unconditionally). wry forwards a message to that bridge
+/// only when `ICoreWebView2WebMessageReceivedEventArgs::TryGetWebMessageAsString` succeeds, which it
+/// does for string messages and not for object ones, so wrapping the report in an object keeps it
+/// invisible to Tauri while `WebMessageAsJson` below still reads it.
+///
+/// A stringified report did reach Tauri, whose private IPC envelope declares
+/// `error: CallbackFn(u32)`. That field collided with this report's `"error": null` and made Tauri
+/// eval `console.error("JSON error: invalid type: null, expected u32 at line 1 column N")` into the
+/// application's own console after every async script -- dozens of spurious app-console errors per
+/// suite, with N determined purely by the serialized result length.
+const REPORT_KEY: &str = "__wdioAsyncReport";
+
+/// Reads one async-script report out of a `WebMessageAsJson` payload.
+///
+/// Returns `None` for every message that is not one of ours, including the plain string messages
+/// that Tauri's own IPC uses, so an unrelated web message is ignored rather than misparsed.
+fn report_from_web_message(msg_text: &str) -> Option<serde_json::Value> {
+    let outer: serde_json::Value = serde_json::from_str(msg_text).ok()?;
+    let report = outer.as_object()?.get(REPORT_KEY)?.as_str()?;
+    serde_json::from_str(report).ok()
+}
+
 /// Serializes concurrent WebView2 ExecuteScript calls per webview window.
 /// On Windows, issuing multiple concurrent ExecuteScript calls against the same
 /// CoreWebView2 can cause completion handlers to be silently dropped or the
@@ -590,25 +617,26 @@ impl<R: Runtime + 'static> PlatformExecutor<R> for WindowsExecutor<R> {
                     }}
                     return arg;
                 }}
-                var __done = function(r) {{
-                    window.chrome.webview.postMessage(JSON.stringify({{
-                        handler: '{HANDLER_NAME}',
-                        id: '{async_id}',
-                        result: r,
-                        error: null
-                    }}));
+                var __report = function(result, error) {{
+                    // One object property carrying the stringified report. Posting the report as a
+                    // bare string would also hand it to Tauri's IPC envelope parser, which rejects
+                    // it and writes a console.error into the application under test.
+                    window.chrome.webview.postMessage({{
+                        '{REPORT_KEY}': JSON.stringify({{
+                            handler: '{HANDLER_NAME}',
+                            id: '{async_id}',
+                            result: result,
+                            error: error
+                        }})
+                    }});
                 }};
+                var __done = function(r) {{ __report(r, null); }};
                 var __args = {args_json}.map(deserializeArg);
                 __args.push(__done);
                 try {{
                     (function() {{ {script} }}).apply(null, __args);
                 }} catch (e) {{
-                    window.chrome.webview.postMessage(JSON.stringify({{
-                        handler: '{HANDLER_NAME}',
-                        id: '{async_id}',
-                        result: null,
-                        error: e.message || String(e)
-                    }}));
+                    __report(null, e.message || String(e));
                 }}
             }})()"
         );
@@ -871,17 +899,10 @@ mod handlers {
                 }
                 let msg_text = msg_ptr.to_string().unwrap_or_default();
 
-                // `WebMessageAsJson` returns the message as a JSON value.
-                // Since JS sends `JSON.stringify({...})`, the message is a string,
-                // so we get a JSON-encoded string (with extra quotes).
-                // First parse to get the inner string, then parse that as our object.
-                let inner_str: String = match serde_json::from_str(&msg_text) {
-                    Ok(s) => s,
-                    Err(_) => return Ok(()), // Not a JSON string
-                };
-                let msg: Value = match serde_json::from_str(&inner_str) {
-                    Ok(v) => v,
-                    Err(_) => return Ok(()), // Not our message format
+                // `WebMessageAsJson` returns the message as a JSON value. The wrapper posts an
+                // object carrying the stringified report, so unwrap that one property.
+                let Some(msg) = super::report_from_web_message(&msg_text) else {
+                    return Ok(()); // Not one of our reports
                 };
 
                 // Check if this is our handler
