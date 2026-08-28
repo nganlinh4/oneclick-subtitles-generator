@@ -363,8 +363,8 @@
       "status": "green",
       "note": "The seed and verification phases now run in two separate WDIO invocations and therefore two separate desktop processes against one isolated profile. The former reloadSession-based test only replaced WebDriver's session while leaving the application alive and was not relaunch proof.",
       "evidenceWorkflow": "edit-persist-relaunch",
-      "attemptId": "20260827101843864-26948-f93eaea6",
-      "binaryDigest": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4"
+      "attemptId": "20260828110638773-45580-2a0e2f64",
+      "binaryDigest": "8f9d737c50a68e3c03c71f37c4b20af70fd34e54d06e48686232946ccaa816a6"
     },
     {
       "name": "unicodeCues",
