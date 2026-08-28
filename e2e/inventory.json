@@ -1291,6 +1291,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "A bulk translation file rejected for a wrong extension, duplicate name or malformed JSON was refused silently, and a bulk run whose every file failed for a missing credential reported itself complete.",
+      "foundBy": "bulkTranslationFileIO authoring source review",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The only reachable bulk drop target (TranslationActions.addFiles; BulkTranslationPool mounts with hideDropZone so its copy is dead code) only console.warn-ed rejections, so a customer dropping a bad file saw nothing at all; separately useTranslationBulk swallowed every per-file NativeGeminiError and still returned complete. Rejections now group into one bounded warning toast naming filenames only, and a run whose failures are uniformly geminiCredentialUnavailable with zero successes reports failed with the same refusal toast the single-track path gives. Nine of ten new regressions fail without the fix; mixed-reason total failure is deliberately unchanged and documented."
+    },
+    {
       "finding": "Dragging a cue with sticky/cascade mode on could push later cues past the real media duration: the cascade applied the dragged delta to every later cue with no boundary clamp.",
       "foundBy": "timelineAdvancedEditing authoring source review",
       "status": "fixed",
