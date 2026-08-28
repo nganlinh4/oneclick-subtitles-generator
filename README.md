@@ -247,6 +247,7 @@ npm run lint
 npm test
 npm run check:i18n
 npm run check:capability-inputs
+npm run check:fixture-integrity
 npm run test:gemini-catalog
 npm run test:frontend-env
 npm run test:python-workers

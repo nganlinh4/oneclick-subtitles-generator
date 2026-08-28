@@ -51,6 +51,7 @@
     "test:speech-worker": "python -I -B crates/osg-speech/tests/python_worker_contract.py -v",
     "test:python-workers": "npm run test:asr-worker && npm run test:speech-worker",
     "check:capability-inputs": "node scripts/check-capability-inputs.js && node --test scripts/check-capability-inputs.test.js",
+    "check:fixture-integrity": "node scripts/check-fixture-integrity.mjs && node --test scripts/check-fixture-integrity.test.mjs",
     "check:i18n": "node scripts/check-i18n.js",
     "check:dependencies": "node scripts/check-declared-dependencies.js && npm ls --all && npm --prefix apps/desktop ls --all",
     "check:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.py",

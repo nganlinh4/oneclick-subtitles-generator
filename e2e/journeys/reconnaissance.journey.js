@@ -54,7 +54,9 @@ describe('the editor surface', () => {
       { timeout: 120_000, interval: 1_000, timeoutMsg: 'media never activated' },
     );
 
-    const subtitles = readFileSync(join(FIXTURE_ROOT, 'cues-6s.srt'), 'utf8');
+    // cues-ascii.srt (not the retired media/cues-6s.srt fixture removed in 5c03e278) --
+    // its first cue is this same "First cue for the preview" text.
+    const subtitles = readFileSync(join(FIXTURE_ROOT, 'cues-ascii.srt'), 'utf8');
     await browser.execute((text, name) => {
       const target = document.querySelector('.srt-upload-button-container');
       const file = new File([text], name, { type: 'application/x-subrip' });
@@ -63,7 +65,7 @@ describe('the editor surface', () => {
       for (const type of ['dragover', 'drop']) {
         target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
       }
-    }, subtitles, 'cues-6s.srt');
+    }, subtitles, 'cues-ascii.srt');
 
     await browser.waitUntil(
       async () => (await browser.execute(

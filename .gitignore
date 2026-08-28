@@ -64,8 +64,9 @@ src/config/appConfig.js
 src/config/version.js
 .env.version
 
-# debugging files
-debug/
+# debugging files (anchored: an unanchored `debug/` also matches a real nested source directory
+# named "debug", the same class of bug .gitignore already carried for `subtitles/`)
+/debug/
 
 # OS generated files
 Thumbs.db
@@ -136,19 +137,6 @@ __pycache__/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Package files
-*.egg
-*.egg-info/
-dist/
-build/
-eggs/
-parts/
-sdist/
-develop-eggs/
-.installed.cfg
-lib/
-lib64/
-
 # Downloaded videos
 *.mp4
 *.webm
@@ -162,28 +150,35 @@ lib64/
 *.wav
 !src/assets/*.mp3
 !src/assets/*.wav
-# Keep example audio files in repo
-!server/example-audio/*.mp3
-!server/example-audio/*.wav
 # Keep bundled Gemini voice samples in repo
 !public/audio/voices/*.wav
 !public/audio/voices/*.mp3
 !public/audio/voices/*.ogg
+# osg-audio decode fixtures: compressed containers committed alongside the .flac/.ogg ones already
+# exempted below, because they cannot be produced without an encoder. Same reasoning and same class
+# of bug as crates/osg-decode/tests/fixtures/*.mp4 at the bottom of this file -- without this
+# exemption the generic patterns above silently drop them and crates/osg-audio's decode tests fail
+# only on a fresh checkout.
+!crates/osg-audio/tests/fixtures/*.mp3
+!crates/osg-audio/tests/fixtures/*.m4a
+!crates/osg-audio/tests/fixtures/*.webm
+# Subtitle-benchmark fixtures: real recorded speech from reviewed CC-BY corpora (see
+# tests/subtitle-benchmark/SOURCES.md), named and hashed by tests/subtitle-benchmark/manifest.json.
+# The same generic patterns above silently dropped these too.
+!tests/subtitle-benchmark/fixtures/*.mp3
+!tests/subtitle-benchmark/fixtures/*.wav
+!tests/subtitle-benchmark/fixtures/*.mp4
 
 live-api-web-console/
 
 package.json.bak
 .port_processes.json
-server/example-audio/basic_ref_en.wav
-server/example-audio/basic_ref_zh.wav
-server/example-audio/basic.toml
-server/example-audio/story.toml
-server/example-audio/story.txt
-server/example-audio/vocab.txt
 =0.0.6
 =0.24.0
 =0.104.0
-bin
+# Anchored: an unanchored `bin` also matches a real nested source directory such as a crate's
+# src/bin/, the same class of bug .gitignore already carried for `subtitles/` and `debug/`.
+/bin
 electron-dist
 manual-dist-v2/
 manual-dist/
