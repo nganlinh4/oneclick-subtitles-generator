@@ -117,7 +117,10 @@ const waitForDurableCueRecords = async (root, predicate, message) => {
     await browser.waitUntil(async () => {
       records = durableCueRecords(root);
       return predicate(records);
-    }, { timeout: 20_000, interval: 200, timeoutMsg: message });
+      // The caller's message and the durable rows are attached by the catch below, which reads
+      // state fresh; timeoutMsg itself stays a static literal so the automation-safety contract
+      // can verify by inspection that no computed value reaches WebdriverIO here.
+    }, { timeout: 20_000, interval: 200, timeoutMsg: 'durable cue records did not settle' });
   } catch (error) {
     throw new Error(
       `${message}. durable rows: ${JSON.stringify(records)}; errors: ${JSON.stringify(await boundedErrors())}`,

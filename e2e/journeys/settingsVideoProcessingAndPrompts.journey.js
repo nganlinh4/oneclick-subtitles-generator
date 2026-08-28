@@ -176,7 +176,21 @@ const attemptCredentialFreeGeneration = async () => {
     return surface.errorToasts.some((message) => /API/i.test(message))
       && surface.forceStopPresent === false
       && surface.generateDisabled === false;
-  }, { timeout: 30_000, interval: 250, timeoutMsg: `missing-credential refusal did not settle: ${JSON.stringify(surface)}` });
+    // A template literal in `timeoutMsg` is evaluated when waitUntil is CALLED, so it would have
+    // reported the pre-poll null forever. Read the state again on failure instead.
+  }, { timeout: 30_000, interval: 250, timeoutMsg: 'missing-credential refusal did not settle' })
+    .catch(async (error) => {
+      const settled = await browser.execute(() => ({
+        errorToasts: [...document.querySelectorAll('.toast-error')]
+          .map((node) => (node.innerText || '').trim()).filter(Boolean),
+        forceStopPresent: document.querySelector('.force-stop-btn') !== null,
+        generateDisabled: document.querySelector('[data-osg-action="generate-subtitles"]')?.disabled ?? null,
+      }));
+      throw new Error(
+        `missing-credential refusal did not settle: ${JSON.stringify(settled)}`,
+        { cause: error },
+      );
+    });
   return surface;
 };
 
