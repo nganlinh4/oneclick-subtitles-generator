@@ -1378,6 +1378,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Removing a native tool left its now-empty versions directory behind, so the managed store never returned to its pre-install shape.",
+      "foundBy": "settingsToolsRemoveAndFactoryReset first real-binary execution on candidate 18",
+      "status": "fixed",
+      "severity": "minor",
+      "note": "Install lazily creates tools/<tool>/versions; removal retired only the leaf version directory. The real run measured it precisely - identical bytes and file count with one extra entry - which is the orphan-residue class this project watches, even though no bytes leaked. The yt-dlp tool directory and its deliveries child are NOT residue: the update path recreates them on every manager start, and existing tests already assert they survive. Removal now prunes the versions parent, and the tool directory itself except yt-dlp, only when empty and not a link. A Rust regression walks the entire store tree before install and after removal and reproduces the exact entries+1 signature without the fix."
+    },
+    {
       "finding": "A scenario failed to launch because an integration edit rewrote e2e/package.json non-atomically while a worker was reading it.",
       "foundBy": "candidate 18 shard run, settingsNarrationModelManagement scenario",
       "status": "harness-operational",
