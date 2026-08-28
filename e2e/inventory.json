@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The production NSIS bundle builds and passes payload inspection, but the tauri:build command still exits nonzero because it tries to sign the updater artifact with a private key that exists only as a CI secret.",
+      "foundBy": "first production packaging run, 2026-08-28",
+      "status": "external-blocker",
+      "severity": "informational",
+      "note": "Both bundles are produced before the failure - One-Click Subtitles Generator_1.0.0_x64-setup.exe, 7,265,536 bytes, sha256 821f9229c89ef209f5ee7e03a86c1bc2bd4d2ec8a1adc33671b9c96b20e7ffd8 - and that installer passes the payload gate outright: 11 of 11 declared resources byte-verified, zero forbidden Electron, Node, Chrome or Python residue, both notice files accounted with no gaps, version 1.0.0 matching, and a clean cross-check against the published E2E application. The nonzero exit is solely the updater signature: the public key is committed and the private key is a CI secret, so an unsigned local-test installer is unaffected while a SIGNED release remains owner-gated on that key. Exact missing artifact: the minisign private key behind TAURI_SIGNING_PRIVATE_KEY."
+    },
+    {
       "finding": "A multi-cue range move could silently do nothing: any cue merely touching the selection was swept in, and the boundary clamp then reduced the shared delta to zero.",
       "foundBy": "timelineAdvancedEditing on candidate 19",
       "status": "fixed",
