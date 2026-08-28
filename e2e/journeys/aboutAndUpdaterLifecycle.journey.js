@@ -143,7 +143,21 @@ describe('About reports the real installed version and the updater proves its co
     });
 
     const after = durableState(root);
-    assert.deepEqual(after.jobs, before.jobs, 'the disabled-channel update check registered a durable job');
+    // The claim is that a disabled-channel update check creates no work of its own. The job
+    // registry has no updater kind at all (crates/osg-domain/src/jobs.rs JobKind), so filtering
+    // for one would make this assertion vacuous. Instead allow exactly the kinds that having
+    // media open legitimately schedules, and reject any other new job - a rogue updater would
+    // surface as a downloadMedia or installEngine row, which this still catches.
+    const mediaBackgroundKinds = new Set(['importMedia', 'probeMedia', 'processMedia', 'generateWaveform']);
+    const beforeIds = new Set(before.jobs.map(({ id }) => id));
+    const unexplained = after.jobs.filter(
+      ({ id, kind }) => !beforeIds.has(id) && !mediaBackgroundKinds.has(kind),
+    );
+    assert.deepEqual(
+      unexplained,
+      [],
+      `the disabled-channel update check registered durable work of its own: ${JSON.stringify(unexplained)}`,
+    );
     assert.deepEqual(after.artifacts, before.artifacts, 'the disabled-channel update check produced a durable artifact');
 
     const log = readFileSync(join(root, 'logs', 'osg.log'), 'utf8');

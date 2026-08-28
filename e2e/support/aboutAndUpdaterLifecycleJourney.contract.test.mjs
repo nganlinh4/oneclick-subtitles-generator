@@ -104,14 +104,14 @@ test('the contract fails when any one load-bearing assertion is removed', () => 
   const assertJourneyStillProvesTheDisabledChannel = (source) => {
     assert.match(source, /updateCheckFailedPresent, true/u);
     assert.match(source, /"outcome":"disabled"/u);
-    assert.match(source, /after\.jobs, before\.jobs/u);
+    assert.match(source, /unexplained,\s*\[\],/u);
     assert.match(source, /versionDisplay, \/v\\d\+\\\.\\d\+\\\.\\d\+\//u);
   };
   assertJourneyStillProvesTheDisabledChannel(journey);
   for (const needle of [
     'updateCheckFailedPresent, true',
     '"outcome":"disabled"',
-    'after.jobs, before.jobs',
+    'unexplained,',
   ]) {
     const weakened = journey.replace(needle, '/* removed */');
     assert.notEqual(weakened, journey, `mutation needle is stale: ${needle}`);
