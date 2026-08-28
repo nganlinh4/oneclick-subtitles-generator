@@ -257,6 +257,17 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
       durableUserSubtitles(root)[0]?.userSubtitles ?? null, null,
       'clearing manual subtitles did not clear the durable reference text',
     );
+    // The Genius refusal from the previous step is a real toast with a real lifetime, and this
+    // step is about cleared text, not about that refusal. Let it retire on its own rather than
+    // declaring an allowance for a toast this step does not document.
+    await waitUntilWithFreshDiagnostic(async () => {
+      cleared = await surfaceState();
+      return cleared.errorToasts.length === 0;
+    }, {
+      timeout: 20_000,
+      interval: 250,
+      diagnostic: () => `the Genius refusal toast never retired before the cleared-text capture: ${JSON.stringify(cleared.errorToasts)}`,
+    });
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '04-manual-text-cleared',
