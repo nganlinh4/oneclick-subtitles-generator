@@ -44,7 +44,8 @@
     "test:translation": "node scenarios/translationPersistence.mjs",
     "test:screenshot-workflows": "node run-isolated.mjs journeys/freshInstallVisual.journey.js journeys/urlToPreview.journey.js journeys/downloadCancellationRetryIdentity.journey.js journeys/failedDownloadNoStale.journey.js journeys/urlLocalAsrPreview.journey.js journeys/localAsrGeneration.journey.js journeys/narrationGeneration.journey.js journeys/nativeExportDecoded.journey.js journeys/exportAnimationParityMatrix.journey.js journeys/renderCancelRetryExport.journey.js journeys/geminiCredentialBoundary.journey.js journeys/geminiOutputPreview.journey.js journeys/canvasPlaybackPerformance.journey.js journeys/mainPreviewControlsAndFullscreen.journey.js journeys/mainPreviewRenderHandoff.journey.js journeys/cacheClearSafety.journey.js journeys/editorCueCrudAndHistory.journey.js journeys/subtitleDocumentRoundTrip.journey.js journeys/subtitleCustomizationPreview.journey.js journeys/subtitleMaterialAndAnimation.journey.js journeys/settingsSurface.journey.js && node scenarios/editPersistRelaunch.mjs && node scenarios/multiWindowAsrPersistence.mjs && node scenarios/unicodeCues.mjs && node scenarios/translationPersistence.mjs && node scenarios/nativeToolsInstall.mjs && node scenarios/settingsAppearancePersistence.mjs && node scenarios/renderInterruptRecovery.mjs",
     "stress:persistence": "node scenarios/editPersistRelaunch.mjs --repeat 8",
-    "recon": "node run-isolated.mjs journeys/reconnaissance.journey.js"
+    "recon": "node run-isolated.mjs journeys/reconnaissance.journey.js",
+    "verify:inventory": "node scripts/verify-inventory.mjs"
   },
   "devDependencies": {
     "@wdio/cli": "9.20.0",

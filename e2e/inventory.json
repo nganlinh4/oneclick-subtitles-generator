@@ -12,7 +12,7 @@
     "A red entry is not a gap in coverage -- it is coverage that has found something. Source tests",
     "and screenshots of a surface alone never promote a customer outcome to green."
   ],
-  "updated": "2026-08-26",
+  "updated": "2026-08-28",
   "binary": {
     "e2e": "npm run build:e2e-binary publishes the guarded nonshipping E2E application into the managed external cache; every launch holds the apps/e2e cache lease while re-verifying receipts/current.json, its immutable manifest, exact inventory and every file digest, with no repository-target fallback",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
@@ -170,7 +170,10 @@
         "welcome and preference overlays cover the viewport",
         "the original theme, language and continue controls remain centred in one row and screenshot-backed"
       ],
-      "status": "green"
+      "status": "green",
+      "evidenceWorkflow": "fresh-install-visual",
+      "attemptId": "20260827145913228-72824-5a6e41da",
+      "binaryDigest": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53"
     },
     {
       "name": "geminiOutputPreview",
@@ -181,7 +184,10 @@
         "every representative cue publishes distinct canvas-atlas pixels",
         "an explicitly supplied database can be replayed read-only without persisting private cue text in evidence"
       ],
-      "status": "green"
+      "status": "green",
+      "evidenceWorkflow": "gemini-output-preview",
+      "attemptId": "20260827123039268-25192-e8be0d44",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "startup",
@@ -197,7 +203,9 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "startup",
+      "attemptId": "20260826160807082-27352-ca146dfb",
+      "binaryDigest": "1645a8f77dadb119e3ea32c021687e4696c3c502c3bdb36cb1ec695822fc7645"
     },
     {
       "name": "defaultFont",
@@ -210,7 +218,9 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "e1f7da00"
+      "evidenceWorkflow": "default-font",
+      "attemptId": "20260826160909944-27352-f809b32d",
+      "binaryDigest": "1645a8f77dadb119e3ea32c021687e4696c3c502c3bdb36cb1ec695822fc7645"
     },
     {
       "name": "damagedFontPayload",
@@ -222,8 +232,8 @@
         "font readiness record"
       ],
       "runsAgainst": "staged copy of the e2e binary",
-      "status": "green",
-      "lastGreenCommit": "e1f7da00"
+      "status": "unproven",
+      "note": "Demoted 2026-08-28: no evidence/damaged-font-payload directory exists under the managed external evidence cache, so this claim cannot be bound to any recorded attempt. The journey file and staged-binary harness still exist; a passing attempt has not been captured through the same evidence pipeline as its sibling default-font journey."
     },
     {
       "name": "urlToPreview",
@@ -252,7 +262,9 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "'Download Only' is save-to-disk, not load-into-editor: it downloads, exports to the chosen path and discards the candidate. Measured green on the real binary: the scan returned 240p/144p and the export wrote 440,628 bytes.",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "url-to-preview",
+      "attemptId": "20260827150514398-72028-fc5e55bf",
+      "binaryDigest": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53"
     },
     {
       "name": "urlLocalAsrPreview",
@@ -277,8 +289,8 @@
         "the application's own SQLite database, read only"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": "The first run reproduced the reported projectScopeMismatch: mounting the file tab reactivated downloaded media as a local upload while the renderer minted another asset-keyed project, leaving cues and media in separate projects. The unchanged real URL path is now green with exactly one project, six durable provider cues, a seek into a real cue, and a screenshot showing that cue in native preview pixels. If a provider supplies no track, the same journey continues through the managed local ASR engine."
+      "status": "unproven",
+      "note": "Demoted 2026-08-28: the retained evidence/url-local-asr-preview attempts (three, all from 2026-08-27) all fail; there is no latest-success pointer. The most recent failure (20260827152942446-16288-cab1bdfb) shows the same 'Processing failed: The active native media changed or is unavailable' toast that knownProductFindings already records as recurring after its earlier fix. An earlier run had reproduced and fixed the projectScopeMismatch defect described below; that fix is real, but this capability has no currently passing real-binary attempt and is not green."
     },
     {
       "name": "downloadCancellationRetryIdentity",
@@ -304,8 +316,8 @@
         "the remote byte origin only, through the compile-time exact loopback capability described above"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": "Green in off-screen real-binary attempt 20260825155018591-64168-fab31072 against automation binary af9691ba1b57f4055b15ec541a5407ff10e3563f2e66d79420308237647e9ff1. All five screenshots were inspected. The run proved an aborted partial A transfer, a distinct successful retry, exact source bytes, early A withdrawal during B, distinct durable A/B projects, and exact ownership of both download and waveform-cache artifacts."
+      "status": "unproven",
+      "note": "Demoted 2026-08-28: the attempt this entry previously cited (20260825155018591-64168-fab31072) has rotated out of the retained evidence window (only the three newest attempts plus a latest success are kept, and it is neither). The three currently retained evidence/download-cancellation-retry-identity attempts, spanning 2026-08-27 08:21 through 15:12, all fail -- the most recent with 'WebdriverIO failed with exit status 1 before its test hook captured an Error' -- and there is no latest-success pointer. This capability needs a fresh passing attempt before it can be green again."
     },
     {
       "name": "failedDownloadNoStale",
@@ -323,8 +335,10 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
-      "note": "Green in off-screen real-binary attempt 20260826234117169-59440-d6f71134 (exe sha256 0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028). All four screenshots inspected. The origin ledger shows A's complete 4372373-byte ranged transfer, then C passing yt-dlp's real inspection before three genuine 503 rejections; the customer saw exactly one typed download-failure toast, no stale or fabricated media, and A surviving only as history."
+      "note": "Green in off-screen real-binary attempt 20260826234117169-59440-d6f71134 (exe sha256 0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028). All four screenshots inspected. The origin ledger shows A's complete 4372373-byte ranged transfer, then C passing yt-dlp's real inspection before three genuine 503 rejections; the customer saw exactly one typed download-failure toast, no stale or fabricated media, and A surviving only as history. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "failed-download-no-stale",
+      "attemptId": "20260827151905000-75288-a699c090",
+      "binaryDigest": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53"
     },
     {
       "name": "editPersistRelaunch",
@@ -348,7 +362,9 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The seed and verification phases now run in two separate WDIO invocations and therefore two separate desktop processes against one isolated profile. The former reloadSession-based test only replaced WebDriver's session while leaving the application alive and was not relaunch proof.",
-      "lastGreenCommit": "f64443bc"
+      "evidenceWorkflow": "edit-persist-relaunch",
+      "attemptId": "20260827101843864-26948-f93eaea6",
+      "binaryDigest": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4"
     },
     {
       "name": "unicodeCues",
@@ -371,8 +387,10 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "lastGreenCommit": "f64443bc",
-      "note": "Green across two desktop processes after the line-mask migration and after imported subtitle rows were made durable before the editor could present them as saved. The old same-process test concealed both the relaunch gap and import data loss."
+      "note": "Green across two desktop processes after the line-mask migration and after imported subtitle rows were made durable before the editor could present them as saved. The old same-process test concealed both the relaunch gap and import data loss.",
+      "evidenceWorkflow": "unicode-cues",
+      "attemptId": "20260827140106853-28396-3884be7a",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "nativeToolsInstall",
@@ -386,7 +404,10 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "Starts without the persistent E2E tools junction, installs all three tools through customer controls, and verifies every installed byte against the static catalog or immutable dynamic yt-dlp delivery record. The coordinator then changes one byte of yt-dlp without changing its size, launches a new desktop process, requires a fail-closed corrupt/quarantined state, uses the visible Repair control, and revalidates the complete tree."
+      "note": "Starts without the persistent E2E tools junction, installs all three tools through customer controls, and verifies every installed byte against the static catalog or immutable dynamic yt-dlp delivery record. The coordinator then changes one byte of yt-dlp without changing its size, launches a new desktop process, requires a fail-closed corrupt/quarantined state, uses the visible Repair control, and revalidates the complete tree.",
+      "evidenceWorkflow": "native-tools-install",
+      "attemptId": "20260827141138466-72912-9c0a7b3d",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "canvasPlaybackPerformance",
@@ -402,7 +423,10 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "The rebuilt real binary advanced 6.032 seconds during a 6.073-second sample, published 115 compositor frames and 603 animation frames from the real 15 fps video, retained the expected subtitle in all 495 active-cue samples, rebuilt the static overlay once, recorded zero long tasks, and grew the JavaScript heap by 4.09 MB. The visible canvas is now presentation-only: each revision arrives as one complete video-plus-subtitle paint from a back buffer."
+      "note": "The rebuilt real binary advanced 6.032 seconds during a 6.073-second sample, published 115 compositor frames and 603 animation frames from the real 15 fps video, retained the expected subtitle in all 495 active-cue samples, rebuilt the static overlay once, recorded zero long tasks, and grew the JavaScript heap by 4.09 MB. The visible canvas is now presentation-only: each revision arrives as one complete video-plus-subtitle paint from a back buffer.",
+      "evidenceWorkflow": "canvas-playback-performance",
+      "attemptId": "20260827123252707-42788-037830f7",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "nativeExportDecoded",
@@ -417,7 +441,9 @@
         "independent FFmpeg decode and SSIM against the cropped canvas composition viewport"
       ],
       "note": "Green against the rebuilt real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded Neon frame (Arial, border, glow, shadow and background) matched the persistent canvas preview at SSIM 0.973657. The journey found and drove four earlier product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "native-export-decoded",
+      "attemptId": "20260827121309372-58892-8920f48c",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "localFileImport",
@@ -433,7 +459,9 @@
       ],
       "runsAgainst": "e2e-binary",
       "note": "Green in off-screen real-binary attempt 20260827010107629-34704-9ec306f1 (exe sha256 f47148d4fee0…). All three screenshots inspected. Import is by owned copy: the persisted windows-utf16le location pointer decoded to a content-addressed file inside the isolated artifact store holding exactly the selected 440628 bytes (SHA-256 equal), the editor reported the probe-exact 19.014s duration and dimensions, streamed from the private native media server, showed the customer their file name, fabricated no cues, and decoded a real mid-file frame with a ready waveform. The first run corrected the journey itself: it assumed in-place references where the product correctly copies.",
-      "lastGreenBinary": "26a26c44b8f30c863147aa7cb9d54d6c06ac2fd585db3a75bc4754e82969bd72"
+      "evidenceWorkflow": "local-file-import",
+      "attemptId": "20260827010107629-34704-9ec306f1",
+      "binaryDigest": "f47148d4fee0008b753344168b0405ed3cd0789e57ee3fa7d4d439e767acbeaa"
     },
     {
       "name": "timelineBoundary",
@@ -456,8 +484,8 @@
         "ordered screenshots under the managed external evidence lane/timeline-boundary"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": "The journey owns two connected invariants. First, waveform, pointer selection and Ctrl+A share the real media boundary, no selectable range extends into subtitle-only or visual-gutter time, and deleting the selection drives SQLite to zero. Second, generation starts from that empty Rust checkpoint: deleted imported text may never reappear, a MutationObserver must witness newly transcribed rows while the overall generation operation is still active, and those rows must later be durable with a separately observed succeeded job state."
+      "status": "unproven",
+      "note": "Demoted 2026-08-28: the oracles above still claim 'ordered screenshots under the managed external evidence lane/timeline-boundary', but no evidence/timeline-boundary directory exists under the managed external evidence cache, so this claim cannot be bound to any recorded attempt. The journey owns two connected invariants -- shared waveform/Ctrl+A boundaries reducing to zero on delete, and generation starting cleanly from that empty checkpoint without resurrecting deleted text -- but neither has a passing real-binary attempt on record."
     },
     {
       "name": "asrGeneration",
@@ -479,7 +507,9 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first real run exposed two production defects that mocks missed: package-status polling launched overlapping full-tree scans during publication, reaching 562 threads and about 11 GiB private memory; and Rust emitted job_id/timeline_offset_ms while JavaScript required jobId/timelineOffsetMs, so the first progress event cancelled every healthy job. Both are fixed and the unchanged journey is green.",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "local-asr-generation",
+      "attemptId": "20260827115156992-76320-ff822707",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "multiWindowAsrGeneration",
@@ -508,8 +538,10 @@
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
       "status": "green",
-      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
-      "note": "Green on 2026-08-27 across both hidden desktop processes with all six screenshots inspected: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an 82-cue durable merge equal to the streamed union, and a second process restoring the exact track (the virtualized lyrics list is verified through the editor's own count surface plus viewport-prefix equality). Along the way this journey flushed out and drove fixes for the engine-status verification race, the Ctrl+A dead half-second, and the scenario's nested application-lease acquisition; one intermittent aggregate death remains recorded under knownProductFindings with a fail-fast capture armed."
+      "note": "Green on 2026-08-27 across both hidden desktop processes with all six screenshots inspected: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an 82-cue durable merge equal to the streamed union, and a second process restoring the exact track (the virtualized lyrics list is verified through the editor's own count surface plus viewport-prefix equality). Along the way this journey flushed out and drove fixes for the engine-status verification race, the Ctrl+A dead half-second, and the scenario's nested application-lease acquisition; one intermittent aggregate death remains recorded under knownProductFindings with a fail-fast capture armed.",
+      "evidenceWorkflow": "multi-window-asr-persistence",
+      "attemptId": "20260826233541870-75840-74c4fa6e",
+      "binaryDigest": "0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028"
     },
     {
       "name": "geminiGeneration",
@@ -534,9 +566,8 @@
         "the native diagnostic log, requiring no Gemini request lifecycle event"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": "Drives the real file import, range selection, Gemini method choice and Process control. It proves only safe refusal, not provider success.",
-      "lastGreenCommit": "c1a5b47d"
+      "status": "unproven",
+      "note": "Demoted 2026-08-28: both retained evidence/gemini-credential-boundary attempts (2026-08-27, 09:26 and 12:27) fail and there is no latest-success pointer. The most recent failure shows the expected 'Please set your API key in the settings first.' toast still visible when the journey's assertion requires the surface to have returned to idle -- the refusal itself still appears to happen, but the journey's idle-state check does not currently pass. Drives the real file import, range selection, Gemini method choice and Process control; proves only safe refusal, never provider success, and currently proves neither."
     },
     {
       "name": "translation",
@@ -558,7 +589,9 @@
       "runsAgainst": "two independent e2e-binary processes sharing one isolated profile",
       "status": "green",
       "note": "Format mode proves the complete ownership, persistence, projection and native drawing path without pretending to prove Gemini. Provider-backed translation is tracked separately by providerTranslation.",
-      "lastGreenCommit": "f64443bc"
+      "evidenceWorkflow": "translation-persistence",
+      "attemptId": "20260827140757224-72044-1b810f17",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "narration",
@@ -579,7 +612,9 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first runs found two production defects: unchanged native package progress was replayed with the same durable sequence and cancelled installation, and successful narration artifacts were globally owned with project_id NULL. Both are fixed; the unchanged strict journey is green.",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "narration-generation",
+      "attemptId": "20260827120320715-61620-cc2c61ae",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "narrationAlignment",
@@ -600,7 +635,9 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "note": "The first attempted run exposed a harness safety defect: narration export bypassed the staged media-export destination and opened a real OS dialog. Every native picker/save call is now centralized; automation builds fail closed and compile no native-dialog implementation. The unchanged customer click then generated, aligned, exported, and independently probed one valid M4A without an OS dialog.",
-      "lastGreenCommit": "c1a5b47d"
+      "evidenceWorkflow": "narration-generation",
+      "attemptId": "20260827120320715-61620-cc2c61ae",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "installedGolden",
@@ -674,7 +711,9 @@
       ],
       "runsAgainst": "e2e-binary",
       "note": "Green in off-screen real-binary attempt 20260827011455660-29212-d916bd64 (exe sha256 a4f06dc1307e…), both screenshots inspected: the three cues authored in SRT-only mode stayed visible and IN ORDER after the video arrived, became durable under the media project with no failed job, and the native canvas drew the first authored cue over the real frame. The journey first exposed the real loss (an empty scaffold track wiped the live rows and nothing persisted them), fixed at the hydration and provenance seams. A track typed manually media-free (without an uploaded document) carries no import provenance and remains OUTSIDE the carry-over; that edge is deliberately still open.",
-      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132"
+      "evidenceWorkflow": "srt-only-media-attach",
+      "attemptId": "20260827011455660-29212-d916bd64",
+      "binaryDigest": "a4f06dc1307e56a1a474e6cd9c28fc61fd7523a61cbbd90fd4080dedaf0c15e8"
     },
     {
       "name": "subtitleDocumentRoundTrip",
@@ -698,7 +737,10 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "recommendedJourney": "editorCrudAndSubtitleDocuments",
-      "note": "Green on guarded off-screen binary SHA-256 a714f0d1224274951349b49144875e1f060801c2ee3fb956e32568bb82622634, attempt 20260825152111597-54748-9ef79e5d. Five ordered screenshots and three copied output artifacts accompany exact independent SRT/JSON/TXT parsing. Attaching the document to later media and translated-track exports remain separate unproven capabilities."
+      "note": "Green on guarded off-screen binary SHA-256 a714f0d1224274951349b49144875e1f060801c2ee3fb956e32568bb82622634, attempt 20260825152111597-54748-9ef79e5d. Five ordered screenshots and three copied output artifacts accompany exact independent SRT/JSON/TXT parsing. Attaching the document to later media and translated-track exports remain separate unproven capabilities. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "subtitle-document-round-trip",
+      "attemptId": "20260827124803248-72708-75f548a4",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "manualLyricsAndGeniusLookup",
@@ -725,7 +767,10 @@
       ],
       "status": "green",
       "recommendedJourney": "editorCueCrudAndHistory",
-      "note": "Green against guarded binary SHA-256 42d686845ffda699328f15262315d1d055dfefe61571ac70f875c3bab026e12c. Attempt 20260825125011088-38964-22d7f17b passed create, row insert/edit/delete/merge, customer smart split, undo/redo, two saves, reset, checkpoint navigation and read-only SQLite ownership with eight screenshots. There is no duplicate-cue command in the shipped UI, so the journey does not fabricate one. editPersistRelaunch remains the independent second-process ownership proof; timelineBoundary remains the non-overlapping Ctrl+A/delete-all proof."
+      "note": "Green against guarded binary SHA-256 42d686845ffda699328f15262315d1d055dfefe61571ac70f875c3bab026e12c. Attempt 20260825125011088-38964-22d7f17b passed create, row insert/edit/delete/merge, customer smart split, undo/redo, two saves, reset, checkpoint navigation and read-only SQLite ownership with eight screenshots. There is no duplicate-cue command in the shipped UI, so the journey does not fabricate one. editPersistRelaunch remains the independent second-process ownership proof; timelineBoundary remains the non-overlapping Ctrl+A/delete-all proof (though timelineBoundary is itself currently unproven; see its own entry). Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "editor-cue-crud-and-history",
+      "attemptId": "20260827124502558-63480-2a201445",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "timelineAdvancedEditing",
@@ -742,7 +787,9 @@
       "status": "green",
       "note": "Both halves now green: subtitleDocumentRoundTrip owns the original track saves; attempt 20260827011724168-70116-f2430726 (exe a4f06dc1307e…) saved the formatted translation as valid SRT, JSON and timing-free TXT plus the untouched original SRT, each independently parsed with exact texts and timings and distinct bytes. The journey first exposed the filename collision between a language-free translated SRT and the original.",
       "file": "journeys/translatedDocumentExports.journey.js",
-      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132",
+      "evidenceWorkflow": "translated-document-exports",
+      "attemptId": "20260827011724168-70116-f2430726",
+      "binaryDigest": "a4f06dc1307e56a1a474e6cd9c28fc61fd7523a61cbbd90fd4080dedaf0c15e8",
       "oracles": [
         "the provider-free public Format mode producing the translated track, durable before any export",
         "the Download Center Subtitle Source selector, honestly disabled before a translation exists",
@@ -872,7 +919,10 @@
         "fullscreen control presence without activating browser fullscreen during unattended runs",
         "two distinct real media identities in SQLite plus frame SSIM and an animation-frame stale-cue witness"
       ],
-      "note": "The transport and A→B ownership path remains an off-screen real-binary journey. Browser Fullscreen API activation is deliberately excluded from unattended runs: measured on 2026-08-26, it relocated the E2E HWND from x=-10000 to x=0 at 2560×1080, violating the no-desktop-interruption boundary. Fullscreen logic remains source/component covered and requires an explicitly user-idle visual run for physical-window proof. Narration refresh is likewise not clicked without provenance-backed narration."
+      "note": "The transport and A→B ownership path remains an off-screen real-binary journey. Browser Fullscreen API activation is deliberately excluded from unattended runs: measured on 2026-08-26, it relocated the E2E HWND from x=-10000 to x=0 at 2560×1080, violating the no-desktop-interruption boundary. Fullscreen logic remains source/component covered and requires an explicitly user-idle visual run for physical-window proof. Narration refresh is likewise not clicked without provenance-backed narration.",
+      "evidenceWorkflow": "main-preview-controls-and-fullscreen",
+      "attemptId": "20260827123533636-50848-d0fe4188",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "mainPreviewRenderHandoff",
@@ -886,7 +936,10 @@
         "the project's SQLite render scene read independently after the edit",
         "same-instant compositor screenshots compared by SSIM"
       ],
-      "note": "The first hidden real-binary run found the architectural split: the main preview wrote project-less subtitle_settings localStorage while Render/export read project_render_scenes from SQLite. The replacement now writes one project-owned SQLite scene consumed directly by both native surfaces and export. The rebuilt guarded binary independently read the edited scene, then produced unobscured same-instant main/Render screenshots at 0.981722 SSIM with the same font size, colors, opacity, alignment, position, width, radius and X/Y padding. Evidence is retained under the managed external evidence lane/main-preview-render-handoff with the exact binary SHA-256."
+      "note": "The first hidden real-binary run found the architectural split: the main preview wrote project-less subtitle_settings localStorage while Render/export read project_render_scenes from SQLite. The replacement now writes one project-owned SQLite scene consumed directly by both native surfaces and export. The rebuilt guarded binary independently read the edited scene, then produced unobscured same-instant main/Render screenshots at 0.981722 SSIM with the same font size, colors, opacity, alignment, position, width, radius and X/Y padding. Evidence is retained under the managed external evidence lane/main-preview-render-handoff with the exact binary SHA-256.",
+      "evidenceWorkflow": "main-preview-render-handoff",
+      "attemptId": "20260827123858917-67468-655d28df",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "subtitleCustomizationPreview",
@@ -894,7 +947,9 @@
       "file": "journeys/subtitleCustomizationPreview.journey.js",
       "capability": "Every shipped preset plus text, font, background, effect, position and animation control produces stable native preview pixels for Latin, Vietnamese, Korean, emoji and bidi text.",
       "status": "green",
-      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
+      "evidenceWorkflow": "subtitle-customization-preview",
+      "attemptId": "20260827125103040-52160-d4c5fb50",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851",
       "oracles": [
         "the shipped preset matrix and public Render controls only, actuated through native range surfaces in the guarded off-screen binary",
         "read-only SQLite render-scene revisions after every claimed style change",
@@ -920,8 +975,10 @@
         "same-instant composed/source-only screenshots independently decoded for pixel centroid, area and energy plus temporal entry/mid/exit deltas",
         "a pre-setup MutationObserver ledger that rejects even transient visible errors or nonempty native preview refusal codes"
       ],
-      "note": "Green in off-screen real-binary attempt 20260827033637334-63664-23411c41 (exe sha256 9c240437a41d…), all seven grouped material frames and three representative animation frames inspected: the cumulative 56-field customization drew the multilingual cue (Vietnamese, Korean, inline Arabic, ZWJ emoji, combining marks) through typography, five borders, shadow/glow, six gradient directions with stroke, anchors/margins, custom placement/wrap and timing, and the sweep proved all seven easings on slide-up plus the other nine animations through uninterrupted playback — the typewriter entry frame shows the partial reveal mid-type. Getting here surfaced and fixed two real preview defects (the idle paused Render surface and the black transitioning-surface capture at seek boundaries) and taught the continuity witness to classify pre-attach compositions as unknown provenance instead of reporting the held-frame design as a black flash.",
-      "lastGreenBinary": "30ad351a761946b91a826a7458099aff4e14f6a2087ea0c0b6a0b074c73604e1"
+      "note": "Green in off-screen real-binary attempt 20260827033637334-63664-23411c41 (exe sha256 9c240437a41d…), all seven grouped material frames and three representative animation frames inspected: the cumulative 56-field customization drew the multilingual cue (Vietnamese, Korean, inline Arabic, ZWJ emoji, combining marks) through typography, five borders, shadow/glow, six gradient directions with stroke, anchors/margins, custom placement/wrap and timing, and the sweep proved all seven easings on slide-up plus the other nine animations through uninterrupted playback — the typewriter entry frame shows the partial reveal mid-type. Getting here surfaced and fixed two real preview defects (the idle paused Render surface and the black transitioning-surface capture at seek boundaries) and taught the continuity witness to classify pre-attach compositions as unknown provenance instead of reporting the held-frame design as a black flash. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "subtitle-material-and-animation",
+      "attemptId": "20260827095738901-36124-349b5276",
+      "binaryDigest": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4"
     },
     {
       "name": "exportAnimationParityMatrix",
@@ -939,8 +996,10 @@
         "staged customer save followed by independent ffprobe/FFmpeg validation of duration, dimensions, exact fps, audio channels, sample rate and stream timebase/duration coverage",
         "a pre-media MutationObserver ledger that records transient visible errors and every nonempty native preview refusal code"
       ],
-      "note": "Green in off-screen real-binary attempt 20260827044310649-63524-00d7c1c7 (exe sha256 9c240437a41d…), 20 steps and 130 artifacts, representative screenshots inspected: all ten animation/style cases rendered, decoded and verified WYSIWYG at entry and exit across Main, Render and the independently decoded export, with durable ownership, audio energy and staged customer saves. Twenty runs of this journey drove one product hardening pair (playing-seek snapshot deferral and black-surface rejection) and taught its oracles the physics of faint ink: per-surface rather than union denominators, calibrated floors for rotated resampling, sample offsets clear of easing zero-crossings, and instrument-noise claims retired in favor of ROI truth.",
-      "lastGreenBinary": "30ad351a761946b91a826a7458099aff4e14f6a2087ea0c0b6a0b074c73604e1"
+      "note": "Green in off-screen real-binary attempt 20260827044310649-63524-00d7c1c7 (exe sha256 9c240437a41d…), 20 steps and 130 artifacts, representative screenshots inspected: all ten animation/style cases rendered, decoded and verified WYSIWYG at entry and exit across Main, Render and the independently decoded export, with durable ownership, audio energy and staged customer saves. Twenty runs of this journey drove one product hardening pair (playing-seek snapshot deferral and black-surface rejection) and taught its oracles the physics of faint ink: per-surface rather than union denominators, calibrated floors for rotated resampling, sample offsets clear of easing zero-crossings, and instrument-noise claims retired in favor of ROI truth. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "export-animation-parity-matrix",
+      "attemptId": "20260827121620798-13652-97c22a4f",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "renderTransformAndFormatMatrix",
@@ -976,8 +1035,10 @@
       ],
       "runsAgainst": "e2e-binary",
       "status": "green",
-      "note": "Green in off-screen real-binary attempt 20260826235339163-53784-aa8399ad (exe sha256 0b443bb8d34b7b82…), all five screenshots inspected: one admitted 1080p/30 native job visibly cancelled through its own queue row, a distinct retry admitted and completed with exactly owned durable output, and the staged customer save independently decoded byte-identical to the durable artifact. Its shared queue/settings surface later moved into support/renderQueue.js, reused by the green interruption-recovery scenario.",
-      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254"
+      "note": "Green in off-screen real-binary attempt 20260826235339163-53784-aa8399ad (exe sha256 0b443bb8d34b7b82…), all five screenshots inspected: one admitted 1080p/30 native job visibly cancelled through its own queue row, a distinct retry admitted and completed with exactly owned durable output, and the staged customer save independently decoded byte-identical to the durable artifact. Its shared queue/settings surface later moved into support/renderQueue.js, reused by the green interruption-recovery scenario. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "render-cancel-retry-export",
+      "attemptId": "20260827122413317-72960-35301179",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "renderQueueCancelRetryAndRelaunch",
@@ -993,8 +1054,10 @@
         "three screenshots under the managed external evidence lane/render-interrupt-recovery"
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
-      "note": "Green on the first two-process run, attempt 20260827010609373-54188-2bfab445, all three screenshots inspected. The seed process was torn down around a running 1080p/30 native render; the next process restored that exact job as interrupted — never a zombie or a promoted success — with no phantom queue progress, no partial bytes surviving as downloadable output, and an exactly reconciled artifact root; a distinct second render then succeeded and reconciled. renderCancelRetryExport separately holds the single-process cancel/retry/save half. Multi-render queue ORDERING remains the one uncovered corner of this capability.",
-      "lastGreenBinary": "26a26c44b8f30c863147aa7cb9d54d6c06ac2fd585db3a75bc4754e82969bd72"
+      "note": "Green on the first two-process run, attempt 20260827010609373-54188-2bfab445, all three screenshots inspected. The seed process was torn down around a running 1080p/30 native render; the next process restored that exact job as interrupted — never a zombie or a promoted success — with no phantom queue progress, no partial bytes surviving as downloadable output, and an exactly reconciled artifact root; a distinct second render then succeeded and reconciled. renderCancelRetryExport separately holds the single-process cancel/retry/save half. Multi-render queue ORDERING remains the one uncovered corner of this capability. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "render-interrupt-recovery",
+      "attemptId": "20260827141916303-58308-a6cd11cd",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "backgroundImageGeneration",
@@ -1025,14 +1088,14 @@
       "kind": "shell-visual",
       "file": "journeys/settingsSurface.journey.js",
       "capability": "Settings opens and every visible tab renders without blank suspension, errors, clipping or overflow.",
-      "status": "green",
+      "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
       "oracles": [
         "the actual Header Settings control and modal DOM in the guarded real binary",
         "seven ordered screenshots covering every customer-visible tab",
         "captured browser errors, alerts and overflow state"
       ],
-      "note": "The first run proved the former lazy boundary could receive both JavaScript and CSS bytes while React remained suspended forever. Settings is now a static app-shell dependency; the rebuilt guarded binary opened it immediately and rendered all seven tab surfaces in 10.9 seconds. The screenshots then exposed separate stale-banner, deleted-renderer cache and unsupported-model defects, which remain tracked independently rather than hidden by this green reachability result."
+      "note": "Demoted 2026-08-28: both retained evidence/settings-surface attempts (2026-08-27, 10:11 and 13:00) fail with 'Native tool inventories never settled before their screenshot', and there is no latest-success pointer. An earlier run did reach all seven tab surfaces in 10.9 seconds and exposed separate stale-banner, deleted-renderer cache and unsupported-model defects (tracked independently), but that is no longer the current evidence state."
     },
     {
       "name": "settingsCredentialsAndYoutubeOAuth",
@@ -1052,7 +1115,7 @@
       "capability": "Segment duration, model, time format, waveform, video optimization, cookies, search, subtitle import, analysis, effects, thinking budgets, custom models and prompts save and affect only their documented consumers.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "settingsSurface (green) traverses both tabs, persists time format, the waveform preference and an edited prompt to SQLite and restores them in-process; the settingsAppearancePersistence scenario carries their relaunch hydration. The broader claim that every listed control affects only its documented consumers remains unproven."
+      "note": "settingsSurface previously traversed both tabs, persisted time format, the waveform preference and an edited prompt to SQLite and restored them in-process, but settingsSurface is itself now unproven (see its own entry); the settingsAppearancePersistence scenario separately carries their relaunch hydration and remains green. The broader claim that every listed control affects only its documented consumers remains unproven."
     },
     {
       "name": "settingsCacheManagement",
@@ -1060,14 +1123,16 @@
       "file": "journeys/cacheClearSafety.journey.js",
       "capability": "Native cache inventory and Clear Cache report real bytes and never delete active project media, subtitles or render scenes.",
       "status": "green",
-      "lastGreenBinary": "813c5c18d5f9226345af0a09095f527a5244495f590d983e2592485204bcf254",
+      "evidenceWorkflow": "cache-clear-safety",
+      "attemptId": "20260827124200569-62492-f6e0c266",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851",
       "oracles": [
         "the actual Settings > Cache controls and compiled cache_info/cache_clear commands in an off-screen isolated binary",
         "read-only SQLite identity for active project, track, cues, scene, revisions, media ownership and durable artifacts before/after",
         "SHA-256 and byte length of every active media location plus the staged real source before/after",
         "four screenshot steps covering the active preview, native inventory, clear completion and post-clear playable preview"
       ],
-      "note": "Green in off-screen real-binary attempt 20260826234400342-56756-4d1138fa (exe sha256 0b443bb8d34b7b82…). All four screenshots inspected. The earlier worry that no product path registers a disposable artifact resolved itself: importing real media registered one 11.25 KB waveform cache entry, the Cache tab reported exactly it, Clear Cache deleted exactly it, and every protected SQLite identity and source byte stayed identical while the same project seeked and drew its cue natively afterwards (waveform rebuilt on demand). Per-category removal with several distinct populated categories remains a separate unproven interaction."
+      "note": "Green in off-screen real-binary attempt 20260826234400342-56756-4d1138fa (exe sha256 0b443bb8d34b7b82…). All four screenshots inspected. The earlier worry that no product path registers a disposable artifact resolved itself: importing real media registered one 11.25 KB waveform cache entry, the Cache tab reported exactly it, Clear Cache deleted exactly it, and every protected SQLite identity and source byte stayed identical while the same project seeked and drew its cue natively afterwards (waveform rebuilt on demand). Per-category removal with several distinct populated categories remains a separate unproven interaction. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest above."
     },
     {
       "name": "settingsNarrationModelManagement",
@@ -1084,14 +1149,16 @@
       "capability": "Theme, language and application font changes apply across the complete UI and survive a process restart.",
       "status": "green",
       "oracles": [
-        "the same shared footer controls the green Settings surface journey drives",
+        "the same shared footer controls the Settings surface journey drives (settingsSurface is itself currently unproven; see its own entry)",
         "read-only SQLite app_settings before and after the public Save",
         "a second independently launched desktop process whose verify phase derives every expectation from the database alone",
         "three screenshots under the managed external evidence lane/settings-appearance-persistence"
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
-      "note": "Green across both hidden desktop processes in attempt 20260827013231033-57828-3407bfd4, all three screenshots inspected. The seed changed theme to light, application font to System UI, language to Korean, the time format, the waveform preference and the transcription prompt through real controls and Saved; SQLite held exactly those six values; a fresh process repainted the light theme and System UI font, rendered the complete Settings surface in Korean, and hydrated the processing controls and the marker-bearing prompt from the database alone.",
-      "lastGreenBinary": "e86f7bdbd54d83bdc056c3d8a12dd352b96ed3b2371d0804906c22fcbbf5a132"
+      "note": "Green across both hidden desktop processes in attempt 20260827013231033-57828-3407bfd4, all three screenshots inspected. The seed changed theme to light, application font to System UI, language to Korean, the time format, the waveform preference and the transcription prompt through real controls and Saved; SQLite held exactly those six values; a fresh process repainted the light theme and System UI font, rendered the complete Settings surface in Korean, and hydrated the processing controls and the marker-bearing prompt from the database alone. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
+      "evidenceWorkflow": "settings-appearance-persistence",
+      "attemptId": "20260827141609440-72636-77d352dd",
+      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
       "name": "settingsToolsRemoveAndFactoryReset",
@@ -1377,14 +1444,67 @@
     }
   ],
   "suiteRun": {
-    "when": "2026-08-21",
-    "commit": "c1a5b47d",
-    "how": "guarded automation binary with one isolated profile and one desktop process per journey; persistence workflows additionally used separate seed and verification processes",
-    "result": "real URL save, native decoded export, local ASR, narration plus aligned audio export, Gemini credential refusal, edited-cue persistence, Unicode persistence, translation persistence, and native tools green; full Rust workspace and 235 frontend files / 2179 assertions green",
-    "durations": {
-      "editPersistRelaunch": "about 1 minute",
-      "unicodeCues": "about 1 minute",
-      "translationPersistence": "about 1 minute"
+    "$comment": [
+      "There is no single invocation that runs every journey against one binary and reports one aggregate result -- journeys run independently, on whatever binary is current when each one is invoked. The single 2026-08-21/c1a5b47d claim this block used to make went stale the moment any one journey re-ran on a newer binary while the others did not, and hand-maintaining it could not keep up.",
+      "Each green journey above instead carries its own evidenceWorkflow/attemptId/binaryDigest, bound to that workflow's newest passing attempt in evidence/<workflow>/attempts/<attemptId>/manifest.json. Run `node e2e/scripts/verify-inventory.mjs` for the current, mechanically-checked truth; this block only records what the e2e application store itself proves as of the date below, so a reader does not have to trust prose here over that script."
+    ],
+    "asOf": "2026-08-28",
+    "verify": "node e2e/scripts/verify-inventory.mjs",
+    "applicationsStore": {
+      "current": {
+        "applicationHash": "45e2f28649943be121283cc786a2af8189a493b4dd666ded2d3d1f372814d1be",
+        "exeSha256": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53",
+        "publishedAt": "2026-08-27T14:56:28.581Z",
+        "source": "apps/e2e/receipts/current.json"
+      },
+      "retained": [
+        {
+          "applicationHash": "b0c16c5982ab45f71e36dbef6fbfad9e110fdb114932a95cac67037edb98a960",
+          "exeSha256": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851",
+          "publishedAt": "2026-08-27T11:22:20.619Z",
+          "greenEntriesBoundToThisDigest": 19
+        },
+        {
+          "applicationHash": "45e2f28649943be121283cc786a2af8189a493b4dd666ded2d3d1f372814d1be",
+          "exeSha256": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53",
+          "publishedAt": "2026-08-27T14:56:28.581Z",
+          "current": true,
+          "greenEntriesBoundToThisDigest": 3
+        }
+      ]
+    },
+    "olderBinariesStillCitedByGreenEvidence": [
+      {
+        "exeSha256": "1645a8f77dadb119e3ea32c021687e4696c3c502c3bdb36cb1ec695822fc7645",
+        "greenEntriesBoundToThisDigest": 2,
+        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
+      },
+      {
+        "exeSha256": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4",
+        "greenEntriesBoundToThisDigest": 2,
+        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
+      },
+      {
+        "exeSha256": "a4f06dc1307e56a1a474e6cd9c28fc61fd7523a61cbbd90fd4080dedaf0c15e8",
+        "greenEntriesBoundToThisDigest": 2,
+        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
+      },
+      {
+        "exeSha256": "f47148d4fee0008b753344168b0405ed3cd0789e57ee3fa7d4d439e767acbeaa",
+        "greenEntriesBoundToThisDigest": 1,
+        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
+      },
+      {
+        "exeSha256": "0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028",
+        "greenEntriesBoundToThisDigest": 1,
+        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
+      }
+    ],
+    "generatedStatusCounts": {
+      "note": "Snapshot from verify-inventory.mjs on asOf; re-run the script for the current numbers rather than trusting this snapshot.",
+      "green": 31,
+      "unproven": 28,
+      "planned": 1
     }
   }
 }

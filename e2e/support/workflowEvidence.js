@@ -1348,7 +1348,16 @@ const refreshRootReadme = () => {
   atomicWriteFile(join(WORKFLOW_EVIDENCE_ROOT, 'README.md'), lines.join('\n'));
 };
 
-/** Rebuild the generated top-level browser after an external retention/cleanup operation. */
+/**
+ * Rebuild the generated top-level browser from whatever attempts and latest-success pointers are
+ * actually on disk right now. `beginWorkflowEvidence` and `finalizeWorkflowEvidence` already call
+ * this after every attempt, but that update is not atomic with the manifest write it follows: a
+ * process killed between the two (or by an external retention/cleanup operation) can leave a
+ * truthful manifest behind a stale index for a workflow that never runs again this session. The
+ * isolated runner calls this once before and once after every suite invocation so the index is
+ * never more than one crashed attempt away from the truth, and never depends on that workflow
+ * being retried to self-heal.
+ */
 export const refreshWorkflowEvidenceIndex = () => refreshRootReadme();
 
 const writeManifest = (manifest, { operation = null } = {}) => {
