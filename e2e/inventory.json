@@ -1311,6 +1311,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Two subtitle fixtures imported by journeys recorded green were never in the repository: an unanchored .gitignore pattern silently excluded e2e/fixtures/subtitles.",
+      "foundBy": "two lanes working in clean worktrees independently reporting the files absent",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The generated-content rule listed a bare subtitles/ directory, which git matches at any depth, so cues-ascii.srt and cues-unicode.srt existed only in this working checkout. Every journey importing them passed here and would have failed in a fresh clone or CI checkout - a reproducibility hole that no amount of local green could reveal. The patterns are now anchored to the repository root and both fixtures are committed. Evidence recorded before this fix remains valid for this machine; the claims are only now reproducible elsewhere."
+    },
+    {
       "finding": "The canvas preview's frame-callback chain re-arms itself outside any exception guard, so a single throw in the capture/publish path would freeze the preview permanently while the transport clock kept advancing.",
       "foundBy": "independent triage of a subtitleMaterialAndAnimation continuity failure on candidate 18",
       "status": "fixed",
