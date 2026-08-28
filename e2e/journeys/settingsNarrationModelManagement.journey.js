@@ -128,8 +128,8 @@ const waitForRefusal = async (toastsBeforeClick, timeout = 120_000) => {
   return { panel: last, announced: [...announced] };
 };
 
-describe('the narration model package honestly reports and safely cancels on an empty profile', () => {
-  it('reports not-installed truthfully, then starts and cleanly cancels a real install', async () => {
+describe('the narration model package honestly reports and safely handles Install on an empty profile', () => {
+  it('reports not-installed truthfully, then either cleanly cancels or honestly refuses a real install', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'this journey requires an isolated application root');
     assert.equal(PHASE, 'manage', 'run this journey through scenarios/settingsNarrationModelManagement.mjs');
@@ -221,7 +221,7 @@ describe('the narration model package honestly reports and safely cancels on an 
       workflow: WORKFLOW,
       step: '02-install-begun',
       description: 'A real native install job starts and exposes a Cancel control.',
-      details: { installing },
+      details: { installing, capacity },
       focusSelector: PANEL,
     });
 
