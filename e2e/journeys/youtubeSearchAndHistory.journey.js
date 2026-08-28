@@ -59,6 +59,7 @@ import { strict as assert } from 'node:assert';
 
 import { clickControl, openEditor } from '../support/editor.js';
 import { REAL_VIDEO } from '../support/realMedia.js';
+import { clickSettingsControl } from '../support/settingsControls.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 import {
   expectedAfterDedupePush, expectedEvicted, expectedSurvivors,
@@ -94,9 +95,23 @@ const switchSelected = (selector) => browser.execute(
 const toggleSwitch = async (selector) => {
   const before = await switchSelected(selector);
   assert.equal(typeof before, 'boolean', `${selector} switch is unavailable`);
-  await clickControl(selector);
+  const desired = !before;
+  // One click can land during a settings-panel re-render and be dropped; a customer clicks again
+  // when a switch visibly did not take (idiom: exportAnimationParityMatrix.journey.js's setSwitch).
+  // clickSettingsControl also tolerates the sticky settings footer landing on top of a control near
+  // the bottom of a scrolled tab -- this is the exact real failure observed for #enable-youtube-search
+  // (e2e/support/settingsControls.js).
+  for (let attempt = 0; attempt < 3 && (await switchSelected(selector)) !== desired; attempt += 1) {
+    await clickSettingsControl(selector);
+    try {
+      await browser.waitUntil(async () => (await switchSelected(selector)) === desired, {
+        timeout: 2_500,
+        interval: 50,
+      });
+    } catch { /* the bounded re-click and final assertion own the outcome */ }
+  }
   const after = await switchSelected(selector);
-  assert.equal(after, !before, `${selector} did not toggle`);
+  assert.equal(after, desired, `${selector} did not toggle`);
   return { before, after };
 };
 
@@ -258,8 +273,18 @@ describe('a customer searches YouTube, then acquires and revisits videos through
     // Dedupe: re-entering the SAME URL must not grow the YouTube lane.
     await urlField.clearValue();
     await urlField.setValue(REAL_VIDEO.url);
-    await browser.pause(500);
-    urlHistory = await readHistory('youtube_url_history');
+    // Wait on the write itself settling rather than a bare pause: the dedupe path re-resolves the
+    // URL and rewrites history, and a fixed pause is either a flaky race or padding, never both.
+    let dedupedHistory = null;
+    await waitUntilWithFreshDiagnostic(async () => {
+      dedupedHistory = await readHistory('youtube_url_history');
+      return Array.isArray(dedupedHistory) && dedupedHistory.length === 1;
+    }, {
+      timeout: 15_000,
+      interval: 200,
+      diagnostic: () => `re-entering the same URL did not settle into a deduped single entry: ${JSON.stringify(dedupedHistory)}`,
+    });
+    urlHistory = dedupedHistory;
     assert.deepEqual(
       urlHistory.map(({ id }) => id),
       expectedAfterDedupePush([REAL_VIDEO.id], REAL_VIDEO.id),

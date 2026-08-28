@@ -218,6 +218,15 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
       step: '03-genius-refused-credential-free',
       description: 'A credential-free Genius lookup refuses as a toast before any native call, with the modal and its state untouched.',
       details: { toast: refusal.errorToasts[0] },
+      allowVisibleProblems: {
+        // The screenshot guard reads toast text single-spaced (trim + collapse); refusal.errorToasts
+        // was normalized the same way by surfaceState(). The visible missing-credential refusal is
+        // the customer state this journey is proving (idiom: geminiCredentialBoundary.journey.js).
+        errorToasts: refusal.errorToasts.map((toast) => ({
+          text: toast.replace(/\s+/g, ' ').trim(),
+          reason: 'The visible missing-credential Genius refusal is the customer state under test.',
+        })),
+      },
     });
 
     // Close without saving; the refusal must not have staged an uncommitted change either.

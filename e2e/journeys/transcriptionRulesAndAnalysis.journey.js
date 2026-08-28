@@ -239,17 +239,24 @@ describe('transcription rules/video analysis refuse honestly without a Gemini cr
     await clearAndReopenGenerateModal(root);
     await selectAsrMethod();
     await selectAsrStrategy('sentence');
-    // A toggle click flips whatever state the switch is currently in; assert the resulting state
-    // rather than trusting the click, since `preserve_sentences` persists per engine in localStorage
-    // and this journey must guarantee full sentences are actually preserved for run two.
-    await clickControl('#asr-preserve-sentences');
-    const preserveSentencesState = await browser.execute(() => (
-      document.querySelector('#asr-preserve-sentences')?.selected ?? null
-    ));
-    if (preserveSentencesState !== true) await clickControl('#asr-preserve-sentences');
-    await waitUntilWithFreshDiagnostic(async () => (
-      (await browser.execute(() => document.querySelector('#asr-preserve-sentences')?.selected ?? null)) === true
-    ), {
+    // A switch click can land during a re-render and be dropped, and `preserve_sentences` persists
+    // per engine in localStorage so its starting state here is not assumed. Re-click only while the
+    // read-back state is still wrong (idiom: exportAnimationParityMatrix.journey.js's setSwitch) --
+    // a click always flips the switch, so clicking unconditionally first (rather than checking
+    // before clicking) could flip an already-correct switch the wrong way if that click is dropped.
+    const preserveSentencesSelected = () => browser.execute(
+      () => document.querySelector('#asr-preserve-sentences')?.selected ?? null,
+    );
+    for (let attempt = 0; attempt < 3 && (await preserveSentencesSelected()) !== true; attempt += 1) {
+      await clickControl('#asr-preserve-sentences');
+      try {
+        await browser.waitUntil(async () => (await preserveSentencesSelected()) === true, {
+          timeout: 2_500,
+          interval: 50,
+        });
+      } catch { /* the bounded re-click and final assertion own the outcome */ }
+    }
+    await waitUntilWithFreshDiagnostic(async () => (await preserveSentencesSelected()) === true, {
       timeout: 10_000,
       interval: 200,
       diagnostic: () => 'the "preserve full sentences" switch never reached the selected state',

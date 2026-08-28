@@ -43,7 +43,9 @@ import process from 'node:process';
 
 import { clickControl } from '../support/editor.js';
 import { durableState } from '../support/database.js';
+import { actuateNativeRange } from '../support/nativeRange.js';
 import { selectAlternateDropdownOption } from '../support/settingsAppearance.js';
+import { clickSettingsControl } from '../support/settingsControls.js';
 import { durableSettings } from '../support/settingsSurfaceOracle.js';
 import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -64,7 +66,11 @@ const EXTENDED_KEYS = Object.freeze([
   'transcription_prompt',
 ]);
 
+// The visible track (StandardSlider.js:367) carries aria-valuenow for reading back the settled
+// value; the real <input type="range"> (StandardSlider.js:409) shares the same id and is what
+// actuateNativeRange must target.
 const MAX_WORDS_SLIDER = '[data-osg-range-id="favorite-max-subtitle-length"]';
+const MAX_WORDS_INPUT = '#favorite-max-subtitle-length';
 const COOKIE_DROPDOWN = '.download-cookie-browser-setting .custom-dropdown-button';
 
 const openSettings = async () => {
@@ -90,9 +96,23 @@ const switchSelected = (selector) => browser.execute(
 const toggleSwitch = async (selector) => {
   const before = await switchSelected(selector);
   assert.equal(typeof before, 'boolean', `${selector} switch is unavailable`);
-  await clickControl(selector);
+  const desired = !before;
+  // One click can land during a settings-panel re-render and be dropped; a customer clicks again
+  // when a switch visibly did not take. Re-click only while the state is still wrong, and let the
+  // final assertion own the verdict (idiom: exportAnimationParityMatrix.journey.js's setSwitch).
+  // clickSettingsControl additionally tolerates the sticky settings footer landing on top of a
+  // control near the bottom of a scrolled tab (e2e/support/settingsControls.js).
+  for (let attempt = 0; attempt < 3 && (await switchSelected(selector)) !== desired; attempt += 1) {
+    await clickSettingsControl(selector);
+    try {
+      await browser.waitUntil(async () => (await switchSelected(selector)) === desired, {
+        timeout: 2_500,
+        interval: 50,
+      });
+    } catch { /* the bounded re-click and final assertion own the outcome */ }
+  }
   const after = await switchSelected(selector);
-  assert.equal(after, !before, `${selector} did not toggle`);
+  assert.equal(after, desired, `${selector} did not toggle`);
   return { before, after };
 };
 
@@ -103,22 +123,34 @@ const geminiEffectsRuntimeState = () => browser.execute(() => ({
   buttons: document.querySelectorAll('.generate-btn:not(.translate-button):not(.download-btn)').length,
 }));
 
-/** Move a real keyboard-focused slider by `steps` (negative decreases) and read its settled value. */
-const adjustSlider = async (selector, steps) => {
-  const focused = await browser.execute((target) => {
-    const node = document.querySelector(target);
-    if (node === null) return false;
-    node.focus();
-    return document.activeElement === node;
-  }, selector);
-  assert.equal(focused, true, `${selector} could not receive keyboard focus`);
-  const key = steps < 0 ? '' : ''; // ArrowDown / ArrowRight (StandardSlider.js:191-209)
-  for (let index = 0; index < Math.abs(steps); index += 1) {
-    // eslint-disable-next-line no-await-in-loop -- each keystroke must settle before the next.
-    await browser.keys(key);
-  }
+/**
+ * Move the shipped native range input by `steps` (negative decreases) and read its settled value.
+ *
+ * This suite runs the app window hidden and non-activatable, so a JS `focus()` call never yields
+ * genuine keyboard focus and key-based slider control cannot work here -- it silently landed on
+ * `document.body`, so `document.activeElement === node` never held. actuateNativeRange (from
+ * e2e/support/nativeRange.js) is the idiom exportAnimationParityMatrix.journey.js and
+ * multiWindowAsrPersistence.journey.js already use for every native range in this harness.
+ */
+const adjustSlider = async (inputSelector, trackSelector, steps) => {
+  const input = await $(inputSelector);
+  await input.waitForExist({ timeout: 30_000, timeoutMsg: `${inputSelector} never appeared` });
+  const [minimum, maximum, step, current] = await Promise.all([
+    input.getAttribute('min').then(Number),
+    input.getAttribute('max').then(Number),
+    input.getAttribute('step').then(Number),
+    input.getValue().then(Number),
+  ]);
+  assert.ok(
+    [minimum, maximum, step, current].every(Number.isFinite),
+    `${inputSelector}: range geometry is invalid`,
+  );
+  const targetValue = Math.min(maximum, Math.max(minimum, current + steps * step));
+  await actuateNativeRange({
+    driver: browser, selector: inputSelector, value: targetValue, label: inputSelector,
+  });
   return browser.execute(
-    (target) => Number(document.querySelector(target)?.getAttribute('aria-valuenow')), selector,
+    (target) => Number(document.querySelector(target)?.getAttribute('aria-valuenow')), trackSelector,
   );
 };
 
@@ -186,7 +218,7 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
     });
 
     const autoSplit = await toggleSwitch('#auto-split-subtitles');
-    const maxWords = await adjustSlider(MAX_WORDS_SLIDER, -3);
+    const maxWords = await adjustSlider(MAX_WORDS_INPUT, MAX_WORDS_SLIDER, -3);
     const autoImport = await toggleSwitch('#auto-import-site-subtitles');
     const youtubeSearch = await toggleSwitch('#enable-youtube-search');
     const cookies = await toggleSwitch('#use-cookies-download');

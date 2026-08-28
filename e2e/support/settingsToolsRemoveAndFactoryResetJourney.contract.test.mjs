@@ -34,7 +34,12 @@ test('the journey is excluded from the default discovery sweep', () => {
 test('removal is proven real, unlike settingsSurface\'s cancel-only guard', () => {
   assert.doesNotMatch(journeySource, /__TAURI__|invokeDesktop|invokeCommand/u);
   assert.match(journeySource, /data-tool-action="remove-request"/u);
-  assert.match(journeySource, /clickControl\(`\$\{TOOL_ROW\} \[data-tool-action="remove-confirm"\]`\)/u);
+  // clickSettingsControl wraps clickControl to tolerate the sticky settings footer (see
+  // e2e/support/settingsControls.js); either is the same real click on the same real control.
+  assert.match(
+    journeySource,
+    /click(?:Control|SettingsControl)\(`\$\{TOOL_ROW\} \[data-tool-action="remove-confirm"\]`\)/u,
+  );
   assert.match(journeySource, /directoryShapeDigest\(toolsRoot\)/u);
   assert.match(journeySource, /assert\.deepEqual\(\s*afterRemovalDigest,\s*emptyBaseline/u);
 });

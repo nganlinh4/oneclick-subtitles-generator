@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 
-import { clickControl } from './editor.js';
+import { clickSettingsControl } from './settingsControls.js';
 
 /* global $, $$, browser, document, localStorage */
 
@@ -30,7 +30,10 @@ export const appearanceSnapshot = () => browser.execute(() => ({
 /** Open a public dropdown and commit its first non-selected option through real pointer input. */
 export const selectAlternateDropdownOption = async (buttonSelector) => {
   const before = await $(`${buttonSelector} .dropdown-value`).getText();
-  await clickControl(buttonSelector);
+  // clickSettingsControl (not clickControl): every caller of this helper opens a dropdown that lives
+  // inside the Settings modal, where a control near the bottom of a scrolled tab can end up under the
+  // sticky settings footer (e2e/support/settingsControls.js).
+  await clickSettingsControl(buttonSelector);
   const menu = await $('.custom-dropdown-clipper');
   await menu.waitForDisplayed({ timeout: 10_000, timeoutMsg: `${buttonSelector} did not open` });
   const options = await $$('.custom-dropdown-clipper .dropdown-option:not(.disabled)');

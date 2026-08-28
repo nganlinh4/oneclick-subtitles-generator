@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { clickControl, openEditor } from '../support/editor.js';
+import { clickSettingsControl } from '../support/settingsControls.js';
 import { directoryShapeDigest } from '../support/settingsSurfaceOracle.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -98,7 +99,9 @@ describe('the narration model package honestly reports and safely cancels on an 
       focusSelector: PANEL,
     });
 
-    await clickControl(`${PANEL} [data-model-action="install"]`);
+    // clickSettingsControl (not clickControl): this panel's controls live inside .settings-content
+    // and can end up under the sticky .settings-footer (e2e/support/settingsControls.js).
+    await clickSettingsControl(`${PANEL} [data-model-action="install"]`);
     // The Cancel control only renders while status.operation is non-null (ModelManagementTab.js:
     // 239-243), so its appearance IS the product's own evidence that a real job was accepted and is
     // running -- not a probe of a private queue. Cancelling as soon as it appears, rather than after
@@ -117,7 +120,7 @@ describe('the narration model package honestly reports and safely cancels on an 
       focusSelector: PANEL,
     });
 
-    await clickControl(`${PANEL} [data-model-action="cancel"]`);
+    await clickSettingsControl(`${PANEL} [data-model-action="cancel"]`);
     const cancelled = await waitForPanel(
       (snapshot) => !snapshot.cancelVisible && snapshot.state !== 'checking',
       'cancelling the install never returned the panel to an idle state',

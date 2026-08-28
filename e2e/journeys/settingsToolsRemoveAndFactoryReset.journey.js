@@ -27,6 +27,7 @@ import process from 'node:process';
 
 import { withDatabase } from '../support/database.js';
 import { clickControl, openEditor, waitForEditorReady } from '../support/editor.js';
+import { clickSettingsControl } from '../support/settingsControls.js';
 import { directoryShapeDigest } from '../support/settingsSurfaceOracle.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -102,13 +103,15 @@ describe('a customer permanently removes a tool, then a factory reset clears the
       focusSelector: TOOL_ROW,
     });
 
-    await clickControl(`${TOOL_ROW} [data-tool-action="install"]`);
+    // clickSettingsControl (not clickControl): the tools list lives inside .settings-content and a
+    // row's action button can end up under the sticky .settings-footer (e2e/support/settingsControls.js).
+    await clickSettingsControl(`${TOOL_ROW} [data-tool-action="install"]`);
     await waitForToolState('installed', 'installing yt-dlp on the isolated profile never completed');
     const installedDigest = directoryShapeDigest(toolsRoot);
     assert.notDeepEqual(installedDigest, emptyBaseline, 'installing yt-dlp left the store looking empty');
     assert.ok(installedDigest.files > 0, 'installing yt-dlp wrote no files');
 
-    await clickControl(`${TOOL_ROW} [data-tool-action="remove-request"]`);
+    await clickSettingsControl(`${TOOL_ROW} [data-tool-action="remove-request"]`);
     const confirm = await $(`${TOOL_ROW} [data-tool-action="remove-confirm"]`);
     await confirm.waitForDisplayed({ timeout: 10_000 });
     await captureWorkflowStep({
@@ -118,7 +121,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
       details: { installedDigest },
       focusSelector: TOOL_ROW,
     });
-    await clickControl(`${TOOL_ROW} [data-tool-action="remove-confirm"]`);
+    await clickSettingsControl(`${TOOL_ROW} [data-tool-action="remove-confirm"]`);
     await waitForToolState('missing', 'removing yt-dlp never returned it to not-installed');
 
     const afterRemovalDigest = directoryShapeDigest(toolsRoot);

@@ -16,7 +16,8 @@
 // required, not a guaranteed increase -- see renderAudioNarrationMixOracle.js.
 
 import { strict as assert } from 'node:assert';
-import { statSync } from 'node:fs';
+import { mkdirSync, renameSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import process from 'node:process';
 
 import { durableRenderScenes, durableState } from '../support/database.js';
@@ -126,6 +127,18 @@ const runRenderAndDownload = async ({
     interval: 500,
     timeoutMsg: `${label}: the completed render was not written to the staged customer destination`,
   });
+
+  // Every render proposes the exact same suggested filename (render/publish.rs's fixed
+  // "rendered-video.mp4"), so job B's save into this same flat destination directory would hit the
+  // automation build's typed staged-destination refusal (dialog_paths.rs's
+  // validate_staged_save_destination: it refuses when `destination.exists()`, with no overwrite
+  // fallback) if job A's file were still sitting there. Move it aside immediately, the same
+  // per-round `kept-<label>` shape downloadQualityVariants.journey.js already established.
+  const keptDirectory = join(destination, `kept-${label.replace(/[^A-Za-z0-9]+/gu, '-')}`);
+  mkdirSync(keptDirectory, { recursive: true });
+  const keptPath = join(keptDirectory, basename(exported));
+  renameSync(exported, keptPath);
+  exported = keptPath;
 
   return Object.freeze({
     job: owned.job, artifact: owned.artifact, internalPath, exported,
