@@ -1293,9 +1293,9 @@
     {
       "finding": "The canvas preview's frame-callback chain re-arms itself outside any exception guard, so a single throw in the capture/publish path would freeze the preview permanently while the transport clock kept advancing.",
       "foundBy": "independent triage of a subtitleMaterialAndAnimation continuity failure on candidate 18",
-      "status": "open-fix-in-progress",
+      "status": "fixed",
       "severity": "major",
-      "note": "Latent and independent of the failure that exposed it: the rVFC callback runs captureCandidate/publishCandidate unguarded and only then calls schedule(), so any throw ends the self-perpetuating chain with no recovery and no typed refusal - precisely the watched frozen-video-with-advancing-seek-bar class. Being fixed with an always-re-arm guard that surfaces the exception through the typed publish channel plus a regression that fails without it."
+      "note": "Latent and independent of the failure that exposed it: the rVFC callback runs captureCandidate/publishCandidate unguarded and only then calls schedule(), so any throw ends the self-perpetuating chain with no recovery and no typed refusal - precisely the watched frozen-video-with-advancing-seek-bar class. Fixed with a try/catch/finally that always re-arms the chain and surfaces the exception through the same typed publish channel the renderer-creation and retry-exhaustion sites use, marked retryable because a playing source retries on the next decoded frame while a paused one needs the toast action; the regression makes a publish throw once and proves both the re-arm and the visible failure, and it fails on the unfixed component."
     },
     {
       "finding": "One continuity sample in a material-animation sweep showed visible pixels 0.447s behind the playback clock, past the 0.25s freshness gate, on an otherwise clean run.",
