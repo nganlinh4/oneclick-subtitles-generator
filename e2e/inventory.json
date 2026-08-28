@@ -939,19 +939,26 @@
     {
       "name": "alternateLocalAsrEngines",
       "kind": "workflow",
-      "capability": "Nvidia Parakeet, Faster-Whisper Large-v3, Qwen3-ASR 1.7B and Qwen3-ASR 0.6B install, transcribe, stream, cancel and clean up correctly.",
+      "file": "journeys/alternateLocalAsrMatrix.journey.js",
+      "capability": "Nvidia Parakeet, Faster-Whisper Large-v3, Qwen3-ASR 1.7B and Qwen3-ASR 0.6B report a truthful install state and offer a real, cancellable install; none installs, transcribes, streams or cleans up a completed run.",
       "variants": [
         "nvidia-parakeet",
         "faster-whisper-large-v3",
         "qwen3-asr-1.7b",
         "qwen3-asr-0.6b"
       ],
-      "status": "unproven",
+      "oracles": [
+        "each engine card's data-engine-state, cross-checked against an independent filesystem oracle (data/engine-packages/<id>, not the same native status call the card renders from)",
+        "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
       "recommendedJourney": "alternateLocalAsrMatrix",
+      "note": "Authored and statically validated by support/engineCatalogOracle.test.mjs plus support/alternateLocalAsrMatrixJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE, RECORDED IN docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md: all four variants are 5.43-9.15 GiB compressed / 7.59-11.31 GiB installed (crates/osg-engine-packages/delivery/engine-packages.delivery.json), the same or a larger size class than the already-proven Faster-Whisper Turbo (4.56 GiB / 6.73 GiB) -- completing a second full install-and-transcribe run would only re-exercise localAsrGeneration's own already-proven pipeline at multi-gigabyte/multi-hour cost, not add new coverage, so none gets a second full generate-and-verify path. What IS proven instead, for the whole five-engine catalog (including Faster-Whisper Turbo) at once: every card's truthful install state against an independent on-disk oracle, and a bounded (cancel-on-appearance, never completed) real install for whichever catalog engine is not yet installed. A repository-wide search for cuda/gpu/directml/coreml across crates/osg-asr/src and apps/desktop/src-tauri/src/asr.rs finds no hardware-capability check and no 'unsupported on this hardware' state in EngineCard.js's state machine, so this journey does not fabricate a hardware-refusal assertion -- that absence is recorded as a finding in ENGINE_CATALOG_FEASIBILITY.md instead.",
       "dependencies": {
         "owner": "project-delivery-and-test-hardware",
-        "requires": "reviewed managed packages, sufficient disk/RAM and representative GPU/CPU configurations",
-        "note": "Only Faster-Whisper Turbo has a green real-binary generation journey."
+        "requires": "reviewed managed packages plus 6-12 GiB of free disk and a multi-hour download window per engine to prove a SUCCESSFUL install, transcribe, stream, cancel-mid-progress and clean-uninstall cycle",
+        "note": "Only Faster-Whisper Turbo has a green real-binary generation journey. The truthful-status and bounded-install-offer half of this capability is now authored for the other four; full install-to-completion transcription remains size-gated and unproven."
       }
     },
     {
@@ -1012,21 +1019,47 @@
       }
     },
     {
+      "name": "edgeTtsNarrationGeneration",
+      "kind": "workflow",
+      "file": "journeys/edgeTtsNarrationGeneration.journey.js",
+      "capability": "Edge TTS generates project-owned, durable, independently decoded per-cue narration audio.",
+      "oracles": [
+        "visible per-cue narration result state",
+        "the application's own SQLite jobs and artifact ownership, read only",
+        "nonempty files with MP3 signatures and sizes matching SQLite",
+        "independent ffprobe stream/duration inspection and non-silence measurement per cue"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
+      "note": "Authored and statically validated by support/narrationJourneyOracle.test.mjs plus support/edgeTtsNarrationGenerationJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: Edge TTS's Windows delivery is 11.18 MiB compressed / 33.86 MiB installed (crates/osg-speech/delivery/speech-packages.delivery.json), almost identical to the already-proven gTTS package (10.78 MiB / 32.68 MiB, narrationGeneration.journey.js) and needs no credential (src/components/narration/hooks/useAvailabilityCheck.js gates only Gemini Live on a credential), so unlike F5-TTS/Chatterbox/Gemini Live it is genuinely small enough to install to completion and prove a full second real network provider. Deliberately stops after per-cue generation and does not repeat alignment/mixing/native render/export: those are engine-agnostic once MP3 bytes exist for every cue, and narrationGeneration.journey.js plus renderAudioNarrationMix.journey.js already exhaustively prove that half against gTTS -- repeating it here would re-run the same generic pipeline against different audio, not add coverage. Reuses narrationJourneyOracle.js's verifyNarrationGenerationOwnership (with method: 'edge-tts' overriding its gtts default) rather than duplicating the ownership-proof logic narrationGeneration.journey.js already established.",
+      "dependencies": {
+        "owner": "test-network",
+        "requires": "network access to the real Edge TTS synthesis endpoint",
+        "note": "No credential is required; only network access, matching gTTS's own dependency shape."
+      }
+    },
+    {
       "name": "alternateNarrationEngines",
       "kind": "workflow",
-      "capability": "F5-TTS, Chatterbox, Gemini Live and Edge TTS generate project-owned playable narration with their visible engine-specific settings.",
+      "file": "journeys/narrationEngineMatrix.journey.js",
+      "capability": "F5-TTS, Chatterbox and Gemini Live report a truthful install state and offer a real, cancellable install with their visible engine-specific settings; none generates project-owned playable narration in this pass. Edge TTS is proven separately (see the edgeTtsNarrationGeneration entry) and is no longer tracked as a gap here.",
       "variants": [
         "f5tts",
         "chatterbox",
-        "gemini",
-        "edge-tts"
+        "gemini"
       ],
-      "status": "unproven",
+      "oracles": [
+        "each narration engine card's data-engine-state, cross-checked against an independent filesystem oracle (data/engine-packages/<packageId>, the same store ASR packages use)",
+        "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
       "recommendedJourney": "narrationEngineMatrix",
+      "note": "Authored and statically validated by support/engineCatalogOracle.test.mjs plus support/narrationEngineMatrixJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE, RECORDED IN docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md: F5-TTS is 4.28 GiB / 6.47 GiB installed and Chatterbox is 8.93 GiB / 11.12 GiB installed (crates/osg-speech/delivery/speech-packages.delivery.json) -- both size-gated the same way as settingsNarrationModelManagement.journey.js already established for F5-TTS's OWN dedicated Model Management tab; this journey proves the SAME truthful-status/bounded-install-cancel claim through the different, catalog-wide Tools EnginesPanel surface instead (src/components/engines/EnginesPanel.js), which is the literal 'engine selection surface' this capability is about. Gemini Live TTS is CREDENTIAL-GATED, not size-gated (19.29 MiB / 58.99 MiB installed) -- its narration method radio only enables once BOTH the package is ready and a usable Gemini credential exists (useAvailabilityCheck.js:216-217, geminiAvailable = geminiBackendAvailable && credentialAvailability.available); a fresh E2E profile has none, and this is the SAME method-radio enforcement point referenceVoiceAndPerCueNarration.journey.js already proved honest for F5-TTS, so a second dedicated credential-refusal journey is not authored here. No narration backend carries a hardware-gated verdict either, for the same reason recorded against alternateLocalAsrEngines.",
       "dependencies": {
         "owner": "project-delivery-user-and-test-hardware",
-        "requires": "reviewed local packages/models for F5-TTS and Chatterbox, network for Edge TTS, and a Gemini credential/network for Gemini Live",
-        "note": "Only gTTS has a green real-binary narration journey."
+        "requires": "reviewed local packages/models for F5-TTS and Chatterbox (multi-gigabyte, multi-hour installs), and a Gemini credential/network for Gemini Live",
+        "note": "gTTS and Edge TTS both have green/authored real-binary narration journeys. The truthful-status and bounded-install-offer half of this capability is now authored for F5-TTS/Chatterbox/Gemini Live; full voice-cloned generation (F5-TTS/Chatterbox) and credentialed generation (Gemini Live) remain unproven."
       }
     },
     {

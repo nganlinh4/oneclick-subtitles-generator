@@ -49,12 +49,14 @@ test('discovers every product journey while excluding scenario-only diagnostics'
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
     'aboutAndUpdaterLifecycle.journey.js',
+    'alternateLocalAsrMatrix.journey.js',
     'bulkTranslationFileIO.journey.js',
     'cacheClearSafety.journey.js',
     'canvasPlaybackPerformance.journey.js',
     'defaultFont.journey.js',
     'downloadCancellationRetryIdentity.journey.js',
     'downloadQualityVariants.journey.js',
+    'edgeTtsNarrationGeneration.journey.js',
     'editorCueCrudAndHistory.journey.js',
     'exportAnimationParityMatrix.journey.js',
     'failedDownloadNoStale.journey.js',
@@ -66,6 +68,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'mainPreviewControlsAndFullscreen.journey.js',
     'mainPreviewRenderHandoff.journey.js',
     'manualLyricsAndGeniusBoundary.journey.js',
+    'narrationEngineMatrix.journey.js',
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'providerBoundaries.journey.js',
