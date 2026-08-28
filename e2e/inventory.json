@@ -1311,6 +1311,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "A passing nativeExportDecoded run was recorded as failed because a concurrently scheduled managed gate took the development-cache root lock its staging-lease release needed.",
+      "foundBy": "candidate 18 shard run, attempt 20260828060647850-37180-14c56c4b",
+      "status": "harness-operational",
+      "severity": "minor",
+      "note": "All five workflow steps captured, the exported mp4 and its decoded frame are on disk, and no assertion failed; the nonzero exit came from the post-journey staging cache command refusing with -Another OSG development-cache manager holds the root-scoped lock- one minute after a managed clippy invocation ran its mandatory prune. The tooling behaved correctly - the exclusivity is real and enforced in code. The scheduling was wrong: managed lane commands (anything through run-managed-command or run-frontend-command, which always prune first) must never run while a real-binary runner holds staging or evidence leases. The workflow is queued for a same-binary rerun rather than counted either way."
+    },
+    {
       "finding": "Two subtitle fixtures imported by journeys recorded green were never in the repository: an unanchored .gitignore pattern silently excluded e2e/fixtures/subtitles.",
       "foundBy": "two lanes working in clean worktrees independently reporting the files absent",
       "status": "fixed",
