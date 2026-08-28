@@ -1243,6 +1243,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Dragging a cue with sticky/cascade mode on could push later cues past the real media duration: the cascade applied the dragged delta to every later cue with no boundary clamp.",
+      "foundBy": "timelineAdvancedEditing authoring source review",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The dragged cue's own field was floor/ceiling-clamped, but the shared cascade delta was not, unlike the multi-cue range move which clamps through clampTimelineMoveDelta. The cascade now clamps the shared delta through that same helper, preserving relative spacing; three hook regressions fail without the fix and the advanced-timeline journey asserts the boundary in visible and durable state. This is the watched selectable-ranges-beyond-media-boundary defect class."
+    },
+    {
       "finding": "The built application navigated its main window to a file:// directory listing of the frontend path and the process died on the first IPC message.",
       "foundBy": "startup",
       "status": "fixed",
