@@ -304,6 +304,27 @@ pub(crate) fn cleanup_empty_work_tree(root: &Path) -> Result<()> {
     fs::remove_dir(root).map_err(|_| NativeToolError::StoreUnavailable)
 }
 
+/// Best-effort: removes `path` only when it currently exists, is a plain
+/// directory (never a symlink or reparse point), and has no entries. Any
+/// other state -- missing, non-empty, or not a plain directory -- is left
+/// untouched rather than treated as an error; the caller decides whether
+/// that matters.
+pub(crate) fn remove_empty_directory(path: &Path) -> Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(NativeToolError::StoreUnavailable),
+    };
+    if !metadata.is_dir() || is_link_or_reparse(&metadata) {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(path).map_err(|_| NativeToolError::StoreUnavailable)?;
+    if entries.next().is_some() {
+        return Ok(());
+    }
+    fs::remove_dir(path).map_err(|_| NativeToolError::StoreUnavailable)
+}
+
 fn remove_empty_directories(root: &Path) -> Result<()> {
     let mut directories = Vec::new();
     let mut pending = vec![root.to_path_buf()];

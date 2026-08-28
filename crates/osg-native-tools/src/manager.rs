@@ -15,7 +15,7 @@ use crate::catalog::{DeliveryCatalog, ExecutableRole, NativeToolId, ToolDelivery
 use crate::download::{FileFetcher, HttpFileFetcher, RemoteFile};
 use crate::path_security::{
     acquire_store_lock, cleanup_empty_work_tree, ensure_direct_child, initialize_store,
-    remove_owned_tree_subset, require_directory, resolve_owned,
+    remove_empty_directory, remove_owned_tree_subset, require_directory, resolve_owned,
 };
 use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
@@ -473,6 +473,7 @@ impl NativeToolManager {
             let trash_cleanup = self.cleanup_owned_trash();
             let remove_persisted = self.dynamic_provenance_is_reclaimed(tool, &trash_cleanup);
             self.remove_dynamic_state(tool, remove_persisted);
+            self.prune_empty_tool_directories(tool);
             return Ok(RemovalOutcome::Missing);
         }
 
@@ -530,6 +531,7 @@ impl NativeToolManager {
             self.dynamic_provenance_is_reclaimed(tool, &trash_cleanup)
         };
         self.remove_dynamic_state(tool, remove_persisted);
+        self.prune_empty_tool_directories(tool);
         Ok(RemovalOutcome::Removed)
     }
 
@@ -851,6 +853,30 @@ impl NativeToolManager {
         let tools = self.0.root.join("tools");
         let tool_root = ensure_direct_child(&tools, tool.as_str())?;
         ensure_direct_child(&tool_root, "versions")
+    }
+
+    /// Retires `tools/{tool}/versions` and `tools/{tool}`, which
+    /// `ensure_versions_root` lazily creates the first time this tool is
+    /// installed, once every owned version underneath has been reclaimed.
+    /// Without this, an install immediately followed by a full removal
+    /// leaves an empty directory behind that did not exist before the tool
+    /// was ever installed, so the store never actually returns to its
+    /// pre-install shape. Best-effort and safe to call whenever removal
+    /// finds nothing (or nothing more) installed: `remove_empty_directory`
+    /// is a no-op unless the directory is present, empty, and a plain
+    /// directory, so an unowned or still-populated tree is left untouched.
+    ///
+    /// `tools/yt-dlp` is exempt: `update::dynamic_records_root` recreates
+    /// `tools/yt-dlp/deliveries` on every manager startup regardless of
+    /// whether yt-dlp is installed, so that directory (and its `tools/yt-dlp`
+    /// parent) is part of the store's fixed baseline shape, not install
+    /// residue.
+    fn prune_empty_tool_directories(&self, tool: NativeToolId) {
+        let tool_root = self.0.root.join("tools").join(tool.as_str());
+        let _ = remove_empty_directory(&tool_root.join("versions"));
+        if tool != NativeToolId::YtDlp {
+            let _ = remove_empty_directory(&tool_root);
+        }
     }
 
     fn quarantine_invalid_install(&self, target: &Path) -> Result<()> {
@@ -1276,6 +1302,62 @@ mod tests {
         format!("{:x}", Sha256::digest(bytes))
     }
 
+    /// Mirrors `e2e/support/settingsSurfaceOracle.js`'s `directoryShapeDigest`:
+    /// a full recursive inventory of `root` (every directory, file, and its
+    /// size, in sorted order) so a Rust test can assert the exact same
+    /// "byte-for-byte, entry-for-entry identical" invariant the e2e journey
+    /// settingsToolsRemoveAndFactoryReset checks after removal.
+    #[derive(Debug, PartialEq, Eq)]
+    struct StoreShape {
+        entries: usize,
+        files: usize,
+        bytes: u64,
+        paths: Vec<String>,
+    }
+
+    fn visit_store_shape(
+        current: &Path,
+        root: &Path,
+        paths: &mut Vec<String>,
+        files: &mut usize,
+        bytes: &mut u64,
+    ) {
+        let mut children = fs::read_dir(current)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        children.sort();
+        for child in children {
+            let relative = child
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let metadata = fs::symlink_metadata(&child).unwrap();
+            if metadata.is_dir() {
+                paths.push(format!("dir:{relative}"));
+                visit_store_shape(&child, root, paths, files, bytes);
+            } else {
+                *files += 1;
+                *bytes += metadata.len();
+                paths.push(format!("file:{relative}:{}", metadata.len()));
+            }
+        }
+    }
+
+    fn store_shape(root: &Path) -> StoreShape {
+        let mut paths = Vec::new();
+        let mut files = 0_usize;
+        let mut bytes = 0_u64;
+        visit_store_shape(root, root, &mut paths, &mut files, &mut bytes);
+        StoreShape {
+            entries: paths.len(),
+            files,
+            bytes,
+            paths,
+        }
+    }
+
     fn fixture_catalog() -> (&'static DeliveryCatalog, Arc<MemoryFetcher>) {
         let raw = include_str!("../delivery/native-tools.delivery.json");
         let mut document: serde_json::Value = serde_json::from_str(raw).unwrap();
@@ -1454,6 +1536,68 @@ mod tests {
             RemovalOutcome::Removed
         );
         assert_eq!(coordinator.0.load(Ordering::Relaxed), 2);
+    }
+
+    /// Regression for the e2e journey settingsToolsRemoveAndFactoryReset: it installs yt-dlp
+    /// through the real Settings UI, removes it, and asserts a directory-shape digest of the
+    /// managed native-tools tree is byte-for-byte and entry-for-entry identical before install
+    /// and after removal. `ensure_versions_root` (manager.rs) lazily creates
+    /// `tools/yt-dlp/versions` the first time yt-dlp is installed; `remove` (manager.rs:439-533)
+    /// only ever renamed the leaf `versions/{version}` directory into `.trash` and cleaned that
+    /// up, never the now-empty `versions` directory itself, so a real install-then-remove cycle
+    /// left exactly one orphaned empty directory behind that did not exist before yt-dlp was ever
+    /// installed. This walks the full store tree (mirroring the e2e oracle's
+    /// `directoryShapeDigest`) and asserts the post-removal shape is identical to the pre-install
+    /// baseline, not just "no leftover bytes".
+    #[test]
+    fn install_then_remove_restores_the_exact_pre_install_store_shape() {
+        let temp = tempfile::tempdir().unwrap();
+        let coordinator = Arc::new(TestCoordinator::default());
+        let manager = manager(&temp, coordinator);
+        assert_eq!(
+            manager.status(NativeToolId::YtDlp).state,
+            NativeToolState::Missing
+        );
+        let baseline = store_shape(temp.path());
+        // The manager itself lazily creates `tools/yt-dlp/deliveries` at every startup
+        // (regardless of install state) to hold dynamic yt-dlp update records, so that much of
+        // `tools/yt-dlp` is legitimately already part of the pre-install baseline.
+        assert!(baseline.paths.contains(&"dir:tools/yt-dlp".to_string()));
+        assert!(
+            baseline
+                .paths
+                .contains(&"dir:tools/yt-dlp/deliveries".to_string())
+        );
+        assert!(
+            !baseline
+                .paths
+                .contains(&"dir:tools/yt-dlp/versions".to_string()),
+            "versions/ must not exist before the first install"
+        );
+
+        manager
+            .install(NativeToolId::YtDlp, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let installed = store_shape(temp.path());
+        assert!(
+            installed
+                .paths
+                .contains(&"dir:tools/yt-dlp/versions".to_string()),
+            "install must create versions/"
+        );
+        assert!(installed.files > baseline.files);
+
+        assert_eq!(
+            manager
+                .remove(NativeToolId::YtDlp, &CancellationToken::default(), &|_| {})
+                .unwrap(),
+            RemovalOutcome::Removed
+        );
+        let after_removal = store_shape(temp.path());
+        assert_eq!(
+            after_removal, baseline,
+            "removal must restore the exact pre-install store shape, not merely delete bytes"
+        );
     }
 
     #[test]
