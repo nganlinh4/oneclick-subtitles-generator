@@ -113,7 +113,12 @@
     "completeWithMain": "일괄 파일 완료: {{success}}/{{bulkTotal}} 일괄 파일 처리됨, 메인 파일 다음 ({{current}}/{{total}} 전체)",
     "downloadAll": "모두 다운로드",
     "downloadZip": "ZIP 다운로드",
-    "error": "일괄 번역 중 오류: {{message}}"
+    "error": "일괄 번역 중 오류: {{message}}",
+    "rejectedSummary": "{{count}}개 파일 건너뜀: {{details}}",
+    "rejectedMore": "외 {{count}}개",
+    "rejectedInvalidType": "지원되지 않는 파일 형식(.srt 및 .json만 지원)",
+    "rejectedDuplicate": "같은 이름의 파일이 이미 추가되어 있습니다",
+    "rejectedParseError": "읽을 수 없습니다 ({{message}})"
   },
   "warningDeleted": "자막을 삭제했습니다. 번역이 오래되었을 수 있습니다. 다시 번역해 주세요.",
   "warningEdited": "원본 자막의 텍스트를 편집했습니다. 번역이 오래되었을 수 있습니다. 다시 번역해 주세요.",

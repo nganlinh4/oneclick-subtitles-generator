@@ -113,7 +113,12 @@
     "completeWithMain": "Tệp hàng loạt hoàn thành: {{success}}/{{bulkTotal}} tệp hàng loạt đã xử lý, tệp chính tiếp theo ({{current}}/{{total}} tổng)",
     "downloadAll": "Tải xuống tất cả",
     "downloadZip": "Tải xuống ZIP",
-    "error": "Lỗi khi dịch hàng loạt: {{message}}"
+    "error": "Lỗi khi dịch hàng loạt: {{message}}",
+    "rejectedSummary": "Đã bỏ qua {{count}} tệp: {{details}}",
+    "rejectedMore": "+{{count}} tệp khác",
+    "rejectedInvalidType": "loại tệp không được hỗ trợ (chỉ hỗ trợ .srt và .json)",
+    "rejectedDuplicate": "đã có tệp trùng tên được thêm trước đó",
+    "rejectedParseError": "không thể đọc được ({{message}})"
   },
   "warningDeleted": "Bạn đã xóa một phụ đề. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",
   "warningEdited": "Bạn đã chỉnh sửa văn bản của phụ đề gốc. Bản dịch có thể đã lỗi thời. Vui lòng dịch lại.",

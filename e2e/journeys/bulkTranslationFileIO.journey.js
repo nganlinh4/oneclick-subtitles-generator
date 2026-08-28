@@ -10,7 +10,7 @@
 // SRT/JSON/TXT export through the global Download Center (translatedDocumentExports). Neither ever
 // adds a bulk file. This journey owns the entirely separate bulk-pool surface instead:
 // src/components/translation/TranslationActions.js's OWN drop zone/file input (BulkTranslationPool
-// itself is mounted with hideDropZone -- its drop zone never renders; TranslationActions.js:100-174
+// itself is mounted with hideDropZone -- its drop zone never renders; TranslationActions.js:106-206
 // duplicates BulkTranslationPool's parse/validate logic for the one drop target that actually
 // ships) and the bulk-only "Download All" export in src/components/translation/utils/
 // downloadUtils.js. It runs bulk-only (no main subtitles imported) so the bulk-only branch of
@@ -19,17 +19,24 @@
 // already cover.
 //
 // BULK FILE IMPORT IS PURE BROWSER FileReader, CREDENTIAL-FREE AND NATIVE-IPC-FREE.
-// TranslationActions.js's addFiles/parseFile (and BulkTranslationPool.js's own copy) read dropped
-// files with FileReader/File#text() entirely in the WebView; nothing crosses into Rust. SRT files go
-// through src/utils/srtParser.js's parseSrtContent; JSON files are parsed as either a bare array or
-// `{ subtitles: [...] }`. Wrong extensions, duplicate names and unparsable content are all rejected
-// -- but only into a local `errors` array that is `console.warn`'d
-// (TranslationActions.js:167-169 and BulkTranslationPool.js:143-146) with the comment "You might
-// want to show these errors to the user" LEFT UNACTED ON. THIS IS A REAL, SOURCE-CONFIRMED GAP: a
-// rejected bulk file produces NO toast and NO inline error anywhere -- refusal is silent-but-safe
-// (the pool is provably unchanged), not the actionable "bounded error" a credential boundary shows.
-// This journey proves the real (silent) refusal honestly instead of fabricating a toast that does
-// not ship.
+// TranslationActions.js's addFiles/parseFile (and BulkTranslationPool.js's own, still-unreachable
+// copy behind its `hideDropZone` guard) read dropped files with FileReader/File#text() entirely in
+// the WebView; nothing crosses into Rust. SRT files go through src/utils/srtParser.js's
+// parseSrtContent; JSON files are parsed as either a bare array or `{ subtitles: [...] }`. Wrong
+// extensions, duplicate names and unparsable content are all rejected AND reported: addFiles
+// (TranslationActions.js:176-206) collects each rejection's filename/reason into one bounded
+// array, and reportRejectedFiles (TranslationActions.js:160-173) turns the whole drop into exactly
+// ONE grouped warning toast -- "{{count}} file(s) skipped: name: reason; name: reason; ..." capped
+// at MAX_REPORTED_REJECTIONS=3 entries with a "+N more" tail -- through the same showWarningToast
+// channel src/utils/toastUtils.js's other customer-input-rejection callers use (for example
+// CustomGeminiModelsCard.js's duplicate-model-ID refusal). THIS WAS PREVIOUSLY A REAL,
+// SOURCE-CONFIRMED GAP (only `console.warn`'d, per the comment "You might want to show these
+// errors to the user" left unacted on) that is now fixed at its root: a rejected bulk file is
+// reported through the product's existing bounded toast channel, grouped into a single message
+// per drop rather than a toast storm, and never rendered inline over the video (an explicitly
+// watched defect class). The toast text carries only the customer's own filename (never a
+// filesystem path -- browsers never expose one via File#name) and a parser's own error text
+// (token/position info, never file content).
 //
 // BULK FORMAT-MODE TRANSLATION IS THE SAME PROVIDER-FREE PATH THE MAIN TRACK USES.
 // src/services/gemini/translation.js:126-248's translateSubtitles takes the `isFormatMode` branch
@@ -54,23 +61,32 @@
 // EXPORTED FILE on disk, which is exactly what this journey verifies byte-for-byte; it does not
 // claim (because the product does not offer) a SQLite-backed bulk track binding.
 //
-// A CREDENTIAL-MISSING BULK TRANSLATION FAILS SILENTLY PER FILE, UNLIKE THE MAIN TRACK.
+// A TOTAL CREDENTIAL-MISSING BULK TRANSLATION NOW FAILS HONESTLY, MATCHING THE MAIN TRACK.
 // For a REAL (non-format) target language, translateSubtitles calls runNativeGeminiText ->
 // nativeGeminiJobLifecycle.js's createNativeGeminiJobRunner: with no ready Gemini credential,
 // `getCredentialId()` resolves null immediately and it throws `fixedError('geminiCredentialUnavailable')`
 // before ANY native job is registered (lines 122-191) -- so no job ever appears in SQLite, matching
-// geminiCredentialBoundary's proof for generation. But useTranslationBulk.js's handleBulkTranslate
-// (lines 105-160) catches that per FILE inside its loop and pushes `{ success: false, error }`
-// instead of rethrowing; the outer run therefore reports `status: 'complete'` (not 'failed') and
-// useTranslationState.js:589-828 NEVER calls setError for a bulk-only run, so
-// TranslationError.js (which only ever shows a toast, never inline -- "No longer render inline
-// error") never fires either. With zero successes, `hasBulkTranslations` (index.js:484) stays false,
-// so the download buttons and BulkTranslationPreview (both success-gated) never appear. The customer
-// sees a transient "Bulk translation complete: 0/N files processed" status line that then
-// disappears with NOTHING durable left to show it happened. This journey proves that silent
-// per-file refusal precisely -- the "same refusal-boundary pattern as geminiCredentialBoundary" this
-// journey was asked to prove turns out, on the bulk path specifically, not to be a toast at all;
-// that is the honest finding, not an assumption.
+// geminiCredentialBoundary's proof for generation. useTranslationBulk.js's handleBulkTranslate still
+// catches that per FILE inside its loop (it must, to keep the documented complete-with-warnings
+// semantics for a PARTIAL failure -- see the chosen semantics below), but now records each
+// failure's error `code` and, once every file in the run has finished, checks whether NOTHING
+// succeeded and EVERY failure carries the exact `geminiCredentialUnavailable` signature
+// (useTranslationBulk.js's `isCredentialMissing` check). When that total-refusal condition holds,
+// it calls the SAME `setError` the single-track path's catch block calls with the SAME error
+// object's `.message` -- so TranslationError.js's existing `showErrorToast(error.replace(...))`
+// (it still never renders inline -- "No longer render inline error") fires exactly once, and the
+// run returns `{ status: 'failed' }` instead of `{ status: 'complete' }`. useTranslationState.js's
+// existing `if (bulkOutcome?.status === 'failed' && !hasMainSubtitles) return bulkOutcome;` (already
+// present before this fix) then carries that 'failed' status out of handleTranslate unchanged, so
+// the misleading "Bulk translation complete: 0/N files processed" status line never publishes for
+// this case. CHOSEN SEMANTICS (see the commit message for the full reasoning): a run where at least
+// one file succeeds keeps reporting 'complete' -- a partial failure is "complete with warnings",
+// exactly the existing X/N status text -- and a run where every file fails for a REASON OTHER THAN
+// (or a MIX including something other than) the missing-credential signature also keeps reporting
+// 'complete', unchanged from before this fix; only a TOTAL, UNIFORM credential-missing failure is
+// promoted to 'failed' with one refusal toast. This journey proves the total-failure case, which is
+// the one this defect was filed against; the partial/mixed cases are covered by the colocated
+// vitest regressions instead (src/hooks/useTranslationBulk.credentialFailure.test.js).
 
 /* global $, browser, describe, document, getComputedStyle, it, DataTransfer, DragEvent, File */
 
@@ -132,6 +148,12 @@ const poolState = () => browser.execute(() => {
     fileNames: [...document.querySelectorAll('.bulk-file-card .file-name')].map(text),
     countLabel: document.querySelector('.bulk-files-count')?.textContent?.trim() ?? null,
     errorToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
+      .filter(visible).map(text).filter(Boolean),
+    // Rejected-file drops surface a WARNING toast (reportRejectedFiles), not an error toast --
+    // matching how other customer-input rejections report (for example
+    // CustomGeminiModelsCard.js's duplicate-model-ID refusal). The workflow-evidence screenshot
+    // guard only ever tracks `.toast-error`, so this journey reads warning toasts itself.
+    warningToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-warning')]
       .filter(visible).map(text).filter(Boolean),
     inlineErrors: [...document.querySelectorAll('.error, .error-message, [role="alert"]')]
       .filter((node) => node.closest('.toast-item') === null && visible(node)).map(text).filter(Boolean),
@@ -197,38 +219,66 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
       details: { fileNames: pool.fileNames },
     });
 
-    // --- Part B: wrong extension, duplicate name and malformed JSON are refused, silently but
-    // safely -- the pool is provably unchanged and no toast/inline error ships for this real path. ---
+    // --- Part B: wrong extension, duplicate name and malformed JSON are refused as ONE grouped,
+    // bounded WARNING toast (reportRejectedFiles) naming each rejected file and its reason -- the
+    // pool itself is provably unchanged and nothing ever renders inline over the video (an
+    // explicitly watched defect class). This is the toast IS the subject under test: the exact
+    // grouped copy is asserted below rather than merely its absence. ---
     await dropBulkFiles([
       { name: 'bulk-pool-notes.txt', content: 'not a subtitle file', mimeType: 'text/plain' },
       { name: ALPHA_NAME, content: 'a different file with the same name', mimeType: 'application/x-subrip' },
       { name: 'bulk-pool-broken.json', content: '{not valid json', mimeType: 'application/json' },
     ]);
-    // No product signal marks a refused drop as settled, so this waits out a bounded window and
-    // then asserts the pool never grew -- exactly the "no partial state" claim this can honestly make.
-    await browser.pause(2_000);
-    const afterMalformed = await poolState();
+    let afterMalformed = null;
+    await waitUntilWithFreshDiagnostic(async () => {
+      afterMalformed = await poolState();
+      return afterMalformed.warningToasts.length > 0;
+    }, {
+      timeout: 15_000,
+      interval: 200,
+      diagnostic: () => `the malformed bulk drop never produced its grouped refusal toast: ${JSON.stringify(afterMalformed)}`,
+    });
     assert.deepEqual(afterMalformed.fileNames.sort(), [ALPHA_NAME, BETA_NAME].sort(), (
       'a malformed/mismatched drop changed the bulk pool'
     ));
-    assert.deepEqual(afterMalformed.errorToasts, [], (
-      'a visible error toast now exists for a malformed bulk drop -- update this journey to assert its exact copy'
+    assert.equal(afterMalformed.warningToasts.length, 1, (
+      `a rejected drop produced more than one toast -- update this journey if a toast storm is now intentional: ${JSON.stringify(afterMalformed.warningToasts)}`
     ));
-    assert.deepEqual(afterMalformed.inlineErrors, []);
+    const rejectionToast = afterMalformed.warningToasts[0];
+    assert.match(rejectionToast, /^3 file\(s\) skipped:/, rejectionToast);
+    assert.match(rejectionToast, /bulk-pool-notes\.txt: unsupported file type \(only \.srt and \.json are supported\)/, rejectionToast);
+    assert.match(
+      rejectionToast,
+      new RegExp(`${ALPHA_NAME.replace('.', '\\.')}: a file with this name was already added`),
+      rejectionToast,
+    );
+    assert.match(rejectionToast, /bulk-pool-broken\.json: could not be read \(/, rejectionToast);
+    assert.deepEqual(afterMalformed.errorToasts, [], (
+      'a rejected bulk drop produced an ERROR-classed toast -- reportRejectedFiles uses showWarningToast, not showErrorToast'
+    ));
+    assert.deepEqual(afterMalformed.inlineErrors, [], (
+      'a rejected bulk drop rendered inline over the video -- an explicitly watched defect class'
+    ));
     assert.deepEqual(
       durableState(root), before,
       'a client-side-only malformed bulk drop left durable state changed',
     );
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-malformed-refused-silently',
-      description: 'Wrong-extension, duplicate-name and malformed-JSON drops are all refused: the pool stays exactly the two good files, with no toast, no inline error, and no durable state change.',
+      step: '02-malformed-refused-with-toast',
+      description: 'Wrong-extension, duplicate-name and malformed-JSON drops are refused as one grouped, actionable warning toast naming each rejected file; the pool stays exactly the two good files and nothing renders inline.',
+      details: { rejectionToast },
+      // The workflow-evidence screenshot guard only ever tracks `.toast-error`, so a warning toast
+      // needs no allowance here -- it is not flagged as a visible problem by that independent guard.
     });
 
-    // --- Part C: provider translation without a credential refuses cleanly at the job boundary,
-    // but -- unlike geminiCredentialBoundary's generation refusal -- fails PER FILE, silently, with
-    // no toast and no download surface, because useTranslationBulk.js never rethrows a per-file
-    // provider error to the run-level error state. ---
+    // --- Part C: provider translation without a ready credential now refuses the WHOLE bulk-only
+    // run, matching (not merely echoing) geminiCredentialBoundary's single-track proof: every bulk
+    // file fails with the exact same missing-credential signature, useTranslationBulk.js detects
+    // that total-refusal shape and reuses the single-track's own setError -> TranslationError ->
+    // showErrorToast path instead of reporting a misleading 'complete'. The toast IS the subject
+    // under test here too, so its exact text is named through allowVisibleProblems -- the same
+    // pattern geminiCredentialBoundary.journey.js uses for its own refusal toast. ---
     await clickControl(ADD_LANGUAGE_BUTTON);
     const newLanguageInput = await $('.language-chain .chain-item:last-child input');
     await newLanguageInput.waitForDisplayed({ timeout: 15_000 });
@@ -236,20 +286,27 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
     await clickControl(TRANSLATE_BUTTON);
 
     let refused = null;
-    await waitUntilWithFreshDiagnostic(async () => !(await browser.execute(
-      () => document.querySelector('.translate-button.processing') !== null,
-    )), {
+    await waitUntilWithFreshDiagnostic(async () => {
+      refused = await poolState();
+      const stillProcessing = await browser.execute(
+        () => document.querySelector('.translate-button.processing') !== null,
+      );
+      return !stillProcessing && refused.errorToasts.length > 0;
+    }, {
       timeout: 60_000,
       interval: 500,
-      diagnostic: () => 'the credential-free bulk translation attempt never left its processing state',
+      diagnostic: () => `the credential-free bulk translation refusal never settled: ${JSON.stringify(refused)}`,
     });
-    refused = await poolState();
     assert.equal(refused.downloadAllVisible, false, (
       'a credential-free bulk translation reported a successful, downloadable result'
     ));
-    assert.deepEqual(refused.errorToasts, [], (
-      'a global refusal toast now appears for a credential-free bulk translation -- update this ' +
-        'journey to assert its exact copy; today useTranslationBulk.js swallows the per-file error'
+    assert.equal(refused.errorToasts.length, 1, (
+      `a credential-missing bulk run did not surface exactly one refusal toast: ${JSON.stringify(refused.errorToasts)}`
+    ));
+    const refusalToast = refused.errorToasts[0];
+    assert.match(refusalToast, /native gemini operation could not be completed/i, refusalToast);
+    assert.deepEqual(refused.inlineErrors, [], (
+      'the credential-missing bulk refusal rendered inline over the video -- an explicitly watched defect class'
     ));
     const afterCredentialFree = durableState(root);
     assert.deepEqual(
@@ -260,7 +317,22 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '03-provider-translation-refused',
-      description: 'A real target language with no Gemini credential fails every bulk file without registering a native job, though (unlike whole-run refusals) it does so silently rather than with a toast.',
+      description: 'A real target language with no Gemini credential fails every bulk file identically; useTranslationBulk.js now reports the run FAILED (not complete) and shows exactly one bounded refusal toast, without registering a native job.',
+      details: { refusalToast },
+      allowVisibleProblems: {
+        errorToasts: [{
+          text: refusalToast,
+          reason: 'The visible missing-credential refusal is the customer state under test, the same as geminiCredentialBoundary.',
+        }],
+      },
+    });
+
+    // The refusal toast auto-dismisses on its own timer; wait it out so Part D's "no error toast"
+    // assertion below is not a race against this toast still being on screen.
+    await waitUntilWithFreshDiagnostic(async () => (await poolState()).errorToasts.length === 0, {
+      timeout: 15_000,
+      interval: 250,
+      diagnostic: () => 'the credential-missing refusal toast from Part C never auto-dismissed before Part D',
     });
 
     // Remove the real-language chain item so the next phase runs the provider-free Format path.

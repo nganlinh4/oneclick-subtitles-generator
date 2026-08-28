@@ -112,7 +112,12 @@
     "complete": "Bulk translation complete: {{success}}/{{total}} files processed successfully",
     "completeWithMain": "Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)",
     "downloadAll": "Download All",
-    "downloadZip": "Download ZIP"
+    "downloadZip": "Download ZIP",
+    "rejectedSummary": "{{count}} file(s) skipped: {{details}}",
+    "rejectedMore": "+{{count}} more",
+    "rejectedInvalidType": "unsupported file type (only .srt and .json are supported)",
+    "rejectedDuplicate": "a file with this name was already added",
+    "rejectedParseError": "could not be read ({{message}})"
   },
   "warningDeleted": "You have deleted a subtitle. Translations may be outdated. Please translate again.",
   "warningEdited": "You have edited the text of original subtitles. Translations may be outdated. Please translate again.",

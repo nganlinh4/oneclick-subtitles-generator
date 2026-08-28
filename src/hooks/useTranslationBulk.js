@@ -155,7 +155,8 @@ export const useTranslationBulk = ({
           results.push({
             originalFile: bulkFile,
             error: fileError.message || t('translation.error', 'Error translating subtitles'),
-            success: false
+            success: false,
+            code: fileError?.code ?? null
           });
         }
 
@@ -165,9 +166,26 @@ export const useTranslationBulk = ({
       await assertBoundary();
       await publishOwnedState(() => setBulkTranslations(results));
 
+      const successfulBulkFiles = results.filter(r => r.success).length;
+
+      // A missing Gemini credential fails every attempt identically, so if nothing succeeded and
+      // every failure carries that exact signature, this is not a partial result to report as
+      // 'complete' -- it is the same total refusal the single-track path hits when it calls
+      // translateSubtitles() with no credential. Surface it the same way that path does: one
+      // setError() call, which TranslationError already turns into exactly one bounded toast
+      // (see TranslationError.js). Any other all-failed mix (parse/empty-result errors, etc.)
+      // keeps reporting 'complete' with its honest X/{{total}} count -- that is a pre-existing,
+      // separate concern this fix does not expand into.
+      const isCredentialMissing = (result) => !result.success && result.code === 'geminiCredentialUnavailable';
+      if (results.length > 0 && successfulBulkFiles === 0 && results.every(isCredentialMissing)) {
+        await publishOwnedState(() => {
+          setError(results[results.length - 1].error);
+        });
+        return { status: 'failed', results };
+      }
+
       // Calculate total files including main file if it exists
       const totalFiles = results.length + (hasMainSubtitles ? 1 : 0);
-      const successfulBulkFiles = results.filter(r => r.success).length;
 
       if (hasMainSubtitles) {
         // If there's a main file to translate, show intermediate status

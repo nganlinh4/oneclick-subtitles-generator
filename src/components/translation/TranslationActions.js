@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next';
 import BulkTranslationPool from './BulkTranslationPool';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { parseSrtContent } from '../../utils/srtParser';
+import { showWarningToast } from '../../utils/toastUtils';
+
+// A drop can reject many files at once (wrong extension, duplicate name, malformed JSON). Report
+// them as one bounded, actionable toast instead of a toast-storm or (the previous behavior) total
+// silence -- see the drop-rejection tests colocated with this file.
+const MAX_REPORTED_REJECTIONS = 3;
 
 /**
  * Translation action buttons component
@@ -138,20 +144,48 @@ const TranslationActions = ({
     }
   };
 
+  // Translate a single rejection's reason. Only the customer's own filename (never a path) and a
+  // parser's own error text (position/token info, not file content) ever reach this string.
+  const rejectionReason = ({ code, detail }) => {
+    if (code === 'duplicate') {
+      return t('translation.bulk.rejectedDuplicate', 'a file with this name was already added');
+    }
+    if (code === 'invalidType') {
+      return t('translation.bulk.rejectedInvalidType', 'unsupported file type (only .srt and .json are supported)');
+    }
+    return t('translation.bulk.rejectedParseError', 'could not be read ({{message}})', { message: detail });
+  };
+
+  // One bounded toast per drop, not one per rejected file -- see MAX_REPORTED_REJECTIONS above.
+  const reportRejectedFiles = (rejections) => {
+    if (rejections.length === 0) return;
+    const lines = rejections.map((rejection) => `${rejection.name}: ${rejectionReason(rejection)}`);
+    const shown = lines.slice(0, MAX_REPORTED_REJECTIONS);
+    const hiddenCount = lines.length - shown.length;
+    const details = hiddenCount > 0
+      ? `${shown.join('; ')}; ${t('translation.bulk.rejectedMore', '+{{count}} more', { count: hiddenCount })}`
+      : shown.join('; ');
+    showWarningToast(t(
+      'translation.bulk.rejectedSummary',
+      '{{count}} file(s) skipped: {{details}}',
+      { count: rejections.length, details }
+    ));
+  };
+
   // Add files function
   const addFiles = async (files) => {
     if (exportOwnsControls()) return;
     const newFiles = [];
-    const errors = [];
+    const rejections = [];
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.srt') && !file.name.toLowerCase().endsWith('.json')) {
-        errors.push(`${file.name}: Invalid file type. Only SRT and JSON files are supported.`);
+        rejections.push({ name: file.name, code: 'invalidType' });
         continue;
       }
 
       if (bulkFiles.some(bf => bf.name === file.name)) {
-        errors.push(`${file.name}: File already added.`);
+        rejections.push({ name: file.name, code: 'duplicate' });
         continue;
       }
 
@@ -160,13 +194,11 @@ const TranslationActions = ({
         if (exportOwnsControls()) return;
         newFiles.push(parsedFile);
       } catch (error) {
-        errors.push(`${file.name}: ${error.message}`);
+        rejections.push({ name: file.name, code: 'parseError', detail: error.message });
       }
     }
 
-    if (errors.length > 0) {
-      console.warn('Bulk file errors:', errors);
-    }
+    reportRejectedFiles(rejections);
 
     if (newFiles.length > 0 && !exportOwnsControls()) {
       onBulkFilesChange([...bulkFiles, ...newFiles]);
