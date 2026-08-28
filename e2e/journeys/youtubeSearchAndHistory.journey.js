@@ -205,6 +205,14 @@ describe('a customer searches YouTube, then acquires and revisits videos through
       step: '02-search-refused-credential-free',
       description: 'A stable query on a credential-free profile is refused before any provider request, search state, or history write.',
       details: { toast: refusal.errorToasts[0] },
+      // The refusal toast is exactly what this step documents. Declare it with the guard's own
+      // whitespace normalization, as the Gemini credential boundary does.
+      allowVisibleProblems: {
+        errorToasts: refusal.errorToasts.map((toast) => ({
+          text: toast.replace(/\s+/gu, ' ').trim(),
+          reason: 'The visible missing-credential refusal is the customer state under test.',
+        })),
+      },
     });
 
     // --- Part B: a URL entry reaches the same acquisition path urlToPreview proves, records to
