@@ -261,10 +261,41 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
     assert.deepEqual(afterMalformed.inlineErrors, [], (
       'a rejected bulk drop rendered inline over the video -- an explicitly watched defect class'
     ));
-    assert.deepEqual(
-      durableState(root), before,
-      'a client-side-only malformed bulk drop left durable state changed',
+    // A malformed drop is a pure client-side FileReader rejection (TranslationActions.js); it
+    // never crosses into Rust, so it cannot itself register a job, artifact, cue or revision. But
+    // `before` was captured right after openProjectWithMedia(), and opening media legitimately
+    // schedules its own background import/probe/process/waveform work (crates/osg-domain/src/
+    // jobs.rs's JobKind) that can still be queued or complete by the time this assertion runs.
+    // Comparing the WHOLE durable state would fail this claim on that unrelated legitimate
+    // activity -- the same false-positive shape corrected in aboutAndUpdaterLifecycle.journey.js.
+    // Allow exactly the job kinds opening media can produce, and the one unowned cache artifact a
+    // completed waveform job commits (apps/desktop/src-tauri/src/waveform_cache.rs's
+    // CACHE_ARTIFACT_KIND is always registered with no project_id); reject any other new job or
+    // any artifact actually owned by a project, and require cues/revisions/projects/media/links to
+    // stay byte-identical -- the claim a malformed drop can plausibly break.
+    const durableAfterMalformed = durableState(root);
+    const mediaBackgroundJobKinds = new Set(['importMedia', 'probeMedia', 'processMedia', 'generateWaveform']);
+    const beforeJobIds = new Set(before.jobs.map(({ id }) => id));
+    const unexplainedJobs = durableAfterMalformed.jobs.filter(
+      ({ id, kind }) => !beforeJobIds.has(id) && !mediaBackgroundJobKinds.has(kind),
     );
+    assert.deepEqual(
+      unexplainedJobs, [],
+      `a client-side-only malformed bulk drop registered durable work of its own: ${JSON.stringify(unexplainedJobs)}`,
+    );
+    const beforeArtifactIds = new Set(before.artifacts.map(({ id }) => id));
+    const unexplainedArtifacts = durableAfterMalformed.artifacts.filter(
+      ({ id, project_id: projectId }) => !beforeArtifactIds.has(id) && projectId !== null,
+    );
+    assert.deepEqual(
+      unexplainedArtifacts, [],
+      `a client-side-only malformed bulk drop produced a project-owned artifact: ${JSON.stringify(unexplainedArtifacts)}`,
+    );
+    assert.deepEqual(durableAfterMalformed.cues, before.cues, 'a client-side-only malformed bulk drop wrote a cue');
+    assert.deepEqual(durableAfterMalformed.revisions, before.revisions, 'a client-side-only malformed bulk drop created a project revision beyond the baseline');
+    assert.deepEqual(durableAfterMalformed.projects, before.projects, 'a client-side-only malformed bulk drop changed a project row');
+    assert.deepEqual(durableAfterMalformed.media, before.media, 'a client-side-only malformed bulk drop changed a media row');
+    assert.deepEqual(durableAfterMalformed.links, before.links, 'a client-side-only malformed bulk drop linked media to a project');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-malformed-refused-with-toast',

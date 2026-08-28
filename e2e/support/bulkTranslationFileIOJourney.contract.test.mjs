@@ -31,7 +31,16 @@ const assertJourneyContract = (source) => {
   // provably unchanged -- and the journey asserts the real grouped warning toast's exact text
   // rather than merely its absence.
   assert.match(source, /afterMalformed\.fileNames\.sort\(\), \[ALPHA_NAME, BETA_NAME\]\.sort\(\)/u);
-  assert.match(source, /durableState\(root\), before/u);
+  // The durable-state check allows exactly the background job kinds opening media can legitimately
+  // schedule (and its one unowned waveform cache artifact) rather than comparing the whole durable
+  // state, which would fail on that unrelated legitimate activity -- but cues/revisions/projects/
+  // media/links must still stay byte-identical to the baseline, and any OTHER new job or any
+  // project-owned artifact still fails the claim.
+  assert.match(source, /mediaBackgroundJobKinds = new Set\(\['importMedia', 'probeMedia', 'processMedia', 'generateWaveform'\]\)/u);
+  assert.match(source, /unexplainedJobs, \[\]/u);
+  assert.match(source, /unexplainedArtifacts, \[\]/u);
+  assert.match(source, /durableAfterMalformed\.cues, before\.cues/u);
+  assert.match(source, /durableAfterMalformed\.revisions, before\.revisions/u);
   assert.match(source, /afterMalformed\.errorToasts, \[\]/u);
   assert.match(source, /afterMalformed\.warningToasts\.length, 1/u);
   assert.match(source, /rejectionToast, \/\(\^\|\\s\)3 file\\\(s\\\) skipped:\//u);
@@ -66,7 +75,8 @@ test('the journey proves credential-free import/refusal/export and the provider-
 test('the contract fails when any one load-bearing assertion is removed', () => {
   for (const needle of [
     "afterMalformed.fileNames.sort(), [ALPHA_NAME, BETA_NAME].sort()",
-    "durableState(root), before",
+    "unexplainedJobs, []",
+    "unexplainedArtifacts, []",
     "refused.downloadAllVisible, false",
     "expectedPrefixed(ALPHA_CUES)",
   ]) {

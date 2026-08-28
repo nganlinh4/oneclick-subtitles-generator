@@ -194,13 +194,19 @@ describe('a customer permanently removes a tool, then a factory reset clears the
       emptyBaseline,
       'factory reset changed the isolated native-tools store',
     );
+    // Factory reset reloaded the whole app back to the clean-install onboarding surface (the
+    // `.onboarding-overlay` wait above), which drops every React state tree including "Settings is
+    // open" -- TOOL_ROW does not exist in the DOM again until Settings is reopened and the Tools tab
+    // is reactivated the same way openTools() does at the top of this journey. Without this, both
+    // revealSettingsSection(TOOL_ROW) below and this step's own focus target were unreachable.
+    await openTools();
     await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '05-factory-reset-cleared-credential',
       description: 'After reset, the stored credential reference is gone and the already-empty native-tools store is unchanged.',
       details: { credentialsBeforeReset, credentialsAfterReset, nativeToolsAfterReset },
-      focusSelector: '.onboarding-overlay',
+      focusSelector: TOOL_ROW,
     });
   });
 });

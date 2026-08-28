@@ -23,10 +23,6 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'long-media-operation-recovery';
 const PHASE = process.env.OSG_E2E_PERSISTENCE_PHASE;
-// States a killed-mid-flight job may honestly hold after recovery. 'running'/'cancelling' is a
-// zombie and 'succeeded' would mean partial work was promoted; both are defects this journey exists
-// to catch.
-const HONEST_INTERRUPTED_STATES = new Set(['interrupted', 'failed', 'cancelled']);
 
 /* global browser, describe, document, it */
 
@@ -67,8 +63,16 @@ describe('long-media waveform interruption and relaunch recovery', () => {
       const jobs = waveformJobs(root);
       assert.equal(jobs.length, 1, `the seed left ${jobs.length} waveform jobs instead of one`);
       const [interrupted] = jobs;
-      assert.ok(HONEST_INTERRUPTED_STATES.has(interrupted.state),
-        `the killed waveform job restored as ${JSON.stringify(interrupted.state)} instead of a terminal interruption`);
+      // Not merely one of several honest terminal states: crates/osg-infrastructure/src/storage/
+      // jobs.rs's interrupt_in_flight unconditionally selects every job with state IN ('running',
+      // 'cancelling') at boot and applies JobUpdate::Interrupt to each -- there is no branch that
+      // produces 'failed' or 'cancelled' from a killed process (those require an explicit Fail/
+      // RequestCancellation the seed phase's hard kill never issues; see its own
+      // restart_interrupts_only_in_flight_jobs_and_increments_sequence test, which asserts
+      // JobState::Interrupted for both a killed 'running' and a killed 'cancelling' job). A killed
+      // waveform job therefore has exactly one honest restored state.
+      assert.equal(interrupted.state, 'interrupted',
+        `the killed waveform job restored as ${JSON.stringify(interrupted.state)} instead of the one deterministic terminal-interruption state`);
       assertManagedArtifactLedgerMatchesDisk(root);
       await captureWorkflowStep({
         workflow: WORKFLOW,

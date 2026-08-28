@@ -68,25 +68,70 @@ const CUE_PLAN = Object.freeze([
   { start: 6.0, end: 7.5 },
 ]);
 
+// BUG FOUND AND FIXED HERE (real run, candidate 20): the per-cue array was returned from the map
+// callback WITHOUT its own `.join('\n')`, so the outer `.join('\n')` only ever separated BLOCKS
+// with one newline while each block's four elements fell back to Array's default toString, which
+// always joins with a comma regardless of the outer separator. The produced "SRT" was therefore
+// one comma-joined line per cue (e.g. "1,00:00:00,500 --> 00:00:02,000,Cue one alpha,") -- not
+// valid SRT at all. src/utils/srtParser.js's parseSrtContent correctly rejects that shape and
+// returns `[]`; src/components/app/handlers/subtitleHandlers.js's handleSrtUpload then takes its
+// `parsedSubtitles.length === 0` branch, sets an ERROR status (not a toast) and returns without
+// ever calling setSubtitlesData -- so zero cues ever appear, deterministically, on every attempt.
+// This is why a retry never helped: it is not the documented media-binding race at all, just a
+// malformed fixture. Each inner array must be joined with '\n' BEFORE the outer join runs.
 const threeCueFixture = () => CUE_TEXTS.map((text, index) => {
   const { start, end } = CUE_PLAN[index];
-  return [String(index + 1), `${srtTime(start)} --> ${srtTime(end)}`, text, ''];
+  return [String(index + 1), `${srtTime(start)} --> ${srtTime(end)}`, text, ''].join('\n');
 }).join('\n');
 
 /** Whichever reference-voice methods a fresh profile could not have installed are proven inert. */
-const referenceVoiceBoundaryState = () => browser.execute((methods) => {
-  const helpTitle = (label) => label?.querySelector('.method-help-icon')?.getAttribute('title') ?? null;
-  return Object.fromEntries(methods.map((method) => {
+const referenceVoiceBoundaryState = () => browser.execute((methods) => Object.fromEntries(
+  methods.map((method) => {
     const input = document.querySelector(`#method-${method}`);
     const label = document.querySelector(`label[for="method-${method}"]`);
     return [method, {
       present: input !== null && label !== null,
       disabled: input === null ? null : input.disabled,
       unavailableClass: label === null ? null : label.classList.contains('unavailable'),
-      tooltip: helpTitle(label),
     }];
-  }));
-}, REFERENCE_VOICE_METHODS);
+  }),
+), REFERENCE_VOICE_METHODS);
+
+/**
+ * src/components/common/HelpIcon.jsx never sets a native `title` HTML attribute -- it wraps its
+ * icon in src/components/common/Tooltip.jsx, a fully custom click/hover tooltip whose content only
+ * ever renders inside a `document.body` portal (`.oc-tooltip-content`) while `Tooltip.jsx`'s own
+ * `isVisible` state is true. Reading `.getAttribute('title')` on the icon (as this journey
+ * originally did) always returns null; the only way to read the real customer-visible copy is to
+ * trigger the same click Tooltip.jsx's `onClick={handleTriggerClick}` listens for, read the portal,
+ * then click again to close it (Tooltip.jsx toggles `isVisible` on each click) so it does not linger
+ * into later, unrelated captureWorkflowStep screenshots.
+ */
+const readMethodTooltip = async (method) => {
+  const iconSelector = `label[for="method-${method}"] .method-help-icon`;
+  await clickControl(iconSelector);
+  let tooltip = null;
+  await waitUntilWithFreshDiagnostic(async () => {
+    tooltip = await browser.execute(() => {
+      const node = document.querySelector('.oc-tooltip.oc-tooltip-visible .oc-tooltip-content');
+      return node === null ? null : (node.textContent || '').trim();
+    });
+    return typeof tooltip === 'string' && tooltip.length > 0;
+  }, {
+    timeout: 5_000,
+    interval: 100,
+    diagnostic: () => `${method}'s tooltip never became visible after a click`,
+  });
+  await clickControl(iconSelector);
+  await waitUntilWithFreshDiagnostic(async () => browser.execute(() => (
+    document.querySelector('.oc-tooltip-visible') === null
+  )), {
+    timeout: 5_000,
+    interval: 100,
+    diagnostic: () => `${method}'s tooltip never closed after a second click`,
+  });
+  return tooltip;
+};
 
 /** Reference-voice controls only ever mount inside the active method's own section. */
 const referenceVoiceControlsMounted = () => browser.execute(() => (
@@ -215,8 +260,9 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
         + 'multi-GB-engine-focused journey instead of this one',
       );
       assert.equal(state.unavailableClass, true, `${method}'s label lost its unavailable styling`);
+      const tooltip = await readMethodTooltip(method);
       assert.equal(
-        state.tooltip,
+        tooltip,
         REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE,
         `${method}'s unavailable tooltip text changed`,
       );

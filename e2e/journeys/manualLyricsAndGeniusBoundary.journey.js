@@ -242,6 +242,17 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
       'closing the modal after a failed lookup changed the durable reference text',
     );
 
+    // The Genius refusal toast auto-dismisses on its own timer (showErrorToast's default 8000ms,
+    // plus ToastPanel's 500ms dismiss animation before the node leaves `.toast-item.live` -- see
+    // src/utils/toastUtils.js and src/components/common/ToastPanel.js's removeToast); wait it out
+    // so Part D's own workflow-evidence screenshot is not a race against this toast still being on
+    // screen (idiom: bulkTranslationFileIO.journey.js's identical wait after its own refusal toast).
+    await waitUntilWithFreshDiagnostic(async () => (await surfaceState()).errorToasts.length === 0, {
+      timeout: 15_000,
+      interval: 250,
+      diagnostic: () => 'the Genius refusal toast from Part C never auto-dismissed before Part D',
+    });
+
     // --- Part D: clearing is durable too. ---
     await clickControl(CLEAR_BUTTON);
     let cleared = null;

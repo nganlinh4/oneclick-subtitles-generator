@@ -176,6 +176,17 @@ describe('transcription rules/video analysis refuse honestly without a Gemini cr
       'the native log recorded a Gemini request lifecycle event despite no credential',
     );
 
+    // Step 01's refusal toast auto-dismisses on its own timer (showErrorToast's default 8000ms plus
+    // ToastPanel's 500ms dismiss animation before the node leaves `.toast-item.live`). Step 02's own
+    // capture is about the honestly-disabled rules toggle, an unrelated claim, so it must not race
+    // this earlier toast off screen (idiom: the same wait added to providerBoundaries.journey.js and
+    // manualLyricsAndGeniusBoundary.journey.js between an earlier refusal and the next capture).
+    await waitUntilWithFreshDiagnostic(async () => (await analysisButtonSurface()).errorToasts.length === 0, {
+      timeout: 15_000,
+      interval: 250,
+      diagnostic: () => 'the video-analysis refusal toast from step 01 never auto-dismissed before step 02',
+    });
+
     // The "Use transcription rules from analysis" toggle is truthfully disabled: it can never be
     // usefully enabled because nothing credential-free can ever populate rules for it to use.
     await clickControl('[data-osg-action="generate-subtitles"]');

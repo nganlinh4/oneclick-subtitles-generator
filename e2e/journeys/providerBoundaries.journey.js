@@ -225,6 +225,18 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       },
     });
 
+    // The transcription refusal toast (step 02, documented above) auto-dismisses on its own timer
+    // (showErrorToast's default 8000ms plus ToastPanel's 500ms dismiss animation). Part B's own
+    // workflow-evidence capture (step 03) is about an unrelated, credential-free control, so it must
+    // not still be racing this earlier toast off screen -- wait it out rather than widening step
+    // 03's allowance (idiom: manualLyricsAndGeniusBoundary.journey.js's identical wait between its
+    // own Genius refusal and the next, unrelated capture).
+    await waitUntilWithDiagnostic(async () => (await browser.execute(collectTopDocumentToasts)).errorToasts.length === 0, {
+      timeout: 15_000,
+      interval: 250,
+      diagnostic: () => 'the transcription refusal toast from Part A never auto-dismissed before Part B',
+    });
+
     // Real subtitles are needed for Parts B (document processing) and C (translation).
     await importSubtitles();
 
@@ -408,6 +420,15 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
           reason: 'The visible missing-credential refusal is the customer state under test.',
         }],
       },
+    });
+    // Part E's own captures (steps 08/09) assert no top-document toast state at all, so this
+    // refusal toast (default 8000ms + 500ms dismiss animation) must retire first rather than
+    // leaking into step 08's screenshot -- the same leftover-toast race step 03 above was fixed
+    // against, not a new claim about Part D.
+    await waitUntilWithDiagnostic(async () => (await browser.execute(collectTopDocumentToasts)).errorToasts.length === 0, {
+      timeout: 15_000,
+      interval: 250,
+      diagnostic: () => 'the background-image refusal toast from Part D never auto-dismissed before Part E',
     });
 
     // ================================================================================

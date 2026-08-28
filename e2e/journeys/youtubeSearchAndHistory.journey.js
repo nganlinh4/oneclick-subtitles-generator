@@ -219,7 +219,7 @@ describe('a customer searches YouTube, then acquires and revisits videos through
     // history, and reselecting that history entry reaches the identical path a search result's
     // click would (setSelectedVideo), all credential-free and network-light. ---
     await clickControl(UNIFIED_URL_TAB);
-    const urlField = await $('.url-field');
+    let urlField = await $('.url-field');
     await urlField.waitForDisplayed({ timeout: 30_000 });
     await urlField.setValue(REAL_VIDEO.url);
     let resolved = null;
@@ -302,6 +302,16 @@ describe('a customer searches YouTube, then acquires and revisits videos through
     // --- Part C: history survives an in-process navigation away and back. ---
     await clickControl(FILE_UPLOAD_TAB);
     await clickControl(UNIFIED_URL_TAB);
+    // InputMethods.js renders each tab through a `switch` with a `key={tab-${activeTab}}`, so leaving
+    // and returning to this tab genuinely unmounts and remounts UnifiedUrlInput -- the `.url-field`
+    // node from before the switch is a different DOM node now. Re-query it: WebdriverIO element
+    // handles are not guaranteed to self-heal across a real unmount/remount on this embedded Tauri
+    // WebDriver (it does not implement several standard endpoints -- see browser-state diagnostics'
+    // `browserLogsUnavailable` note), and reusing the pre-navigation handle here silently no-ops
+    // every subsequent setValue/clearValue instead of throwing, which is exactly what produced
+    // "all-sites history never reached length 1: null" the first time this journey ran for real.
+    urlField = await $('.url-field');
+    await urlField.waitForDisplayed({ timeout: 30_000 });
     await waitUntilWithFreshDiagnostic(async () => (await previewState()).videoId.includes(REAL_VIDEO.id), {
       timeout: 15_000,
       interval: 200,

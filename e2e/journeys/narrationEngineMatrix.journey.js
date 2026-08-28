@@ -86,7 +86,13 @@ describe('the narration engine catalog reports every entry truthfully and offers
       step: '01-catalog-truthful',
       description: 'Every narration catalog engine reports a data-engine-state consistent with its actual on-disk directory.',
       details: { findings },
-      focusSelector: '.engines-panel',
+      // `.engines-panel` is the whole Tools tab's content root -- roughly ten engine cards plus the
+      // native-tools list -- taller than the settings viewport captureWorkflowStep requires a
+      // settings-modal focus target to already fit inside untouched (no scroll assist is given for
+      // settings-modal descendants). The assertions above already check every catalog engine; the
+      // screenshot only needs one compact, in-viewport anchor tied to the material under test, the
+      // same idiom settingsSurface.journey.js:804 uses for its own oversized section.
+      focusSelector: `[data-engine-id="${NARRATION_CATALOG_ENGINES[0].cardId}"]`,
     });
 
     const target = pickNotInstalledEngine(

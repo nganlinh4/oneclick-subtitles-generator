@@ -21,6 +21,7 @@ const nativeNarrationController = read('..', '..', 'src', 'components', 'narrati
 const audioPlayback = read('..', '..', 'src', 'components', 'narration', 'hooks', 'useAudioPlayback.js');
 const gttsSection = read('..', '..', 'src', 'components', 'narration', 'sections', 'GTTSNarrationSection.js');
 const narrationGenerationJourney = read('..', 'journeys', 'narrationGeneration.journey.js');
+const narrationLocaleEn = JSON.parse(read('..', '..', 'src', 'i18n', 'locales', 'en', 'narration.json'));
 
 const assertJourneyContract = (source) => {
   // Part 1: the honest reference-voice boundary. Both cloning methods' radios must be proven
@@ -28,7 +29,11 @@ const assertJourneyContract = (source) => {
   assert.match(source, /REFERENCE_VOICE_METHODS = Object\.freeze\(\['f5tts', 'chatterbox'\]\)/u);
   assert.match(source, /state\.disabled,\s*\n\s*true,/u);
   assert.match(source, /state\.unavailableClass, true/u);
-  assert.match(source, /state\.tooltip,\s*\n\s*REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE/u);
+  // HelpIcon/Tooltip renders no native `title` attribute -- its text only exists in a document.body
+  // portal after a click toggles Tooltip.jsx's own visibility state, so the journey must trigger
+  // that click and read the portal rather than a (permanently null) DOM attribute.
+  assert.match(source, /\.oc-tooltip\.oc-tooltip-visible \.oc-tooltip-content/u);
+  assert.match(source, /tooltip,\s*\n\s*REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE/u);
   assert.match(source, /referenceVoiceControlsMounted\(\)/u);
   assert.match(source, /document\.querySelector\(`#method-\$\{method\}`\)\?\.click\(\)/u);
 
@@ -128,6 +133,17 @@ test('ground truth: playback drives the hidden <audio> element via isPlaying/cur
 test('the oracle module normalizes artifact identifiers before comparing, matching SQLite hex vs. checkpoint UUID', () => {
   assert.match(oracle, /normalizeId = \(value\) => String\(value \?\? ''\)\.replaceAll\('-', ''\)\.toLowerCase\(\)/u);
   assert.match(oracle, /normalizeId\(after\.artifactId\)/u);
+});
+
+test('the oracle pins the LOADED i18n resource text (which i18next prefers), not a call site\'s fallback default', () => {
+  // i18next's t(key, fallback) returns the loaded resource value whenever the key exists; the
+  // fallback string embedded at each call site (asserted with its own literal '>' above) is only
+  // ever used if the key were missing. The resource is what a customer actually sees.
+  assert.equal(
+    narrationLocaleEn.engineUnavailableMessage,
+    'This narration engine is not ready. Install or start it in Settings → Tools.',
+  );
+  assert.match(oracle, /REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = \(\s*\n\s*'This narration engine is not ready\. Install or start it in Settings → Tools\.'/u);
 });
 
 test('this journey follows the same durable-checkpoint oracle shape narrationGeneration.journey.js already proves', () => {

@@ -101,7 +101,12 @@ test('the process/file-census oracle never interpolates its process id into a sh
 
 test('recovery is a two-process PHASE-gated scenario over the same synthetic long source', () => {
   assert.match(recoveryJourney, /PHASE === 'seed' \|\| PHASE === 'verify'/u);
-  assert.match(recoveryJourney, /HONEST_INTERRUPTED_STATES/u);
+  // A killed running/cancelling job has exactly ONE honest restored state -- interrupt_in_flight
+  // (crates/osg-infrastructure/src/storage/jobs.rs) unconditionally applies JobUpdate::Interrupt to
+  // every in-flight job at boot, with no branch to 'failed' or 'cancelled'. The journey asserts the
+  // exact state rather than tolerating a broader set of terminal states the product never produces
+  // for this recovery path.
+  assert.match(recoveryJourney, /interrupted\.state, 'interrupted'/u);
   assert.match(recoveryJourney, /assertManagedArtifactLedgerMatchesDisk\(root\)/u);
   assert.match(recoveryScenario, /phases: \['seed', 'verify'\]/u);
   assert.match(recoveryScenario, /runScenarioProcesses/u);

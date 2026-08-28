@@ -10,9 +10,14 @@ import { strict as assert } from 'node:assert';
 /** English copy of the disabled tooltip narrationMethodSelectionMaterial's HelpIcon renders for a
  * reference-voice-cloning method (F5-TTS/Chatterbox) while its engine package is not installed and
  * running. Shared with GenerateButton.js/GTTSNarrationSection.js/AsrProcessingOptions.js under the
- * same `narration.engineUnavailableMessage` i18n key. */
+ * same `narration.engineUnavailableMessage` i18n key. GROUND TRUTH: every call site's own hardcoded
+ * i18next fallback string reads "...Settings > Tools." (plain greater-than), but
+ * src/i18n/locales/en/narration.json's loaded `engineUnavailableMessage` resource -- which i18next
+ * always prefers over a call site's fallback default when the key exists -- reads "...Settings →
+ * Tools." (U+2192 RIGHTWARDS ARROW). The customer-visible copy is the loaded resource, not the
+ * in-code fallback, so this pins the resource's exact text. */
 export const REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = (
-  'This narration engine is not ready. Install or start it in Settings > Tools.'
+  'This narration engine is not ready. Install or start it in Settings → Tools.'
 );
 
 /**
