@@ -385,7 +385,11 @@ function isSha512Integrity(value) {
 }
 
 function assertLockfiles(rootDirectory = REPOSITORY_ROOT) {
-  const ignoredLockDirectories = new Set(['.git', 'node_modules', 'target']);
+  // `.claude` holds agent scratch state and transient git worktrees, which carry their own copies
+  // of every lockfile. Walking into it made this gate's verdict depend on whether an unrelated
+  // worktree happened to exist at that moment: the same commit passed alone and failed while a
+  // parallel lane was open. A release gate must describe the repository, not its neighbours.
+  const ignoredLockDirectories = new Set(['.git', '.claude', 'node_modules', 'target']);
   const npmLocks = walkFiles(
     rootDirectory,
     (candidate) => path.basename(candidate) === 'package-lock.json',
