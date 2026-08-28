@@ -27,7 +27,7 @@ import process from 'node:process';
 
 import { withDatabase } from '../support/database.js';
 import { clickControl, openEditor, waitForEditorReady } from '../support/editor.js';
-import { clickSettingsControl } from '../support/settingsControls.js';
+import { clickSettingsControl, revealSettingsSection } from '../support/settingsControls.js';
 import { directoryShapeDigest } from '../support/settingsSurfaceOracle.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -95,6 +95,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
     // Captured only once the status probe has fully settled, so this baseline reflects whatever the
     // store legitimately holds at rest -- not a snapshot mid-probe.
     const emptyBaseline = directoryShapeDigest(toolsRoot);
+    await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-tool-missing-on-isolated-profile',
@@ -114,6 +115,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
     await clickSettingsControl(`${TOOL_ROW} [data-tool-action="remove-request"]`);
     const confirm = await $(`${TOOL_ROW} [data-tool-action="remove-confirm"]`);
     await confirm.waitForDisplayed({ timeout: 10_000 });
+    await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-real-removal-confirmation',
@@ -130,6 +132,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
       emptyBaseline,
       'removal left bytes behind that were not present before yt-dlp was installed',
     );
+    await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '03-tool-deleted',
@@ -157,6 +160,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
     await clickControl('.factory-reset-btn');
     const resetToast = await $('.toast.toast-warning');
     await resetToast.waitForDisplayed({ timeout: 10_000, timeoutMsg: 'factory reset skipped confirmation' });
+    await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '04-factory-reset-confirmation',
@@ -190,6 +194,7 @@ describe('a customer permanently removes a tool, then a factory reset clears the
       emptyBaseline,
       'factory reset changed the isolated native-tools store',
     );
+    await revealSettingsSection(TOOL_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '05-factory-reset-cleared-credential',

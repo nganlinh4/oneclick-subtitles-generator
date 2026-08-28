@@ -26,7 +26,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { clickControl, openEditor } from '../support/editor.js';
-import { clickSettingsControl } from '../support/settingsControls.js';
+import { clickSettingsControl, revealSettingsSection } from '../support/settingsControls.js';
 import { directoryShapeDigest } from '../support/settingsSurfaceOracle.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -91,6 +91,7 @@ describe('the narration model package honestly reports and safely cancels on an 
     assert.equal(notInstalled.installVisible, true, 'a not-installed package did not offer Install');
     assert.equal(notInstalled.cancelVisible, false);
     assert.equal(notInstalled.removeVisible, false);
+    await revealSettingsSection(PANEL);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-truthfully-not-installed',
@@ -112,6 +113,7 @@ describe('the narration model package honestly reports and safely cancels on an 
       'clicking Install never produced a cancellable operation',
       120_000,
     );
+    await revealSettingsSection(PANEL);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-install-begun',
@@ -136,6 +138,7 @@ describe('the narration model package honestly reports and safely cancels on an 
       emptyBaseline,
       'cancelling the install left orphaned bytes or lease files in the engine-packages store',
     );
+    await revealSettingsSection(PANEL);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '03-cancelled-cleanly',
