@@ -530,6 +530,14 @@ export const SOURCE_SWITCH_MEDIA_CACHE = join(
 export const FOUR_WINDOW_ASR_MEDIA_CACHE = join(E2E_ASSET_CACHE_ROOT, 'four-window-asr-media');
 
 /**
+ * Offline-generated, tiny-bitrate, hours-long synthetic media used by the long-media
+ * resource-bound journey and its relaunch-recovery scenario. Long in TIME, not on disk: see
+ * longSyntheticMediaFixture.js for the exact recipe and why duration (not bitrate) is what has
+ * to be real here.
+ */
+export const LONG_SYNTHETIC_MEDIA_CACHE = join(E2E_ASSET_CACHE_ROOT, 'long-synthetic-media');
+
+/**
  * The verified immutable application selected by the current external-cache receipt.
  *
  * A missing receipt gets a deliberately nonexistent EXTERNAL sentinel so source-only tests can

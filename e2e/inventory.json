@@ -488,6 +488,60 @@
       "note": "Demoted 2026-08-28: the oracles above still claim 'ordered screenshots under the managed external evidence lane/timeline-boundary', but no evidence/timeline-boundary directory exists under the managed external evidence cache, so this claim cannot be bound to any recorded attempt. The journey owns two connected invariants -- shared waveform/Ctrl+A boundaries reducing to zero on delete, and generation starting cleanly from that empty checkpoint without resurrecting deleted text -- but neither has a passing real-binary attempt on record."
     },
     {
+      "name": "longMediaResourceBounds",
+      "kind": "workflow-performance",
+      "file": "journeys/longMediaResourceBounds.journey.js",
+      "capability": "Waveform and timeline-selectable ranges never exceed real media duration on an hours-long source (including at a real zoom-in interaction), the desktop process's own working set/handles/threads and the run root's own files/SQLite stay within documented caps across a heavy interaction session, cancelling an in-flight native waveform job leaves no partial cache artifact or stuck job row, and no orphan artifact survives the session.",
+      "chain": [
+        "open a wholly synthetic, offline-generated two-hour source (tiny bitrate, no network -- support/longSyntheticMediaFixture.js)",
+        "capture the fresh native generateWaveform job while it is still running and cancel it by selecting different media, the same way a customer would",
+        "return to the long source and let its waveform complete for real",
+        "check waveform canvas ink against real duration at the default view and at a real product zoom-in interaction, using the product's own visible-range formula rather than a fixed pixel guess",
+        "reach a bounded Ctrl+A selection on the same two-hour source with zero cues",
+        "sample the desktop process's working set/private bytes/handle/thread counts and the run root's file count/SQLite footprint before and after a seek storm, brief playback and repeated zoom-drag gestures"
+      ],
+      "oracles": [
+        "waveform canvas pixels measured against the product's own getVisibleTimeRange/pan-centering arithmetic (TimelineCalculations.js, TimelineZoomControls.js), not a fixed assumption",
+        "the application's own SQLite jobs and artifacts, read only, including the cached waveform artifact's own byte size against waveform_cache.rs's MAX_CACHE_BYTES",
+        "PowerShell Get-Process sampling of the live desktop process (working set, private bytes, handle count, thread count), matching the codebase's existing Win32-process-inspection pattern",
+        "an independent walk of the run root's own data/cache trees (excluding the shared persistent tool/engine junctions) and the SQLite file's own on-disk footprint",
+        "the managed artifact ledger reconciled against disk (support/renderQueue.js's assertManagedArtifactLedgerMatchesDisk)",
+        "ordered screenshots under the managed external evidence lane/long-media-resource-bounds"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
+      "note": "Authored and statically validated by support/longSyntheticMediaFixture.test.mjs plus support/longMediaResourceBoundsJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. HEAVY-SHARD JOURNEY, deliberately excluded from the default suite in run-isolated.mjs's NON_DEFAULT_JOURNEYS with its own npm script (test:long-media-resource-bounds) -- the same precedent nativeToolsInstall/transcriptionRulesAndAnalysis already set. RUNTIME COST: the fixture build is a one-time, cached FFmpeg encode (tens of seconds); the journey itself decodes real PCM proportional to two hours of audio TWICE (the cancelled attempt and the completed one) plus a real zoom/seek/playback session, so a full run is expected to take on the order of minutes, not seconds. Every numeric cap is chosen from measured design intent in the source, cited by file:line directly in the journey rather than guessed: the frontend's nativeWaveformDensity bound (src/components/lyrics/audioProcessing.js, MAX_WAVEFORM_POINTS=1,000,000 / TARGET_LONG_WAVEFORM_POINTS=250,000), the native validation ceiling (apps/desktop/src-tauri/src/media_pipeline.rs:35, MAX_WAVEFORM_POINTS=1,000,000), the cached-waveform-artifact byte cap (apps/desktop/src-tauri/src/waveform_cache.rs:20, MAX_CACHE_BYTES=16MiB, asserted against the REAL artifact this source produces, not just cited), the in-memory waveform cache bound (src/components/lyrics/VolumeVisualizer.js:21, MAX_CACHED_WAVEFORMS=4), and the native concurrency bounds that keep worker/thread growth bounded regardless of interaction volume (MAX_CONCURRENT_OPERATIONS=2 at media_pipeline.rs:36, MAX_CONCURRENT_RENDERS=1 at render/host.rs:22). The process/file/database growth caps (thread/handle/working-set/private-bytes/file-count/file-bytes/SQLite-bytes) have no single Rust constant to cite -- they are deliberately generous ceilings justified against the real 562-thread/~11GiB regression asrGeneration's own entry already recorded, sized to catch that same defect class rather than to pin an exact steady-state number, and documented as such directly in the journey. Job-history growth is explicitly NOT claimed as an absolute product guarantee: RESIDENT_TERMINAL_JOB_LIMIT (crates/osg-application/src/jobs.rs:11, 256) only bounds what a future boot restores into memory, not row deletion, so the SQLite-growth cap is scoped to this session's bounded interaction count. The waveform ink-boundary check at a real zoom level does not assume a specific achieved zoom percentage (WebdriverIO pointer-drag delivery against the product's own zoom control is not independently verified here); it recomputes the product's own visible-range formula from whatever zoom percentage the DOM actually reports after the drag, so the assertion is correct regardless of exactly how much of the requested drag distance the driver delivered.",
+      "fixtures": [
+        "the managed external assets/e2e/long-synthetic-media cache, generated offline from pure lavfi (color+sine) sources by the reviewed native-tools FFmpeg and semantically probed before use; no network, no committed binary input",
+        "the pinned W3C Sintel trailer (support/realMedia.js's SOURCE_SWITCH_VIDEO) reused as the short second source the cancellation proof switches to"
+      ]
+    },
+    {
+      "name": "longMediaOperationRecovery",
+      "kind": "workflow-persistence",
+      "file": "journeys/longMediaOperationRecovery.journey.js",
+      "capability": "A killed native waveform-generation job for an hours-long source restores honestly (never a zombie or a promoted success) after relaunch, with no partial cache artifact, and the same media's waveform completes fresh from there.",
+      "chain": [
+        "seed phase: open the same two-hour synthetic source and capture its native generateWaveform job while running",
+        "the scenario supervisor tears the seed process down mid-flight, exactly as a crash would, without cancelling the job first",
+        "verify phase: a fresh process boots, boot-time job/artifact reconciliation runs, and the same project/media restores automatically",
+        "confirm the killed job is honestly terminal and the artifact ledger matches disk",
+        "confirm the product's own effect re-requests and completes a fresh waveform for the same media"
+      ],
+      "oracles": [
+        "the read-only SQLite job ledger, proving the interrupted job is never left running/cancelling and never silently promoted to succeeded",
+        "the managed artifact ledger reconciled against disk both immediately after recovery and after the fresh waveform succeeds",
+        "a second independently launched desktop process",
+        "ordered screenshots under the managed external evidence lane/long-media-operation-recovery"
+      ],
+      "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
+      "status": "authored-unproven",
+      "note": "Authored and statically validated by support/longMediaResourceBoundsJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. Generalizes renderInterruptRecovery.journey.js's proof from a killed renderVideo job to a killed generateWaveform job: the boot-time recovery this relies on is kind-agnostic (crates/osg-infrastructure/src/storage/jobs.rs interrupts every stale running/cancelling job regardless of kind; crates/osg-infrastructure/src/storage/artifacts.rs's reconcile() walks every artifact the same way), so the same honesty guarantee is expected to hold. The two-hour synthetic source (support/longSyntheticMediaFixture.js) is what makes the seed phase's 'job still running when the process is torn down' observation non-racy without depending on unmeasured native audio-decode throughput. HEAVY-SHARD, two-process, PHASE-gated scenario like renderInterruptRecovery -- deliberately excluded from run-isolated.mjs's default discovery via NON_DEFAULT_JOURNEYS, with its own npm script (test:long-media-recovery) driven through scenarios/longMediaOperationRecovery.mjs.",
+      "fixtures": [
+        "the managed external assets/e2e/long-synthetic-media cache, staged into the scenario's isolated run root via support/longSyntheticMediaFixture.js's stagedLongSyntheticMedia"
+      ]
+    },
+    {
       "name": "asrGeneration",
       "kind": "workflow",
       "file": "journeys/localAsrGeneration.journey.js",

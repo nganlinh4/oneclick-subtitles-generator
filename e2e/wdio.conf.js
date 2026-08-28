@@ -26,6 +26,7 @@ import { readInheritedApplicationLease } from './support/applicationLease.js';
 import {
   cachedRealVideo, ensureSourceSwitchVideo, verifiedDownloadIdentityVideo,
 } from './support/realMedia.js';
+import { stagedLongSyntheticMedia } from './support/longSyntheticMediaFixture.js';
 import { waitForAutomationWindowIsolation } from './support/editor.js';
 import {
   promoteWorkflowFailureEvidence, recordWorkflowTestFailure, workflowFailureStepForTest,
@@ -129,6 +130,37 @@ if (process.env.OSG_E2E_WORKFLOW === 'main-preview-controls-and-fullscreen') {
   process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
     process.env.OSG_E2E_MEDIA_SELECTION,
     stagedSecondSource,
+  ]);
+}
+if (process.env.OSG_E2E_WORKFLOW === 'long-media-resource-bounds') {
+  // This workflow's whole point is a duration the pinned real video does not have. It replaces the
+  // generic real-video default above with a wholly synthetic, offline-generated two-hour file (see
+  // support/longSyntheticMediaFixture.js), and stages an ordinary short real source as the
+  // sequence's second answer so the journey can cancel the long file's in-flight native waveform job
+  // through a real customer action -- selecting different media -- rather than a fabricated hook.
+  // The THIRD answer selects the long file again: the journey returns to it and lets its waveform
+  // complete for real before proving the waveform/timeline-range and resource-bound claims.
+  //
+  // This config loads twice (launcher, then worker) and each load already holds the INHERITED
+  // application lease from run-isolated.mjs's outer withE2eApplicationLease -- stagedLongSyntheticMedia
+  // uses that inherited proof directly rather than acquiring a second, competing lease of its own,
+  // exactly like scenarios/multiWindowAsrPersistence.mjs's stagedFourWindowAsrVideo call.
+  const stagedLongMedia = stagedLongSyntheticMedia({
+    inheritedApplication,
+    stage: (source) => {
+      const staged = join(runRoot, 'input', basename(source));
+      copyFileSync(source, staged);
+      return staged;
+    },
+  });
+  const secondSource = await ensureSourceSwitchVideo();
+  const stagedSecondSource = join(runRoot, 'input', `source-switch-${basename(secondSource)}`);
+  copyFileSync(secondSource, stagedSecondSource);
+  process.env.OSG_E2E_MEDIA_SELECTION = stagedLongMedia;
+  process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
+    stagedLongMedia,
+    stagedSecondSource,
+    stagedLongMedia,
   ]);
 }
 let downloadFixtureOrigin = null;

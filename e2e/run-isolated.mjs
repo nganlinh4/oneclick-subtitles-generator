@@ -32,9 +32,15 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 // reviewed local ASR engine to full completion TWICE end to end (once per compared segmentation
 // setting) in one process -- like nativeToolsInstall, it is a real single-process journey a
 // developer can still run directly by name, just not on every ordinary pass.
+// longMediaResourceBounds joins that same single-process heavy group: it decodes real PCM
+// proportional to a two-hour synthetic source (twice) and drives a real zoom/seek/playback session
+// (own script: test:long-media-resource-bounds). longMediaOperationRecovery is a two-process
+// PHASE-gated scenario like renderInterruptRecovery, needing scenarios/longMediaOperationRecovery.mjs.
 const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
+  'longMediaOperationRecovery.journey.js',
+  'longMediaResourceBounds.journey.js',
   'multiWindowAsrPersistence.journey.js',
   'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',
