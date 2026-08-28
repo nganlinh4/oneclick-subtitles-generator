@@ -1430,6 +1430,41 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The ink-energy magnitude claim cannot detect the 2x error it was written for: its eased gate excludes 14 of 32 phase samples, and its ratio band only catches a halving or doubling when the correct render already sits within about 10% of the eased expectation.",
+      "foundBy": "independent adversarial threshold audit",
+      "status": "open",
+      "severity": "major",
+      "note": "MIN_INK_ENERGY_EASED_GATE = 0.5 sits just above the sweep's fixed entry progress of 0.4, and every one of the nine remaining cases uses linear easing, so eased(linear, 0.4) = 0.4 falls under the gate: the entry magnitude claim runs on 3 of 16 cases and case 03 has BOTH phases gated off. Lowering the gate to 0.35 keeps all 31 material tests green, so 0.5 is not required by any measured fixture. The band MIN_INK_ENERGY_RATIO 0.55 / MAX 1.8 then detects a halving only when baselineRatio < 1.10 and a doubling only when baselineRatio > 0.90, while the constant's own comment concedes the fixtures land within +/-30% of exact -- the two statements are incompatible. Measured: with a correct render at 1.30x (inside that documented spread) a halved-intensity defect lands at 0.650x and goes undetected on 11 of 16 cases, including the ease-out anchor the shipped \"defect 5 [FIXED]\" test uses as proof the check works. The mutation suite hides this because it still builds fixtures from a flat animation-agnostic ramp instead of the eased formula, and one test actively PINS THE HOLE OPEN by asserting that a halved linear entry does not throw. Tightening the band to roughly 0.75-1.35 and re-deriving the mutation fixtures needs a real-binary measurement of true per-easing spread, so this is filed rather than patched -- changing it blind would be guessing at an oracle, which is the failure mode this rule exists to prevent."
+    },
+    {
+      "finding": "Typewriter reveal WITH a decoration box has zero coverage in either suite: the e2e growth claim was removed as redundant, but the compositor tests it deferred to always render with background_opacity 0.0.",
+      "foundBy": "independent adversarial threshold audit",
+      "status": "open",
+      "severity": "moderate",
+      "note": "The removal of the typewriter growth ratio was justified on the grounds that reveal progression is owned natively, and that is mostly true and in fact stricter: the compositor asserts strict monotone growth with no tolerance and pins an exact 8-frame reveal sequence with a discrimination check. But its typing() helper hardcodes background_opacity: 0.0, so every typewriter test renders glyph ink with no box -- exactly the configuration the deleted e2e claim was measuring, since that case ships with borderStyle \"double\". Net coverage of \"typewriter reveal progresses with a decoration box\" is now zero on both sides. Compounding it, the whole compositor file is a silent no-op without a GPU adapter (it returns early printing SKIPPED), so even the coverage that does exist holds only on adapter-bearing runners."
+    },
+    {
+      "finding": "The export mask coverage claim still accepts agreement with EITHER preview surface, the same either/or escape just removed from the placement claim.",
+      "foundBy": "independent adversarial threshold audit",
+      "status": "open",
+      "severity": "moderate",
+      "note": "exportSurfaceCoverage takes Math.max of the Main and Render mask coverages, so an export that tracks one surface while diverging from the other scores 1.000 against the 0.55 floor. This is structurally identical to the placement defect fixed in the same audit, where judging against the farther surface halved a measured 60px blind zone. It is filed rather than fixed because, unlike the placement change, the worst-surface form of this claim was NOT validated against the preserved baselines; tightening it without that measurement risks a false failure on real evidence. It needs the same treatment: measure both forms against the 10-case matrix, confirm no baseline regresses, then take the worse surface."
+    },
+    {
+      "finding": "A commit inverted a documented subtitle-background parity decision -- from refusing an #rrggbbaa background to multiplying it by background_opacity -- without mentioning the change in its commit body.",
+      "foundBy": "independent adversarial threshold audit",
+      "status": "open",
+      "severity": "moderate",
+      "note": "The renamed compositor test deleted the doc comment recording WHY the old behaviour existed (\"an #rrggbbaa background silently disappears. Here it is a refusal instead: same pixels, findable cause.\") and swapped the leak probe from a valid eight-digit hex to a malformed value, which no longer probes the same thing. The decision may well be correct, but it was made inside a large multi-file feature commit with no measurement, no explanation and no mutation evidence, and it reverses a choice the codebase had deliberately written down. It needs an owner ruling: either restore the refusal, or keep the multiply and record the reasoning where the old comment was, with a probe that actually exercises an alpha-carrying background."
+    },
+    {
+      "finding": "When a model install is refused for lack of disk space, the customer is told only \"The narration model operation failed\" -- the specific reason survives the platform boundary and is then discarded at the UI.",
+      "foundBy": "settings-journey triage of the candidate-20 narration model failure",
+      "status": "open",
+      "severity": "minor",
+      "note": "The install worker checks capacity before the first delivery byte and fails with a typed insufficient-space error; the platform service deliberately preserves that code while redacting the message. The model-management tab then maps every failure and protocol error onto one generic toast and drops the code, so a customer whose volume is 1.29 GiB short is told nothing actionable. The product REFUSING is correct and must stay -- this is purely about telling the customer why. Left unpatched here because an honest fix needs en/vi/ko copy for the new message, which is an owner decision rather than a mechanical change."
+    },
+    {
       "finding": "A rejected Tauri IPC envelope leaves its invoke() promise pending forever, and because durable project operations are serialized behind one tail promise, a single stuck reply silently stalls every later edit on that project -- a customer sees a timeline edit on screen and loses it, with no toast and nothing thrown.",
       "foundBy": "candidate-20 timelineAdvancedEditing failure, root-caused by a dedicated lane",
       "status": "fixed-pending-verification",
