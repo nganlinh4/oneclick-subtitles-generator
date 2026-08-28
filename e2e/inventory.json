@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The durable verified-install receipt works: the engine store holds one covering all 41,507 files and 7.25 GB of the installed engine, so a status probe no longer re-hashes that tree on every process start.",
+      "foundBy": "direct inspection of the shared engine store after candidate-20 runs",
+      "status": "documented",
+      "severity": "informational",
+      "note": "Recorded because the coordinator briefly concluded the opposite and sent a lane to investigate a non-problem: the receipts live under the SCHEMA-VERSIONED store root (engine-packages/v1/.verified/<component>/<version>.json), beside .downloads, .staging, .trash and .quarantine, and an earlier check looked one directory too high and found nothing. The receipt for faster-whisper-turbo 2026.08.10 is 4.29 MB, records 41,507 files and 7,246,371,619 bytes, and is dated during this run cycle. That investigation still produced value - a permanently failing best-effort write is no longer silent, and a junction-layout persistence test now exists - but the premise was the coordinator’s error, and the engine-status stall that prompted it must be re-diagnosed on its own evidence rather than blamed on a missing receipt."
+    },
+    {
       "finding": "A small IPC payload sent during subtitle timeline editing carries null where the native boundary requires an unsigned integer, so the operation is rejected and the only trace is a console line.",
       "foundBy": "timelineAdvancedEditing on candidates 19 and 20",
       "status": "open-under-investigation",
