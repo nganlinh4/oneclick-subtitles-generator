@@ -775,10 +775,25 @@
     {
       "name": "timelineAdvancedEditing",
       "kind": "workflow",
-      "capability": "Pointer/touch selection, cue timing edits, range move preview/commit/cancel, timing application, zoom and narration-lane dragging remain bounded by real media.",
-      "status": "unproven",
+      "file": "journeys/timelineAdvancedEditing.journey.js",
+      "capability": "Sticky (cascade) timing toggle, per-cue start/end drag handles, the multi-cue range move handle and the timeline zoom control all stay bounded by real, playable media duration, with undo/redo walked across a mixed sequence of them.",
+      "assertions": [
+        "dragging a single cue's start/end handle clamps at zero and at real media duration and never moves an untouched cue",
+        "with sticky timing on, dragging one cue shifts only the next cue by the identical delta and preserves the dragged cue's own duration; earlier cues never move",
+        "dragging the range action bar's move handle shifts every cue in the selected range by one identical delta, clamped so no cue ends beyond real media duration",
+        "four undos and four redos across a MIXED drag/cascade/range-move sequence reconcile with SQLite at every intermediate checkpoint, not only the endpoints",
+        "each durable commit records the exact revision reason (`timing drag` / `move range`) the shipped history module assigns",
+        "dragging the zoom control changes only the zoom percentage: cue data, durable state and video playback are untouched and no witnessed error occurs"
+      ],
+      "oracles": [
+        "the application's own SQLite cues table (start_ms/end_ms/text) and its project_revisions.reason column, read only",
+        "the visible cue list and the sticky-toggle/undo/redo control states",
+        "ordered screenshots under the managed external evidence lane/timeline-advanced-editing"
+      ],
+      "runsAgainst": "e2e-binary",
+      "status": "authored-unproven",
       "recommendedJourney": "editorCrudAndSubtitleDocuments",
-      "note": "The green boundary journey covers waveform pixels, Ctrl+A and delete-all, not the advanced movement and timing controls."
+      "note": "Authored and statically validated by support/timelineAdvancedEditingJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. Deliberately does not touch insert/delete/merge/split/save/checkpoint/reset (owned by the green editorCueCrudAndHistory) or Ctrl+A-then-delete-all/regeneration (owned by the green timelineBoundary); the range action bar's 'Regenerate subtitles' and 'Clear subtitles in range' buttons are left alone too, the latter because it drives the identical onClearRange/CLEAR_RANGE handler timelineBoundary's Ctrl+A+Delete already exercises. Narration-lane dragging (NarrationLaneControls) is out of scope: it requires generated narration audio, a separate credential/engine surface owned by the narration journeys, not a credential-free timeline-editing one. Source-reading finding worth a look before this journey is first run: useLyricsEditorDrag.js's sticky cascade (the `i > index && isSticky` branch of updateTimings) shifts LATER cues by the dragged delta with no clamp against media duration at all, unlike the dragged cue's own field (handleDrag) and unlike the multi-cue range move (clampTimelineMoveDelta) -- this journey's sticky-cascade drag deliberately stays well inside bounds to avoid asserting on that unverified edge, so it does not itself prove or disprove the gap."
     },
     {
       "name": "subtitleDocumentExports",
