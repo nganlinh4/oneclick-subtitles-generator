@@ -78,13 +78,27 @@ export function expectedTopLevelEntries(mainExecutableName, mappings) {
   return [mainExecutableName, ...directories].sort();
 }
 
-export function auditTopLevelShape(appRoot, mainExecutableName, mappings) {
+/**
+ * Structural entries an NSIS archive carries that the content-addressed application publication
+ * never does, because that publication is not an installer. `$PLUGINSDIR` is NSIS's own extraction
+ * scratch directory, and `uninstall.exe` is the uninstaller the product must ship for the clean
+ * removal the release contract requires. Both are named exactly; anything else at the top level is
+ * still a violation, and the residue catalog is applied to their contents like everything else.
+ */
+const NSIS_STRUCTURAL_ENTRIES = Object.freeze(['$PLUGINSDIR', 'uninstall.exe']);
+
+export function auditTopLevelShape(appRoot, mainExecutableName, mappings, options = {}) {
+  const { installerStructure = false } = options;
   const expected = expectedTopLevelEntries(mainExecutableName, mappings);
+  const tolerated = installerStructure ? NSIS_STRUCTURAL_ENTRIES : [];
   const actual = [...immediateChildren(appRoot)].sort();
-  const expectedSet = new Set(expected);
+  const expectedSet = new Set([...expected, ...tolerated]);
   const actualSet = new Set(actual);
   const missing = expected.filter((name) => !actualSet.has(name));
   const extra = actual.filter((name) => !expectedSet.has(name));
+  // An installer that ships no uninstaller cannot satisfy the clean-removal contract, so its
+  // absence is a violation rather than merely an unchecked entry.
+  if (installerStructure && !actualSet.has('uninstall.exe')) missing.push('uninstall.exe');
   return { actual, expected, extra, matches: missing.length === 0 && extra.length === 0, missing };
 }
 
@@ -225,7 +239,9 @@ export async function inspectInstallerPayload({
     const mainExecutablePath = findMainExecutable(extractionRoot, mainExecutableName);
     const appRoot = path.dirname(mainExecutablePath);
 
-    const topLevelShape = auditTopLevelShape(appRoot, mainExecutableName, mappings);
+    const topLevelShape = auditTopLevelShape(appRoot, mainExecutableName, mappings, {
+      installerStructure: installerPath !== null,
+    });
     const resources = auditResources(appRoot, mappings, sha256File);
     const licenseLikeFiles = findLicenseLikeFiles(extractionRoot);
     const notices = auditNotices(rootDirectory, licenseLikeFiles);
