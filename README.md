@@ -364,6 +364,19 @@ node scripts/check-release-readiness.js --profile runtime-package --target x86_6
 The other matrix targets are `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, and
 `x86_64-apple-darwin`.
 
+Once an unsigned Windows installer exists (`node apps/desktop/node_modules/@tauri-apps/cli/tauri.js
+bundle --ci --no-sign --target x86_64-pc-windows-msvc --bundles nsis`), inspect what it actually
+ships -- the exact expected top-level shape, forbidden Electron/Node/Chromium/Python residue from the
+removed stack, third-party notice coverage, and the packaged executable's version metadata:
+
+```powershell
+npm run check:installer-payload -- --installer "target\x86_64-pc-windows-msvc\release\bundle\nsis\<name>.exe"
+```
+
+It extracts the installer read-only with 7-Zip (the locked `7zip-bin-full` package) and never launches
+it. Pass `--payload-dir <extracted-directory>` instead when 7-Zip is unavailable or the payload was
+extracted another way. Its own contract is covered by `npm run test:installer-payload`.
+
 ## Runtime delivery status
 
 | Runtime | Delivery status |

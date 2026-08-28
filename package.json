@@ -61,11 +61,13 @@
     "check:tauri-contract": "node scripts/check-tauri-command-contract.js",
     "check:frozen-css-output": "node scripts/check-frozen-css-output.mjs",
     "check:desktop-payload-size": "node scripts/check-desktop-payload-size.mjs",
+    "check:installer-payload": "node scripts/inspect-installer-payload.mjs",
     "check:production-transport": "node scripts/check-production-transport.js",
     "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
     "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract",
     "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
     "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
+    "test:installer-payload": "node --test scripts/inspect-installer-payload.test.mjs scripts/installer-payload-residue-rules.test.mjs scripts/installer-payload-extract.test.mjs scripts/read-windows-executable-metadata.test.mjs",
     "test:installed-inspector-contracts": "node --test scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs",
     "test:updater-fixture": "node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs",
     "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"
