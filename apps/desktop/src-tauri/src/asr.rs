@@ -29,6 +29,7 @@ use tauri::{State, ipc::Channel};
 use uuid::Uuid;
 
 use crate::background;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -363,9 +364,14 @@ impl AsrRuntimeManager {
             .map_err(|_| AsrError::Synchronization)?
             .clone();
         if let Some(package_manager) = package_manager {
-            match package_manager
-                .resolve_for_launch(asr_to_package(engine), &PackageCancellationToken::default())
-            {
+            let component = asr_to_package(engine);
+            let resolved =
+                package_manager.resolve_for_launch(component, &PackageCancellationToken::default());
+            diagnostics::record_receipt_write_degraded(
+                component.as_str(),
+                package_manager.receipt_write_degraded(component),
+            );
+            match resolved {
                 Ok(runtime) => {
                     let worker = self.resolve_worker()?;
                     let paths = RuntimePaths {

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -303,6 +304,47 @@ pub(crate) fn initialize(directory: &Path) -> io::Result<()> {
 
 pub(crate) fn record(event: &'static str, fields: &[(&'static str, String)]) {
     DIAGNOSTICS.record(event, fields);
+}
+
+/// Per-process memory of which managed package components have already had a failed fast-path
+/// verification-receipt write (`osg_engine_packages::verified_install::write`, surfaced through
+/// `receipt_write_degraded`) reported through the diagnostic log. That write is best-effort by
+/// design -- a failure never blocks install, adoption, or verification -- which is exactly why it
+/// stays invisible unless something reports it, and exactly why that report must never become a
+/// log storm: an engine or speech card's status is polled by the UI every few seconds, and a
+/// launch can retry the same component many times in one session.
+static RECEIPT_WRITE_DEGRADED_REPORTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+/// `true` only the first time `component` is marked -- every later call for the same component
+/// returns `false`, poisoning aside (a poisoned lock never reports, matching this module's other
+/// best-effort failure handling).
+fn receipt_write_degraded_mark_if_first(component: &str) -> bool {
+    let reported = RECEIPT_WRITE_DEGRADED_REPORTED.get_or_init(|| Mutex::new(HashSet::new()));
+    reported
+        .lock()
+        .is_ok_and(|mut reported| reported.insert(component.to_owned()))
+}
+
+/// Reports a permanently-failing fast-path receipt write for `component`, at most once per
+/// component per process. Called from every engine/speech status probe and launch resolution that
+/// already reaches the package manager (see `asr.rs::resolve_runtime` and its speech equivalent);
+/// `degraded` is that call's own `receipt_write_degraded(component)` read, so a healthy component
+/// costs nothing beyond the read already being made for other reasons.
+pub(crate) fn record_receipt_write_degraded(component: &str, degraded: bool) {
+    record_receipt_write_degraded_with(component, degraded, record);
+}
+
+fn record_receipt_write_degraded_with(
+    component: &str,
+    degraded: bool,
+    mut emit: impl FnMut(&'static str, &[(&'static str, String)]),
+) {
+    if degraded && receipt_write_degraded_mark_if_first(component) {
+        emit(
+            "engine-packages.receipt_write_degraded",
+            &[("component", component.to_owned())],
+        );
+    }
 }
 
 fn encode_record(
@@ -906,7 +948,8 @@ mod tests {
         DiagnosticLog, DiagnosticRegistry, LOCK_FILE_NAME, LOG_FILE_NAME, MAX_FIELD_BYTES,
         MAX_LOG_BYTES, MAX_RECORD_BYTES, PREVIOUS_LOG_FILE_NAME, ProcessLock,
         ROTATION_BACKUP_FILE_NAME, RotationPoint, new_app_instance_id, open_log_directory,
-        recover_interrupted_rotation, rotate_paths_with_hook, sanitize,
+        record_receipt_write_degraded_with, recover_interrupted_rotation, rotate_paths_with_hook,
+        sanitize,
     };
     use uuid::Uuid;
 
@@ -927,6 +970,72 @@ mod tests {
         let identifier = new_app_instance_id();
         assert_eq!(Uuid::parse_str(&identifier).unwrap().get_version_num(), 7);
         assert_eq!(sanitize(&identifier), identifier);
+    }
+
+    /// `RECEIPT_WRITE_DEGRADED_REPORTED` is one process-wide static; every test below uses its own
+    /// fresh UUID as the component id so parallel test threads can never collide on it.
+    fn unique_test_component() -> String {
+        format!("test-component-{}", Uuid::new_v4().simple())
+    }
+
+    #[test]
+    fn receipt_write_degraded_event_fires_exactly_once_per_component_when_degraded() {
+        let component = unique_test_component();
+        let mut emitted = Vec::new();
+        for _ in 0..3 {
+            record_receipt_write_degraded_with(&component, true, |event, fields| {
+                emitted.push((event, fields.to_vec()));
+            });
+        }
+        assert_eq!(emitted.len(), 1, "repeated degraded reads must report once");
+        let (event, fields) = &emitted[0];
+        assert_eq!(*event, "engine-packages.receipt_write_degraded");
+        assert_eq!(fields, &[("component", component)]);
+    }
+
+    #[test]
+    fn receipt_write_degraded_event_never_fires_when_healthy() {
+        let component = unique_test_component();
+        let mut emitted: Vec<(&'static str, Vec<(&'static str, String)>)> = Vec::new();
+        for _ in 0..3 {
+            record_receipt_write_degraded_with(&component, false, |event, fields| {
+                emitted.push((event, fields.to_vec()));
+            });
+        }
+        assert!(
+            emitted.is_empty(),
+            "a healthy component must never be reported"
+        );
+
+        // A healthy read never consumes the per-component "already reported" slot: a later
+        // degraded read for the SAME component must still fire.
+        record_receipt_write_degraded_with(&component, true, |event, fields| {
+            emitted.push((event, fields.to_vec()));
+        });
+        assert_eq!(emitted.len(), 1);
+    }
+
+    #[test]
+    fn receipt_write_degraded_event_reports_each_distinct_component_independently() {
+        let first = unique_test_component();
+        let second = unique_test_component();
+        let mut emitted = Vec::new();
+        record_receipt_write_degraded_with(&first, true, |event, fields| {
+            emitted.push((event, fields.to_vec()));
+        });
+        record_receipt_write_degraded_with(&second, true, |event, fields| {
+            emitted.push((event, fields.to_vec()));
+        });
+        assert_eq!(
+            emitted.len(),
+            2,
+            "distinct components must each be reported"
+        );
+        let reported_components = emitted
+            .iter()
+            .map(|(_, fields)| fields[0].1.clone())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(reported_components, BTreeSet::from([first, second]));
     }
 
     #[test]

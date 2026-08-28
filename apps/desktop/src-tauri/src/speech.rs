@@ -49,6 +49,7 @@ use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
 use crate::background;
+use crate::diagnostics;
 use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::media_blob::MediaBlobStore;
@@ -242,9 +243,14 @@ impl SpeechRuntime {
             .map_err(|_| SpeechError::StateUnavailable)?
             .clone();
         if let Some(package_manager) = package_manager {
-            match package_manager
-                .resolve_for_launch(backend.package(), &PackageCancellationToken::default())
-            {
+            let component = backend.package();
+            let resolved =
+                package_manager.resolve_for_launch(component, &PackageCancellationToken::default());
+            diagnostics::record_receipt_write_degraded(
+                component.as_str(),
+                package_manager.receipt_write_degraded(component),
+            );
+            match resolved {
                 Ok(runtime) => {
                     let bootstrap = self.resolve_worker()?;
                     let paths = WorkerPaths {
