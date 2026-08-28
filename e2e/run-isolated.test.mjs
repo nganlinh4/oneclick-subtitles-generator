@@ -66,6 +66,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'nativeExportDecoded.journey.js',
     'renderCancelRetryExport.journey.js',
     'settingsSurface.journey.js',
+    'settingsVideoProcessingAndPrompts.journey.js',
     'srtOnlyMediaAttach.journey.js',
     'startup.journey.js',
     'subtitleCustomizationPreview.journey.js',

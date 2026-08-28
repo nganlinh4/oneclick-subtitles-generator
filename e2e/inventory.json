@@ -1130,7 +1130,15 @@
       "capability": "Segment duration, model, time format, waveform, video optimization, cookies, search, subtitle import, analysis, effects, thinking budgets, custom models and prompts save and affect only their documented consumers.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "settingsSurface previously traversed both tabs, persisted time format, the waveform preference and an edited prompt to SQLite and restored them in-process, but settingsSurface is itself now unproven (see its own entry); the settingsAppearancePersistence scenario separately carries their relaunch hydration and remains green. The broader claim that every listed control affects only its documented consumers remains unproven."
+      "note": "authored, unexecuted in this pass: journeys/settingsVideoProcessingAndPrompts.journey.js now exists and extends settingsSurface (itself currently unproven -- see its own entry; the settingsAppearancePersistence scenario separately carries relaunch hydration and remains green) with the eight settings it does not assert on (auto-split, favorite max length, Gemini effects, auto-import, YouTube search, download cookies + source, and a consumption-focused recheck of transcription_prompt). Its consumption claim is deliberately layered rather than exhaustive: this journey proves Settings Save mirrors the exact SQLite value into the exact localStorage key each production reader consumes (cited by file:line in the journey's header comment), and separately walks transcription_prompt through the real generate flow to the same missing-credential refusal geminiCredentialBoundary proves is side-effect-free. It does not execute buildAutoGenerateOptions or the download pipeline itself; that pure-function behavior is exercised independently by src/components/app/hooks/autoGenerateOptions.test.js. Segment duration, model selection, video optimization, thinking budgets and custom Gemini models remain out of this journey's scope. Status stays unproven until a real WDIO run against the guarded binary is recorded.",
+      "file": "journeys/settingsVideoProcessingAndPrompts.journey.js",
+      "oracles": [
+        "the real Video Processing and Prompts tab controls",
+        "durableSettings(root, EXTENDED_KEYS) against SQLite for eight settings settingsSurface does not assert on",
+        "a localStorage mirror read equal to the same SQLite values -- the exact key every cited production reader (buildAutoGenerateOptions, getTranscriptionPromptImpl, readDownloadCookiePreference, AppState) consumes",
+        "a live in-browser observable (window.geminiAnimationFrameId / .gemini-icon-container) for enable_gemini_effects instead of a storage citation",
+        "the credential-free generate-subtitles refusal geminiCredentialBoundary proves is side-effect-free, re-checked here for the exact edited prompt text"
+      ]
     },
     {
       "name": "settingsCacheManagement",
@@ -1155,7 +1163,17 @@
       "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "The earlier contract mismatch is resolved in source: the tab now advertises exactly the one catalog-verified F5-TTS v1 Base package with install/update/repair/remove/cancel/refresh, matching modelService and the native speech boundary; the old custom/alternate model dialogs are gone (CustomModelDialog survives only as a generic modal shell used by the split modal). Still unproven because no real-binary journey drives the visible tab through install, cancel, remove and repair against the signed delivery; narrationGeneration proves the package delivery itself."
+      "note": "authored, unexecuted in this pass: journeys/settingsNarrationModelManagement.journey.js and scenarios/settingsNarrationModelManagement.mjs now exist. On a genuinely empty engine-packages store the panel is proven to report state=missing truthfully; clicking Install is proven to start a real native job (the product's own Cancel control is the evidence); cancelling immediately is proven to return the panel to not-installed AND to leave the on-disk store byte-identical to its pre-install shape, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup as the mechanism. Remove and repair are NOT exercised (they would require completing the 4.59 GiB install first); update-in-place is also out of scope. Status stays unproven until a real run against the guarded binary is recorded.",
+      "file": "journeys/settingsNarrationModelManagement.journey.js",
+      "oracles": [
+        "the real Model Management tab controls and data-model-* attributes",
+        "an independent directory-shape digest of the engine-packages store, before install and after cancellation"
+      ],
+      "dependencies": {
+        "owner": "test-infrastructure",
+        "requires": "the settingsNarrationModelManagement scenario, which requests keepEnginePackages: false so this run does not share the persistent, cross-journey speech-package cache",
+        "note": "F5-TTS v1 Base is 4.59 GiB compressed / 6.9 GiB installed on Windows (crates/osg-speech/delivery/speech-packages.delivery.json); a full credential-free install-then-remove proof for this package is not attempted for that reason. media-tools/yt-dlp/deno already get full install+repair coverage from nativeToolsInstall; this journey is model management's equivalent for the one thing a 4.59 GiB package makes affordable: truthful not-installed status plus a real, bounded, cleanly-cancelled install start."
+      }
     },
     {
       "name": "settingsAppearanceAndPersistence",
@@ -1183,9 +1201,16 @@
       "recommendedJourney": "settingsAndRecovery",
       "dependencies": {
         "owner": "test-infrastructure",
-        "requires": "a disposable OSG_E2E_DATA_ROOT and exact before/after filesystem plus SQLite oracle",
-        "note": "Install/corruption/repair is green. Removal and destructive reset are deliberately not inferred from it."
-      }
+        "requires": "the settingsToolsRemoveAndFactoryReset scenario, which requests keepNativeTools: false so this run does not share the persistent, cross-journey native-tools cache",
+        "note": "settingsSurface (green) already proves factory reset preserves the active project/media/cues/native workspace identity and leaves the SHARED native-tools and engine-packages stores unchanged, and proves tool removal is gated behind a real second confirmation -- but it only ever CANCELS that confirmation and never stores a credential (it asserts credential_refs is empty as a pre-reset safety guard). This journey owns exactly those two gaps on an isolated profile: yt-dlp (the smallest catalog tool, 18 MB on Windows) is actually installed and actually removed, and one real local-only Genius credential is actually stored and actually cleared by clearCredentials()."
+      },
+      "file": "journeys/settingsToolsRemoveAndFactoryReset.journey.js",
+      "oracles": [
+        "the real Tools tab remove-request/remove-confirm controls and native tool row state",
+        "an independent directory-shape digest of a PRIVATE, non-shared native-tools store, before install and after removal",
+        "the real API Keys tab and a credential_refs row count read directly from SQLite, before and after factory reset"
+      ],
+      "note": "authored, unexecuted in this pass: journeys/settingsToolsRemoveAndFactoryReset.journey.js and scenarios/settingsToolsRemoveAndFactoryReset.mjs now exist. Removal is proven with a real install of yt-dlp followed by the real two-step remove-request/remove-confirm UI, with a before/after directory-shape digest proving the store returns to its exact pre-install shape (crates/osg-native-tools/src/manager.rs renames the installed version into .trash and cleans it up synchronously within the same removal call). Factory reset's credential-clearing claim is proven by storing one real Genius API key through the public API Keys tab (credential_refs goes 0 -> 1), resetting, and reading credential_refs back to 0. Workspace/project preservation is intentionally NOT re-proven here (settingsSurface already owns it, and this journey never opens a project, keeping it cheap and focused). Status stays unproven until a real run against the guarded binary is recorded."
     },
     {
       "name": "aboutAndDesktopUpdater",

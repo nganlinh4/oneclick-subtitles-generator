@@ -37,6 +37,8 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'reconnaissance.journey.js',
   'renderInterruptRecovery.journey.js',
   'settingsAppearancePersistence.journey.js',
+  'settingsNarrationModelManagement.journey.js',
+  'settingsToolsRemoveAndFactoryReset.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',
 ]);
