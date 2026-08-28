@@ -195,7 +195,13 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
       interval: 200,
       diagnostic: () => `no credential-free Genius refusal toast appeared: ${JSON.stringify(refusal)}`,
     });
-    assert.equal(refusal.errorToasts[0], GENIUS_MESSAGE, 'the Genius refusal toast has unexpected copy');
+    // A rendered toast's innerText carries its own chrome - the close control and the severity
+    // heading - around the message, so the exact copy is asserted as the toast's tail rather than
+    // its whole text. Anchored at the end, an extra or altered sentence still fails.
+    assert.ok(
+      refusal.errorToasts[0].replace(/\s+/gu, ' ').trim().endsWith(GENIUS_MESSAGE),
+      `the Genius refusal toast has unexpected copy: ${JSON.stringify(refusal.errorToasts[0])}`,
+    );
     assert.deepEqual(refusal.inlineErrors, [], 'the Genius refusal painted an inline error instead of only a toast');
     assert.equal(refusal.modalOpen, true, 'the failed lookup unexpectedly closed the manual subtitles modal');
     assert.equal(refusal.lyricsSectionOpen, true, 'the failed lookup unexpectedly hid the lyrics section');

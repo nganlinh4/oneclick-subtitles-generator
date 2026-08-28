@@ -32,7 +32,7 @@ const assertJourneyContract = (source) => {
   assert.match(source, /afterSave\.counts\.cues, before\.counts\.cues/u);
 
   // Genius refuses before any native call, as a toast (never inline), leaving state untouched.
-  assert.match(source, /refusal\.errorToasts\[0\], GENIUS_MESSAGE/u);
+  assert.match(source, /refusal\.errorToasts\[0\][\s\S]{0,160}endsWith\(GENIUS_MESSAGE\)/u);
   assert.match(source, /refusal\.inlineErrors, \[\]/u);
   assert.match(source, /afterGenius\.counts\.cues, before\.counts\.cues/u);
   assert.match(source, /afterGenius\.jobs, afterSave\.jobs/u);
@@ -60,7 +60,7 @@ test('the contract fails when any one load-bearing assertion is removed', () => 
   for (const needle of [
     "savedRows[0].userSubtitles, MANUAL_SAVED",
     "afterSave.counts.cues, before.counts.cues",
-    "refusal.errorToasts[0], GENIUS_MESSAGE",
+    "endsWith(GENIUS_MESSAGE)",
     "afterGenius.jobs, afterSave.jobs",
   ]) {
     const weakened = journey.replace(needle, '/* removed */');
