@@ -1291,6 +1291,20 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The canvas preview's frame-callback chain re-arms itself outside any exception guard, so a single throw in the capture/publish path would freeze the preview permanently while the transport clock kept advancing.",
+      "foundBy": "independent triage of a subtitleMaterialAndAnimation continuity failure on candidate 18",
+      "status": "open-fix-in-progress",
+      "severity": "major",
+      "note": "Latent and independent of the failure that exposed it: the rVFC callback runs captureCandidate/publishCandidate unguarded and only then calls schedule(), so any throw ends the self-perpetuating chain with no recovery and no typed refusal - precisely the watched frozen-video-with-advancing-seek-bar class. Being fixed with an always-re-arm guard that surfaces the exception through the typed publish channel plus a regression that fails without it."
+    },
+    {
+      "finding": "One continuity sample in a material-animation sweep showed visible pixels 0.447s behind the playback clock, past the 0.25s freshness gate, on an otherwise clean run.",
+      "foundBy": "subtitleMaterialAndAnimation on candidate 18, attempt 20260828052525050-72756-c487020d",
+      "status": "open-unreproduced",
+      "severity": "minor",
+      "note": "Triage refuted a witness-sampling explanation by code trace (both clocks are read synchronously on one thread; sourceTime is stamped inside the product's own drawImage interception), and found no product-code change to the preview since a clean pass 36 commits earlier. Publication and overlay revisions kept advancing and the 500ms plateau tripwire did not fire, so this reads as one bounded gap in decoded-frame delivery rather than a dead chain. Environment could not be confirmed either: no load telemetry or native waiting/stalled event was captured. Instrumentation now being added persists the full witness sample series plus an rAF-jitter probe on failure, which will separate a whole-thread stall from a video-delivery stall on any recurrence; the workflow stays retryable-not-green until it passes repeatedly with that instrumentation."
+    },
+    {
       "finding": "A bulk translation file rejected for a wrong extension, duplicate name or malformed JSON was refused silently, and a bulk run whose every file failed for a missing credential reported itself complete.",
       "foundBy": "bulkTranslationFileIO authoring source review",
       "status": "fixed",
