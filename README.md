@@ -335,6 +335,21 @@ management and is intentionally no longer the documented local path.
 checks the application degrades to a typed, actionable state rather than waiting forever. The
 WebDriver server is compiled only under the `e2e-automation` feature and is absent from production.
 
+`scripts/test-installed-windows.ps1` installs, launches, and uninstalls the real NSIS bundle; it
+only runs on an isolated CI runner (`$env:CI` and `$env:RUNNER_TEMP`). To run that same decisive
+journey on a developer machine instead, use `scripts/test-installed-local.ps1`: it refuses to start
+unless the app-data directory, uninstall registry key, default install directory, Start Menu
+shortcut, and Desktop shortcut are all independently verified absent, runs the unmodified CI script
+in a sandboxed child process under the managed local cache's `staging` lane, and then uninstalls
+and cleans up everything it created. `-WhatIf` prints the full planned side effects, including
+whether the guard would currently allow the run, without installing, launching, or writing
+anything. See [`docs/rewrite/INSTALLED_SMOKE_LOCAL.md`](docs/rewrite/INSTALLED_SMOKE_LOCAL.md) for
+the complete side-effect catalog. Its argument-handling and dry-run behavior are covered by:
+
+```powershell
+npm run test:installed-local
+```
+
 `compile` verifies source/repository invariants. The stricter target-specific `runtime-package`
 profile passes for Windows x64. Linux and macOS intentionally fail until equivalent native-tool,
 model, renderer, and real-device proofs are published; bypassing it does not validate those targets.

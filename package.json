@@ -42,6 +42,7 @@
     "cache:prune": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Prune -ProtectUnit apps-e2e",
     "cache:prune:apply": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Prune -ProtectUnit apps-e2e -Apply -Confirm:$false",
     "test:dev-cache": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.test.ps1 && node --test scripts/managed-build-context.test.js scripts/run-frontend-command.test.js scripts/run-managed-command.test.js scripts/run-tauri-cli.test.js scripts/windows-job-supervisor.test.js scripts/windows-process-identity.test.js scripts/frontend-config-guard.test.mjs scripts/managed-frontend-output.test.mjs",
+    "test:installed-local": "pwsh -NoProfile -NonInteractive -File scripts/test-installed-local.test.ps1",
     "test:frozen-css": "node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs",
     "test:render-parity": "node --test scripts/render-parity-fixture.test.mjs",
     "test:parity-matrix": "node --test scripts/parity-matrix.test.mjs",
