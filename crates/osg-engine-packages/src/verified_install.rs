@@ -95,7 +95,11 @@ impl FastReceipt {
 /// Writes (or rewrites) the fast-path receipt for `delivery`, whose complete content was just
 /// verified against the published tree at `version_root`. Best-effort by design: callers must
 /// treat a write failure as "the next status probe pays full verification again," never as a
-/// reason to fail an otherwise-successful install, adoption, or verification.
+/// reason to fail an otherwise-successful install, adoption, or verification. "Best-effort" does
+/// not mean "unobserved": every call site in `manager.rs` routes through
+/// `ManagedPackageManager::record_verified_receipt`, which records a failure in `ActivityState`
+/// so it can be surfaced through `receipt_write_degraded` instead of vanishing into a discarded
+/// `Result`.
 pub(crate) fn write(
     store_root: &Path,
     version_root: &Path,
@@ -428,5 +432,112 @@ mod tests {
         write(&store_root, &version_root, &delivery).unwrap();
         fs::write(version_root.join("runtime/unexpected.dll"), b"payload").unwrap();
         assert!(!try_fast_verify(&store_root, &version_root, &delivery));
+    }
+
+    /// Reproduces the exact E2E run-root layout -- a store root reached only through an NTFS
+    /// junction, exactly like `<run_root>/data/engine-packages` junctioned to the shared asset
+    /// cache (see `e2e/support/environment.js`'s `attachPersistentCache`) -- and proves the
+    /// receipt lands at, and is re-read from, the REAL physical location rather than somewhere
+    /// the junction hides. This was the leading hypothesis for why the shared E2E engine store
+    /// never accumulated a `.verified` directory; it does not hold; see `receipt_write_degraded`
+    /// in `manager.rs` for the fix that actually addresses the observed symptom.
+    #[cfg(windows)]
+    #[test]
+    fn a_receipt_written_through_a_run_root_junction_persists_at_the_real_physical_path_and_survives_a_second_store_initialization()
+     {
+        let temp = tempfile::tempdir().unwrap();
+        // The REAL, persistent location -- stands in for the shared E2E asset cache.
+        let real_cache = temp.path().join("real-shared-cache");
+        fs::create_dir_all(&real_cache).unwrap();
+        // A disposable "run root" whose `data` child junctions to the real cache, exactly as
+        // `attachPersistentCache` in e2e/support/environment.js does at `<run_root>/data/<name>`.
+        let run_root = temp.path().join("run-root-1");
+        fs::create_dir_all(run_root.join("data")).unwrap();
+        let junction = run_root.join("data").join("engine-packages");
+        create_junction(&junction, &real_cache);
+
+        let store_root_via_junction = junction.join("v1");
+        let canonical = crate::path_security::initialize_store(&store_root_via_junction)
+            .expect("initialize_store must succeed through the junction");
+
+        let version_root = canonical.join("parakeet").join("versions").join("1.0.0");
+        fs::create_dir_all(&version_root).unwrap();
+        let bytes = b"python-runtime-bytes";
+        fs::write(version_root.join("python.exe"), bytes).unwrap();
+        let delivery = PackageDelivery {
+            component: "parakeet".to_owned(),
+            platform: "windows-x86_64".to_owned(),
+            version: "1.0.0".to_owned(),
+            asset: "parakeet.zip".to_owned(),
+            source_url: "https://example.invalid/parakeet.zip".to_owned(),
+            size_bytes: 1,
+            sha256: "0".repeat(64),
+            unpacked_size_bytes: bytes.len() as u64,
+            python_relative_path: "python.exe".to_owned(),
+            primary_executable: true,
+            model_relative_path: None,
+            aligner_relative_path: None,
+            files: vec![DeliveryFile {
+                path: "python.exe".to_owned(),
+                size_bytes: bytes.len() as u64,
+                sha256: digest(bytes),
+                executable: false,
+                role: FileRole::Runtime,
+            }],
+            sources: Vec::new(),
+            manifest: None,
+        };
+        receipt::write(&version_root, &delivery).unwrap();
+
+        write(&canonical, &version_root, &delivery)
+            .expect("write() must succeed through the junction-resolved canonical root");
+
+        // Inspect the REAL physical location directly, bypassing the junction entirely -- exactly
+        // what a manual inspection of the shared `%LOCALAPPDATA%\...\engine-packages` cache does.
+        let physical_receipt = real_cache
+            .join("v1")
+            .join(VERIFIED_DIR)
+            .join("parakeet")
+            .join("1.0.0.json");
+        assert!(
+            physical_receipt.exists(),
+            "the receipt must land in the real shared cache, not somewhere the junction hides"
+        );
+
+        // A fresh `initialize_store` over the SAME physical root -- exactly what every later
+        // process does at startup -- must not disturb the receipt: `.verified` is recognized
+        // store metadata (`path_security::initialize_store`), not unrecognized component state.
+        let reinitialized = crate::path_security::initialize_store(&real_cache.join("v1"))
+            .expect("re-initializing the same physical store must succeed");
+        assert!(
+            try_fast_verify(&reinitialized, &version_root, &delivery),
+            "the receipt must survive the store's own recognized-state checks"
+        );
+
+        // A second, independent run root with its OWN fresh junction to the SAME real cache --
+        // exactly like the next E2E run getting a brand new disposable run root.
+        let run_root_2 = temp.path().join("run-root-2");
+        fs::create_dir_all(run_root_2.join("data")).unwrap();
+        let junction_2 = run_root_2.join("data").join("engine-packages");
+        create_junction(&junction_2, &real_cache);
+        let store_root_via_junction_2 = junction_2.join("v1");
+        let canonical_2 = crate::path_security::initialize_store(&store_root_via_junction_2)
+            .expect("initialize_store must succeed through the second junction");
+        let version_root_2 = canonical_2.join("parakeet").join("versions").join("1.0.0");
+        assert!(
+            try_fast_verify(&canonical_2, &version_root_2, &delivery),
+            "a second process reaching the same real store through a fresh junction must reuse the receipt"
+        );
+    }
+
+    #[cfg(windows)]
+    fn create_junction(link: &std::path::Path, target: &std::path::Path) {
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .status()
+            .expect("mklink must run");
+        assert!(status.success(), "mklink /J failed to create the junction");
     }
 }

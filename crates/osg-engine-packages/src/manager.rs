@@ -148,6 +148,12 @@ struct ActivityState<K> {
     leases: HashMap<K, usize>,
     verified_versions: HashMap<K, String>,
     verifying_versions: HashSet<(K, String)>,
+    /// Components whose most recent attempt to persist a fast-path verification receipt
+    /// (`verified_install::write`) failed. The write is best-effort by design -- a failure never
+    /// blocks install, adoption, or verification -- but that made a durably-broken write path
+    /// invisible from outside this crate. Cleared the next time a write for that component
+    /// succeeds. See `ManagedPackageManager::receipt_write_degraded`.
+    receipt_write_failed: HashSet<K>,
 }
 
 impl<K> Default for ActivityState<K> {
@@ -157,6 +163,7 @@ impl<K> Default for ActivityState<K> {
             leases: HashMap::new(),
             verified_versions: HashMap::new(),
             verifying_versions: HashSet::new(),
+            receipt_write_failed: HashSet::new(),
         }
     }
 }
@@ -327,6 +334,13 @@ impl EnginePackageManager {
         )?))
     }
 
+    /// `true` when the most recent attempt to persist `engine`'s fast-path verification receipt
+    /// failed. See `ManagedPackageManager::receipt_write_degraded`.
+    #[must_use]
+    pub fn receipt_write_degraded(&self, engine: EngineId) -> bool {
+        self.0.receipt_write_degraded(engine)
+    }
+
     #[must_use]
     pub fn statuses(&self) -> Vec<EnginePackageStatus> {
         catalog().iter().map(|info| self.status(info.id)).collect()
@@ -403,6 +417,13 @@ impl SpeechPackageManager {
         )?))
     }
 
+    /// `true` when the most recent attempt to persist `backend`'s fast-path verification receipt
+    /// failed. See `ManagedPackageManager::receipt_write_degraded`.
+    #[must_use]
+    pub fn receipt_write_degraded(&self, backend: SpeechPackageId) -> bool {
+        self.0.receipt_write_degraded(backend)
+    }
+
     #[must_use]
     pub fn statuses(&self) -> Vec<SpeechPackageStatus> {
         speech_catalog()
@@ -475,6 +496,14 @@ impl AssetPackageManager {
     #[must_use]
     pub fn status(&self) -> AssetPackageStatus {
         self.0.status(AssetPackageId::GeminiVoiceSamples)
+    }
+
+    /// `true` when the most recent attempt to persist this package's fast-path verification
+    /// receipt failed. See `ManagedPackageManager::receipt_write_degraded`.
+    #[must_use]
+    pub fn receipt_write_degraded(&self) -> bool {
+        self.0
+            .receipt_write_degraded(AssetPackageId::GeminiVoiceSamples)
     }
 
     pub fn install(
@@ -559,6 +588,14 @@ impl UiFontPackageManager {
     #[must_use]
     pub fn status(&self) -> UiFontPackageStatus {
         self.0.status(UiFontPackageId::GoogleSansFlex)
+    }
+
+    /// `true` when the most recent attempt to persist this package's fast-path verification
+    /// receipt failed. See `ManagedPackageManager::receipt_write_degraded`.
+    #[must_use]
+    pub fn receipt_write_degraded(&self) -> bool {
+        self.0
+            .receipt_write_degraded(UiFontPackageId::GoogleSansFlex)
     }
 
     pub fn install(
@@ -816,7 +853,7 @@ where
         match receipt::validate_integrity(&target, delivery, cancellation) {
             Ok(()) => {
                 self.mark_verified(component, delivery);
-                self.record_verified_receipt(delivery);
+                self.record_verified_receipt(component, delivery);
                 return Ok(self.status(component));
             }
             Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
@@ -926,6 +963,7 @@ where
         receipt::write(install.staging, install.effective)?;
         receipt::validate_structure(install.staging, install.effective)?;
         self.publish_staged(
+            install.component,
             install.staging,
             install.target,
             install.effective,
@@ -1073,7 +1111,7 @@ where
         let target = self.version_root(delivery);
         match receipt::validate_integrity(&target, delivery, cancellation) {
             Ok(()) => {
-                self.record_verified_receipt(delivery);
+                self.record_verified_receipt(component, delivery);
                 return Ok(self.status(component));
             }
             Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
@@ -1120,7 +1158,14 @@ where
             }
             receipt::write(staging, delivery)?;
             receipt::validate_structure(staging, delivery)?;
-            self.publish_staged(staging, &target, delivery, cancellation, progress)?;
+            self.publish_staged(
+                component,
+                staging,
+                &target,
+                delivery,
+                cancellation,
+                progress,
+            )?;
             self.mark_verified(component, delivery);
             Ok(())
         })();
@@ -1346,7 +1391,7 @@ where
         } else {
             let full = receipt::validate_integrity(&version_root, delivery, cancellation);
             if full.is_ok() {
-                let _ = verified_install::write(&self.0.root, &version_root, delivery);
+                self.record_verified_receipt(component, delivery);
             }
             full
         };
@@ -1382,9 +1427,31 @@ where
     /// status probe or launch can use the bounded fast path instead of repeating that full
     /// verification. Best-effort: the in-memory `verified_versions` cache this run already relies
     /// on is unaffected by a write failure here, which only costs a future cold probe its full
-    /// verification time again.
-    fn record_verified_receipt(&self, delivery: &PackageDelivery) {
-        let _ = verified_install::write(&self.0.root, &self.version_root(delivery), delivery);
+    /// verification time again. The outcome is still recorded in `ActivityState` (see
+    /// `receipt_write_degraded`) so a write that never succeeds does not stay invisible.
+    fn record_verified_receipt(&self, component: K, delivery: &PackageDelivery) {
+        let outcome = verified_install::write(&self.0.root, &self.version_root(delivery), delivery);
+        if let Ok(mut activity) = self.0.activity.lock() {
+            if outcome.is_ok() {
+                activity.receipt_write_failed.remove(&component);
+            } else {
+                activity.receipt_write_failed.insert(component);
+            }
+        }
+    }
+
+    /// `true` when the most recent attempt to persist `component`'s fast-path verification
+    /// receipt failed. The write never blocks install, adoption, or verification -- a failure
+    /// here only costs a future process's first status probe or launch its full content
+    /// verification again -- but that made a permanently failing write invisible from outside
+    /// this crate. Exposed so a caller that cares about that health (a diagnostics log, a support
+    /// bundle) can surface it after calling `status()` or attempting a launch.
+    #[must_use]
+    fn receipt_write_degraded(&self, component: K) -> bool {
+        self.0
+            .activity
+            .lock()
+            .is_ok_and(|activity| activity.receipt_write_failed.contains(&component))
     }
 
     fn begin_operation(&self, component: K) -> Result<OperationGuard<'_, K>> {
@@ -1462,6 +1529,7 @@ where
 
     fn publish_staged(
         &self,
+        component: K,
         staging: &Path,
         target: &Path,
         delivery: &PackageDelivery,
@@ -1482,7 +1550,7 @@ where
             Self::rollback_publish(staging, target, &mut quarantine)?;
             return Err(error);
         }
-        self.record_verified_receipt(delivery);
+        self.record_verified_receipt(component, delivery);
         if let Some(quarantine) = quarantine.take() {
             quarantine
                 .owner
@@ -2656,6 +2724,65 @@ mod tests {
             RemovalOutcome::Removed
         );
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn a_receipt_write_failure_is_reported_instead_of_silently_swallowed() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let fetcher = Arc::new(MemoryFetcher::new(fixture.archive, false));
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            fetcher,
+            Arc::new(TestCoordinator::default()),
+        );
+        assert!(!manager.receipt_write_degraded(EngineId::Parakeet));
+
+        // Occupy the exact directory `verified_install::write` needs to create
+        // (`.verified/<component>/`) with a plain file, so the write can never succeed no matter
+        // how many times it is retried -- exactly the "permanently failing cache write" the
+        // observability requirement exists for.
+        let verified_root = manager.0.0.root.join(".verified");
+        fs::create_dir_all(&verified_root).unwrap();
+        fs::write(verified_root.join("parakeet"), b"not a directory").unwrap();
+
+        let status = manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        // The best-effort receipt write never blocks the install it rides along with.
+        assert_eq!(status.state, EnginePackageState::Installed);
+        assert!(
+            !manager
+                .0
+                .0
+                .root
+                .join(".verified/parakeet/1.0.0.json")
+                .exists()
+        );
+        assert!(
+            manager.receipt_write_degraded(EngineId::Parakeet),
+            "a permanently failing receipt write must be reported, not silently swallowed"
+        );
+
+        // Clearing the obstruction and driving a fresh full verify (the in-memory
+        // `verified_versions` cache from `install` is cleared first, exactly like a later process
+        // starting cold) lets the next write succeed and clears the reported failure.
+        fs::remove_file(verified_root.join("parakeet")).unwrap();
+        manager.0.clear_verified(EngineId::Parakeet);
+        let _ = manager.status(EngineId::Parakeet);
+        assert!(
+            !manager.receipt_write_degraded(EngineId::Parakeet),
+            "a subsequent successful write must clear the previously reported failure"
+        );
+        assert!(
+            manager
+                .0
+                .0
+                .root
+                .join(".verified/parakeet/1.0.0.json")
+                .is_file()
+        );
     }
 
     #[test]
