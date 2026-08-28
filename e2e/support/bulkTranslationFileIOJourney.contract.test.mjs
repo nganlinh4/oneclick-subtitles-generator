@@ -34,7 +34,7 @@ const assertJourneyContract = (source) => {
   assert.match(source, /durableState\(root\), before/u);
   assert.match(source, /afterMalformed\.errorToasts, \[\]/u);
   assert.match(source, /afterMalformed\.warningToasts\.length, 1/u);
-  assert.match(source, /rejectionToast, \/\^3 file\\\(s\\\) skipped:\//u);
+  assert.match(source, /rejectionToast, \/\(\^\|\\s\)3 file\\\(s\\\) skipped:\//u);
 
   // Provider-translation refusal: no native job, and the journey documents (does not assume) the
   // silent per-file failure shape rather than a global toast.

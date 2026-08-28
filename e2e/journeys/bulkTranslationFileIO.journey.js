@@ -244,8 +244,10 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
     assert.equal(afterMalformed.warningToasts.length, 1, (
       `a rejected drop produced more than one toast -- update this journey if a toast storm is now intentional: ${JSON.stringify(afterMalformed.warningToasts)}`
     ));
-    const rejectionToast = afterMalformed.warningToasts[0];
-    assert.match(rejectionToast, /^3 file\(s\) skipped:/, rejectionToast);
+    // The rendered toast's innerText carries its close control and severity heading around the
+    // message, so the summary is matched where it actually begins rather than at character zero.
+    const rejectionToast = afterMalformed.warningToasts[0].replace(/\s+/gu, ' ').trim();
+    assert.match(rejectionToast, /(^|\s)3 file\(s\) skipped:/, rejectionToast);
     assert.match(rejectionToast, /bulk-pool-notes\.txt: unsupported file type \(only \.srt and \.json are supported\)/, rejectionToast);
     assert.match(
       rejectionToast,
