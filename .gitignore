@@ -73,12 +73,15 @@ ehthumbs.db
 Desktop.ini
 .directory
 
-# Generated content
-videos/
-subtitles/
-narration/output/
-narration/temp/
-narration/reference/
+# Generated content. These patterns name the legacy top-level output directories, so anchor
+# them: an unanchored `subtitles/` also matched e2e/fixtures/subtitles/, which silently kept two
+# committed-looking test fixtures out of the repository entirely -- every journey that imports
+# them passed here and would have failed in any fresh clone.
+/videos/
+/subtitles/
+/narration/output/
+/narration/temp/
+/narration/reference/
 
 # Temporary files
 .tmp/

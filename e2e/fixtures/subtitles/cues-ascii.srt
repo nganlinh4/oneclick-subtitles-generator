@@ -1,0 +1,11 @@
+1
+00:00:00,500 --> 00:00:03,000
+First cue for the preview
+
+2
+00:00:03,500 --> 00:00:07,000
+Second cue, plain text only
+
+3
+00:00:07,500 --> 00:00:11,000
+Last cue before the end
