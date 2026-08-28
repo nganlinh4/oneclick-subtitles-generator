@@ -910,25 +910,29 @@
     {
       "name": "geminiDocumentConsolidateAndSummarize",
       "kind": "workflow",
+      "file": "journeys/providerBoundaries.journey.js",
       "capability": "Complete-document and summary processing honor split duration, model and custom prompt, then save the exact provider result.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "translationProviderAndDocuments",
+      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: both Complete Document and Summarize route through src/services/gemini/documentRequest.js's runGeminiDocumentRequestResult -> src/platform/nativeGeminiText.js -> nativeGeminiJobLifecycle.js's createNativeGeminiJobRunner, the SAME credential wall geminiCredentialBoundary already proves for transcription; with the default Split Duration (0, 'No Split') the missing-credential NativeGeminiError is thrown UNWRAPPED, so both process types refuse through one bounded toast reading exactly 'The native Gemini operation could not be completed' (not the friendlier 'Please set your API key...' transcription shows), with no durable artifact and no jobs-table row. The credential-free Split Duration control (src/components/DownloadOptionsModal.js's #consolidation-split-duration-slider) is proven positively: real, native, and its live label updates. A SEPARATE finding is recorded rather than tested: a NONZERO split duration takes consolidationService.js's completeDocumentByChunks path, which catches each chunk's failure internally and resolves a {status:'refused'|'partial'} object instead of throwing, so LyricsDisplay.js's handleProcess never re-throws and DownloadOptionsModal shows NO toast at all for that path -- only the inline .consolidation-status line updates. This journey deliberately keeps Split Duration at 0 for its refusal proof, which is the one path that actually produces the actionable toast a customer would see by default.",
       "dependencies": {
         "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini credential and network access",
-        "note": "The format-only translation journey does not call document processing."
+        "requires": "a budget-bounded Gemini credential and network access to prove a SUCCESSFUL Complete Document / Summarize result honoring split duration, model and custom prompt",
+        "note": "The credential-free refusal for both process types (default Split Duration) and the split-duration control itself are now proven; provider SUCCESS remains gated on a real credential."
       }
     },
     {
       "name": "geminiTranscriptionSuccessAndWindowing",
       "kind": "workflow",
+      "file": "journeys/providerBoundaries.journey.js",
       "capability": "Gemini new and old transcription methods process the requested timeline windows, stream only fresh cues and durably recover or retry failed segments.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "providerTranscriptionAndRecovery",
+      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: both transcription methods are proven reachable and available on this non-Vercel desktop build (TranscriptionMethodSelectionOverlay.js's data-transcription-method/data-method-available attributes for BOTH 'new' and 'old'), and the request-window control itself (VideoProcessingModalGeminiPanel.js's real native #max-duration-slider, min 1/max 20 minutes) is proven real and actuatable. THE ACTUAL SPLIT COUNT CANNOT BE FORCED ABOVE 1 WITH THE PINNED REAL-MEDIA FIXTURE: openProjectWithMedia() opens a ~19-second clip, so even the tightest 1-minute cap computes exactly one request (src/utils/parallelProcessingUtils.js's splitSegmentForParallelProcessing returns a single non-parallel segment whenever totalDuration <= maxDurationPerRequest), and processingHandlers.js only ever dispatches its 'processing-ranges' event when the split count exceeds 1 -- so the customer-visible '.parallel-info' split preview and that event both correctly and provably stay absent here. The pure split MATH itself (the one function that decides window counts, with zero credential dependency) is proven directly and positively, including the exact 204s/60s -> 4-window case matching the real e2e/support/fourWindowAsrFixture.js shape, by the new src/utils/parallelProcessingUtils.test.js (npx vitest run, 5/5 passing). geminiCredentialBoundary.journey.js already proves the full modal-layout-containment refusal for the new method; this journey adds the incremental method-availability and window-control proof, then refuses the same way.",
       "dependencies": {
-        "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini credential, network access and a request ledger that can prove each selected window",
-        "note": "geminiCredentialBoundary proves fail-closed behavior only; generated-shaped fixture text is not provider success."
+        "owner": "user-or-test-secret-provider-or-test-infrastructure",
+        "requires": "EITHER a budget-bounded Gemini credential and network access to prove real multi-window provider requests, OR a purpose-built long-form media fixture (reusing e2e/support/fourWindowAsrFixture.js's existing 204-second real-speech clip through a dedicated scenario, the same shape scenarios/multiWindowAsrPersistence.mjs already uses for local ASR's four-window split) to force N>1 credential-free -- not built in this pass because the split arithmetic itself is now proven without either",
+        "note": "geminiCredentialBoundary proves fail-closed behavior only; this journey adds proof that both methods are offered and the request-window control is real and responsive. Provider success, real multi-request windowing, streaming and retry/recovery remain gated on a credential (or the unbuilt long-form fixture scenario for the credential-free multi-window OBSERVATION specifically)."
       }
     },
     {
@@ -974,13 +978,15 @@
     {
       "name": "providerTranslation",
       "kind": "workflow",
+      "file": "journeys/providerBoundaries.journey.js",
       "capability": "Gemini translates persisted cues into one or more selected target languages, streams progress, draws the chosen result and restores it after relaunch.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "translationProviderAndDocuments",
+      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: bulkTranslationFileIO.journey.js (also authored-unproven) already proves this exact credential wall for the BULK-only code path (useTranslationBulk.js's per-file catch collapsing into one refusal); this journey proves the separate, previously-untested MAIN-track path instead -- useTranslationState.js's direct, unwrapped translateSubtitles(...) call, reached by adding one real target language (no bulk files present) and clicking the same .translate-button. Both paths share the identical refusal text ('The native Gemini operation could not be completed', TranslationError.js's showErrorToast, never inline), and both leave the jobs table and the durable cue track untouched.",
       "dependencies": {
         "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini credential and network access",
-        "note": "translationPersistence proves credential-free Format mode, not semantic provider translation."
+        "requires": "a budget-bounded Gemini credential and network access to prove a SUCCESSFUL provider translation, its streaming progress, drawn preview and relaunch persistence",
+        "note": "translationPersistence proves credential-free Format mode. The credential-free refusal is now proven for BOTH the bulk pool (bulkTranslationFileIO) and the main track (this journey); provider SUCCESS, streaming and relaunch persistence remain gated on a credential."
       }
     },
     {
@@ -1215,25 +1221,29 @@
     {
       "name": "backgroundImageGeneration",
       "kind": "workflow",
+      "file": "journeys/providerBoundaries.journey.js",
       "capability": "Prompt and album-art flows generate a project-owned Gemini background image, preview it, save it and restore it.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "creativeGenerators",
+      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: BackgroundImageGenerator.js's generatePrompt() needs only lyrics text (no album art, no credential) and calls src/services/gemini/imageGenerationService.js's generateBackgroundPrompt -> the same unwrapped runNativeGeminiText/nativeGeminiJobLifecycle wall as transcription/translation/documents. Its raw NativeGeminiError text does not match ANY of src/components/background/errorMessages.js's specific patterns (api key / quota / HTTP status / CORS / network), so the customer-visible toast is the GENERIC fallback 'Generation failed' -- bounded and actionable (a toast, never inline), but honestly less specific than other features' copy; this journey asserts that real text rather than a nicer one the product does not produce. Both image-generate buttons (Generate with Same Prompt / Generate with Unique Prompts) are proven to stay disabled afterward because they still require a prompt this refusal never produced -- proving the gating chain without ever needing album art or the native file-selection dialog.",
       "dependencies": {
         "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini image credential/model and network access",
-        "note": "There is no product-level proof for any background-image action."
+        "requires": "a budget-bounded Gemini image credential/model and network access to prove a SUCCESSFUL generated prompt/image, its preview, save and restore",
+        "note": "The credential-free prompt-generation refusal, its generic toast text, and the resulting honest button-disabled state are now proven. Album-art selection (native file dialog) and provider SUCCESS remain unproven; album-art selection specifically needs its own OSG_E2E_MEDIA_SELECTION-bounded pass, not attempted here since the credential wall blocks image generation regardless."
       }
     },
     {
       "name": "backgroundMusicPromptDj",
       "kind": "workflow",
+      "file": "journeys/providerBoundaries.journey.js",
       "capability": "PromptDJ starts a native live-music session, updates weighted prompts, plays/pauses/stops/resets, records, previews and saves audio.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "creativeGenerators",
+      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: PromptDJ's refusal never reaches Rust at all. src/components/BackgroundMusicSection.jsx posts { type: 'pm-dj-native-init', available: getActiveGeminiCredentialId() !== null } into the embedded app on mount and on every credential-state change; promptdj-midi/index.tsx sets nativeAvailable from that message and mirrors it onto <prompt-dj-midi>'s own credentialAvailable reactive property. promptdj-midi/components/PromptDjMidi.ts's playPause() checks that property directly and, when false, dispatches an 'error' CustomEvent with the fixed text 'Please set your Gemini API key in the main app first.' BEFORE the 'play' event that would reach BackgroundMusicSection.jsx's native bridge is ever dispatched -- so clicking play/pause without a credential never calls startLiveMusicSession and never invokes a Tauri command; apps/desktop/src-tauri/src/live_music.rs records no diagnostic event at all, so SQLite silence (jobs table unchanged) is the only oracle, exactly matching the entirely-client-side shape of this refusal. Reading PromptDJ's own state required walking two same-origin iframes (BackgroundMusicSection.jsx's own srcDoc wrapper, then its nested #promptdj-inner) via contentDocument/contentWindow from browser.execute -- there was no existing harness precedent for this, so it is done explicitly and commented rather than hidden behind a shared helper. MIDI toggle, the collapse/expand panel and the Reset control are all real, native, plain-React elements in the OUTER document (never entering the iframe) and did not need this proof.",
       "dependencies": {
         "owner": "user-or-test-secret-provider-and-test-hardware",
-        "requires": "a Gemini Live Music credential/network; MIDI and microphone branches need explicitly isolated test devices",
-        "note": "The iframe and native live service currently have no real-binary workflow proof."
+        "requires": "a Gemini Live Music credential/network to prove a SUCCESSFUL session, weighted-prompt updates, play/pause/stop/reset and saved audio; MIDI and microphone branches additionally need explicitly isolated test devices",
+        "note": "The credential-free refusal -- proven entirely client-side, with its own bounded in-app toast and no native command ever invoked -- is now proven. A real live-music session, recording and saved audio remain gated on a credential."
       }
     },
     {
@@ -1353,13 +1363,15 @@
     {
       "name": "aboutAndDesktopUpdater",
       "kind": "workflow",
+      "file": "journeys/aboutAndUpdaterLifecycle.journey.js",
       "capability": "About reports the exact installed version/channel and the updater checks, verifies, downloads, installs and relaunches a signed newer build.",
-      "status": "unproven",
+      "status": "authored-unproven",
       "recommendedJourney": "installedUpdaterLifecycle",
+      "note": "Authored and statically validated by support/aboutAndUpdaterLifecycleJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: apps/desktop/src-tauri/src/updater.rs's update_channel_state() returns Disabled for cfg!(any(feature = \"unsigned-local-build\", feature = \"e2e-automation\")) BEFORE it ever checks the compiled minisign key, and that quiescent branch returns from app_update_check before build_updater is ever called -- every journey under e2e/journeys, including this one, therefore runs against a binary that makes NO network attempt for updates, deterministically. About (src/components/settings/tabs/AboutTab.js) reaches this exact command through the real native updater (src/utils/gitVersion.js's getLatestVersion() -> platform/startupUpdateCoordinator.js -> platform/updateService.js's checkDesktopUpdate(), not a legacy direct GitHub fetch), so on this binary it always renders the honest '.update-check-failed' / 'Unable to check for updates' branch, never a fabricated up-to-date or available state; this journey asserts that exact branch plus the current-version display (from the real app_health command) and the native diagnostic log's 'app-update.check_started' / 'check_completed' pair with outcome 'disabled'. THE UPDATER SEAM VERDICT: a real compile-time seam for a signed update DOES exist (ci-updater-fixture, a local self-signed HTTPS endpoint) and IS exercised for real by .github/workflows/updater-smoke.yml on its own isolated Windows CI runner (already tracked by installedGolden/installedUpdaterLifecycle below) -- but apps/desktop/src-tauri/src/lib.rs's compile_error!(\"the ci-updater-fixture and e2e-automation channels are mutually exclusive\") makes the two features impossible to combine in one binary, so NO journey under e2e/journeys can ever reach it. That is a structural, permanent boundary of this WebdriverIO harness, not a gap this pass left open.",
       "dependencies": {
         "owner": "release-owner",
-        "requires": "the private updater signing key, a signed old/new fixture pair and a non-legacy update manifest on an isolated Windows runner",
-        "note": "installedGolden proves install/relaunch/uninstall of one build. It does not prove the configured updater, whose live endpoint has historically referenced the legacy release."
+        "requires": "the private updater signing key, a signed old/new fixture pair and a non-legacy update manifest on an isolated Windows runner -- exactly what .github/workflows/updater-smoke.yml already exercises outside this e2e/journeys harness",
+        "note": "installedGolden proves install/relaunch/uninstall of one build. The compiled-disabled channel path (no network attempt, honest failed-check UI, correct diagnostic log) is now proven through this WebdriverIO harness; a real signed update through THIS harness is structurally impossible (see the compile_error above) and remains the sole responsibility of the separate ci-updater-fixture CI workflow and a published signed GitHub release."
       }
     }
   ],
