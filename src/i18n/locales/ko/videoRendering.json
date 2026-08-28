@@ -193,6 +193,7 @@
   "networkError": "네트워크 오류 발생",
   "reconnecting": "렌더링에 다시 연결 중...",
   "editCrop": "변환 편집",
+  "cropApplyFailed": "자르기를 저장하지 못했습니다",
   "toggleCrop": "변환 사용",
   "clearCrop": "변환 지우기",
   "rotateLeft": "왼쪽으로 90° 회전",

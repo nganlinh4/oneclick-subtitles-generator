@@ -158,6 +158,7 @@
   "networkError": "Network error occurred",
   "reconnecting": "Reconnecting to render...",
   "editCrop": "Edit transformations",
+  "cropApplyFailed": "The crop could not be saved",
   "toggleCrop": "Enable transformations",
   "clearCrop": "Clear transformations",
   "rotateLeft": "Rotate left 90°",

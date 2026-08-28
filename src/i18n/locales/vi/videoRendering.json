@@ -193,6 +193,7 @@
   "networkError": "Xảy ra lỗi mạng",
   "reconnecting": "Đang kết nối lại với quá trình render...",
   "editCrop": "Chỉnh sửa chuyển đổi",
+  "cropApplyFailed": "Không thể lưu vùng cắt",
   "toggleCrop": "Bật chuyển đổi",
   "clearCrop": "Xóa chuyển đổi",
   "rotateLeft": "Xoay trái 90°",
