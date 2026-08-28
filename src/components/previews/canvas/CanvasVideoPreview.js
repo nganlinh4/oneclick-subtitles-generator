@@ -441,19 +441,36 @@ const CanvasVideoPreview = ({
           // A browser is allowed to deliver a callback whose cancellation raced with dispatch. It
           // must not clear the handle armed for a newer seek generation.
           if (videoFrameHandle === assignedHandle) videoFrameHandle = null;
-          if (callbackGeneration === videoFrameGeneration
-              && videoRef.current === video
-              && Object.is(latestRef.current?.sourceKey, sourceKey)) {
-            const candidate = captureCandidate(video, metadata, callbackGeneration);
-            // A callback delivered while `seeking` can still describe the frame the decoder is
-            // leaving. Keep the visible composition frozen, but do not retain those pixels for the
-            // eventual `seeked` publication. The settled media element is snapshotted below.
-            if (candidate !== null && !video.seeking) publishCandidate(candidate);
-            else if (candidate === null && rendererRef.current !== null) {
-              scheduleCaptureRetry(video, callbackGeneration);
+          try {
+            if (callbackGeneration === videoFrameGeneration
+                && videoRef.current === video
+                && Object.is(latestRef.current?.sourceKey, sourceKey)) {
+              const candidate = captureCandidate(video, metadata, callbackGeneration);
+              // A callback delivered while `seeking` can still describe the frame the decoder is
+              // leaving. Keep the visible composition frozen, but do not retain those pixels for
+              // the eventual `seeked` publication. The settled media element is snapshotted below.
+              if (candidate !== null && !video.seeking) publishCandidate(candidate);
+              else if (candidate === null && rendererRef.current !== null) {
+                scheduleCaptureRetry(video, callbackGeneration);
+              }
             }
+          } catch (error) {
+            // `captureCandidate` already guards its own decoder read; this instead catches a throw
+            // from `publishCandidate` (or the `draw()` it can trigger) that a canvas/atlas failure
+            // can still raise. The `finally` below must still re-arm the chain, or one bad frame
+            // permanently disarms the self-perpetuating rVFC loop: the picture freezes here while
+            // the transport clock and seek bar keep advancing underneath it — exactly the watched
+            // 'frozen video, advancing audio/seek bar' defect. The generation check above already
+            // ran before this throw could happen, so the failure genuinely belongs to the frame
+            // just attempted, not a superseded one. While playing, the very next decoded frame
+            // retries on its own; while paused nothing else will, so this is reported as retryable
+            // to keep the toast's manual Retry action meaningful.
+            if (!stopped) {
+              publish({ status: 'error', code: canvasPreviewFailure(error).code, retryable: true });
+            }
+          } finally {
+            schedule();
           }
-          schedule();
         });
         videoFrameHandle = assignedHandle;
       }

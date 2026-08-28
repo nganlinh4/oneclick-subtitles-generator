@@ -208,6 +208,89 @@ describe('canvas preview geometry boundary', () => {
     expect(Number(canvas.dataset.osgSceneTime)).toBeCloseTo(2 / 30, 12);
   });
 
+  it('re-arms the rVFC chain and surfaces the failure when a frame publish throws', async () => {
+    // captureCandidate already guards the decoder read, but publishCandidate (and the draw() it
+    // triggers) was not exception-guarded. An unconditional `schedule()` after unguarded work means
+    // any throw there permanently disarmed the self-perpetuating rVFC chain: the canvas would freeze
+    // while the transport clock and seek bar kept advancing underneath it. This proves the chain
+    // re-arms after a throw (a) and that the failure reaches published state instead of vanishing (b).
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Windows NT 10.0 Chrome');
+    window.__OSG_FONT_READINESS__ = {
+      schema: 1,
+      state: 'ready',
+      family: MANAGED_FONT_PACKAGE.family,
+      epoch: 1,
+      reason: null,
+      retryable: false,
+      version: MANAGED_FONT_PACKAGE.version,
+    };
+    let readyState = 1;
+    let callbackSequence = 0;
+    const videoCallbacks = new Map();
+    const video = document.createElement('video');
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, value: 0.5 },
+      readyState: { configurable: true, get: () => readyState },
+      seeking: { configurable: true, value: false },
+      paused: { configurable: true, value: false },
+      requestVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn((callback) => {
+          callbackSequence += 1;
+          videoCallbacks.set(callbackSequence, callback);
+          return callbackSequence;
+        }),
+      },
+      cancelVideoFrameCallback: {
+        configurable: true,
+        value: vi.fn(handle => videoCallbacks.delete(handle)),
+      },
+    });
+    const fireVideoFrame = async (handle, mediaTime) => {
+      const callback = videoCallbacks.get(handle);
+      videoCallbacks.delete(handle);
+      await act(async () => callback(performance.now(), { mediaTime, presentedFrames: handle }));
+    };
+
+    // The renderer's draw call throws exactly once, simulating a canvas/atlas failure mid-publish.
+    drawFrame.mockImplementationOnce(() => {
+      throw new Error('renderer draw exploded mid-frame');
+    });
+
+    const states = [];
+    const { container } = render(<CanvasVideoPreview
+      videoRef={{ current: video }}
+      sourceKey="rvfc-throws-once"
+      playing
+      currentTime={0.5}
+      frameRate={30}
+      customization={defaultCustomization}
+      subtitles={[]}
+      resolution="1080p"
+      onStateChange={state => states.push(state)}
+    />);
+    const canvas = container.querySelector('canvas');
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalledTimes(1));
+    readyState = 4;
+
+    // Without the try/finally fix, this throw escapes the rVFC callback entirely: `schedule()`
+    // never runs again, `requestVideoFrameCallback` is never called a second time, and the test
+    // fails either on the re-arm assertion below or on an unhandled rejection from this very call.
+    await fireVideoFrame(1, 0.5);
+    expect(canvas.dataset.osgFrameRevision ?? '0').toBe('0');
+
+    // (b) the failure is visible in the published state, not swallowed.
+    await waitFor(() => expect(states).toContainEqual({
+      status: 'error', code: 'canvasPreviewRejected', retryable: true,
+    }));
+
+    // (a) the chain re-armed itself and a subsequent frame still publishes normally.
+    await waitFor(() => expect(video.requestVideoFrameCallback).toHaveBeenCalledTimes(2));
+    await fireVideoFrame(2, 0.533);
+    await waitFor(() => expect(canvas.dataset.osgFrameRevision).toBe('1'));
+    expect(states.at(-1)).toEqual({ status: 'empty', code: null });
+  });
+
   it('publishes the settled first frame when a paused element loads after rVFC was armed', async () => {
     // The only presentation of a paused element can predate the armed callback (and an occluded
     // surface may never composite another), so `loadeddata` on a settled paused element must use

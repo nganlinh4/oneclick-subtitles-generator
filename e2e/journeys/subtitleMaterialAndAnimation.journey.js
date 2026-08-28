@@ -2,6 +2,7 @@
 // binary stays off-screen/non-focusable/muted; every action goes through a shipped WebView control.
 
 import { strict as assert } from 'node:assert';
+import { Buffer } from 'node:buffer';
 import { join } from 'node:path';
 import process from 'node:process';
 import { isDeepStrictEqual } from 'node:util';
@@ -36,7 +37,9 @@ import {
   verifyCustomizationTransition,
 } from '../support/subtitleCustomizationFrameOracle.js';
 import { importSubtitleDocument, openProjectWithMedia } from '../support/workflow.js';
-import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
+import {
+  captureWorkflowStep, copyWorkflowArtifact, recordWorkflowDiagnostic,
+} from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'subtitle-material-and-animation';
 const CANVAS = '.video-preview-panel canvas[data-osg-preview-engine="canvas-atlas"]';
@@ -1093,13 +1096,22 @@ const startAnimationWitness = () => browser.execute((selector, phases) => {
     video.addEventListener(type, onMediaEvent);
     witness.listeners.push([type, onMediaEvent]);
   }
+  // Discriminator self-probe (no extra timer): each tick's own `performance.now()` against the
+  // previous tick's is already a free rAF-interval measurement, distinguishing 'the whole JS
+  // thread stalled' (this interval itself balloons) from 'only decoded-video delivery stalled'
+  // (this interval stays ~one frame while mediaTime/revision plateau).
+  let lastTickAtMs = witness.startedAt;
   const tick = () => {
     if (!witness.active) return;
+    const nowMs = performance.now();
+    const rafIntervalMs = nowMs - lastTickAtMs;
+    lastTickAtMs = nowMs;
     const mediaTime = video.currentTime;
     const phase = phases.find(candidate => mediaTime >= candidate.minimum && mediaTime <= candidate.maximum);
     witness.samples.push({
       phase: phase?.name ?? null,
-      atMs: performance.now() - witness.startedAt,
+      atMs: nowMs - witness.startedAt,
+      rafIntervalMs,
       mediaTime,
       revision: Number(canvas.dataset.osgFrameRevision ?? 0),
       overlayRebuilds: Number(canvas.dataset.osgOverlayRebuilds ?? 0),
@@ -1179,6 +1191,63 @@ const witnessThroughCue = async () => {
       witness.samples.filter(sample => sample.phase === phase.name),
     ])),
   });
+};
+
+const MAX_WITNESS_LEDGER_SAMPLES = 200;
+const MAX_WITNESS_LEDGER_MEDIA_EVENTS = 200;
+const MAX_WITNESS_LEDGER_BYTES = 512 * 1024;
+
+/**
+ * A continuity/completeness assertion failure inside `verifyAnimationObservation` otherwise takes
+ * the witness's full sample series and media-event ledger down with the failing process. The
+ * journey is the only place that still holds them at that instant, so it stages a bounded snapshot
+ * through the evidence publisher before the original error propagates. Each retained sample already
+ * carries its own `rafIntervalMs` (the jitter self-probe from `startAnimationWitness`'s tick loop),
+ * so this ledger separates 'the whole JS thread stalled' (rafIntervalMs balloons everywhere) from
+ * 'only decoded-video delivery stalled' (rafIntervalMs stays ~one frame while mediaTime/revision
+ * plateau) without any extra timer.
+ */
+const stageAnimationWitnessLedger = ({ animation, temporal }) => {
+  const samples = Array.isArray(temporal?.continuitySamples) ? temporal.continuitySamples : [];
+  const mediaEvents = Array.isArray(temporal?.mediaEvents) ? temporal.mediaEvents : [];
+  let keptSamples = samples.slice(-MAX_WITNESS_LEDGER_SAMPLES);
+  const keptMediaEvents = mediaEvents.slice(-MAX_WITNESS_LEDGER_MEDIA_EVENTS);
+  const buildDocument = () => ({
+    schemaVersion: 1,
+    animation: { id: animation.id, type: animation.type, easing: animation.easing },
+    totalSamples: samples.length,
+    totalMediaEvents: mediaEvents.length,
+    retainedSamples: keptSamples.length,
+    rafIntervalMsSeries: keptSamples.map(sample => sample.rafIntervalMs ?? null),
+    samples: keptSamples,
+    mediaEvents: keptMediaEvents,
+  });
+  let document = buildDocument();
+  // The per-field caps above bound the ordinary case; this is the same defensive byte ceiling the
+  // rest of this evidence lane applies (see MAX_APP_LOG_TAIL_BYTES in workflowEvidence.js), so one
+  // pathological sample (an unbounded visibleErrors/recordedRefusals array) still cannot make the
+  // written evidence unbounded.
+  while (
+    Buffer.byteLength(JSON.stringify(document), 'utf8') > MAX_WITNESS_LEDGER_BYTES
+    && keptSamples.length > 10
+  ) {
+    keptSamples = keptSamples.slice(Math.ceil(keptSamples.length / 2));
+    document = buildDocument();
+  }
+  try {
+    recordWorkflowDiagnostic({
+      workflow: WORKFLOW,
+      name: 'animation-witness-ledger',
+      file: 'diagnostics/animation-witness-ledger.json',
+      description: 'The last witness samples (with per-sample rAF interval) and media-event '
+        + 'ledger for the failing animation case, captured before the continuity/completeness '
+        + 'assertion that failed unwound the process.',
+      document,
+    });
+  } catch {
+    // Diagnostic staging stays best-effort: it must never replace or mask the real assertion
+    // failure the caller is about to rethrow.
+  }
 };
 
 const captureSourceControl = async (root, animation, phase, mediaTime, sourceBaseline) => {
@@ -1481,22 +1550,32 @@ describe('subtitle material and animation real preview', () => {
         minimumChangedPixels: 64,
         minimumChangedRatio: 0.000_1,
       });
-      const observation = verifyAnimationObservation({
-        animation,
-        beforeRevision: caseBeforeScene.sceneRevision,
-        expectedProjectId: projectId,
-        expectedTypeCustomization,
-        expectedFinalCustomization,
-        typeScene,
-        easingScene,
-        continuitySamples: temporal.continuitySamples,
-        samplesByPhase: temporal.samplesByPhase,
-        frameProofs,
-        phaseTransitions,
-        entryChange,
-        transientTransitions: temporal.transientTransitions,
-        mediaEvents: temporal.mediaEvents,
-      });
+      let observation;
+      try {
+        observation = verifyAnimationObservation({
+          animation,
+          beforeRevision: caseBeforeScene.sceneRevision,
+          expectedProjectId: projectId,
+          expectedTypeCustomization,
+          expectedFinalCustomization,
+          typeScene,
+          easingScene,
+          continuitySamples: temporal.continuitySamples,
+          samplesByPhase: temporal.samplesByPhase,
+          frameProofs,
+          phaseTransitions,
+          entryChange,
+          transientTransitions: temporal.transientTransitions,
+          mediaEvents: temporal.mediaEvents,
+        });
+      } catch (error) {
+        // The oracle's continuity/completeness assertions otherwise take the witness's full sample
+        // series and media-event ledger down with the failing process, leaving only the single
+        // failing sample in the thrown message. The journey is the only place that still holds the
+        // full witness at this instant.
+        stageAnimationWitnessLedger({ animation, temporal });
+        throw error;
+      }
       animationObservations.push(observation);
       previousEntry = frameProofs.entry.composed;
 

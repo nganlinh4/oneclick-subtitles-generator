@@ -1609,6 +1609,35 @@ export const recordWorkflowTestFailure = ({ workflow, test, error, capturedAt })
   }
 };
 
+/**
+ * Persist one arbitrary, already-bounded JSON diagnostic that a journey staged for itself — the
+ * same stage/register/commit mechanism as `recordWorkflowTestFailure` above and the failure-hook
+ * diagnostics further down, generalized so a journey can call it directly instead of growing its
+ * own copy of the operation/manifest plumbing. Used when a journey holds witness or ledger data in
+ * memory that would otherwise die with the process the instant a domain assertion throws; the
+ * caller owns bounding and redacting `document` before calling this.
+ */
+export const recordWorkflowDiagnostic = ({
+  workflow, name, file, description, document,
+}) => {
+  safeSegment(name, 'diagnostic name');
+  const { directory } = activeAttempt(workflow);
+  const manifest = readActiveManifest(workflow);
+  assert.equal(manifest.attempt.outcome, 'running', 'diagnostic belongs to a finalized attempt');
+  const operation = createAttemptOperation({
+    workflow, attemptId: manifest.attempt.id, directory,
+  });
+  stageAttemptOperationContents(operation, file, `${JSON.stringify(document, null, 2)}\n`);
+  manifest.diagnostics = manifest.diagnostics.filter((entry) => entry.name !== name);
+  manifest.diagnostics.push({ name, file, description });
+  manifest.diagnostics.sort((left, right) => left.name.localeCompare(right.name));
+  try {
+    writeManifest(manifest, { operation });
+  } finally {
+    discardUncommittedAttemptOperation(operation);
+  }
+};
+
 export const collectVisibleStateFromPage = () => {
   const boundedHorizontalScroll = (value) => {
     const offset = Number(value);
