@@ -3,6 +3,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
+import {
+  MIN_FREE_RESERVE_BYTES,
+  SPEECH_DELIVERY_CATALOG,
+  speechPackageInstallRequirement,
+} from './speechPackageCapacity.js';
+
 const journeySource = readFileSync(
   resolve(import.meta.dirname, '..', 'journeys', 'settingsNarrationModelManagement.journey.js'),
   'utf8',
@@ -49,4 +55,35 @@ test('the not-installed claim and the cancellation claim each have an independen
   assert.match(journeySource, /emptyBaseline/u);
   assert.match(journeySource, /afterCancelDigest/u);
   assert.match(journeySource, /assert\.deepEqual\(\s*afterCancelDigest,\s*emptyBaseline/u);
+});
+
+test('the install claim is gated on the same disk requirement the native installer enforces', () => {
+  assert.match(journeySource, /speechPackageInstallRequirement/u);
+  assert.match(journeySource, /availableStoreBytes\(enginePackagesRoot\)/u);
+  assert.match(journeySource, /capacity\.sufficient/u);
+  assert.match(
+    journeySource,
+    /assert\.deepEqual\(\s*afterRefusalDigest,\s*emptyBaseline/u,
+    'the refusal branch needs the same independent filesystem oracle as the cancellation branch',
+  );
+});
+
+test('the mirrored requirement matches the reviewed Windows F5-TTS delivery release', () => {
+  const requirement = speechPackageInstallRequirement('f5-tts', { platform: 'windows-x86_64' });
+  const catalog = JSON.parse(readFileSync(SPEECH_DELIVERY_CATALOG, 'utf8'));
+  const release = catalog.platforms['windows-x86_64'].backends
+    .find(({ id }) => id === 'f5-tts').releases[0];
+  assert.equal(requirement.deliveryAvailable, true);
+  assert.equal(requirement.version, release.version);
+  assert.equal(
+    requirement.requiredBytes,
+    release.sizeBytes + release.unpackedSizeBytes + MIN_FREE_RESERVE_BYTES,
+  );
+});
+
+test('a target the catalog does not serve is reported unavailable, never as an installable offer', () => {
+  const requirement = speechPackageInstallRequirement('f5-tts', { platform: 'linux-x86_64' });
+  assert.equal(requirement.deliveryAvailable, false);
+  assert.equal(requirement.requiredBytes, 0);
+  assert.equal(speechPackageInstallRequirement('not-a-backend').deliveryAvailable, false);
 });

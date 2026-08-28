@@ -1485,15 +1485,31 @@ export const finalizeWorkflowEvidence = ({
   assert.ok(outcome === 'pass' || outcome === 'fail', 'attempt outcome must be pass or fail');
   const manifest = readAttemptManifest(workflow, attemptId);
   assert.equal(manifest.attempt.outcome, 'running', 'workflow evidence attempt was already finalized');
+  // Captured before the fields below are overwritten: a non-null failure here can only come from
+  // recordWorkflowTestFailure, which already names the exact assertion that failed.
+  const recordedTestFailure = manifest.attempt.failure;
   manifest.attempt.endedAt = endedAt;
   manifest.attempt.outcome = outcome;
   manifest.attempt.exitStatus = exitStatus;
   manifest.attempt.signal = signal;
+  const keepsRecordedFailure = outcome === 'fail' && recordedTestFailure !== null;
   if (failure !== null) {
-    manifest.attempt.failure = boundedFailureText(failure, MAX_ATTEMPT_FAILURE).value;
+    // Multi-process scenarios wrap the runner and finalize with their own summary ("the narration
+    // model management process failed"). That names the process, never the assertion, so it must
+    // not replace a recorded test failure -- a failure that does not name itself costs a whole
+    // diagnosis cycle. Keep the precise text and append the wrapper's only when it adds something.
+    const scenarioFailure = boundedFailureText(failure, MAX_ATTEMPT_FAILURE).value;
+    if (!keepsRecordedFailure) {
+      manifest.attempt.failure = scenarioFailure;
+    } else if (!recordedTestFailure.includes(scenarioFailure)) {
+      manifest.attempt.failure = boundedFailureText(
+        `${recordedTestFailure} [scenario: ${scenarioFailure}]`,
+        MAX_ATTEMPT_FAILURE,
+      ).value;
+    }
   } else if (outcome === 'pass') {
     manifest.attempt.failure = null;
-  } else if (manifest.attempt.failure === null) {
+  } else if (recordedTestFailure === null) {
     const terminal = signal === null
       ? `exit status ${exitStatus ?? 'unknown'}`
       : `signal ${signal}`;

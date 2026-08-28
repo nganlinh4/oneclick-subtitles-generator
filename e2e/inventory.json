@@ -1300,14 +1300,17 @@
       "kind": "shell-visual",
       "file": "journeys/settingsSurface.journey.js",
       "capability": "Settings opens and every visible tab renders without blank suspension, errors, clipping or overflow.",
-      "status": "unproven",
+      "status": "green",
       "recommendedJourney": "settingsAndRecovery",
+      "evidenceWorkflow": "settings-surface",
+      "attemptId": "20260828085946803-74200-9934dfad",
+      "binaryDigest": "8f9d737c50a68e3c03c71f37c4b20af70fd34e54d06e48686232946ccaa816a6",
       "oracles": [
         "the actual Header Settings control and modal DOM in the guarded real binary",
         "seven ordered screenshots covering every customer-visible tab",
         "captured browser errors, alerts and overflow state"
       ],
-      "note": "Demoted 2026-08-28: both retained evidence/settings-surface attempts (2026-08-27, 10:11 and 13:00) fail with 'Native tool inventories never settled before their screenshot', and there is no latest-success pointer. An earlier run did reach all seven tab surfaces in 10.9 seconds and exposed separate stale-banner, deleted-renderer cache and unsupported-model defects (tracked independently), but that is no longer the current evidence state."
+      "note": "Re-promoted 2026-08-28: the demotion note this replaces was written at 03:03Z and never revisited. evidence/settings-surface now holds a passing attempt (20260828085946803-74200-9934dfad, ended 09:01:28Z, 16 published steps) and a latest-success.json pointing at it. The two failures it cites were both transient and both are now understood: 'Native tool inventories never settled before their screenshot' is the Tools tab's first-probe-per-process integrity hash over the SHARED engine-packages store exceeding the journey's 600 s bound (src/components/engines/EnginesPanel.js:85-113 always settles each group to ready/failed, so this is a slow probe, never a permanent 'checking'), and 'factory reset refuses a non-disposable run root' was a run-root policy mismatch. The stale-banner, deleted-renderer-cache and unsupported-model defects remain tracked independently."
     },
     {
       "name": "settingsCredentialsAndYoutubeOAuth",
@@ -1360,11 +1363,12 @@
       "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "authored, unexecuted in this pass: journeys/settingsNarrationModelManagement.journey.js and scenarios/settingsNarrationModelManagement.mjs now exist. On a genuinely empty engine-packages store the panel is proven to report state=missing truthfully; clicking Install is proven to start a real native job (the product's own Cancel control is the evidence); cancelling immediately is proven to return the panel to not-installed AND to leave the on-disk store byte-identical to its pre-install shape, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup as the mechanism. Remove and repair are NOT exercised (they would require completing the 4.28 GiB install first); update-in-place is also out of scope. Status stays unproven until a real run against the guarded binary is recorded.",
+      "note": "Step 01 (a genuinely empty engine-packages store is reported state=missing truthfully) is proven by real published evidence. The install half was corrected 2026-08-28 after attempt 20260828130450520-39784-291c01a9 failed with 'clicking Install never produced a cancellable operation': the journey had assumed Install always starts a job, but crates/osg-engine-packages/src/manager.rs:1620-1632 refuses the operation before its first delivery byte unless the store's volume holds sizeBytes + unpackedSizeBytes + a 256 MiB reserve (11,806,796,107 bytes / 11.00 GiB for the Windows F5-TTS release). The runner host had 9.70 GiB, so the job started and died in the same instant and the Cancel control could never render. That is the product correctly refusing a download it cannot finish, not a defect. The journey now measures the real requirement against the real volume through e2e/support/speechPackageCapacity.js and proves whichever honest outcome the host can reach: below the line, step 02-refused-without-room asserts the status stays truthfully not-installed, the refusal is announced to the customer, and the store digest is byte-identical to its pre-click shape; at or above the line, the original 02-install-begun / 03-cancelled-cleanly start-and-cancel proof runs unchanged, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup. Remove, repair and update-in-place stay out of scope. The opaque copy the refusal branch observes is recorded separately in knownProductFindings. Status stays unproven until a real run against the guarded binary records both steps.",
       "file": "journeys/settingsNarrationModelManagement.journey.js",
       "oracles": [
         "the real Model Management tab controls and data-model-* attributes",
-        "an independent directory-shape digest of the engine-packages store, before install and after cancellation"
+        "an independent directory-shape digest of the engine-packages store, before install and after cancellation or refusal",
+        "the reviewed delivery catalog's own size fields measured against the real free space on the package store's volume"
       ],
       "dependencies": {
         "owner": "test-infrastructure",
@@ -1793,6 +1797,13 @@
       "status": "fixed",
       "severity": "major",
       "note": "The host clamps a tail word's end to the decoded duration but permits its start to equal it, so a segment built from that word carried zero extent. The WebView boundary validator rightly refuses a payload holding a no-extent cue, the aggregate errored after the native job had already recorded success, and the visible rows reset to the empty baseline. The host now publishes only segments with extent; a Rust regression pins the exact offending payload (start 1000ms, end clamped to 1000ms) and fails without the fix."
+    },
+    {
+      "finding": "Installing a narration model package on a machine without room for it fails instantly with only 'The narration model operation failed.' — the customer is never told the reason is disk space, even though the exact reason reached the WebView.",
+      "foundBy": "settingsNarrationModelManagement, attempt 20260828130450520-39784-291c01a9 (Install clicked; state stayed missing/Not installed with no cancellable operation for the full 120 s wait)",
+      "status": "open",
+      "severity": "minor",
+      "note": "REFUSING is correct: crates/osg-engine-packages/src/manager.rs:1620-1632 checks free space before fetching a single delivery byte and fails with PackageError::InsufficientSpace unless the volume holds sizeBytes + unpackedSizeBytes + a 256 MiB reserve (manager.rs:40). For the Windows F5-TTS release that is 4,591,914,866 + 6,946,445,785 + 268,435,456 = 11,806,796,107 bytes (11.00 GiB); the runner host had 10,420,461,568 (9.70 GiB), 1.29 GiB short, so the job started and died in the same instant and status.operation was never observable. The gap is only in what the customer is told. The failure code IS preserved across the boundary — src/platform/speechPackageService.js:289-301 keeps 'packageInsufficientSpace' in error.code while replacing the message — but src/components/settings/modelManagement/ModelManagementTab.js:137-146 maps every onFailed/onProtocolError to one generic settings.modelManagement.actionFailed toast and discards the code. A per-code message (at minimum for packageInsufficientSpace, packageNetwork and packageIntegrity) would turn a dead end into an actionable one. Needs i18n copy in en/vi/ko, so it is an owner-sized change, not a test-side fix."
     }
   ],
   "fixtures": {

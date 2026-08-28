@@ -161,6 +161,51 @@ test('persists failed test details before WebView capture and preserves them thr
   }
 });
 
+test('a scenario wrapper summary never erases the recorded assertion', () => {
+  const workflow = workflowForTest('scenario-summary');
+  const root = workflowEvidenceDirectory(workflow);
+  const scratch = mkdtempSync(join(tmpdir(), 'osg-evidence-scenario-summary-'));
+  const binary = join(scratch, 'osg-e2e.exe');
+  const priorAttempt = process.env.OSG_E2E_EVIDENCE_ATTEMPT;
+  writeFileSync(binary, 'guarded');
+  try {
+    const attempt = beginWorkflowEvidence({
+      workflow,
+      journey: 'legacy-multi-process-scenario',
+      iteration: 1,
+      binaryPath: binary,
+    });
+    process.env.OSG_E2E_EVIDENCE_ATTEMPT = attempt.id;
+    recordWorkflowTestFailure({
+      workflow,
+      test: { title: 'starts a cancellable install', parent: 'narration model package' },
+      error: {
+        name: 'Error',
+        message: 'clicking Install never produced a cancellable operation',
+      },
+      capturedAt: '2026-08-26T00:01:00.000Z',
+    });
+    const finalized = finalizeWorkflowEvidence({
+      workflow,
+      attemptId: attempt.id,
+      outcome: 'fail',
+      exitStatus: 1,
+      failure: 'the narration model management process failed',
+      endedAt: '2026-08-26T00:02:00.000Z',
+    });
+    assert.match(finalized.attempt.failure, /clicking Install never produced a cancellable operation/u);
+    assert.match(finalized.attempt.failure,
+      /\[scenario: the narration model management process failed\]/u,
+      'the wrapper summary must be kept alongside, not instead of, the recorded assertion');
+  } finally {
+    if (priorAttempt === undefined) delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;
+    else process.env.OSG_E2E_EVIDENCE_ATTEMPT = priorAttempt;
+    rmSync(root, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
+    refreshWorkflowEvidenceIndex();
+  }
+});
+
 test('failed finalization never leaves a null failure when no test hook ran', () => {
   const workflow = workflowForTest('failure-fallback');
   const root = workflowEvidenceDirectory(workflow);

@@ -19,6 +19,18 @@
 // Full install-then-remove-then-repair coverage for a small package already exists
 // (nativeToolsInstall.journey.js, media-tools/yt-dlp/deno). The size constraint above is why this
 // journey does not attempt the same for F5-TTS; see e2e/inventory.json for the recorded rationale.
+//
+// Claims 2 and 3 have a host precondition the product enforces and this journey must respect.
+// crates/osg-engine-packages/src/manager.rs:1620-1632 refuses an install -- before the first
+// delivery byte is fetched -- unless the package store's volume holds the compressed download plus
+// the unpacked tree plus a 256 MiB reserve. For the Windows F5-TTS release that is ~11.0 GiB. On a
+// host below that line the job starts and dies in the same instant, so `status.operation` is never
+// observable and the Cancel control the proof depends on can never render. That is the product
+// correctly refusing a multi-gigabyte download it cannot finish, not a defect, so this journey
+// measures the real requirement against the real volume FIRST and proves whichever honest outcome
+// this host can actually reach: the start-and-cancel proof where there is room, and the refusal
+// proof (truthful status preserved, not one orphaned byte written) where there is not. Both
+// branches record the measured numbers, so the evidence always says which claim it carries.
 /* global browser, describe, document, it */
 
 import { strict as assert } from 'node:assert';
@@ -28,11 +40,13 @@ import process from 'node:process';
 import { clickControl, openEditor } from '../support/editor.js';
 import { clickSettingsControl, revealSettingsSection } from '../support/settingsControls.js';
 import { directoryShapeDigest } from '../support/settingsSurfaceOracle.js';
+import { availableStoreBytes, speechPackageInstallRequirement } from '../support/speechPackageCapacity.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'settings-narration-model-management';
 const PHASE = process.env.OSG_E2E_MODEL_MANAGEMENT_PHASE;
 const PANEL = '.narration-model-panel';
+const BACKEND = 'f5-tts';
 
 const openModelManagement = async () => {
   await openEditor();
@@ -72,6 +86,48 @@ const waitForPanel = async (predicate, diagnostic, timeout = 60_000) => {
   return last;
 };
 
+/**
+ * Exactly the selector and normalization the evidence publisher uses
+ * (support/workflowEvidence.js's collectVisibleStateFromPage), so text observed here matches an
+ * `allowVisibleProblems.errorToasts` entry character for character.
+ */
+const visibleErrorToasts = () => browser.execute(() => [...new Set(
+  [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
+    .map((node) => (node.innerText || node.textContent || '').trim().replace(/\s+/gu, ' '))
+    .filter(Boolean),
+)]);
+
+/**
+ * Wait for the product's honest refusal of an install this host cannot hold: the panel stays at its
+ * truthful not-installed status while a NEW customer-visible error appears. Error toasts are
+ * accumulated across polls because a toast retires on its own timer (8 s,
+ * src/utils/toastUtils.js:76) and must not be missed by an unlucky sample.
+ */
+const waitForRefusal = async (toastsBeforeClick, timeout = 120_000) => {
+  const announced = new Set();
+  let last = null;
+  try {
+    await browser.waitUntil(async () => {
+      last = await panelSnapshot();
+      for (const toast of await visibleErrorToasts()) {
+        if (!toastsBeforeClick.includes(toast)) announced.add(toast);
+      }
+      return last !== null && !last.cancelVisible && last.state === 'missing' && announced.size > 0;
+    }, {
+      timeout,
+      interval: 250,
+      timeoutMsg: 'the narration model panel never reached an honest refusal',
+    });
+  } catch (error) {
+    throw new Error(
+      'clicking Install on a host below the package\'s disk requirement neither started an '
+      + `operation nor told the customer anything: ${JSON.stringify({ panel: last, announced: [...announced] })}`,
+      { cause: error },
+    );
+  }
+  return { panel: last, announced: [...announced] };
+};
+
 describe('the narration model package honestly reports and safely cancels on an empty profile', () => {
   it('reports not-installed truthfully, then starts and cleanly cancels a real install', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
@@ -80,6 +136,10 @@ describe('the narration model package honestly reports and safely cancels on an 
 
     const enginePackagesRoot = join(root, 'data', 'engine-packages');
     const emptyBaseline = directoryShapeDigest(enginePackagesRoot);
+    // Measured against the same catalog release and the same volume the native installer checks.
+    const requirement = speechPackageInstallRequirement(BACKEND);
+    const freeBytes = availableStoreBytes(enginePackagesRoot);
+    const capacity = { ...requirement, freeBytes, sufficient: freeBytes >= requirement.requiredBytes };
 
     await openModelManagement();
     const notInstalled = await waitForPanel(
@@ -91,18 +151,61 @@ describe('the narration model package honestly reports and safely cancels on an 
     assert.equal(notInstalled.installVisible, true, 'a not-installed package did not offer Install');
     assert.equal(notInstalled.cancelVisible, false);
     assert.equal(notInstalled.removeVisible, false);
+    // 'missing' is only a truthful state when the catalog really does offer this target a release
+    // (src/platform/speechPackageService.js:249-257 ties state to deliveryAvailable). An empty
+    // catalog entry must surface as 'unavailable' with no Install at all, never as an offer.
+    assert.equal(
+      requirement.deliveryAvailable,
+      true,
+      'the panel offered Install for a target whose reviewed delivery catalog has no release',
+    );
     await revealSettingsSection(PANEL);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-truthfully-not-installed',
       description: 'On a genuinely empty package store, the panel reports "not installed" and offers only Install.',
-      details: { notInstalled, emptyBaseline },
+      details: { notInstalled, emptyBaseline, capacity },
       focusSelector: PANEL,
     });
 
+    const toastsBeforeClick = await visibleErrorToasts();
     // clickSettingsControl (not clickControl): this panel's controls live inside .settings-content
     // and can end up under the sticky .settings-footer (e2e/support/settingsControls.js).
     await clickSettingsControl(`${PANEL} [data-model-action="install"]`);
+
+    if (!capacity.sufficient) {
+      // This host cannot hold the package, so the native installer fails the job on its own
+      // pre-download capacity check (manager.rs:1620-1632) and no cancellable operation can ever
+      // exist. What the customer must still get is the truth: the status never claims progress or
+      // installation, the refusal is announced, and nothing is left on disk.
+      const refusal = await waitForRefusal(toastsBeforeClick);
+      assert.equal(refusal.panel.state, 'missing', 'a refused install left the package looking installed or corrupt');
+      assert.equal(refusal.panel.installVisible, true, 'a refused install stopped offering Install');
+      assert.equal(refusal.panel.removeVisible, false, 'a refused install left a Remove control for nothing installed');
+      const afterRefusalDigest = directoryShapeDigest(enginePackagesRoot);
+      assert.deepEqual(
+        afterRefusalDigest,
+        emptyBaseline,
+        'a refused install wrote bytes into the engine-packages store',
+      );
+      await revealSettingsSection(PANEL);
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '02-refused-without-room',
+        description: 'Below the package\'s real disk requirement the install refuses, keeps the truthful "not installed" status and writes nothing.',
+        details: { capacity, refusal, afterRefusalDigest },
+        focusSelector: PANEL,
+        allowVisibleProblems: {
+          errorToasts: refusal.announced.slice(0, 4).map((text) => ({
+            text,
+            reason: 'The announced refusal is the customer-visible state this step documents.',
+          })),
+        },
+      });
+      await clickControl('[data-settings-action="close"]');
+      return;
+    }
+
     // The Cancel control only renders while status.operation is non-null (ModelManagementTab.js:
     // 239-243), so its appearance IS the product's own evidence that a real job was accepted and is
     // running -- not a probe of a private queue. Cancelling as soon as it appears, rather than after
