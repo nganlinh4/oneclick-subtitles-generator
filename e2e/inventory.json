@@ -1378,6 +1378,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "The release-readiness lockfile gate walked into agent worktrees under .claude, so its verdict depended on whether an unrelated parallel lane happened to be open at that moment.",
+      "foundBy": "candidate 19 cut, which failed the gate at a commit that passes it alone",
+      "status": "fixed",
+      "severity": "minor",
+      "note": "The scan ignored .git, node_modules and target but not .claude, whose transient git worktrees each carry a full copy of the three lockfiles - the gate reported six. This is a gate that describes the machine rather than the release, and it would have failed equally for any developer with a worktree open. Now ignored alongside the other derived directories; the gate passes on the same commit that failed it."
+    },
+    {
       "finding": "Removing a native tool left its now-empty versions directory behind, so the managed store never returned to its pre-install shape.",
       "foundBy": "settingsToolsRemoveAndFactoryReset first real-binary execution on candidate 18",
       "status": "fixed",
