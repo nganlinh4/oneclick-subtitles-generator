@@ -145,7 +145,15 @@ describe('a customer turns a real URL into visible subtitles', () => {
     assert.equal(state.sourceUrl, REAL_VIDEO.url, 'the active URL changed during media preparation');
     assert.ok(state.projectCacheId, 'the downloaded media has no active asset identity');
     assert.deepEqual(state.inlineErrors, [], 'an error was painted inside the video surface');
-    assert.deepEqual(state.errorToasts, [], 'the customer workflow exposed a failure toast');
+    // The refusal this journey keeps catching surfaces as a toast whose thrower logs the real
+    // error object to the console. Carry that ledger into the failure so the message names the
+    // code and stack of whichever path threw, instead of only the customer-facing sentence.
+    const ledgeredErrors = await browser.execute(() => window.__OSG_E2E_CONSOLE_ERRORS__ ?? []);
+    assert.deepEqual(
+      state.errorToasts,
+      [],
+      `the customer workflow exposed a failure toast; ledgered console errors: ${JSON.stringify(ledgeredErrors, null, 1)}`,
+    );
 
     durable = durableState(process.env.OSG_E2E_DATA_ROOT);
     assert.equal(durable.counts.projects, 1, 'one URL workflow created more than one subtitle project');
