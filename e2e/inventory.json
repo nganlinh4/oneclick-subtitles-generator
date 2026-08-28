@@ -1311,6 +1311,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Turning sticky (cascade) timing OFF did not take effect for cue rows that had not otherwise re-rendered: the UI showed off while drags still maintained duration and cascaded every later cue.",
+      "foundBy": "timelineAdvancedEditing first real-binary execution on candidate 18, root-caused by independent triage",
+      "status": "open-fix-in-progress",
+      "severity": "major",
+      "note": "MemoizedLyricItem-s comparator re-renders a row only when isCurrentLyric, currentTime-while-current, the lyric object identity or isDragging change, so the fresh onMouseDown closure carrying the new isSticky never reached rows that did not change for another reason. The hook itself is correct in isolation - a unit probe and its three regressions pass - which is exactly why only a composed real-DOM path could expose this: toggle off, drag an untouched row-s start handle, and the end still moves while later cues cascade. Customer impact is silent corruption of cue timing directly against the visible toggle state. Being fixed by making the drag path read the sticky authority through an always-current reference rather than a closure crossing the memo boundary."
+    },
+    {
       "finding": "A passing nativeExportDecoded run was recorded as failed because a concurrently scheduled managed gate took the development-cache root lock its staging-lease release needed.",
       "foundBy": "candidate 18 shard run, attempt 20260828060647850-37180-14c56c4b",
       "status": "harness-operational",
