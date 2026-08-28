@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Importing a subtitle document moments after opening media could be refused for a project-scope mismatch the customer never caused, because the binding publishes its cache id synchronously long before that binding is durable.",
+      "foundBy": "referenceVoiceAndPerCueNarration first real-binary execution on candidate 19",
+      "status": "fixed",
+      "severity": "major",
+      "note": "bindUserSubtitlesProject publishes the new cache id before any await, partway through a multi-step activation, while the import samples that id, awaits its own project resolution, then re-checks - so an activation still in flight could flip the id underneath a correctly-timed drop and the import refused with a genuine-looking scope mismatch. The import now waits for the most recent activation to settle before reading any scope, so only a real concurrent project switch can still refuse, and that refusal keeps the visible status message it already had. Two regressions fail without the fix, one driving the real activation against a controlled pending binding. The hydration clobber originally suspected was already guarded by the revision check and was not the mechanism."
+    },
+    {
       "finding": "The production NSIS bundle builds and passes payload inspection, but the tauri:build command still exits nonzero because it tries to sign the updater artifact with a private key that exists only as a CI secret.",
       "foundBy": "first production packaging run, 2026-08-28",
       "status": "external-blocker",
