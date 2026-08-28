@@ -36,3 +36,21 @@ export const clickSettingsControl = async (selector, options = {}) => {
   if (!cleared) throw new Error(`${selector}: could not clear the sticky settings footer`);
   await clickControl(selector, options);
 };
+
+/**
+ * Brings a Settings section into the scrolled viewport before it is used as an evidence focus
+ * target. Interacting with controls scrolls `.settings-content` wherever those controls happen to
+ * be, so by capture time the section a step is about can sit entirely outside the visible modal
+ * even though every interaction succeeded. The evidence publisher rightly refuses a focus target
+ * it cannot see; this scrolls the section to the top of its own scroller first.
+ */
+export const revealSettingsSection = async (selector) => {
+  const revealed = await browser.execute((target) => {
+    const node = document.querySelector(target);
+    const scroller = node?.closest('.settings-content');
+    if (node === null || scroller === null) return false;
+    scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    return true;
+  }, selector);
+  if (!revealed) throw new Error(`${selector}: could not be revealed inside the settings scroller`);
+};

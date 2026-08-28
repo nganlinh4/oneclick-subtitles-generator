@@ -45,7 +45,7 @@ import { clickControl } from '../support/editor.js';
 import { durableState } from '../support/database.js';
 import { actuateNativeRange } from '../support/nativeRange.js';
 import { selectAlternateDropdownOption } from '../support/settingsAppearance.js';
-import { clickSettingsControl } from '../support/settingsControls.js';
+import { clickSettingsControl, revealSettingsSection } from '../support/settingsControls.js';
 import { durableSettings } from '../support/settingsSurfaceOracle.js';
 import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -224,6 +224,10 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
     const cookies = await toggleSwitch('#use-cookies-download');
     let cookieBrowser = null;
     if (cookies.after) cookieBrowser = await selectAlternateDropdownOption(COOKIE_DROPDOWN);
+    // Every control above scrolled the settings pane to wherever it lived, so the section this
+    // step is about can now sit outside the modal's visible area even though each interaction
+    // succeeded. Bring it back before the evidence publisher checks the focus target.
+    await revealSettingsSection('.video-processing-section');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-processing-options-edited',
