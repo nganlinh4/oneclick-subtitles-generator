@@ -38,6 +38,13 @@ This is an architecture description, not an independent security audit.
   path-safe.
 - Imports and managed packages reject traversal, absolute paths, links/reparse points, duplicate
   entries, unexpected file types, size overruns, and content/hash mismatches.
+- A managed package's status and launch checks reuse a durable per-install receipt (existence and
+  size for every inventoried file, no content re-read) once a full content verification has
+  produced one, instead of re-hashing a published tree on every cold status probe. Any receipt
+  gap, mismatch, or tamper to the receipt itself falls back to the full content hash. A same-size
+  content edit made after that receipt was written is not caught by this fast check, only by the
+  next full verification (install, repair, or a fast-path miss); the store's read-only, no-clobber
+  publication is the primary defense against that window.
 - Generated artifacts use private staging and verified no-clobber publication. Exports use a native
   destination picker and do not accept a caller-supplied output path.
 - Legacy import is bounded, idempotent, source-preserving, and detects a source replaced during the

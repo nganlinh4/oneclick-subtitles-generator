@@ -5,6 +5,14 @@
 //! release is installable only when its complete content-addressed inventory is
 //! embedded in the application build. The checked-in catalog intentionally has
 //! no published releases until real packs and their hashes exist.
+//!
+//! A published package's status and launch checks are backed by a full content-hash
+//! verification (`receipt`), but a cold status probe pays that cost only once per
+//! install: `verified_install` caches a completed verification as a durable, bounded
+//! metadata-only receipt outside the published tree, so a later process's first probe
+//! can confirm existence and size instead of re-hashing potentially tens of thousands
+//! of files. See `verified_install`'s module documentation for the trade-off this
+//! accepts and how it is bounded.
 
 mod archive;
 mod asset_catalog;
@@ -20,6 +28,7 @@ mod receipt;
 mod speech_catalog;
 mod ui_font_catalog;
 mod upstream_lock;
+mod verified_install;
 
 pub use asset_catalog::{AssetPackageId, AssetPackageInfo, VOICE_SAMPLE_IDS, asset_catalog};
 pub use cancellation::CancellationToken;

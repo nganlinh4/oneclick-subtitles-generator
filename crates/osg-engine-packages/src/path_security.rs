@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -96,7 +96,13 @@ pub(crate) fn initialize_store(root: &Path) -> Result<PathBuf> {
         }
         Err(_) => return Err(PackageError::StoreUnavailable),
     }
-    for name in [".downloads", ".staging", ".trash", ".quarantine"] {
+    for name in [
+        ".downloads",
+        ".staging",
+        ".trash",
+        ".quarantine",
+        ".verified",
+    ] {
         ensure_direct_child(&canonical, name)?;
     }
     Ok(canonical)
@@ -243,8 +249,15 @@ pub(crate) fn resolve_owned(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 
 pub(crate) fn collect_regular_files(root: &Path) -> Result<HashSet<String>> {
+    Ok(collect_regular_file_sizes(root)?.into_keys().collect())
+}
+
+/// As `collect_regular_files`, but keyed by each file's size — one recursive metadata-only walk
+/// that both the exact-tree checks and the receipt fast path can read existence and size from,
+/// without opening or hashing any file content.
+pub(crate) fn collect_regular_file_sizes(root: &Path) -> Result<HashMap<String, u64>> {
     require_directory(root).map_err(|_| PackageError::InvalidInstall)?;
-    let mut files = HashSet::new();
+    let mut files = HashMap::new();
     let mut pending = vec![root.to_path_buf()];
     let mut directories = 0_usize;
     while let Some(directory) = pending.pop() {
@@ -275,7 +288,7 @@ pub(crate) fn collect_regular_files(root: &Path) -> Result<HashSet<String>> {
                     .ok_or(PackageError::InvalidInstall)?
                     .join("/");
                 validate_manifest_path(&relative).map_err(|_| PackageError::InvalidInstall)?;
-                if !files.insert(relative) || files.len() > MAX_FILES + 1 {
+                if files.insert(relative, metadata.len()).is_some() || files.len() > MAX_FILES + 1 {
                     return Err(PackageError::InvalidInstall);
                 }
             } else {

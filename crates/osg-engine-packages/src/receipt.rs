@@ -149,6 +149,14 @@ pub(crate) fn validate_integrity(
     Ok(())
 }
 
+/// The complete, already-validated per-file inventory (path, size, content hash) an installed
+/// tree's own in-tree receipt declares. This is the source of truth `verified_install` binds its
+/// fast-path receipt to, since a remote-manifest delivery's catalog entry carries no file list of
+/// its own — only the manifest downloaded and validated at install time does.
+pub(crate) fn read_files(root: &Path) -> Result<Vec<DeliveryFile>> {
+    Ok(read(root)?.delivery_files())
+}
+
 pub(crate) fn file_matches(
     path: &Path,
     expected: &DeliveryFile,

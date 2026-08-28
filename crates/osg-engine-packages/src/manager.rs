@@ -34,6 +34,7 @@ use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId, speech_catal
 use crate::ui_font_catalog::{
     UI_FONT_SUBSETS, UiFontDeliveryCatalog, UiFontPackageId, ui_font_catalog,
 };
+use crate::verified_install;
 use crate::{CancellationToken, PackageError, Result};
 
 const MIN_FREE_RESERVE_BYTES: u64 = 256 * 1024 * 1024;
@@ -815,6 +816,7 @@ where
         match receipt::validate_integrity(&target, delivery, cancellation) {
             Ok(()) => {
                 self.mark_verified(component, delivery);
+                self.record_verified_receipt(delivery);
                 return Ok(self.status(component));
             }
             Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
@@ -1070,7 +1072,10 @@ where
         }
         let target = self.version_root(delivery);
         match receipt::validate_integrity(&target, delivery, cancellation) {
-            Ok(()) => return Ok(self.status(component)),
+            Ok(()) => {
+                self.record_verified_receipt(delivery);
+                return Ok(self.status(component));
+            }
             Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
             Err(_) => {}
         }
@@ -1215,6 +1220,10 @@ where
             if let Some(parent) = trash.parent() {
                 sync_directory(parent)?;
             }
+            // Best-effort: an orphaned fast-path receipt for a version that no longer exists is
+            // never trusted (its metadata walk would simply fail against a missing tree), so a
+            // failure here does not affect the removal that already committed above.
+            let _ = verified_install::remove(&self.0.root, delivery);
             removed = removed.saturating_add(delivery.unpacked_size_bytes);
             progress.on_progress(OperationProgress::new(
                 OperationPhase::Removing,
@@ -1326,8 +1335,21 @@ where
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
-        let result =
-            receipt::validate_integrity(&self.version_root(delivery), delivery, cancellation);
+        let version_root = self.version_root(delivery);
+        // The bounded metadata-only fast path stands in for a full content verification when a
+        // durable receipt from a prior full verification still matches this exact tree. Any miss
+        // — no receipt, a tampered one, or a metadata mismatch — falls back to full content
+        // verification exactly as before, and a fresh receipt is written from that success so the
+        // next probe in a future process can take the fast path again.
+        let result = if verified_install::try_fast_verify(&self.0.root, &version_root, delivery) {
+            Ok(())
+        } else {
+            let full = receipt::validate_integrity(&version_root, delivery, cancellation);
+            if full.is_ok() {
+                let _ = verified_install::write(&self.0.root, &version_root, delivery);
+            }
+            full
+        };
         let mut activity = self
             .0
             .activity
@@ -1354,6 +1376,15 @@ where
         if let Ok(mut activity) = self.0.activity.lock() {
             activity.verified_versions.remove(&component);
         }
+    }
+
+    /// Records that `delivery`'s complete content was just verified, so a later process's first
+    /// status probe or launch can use the bounded fast path instead of repeating that full
+    /// verification. Best-effort: the in-memory `verified_versions` cache this run already relies
+    /// on is unaffected by a write failure here, which only costs a future cold probe its full
+    /// verification time again.
+    fn record_verified_receipt(&self, delivery: &PackageDelivery) {
+        let _ = verified_install::write(&self.0.root, &self.version_root(delivery), delivery);
     }
 
     fn begin_operation(&self, component: K) -> Result<OperationGuard<'_, K>> {
@@ -1451,6 +1482,7 @@ where
             Self::rollback_publish(staging, target, &mut quarantine)?;
             return Err(error);
         }
+        self.record_verified_receipt(delivery);
         if let Some(quarantine) = quarantine.take() {
             quarantine
                 .owner
@@ -2583,6 +2615,50 @@ mod tests {
     }
 
     #[test]
+    fn install_writes_a_durable_receipt_outside_the_published_tree_and_remove_clears_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let fetcher = Arc::new(MemoryFetcher::new(fixture.archive, false));
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            fetcher,
+            Arc::new(TestCoordinator::default()),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let receipt = manager.0.0.root.join(".verified/parakeet/1.0.0.json");
+        assert!(receipt.is_file());
+        // It plays no part in the published tree's own exact-membership checks.
+        let published = manager.0.0.root.join("parakeet/versions/1.0.0");
+        assert!(!published.join(".verified").exists());
+
+        // A fresh process (no in-memory `verified_versions` cache) resolves the engine for launch
+        // by reading this receipt rather than by re-hashing the published tree's content.
+        drop(manager);
+        let restarted_fixture = self::fixture();
+        let manager = self::manager(
+            &temp,
+            restarted_fixture.catalog,
+            Arc::new(MemoryFetcher::new(restarted_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+
+        assert_eq!(
+            manager
+                .remove(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+                .unwrap(),
+            RemovalOutcome::Removed
+        );
+        assert!(!receipt.exists());
+    }
+
+    #[test]
     fn interrupted_download_is_resumed_from_the_verified_partial() {
         let temp = tempfile::tempdir().unwrap();
         let fixture = fixture();
@@ -2636,7 +2712,7 @@ mod tests {
     }
 
     #[test]
-    fn same_size_tamper_is_not_ready_is_preserved_and_can_be_repaired() {
+    fn a_different_size_tamper_is_not_ready_is_preserved_and_can_be_repaired() {
         let temp = tempfile::tempdir().unwrap();
         let fixture = fixture();
         let fetcher = Arc::new(MemoryFetcher::new(fixture.archive, false));
@@ -2654,7 +2730,10 @@ mod tests {
             .unwrap();
         let model_file = runtime.model().join("config.json");
         drop(runtime);
-        fs::write(&model_file, b"other").unwrap();
+        // A size-changing tamper: the receipt fast path's bounded metadata walk (existence + size,
+        // see `an_unchanged_size_tamper_is_masked_by_the_fast_path_until_reinstalled` below for the
+        // size-preserving case) must still catch this on the very next status probe after restart.
+        fs::write(&model_file, b"a longer replacement payload").unwrap();
         drop(manager);
         let restarted_fixture = self::fixture();
         let manager = self::manager(
@@ -2679,6 +2758,62 @@ mod tests {
             manager.status(EngineId::Parakeet).state,
             EnginePackageState::Installed
         );
+        let quarantine = manager.0.0.root.join(".quarantine");
+        assert!(fs::read_dir(quarantine).unwrap().next().is_none());
+    }
+
+    /// Documents, at the public API rather than the `verified_install` unit-test level, the
+    /// receipt fast path's bounded trade-off: a same-size content edit made after a receipt was
+    /// written is invisible to the metadata-only status/resolve fast path across a process
+    /// restart, and is only caught once something performs a full content verification again —
+    /// here, calling `install` on the already-"installed" engine, whose own preflight check never
+    /// consults the fast-path receipt.
+    #[test]
+    fn an_unchanged_size_tamper_is_masked_by_the_fast_path_until_reinstalled() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let fetcher = Arc::new(MemoryFetcher::new(fixture.archive, false));
+        let manager = manager(
+            &temp,
+            fixture.catalog,
+            fetcher,
+            Arc::new(TestCoordinator::default()),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let runtime = manager
+            .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+            .unwrap();
+        let model_file = runtime.model().join("config.json");
+        drop(runtime);
+        assert_eq!(
+            MODEL_BYTES.len(),
+            b"other".len(),
+            "the tamper must preserve size"
+        );
+        fs::write(&model_file, b"other").unwrap();
+        drop(manager);
+
+        let restarted_fixture = self::fixture();
+        let manager = self::manager(
+            &temp,
+            restarted_fixture.catalog,
+            Arc::new(MemoryFetcher::new(restarted_fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+        );
+        let masked = manager.status(EngineId::Parakeet);
+        assert_eq!(masked.state, EnginePackageState::Installed);
+        assert!(masked.installed);
+
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        assert_eq!(fs::read(&model_file).unwrap(), MODEL_BYTES);
         let quarantine = manager.0.0.root.join(".quarantine");
         assert!(fs::read_dir(quarantine).unwrap().next().is_none());
     }
@@ -2879,9 +3014,12 @@ mod tests {
         let target = manager.0.version_root(delivery);
 
         // Model the publication window: the target is visible, but it has not committed as a
-        // verified version yet. Corrupting a byte makes any accidental integrity scan observable.
+        // verified version yet. The replacement changes size so the corruption is observable to
+        // the bounded metadata-only fast path too, not only to a full content scan -- a same-size
+        // edit is the documented case a receipt written before this point cannot see until a
+        // later full verification, which is not what this test is modeling.
         manager.0.clear_verified(EngineId::Parakeet);
-        fs::write(target.join(MODEL_PATH), b"other").unwrap();
+        fs::write(target.join(MODEL_PATH), b"a tampered replacement payload").unwrap();
         let operation = manager.0.begin_operation(EngineId::Parakeet).unwrap();
 
         let during = manager.status(EngineId::Parakeet);
