@@ -1345,7 +1345,7 @@
       "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
       "status": "unproven",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "authored, unexecuted in this pass: journeys/settingsNarrationModelManagement.journey.js and scenarios/settingsNarrationModelManagement.mjs now exist. On a genuinely empty engine-packages store the panel is proven to report state=missing truthfully; clicking Install is proven to start a real native job (the product's own Cancel control is the evidence); cancelling immediately is proven to return the panel to not-installed AND to leave the on-disk store byte-identical to its pre-install shape, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup as the mechanism. Remove and repair are NOT exercised (they would require completing the 4.59 GiB install first); update-in-place is also out of scope. Status stays unproven until a real run against the guarded binary is recorded.",
+      "note": "authored, unexecuted in this pass: journeys/settingsNarrationModelManagement.journey.js and scenarios/settingsNarrationModelManagement.mjs now exist. On a genuinely empty engine-packages store the panel is proven to report state=missing truthfully; clicking Install is proven to start a real native job (the product's own Cancel control is the evidence); cancelling immediately is proven to return the panel to not-installed AND to leave the on-disk store byte-identical to its pre-install shape, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup as the mechanism. Remove and repair are NOT exercised (they would require completing the 4.28 GiB install first); update-in-place is also out of scope. Status stays unproven until a real run against the guarded binary is recorded.",
       "file": "journeys/settingsNarrationModelManagement.journey.js",
       "oracles": [
         "the real Model Management tab controls and data-model-* attributes",
@@ -1354,7 +1354,7 @@
       "dependencies": {
         "owner": "test-infrastructure",
         "requires": "the settingsNarrationModelManagement scenario, which requests keepEnginePackages: false so this run does not share the persistent, cross-journey speech-package cache",
-        "note": "F5-TTS v1 Base is 4.59 GiB compressed / 6.9 GiB installed on Windows (crates/osg-speech/delivery/speech-packages.delivery.json); a full credential-free install-then-remove proof for this package is not attempted for that reason. media-tools/yt-dlp/deno already get full install+repair coverage from nativeToolsInstall; this journey is model management's equivalent for the one thing a 4.59 GiB package makes affordable: truthful not-installed status plus a real, bounded, cleanly-cancelled install start."
+        "note": "F5-TTS v1 Base is 4.28 GiB compressed / 6.47 GiB installed on Windows (crates/osg-speech/delivery/speech-packages.delivery.json); a full credential-free install-then-remove proof for this package is not attempted for that reason. media-tools/yt-dlp/deno already get full install+repair coverage from nativeToolsInstall; this journey is model management's equivalent for the one thing a 4.28 GiB package makes affordable: truthful not-installed status plus a real, bounded, cleanly-cancelled install start."
       }
     },
     {
