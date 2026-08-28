@@ -204,8 +204,8 @@
       "runsAgainst": "e2e-binary",
       "status": "green",
       "evidenceWorkflow": "startup",
-      "attemptId": "20260826160807082-27352-ca146dfb",
-      "binaryDigest": "1645a8f77dadb119e3ea32c021687e4696c3c502c3bdb36cb1ec695822fc7645"
+      "attemptId": "20260828120215864-76592-1560c92d",
+      "binaryDigest": "b34cf21eb926f78404524b9b780cd19d8a0c394fc721e4c0b94df4d59aa3616a"
     },
     {
       "name": "defaultFont",
