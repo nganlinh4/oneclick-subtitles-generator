@@ -180,3 +180,44 @@ test('the only OS boundary is fail-closed staging below the disposable run root'
   assert.match(journey, /pathInside\(root, selectedSource, 'selected media'\)/u);
   assert.match(journey, /fail-closed staged dialog/u);
 });
+
+// An adversarial audit found that the two headline SSIM floors were defended by nothing: relaxing
+// EXPORT_PARITY_WYSIWYG_FLOOR from 0.95 to 0.50, or the Main/Render floor from 0.90 to 0.50, left
+// all 45 parity tests green. Every OTHER threshold in this oracle is defended by a mutation case
+// that fails when it is relaxed, so the two constants most likely to be quietly loosened were
+// exactly the two with no enforcement. This pins each threshold's literal value so that relaxing
+// one is impossible to do silently -- it forces an edit here, which is the review the project's
+// anti-oracle-weakening rule requires. Raising a floor (tightening) also trips this deliberately:
+// a stricter oracle still deserves the same explicit sign-off.
+test('every parity threshold is pinned so a relaxation cannot pass unnoticed', () => {
+  const oracle = readFileSync(new URL('./exportAnimationParityOracle.js', import.meta.url), 'utf8');
+  for (const [name, value] of [
+    ['EXPORT_PARITY_WYSIWYG_FLOOR', '0.95'],
+    ['EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR', '0.92'],
+    ['EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR', '0.87'],
+    ['EXPORT_PARITY_MAIN_RENDER_FLOOR', '0.90'],
+    ['EXPORT_PARITY_SOURCE_IDENTITY_FLOOR', '0.90'],
+    ['MIN_EXPORT_MASK_COVERAGE', '0.55'],
+    ['EXPORT_PARITY_CENTROID_DISPLACEMENT_PX', '30'],
+    ['MAX_ROI_MEAN_DISTANCE', '30'],
+    ['MAX_ROI_CHANGED_RATIO', '0.65'],
+    ['MAX_EXPORT_MASK_RATIO', '0.35'],
+    ['STRONG_PLACEMENT_MASK_PIXELS', '6_000'],
+    ['STRONG_SURFACE_MASK_PIXELS', '3_000'],
+    ['MIN_SURFACE_MASK_OVERLAP', '0.30'],
+  ]) {
+    const declaration = new RegExp(`(?:export )?const ${name} = ${value.replace('.', '\.')};`, 'u');
+    assert.match(oracle, declaration, `${name} must stay pinned at ${value}`);
+  }
+});
+
+// The placement claim must be judged against the FARTHER of the two preview surfaces. Taking the
+// closer one hands back the exact defect a WYSIWYG oracle exists to catch -- an export that tracks
+// Render while drifting from Main scored a perfect 0px, and on the preserved matrix that let a 60px
+// joint translation pass unseen.
+test('export placement is judged against the worst surface, never the best', () => {
+  const oracle = readFileSync(new URL('./exportAnimationParityOracle.js', import.meta.url), 'utf8');
+  assert.match(oracle, /const \[worstSurface, worstDistance\] = placementPairs\.reduce/u);
+  assert.match(oracle, /candidate\[1\] > best\[1\] \? candidate : best/u);
+  assert.doesNotMatch(oracle, /candidate\[1\] < best\[1\] \? candidate : best/u);
+});

@@ -727,13 +727,20 @@ const verifyRegion = (region, definition, phase, expectedGeometry) => {
       : null,
   ].filter(pair => pair !== null && Number.isFinite(pair[1]));
   if (placementPairs.length > 0) {
-    const [closestSurface, closestDistance] = placementPairs.reduce((best, candidate) => (
-      candidate[1] < best[1] ? candidate : best
+    // Judge against the FARTHER surface, not the closer one. This oracle exists to catch Main and
+    // Render/export disagreeing, so accepting the best of the two hands back exactly the defect it
+    // is here to find: an export that tracks Render while drifting from Main used to score a
+    // perfect 0px. Measured on the preserved 10-case matrix, the closest-surface form let
+    // 04-slide-left-stroke hide a 60px joint Render+export translation -- 12.5% of the 480px frame.
+    // Taking the worst pair halves that blind zone to 30px with no case regressing and every real
+    // baseline still passing.
+    const [worstSurface, worstDistance] = placementPairs.reduce((best, candidate) => (
+      candidate[1] > best[1] ? candidate : best
     ));
-    assert.ok(closestDistance <= EXPORT_PARITY_CENTROID_DISPLACEMENT_PX, (
-      `${label}: export placement disagrees with the closer of Main/Render by `
-        + `${closestDistance}px (closest was ${closestSurface}, cap `
-        + `${EXPORT_PARITY_CENTROID_DISPLACEMENT_PX}px) -- a translation, not a rendering variance`
+    assert.ok(worstDistance <= EXPORT_PARITY_CENTROID_DISPLACEMENT_PX, (
+      `${label}: export placement disagrees with ${worstSurface} by `
+        + `${worstDistance}px (cap ${EXPORT_PARITY_CENTROID_DISPLACEMENT_PX}px) `
+        + '-- a translation, not a rendering variance'
     ));
   }
   assert.ok(region.pairs && region.signals, `${label}: ROI comparisons are absent`);
