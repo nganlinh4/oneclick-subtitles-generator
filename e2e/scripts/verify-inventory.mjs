@@ -166,7 +166,18 @@ const main = () => {
     return;
   }
 
+  // The headline must carry the reproducibility caveat, not bury it in the per-entry list above:
+  // a claim whose binary has been rotated out of the applications store is historically attested
+  // but can no longer be re-checked against the artifact it was proven on.
+  const rotated = bound.filter(({ binaryLive }) => !binaryLive).length;
   process.stdout.write('verify-inventory: every green claim is bound to a passing local attempt.\n');
+  if (rotated > 0) {
+    process.stdout.write(
+      `verify-inventory: ${rotated} of ${bound.length} are bound to a binary no longer in the `
+      + 'applications store, so they are historical evidence only and cannot be re-checked; '
+      + `${bound.length - rotated} are still reproducible against a retained exe.\n`,
+    );
+  }
 };
 
 main();
