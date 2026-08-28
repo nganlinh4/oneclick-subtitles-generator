@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "A multi-cue range move could silently do nothing: any cue merely touching the selection was swept in, and the boundary clamp then reduced the shared delta to zero.",
+      "foundBy": "timelineAdvancedEditing on candidate 19",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The move path reused the any-overlap predicate written for clear and regenerate. In the failing run an earlier clamp step had left one cue spanning the entire media, so every range move swept it in, and because that cue already ended at the media boundary the clamp reduced the whole move to zero - the two selected cues stayed exactly where they were with nothing reported. The move now requires a cue to be fully inside the selection, while overlap remains correct for clear and regenerate. Separately, durable subtitle edit failures reached only console.error, so any rejected write was invisible; they now raise one deduped bounded toast. The invalid-type-null-expected-u32 line captured in that run could not be reproduced anywhere in the commit path and is recorded as unexplained ambient noise rather than a diagnosed cause; Rust tests now lock that wire contract either way."
+    },
+    {
       "finding": "Applying an aspect-ratio crop preset silently lost the crop: Apply threw uncaught, the overlay stayed open, and nothing durable changed or was reported.",
       "foundBy": "renderFormatTransformMatrix first real-binary execution on candidate 19",
       "status": "fixed",
