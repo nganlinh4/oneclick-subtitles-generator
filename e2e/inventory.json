@@ -1378,6 +1378,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "A scenario failed to launch because an integration edit rewrote e2e/package.json non-atomically while a worker was reading it.",
+      "foundBy": "candidate 18 shard run, settingsNarrationModelManagement scenario",
+      "status": "harness-operational",
+      "severity": "minor",
+      "note": "Every WDIO worker parses e2e/package.json at config load through tauriServiceSafetyPatch.mjs:243, and a whole-file rewrite during merge resolution left a truncated read window: the worker reported the file missing and the scenario never started, so it is neither green nor a product signal. The tooling is correct; the coordinator practice was not. Integration edits to files a live runner reads must be atomic (write a temporary file and rename) or deferred until no runner holds a lease - the same class as the development-cache lock collision recorded above."
+    },
+    {
       "finding": "Turning sticky (cascade) timing OFF did not take effect for cue rows that had not otherwise re-rendered: the UI showed off while drags still maintained duration and cascaded every later cue.",
       "foundBy": "timelineAdvancedEditing first real-binary execution on candidate 18, root-caused by independent triage",
       "status": "fixed",
