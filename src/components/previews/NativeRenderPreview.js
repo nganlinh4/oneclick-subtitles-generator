@@ -256,7 +256,20 @@ const NativeRenderPreview = forwardRef(({
 
   const handleApplyCrop = () => {
     setAppliedCrop(tempCrop);
-    if (onCropChange) onCropChange(tempCrop);
+    try {
+      if (onCropChange) onCropChange(tempCrop);
+    } catch (error) {
+      // A crop the durable render scene refuses must never vanish silently: undo the optimistic
+      // preview update, leave crop mode open so the customer's in-progress edit is not lost, and
+      // say why instead of leaving Apply looking like a dead button.
+      setAppliedCrop(appliedCrop);
+      window.addToast?.(
+        error?.message || t('videoRendering.cropApplyFailed', 'The crop could not be saved'),
+        'error',
+        8000,
+      );
+      return;
+    }
     setIsCropEnabled(false);
   };
 

@@ -145,10 +145,19 @@ const VideoCropControls = ({
   const handleAspectRatioChange = (value) => {
     setSelectedAspectRatio(value);
     if (value !== 'custom') {
-      const newLogical = calculateCropDimensions(value);
-      // Preserve flip flags from current tempCrop
-      newLogical.flipX = tempCrop?.flipX ?? false;
-      newLogical.flipY = tempCrop?.flipY ?? false;
+      // `calculateCropDimensions` only ever returns x/y/width/height. Building the persisted crop
+      // from just that dropped canvasBgMode/canvasBgColor/canvasBgBlur (and aspectRatio itself),
+      // which the durable render-scene schema requires verbatim -- a preset click handed the scene
+      // authority a partial crop object, which it then rejected outright (an uncaught exact-shape
+      // validation error), silently discarding the preset and leaving the crop editor stuck open.
+      // Preserve every existing field and record the selected preset's own ratio (null for Free).
+      const newLogical = {
+        ...cropSettings,
+        ...calculateCropDimensions(value),
+        aspectRatio: value,
+        flipX: tempCrop?.flipX ?? false,
+        flipY: tempCrop?.flipY ?? false,
+      };
       const newDisplay = toDisplayCrop(newLogical);
       setTempCrop(newDisplay);
       onCropChange(fromDisplayCrop(newDisplay));

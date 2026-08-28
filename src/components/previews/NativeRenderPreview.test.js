@@ -15,7 +15,12 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 vi.mock('../VideoCropControls', () => ({
-  default: ({ isEnabled }) => <div data-testid="crop-controls" data-enabled={String(isEnabled)} />,
+  default: ({ isEnabled, onToggle, onApply }) => (
+    <div data-testid="crop-controls" data-enabled={String(isEnabled)}>
+      <button onClick={onToggle}>toggle-crop</button>
+      <button onClick={onApply}>apply-crop</button>
+    </div>
+  ),
 }));
 vi.mock('../../platform/mediaService', () => ({ isNativeMediaDescriptor: () => false }));
 vi.mock('./canvas/CanvasVideoPreview', () => ({
@@ -181,6 +186,27 @@ describe('native render-tab preview', () => {
       undefined,
     ));
     expect(container.textContent).not.toContain('canvasPreviewRejected');
+  });
+
+  it('keeps crop mode open and surfaces a toast when applying a crop is rejected', () => {
+    // A crop the durable render scene refuses (e.g. `updateProjectRenderScene` throwing on a
+    // malformed value) must never vanish silently -- the customer's in-progress edit stays visible
+    // and they are told why, instead of "Apply" silently doing nothing.
+    const onCropChange = vi.fn(() => { throw new Error('The project render scene is invalid'); });
+    const { container, video } = mount({ onCropChange });
+    // `VideoCropControls` only mounts once the source video has published its dimensions.
+    Object.defineProperty(video, 'videoWidth', { value: 480, configurable: true });
+    Object.defineProperty(video, 'videoHeight', { value: 360, configurable: true });
+    fireEvent.loadedMetadata(video);
+
+    fireEvent.click(screen.getByText('toggle-crop'));
+    expect(container.querySelector('[data-testid="crop-controls"]')).toHaveAttribute('data-enabled', 'true');
+
+    fireEvent.click(screen.getByText('apply-crop'));
+
+    expect(onCropChange).toHaveBeenCalledTimes(1);
+    expect(window.addToast).toHaveBeenCalledWith('The project render scene is invalid', 'error', 8000);
+    expect(container.querySelector('[data-testid="crop-controls"]')).toHaveAttribute('data-enabled', 'true');
   });
 
   it('retries a transient render-preview canvas allocation without changing the scene', async () => {
