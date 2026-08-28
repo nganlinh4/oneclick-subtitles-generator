@@ -98,6 +98,22 @@ export const cueOverlapsTimelineRange = (cue, start, end) => (
   && cue.end > start
 );
 
+/**
+ * A range MOVE may only translate a cue whose whole span sits inside the selected range.
+ * `cueOverlapsTimelineRange` is right for clear/split/regenerate, where touching the selection at
+ * all makes a cue a legitimate candidate for the operation. A move is different: it drags a cue's
+ * entire timing by one delta, so a cue that only partly overlaps the selection -- or, in the limit,
+ * spans past both edges of it -- would have timing the user never selected dragged along with it.
+ */
+export const cueWithinTimelineRange = (cue, start, end) => (
+  Number.isFinite(cue?.start)
+  && Number.isFinite(cue?.end)
+  && Number.isFinite(start)
+  && Number.isFinite(end)
+  && cue.start >= start
+  && cue.end <= end
+);
+
 export const pixelToTimelineTime = (pixelX, rect, visibleTimeRange, domain) => {
   if (!(rect?.width > 0)) return domain.start;
   const relativeX = pixelX - rect.left;

@@ -445,3 +445,30 @@ it('keeps only four byte-bounded session checkpoints', () => {
     maxTotalBytes: JSON.stringify(near).length + JSON.stringify(newest).length,
   })).toEqual([near, newest]);
 });
+
+// A failed durable commit (e.g. a range move that the native side rejects) previously left the
+// customer with only a console.error -- the optimistic edit visibly "held" on screen with nothing
+// telling them it never actually saved. createDurableLyricsHistory's onError must now surface a
+// bounded, deduped error toast, matching the pattern useLyricsSave.js already uses for save
+// failures.
+it('shows a bounded error toast when the durable history reports a commit failure', () => {
+  renderHook(() => useHarness(rows('A')));
+  window.addToast = vi.fn();
+
+  act(() => controllerCallbacks.onError(new Error('native commit rejected')));
+
+  expect(window.addToast).toHaveBeenCalledTimes(1);
+  const [message, type, duration, key] = window.addToast.mock.calls[0];
+  expect(type).toBe('error');
+  expect(typeof message).toBe('string');
+  expect(message.length).toBeGreaterThan(0);
+  expect(duration).toBeGreaterThan(0);
+  expect(key).toBe('subtitle-edit-failed');
+
+  // A second failure in quick succession reuses the same key instead of stacking a fresh toast.
+  act(() => controllerCallbacks.onError(new Error('native commit rejected again')));
+  expect(window.addToast).toHaveBeenCalledTimes(2);
+  expect(window.addToast.mock.calls[1][3]).toBe('subtitle-edit-failed');
+
+  delete window.addToast;
+});

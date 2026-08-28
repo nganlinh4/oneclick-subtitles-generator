@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   createDurableLyricsHistory,
   LYRICS_EDITOR_ACTIONS,
@@ -13,6 +14,21 @@ import {
 const DEBUG_LOGS = (typeof window !== 'undefined')
   && (localStorage.getItem('debug_logs') === 'true');
 const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+
+// A range move (and every other durable edit: text, insert, delete, merge, split, timing drag,
+// clear range) applies optimistically in the UI before its native revision commits. When that
+// native commit fails, the optimistic change is not actually durable -- without this toast the
+// customer sees the edit "hold" on screen with nothing telling them it never saved, which is
+// exactly the silent-failure class this project watches for. One dedupe key collapses a burst of
+// rapid failures (e.g. a saturated history queue) into a single notice instead of a flood.
+const EDIT_FAILED_TOAST_KEY = 'subtitle-edit-failed';
+const notifyEditFailed = (message) => {
+  try {
+    window.addToast?.(message, 'error', 8_000, EDIT_FAILED_TOAST_KEY);
+  } catch {
+    // Notification failure cannot reverse the underlying commit failure.
+  }
+};
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const identityKey = (value) => {
@@ -142,6 +158,7 @@ export const useLyricsEditorHistory = ({
   savedLyrics,
   onCacheIdChange,
 }) => {
+  const { t } = useTranslation();
   const [history, setHistoryState] = useState([]);
   const [redoStack, setRedoStackState] = useState([]);
   const [checkpointHistory, setCheckpointHistoryState] = useState([]);
@@ -159,10 +176,14 @@ export const useLyricsEditorHistory = ({
   const externalMergeRef = useRef(null);
   const pendingTextRef = useRef(null);
   const viewGenerationRef = useRef(0);
+  // Read live from the durable-history effect's onError, which is created once (see below) and
+  // must not tear down and rebuild the whole durable queue every time the locale changes.
+  const tRef = useRef(t);
 
   lyricsRef.current = lyrics;
   savedLyricsRef.current = savedLyrics;
   callbacksRef.current = { setLyrics, onUpdateLyrics };
+  tRef.current = t;
 
   const replaceLyrics = useCallback((rows) => {
     const copied = clone(rows);
@@ -268,6 +289,13 @@ export const useLyricsEditorHistory = ({
     const durable = createDurableLyricsHistory({
       onStatus: publishDurableStatus,
       onReconcile: resetToAuthoritativeRows,
+      onError: (error) => {
+        console.error('[durableLyricsHistory] Native history failed:', error);
+        notifyEditFailed(tRef.current(
+          'subtitlesInput.editFailed',
+          'Your last edit could not be saved. Please try again.'
+        ));
+      },
     });
     durableRef.current = durable;
     const unregisterCacheId = isDesktopRuntime()

@@ -12,6 +12,7 @@
   "save": "Save Subtitles",
   "saving": "Saving...",
   "saveFailed": "The subtitles could not be saved. Please try again.",
+  "editFailed": "Your last edit could not be saved. Please try again.",
   "addSubtitles": "Add subtitles",
   "editSubtitles": "Edit provided subtitles",
   "subtitlesAdded": "Subtitles added",

@@ -1,7 +1,10 @@
 import { useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
-import { cueOverlapsTimelineRange } from '../components/lyrics/utils/timelineDomain';
+import {
+  cueOverlapsTimelineRange,
+  cueWithinTimelineRange,
+} from '../components/lyrics/utils/timelineDomain';
 
 /**
  * Editing helpers for the lyrics editor: the translation-warning emitter and the
@@ -52,11 +55,14 @@ export const useLyricsEditorHelpers = ({
     showTranslationWarning(t('translation.warningDeleted', 'You have deleted a subtitle. Translations may be outdated. Please translate again.'));
   }, [lyrics, commitLyricsMutation, showTranslationWarning, t]);
 
-  // Move every subtitle intersecting a time range by delta seconds (apply immediately)
+  // Move every subtitle fully contained in a time range by delta seconds (apply immediately).
+  // Uses cueWithinTimelineRange, not cueOverlapsTimelineRange: a move translates a cue's whole
+  // timing, so only a cue entirely inside the selection may be dragged by it (see that helper's
+  // doc comment for why a merely-overlapping cue must stay put).
   const moveSubtitlesInRange = useCallback((start, end, delta) => {
     if (start == null || end == null || end <= start || !delta) return;
     const updated = lyrics.map(l => {
-      if (cueOverlapsTimelineRange(l, start, end)) {
+      if (cueWithinTimelineRange(l, start, end)) {
         const newStart = Math.max(0, l.start + delta);
         const newEnd = Math.max(newStart + 0.1, l.end + delta);
         return { ...l, start: newStart, end: newEnd };
@@ -95,7 +101,7 @@ export const useLyricsEditorHelpers = ({
     if (!state.active || state.baseline == null) return;
     const { start, end, baseline } = state;
     const updated = baseline.map(l => {
-      if (cueOverlapsTimelineRange(l, start, end)) {
+      if (cueWithinTimelineRange(l, start, end)) {
         const newStart = Math.max(0, l.start + delta);
         const newEnd = Math.max(newStart + 0.1, l.end + delta);
         return { ...l, start: newStart, end: newEnd };

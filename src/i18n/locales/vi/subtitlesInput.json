@@ -12,6 +12,7 @@
   "save": "Lưu Phụ Đề",
   "saving": "Đang lưu...",
   "saveFailed": "Không thể lưu phụ đề. Vui lòng thử lại.",
+  "editFailed": "Không thể lưu chỉnh sửa gần nhất. Vui lòng thử lại.",
   "addSubtitles": "Thêm phụ đề",
   "editSubtitles": "Chỉnh sửa phụ đề đã cung cấp",
   "subtitlesAdded": "Đã thêm phụ đề",

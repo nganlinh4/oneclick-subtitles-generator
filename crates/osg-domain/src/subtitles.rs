@@ -444,4 +444,66 @@ mod tests {
         let invalid_ordinal = json.replacen("\"ordinal\":1", "\"ordinal\":3", 1);
         assert!(serde_json::from_str::<SubtitleTrack>(&invalid_ordinal).is_err());
     }
+
+    /// `project_track_commit` (apps/desktop/src-tauri/src/commands.rs) receives `before_track`
+    /// and `after_track` as `Option<SubtitleTrack>` -- this is the exact wire boundary Tauri
+    /// deserializes before the command body ever runs. A range move that translates several cues
+    /// at once (osg-editor's own move -- see src/hooks/useLyricsEditorHelpers.js on the frontend)
+    /// sends a track shaped exactly like this: multiple cues, consecutive ordinals, no source
+    /// links. This locks that the boundary accepts it byte-for-byte as JSON, not just as a Rust
+    /// value.
+    #[test]
+    fn command_boundary_accepts_a_real_multi_cue_range_move_payload() {
+        let track = SubtitleTrack::new(
+            "Cached subtitles".to_owned(),
+            TrackOrigin::LegacyJson,
+            vec![
+                cue(
+                    0,
+                    19_010,
+                    "Interior cue for direct start and end drag tests",
+                ),
+                cue(15_710, 16_710, "First cue of the move-together range"),
+                cue(17_210, 18_210, "Second cue of the move-together range"),
+                cue(8_000, 8_500, "Sticky cascade base cue"),
+                cue(9_000, 9_500, "Sticky cascade follower cue"),
+            ],
+        )
+        .expect("valid multi-cue track");
+        let json = serde_json::to_string(&track).expect("serializable track");
+
+        // `before_track`/`after_track` are `Option<SubtitleTrack>`: a present track wire-encodes
+        // as the plain object, exactly what serde_json produces above.
+        let wire: Option<SubtitleTrack> = serde_json::from_str(&json).expect("wire payload parses");
+        assert_eq!(wire, Some(track));
+    }
+
+    /// The one field this boundary has ever rejected with `invalid type: null, expected u32` is a
+    /// cue's `ordinal`. Every producer on the frontend (`legacyRowsToCanonicalTrack` in
+    /// src/platform/projectSnapshotAdapter.js) always computes it as a real `index + 1`, so this
+    /// characterizes -- and locks -- the exact failure a malformed payload would hit, rather than
+    /// silently accepting a cue that lost its position.
+    #[test]
+    fn command_boundary_rejects_a_cue_with_a_null_ordinal() {
+        let track = SubtitleTrack::new(
+            "Cached subtitles".to_owned(),
+            TrackOrigin::LegacyJson,
+            vec![
+                cue(3_000, 4_000, "First cue of the move-together range"),
+                cue(4_500, 5_500, "Second cue of the move-together range"),
+            ],
+        )
+        .expect("valid track");
+        let json = serde_json::to_string(&track).expect("serializable track");
+        let malformed = json.replacen("\"ordinal\":1", "\"ordinal\":null", 1);
+
+        let error = serde_json::from_str::<SubtitleTrack>(&malformed)
+            .expect_err("a null ordinal must not silently become a valid cue");
+        assert!(
+            error
+                .to_string()
+                .contains("invalid type: null, expected u32"),
+            "unexpected error message: {error}"
+        );
+    }
 }

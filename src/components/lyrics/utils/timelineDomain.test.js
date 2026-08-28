@@ -4,6 +4,7 @@ import {
   clampTimelineRange,
   createTimelineDomain,
   cueOverlapsTimelineRange,
+  cueWithinTimelineRange,
   getSelectAllRange,
   pixelToTimelineTime,
 } from './timelineDomain';
@@ -61,6 +62,27 @@ it('hard-bounds select-all and pointer input to playable media', () => {
   expect(clampTimelineMoveDelta({ start: 2, end: 12 }, -99, domain)).toBe(-2);
   expect(cueOverlapsTimelineRange(measuredBoundaryCue[0], 0, domain.selectableEnd)).toBe(true);
   expect(cueOverlapsTimelineRange(measuredBoundaryCue[0], 0, 214)).toBe(false);
+});
+
+// cueWithinTimelineRange backs a range MOVE's cue selection (useLyricsEditorHelpers.js):
+// translating a cue's whole span by one delta is only correct when the cue sits entirely inside
+// the selection. cueOverlapsTimelineRange -- used for clear/split/regenerate -- deliberately
+// disagrees on a cue that only partly overlaps, which is exactly the point of having both.
+it('requires a cue to sit entirely inside the range, unlike the looser overlap check', () => {
+  const contained = { start: 3, end: 4 };
+  const widerThanSelection = { start: 0, end: 20 };
+  const overlapsOnlyAtStart = { start: 1, end: 3.5 };
+  const overlapsOnlyAtEnd = { start: 3.5, end: 20 };
+
+  expect(cueWithinTimelineRange(contained, 2.7, 6.3)).toBe(true);
+  expect(cueWithinTimelineRange(widerThanSelection, 2.7, 6.3)).toBe(false);
+  expect(cueWithinTimelineRange(overlapsOnlyAtStart, 2.7, 6.3)).toBe(false);
+  expect(cueWithinTimelineRange(overlapsOnlyAtEnd, 2.7, 6.3)).toBe(false);
+
+  // All four still register as an overlap -- the two checks answer different questions.
+  expect(cueOverlapsTimelineRange(widerThanSelection, 2.7, 6.3)).toBe(true);
+  expect(cueOverlapsTimelineRange(overlapsOnlyAtStart, 2.7, 6.3)).toBe(true);
+  expect(cueOverlapsTimelineRange(overlapsOnlyAtEnd, 2.7, 6.3)).toBe(true);
 });
 
 it('uses an explicit empty view without inventing playable media duration', () => {
