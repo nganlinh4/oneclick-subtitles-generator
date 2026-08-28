@@ -72,6 +72,9 @@ const EXTENDED_KEYS = Object.freeze([
 const MAX_WORDS_SLIDER = '[data-osg-range-id="favorite-max-subtitle-length"]';
 const MAX_WORDS_INPUT = '#favorite-max-subtitle-length';
 const COOKIE_DROPDOWN = '.download-cookie-browser-setting .custom-dropdown-button';
+// One compact row, not the whole tab section: the evidence publisher requires the entire focus
+// target inside the window and a section is taller than the viewport.
+const COOKIES_SETTING_ROW = '.compact-setting:has(#use-cookies-download)';
 
 const openSettings = async () => {
   await clickControl('[data-app-action="open-settings"]');
@@ -241,7 +244,10 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
     // Every control above scrolled the settings pane to wherever it lived, so the section this
     // step is about can now sit outside the modal's visible area even though each interaction
     // succeeded. Bring it back before the evidence publisher checks the focus target.
-    await revealSettingsSection('.video-processing-section');
+    // The evidence publisher requires the WHOLE focus target inside the window, and a tab section
+    // is taller than the viewport, so focusing one can never succeed however it is scrolled. Focus
+    // a single compact setting row instead, exactly as the green settings journey does.
+    await revealSettingsSection(COOKIES_SETTING_ROW);
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-processing-options-edited',
@@ -249,7 +255,7 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
       details: {
         autoSplit, maxWords, autoImport, youtubeSearch, cookies, cookieBrowser,
       },
-      focusSelector: '.video-processing-section',
+      focusSelector: COOKIES_SETTING_ROW,
     });
 
     await activateTab('prompts');
