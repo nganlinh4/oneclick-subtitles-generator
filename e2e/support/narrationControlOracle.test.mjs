@@ -1,4 +1,6 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -155,8 +157,18 @@ test('an empty sibling list is refused rather than silently proving nothing', ()
 });
 
 test('the unavailable-engine tooltip text is pinned to the shipped i18n default', () => {
-  assert.equal(
-    REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE,
-    'This narration engine is not ready. Install or start it in Settings > Tools.',
-  );
+  // Read the shipped resource rather than keeping a third hand-copied literal here. A hardcoded
+  // copy silently went stale once already: the oracle constant was corrected to the arrow the
+  // loaded resource actually uses while this pin still asserted the plain '>' from the call site's
+  // i18next FALLBACK, so the test failed even though both the product and the oracle were right.
+  // Comparing the oracle against narration.json keeps the real invariant -- the oracle must state
+  // exactly what a customer is shown -- and it cannot drift again.
+  const narration = JSON.parse(readFileSync(
+    join(import.meta.dirname, '..', '..', 'src', 'i18n', 'locales', 'en', 'narration.json'),
+    'utf8',
+  ));
+  assert.equal(REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE, narration.engineUnavailableMessage);
+  // The arrow is the whole point of the correction, so assert it explicitly: a regression that
+  // reverted the shipped copy to '>' would otherwise still satisfy the equality above.
+  assert.match(REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE, /Settings → Tools\.$/u);
 });
