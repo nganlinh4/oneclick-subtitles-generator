@@ -28,6 +28,30 @@ const STRONG_SURFACE_MASK_PIXELS = 3_000;
 // Judged per surface rather than against the Main/Render union, whose size varies with how far
 // the two capture paths diverge at a given alpha; agreement with a real surface is the claim.
 const MIN_EXPORT_MASK_COVERAGE = 0.55;
+// Placement-agreement floor: the export's ink centroid must land close to a real surface's own
+// centroid, not just overlap/cover it loosely. MIN_EXPORT_MASK_COVERAGE alone is fooled by a
+// translated WIDE box (coverage only degrades to (boxWidth-shift)/boxWidth, so a 300px-wide line
+// tolerates a ~135px shift before that floor trips) -- this check is the direct positional claim
+// MIN_EXPORT_MASK_COVERAGE was assumed, but never actually was, to provide.
+//
+// STRONG_SURFACE_MASK_PIXELS (3,000px) is too low a gate for THIS check specifically: real
+// preserved evidence (export-animation-parity-matrix attempt 20260827121620798-13652-97c22a4f,
+// a genuine "pass" run) measured legitimate Main/export centroid disagreement of 41-64px at
+// 3,000-4,900px mask sizes -- case 06 ("scale", entry/exit) and case 03 ("slide-down", entry) are
+// thin/small masks where anti-aliasing and rasterization-path noise dominates centroid position,
+// not a placement defect. The SAME evidence run shows that noise collapses to <=22.4px once BOTH
+// compared masks clear ~8,000px (case 08 "flip", the next-smallest real sample above the gap) and
+// stays there through every larger case (fade/slide/typewriter/bounce/rotate, 8,000-30,000px,
+// max observed 22.4px). STRONG_PLACEMENT_MASK_PIXELS sits in the clean gap between those two
+// clusters (above the noisiest excluded real sample's 4,958px export mask, below the first
+// included real sample's 8,010px main mask) so it excludes exactly the small/thin masks that are
+// physically noisy without excluding any real "typical" sample.
+const STRONG_PLACEMENT_MASK_PIXELS = 6_000;
+// EXPORT_PARITY_CENTROID_DISPLACEMENT_PX: comfortably above the 22.4px worst-case real noise
+// measured above (34% headroom) and comfortably below the review's 40px translated-box defect
+// (25% margin), so it neither flags correct rasterization spread nor lets a meaningful shift hide
+// behind a wide box the way mask coverage and ROI distance both can.
+const EXPORT_PARITY_CENTROID_DISPLACEMENT_PX = 30;
 const MAX_EXPORT_MASK_RATIO = 0.35;
 // Distinguishability from the decoded source is an ABSOLUTE ink floor, not a fraction of the
 // ROI: the ROI is the union of both surfaces' masks plus expansion, so its size varies with how
@@ -196,6 +220,16 @@ export const EXPORT_ANIMATION_PARITY_CASES = Object.freeze([
     startFrame: 132,
     effects: ['glow'],
     marginTop: 64,
+    // With the default 12-frame offset both samples land at exactly 1/3 raw progress into their
+    // fade window (entry frame 120, t=4.000s; exit frame 156, t=5.200s), where 'ease-in' has only
+    // reached ~11.1% eased opacity -- the thinnest ink margin in the whole matrix (measured against
+    // real preserved evidence at ~1,025 changed exit pixels, 1-2 orders of magnitude below every
+    // sibling case). This is the same problem class case 07 (bounce) was given its own
+    // sampleOffsetFrames=6 override for. 6 frames instead samples both edges at 2/3 raw progress
+    // (entry frame 126, t=4.200s; exit frame 150, t=5.000s), where 'ease-in' has reached ~44.4%
+    // eased opacity -- comfortably above the 35% robustness floor and roughly 4x the untouched
+    // case's margin, while staying inside the true fade window on both sides.
+    sampleOffsetFrames: 6,
   }),
   caseDefinition({
     id: '04-slide-left-stroke',
@@ -397,6 +431,12 @@ const maskCentroid = (mask, width) => {
   });
 };
 
+const centroidDistance = (left, right) => {
+  if (!Number.isFinite(left?.x) || !Number.isFinite(left?.y)
+    || !Number.isFinite(right?.x) || !Number.isFinite(right?.y)) return null;
+  return Math.hypot(left.x - right.x, left.y - right.y);
+};
+
 const pairStats = (left, right, roi, changedThreshold) => {
   let pixels = 0;
   let changedPixels = 0;
@@ -506,6 +546,7 @@ export const analyzeSubtitleParityRgba = ({
       mainRenderMaskOverlap: 0,
       maskSignature: maskSignature(unionMask),
       maskCentroid: maskCentroid(unionMask, width),
+      exportMaskCentroid: maskCentroid(exportMask, width),
       pairs: null,
       signals: null,
     });
@@ -530,6 +571,7 @@ export const analyzeSubtitleParityRgba = ({
     maskCentroid: maskCentroid(unionMask, width),
     mainMaskCentroid: maskCentroid(mainMask, width),
     renderMaskCentroid: maskCentroid(renderMask, width),
+    exportMaskCentroid: maskCentroid(exportMask, width),
     pairs: Object.freeze({
       mainRender: pairStats(inputs.main, inputs.render, roi, pairDeltaThreshold),
       mainExport: pairStats(inputs.main, inputs.exported, roi, pairDeltaThreshold),
@@ -664,6 +706,34 @@ const verifyRegion = (region, definition, phase, expectedGeometry) => {
   if (weakestSurfaceMask >= STRONG_SURFACE_MASK_PIXELS) {
     assert.ok(region.mainRenderMaskOverlap >= MIN_SURFACE_MASK_OVERLAP, (
       `${label}: Main/Render subtitle-mask overlap ${region.mainRenderMaskOverlap} is too low`
+    ));
+  }
+  // Placement agreement: MIN_EXPORT_MASK_COVERAGE and the ROI pairs checks below both judge the
+  // export's ink as a loose region -- a whole box translated sideways can still cover most of its
+  // own original footprint and stay under the ROI distance/ratio caps once the box is wide enough
+  // relative to the shift (see the mutation suite's "wide-box 40px translation" fixture). Centroid
+  // displacement is the direct positional claim those checks were never actually making. Gated on
+  // STRONG_PLACEMENT_MASK_PIXELS (not the lower STRONG_SURFACE_MASK_PIXELS used for exact-pixel
+  // overlap above) because small/thin masks carry disproportionate rasterization noise in their
+  // centroid specifically -- see the constant's comment for the real-evidence measurement.
+  const placementPairs = [
+    region.mainMaskPixels >= STRONG_PLACEMENT_MASK_PIXELS
+      && region.exportMaskPixels >= STRONG_PLACEMENT_MASK_PIXELS
+      ? ['Main', centroidDistance(region.mainMaskCentroid, region.exportMaskCentroid)]
+      : null,
+    region.renderMaskPixels >= STRONG_PLACEMENT_MASK_PIXELS
+      && region.exportMaskPixels >= STRONG_PLACEMENT_MASK_PIXELS
+      ? ['Render', centroidDistance(region.renderMaskCentroid, region.exportMaskCentroid)]
+      : null,
+  ].filter(pair => pair !== null && Number.isFinite(pair[1]));
+  if (placementPairs.length > 0) {
+    const [closestSurface, closestDistance] = placementPairs.reduce((best, candidate) => (
+      candidate[1] < best[1] ? candidate : best
+    ));
+    assert.ok(closestDistance <= EXPORT_PARITY_CENTROID_DISPLACEMENT_PX, (
+      `${label}: export placement disagrees with the closer of Main/Render by `
+        + `${closestDistance}px (closest was ${closestSurface}, cap `
+        + `${EXPORT_PARITY_CENTROID_DISPLACEMENT_PX}px) -- a translation, not a rendering variance`
     ));
   }
   assert.ok(region.pairs && region.signals, `${label}: ROI comparisons are absent`);

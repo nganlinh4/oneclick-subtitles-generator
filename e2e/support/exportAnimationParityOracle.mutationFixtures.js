@@ -205,6 +205,7 @@ export const goodRegion = (overrides = {}) => ({
   maskCentroid: { x: 240, y: 300 },
   mainMaskCentroid: { x: 240, y: 300 },
   renderMaskCentroid: { x: 240, y: 300 },
+  exportMaskCentroid: { x: 240, y: 300 },
   pairs: {
     mainRender: measurement({ meanRgbDistance: 5, changedRatio: 0.05 }),
     mainExport: measurement({ meanRgbDistance: 5, changedRatio: 0.05 }),

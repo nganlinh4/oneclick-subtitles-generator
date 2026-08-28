@@ -17,6 +17,7 @@ import {
   activeAnimationCueAt,
   expectedAnimationCueAt,
   materialControlTokens,
+  sweepEasedProgress,
   verifyAnimationCoverage,
   verifyAnimationObservation,
   verifyLiveFontPresetTransition,
@@ -56,23 +57,33 @@ const materialObservations = () => materialControlTokens().map((token, index) =>
   sceneRevision: index + 2,
 }));
 
-const geometry = index => ({
-  width: 640,
-  height: 480,
-  changedPixels: 2_048 + (index * 97),
-  centroidXRatio: 0.45 + (index * 0.01),
-  centroidYRatio: 0.4 - (index * 0.1),
-  bounds: {
-    x: 100 + (index * 7),
-    y: 80 - (index * 9),
-    width: 180 + index,
-    height: 70 + index,
-    areaPixels: 4_096 + (index * 211),
-  },
-  meanChangedChannelDelta: 50 + (index * 11),
-});
+// Holding/steady (eased == 1 for every easing, by definition) anchors the "full ink" reference; the
+// oracle's new assertInkEnergyMagnitude reads this same steady value back out of the observation, so
+// entry/exit here are computed via the SAME eased fraction (sweepEasedProgress, the oracle's own
+// independent evaluator -- not the product's easeSubtitle) instead of an arbitrary monotonic ramp,
+// keeping every fixture physically self-consistent regardless of which animation/easing is exercised.
+const STEADY_INK_ENERGY = 90;
 
-const frameProof = (phase, index) => ({
+const geometry = (phase, index, animation) => {
+  const easedFraction = phase.name === 'steady' ? 1 : sweepEasedProgress(animation.easing, phase.expectedProgress);
+  return {
+    width: 640,
+    height: 480,
+    changedPixels: 2_048 + (index * 97),
+    centroidXRatio: 0.45 + (index * 0.01),
+    centroidYRatio: 0.4 - (index * 0.1),
+    bounds: {
+      x: 100 + (index * 7),
+      y: 80 - (index * 9),
+      width: 180 + index,
+      height: 70 + index,
+      areaPixels: 4_096 + (index * 211),
+    },
+    meanChangedChannelDelta: STEADY_INK_ENERGY * easedFraction,
+  };
+};
+
+const frameProof = (phase, index, animation) => ({
   mediaTime: phase.seconds,
   composed: { frame: { sha256: `composed-${index}` } },
   composedSignal: {
@@ -86,7 +97,7 @@ const frameProof = (phase, index) => ({
     changedRatio: (2_048 + (index * 97)) / 307_200,
     maximumChannelDelta: 220,
   },
-  subtitleGeometry: geometry(index),
+  subtitleGeometry: geometry(phase, index, animation),
 });
 
 const phaseSamples = phase => Array.from({ length: 10 }, (_, index) => ({
@@ -172,7 +183,7 @@ const animationObservationInput = (animation = ANIMATION_CASES[0]) => {
     continuitySamples: continuitySamples(),
     samplesByPhase: Object.fromEntries(ANIMATION_PHASES.map(phase => [phase.name, phaseSamples(phase)])),
     frameProofs: Object.fromEntries(ANIMATION_PHASES.map((phase, index) => [
-      phase.name, frameProof(phase, index),
+      phase.name, frameProof(phase, index, animation),
     ])),
     phaseTransitions: {
       entryToSteady: changedFrame(), steadyToExit: changedFrame(), entryToExit: changedFrame(),

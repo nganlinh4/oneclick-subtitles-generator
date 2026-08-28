@@ -35,20 +35,20 @@ import { decodeFrameRgba } from './nativeMediaOracle.js';
  * This does not re-test the oracle's happy path (exportAnimationParityOracle.test.mjs already does
  * that with hand-fed literals). It synthesizes or perturbs frame fixtures that encode SEVEN defect
  * classes a real regression could produce, and asserts the oracle rejects each one at its currently
- * calibrated thresholds. Every mutation that the oracle ACCEPTS is a hole: it is recorded with
- * `test.todo` (so it documents without failing CI) plus a `HOLES` entry with the exact check, the
- * measured value and the calibrated threshold it should have tripped.
+ * calibrated thresholds.
+ *
+ * An earlier review pass found two holes here (a wide-box translation escaping placement checks,
+ * and case 03's default sample offset landing at a near-zero eased alpha); both are now closed --
+ * see the "defect 3b [FIXED]" and "case 03 fix" tests below, which assert the closed behaviour
+ * directly instead of carrying a separate holes ledger for issues that no longer exist.
  *
  * Where real preserved evidence frames exist under %LOCALAPPDATA%\OSG-Development\cache\evidence
  * (a specific developer machine's cache, never present in CI), the suite perturbs COPIES of them for
  * extra realism; those tests are gated on existsSync and skip cleanly when the cache is absent. The
  * portable core of the suite uses synthetic RGBA buffers plus real FFmpeg SSIM (the same engine
  * `compareFrames` already gives the product) computed over minimal, dependency-free PPM files, since
- * this checkout has no pngjs installed (see HOLES/README notes in the final report, not here).
+ * this checkout has no pngjs installed (see the final report for that finding).
  */
-
-const HOLES = [];
-const recordHole = (id, detail) => { HOLES.push({ id, ...detail }); };
 
 test('sanity: the untouched baseline passes for both a plain and a rotated case', () => {
   verifyExportAnimationParityObservation(baseline());
@@ -162,61 +162,34 @@ const wideBoxTranslation = (() => {
   return { region, measuredSsim, observation };
 })();
 
-test('defect 3b [HOLE]: a WIDE (300px) subtitle box translated 40px passes every region/pairs '
-  + 'check AND real FFmpeg SSIM, at both the default and the ROTATED floor', () => {
-  const { region, measuredSsim } = wideBoxTranslation;
+test('defect 3b [FIXED]: a WIDE (300px) subtitle box translated 40px still satisfies every OLD '
+  + 'region/pairs check AND real FFmpeg SSIM (documents why those alone were blind to a localized '
+  + 'translation), but the full observation is now rejected by the placement-agreement check', () => {
+  const { region, measuredSsim, observation } = wideBoxTranslation;
 
+  // Every check that existed BEFORE this commit still passes on this exact fixture -- the review's
+  // finding about mask coverage / ROI distance / whole-frame SSIM being individually fooled by a
+  // wide box remains true and is why a dedicated placement check was needed rather than tightening
+  // one of these.
   assert.ok(region.exportMainMaskCoverage > 0.55, 'documents the coverage floor being satisfied');
   assert.ok(region.pairs.mainExport.meanRgbDistance < 30, 'documents the ROI mean-distance cap being satisfied');
   assert.ok(region.pairs.mainExport.changedRatio < 0.65, 'documents the ROI changed-ratio cap being satisfied');
   assert.ok(measuredSsim > EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR, 'documents real SSIM clearing the rotated floor');
+  // The new instrument: the 40px shift is entirely horizontal, so mainMaskCentroid and
+  // exportMaskCentroid disagree by exactly the shift amount, comfortably over the 30px cap.
+  assert.ok(region.mainMaskCentroid && region.exportMaskCentroid, 'centroids must be measured');
+  const measuredDisplacement = Math.hypot(
+    region.mainMaskCentroid.x - region.exportMaskCentroid.x,
+    region.mainMaskCentroid.y - region.exportMaskCentroid.y,
+  );
+  assert.ok(Math.abs(measuredDisplacement - 40) < 0.5, (
+    `documents the measured centroid displacement (${measuredDisplacement}px) matching the 40px shift`
+  ));
 
-  recordHole('export-parity-wide-box-40px-translation', {
-    defectClass: 'wrong placement (40px translation)',
-    oracleFile: 'exportAnimationParityOracle.js',
-    checksThatShouldHaveCaughtIt: [
-      'verifyRegion: exportSurfaceCoverage >= MIN_EXPORT_MASK_COVERAGE (0.55)',
-      'verifyRegion: pairs.mainExport.meanRgbDistance <= MAX_ROI_MEAN_DISTANCE (30)',
-      'verifyRegion: pairs.mainExport.changedRatio <= MAX_ROI_CHANGED_RATIO (0.65)',
-      'verifyExportAnimationParityObservation: mainExport/renderExport SSIM >= '
-        + 'EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR/MAIN_RENDER_ROTATED_FLOOR (0.92/0.87)',
-    ],
-    measured: {
-      exportMainMaskCoverage: region.exportMainMaskCoverage,
-      pairsMainExportMeanRgbDistance: region.pairs.mainExport.meanRgbDistance,
-      pairsMainExportChangedRatio: region.pairs.mainExport.changedRatio,
-      realFfmpegSsimMainVsExport: measuredSsim,
-    },
-    thresholds: {
-      MIN_EXPORT_MASK_COVERAGE: 0.55,
-      MAX_ROI_MEAN_DISTANCE: 30,
-      MAX_ROI_CHANGED_RATIO: 0.65,
-      EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR,
-      EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR,
-    },
-    margin: 'coverage +0.32 over floor, mean-distance -2.7 under cap, changed-ratio -0.53 under cap, '
-      + `SSIM +${(measuredSsim - EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR).toFixed(3)} over the rotated floor `
-      + `(even further over the default 0.95/0.90 floor: SSIM=${measuredSsim})`,
-    severity: 'HIGH',
-    note: 'Whole-frame SSIM is dominated by the ~95% of the frame that did not move, so it is '
-      + 'structurally blind to a localized translation regardless of the floor value -- relaxing the '
-      + 'rotated floor from 0.95/0.90 to 0.92/0.87 did not create this hole, but it does not narrow it '
-      + 'either. The real defence is exportMainMaskCoverage/pairs.mainExport, and BOTH of those are '
-      + 'ALSO fooled once the ink box is wide relative to the shift: coverage only degrades to '
-      + '(boxWidth-shift)/boxWidth, so a 300px-wide line needs roughly a 135px shift before the 0.55 '
-      + 'floor trips, and pairs.mainExport.meanRgbDistance needs roughly a 45px shift before its 30 cap '
-      + 'trips (see defect-3c below for the exact crossover). Neither mechanism scales with the box '
-      + 'width the way the review brief\'s "40+ px" heuristic implicitly assumes for a 16px-wide probe.',
-  });
-});
-
-// This is the hole itself, encoded as `test.todo` per the review brief: the oracle currently ACCEPTS
-// the mutation, so the assertion below fails, but `todo` keeps that failure from failing the suite.
-test.todo('HOLE: export oracle accepts a 40px wide-box translation on a rotated case (see the '
-  + '"export-parity-wide-box-40px-translation" entry in the HOLES summary above)', () => {
   assert.throws(
-    () => verifyExportAnimationParityObservation(wideBoxTranslation.observation),
-    /translat|placement|position|covers only|distance is too high/iu,
+    () => verifyExportAnimationParityObservation(observation),
+    /placement/iu,
+    'the new centroid placement-agreement check must reject the 40px wide-box translation',
   );
 });
 
@@ -460,9 +433,11 @@ test('defect 7: each surface losing its ink alone (the other two intact) is reje
 // is rejected.
 // =================================================================================================
 
-test('case 03 investigation: exact eased-position math at its calibrated entry/exit samples', () => {
+test('case 03 fix: sampleOffsetFrames=6 now lands both calibrated samples at >=35% eased opacity '
+  + '(was ~11.1% at the default 12-frame offset -- see git history / commit message for the '
+  + 'before/after measurement this override closed)', () => {
   assert.ok(case03Definition, 'case 03 must exist in the reviewed matrix');
-  assert.equal(case03Definition.sampleOffsetFrames, 12, 'case 03 uses the UNADJUSTED default offset');
+  assert.equal(case03Definition.sampleOffsetFrames, 6, 'case 03 now uses the CALIBRATED offset, like case 07');
   assert.equal(case03Definition.animationEasing, 'ease-in');
   assert.equal(case03Definition.animationType, 'slide-down');
 
@@ -481,45 +456,14 @@ test('case 03 investigation: exact eased-position math at its calibrated entry/e
   const exitEased = easeSubtitle(exitActive.progress, case03Definition.animationEasing);
 
   // Frame indices/instants named precisely, as requested.
-  assert.equal(case03Definition.entryFrame, 120); // t=4.000s
-  assert.equal(case03Definition.exitFrame, 156); // t=5.200s
-  assert.ok(Math.abs(entryActive.progress - (1 / 3)) < 1e-9, 'entry sample lands at 1/3 raw progress into fade-in');
-  assert.ok(Math.abs(exitActive.progress - (1 / 3)) < 1e-9, 'exit sample lands at 1/3 raw "remaining" into fade-out');
-  // 'ease-in' at 1/3 raw progress yields only ~11% eased alpha -- contrast with 'ease-out' at the
-  // same raw progress (~56%, computed the same way in the report) to show this is a genuine
-  // easing-specific skew, not an artifact of the 1/3 sampling point itself.
-  assert.ok(entryEased < 0.15, `entry eased alpha ${entryEased} must be the thin ~11% this case actually renders at`);
-  assert.ok(exitEased < 0.15, `exit eased alpha ${exitEased} must be the thin ~11% this case actually renders at`);
-
-  recordHole('case03-thin-eased-alpha-margin', {
-    defectClass: 'wrong alpha / presence-floor margin (coordinator follow-up)',
-    oracleFile: 'exportAnimationParityOracle.js',
-    verdict: 'SOUND BUT UNCALIBRATED -- not a literal "zero-ink passes" hole',
-    finding: 'Case 03 combines a 0.4s cue (endFrame-startFrame=12 frames) with the DEFAULT '
-      + "12-frame/0.4s sampleOffsetFrames and its own 'ease-in' easing. That lands BOTH the entry "
-      + '(frame 120, t=4.000s) and exit (frame 156, t=5.200s) samples at exactly 1/3 raw progress '
-      + "into their fade windows, where 'ease-in' has only reached ~11.1% eased opacity (computed "
-      + 'via the product\'s own easeSubtitle/activeCueAtFrom, not a re-implementation) and the slide '
-      + 'transform is still ~88.9% displaced toward its off-screen start/end position. This is the '
-      + 'exact class of problem case 07 (bounce, overshoot bezier) was explicitly given a '
-      + 'sampleOffsetFrames=6 override for (see the code comment on that case) -- case 03 was not '
-      + 'given an equivalent override.',
-    realEvidenceCorroboration: 'Preserved evidence attempt 20260827121620798-13652-97c22a4f records '
-      + 'this case PASSING with mainChangedPixelsFromSource=5826 (entry) and =1025 (exit) -- the exit '
-      + 'value is the single lowest of all 20 entry/exit measurements across the ten-case matrix by a '
-      + 'wide margin (next-lowest is case 5 entry at 3179; typical cases run 14,000-52,000). Its '
-      + 'entry/exit screenshots (03-slide-down-arabic-glow-{entry,exit}-{main-preview,render-preview,'
-      + 'decoded-export}.png) show no perceptible Arabic ink to visual inspection.',
-    margin: 'MIN_SUBTITLE_MASK_PIXELS floor is 32px. Case 3 exit measured 1025px -- a 32x margin, '
-      + 'versus roughly 100x-1600x margins for every sibling case. The floor is not literally crossed '
-      + '(so this is not encoded as a rejected-mutation test), but it is the thinnest margin in the '
-      + 'matrix by 1-2 orders of magnitude, and unlike case 07 that thinness was not a deliberate, '
-      + 'documented calibration choice.',
-    severity: 'MEDIUM',
-    recommendation: 'Give case 03 an explicit sampleOffsetFrames override (analogous to case 07) so '
-      + "its entry/exit samples land at a raw progress where 'ease-in' has cleared a meaningfully "
-      + 'inked fraction, restoring the same margin the other nine cases enjoy.',
-  });
+  assert.equal(case03Definition.entryFrame, 126); // t=4.200s
+  assert.equal(case03Definition.exitFrame, 150); // t=5.000s
+  assert.ok(Math.abs(entryActive.progress - (2 / 3)) < 1e-9, 'entry sample lands at 2/3 raw progress into fade-in');
+  assert.ok(Math.abs(exitActive.progress - (2 / 3)) < 1e-9, 'exit sample lands at 2/3 raw "remaining" into fade-out');
+  // 'ease-in' at 2/3 raw progress reaches ~44.4% eased alpha -- comfortably above the 35% robustness
+  // floor (versus the ~11.1% the default 12-frame offset produced at 1/3 raw progress).
+  assert.ok(entryEased >= 0.35, `entry eased alpha ${entryEased} must clear the 35% robustness floor`);
+  assert.ok(exitEased >= 0.35, `exit eased alpha ${exitEased} must clear the 35% robustness floor`);
 });
 
 test('case 03 investigation: a preset-03-SHAPED case with genuinely ZERO ink on every surface at '
@@ -537,13 +481,4 @@ test('case 03 investigation: a preset-03-SHAPED case with genuinely ZERO ink on 
   assert.throws(() => verifyExportAnimationParityObservation({
     ...baseline(shapedDefinition), regions: { entry: blank, exit: blank },
   }), /subtitle mask has only 0 pixels/u);
-});
-
-// =================================================================================================
-// HOLES summary (diagnostic only -- never fails the run).
-// =================================================================================================
-
-test('HOLES summary (diagnostic)', (t) => {
-  for (const hole of HOLES) t.diagnostic(JSON.stringify(hole));
-  assert.ok(Array.isArray(HOLES));
 });

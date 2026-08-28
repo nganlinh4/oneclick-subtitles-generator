@@ -7,6 +7,7 @@ import {
   ANIMATION_CUE,
   ANIMATION_PHASES,
   activeAnimationCueAt,
+  sweepEasedProgress,
   verifyAnimationObservation,
 } from './subtitleMaterialAnimationOracle.js';
 
@@ -154,6 +155,11 @@ const baseline = (animation = ANIMATION_CASES[0]) => {
 const slideUp = ANIMATION_CASES.find(item => item.type === 'slide-up' && item.easing === 'linear');
 const overshoot = ANIMATION_CASES.find(item => item.easing === 'cubic-bezier(0.68, -0.55, 0.265, 1.55)');
 const fade = ANIMATION_CASES.find(item => item.type === 'fade');
+// 'ease-out' entry (progress 0.4) evaluates to sweepEasedProgress ~0.571 -- above
+// MIN_INK_ENERGY_EASED_GATE (0.5), unlike linear's 0.4, so assertInkEnergyMagnitude actually runs on
+// this ENTRY sample. slide-up/linear's own entry sits just under the gate by construction (see the
+// defect-5 test below for the measured before/after).
+const slideUpEaseOut = ANIMATION_CASES.find(item => item.type === 'slide-up' && item.easing === 'ease-out');
 
 test('sanity: the untouched baseline passes for slide-up, fade and the overshoot anchor', () => {
   verifyAnimationObservation(baseline(slideUp));
@@ -293,21 +299,30 @@ test('defect 4c: a phase capture whose mediaTime misses its reviewed instant is 
 // 5. Wrong alpha: ink at roughly half or double the expected eased opacity.
 // =================================================================================================
 //
-// This is the section most worth reading closely. `assertCompleteVisibleSample` only ever checks
-// BOOLEAN ink presence (hasOverlay/hasGlyphInk/sourceOnly) on the continuity witness, never a
-// continuous opacity value. The only place a MAGNITUDE of ink is compared to another phase's
-// magnitude is the fade-type branch of `verifyAnimationObservation`
-// (`entry.meanChangedChannelDelta < exit... < steady...`), which is gated on `animation.type ===
-// 'fade'`. Every other animation type (slide-up/down/left/right, scale, bounce, flip, rotate,
-// typewriter -- i.e. the ENTIRE 7-easing anchor sweep, which is anchored on slide-up) has no such
-// check at all: a frame whose measured ink ENERGY is roughly half or double the value a correct
-// eased alpha would produce, but whose boolean ink-presence flags and CENTROID position are both
-// left untouched, passes every assertion in the file.
+// `assertCompleteVisibleSample` only ever checked BOOLEAN ink presence (hasOverlay/hasGlyphInk/
+// sourceOnly) on the continuity witness, never a continuous opacity value, and the only MAGNITUDE
+// comparison was the fade-type phase-ordering check (entry<exit<steady), gated on
+// animation.type === 'fade'. This was a real hole for every other animation type (slide/scale/
+// bounce/flip/rotate/typewriter -- the entire 7-easing anchor sweep plus 8 of the 10 animation-type
+// cases): a render at roughly half or double the eased opacity a case actually calls for, with
+// position and boolean ink flags left correct, passed every assertion in the file.
+//
+// `assertInkEnergyMagnitude` closes this: it compares each entry/exit sample's measured
+// meanChangedChannelDelta against `steadyEnergy * sweepEasedProgress(easing, expectedProgress)`,
+// gated to samples where that eased fraction is >= 0.5 (below that, the boolean ink-owed check
+// already owns the claim, and a ratio against a near-zero expectation would be noise).
 
-test('defect 5 [HOLE]: halving frameProofs ink ENERGY (changedPixels/meanChangedChannelDelta) on a '
-  + 'non-fade (slide-up) entry sample, with position and boolean ink-presence left correct, is '
-  + 'accepted', () => {
-  const input = baseline(slideUp);
+test('defect 5 [FIXED]: halving frameProofs ink ENERGY on a non-fade (slide-up) sample, with '
+  + 'position and boolean ink-presence left correct, is now rejected once the sample is decisively '
+  + 'inked (eased >= 0.5)', () => {
+  assert.ok(slideUpEaseOut, "an 'ease-out' slide-up anchor must exist in the sweep");
+  const entryEased = sweepEasedProgress(slideUpEaseOut.easing, ANIMATION_PHASES[0].expectedProgress);
+  assert.ok(entryEased >= 0.5, (
+    `documents why 'ease-out' (not 'linear') is used here: its entry eased fraction `
+    + `${entryEased.toFixed(3)} clears the 0.5 magnitude-check gate`
+  ));
+
+  const input = baseline(slideUpEaseOut);
   const correctEntry = input.frameProofs.entry;
   const halvedEntry = {
     ...correctEntry,
@@ -327,45 +342,47 @@ test('defect 5 [HOLE]: halving frameProofs ink ENERGY (changedPixels/meanChanged
     },
   };
   // Both variants clear every absolute floor in assertFrameProof (>=64 px, >=0.0001 ratio, >=32
-  // maxChannelDelta) -- halving a healthy signal does not approach those floors.
+  // maxChannelDelta) -- halving a healthy signal does not approach those floors, so this is really
+  // exercising the NEW relative-magnitude check, not an old absolute one.
   assert.ok(halvedEntry.subtitlePixels.changedPixels >= 64);
   assert.ok(halvedEntry.subtitlePixels.changedRatio >= 0.000_1);
   assert.ok(halvedEntry.subtitlePixels.maximumChannelDelta >= 32);
 
   input.frameProofs.entry = halvedEntry;
-  let accepted = true;
-  let thrown = null;
-  try {
-    verifyAnimationObservation(input);
-  } catch (error) {
-    accepted = false;
-    thrown = error;
-  }
+  assert.throws(
+    () => verifyAnimationObservation(input),
+    /ink energy .* is .*x the eased expectation/u,
+    'the new ink-energy-magnitude check must reject the halved entry sample',
+  );
+});
 
-  recordHole('material-wrong-alpha-non-fade-undetected', {
-    defectClass: 'wrong alpha (~half expected eased opacity)',
-    oracleFile: 'subtitleMaterialAnimationOracle.js',
-    checkThatShouldHaveCaughtIt: 'none exists for non-fade animation types',
-    measured: {
-      entryChangedPixels: { correct: correctEntry.subtitlePixels.changedPixels, halved: halvedEntry.subtitlePixels.changedPixels },
-      entryMeanChangedChannelDelta: { correct: correctEntry.subtitleGeometry.meanChangedChannelDelta, halved: halvedEntry.subtitleGeometry.meanChangedChannelDelta },
+test('defect 5 [scope, informational]: the SAME halving on slide-up/LINEAR entry (progress 0.4, '
+  + 'eased 0.4 -- just under the 0.5 gate) is still accepted -- this is the deliberate scope '
+  + 'boundary the fix above documents, not a residual hole: the boolean ink-owed check in '
+  + 'assertVisualContinuity already covers samples this faint', () => {
+  const entryEased = sweepEasedProgress(slideUp.easing, ANIMATION_PHASES[0].expectedProgress);
+  assert.ok(entryEased < 0.5, `documents the gate boundary: linear entry eased ${entryEased} < 0.5`);
+
+  const input = baseline(slideUp);
+  const correctEntry = input.frameProofs.entry;
+  input.frameProofs.entry = {
+    ...correctEntry,
+    subtitlePixels: {
+      changedPixels: Math.round(correctEntry.subtitlePixels.changedPixels / 2),
+      changedRatio: correctEntry.subtitlePixels.changedRatio / 2,
+      maximumChannelDelta: correctEntry.subtitlePixels.maximumChannelDelta,
     },
-    accepted,
-    thrownMessage: thrown?.message ?? null,
-    severity: accepted ? 'MEDIUM' : 'N/A (this run rejected it -- see thrownMessage for the real mechanism)',
-    note: 'assertCompleteVisibleSample only checks boolean hasOverlay/hasGlyphInk/sourceOnly flags on '
-      + 'the continuity witness, never a continuous opacity value. The only magnitude-vs-magnitude '
-      + "check in the file is the fade-type energy ordering (entry<exit<steady), gated on "
-      + "animation.type === 'fade'. For slide/scale/bounce/flip/rotate/typewriter -- which is the "
-      + 'entire 7-easing anchor sweep plus 8 of the 10 animation-type cases -- a render that reaches '
-      + 'roughly half (or double) the eased opacity a case actually calls for, while keeping its '
-      + 'centroid position and boolean ink flags correct, is invisible to every assertion here.',
-  });
-
-  // Hard-locks the CURRENT (hole) behaviour rather than hedging: if a future fix to the oracle
-  // starts rejecting this mutation, this assertion should start failing too, as a prompt to update
-  // or retire this documented hole.
-  assert.equal(accepted, true, `expected the hole to still be open; oracle instead threw: ${thrown?.message}`);
+    subtitleGeometry: {
+      ...correctEntry.subtitleGeometry,
+      changedPixels: Math.round(correctEntry.subtitleGeometry.changedPixels / 2),
+      meanChangedChannelDelta: correctEntry.subtitleGeometry.meanChangedChannelDelta / 2,
+      bounds: {
+        ...correctEntry.subtitleGeometry.bounds,
+        areaPixels: correctEntry.subtitleGeometry.changedPixels,
+      },
+    },
+  };
+  verifyAnimationObservation(input); // must NOT throw -- documents the gate, not a hole
 });
 
 test('defect 5b: the SAME halved-energy mutation on the fade case IS caught, because fade alone has '

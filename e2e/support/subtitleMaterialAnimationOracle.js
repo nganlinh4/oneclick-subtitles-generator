@@ -30,6 +30,17 @@ const GRADIENT_DIRECTIONS = Object.freeze(['0deg', '90deg', '45deg', '135deg', '
 const POSITIONS = Object.freeze(['bottom', 'top', 'center', 'custom']);
 const CUSTOMIZATION_FIELD_COUNT = 56;
 const MAXIMUM_CONTINUITY_PLATEAU_MS = 500;
+// Ink-magnitude floor: below this eased fraction, entry/exit's own eased-progress claim is already
+// covered by assertVisualContinuity's boolean ink-owed check (and near a zero crossing the product
+// legitimately still publishes source-only pixels there); the ratio below is only meaningful once
+// the sample is decisively supposed to carry a substantial, comparable fraction of full ink.
+const MIN_INK_ENERGY_EASED_GATE = 0.5;
+// A generous band around the eased expectation: wide enough to absorb rasterization/AA spread (the
+// sweep's own fixtures land within +/-30% of exact for every easing/type combination measured) but
+// tight enough that a half- or double-intensity render (0.5x / 2x, the defect class named in the
+// review) falls outside it with real margin.
+const MIN_INK_ENERGY_RATIO = 0.55;
+const MAX_INK_ENERGY_RATIO = 1.8;
 export const ANIMATION_TYPE_VALUES = Object.freeze([
   'fade', 'slide-up', 'slide-down', 'slide-left', 'slide-right',
   'scale', 'typewriter', 'bounce', 'flip', 'rotate',
@@ -825,6 +836,40 @@ const assertPhaseFrames = ({ animation, frameProofs, phaseTransitions }) => {
 };
 
 /**
+ * Bounded ink-MAGNITUDE claim for entry/exit, closing a hole `assertCompleteVisibleSample` cannot:
+ * that check only ever compares a BOOLEAN (hasOverlay/hasGlyphInk/sourceOnly) against the eased
+ * value's sign, never its size. A render at roughly half or double the eased opacity a case actually
+ * calls for -- correct position, correct boolean ink presence -- passed every other assertion in
+ * this file for every animation type except 'fade' (which alone had a phase-ordering energy check).
+ *
+ * The steady/holding phase (eased == 1 for every easing, by definition) is the one instant whose
+ * ink energy is unambiguous, so it is used as the per-observation "full ink" reference rather than a
+ * hardcoded constant -- this scales correctly across fixtures/fonts/colours instead of assuming a
+ * fixed pixel-delta magnitude. `sweepEasedProgress` (not the product's `easeSubtitle`) supplies the
+ * expected fraction, matching `slidePhaseClaim`'s existing use of the same independent evaluator.
+ *
+ * Gated on eased >= MIN_INK_ENERGY_EASED_GATE: below that, assertVisualContinuity's boolean check
+ * already owns the claim (and near a zero crossing either publication is legitimate), so a ratio
+ * against a near-zero expectation would be noise, not signal.
+ */
+const assertInkEnergyMagnitude = ({ animation, frameProofs }) => {
+  const steadyEnergy = frameProofs.steady.subtitleGeometry.meanChangedChannelDelta;
+  for (const phase of ANIMATION_PHASES) {
+    if (phase.name === 'steady') continue;
+    const eased = sweepEasedProgress(animation.easing, phase.expectedProgress);
+    if (eased < MIN_INK_ENERGY_EASED_GATE) continue;
+    const measured = frameProofs[phase.name].subtitleGeometry.meanChangedChannelDelta;
+    const expected = steadyEnergy * eased;
+    const ratio = measured / expected;
+    assert.ok(ratio >= MIN_INK_ENERGY_RATIO && ratio <= MAX_INK_ENERGY_RATIO, (
+      `${animation.id}: ${phase.name} ink energy ${measured} is ${ratio.toFixed(3)}x the eased `
+      + `expectation ${expected.toFixed(2)} (holding energy ${steadyEnergy} x eased ${eased.toFixed(3)}), `
+      + `outside the ${MIN_INK_ENERGY_RATIO}-${MAX_INK_ENERGY_RATIO} band`
+    ));
+  }
+};
+
+/**
  * Prove a font-bearing preset rebuild never publishes an incomplete visible composition.
  *
  * `transition` is captured synchronously before the public click. Samples before the first overlay
@@ -1097,6 +1142,7 @@ export const verifyAnimationObservation = ({
     assertFrameProof(frameProofs?.[phase.name], `${animation.type}/${phase.name}`);
   }
   assertPhaseFrames({ animation, frameProofs, phaseTransitions });
+  assertInkEnergyMagnitude({ animation, frameProofs });
   if (animation.index > 0) {
     assert.ok(entryChange?.pixels?.changedPixels >= 64, `${animation.type}: entry pixels equal the previous animation`);
     assert.ok(entryChange.pixels.changedRatio >= 0.000_1, `${animation.type}: entry delta is negligible`);

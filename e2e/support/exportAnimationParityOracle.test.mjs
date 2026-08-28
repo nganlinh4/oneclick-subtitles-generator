@@ -92,6 +92,7 @@ const region = ({ signature = '1a2b3c4d', centroid = { x: 240, y: 300 } } = {}) 
   maskCentroid: centroid,
   mainMaskCentroid: { x: centroid.x - 2, y: centroid.y + 1 },
   renderMaskCentroid: { x: centroid.x + 2, y: centroid.y - 1 },
+  exportMaskCentroid: centroid,
   pairs: {
     mainRender: measurement(),
     mainExport: measurement(),
