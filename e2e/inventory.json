@@ -289,8 +289,11 @@
         "the application's own SQLite database, read only"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "unproven",
-      "note": "Demoted 2026-08-28: the retained evidence/url-local-asr-preview attempts (three, all from 2026-08-27) all fail; there is no latest-success pointer. The most recent failure (20260827152942446-16288-cab1bdfb) shows the same 'Processing failed: The active native media changed or is unavailable' toast that knownProductFindings already records as recurring after its earlier fix. An earlier run had reproduced and fixed the projectScopeMismatch defect described below; that fix is real, but this capability has no currently passing real-binary attempt and is not green."
+      "status": "green",
+      "note": "Green 2026-08-28 against guarded binary SHA-256 b34cf21eb926f784 (application address 6a001ac496da6082), attempt url-local-asr-preview/attempts/20260828124847589-43912-ba2c5c64, source commit 774996a2. This is the FIRST pass for this journey across five candidates; the three earlier retained attempts all failed, most recently on the recurring \"The active native media changed or is unavailable\" refusal and before that on the faster-whisper-turbo method tile never displaying. Both captured steps were inspected rather than trusted: 02-subtitles-on-video.png shows the real downloaded \"Me at the zoo.mp4\" (0.45 MB) decoded in the preview with the generated cue \"one of the elephants.\" drawn over the video, a populated cue timeline and waveform beneath it, and the \"Faster-Whisper Turbo transcription complete\" success toast; the recorded state for both steps carries previewState \"ready\", empty errorToasts and empty errorAlerts, and the transcript content matches the actual subject of that video, so the pass is not a blank-preview or empty-transcript false positive. The whole path is credential-free: a real URL download plus LOCAL faster-whisper ASR, no provider key involved.",
+      "evidenceWorkflow": "url-local-asr-preview",
+      "attemptId": "20260828124847589-43912-ba2c5c64",
+      "binaryDigest": "b34cf21eb926f78404524b9b780cd19d8a0c394fc721e4c0b94df4d59aa3616a"
     },
     {
       "name": "downloadCancellationRetryIdentity",
@@ -1410,6 +1413,20 @@
     }
   ],
   "knownProductFindings": [
+    {
+      "finding": "The e2e application store address is NOT the exe digest: the directory name is the SHA-256 of the application manifest JSON, which itself pins every published file's digest. Both numbers are correct and they are one Merkle level apart.",
+      "foundBy": "coordinator, after a rebind made the two hashes look like a store-integrity failure",
+      "status": "documented",
+      "severity": "informational",
+      "note": "Recorded because the coordinator briefly read this as tampering: evidence manifests record binary.path .../applications/6a001ac4.../osg-desktop.exe while that exe hashes to b34cf21e..., which looks like a content-addressed tree whose contents no longer match its address. It is not. scripts/e2e-application-publication.js:1021-1023 addresses the tree by manifestHash() of applicationManifestBytes() (lines 261-268), a sorted JSON document listing {path,size,sha256} for the entrypoint plus the three reviewed resource directories (licenses, ui-fonts, workers); e2e/support/workflowEvidence.js:277-294 separately records the SHA-256 of the exe file bytes. The address therefore transitively covers every published byte and is genuinely tamper-evident: publish re-verifies an existing address by re-hashing the whole tree (publication:1051-1056, verifyApplicationTree:357-373), copies use COPYFILE_EXCL so an overwrite is impossible by construction, and e2e/support/environment.js:569-584 re-verifies at launch because \"importing a path from a once-valid receipt is not launch authority\". No action needed; this exists so the next reader does not re-raise a false integrity alarm."
+    },
+    {
+      "finding": "Only 7 of 31 green journeys are bound to a binary the applications store still retains; the other 24 were proven against exes that have since been rotated out, so they are historically attested but cannot be re-checked against the artifact that proved them.",
+      "foundBy": "coordinator, while rebinding two rotated-away evidence claims",
+      "status": "open",
+      "severity": "process",
+      "note": "The evidence manifests survive rotation but the exe does not, so for 24 greens there is no longer any way to re-run the journey against the binary the claim names. verify-inventory.mjs already labelled each such entry \"binary since rotated out (historical evidence only)\", but its closing line said only that every claim was bound, so anyone reading the tail of the output saw an unqualified all-clear; it now states the aggregate explicitly. This is the strongest argument for converging the recommended suite onto ONE retained binary rather than accumulating greens across many: as of this entry the 31 greens span 8 distinct exe digests, of which only 2 are still on disk. Nothing here says any individual claim was false when it was made -- each was bound to a real passing attempt at the time -- only that most are no longer reproducible."
+    },
     {
       "finding": "The durable verified-install receipt works: the engine store holds one covering all 41,507 files and 7.25 GB of the installed engine, so a status probe no longer re-hashes that tree on every process start.",
       "foundBy": "direct inspection of the shared engine store after candidate-20 runs",
