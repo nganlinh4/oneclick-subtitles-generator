@@ -33,13 +33,18 @@ export const modalState = () => browser.execute(() => {
 });
 
 /**
- * Choose video, wait for the real quality scan, take the lowest quality offered, and confirm.
+ * Choose video, wait for the real quality scan, pick one pill and confirm.
  *
- * The LOWEST quality on purpose: every journey that needs media needs it quickly, and which rung of
- * the ladder is fetched is the downloader's business rather than the subject of any journey here.
- * A journey about quality selection would choose a specific one and say so.
+ * `pickQuality` receives the exact real `.quality-pill-label` texts the scan produced (never
+ * fabricated) and returns the index to select. It defaults to the LOWEST rung -- the list arrives in
+ * descending order of height -- because most journeys that need media just need it quickly and which
+ * rung is fetched is the downloader's business. A journey ABOUT quality selection
+ * (downloadQualityVariants) passes its own picker instead of duplicating this scan/confirm sequence.
  */
-export const confirmDownloadOnly = async ({ afterScan = async () => {} } = {}) => {
+export const confirmDownloadOnly = async ({
+  afterScan = async () => {},
+  pickQuality = (qualities) => qualities.length - 1,
+} = {}) => {
   await clickControl('.download-only-modal input[name="download-type"][value="video"]');
 
   let state = await modalState();
@@ -65,13 +70,16 @@ export const confirmDownloadOnly = async ({ afterScan = async () => {} } = {}) =
   console.log(`qualities offered: ${JSON.stringify(state.qualities)}`);
   await afterScan(state);
 
-  // The last pill is the lowest rung: the list arrives in descending order of height.
-  //
   // The LABEL is the click target, not the radio. The input is laid out at zero size and styled
   // through its label, so clicking it reports "not clickable, intercepted by .radio-pill" — which
   // is the control working as designed, and is what a customer's pointer lands on anyway.
-  const lowest = state.qualities.length - 1;
-  await clickControl(`.download-only-modal label[for="quality-${lowest}"]`);
+  const chosen = pickQuality(state.qualities);
+  if (!Number.isInteger(chosen) || chosen < 0 || chosen >= state.qualities.length) {
+    throw new Error(
+      `pickQuality returned an out-of-range index ${chosen} for ${JSON.stringify(state.qualities)}`,
+    );
+  }
+  await clickControl(`.download-only-modal label[for="quality-${chosen}"]`);
 
   try {
     await browser.waitUntil(async () => !(await modalState()).confirmDisabled, {

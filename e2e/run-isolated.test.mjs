@@ -52,6 +52,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'canvasPlaybackPerformance.journey.js',
     'defaultFont.journey.js',
     'downloadCancellationRetryIdentity.journey.js',
+    'downloadQualityVariants.journey.js',
     'editorCueCrudAndHistory.journey.js',
     'exportAnimationParityMatrix.journey.js',
     'failedDownloadNoStale.journey.js',
@@ -79,6 +80,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'translatedDocumentExports.journey.js',
     'urlLocalAsrPreview.journey.js',
     'urlToPreview.journey.js',
+    'youtubeSearchAndHistory.journey.js',
   ]);
 });
 
