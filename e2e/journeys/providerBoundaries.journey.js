@@ -94,6 +94,43 @@ const waitUntilWithDiagnostic = async (predicate, { diagnostic, ...options }) =>
   }
 };
 
+/**
+ * Click a Download & Process modal tab by its visible label instead of DOM position.
+ *
+ * `.download-tabs .tab-btn:last-child` timed out on a real run (never appeared) even though the
+ * modal itself was open: src/components/DownloadOptionsModal.js's two `.process-tabs` buttons each
+ * carry an `info-icon-container` alongside the label, so a whole-button textContent match (or a
+ * position guess that silently drifts if a tab is ever reordered) is the wrong contract either way.
+ * Tagging the exact `.tab-label` (falling back to the button's own text for `.download-tabs`, which
+ * has no icon) is the same explicit-marker pattern clickResultControlButton uses in
+ * referenceVoiceAndPerCueNarration.journey.js.
+ */
+const clickTabLabelled = async (containerSelector, label) => {
+  const tagged = await browser.execute((container, text) => {
+    const marker = 'data-e2e-tab-target';
+    for (const stale of document.querySelectorAll(`[${marker}]`)) stale.removeAttribute(marker);
+    const buttons = [...document.querySelectorAll(`${container} .tab-btn`)];
+    const button = buttons.find((node) => (
+      (node.querySelector('.tab-label')?.textContent ?? node.textContent ?? '').trim() === text
+    ));
+    if (button === undefined) {
+      return {
+        found: false,
+        buttonLabels: buttons.map((node) => (
+          (node.querySelector('.tab-label')?.textContent ?? node.textContent ?? '').trim()
+        )),
+      };
+    }
+    button.setAttribute(marker, '1');
+    return { found: true };
+  }, containerSelector, label);
+  assert.equal(tagged.found, true, `${containerSelector} has no tab labelled "${label}": ${JSON.stringify(tagged)}`);
+  await clickControl('[data-e2e-tab-target="1"]');
+  await browser.execute(() => {
+    document.querySelector('[data-e2e-tab-target]')?.removeAttribute('data-e2e-tab-target');
+  });
+};
+
 /** Read the exact same one-typed-refusal shape every credential-free Gemini boundary in this suite proves. */
 const assertCleanTextRefusal = async ({ toasts, expectedMessage, before, after, label }) => {
   assert.equal(toasts.errorToasts.length, 1, `${label}: expected exactly one refusal toast, saw ${JSON.stringify(toasts.errorToasts)}`);
@@ -198,7 +235,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     await clickControl('.download-btn-primary');
     const downloadModal = await $('.download-options-modal');
     await downloadModal.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the Download Center modal never opened' });
-    await clickControl('.download-tabs .tab-btn:last-child'); // "Process Text" -> consolidate active by default
+    await clickTabLabelled('.download-tabs', 'Process Text'); // consolidate active by default
 
     // Split Duration is entirely local chunk-count arithmetic (no provider call) -- a genuinely
     // credential-free customer control, proven positively before it is reset for the clean
@@ -265,7 +302,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       '04-document-consolidate-refused',
       'Complete Document processing refuses through one bounded, actionable toast, with no durable artifact and no provider job.',
     );
-    await clickControl('.process-tabs .tab-btn:last-child'); // -> Summarize
+    await clickTabLabelled('.process-tabs', 'Summarize (TXT)');
     await runDocumentRefusal(
       '05-document-summarize-refused',
       'Summarize processing refuses through the same bounded toast text as Complete Document, with no durable artifact and no provider job.',

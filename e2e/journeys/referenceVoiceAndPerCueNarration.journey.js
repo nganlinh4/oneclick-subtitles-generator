@@ -112,6 +112,37 @@ const waitForDurableCues = async (root, expected) => {
   return durable;
 };
 
+/**
+ * Drop the subtitle document, retrying once if the rows never appear.
+ *
+ * Real-run observation (candidate 19, 2026-08-28): the very first drop right after
+ * openProjectWithMedia() can land in a narrow window where openProjectWithMedia's only readiness
+ * signal (the native <video> reporting a finite duration) has fired, but the async native
+ * subtitle-project binding it depends on (src/platform/subtitleProjectBinding.js, which
+ * src/components/inputs/FileUploadInput.js awaits before ever publishing `uploadedFile`) has only
+ * just started its own fire-and-forget hydration read (src/hooks/useNativeSubtitleHydration.js).
+ * If the drop's persistImportedSubtitlesForActiveProject call (src/utils/importedSubtitlePersistence.js)
+ * loses that race, handleSrtUpload refuses without ever calling setSubtitlesData -- see
+ * subtitleHandlers.test.js's "does not publish rows or a success status when persistence refuses" --
+ * so zero cues appear and the button never shows "uploaded". The drop is idempotent (it fully
+ * replaces the cue set both in React state and in the durable track), so re-dispatching it once
+ * closes the window without weakening what this journey proves.
+ */
+const importSubtitleDocumentSettled = async (subtitles, name, expectedCue) => {
+  try {
+    await importSubtitleDocument(subtitles, name, expectedCue);
+  } catch (firstError) {
+    try {
+      await importSubtitleDocument(subtitles, name, expectedCue);
+    } catch (secondError) {
+      throw new Error(
+        `the subtitle import never settled after a retry: ${secondError.message}`,
+        { cause: firstError },
+      );
+    }
+  }
+};
+
 /** Tag exactly one result row's control button so clickControl can press it without a stable id. */
 const tagResultControlButton = (cueText, iconName) => browser.execute((text, icon) => {
   const marker = 'data-e2e-narration-control';
@@ -166,7 +197,7 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     assert.ok(root, 'the application must run in an isolated root');
 
     await openProjectWithMedia();
-    await importSubtitleDocument(threeCueFixture(), 'reference-voice-and-per-cue-narration.srt', CUE_TEXTS[0]);
+    await importSubtitleDocumentSettled(threeCueFixture(), 'reference-voice-and-per-cue-narration.srt', CUE_TEXTS[0]);
     await waitForDurableCues(root, CUE_TEXTS.length);
 
     // --- Part 1: reference-voice cloning is present but honestly unreachable. -------------------
