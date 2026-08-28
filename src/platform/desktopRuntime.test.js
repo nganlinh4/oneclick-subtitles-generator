@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  DESKTOP_COMMAND_TIMED_OUT,
+  DESKTOP_COMMAND_TIMEOUT_MS,
   DESKTOP_RUNTIME_UNAVAILABLE,
   DesktopRuntimeError,
   invokeDesktop,
@@ -63,6 +65,71 @@ it('retains already normalized errors', async () => {
   invoke.mockRejectedValue(error);
 
   await expect(invokeDesktop('select_media')).rejects.toBe(error);
+});
+
+// Regression: the WebView's own IPC bridge has been observed to neither resolve nor reject an
+// invoke() call at all -- a stuck transport call below any of this codebase's own typed refusal
+// codes. A caller that opts into a bound races the call closed with a recognizable, retry-safe
+// code instead of leaving that promise pending forever, which is what left the customer's edit
+// behind it silently never becoming durable before this option existed.
+it('surfaces a bounded native call that never settles as a typed timeout instead of hanging forever', async () => {
+  window.isTauri = true;
+  vi.useFakeTimers();
+  try {
+    invoke.mockReturnValue(new Promise(() => {})); // never resolves or rejects
+
+    const pending = invokeDesktop(
+      'project_track_commit',
+      { id: 'project' },
+      { timeoutMs: DESKTOP_COMMAND_TIMEOUT_MS }
+    );
+    const assertion = expect(pending).rejects.toMatchObject({
+      name: 'DesktopRuntimeError',
+      code: DESKTOP_COMMAND_TIMED_OUT,
+      command: 'project_track_commit',
+    });
+    await vi.advanceTimersByTimeAsync(DESKTOP_COMMAND_TIMEOUT_MS);
+    await assertion;
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('never times out a bounded native call that settles before the bound elapses', async () => {
+  window.isTauri = true;
+  vi.useFakeTimers();
+  try {
+    invoke.mockResolvedValue({ ok: true });
+
+    const pending = invokeDesktop(
+      'project_track_commit',
+      { id: 'project' },
+      { timeoutMs: DESKTOP_COMMAND_TIMEOUT_MS }
+    );
+    await vi.advanceTimersByTimeAsync(DESKTOP_COMMAND_TIMEOUT_MS - 1);
+    await expect(pending).resolves.toEqual({ ok: true });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// A caller that does not opt in must wait forever, exactly like before this option existed --
+// `select_media`, `select_media_candidate` and `legacy_import_select` hold their promise open for
+// as long as a native file/folder picker dialog stays open, which only the customer bounds.
+it('never times out a native call that does not opt into a bound', async () => {
+  window.isTauri = true;
+  vi.useFakeTimers();
+  try {
+    invoke.mockReturnValue(new Promise(() => {})); // never resolves or rejects
+
+    const pending = invokeDesktop('select_media', {});
+    let settled = false;
+    pending.then(() => { settled = true; }, () => { settled = true; });
+    await vi.advanceTimersByTimeAsync(DESKTOP_COMMAND_TIMEOUT_MS * 100);
+    expect(settled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('passes raw bytes and headers without JSON conversion', async () => {

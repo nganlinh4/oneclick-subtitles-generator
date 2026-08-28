@@ -3,6 +3,37 @@ import { isUuidV7, normalizeProjectSnapshot } from './projectSnapshotAdapter';
 
 export const STALE_PROJECT_VERSION = 'staleProjectVersion';
 
+/**
+ * Every command this service issues is a bounded, database-backed request/response -- never a
+ * blocking native dialog (those live in `mediaService.js`, which does not route through here).
+ * `enqueueProject` serializes every durable operation for one project behind a single tail
+ * promise, and that tail promise only advances when the operation it is waiting on settles. A
+ * native reply that never arrives -- a lost IPC round trip, not a real rejection -- would
+ * therefore stall every later operation on the same project forever, silently: no error to
+ * catch, no toast, just an edit (for example the multi-cue range move) that never becomes
+ * durable. Bounding every command here turns that silent, permanent stall into one typed,
+ * catchable failure so the queue always recovers and the existing save-failed toast (wired by
+ * `useLyricsEditorHistory.js`'s `onError`) can tell the customer to retry.
+ */
+export const PROJECT_COMMAND_TIMEOUT_MS = 20_000;
+
+const withCommandTimeout = (promise, command, timeoutMs, schedule, cancel) => {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+  return new Promise((resolve, reject) => {
+    const timer = schedule(() => {
+      reject(new ProjectServiceError(
+        'projectCommandTimedOut',
+        'The desktop host did not respond to a project command in time',
+        { command }
+      ));
+    }, timeoutMs);
+    promise.then(
+      (value) => { cancel(timer); resolve(value); },
+      (error) => { cancel(timer); reject(error); },
+    );
+  });
+};
+
 export class ProjectServiceError extends Error {
   constructor(code, message, details = {}) {
     super(message);
@@ -178,7 +209,15 @@ const freezeTree = (value) => {
  * publication channel. Only explicit activation, or an authoritative operation result for the
  * project which is still active when that result completes, may publish to subscribers.
  */
-export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => {
+export const createProjectService = ({
+  invokeCommand = invokeDesktop,
+  commandTimeoutMs = PROJECT_COMMAND_TIMEOUT_MS,
+  schedule = setTimeout,
+  cancel = clearTimeout,
+} = {}) => {
+  const invoke = (command, args) => (
+    withCommandTimeout(invokeCommand(command, args), command, commandTimeoutMs, schedule, cancel)
+  );
   let activeSnapshot = null;
   let activationGeneration = 0;
   let activationRequestSequence = 0;
@@ -271,7 +310,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
 
   const readDirect = async (id) => {
     const projectId = validateProjectId(id);
-    const snapshot = await invokeCommand('project_load', { id: projectId });
+    const snapshot = await invoke('project_load', { id: projectId });
     const normalized = copySnapshot(snapshot);
     if (normalized !== null && normalized.metadata.id !== projectId) {
       throw new ProjectServiceError(
@@ -315,7 +354,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     const normalized = copySnapshot(candidate);
     try {
       const commit = validateCommit(
-        await invokeCommand('project_commit', { snapshot: normalized, reason }),
+        await invoke('project_commit', { snapshot: normalized, reason }),
         normalized.stateVersion
       );
       const committedSnapshot = copySnapshot({
@@ -348,7 +387,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
   const createDetached = (name) => {
     const projectName = validateProjectName(name);
     return Promise.resolve().then(async () => copySnapshot(
-      await invokeCommand('project_create', { name: projectName })
+      await invoke('project_create', { name: projectName })
     ));
   };
 
@@ -556,7 +595,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
           expectedVersion: snapshot.stateVersion,
         };
         if (expectedReason !== null) args.expectedReason = expectedReason;
-        const value = await invokeCommand(command, args);
+        const value = await invoke(command, args);
         if (value === null) {
           refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
           return null;
@@ -597,7 +636,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     const expectedActivationGeneration = activationGeneration;
     return enqueueProject(projectId, async () => {
       const snapshot = await requireProjectDirect(projectId);
-      const status = normalizeHistoryStatus(await invokeCommand('project_history_status', {
+      const status = normalizeHistoryStatus(await invoke('project_history_status', {
         id: snapshot.metadata.id,
       }));
       if (status.stateVersion !== snapshot.stateVersion) {
@@ -622,7 +661,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     return enqueueProject(projectId, async () => {
       let snapshot = await requireProjectDirect(projectId);
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const status = normalizeTrackHistoryStatus(await invokeCommand(
+        const status = normalizeTrackHistoryStatus(await invoke(
           'project_track_history_status',
           { id: projectId, selector: trackSelector }
         ));
@@ -717,7 +756,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     return enqueueProject(projectId, async () => {
       await requireProjectDirect(projectId);
       try {
-        const result = validateTrackMutation(await invokeCommand('project_track_commit', {
+        const result = validateTrackMutation(await invoke('project_track_commit', {
           id: projectId,
           selector: trackSelector,
           expectedHistoryVersion: historyVersion,
@@ -759,7 +798,7 @@ export const createProjectService = ({ invokeCommand = invokeDesktop } = {}) => 
     return enqueueProject(projectId, async () => {
       const snapshot = await requireProjectDirect(projectId);
       try {
-        const value = await invokeCommand(command, {
+        const value = await invoke(command, {
           id: projectId,
           selector: trackSelector,
           expectedHistoryVersion,

@@ -1,4 +1,8 @@
-import { createProjectService, ProjectConflictError } from './projectService';
+import {
+  createProjectService,
+  PROJECT_COMMAND_TIMEOUT_MS,
+  ProjectConflictError,
+} from './projectService';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
@@ -465,6 +469,63 @@ it('reloads authoritative state after a stale independent track writer', async (
     authoritativeSnapshot: authoritative,
   });
   expect(service.getActiveProjectSnapshot()).toEqual(authoritative);
+});
+
+it('bounds a native command that never replies so a later queued commit is not stalled behind it forever', async () => {
+  vi.useFakeTimers();
+  try {
+    let trackCommitCalls = 0;
+    const secondCommitted = { ...snapshot(8), tracks: [track('Second')] };
+    const invokeCommand = vi.fn(async (command) => {
+      if (command === 'project_load') return snapshot(7);
+      if (command === 'project_track_commit') {
+        trackCommitCalls += 1;
+        // The first call simulates a lost IPC round trip: the promise never settles, exactly
+        // what a native reply that never arrives looks like from the WebView.
+        if (trackCommitCalls === 1) return new Promise(() => undefined);
+        return {
+          snapshot: secondCommitted,
+          status: trackStatus(8, 4, 'OSG lyrics editor v1: move range'),
+        };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const service = createProjectService({ invokeCommand });
+    service.activateProjectSnapshot(snapshot(7));
+
+    const stuckCommit = service.commitProjectTrack({
+      id: PROJECT_ID,
+      selector: TRACK_SELECTOR,
+      expectedHistoryVersion: 3,
+      beforeTrack: track('Before'),
+      afterTrack: track('After'),
+      reason: 'OSG lyrics editor v1: text',
+    });
+    // Queued behind the stuck commit, exactly like a multi-cue range move queued behind an
+    // earlier drag's commit on the same project.
+    const laterCommit = service.commitProjectTrack({
+      id: PROJECT_ID,
+      selector: TRACK_SELECTOR,
+      expectedHistoryVersion: 4,
+      beforeTrack: track('After'),
+      afterTrack: track('Second'),
+      reason: 'OSG lyrics editor v1: move range',
+    });
+
+    await vi.advanceTimersByTimeAsync(PROJECT_COMMAND_TIMEOUT_MS);
+
+    await expect(stuckCommit).rejects.toMatchObject({
+      name: 'ProjectServiceError',
+      code: 'projectCommandTimedOut',
+      command: 'project_track_commit',
+    });
+    // The queue recovered: the later commit actually reached the native host and completed,
+    // instead of waiting forever behind the first one.
+    await expect(laterCommit).resolves.toMatchObject({ snapshot: secondCommitted });
+    expect(trackCommitCalls).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('rejects a diverged track status that advertises navigation', async () => {

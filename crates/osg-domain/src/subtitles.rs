@@ -506,4 +506,79 @@ mod tests {
             "unexpected error message: {error}"
         );
     }
+
+    /// A field investigation into a customer failure ("timelineAdvancedEditing", digest
+    /// `6a001ac4...`) reported `invalid type: null, expected u32` at small byte columns (the
+    /// 80s-280s) inside a command's JSON body during the multi-cue range-move step. This test
+    /// closes that lead formally: a null `ordinal`, wrapped in the *real* `project_track_commit`
+    /// envelope `commitTrackDetached` builds in `src/platform/projectService.js`
+    /// (`{id, selector, expectedHistoryVersion, beforeTrack, afterTrack, reason}`), cannot land
+    /// anywhere near those columns -- `id`, `selector` and `expectedHistoryVersion` alone already
+    /// consume well over 100 bytes before `beforeTrack` even starts, and the first cue inside it
+    /// contributes another ~150 bytes of its own `id`/UUID before `ordinal` is reached. So even
+    /// though `ordinal` is the only `u32` this boundary has ever rejected, it is not — and cannot
+    /// be — the field the field investigation was chasing. That failure is real and unexplained by
+    /// this crate; it is not `SubtitleTrack::ordinal`.
+    #[test]
+    fn a_null_ordinal_inside_the_real_commit_envelope_lands_well_past_the_observed_small_offsets() {
+        use serde::Deserialize;
+
+        /// Mirrors the exact argument shape `commitTrackDetached`
+        /// (`src/platform/projectService.js`) sends `project_track_commit`:
+        /// `{id, selector, expectedHistoryVersion, beforeTrack, afterTrack, reason}`.
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        #[allow(dead_code, reason = "only ever deserialized to reach a failing column")]
+        struct Envelope {
+            id: String,
+            selector: serde_json::Value,
+            expected_history_version: u64,
+            before_track: Option<SubtitleTrack>,
+            after_track: Option<SubtitleTrack>,
+            reason: String,
+        }
+
+        let track = SubtitleTrack::new(
+            "Cached subtitles".to_owned(),
+            TrackOrigin::LegacyJson,
+            vec![cue(
+                0,
+                1_000,
+                "Interior cue for direct start and end drag tests",
+            )],
+        )
+        .expect("valid track");
+        let track_json = serde_json::to_string(&track).expect("serializable track");
+        let malformed_track = track_json.replacen("\"ordinal\":1", "\"ordinal\":null", 1);
+
+        // Mirrors the exact argument shape and key order `commitTrackDetached` sends:
+        // { id, selector, expectedHistoryVersion, beforeTrack, afterTrack, reason }.
+        let envelope = format!(
+            "{{\"id\":\"01978b1a-0000-7000-8000-000000000001\",\
+             \"selector\":{{\"label\":\"Cached subtitles\",\"origin\":\"legacyJson\"}},\
+             \"expectedHistoryVersion\":3,\
+             \"beforeTrack\":{malformed_track},\
+             \"afterTrack\":{malformed_track},\
+             \"reason\":\"OSG lyrics editor v1: timing drag\"}}"
+        );
+
+        let error = serde_json::from_str::<Envelope>(&envelope)
+            .expect_err("a null ordinal must still be rejected inside the real envelope");
+        let message = error.to_string();
+        assert!(
+            message.contains("invalid type: null, expected u32"),
+            "unexpected error message: {message}"
+        );
+        let column: usize = message
+            .rsplit("column ")
+            .next()
+            .and_then(|tail| tail.parse().ok())
+            .expect("a text-parsed struct error always reports a column");
+        assert!(
+            column > 300,
+            "a null ordinal inside the real commit envelope landed at column {column}, which \
+             would make it a plausible match for the observed small-offset product failure -- \
+             re-open the ordinal theory instead of trusting this comment"
+        );
+    }
 }
