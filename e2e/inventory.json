@@ -442,8 +442,8 @@
       ],
       "note": "Green against the rebuilt real binary: native decode/composite/encode/mux completed, the saved MP4 contained independently probed video and audio streams with the expected duration, and its decoded Neon frame (Arial, border, glow, shadow and background) matched the persistent canvas preview at SSIM 0.973657. The journey found and drove four earlier product defects to green: missing subtitle admission, selecting a video track as audio plus malformed MP4 Opus parameters, refusing a valid audio-tail presentation after video EOS, and rejecting every successful publication because the artifact and immutable media snapshot were correctly separate files.",
       "evidenceWorkflow": "native-export-decoded",
-      "attemptId": "20260827121309372-58892-8920f48c",
-      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
+      "attemptId": "20260828091331691-78912-2f18d553",
+      "binaryDigest": "8f9d737c50a68e3c03c71f37c4b20af70fd34e54d06e48686232946ccaa816a6"
     },
     {
       "name": "localFileImport",
@@ -1155,8 +1155,8 @@
       ],
       "note": "Green in off-screen real-binary attempt 20260827033637334-63664-23411c41 (exe sha256 9c240437a41d…), all seven grouped material frames and three representative animation frames inspected: the cumulative 56-field customization drew the multilingual cue (Vietnamese, Korean, inline Arabic, ZWJ emoji, combining marks) through typography, five borders, shadow/glow, six gradient directions with stroke, anchors/margins, custom placement/wrap and timing, and the sweep proved all seven easings on slide-up plus the other nine animations through uninterrupted playback — the typewriter entry frame shows the partial reveal mid-type. Getting here surfaced and fixed two real preview defects (the idle paused Render surface and the black transitioning-surface capture at seek boundaries) and taught the continuity witness to classify pre-attach compositions as unknown provenance instead of reporting the held-frame design as a black flash. Superseded by a newer passing attempt on 2026-08-27; see evidenceWorkflow/attemptId/binaryDigest below.",
       "evidenceWorkflow": "subtitle-material-and-animation",
-      "attemptId": "20260827095738901-36124-349b5276",
-      "binaryDigest": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4"
+      "attemptId": "20260828092039285-70416-5e19db89",
+      "binaryDigest": "8f9d737c50a68e3c03c71f37c4b20af70fd34e54d06e48686232946ccaa816a6"
     },
     {
       "name": "exportAnimationParityMatrix",
