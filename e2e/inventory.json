@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "Applying an aspect-ratio crop preset silently lost the crop: Apply threw uncaught, the overlay stayed open, and nothing durable changed or was reported.",
+      "foundBy": "renderFormatTransformMatrix first real-binary execution on candidate 19",
+      "status": "fixed",
+      "severity": "major",
+      "note": "The preset handler emitted only the six geometry keys the dimension helper returns, but the durable render scene requires an exact ten-key crop shape, so its snapshot returned null and the update threw synchronously inside the click handler - before the handler could close crop mode. The preset math itself was correct: the evidence screenshot shows the right 75 percent by 100 percent overlay for a 1:1 crop of a 4:3 source. Nothing surfaced to the customer because the exception aborted before the render authority recorded any error, so this was silent loss of a deliberate edit. The handler now carries the full shape including the chosen ratio, and the Apply path catches a rejected scene update, reverts the optimistic preview and shows a bounded error rather than stranding the UI. Two regressions reproduce the exact missing-key set and the uncaught throw."
+    },
+    {
       "finding": "No engine in the ASR or speech catalogs is gated on hardware capability: the product has no CUDA/DirectML/CoreML check and no unsupported-on-this-hardware state anywhere.",
       "foundBy": "engine-catalog feasibility audit",
       "status": "documented",
