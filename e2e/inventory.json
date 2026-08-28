@@ -1411,6 +1411,13 @@
   ],
   "knownProductFindings": [
     {
+      "finding": "No engine in the ASR or speech catalogs is gated on hardware capability: the product has no CUDA/DirectML/CoreML check and no unsupported-on-this-hardware state anywhere.",
+      "foundBy": "engine-catalog feasibility audit",
+      "status": "documented",
+      "severity": "informational",
+      "note": "A repo-wide search of crates/osg-asr/src, crates/osg-speech/src and the desktop asr/speech commands found no capability probe, and the engine card state machine carries eight states, none of them a hardware refusal. This is recorded as a measured ABSENCE rather than a test, so no journey claims to prove a refusal the product cannot make. Practical consequence for the completion ledger: every unproven alternate engine is size-gated, not hardware-gated - Parakeet 5.43, Faster-Whisper Large-v3 5.93, Qwen3-ASR 0.6B 6.52 and 1.7B 9.15, F5-TTS 4.28 and Chatterbox 8.93 GiB compressed - while Edge TTS at 11 MiB is a genuinely provable second credential-free narration provider and now has an authored generate-and-verify journey."
+    },
+    {
       "finding": "The release-readiness lockfile gate walked into agent worktrees under .claude, so its verdict depended on whether an unrelated parallel lane happened to be open at that moment.",
       "foundBy": "candidate 19 cut, which failed the gate at a commit that passes it alone",
       "status": "fixed",
