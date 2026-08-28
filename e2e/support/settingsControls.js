@@ -47,10 +47,26 @@ export const clickSettingsControl = async (selector, options = {}) => {
 export const revealSettingsSection = async (selector) => {
   const revealed = await browser.execute((target) => {
     const node = document.querySelector(target);
-    const scroller = node?.closest('.settings-content');
-    if (node === null || scroller === null) return false;
+    if (node === null) return false;
+    // Settings tabs do not share one scroll container: some content sits inside
+    // `.settings-content`, some inside a panel's own scroller. Walk to whichever ancestor actually
+    // scrolls rather than naming a class, and fall back to the element's own scrollIntoView when
+    // nothing in the chain scrolls at all - a section that is already fully visible needs no work,
+    // and refusing there would fail a capture that would have succeeded.
+    let scroller = node.parentElement;
+    while (scroller !== null && scroller !== document.body) {
+      const style = getComputedStyle(scroller);
+      const scrolls = /(auto|scroll|overlay)/u.test(`${style.overflowY} ${style.overflow}`)
+        && scroller.scrollHeight > scroller.clientHeight + 1;
+      if (scrolls) break;
+      scroller = scroller.parentElement;
+    }
+    if (scroller === null || scroller === document.body) {
+      node.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+      return true;
+    }
     scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     return true;
   }, selector);
-  if (!revealed) throw new Error(`${selector}: could not be revealed inside the settings scroller`);
+  if (!revealed) throw new Error(`${selector}: is not present, so it cannot be revealed`);
 };
