@@ -21,7 +21,8 @@ export const runAsrGeneration = async ({
   setIsGenerating,
   setSubtitlesData,
   loadSubtitles,
-  persistSubtitles,
+  captureGeneratedSegment,
+  persistGeneratedSegment,
   t,
 }) => {
   const seg = options.segment;
@@ -44,6 +45,10 @@ export const runAsrGeneration = async ({
         ...(options.signal ? { signal: options.signal } : {}),
       });
     }
+    if (typeof captureGeneratedSegment !== 'function') {
+      throw new TypeError('Local ASR requires a durable subtitle revision');
+    }
+    await captureGeneratedSegment();
     if (typeof loadSubtitles !== 'function') {
       throw new TypeError('Local ASR requires an authoritative subtitle loader');
     }
@@ -89,10 +94,14 @@ export const runAsrGeneration = async ({
     // Streaming rows are presentation only until the exact project accepts the complete result.
     // Do not announce completion and do not rely on a delayed DOM event: either this awaited write
     // succeeds, or the generation fails while the already-durable pre-run checkpoint remains safe.
-    if (typeof persistSubtitles !== 'function') {
+    if (typeof persistGeneratedSegment !== 'function') {
       throw new TypeError('Local ASR requires a durable subtitle publisher');
     }
-    await persistSubtitles(finalSubs);
+    const durableCommit = await persistGeneratedSegment(filteredForSeg);
+    const authoritativeRows = Array.isArray(durableCommit?.subtitles)
+      ? durableCommit.subtitles
+      : finalSubs;
+    setSubtitlesData(authoritativeRows);
 
     // The channel event is transport, not consumption. Only the awaited project checkpoint above
     // transfers ownership; an acknowledgement transport failure deliberately leaves SQLite's
@@ -110,7 +119,17 @@ export const runAsrGeneration = async ({
     setStatus({ message: t('output.asrTranscriptionComplete', '{{engine}} transcription complete', { engine: engineName }), type: 'success' });
     return true;
   } catch (error) {
-    if (durableBaseline !== null) setSubtitlesData(durableBaseline);
+    // A later editor commit can legitimately supersede the pre-run baseline while native windows
+    // are running. Never repaint that stale snapshot on failure: reload the exact durable owner and
+    // publish only what it currently contains. If ownership itself was lost, publish nothing.
+    if (durableBaseline !== null) {
+      try {
+        const current = await loadSubtitles();
+        if (current === null || Array.isArray(current)) setSubtitlesData(current ?? []);
+      } catch {
+        // The ownership/read error that ended the run remains authoritative.
+      }
+    }
     throw error;
   } finally {
     setIsGenerating(false);

@@ -206,3 +206,78 @@ it('releases controller and range state when native protocol validation fails', 
   expect(onRanges).toHaveBeenLastCalledWith([]);
   expect(abortAllRequests()).toBe(false);
 });
+
+it('merges four windows sequentially and publishes each receipt only after its merge completes', async () => {
+  const order = [];
+  let call = 0;
+  startAsrJob.mockImplementation((request, handlers) => {
+    const index = call++;
+    order.push(`start:${index}:${request.range.start}`);
+    handlers.onCompleted(completedEvent({
+      job: { id: `job-${index}` },
+      deliveryId: `delivery-${index}`,
+      timelineOffsetMs: Math.round(request.range.start * 1_000),
+      transcription: {
+        segments: [{ startMs: 0, endMs: 500, text: `window ${index}` }],
+      },
+    }));
+    return Promise.resolve({ id: `registered-${index}` });
+  });
+  const onMergeSegment = vi.fn(async (part, rows) => {
+    order.push(`merge:${rows[0].text}:${part.start}`);
+  });
+  const onDeliveryReceipt = vi.fn(async ({ jobId }) => {
+    order.push(`receipt:${jobId}`);
+  });
+
+  await processAsrSegment(
+    'parakeet',
+    null,
+    { start: 0, end: 4 },
+    { maxDurationPerRequest: 1 },
+    { onMergeSegment, onDeliveryReceipt },
+  );
+
+  expect(startAsrJob).toHaveBeenCalledTimes(4);
+  expect(onMergeSegment).toHaveBeenCalledTimes(4);
+  expect(onDeliveryReceipt).toHaveBeenCalledTimes(4);
+  expect(order).toEqual([
+    'start:0:0', 'merge:window 0:0', 'receipt:job-0',
+    'start:1:1', 'merge:window 1:1', 'receipt:job-1',
+    'start:2:2', 'merge:window 2:2', 'receipt:job-2',
+    'start:3:3', 'merge:window 3:3', 'receipt:job-3',
+  ]);
+});
+
+it('stops after a rejected window and ignores a contradictory late completion', async () => {
+  const failure = { code: 'asrWorker', message: 'window two failed' };
+  let call = 0;
+  startAsrJob.mockImplementation((request, handlers) => {
+    const index = call++;
+    if (index === 0) {
+      handlers.onCompleted(completedEvent({
+        timelineOffsetMs: Math.round(request.range.start * 1_000),
+      }));
+    } else {
+      handlers.onFailed({ error: failure });
+      handlers.onCompleted(completedEvent({
+        timelineOffsetMs: Math.round(request.range.start * 1_000),
+      }));
+    }
+    return Promise.resolve({ id: `registered-${index}` });
+  });
+  const onMergeSegment = vi.fn();
+  const onDeliveryReceipt = vi.fn();
+
+  await expect(processAsrSegment(
+    'parakeet',
+    null,
+    { start: 0, end: 4 },
+    { maxDurationPerRequest: 1 },
+    { onMergeSegment, onDeliveryReceipt },
+  )).rejects.toMatchObject({ code: 'asrWorker', message: 'window two failed' });
+
+  expect(startAsrJob).toHaveBeenCalledTimes(2);
+  expect(onMergeSegment).toHaveBeenCalledTimes(1);
+  expect(onDeliveryReceipt).toHaveBeenCalledTimes(1);
+});

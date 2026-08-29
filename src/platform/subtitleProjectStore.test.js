@@ -347,6 +347,57 @@ it('rejects an overlapping manual edit instead of overwriting the newer segment'
     .toEqual([{ id: 1, start: 5, end: 6, text: 'newer manual target edit' }]);
 });
 
+it('commits a captured empty replacement as an intentional range deletion', async () => {
+  let current = snapshotWithRows(4, [
+    { start: 0, end: 2, text: 'before' },
+    { start: 5, end: 6, text: 'old target' },
+    { start: 9, end: 10, text: 'after' },
+  ]);
+  const invokeCommand = vi.fn(async (command) => (
+    command === 'subtitle_project_index_get' ? existingIndex() : undefined
+  ));
+  const projects = {
+    loadProject: vi.fn(async () => current),
+    createProject: vi.fn(),
+    getProjectTrackHistoryStatus: vi.fn(async () => ({
+      stateVersion: current.stateVersion,
+      historyVersion: 2,
+      undoReason: null,
+      redoReason: null,
+      diverged: false,
+    })),
+    commitProjectTrack: vi.fn(async (request) => {
+      current = {
+        ...current,
+        stateVersion: current.stateVersion + 1,
+        tracks: request.afterTrack === null ? [] : [request.afterTrack],
+      };
+      return {
+        snapshot: current,
+        status: {
+          stateVersion: current.stateVersion,
+          historyVersion: 3,
+          diverged: false,
+          canUndo: true,
+          canRedo: false,
+          undoReason: request.reason,
+          redoReason: null,
+        },
+      };
+    }),
+  };
+  const store = createTestStore({ invokeCommand, projects, now: () => 200 });
+  const revision = await store.captureSegmentRevision('cache-id', { start: 5, end: 8 });
+
+  const result = await store.commitSegmentRevision(revision, []);
+
+  expect(result.rows).toEqual([
+    { id: 1, start: 0, end: 2, text: 'before' },
+    { id: 2, start: 9, end: 10, text: 'after' },
+  ]);
+  expect(projects.commitProjectTrack).toHaveBeenCalledTimes(1);
+});
+
 it('repairs an alias whose project was removed before creating a replacement', async () => {
   const persistedIndex = {
     schemaVersion: 1,

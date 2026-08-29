@@ -339,6 +339,42 @@ it('fails closed on a Channel protocol violation and cancels the native job once
     .toHaveLength(1);
 });
 
+it('rejects a completed transcript whose duration spills beyond its requested window', async () => {
+  const initial = jobSnapshot();
+  let channel;
+  const onProtocolError = vi.fn();
+  const onCompleted = vi.fn();
+  const cancelling = jobSnapshot({ id: initial.id, state: 'cancelling', sequence: 2 });
+  const invokeCommand = vi.fn(async (command, args) => {
+    if (command === 'asr_start') {
+      channel = args.onEvent;
+      return initial;
+    }
+    return cancelling;
+  });
+  const service = createService({ invokeCommand });
+  await service.startAsrJob({
+    engine: 'parakeet',
+    range: { start: 10, end: 12 },
+  }, { onProtocolError, onCompleted });
+
+  channel.emit(completedEvent(initial.id, {
+    timelineOffsetMs: 10_000,
+    transcription: transcription({
+      durationMs: 2_001,
+      segments: [{ startMs: 0, endMs: 2_001, text: 'spills by one millisecond' }],
+    }),
+  }));
+  await Promise.resolve();
+
+  expect(onProtocolError).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ code: 'invalidAsrResponse' }),
+  );
+  expect(onCompleted).not.toHaveBeenCalled();
+  expect(invokeCommand.mock.calls.filter(([command]) => command === 'job_cancel'))
+    .toHaveLength(1);
+});
+
 it('cancels a registered job when a malformed event arrives before start resolves', async () => {
   const initial = jobSnapshot();
   const cancelling = jobSnapshot({ id: initial.id, state: 'cancelling', sequence: 2 });

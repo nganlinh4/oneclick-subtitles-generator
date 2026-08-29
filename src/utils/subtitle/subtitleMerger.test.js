@@ -50,6 +50,22 @@ describe('subtitle segment merging', () => {
     expect(merged.find((row) => row.id === 'new-a')).toBe(replacement[0]);
   });
 
+  test('an empty authoritative result clears only its requested half-open range', () => {
+    const existing = freezeTrack([
+      { id: 'before', start: 0, end: 2, text: 'before' },
+      { id: 'crosses', start: 4, end: 12, text: 'crosses both boundaries' },
+      { id: 'inside', start: 6, end: 8, text: 'stale speech' },
+      { id: 'after', start: 12, end: 14, text: 'after' },
+    ]);
+
+    expect(intervals(mergeSegmentSubtitles(existing, [], { start: 5, end: 10 }))).toEqual([
+      { id: 'before', start: 0, end: 2 },
+      { id: 'crosses', start: 4, end: 5 },
+      { id: 'crosses', start: 10, end: 12 },
+      { id: 'after', start: 12, end: 14 },
+    ]);
+  });
+
   test('progressively replaces only the published range without deleting adjacent-segment tails', () => {
     const existing = freezeTrack([
       { id: 'before', start: 0, end: 4, text: 'before' },

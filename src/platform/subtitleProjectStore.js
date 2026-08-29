@@ -667,13 +667,15 @@ export const createSubtitleProjectStore = ({
         'The active subtitle project changed before its segment could be saved'
       );
     }
-    if (!Array.isArray(replacement) || replacement.length === 0) {
+    if (!Array.isArray(replacement)) {
       throw new SubtitleProjectStoreError(
         'invalidSubtitles',
-        'A regenerated subtitle segment must contain subtitles'
+        'A regenerated subtitle segment must be an array'
       );
     }
-    legacyRowsToCanonicalTrack(replacement, { label: SUBTITLE_CACHE_TRACK_LABEL });
+    if (replacement.length > 0) {
+      legacyRowsToCanonicalTrack(replacement, { label: SUBTITLE_CACHE_TRACK_LABEL });
+    }
     replacement.forEach((row) => {
       if (row.start < revision.segment.start || row.end > revision.segment.end) {
         throw new SubtitleProjectStoreError(

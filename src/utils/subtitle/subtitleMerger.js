@@ -48,18 +48,13 @@ export const mergeSegmentSubtitles = (existingSubtitles, newSegmentSubtitles, se
     return newSegmentSubtitles || [];
   }
 
-  if (!newSegmentSubtitles || newSegmentSubtitles.length === 0) {
-    // If no new subtitles, return existing ones
-    return existingSubtitles;
-  }
-
   const { start: segmentStart, end: segmentEnd } = segment;
   const preserved = preserveOutsideRange(existingSubtitles, segmentStart, segmentEnd);
 
   // Combine replacement rows with the preserved portions of the old track.
   const mergedSubtitles = [
     ...preserved,
-    ...newSegmentSubtitles
+    ...(newSegmentSubtitles || [])
   ];
 
   // Sort by start time to ensure proper order

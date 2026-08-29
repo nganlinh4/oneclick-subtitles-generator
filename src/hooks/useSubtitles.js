@@ -5,7 +5,9 @@ import { EVENTS, publishStreamingComplete, subscribe } from '../events/bus';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
 
 import {
+    captureDurableSubtitleSegmentRevision,
     commitDurableSubtitleCheckpoint,
+    commitDurableSubtitleSegmentCheckpoint,
     isDurableSubtitleCheckpointReceipt,
     isSuccessfulSubtitleCacheSaveReceipt,
     requireSuccessfulSubtitleCacheSave,
@@ -222,6 +224,18 @@ export const useSubtitles = (t) => {
         // Local ASR engines (Parakeet + the catalog engines) run via their registered runner.
         const localRunner = METHOD_RUNNERS[options.method];
         if (localRunner) {
+            const requestedSegment = options.segment;
+            if (!requestedSegment
+                || typeof requestedSegment.start !== 'number'
+                || typeof requestedSegment.end !== 'number') {
+                setGenerationStatus({
+                    message: t('errors.invalidSegmentSelection', 'Invalid segment selection'),
+                    type: 'error',
+                });
+                setIsGenerating(false);
+                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
+                return false;
+            }
             // Local ASR used to bypass project resolution, paint streaming rows, and schedule a
             // best-effort event save 500 ms later. Resolve its durable owner before inference.
             const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
@@ -247,59 +261,101 @@ export const useSubtitles = (t) => {
                 if (ownsPresentation()) generationPresentationOwnerRef.current = null;
                 throw error;
             }
-            const persistSubtitles = async (rows) => {
-                if (!cacheId) throw new Error('The subtitle project could not be resolved.');
-                if (autoRunContext) {
-                    const receipt = await commitDurableSubtitleCheckpoint({
-                        context: autoRunContext,
-                        subtitles: rows,
-                        validateOwnership: assertAutoGenerationContextDurable
-                    });
-                    if (!isDurableSubtitleCheckpointReceipt(receipt, autoRunContext)) {
-                        throw new Error('Automatic subtitles were not durably saved.');
-                    }
-                    return receipt;
-                }
-                const receipt = await saveSubtitlesToCache(cacheId, rows, {
-                    expectedProjectId: nativeMediaCapability?.projectId ?? null,
-                });
-                requireSuccessfulSubtitleCacheSave(receipt);
+            let localRunnerStarted = false;
+            try {
                 await refreshNativeMedia();
-                return receipt;
-            };
-            const loadAuthoritativeSubtitles = async () => {
-                if (!cacheId) throw new Error('The subtitle project could not be resolved.');
-                if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
-                await refreshNativeMedia();
-                const resolved = await resolveProjectForCache(cacheId, { create: true });
-                const projectId = nativeMediaCapability?.projectId ?? resolved?.projectId ?? null;
-                if (!projectId
-                    || resolved?.projectId !== projectId
-                    || (autoRunContext && projectId !== autoRunContext.projectId)) {
+                const resolvedLocalProject = await resolveProjectForCache(cacheId, { create: true });
+                const localProjectId = nativeMediaCapability?.projectId
+                    ?? resolvedLocalProject?.projectId
+                    ?? null;
+                if (!localProjectId
+                    || resolvedLocalProject?.projectId !== localProjectId
+                    || (autoRunContext && localProjectId !== autoRunContext.projectId)) {
                     throw new Error('The active subtitle project changed before local transcription.');
                 }
-                const rows = await loadExactProjectSubtitles(cacheId, projectId);
-                await refreshNativeMedia();
-                if (nativeMediaCapability !== null
-                    && (nativeMediaCapability.cacheId !== cacheId
-                        || nativeMediaCapability.projectId !== projectId)) {
-                    throw new Error('The active subtitle project changed during local transcription.');
-                }
-                return rows;
-            };
-            const localResult = await localRunner({
-                input,
-                options,
-                runId,
-                setStatus: setGenerationStatus,
-                setIsGenerating,
-                setSubtitlesData: setGenerationSubtitlesData,
-                loadSubtitles: loadAuthoritativeSubtitles,
-                persistSubtitles,
-                t
-            });
-            if (ownsPresentation()) generationPresentationOwnerRef.current = null;
-            return localResult;
+                const localContext = Object.freeze({
+                    runId,
+                    cacheId,
+                    projectId: localProjectId,
+                    segment: Object.freeze({
+                        start: options.segment.start,
+                        end: options.segment.end,
+                    }),
+                    ...(options.signal ? { signal: options.signal } : {}),
+                });
+                const validateLocalOwnership = autoRunContext
+                    ? async (context) => {
+                        await assertAutoGenerationContextDurable(autoRunContext);
+                        if (context.cacheId !== autoRunContext.cacheId
+                            || context.projectId !== autoRunContext.projectId) {
+                            throw new Error('Automatic generation changed subtitle projects.');
+                        }
+                        return context;
+                    }
+                    : async (context) => {
+                        await refreshNativeMedia();
+                        if (!canPresent()
+                            || getRulesCacheId() !== context.cacheId
+                            || getSubtitlesCacheId() !== context.cacheId
+                            || nativeMediaCapability?.projectId !== context.projectId) {
+                            throw new Error('The active subtitle project changed during local transcription.');
+                        }
+                        await loadExactProjectSubtitles(context.cacheId, context.projectId);
+                        await refreshNativeMedia();
+                        if (!canPresent()
+                            || getRulesCacheId() !== context.cacheId
+                            || getSubtitlesCacheId() !== context.cacheId
+                            || nativeMediaCapability?.projectId !== context.projectId) {
+                            throw new Error('The active subtitle project changed during local transcription.');
+                        }
+                        return context;
+                    };
+                let localRevision = null;
+                const captureGeneratedSegment = async () => {
+                    localRevision = await captureDurableSubtitleSegmentRevision({
+                        context: localContext,
+                        validateOwnership: validateLocalOwnership,
+                    });
+                    return localRevision;
+                };
+                const persistGeneratedSegment = async (replacement) => {
+                    if (localRevision === null) {
+                        throw new Error('Local subtitles have no captured durable revision.');
+                    }
+                    const receipt = await commitDurableSubtitleSegmentCheckpoint({
+                        context: localContext,
+                        revision: localRevision,
+                        replacement,
+                        validateOwnership: validateLocalOwnership,
+                    });
+                    if (!isDurableSubtitleCheckpointReceipt(receipt, localContext)
+                        || !Array.isArray(receipt.subtitles)) {
+                        throw new Error('Local subtitles were not durably saved.');
+                    }
+                    await refreshNativeMedia();
+                    return receipt;
+                };
+                const loadAuthoritativeSubtitles = async () => {
+                    await validateLocalOwnership(localContext);
+                    return loadExactProjectSubtitles(cacheId, localProjectId);
+                };
+                localRunnerStarted = true;
+                return await localRunner({
+                    input,
+                    options,
+                    runId,
+                    setStatus: setGenerationStatus,
+                    setIsGenerating,
+                    setSubtitlesData: setGenerationSubtitlesData,
+                    loadSubtitles: loadAuthoritativeSubtitles,
+                    captureGeneratedSegment,
+                    persistGeneratedSegment,
+                    t
+                });
+            } finally {
+                if (!localRunnerStarted) setIsGenerating(false);
+                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
+            }
         }
 
         let fullMediaStreamingHandler = null;

@@ -2,8 +2,11 @@ import { act, renderHook } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   processGeminiSegment: vi.fn(),
+  processAsrSegment: vi.fn(),
   saveSubtitlesToCache: vi.fn(),
   commitDurableSubtitleCheckpoint: vi.fn(),
+  captureDurableSubtitleSegmentRevision: vi.fn(),
+  commitDurableSubtitleSegmentCheckpoint: vi.fn(),
   publishStreamingComplete: vi.fn(),
   checkpointBeforeUpdate: vi.fn(),
   loadExactProjectSubtitles: vi.fn(),
@@ -25,9 +28,14 @@ vi.mock('../utils/videoProcessor', () => ({ getVideoDuration: vi.fn(async () => 
 vi.mock('../services/engines/GeminiAdapter', () => ({
   processGeminiSegment: mocks.processGeminiSegment,
 }));
+vi.mock('../services/engines/AsrAdapter', () => ({
+  processAsrSegment: mocks.processAsrSegment,
+}));
 vi.mock('../services/subtitleCache', () => ({
   saveSubtitlesToCache: mocks.saveSubtitlesToCache,
   commitDurableSubtitleCheckpoint: mocks.commitDurableSubtitleCheckpoint,
+  captureDurableSubtitleSegmentRevision: mocks.captureDurableSubtitleSegmentRevision,
+  commitDurableSubtitleSegmentCheckpoint: mocks.commitDurableSubtitleSegmentCheckpoint,
   isSuccessfulSubtitleCacheSaveReceipt: vi.fn((result) => (
     result?.success === true
     && typeof result.cacheId === 'string'
@@ -35,7 +43,7 @@ vi.mock('../services/subtitleCache', () => ({
     && Number.isSafeInteger(result.subtitleCount)
   )),
   isDurableSubtitleCheckpointReceipt: vi.fn((result, context) => (
-    result?.kind === 'durable-subtitle-checkpoint'
+    ['durable-subtitle-checkpoint', 'durable-subtitle-segment-checkpoint'].includes(result?.kind)
     && result.runId === context?.runId
     && result.cacheId === context?.cacheId
     && result.projectId === context?.projectId
@@ -200,7 +208,61 @@ beforeEach(() => {
       subtitleCount: saved.subtitleCount,
     };
   });
+  mocks.captureDurableSubtitleSegmentRevision.mockResolvedValue(Object.freeze({
+    kind: 'subtitle-segment-revision',
+  }));
+  mocks.commitDurableSubtitleSegmentCheckpoint.mockImplementation(async ({
+    context,
+    replacement,
+    validateOwnership,
+  }) => {
+    await validateOwnership(context);
+    return {
+      kind: 'durable-subtitle-segment-checkpoint',
+      runId: context.runId,
+      cacheId: context.cacheId,
+      projectId: context.projectId,
+      subtitleCount: replacement.length,
+      subtitles: replacement,
+      stateVersion: 8,
+    };
+  });
   localStorage.clear();
+});
+
+test('local ASR captures one range revision before inference and commits only that aggregate', async () => {
+  const rows = [{ start: 0.25, end: 1.25, text: 'native window' }];
+  mocks.processAsrSegment.mockImplementation(async (_engine, _input, segment, _options, hooks) => {
+    await hooks.onMergeSegment(segment, rows);
+  });
+  const context = createContext();
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+
+  let terminal;
+  await act(async () => {
+    terminal = await result.current.generateSubtitles(
+      media,
+      'file-upload',
+      { gemini: true },
+      {
+        ...optionsFor(context),
+        method: 'nvidia-parakeet',
+        segment: { start: 0, end: 4 },
+        maxDurationPerRequest: 1,
+      },
+    );
+  });
+
+  expect(terminal).toBe(true);
+  expect(mocks.captureDurableSubtitleSegmentRevision).toHaveBeenCalledTimes(1);
+  expect(mocks.captureDurableSubtitleSegmentRevision)
+    .toHaveBeenCalledBefore(mocks.processAsrSegment);
+  expect(mocks.commitDurableSubtitleSegmentCheckpoint).toHaveBeenCalledWith(
+    expect.objectContaining({ replacement: rows }),
+  );
+  expect(mocks.commitDurableSubtitleSegmentCheckpoint)
+    .toHaveBeenCalledAfter(mocks.processAsrSegment);
+  expect(mocks.saveSubtitlesToCache).not.toHaveBeenCalled();
 });
 
 test('does not return success until the same-run subtitle checkpoint is durable', async () => {

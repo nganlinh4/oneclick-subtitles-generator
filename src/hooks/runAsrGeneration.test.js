@@ -25,7 +25,10 @@ vi.mock('../platform/jobResultDeliveryService', () => ({
 }));
 
 vi.mock('../utils/subtitle/subtitleMerger', () => ({
-  mergeSegmentSubtitles: (current, next) => [...current, ...next],
+  mergeSegmentSubtitles: (current, next, part) => [
+    ...current.filter((row) => row.end <= part.start || row.start >= part.end),
+    ...next,
+  ],
 }));
 
 const createParams = (overrides = {}) => ({
@@ -38,7 +41,8 @@ const createParams = (overrides = {}) => ({
   setIsGenerating: vi.fn(),
   setSubtitlesData: vi.fn(),
   loadSubtitles: vi.fn(async () => []),
-  persistSubtitles: vi.fn(async () => undefined),
+  captureGeneratedSegment: vi.fn(async () => undefined),
+  persistGeneratedSegment: vi.fn(async () => undefined),
   t: vi.fn((key, fallback) => fallback || key),
   ...overrides,
 });
@@ -69,6 +73,7 @@ it('also clears generation state when the pre-update checkpoint fails', async ()
 
   await expect(runAsrGeneration(params)).rejects.toBe(failure);
   expect(processAsrSegment).not.toHaveBeenCalled();
+  expect(params.captureGeneratedSegment).not.toHaveBeenCalled();
   expect(checkpointBeforeUpdate).toHaveBeenCalledWith({
     source: 'generation-start',
     runId: 'run-1',
@@ -120,6 +125,9 @@ it('loads the native track and persists the complete merge before publishing com
     expect.objectContaining({ signal: owner.signal }),
     expect.any(Object),
   );
+  expect(checkpointBeforeUpdate).toHaveBeenCalledBefore(params.captureGeneratedSegment);
+  expect(params.captureGeneratedSegment).toHaveBeenCalledBefore(params.loadSubtitles);
+  expect(params.captureGeneratedSegment).toHaveBeenCalledBefore(processAsrSegment);
 
   expect(publishStreamingComplete).toHaveBeenCalledWith({
     subtitles: [
@@ -129,13 +137,16 @@ it('loads the native track and persists the complete merge before publishing com
     segment: { start: 10, end: 20 },
     runId: 'run-1',
   });
-  expect(params.persistSubtitles).toHaveBeenCalledExactlyOnceWith(subtitles);
-  expect(params.persistSubtitles).toHaveBeenCalledBefore(publishStreamingComplete);
+  expect(params.persistGeneratedSegment).toHaveBeenCalledExactlyOnceWith([
+    { start: 11, end: 12, text: 'inside' },
+    { start: 19, end: 20, text: 'trimmed' },
+  ]);
+  expect(params.persistGeneratedSegment).toHaveBeenCalledBefore(publishStreamingComplete);
   expect(acknowledgeJobResult).toHaveBeenCalledExactlyOnceWith(
     '018f22ea-6f3e-7cc0-a555-333333333333',
     '018f22ea-6f3e-7cc0-a555-444444444444',
   );
-  expect(params.persistSubtitles).toHaveBeenCalledBefore(acknowledgeJobResult);
+  expect(params.persistGeneratedSegment).toHaveBeenCalledBefore(acknowledgeJobResult);
   expect(params.setIsGenerating).toHaveBeenCalledTimes(1);
   expect(params.setIsGenerating).toHaveBeenCalledWith(false);
 });
@@ -154,7 +165,7 @@ it('never merges generated rows into a stale React track after all durable subti
   await expect(runAsrGeneration(params)).resolves.toBe(true);
 
   expect(visible).toEqual(generated);
-  expect(params.persistSubtitles).toHaveBeenCalledExactlyOnceWith(generated);
+  expect(params.persistGeneratedSegment).toHaveBeenCalledExactlyOnceWith(generated);
 });
 
 it('publishes neither success nor completion when the durable write fails', async () => {
@@ -165,7 +176,7 @@ it('publishes neither success nor completion when the durable write fails', asyn
       if (typeof updater === 'function') subtitles = updater(subtitles);
       else subtitles = updater;
     }),
-    persistSubtitles: vi.fn(async () => { throw failure; }),
+    persistGeneratedSegment: vi.fn(async () => { throw failure; }),
   });
 
   await expect(runAsrGeneration(params)).rejects.toBe(failure);
@@ -189,9 +200,69 @@ it('keeps the native ASR delivery pending when the durable subtitle checkpoint f
     setSubtitlesData: vi.fn((updater) => {
       subtitles = typeof updater === 'function' ? updater(subtitles) : updater;
     }),
-    persistSubtitles: vi.fn(async () => { throw failure; }),
+    persistGeneratedSegment: vi.fn(async () => { throw failure; }),
   });
 
   await expect(runAsrGeneration(params)).rejects.toBe(failure);
   expect(acknowledgeJobResult).not.toHaveBeenCalled();
+});
+
+it('restores the current durable rows, not a deleted pre-run baseline, after a later window fails', async () => {
+  const baseline = [{ start: 0, end: 2, text: 'baseline later deleted' }];
+  const authoritativeAfterFailure = [];
+  const failure = new Error('window three rejected malformed output');
+  let visible = baseline;
+  let loads = 0;
+  processAsrSegment.mockImplementation(async (_engine, _input, part, _options, hooks) => {
+    await hooks.onMergeSegment(part, [{ start: 10, end: 11, text: 'partial window one' }]);
+    throw failure;
+  });
+  const params = createParams({
+    loadSubtitles: vi.fn(async () => (loads++ === 0 ? baseline : authoritativeAfterFailure)),
+    setSubtitlesData: vi.fn((rows) => { visible = rows; }),
+  });
+
+  await expect(runAsrGeneration(params)).rejects.toBe(failure);
+
+  expect(visible).toEqual(authoritativeAfterFailure);
+  expect(params.persistGeneratedSegment).not.toHaveBeenCalled();
+  expect(publishStreamingComplete).not.toHaveBeenCalled();
+  expect(acknowledgeJobResult).not.toHaveBeenCalled();
+});
+
+it('publishes the authoritative CAS result so concurrent rows outside the generated range survive', async () => {
+  const replacement = [{ start: 10, end: 11, text: 'generated' }];
+  const authoritative = [
+    { start: 0, end: 1, text: 'concurrent outside edit' },
+    ...replacement,
+  ];
+  let visible = [];
+  processAsrSegment.mockImplementation(async (_engine, _input, part, _options, hooks) => {
+    await hooks.onMergeSegment(part, replacement);
+  });
+  const params = createParams({
+    setSubtitlesData: vi.fn((rows) => { visible = rows; }),
+    persistGeneratedSegment: vi.fn(async () => ({ subtitles: authoritative })),
+  });
+
+  await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(params.persistGeneratedSegment).toHaveBeenCalledWith(replacement);
+  expect(visible).toEqual(authoritative);
+});
+
+it('commits an empty aggregate as an intentional replacement instead of retaining stale cues', async () => {
+  const baseline = [{ start: 10, end: 11, text: 'old cue in silent range' }];
+  processAsrSegment.mockImplementation(async (_engine, _input, part, _options, hooks) => {
+    await hooks.onMergeSegment(part, []);
+  });
+  const params = createParams({
+    loadSubtitles: vi.fn(async () => baseline),
+    persistGeneratedSegment: vi.fn(async () => ({ subtitles: [] })),
+  });
+
+  await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(params.persistGeneratedSegment).toHaveBeenCalledExactlyOnceWith([]);
+  expect(params.setSubtitlesData).toHaveBeenLastCalledWith([]);
 });

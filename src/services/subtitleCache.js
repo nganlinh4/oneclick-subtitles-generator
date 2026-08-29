@@ -222,7 +222,7 @@ export const commitDurableSubtitleSegmentCheckpoint = async ({
       || typeof context.cacheId !== 'string' || context.cacheId.length === 0
       || typeof context.projectId !== 'string' || context.projectId.length === 0
       || context.signal?.aborted
-      || !Array.isArray(replacement) || replacement.length === 0
+      || !Array.isArray(replacement)
       || typeof validateOwnership !== 'function') {
     throw saveFailure();
   }

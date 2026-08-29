@@ -95,6 +95,36 @@ it('brands a segment receipt only after an exact captured revision commits', asy
   expect(validateOwnership).toHaveBeenCalledTimes(4);
 });
 
+it('brands an empty segment replacement so proven silence can durably clear stale cues', async () => {
+  const context = Object.freeze({
+    runId: 'silent-run',
+    cacheId: 'cache-id',
+    projectId: 'project-id',
+    segment: Object.freeze({ start: 5, end: 8 }),
+  });
+  const revision = Object.freeze({ kind: 'subtitle-segment-revision' });
+  const validateOwnership = vi.fn(async (value) => value);
+  commitProjectSubtitleSegmentRevision.mockResolvedValue({
+    cacheId: 'cache-id',
+    projectId: 'project-id',
+    stateVersion: 10,
+    rows: [{ start: 0, end: 2, text: 'outside' }],
+  });
+
+  const receipt = await commitDurableSubtitleSegmentCheckpoint({
+    context,
+    revision,
+    replacement: [],
+    validateOwnership,
+  });
+
+  expect(commitProjectSubtitleSegmentRevision).toHaveBeenCalledWith(revision, [], {
+    expectedProjectId: 'project-id',
+  });
+  expect(receipt.subtitles).toEqual([{ start: 0, end: 2, text: 'outside' }]);
+  expect(isDurableSubtitleCheckpointReceipt(receipt, context)).toBe(true);
+});
+
 it('distinguishes a cache miss from a redacted native read failure', async () => {
   loadProjectSubtitles.mockResolvedValueOnce(null);
   await expect(getCachedSubtitles('missing')).resolves.toBeNull();

@@ -671,8 +671,12 @@ export const createNativeAsrService = ({
         if (event.fraction !== null) lastFraction = event.fraction;
       } else if (event.event === 'completed') {
         const expectedOffset = normalizedRequest.range?.startMs ?? 0;
+        const maximumDuration = normalizedRequest.range === undefined
+          ? MAX_DURATION_MS
+          : normalizedRequest.range.endMs - normalizedRequest.range.startMs;
         if (event.transcription.engine !== normalizedRequest.engine
-            || event.timelineOffsetMs !== expectedOffset) {
+            || event.timelineOffsetMs !== expectedOffset
+            || event.transcription.durationMs > maximumDuration) {
           protocolFailure();
           return;
         }
