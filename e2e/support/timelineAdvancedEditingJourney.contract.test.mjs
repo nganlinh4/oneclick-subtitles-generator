@@ -37,6 +37,9 @@ test('every advanced control the journey drives is a real, shipped public contro
   assert.match(rangeActionBar, /delete<\/span>/u);
   assert.match(journey, /range-action-bar button:nth-child\(3\)/u);
   assert.match(journey, /carries no class of its own/u);
+  assert.match(journey, /origin: 'viewport'/u);
+  assert.match(journey, /timelineLocation\.x \+ timelineSize\.width - 2/u);
+  assert.doesNotMatch(journey, /\.move\(\{ origin: handle, x: overshootPx/u);
 
   assert.match(liquidGlass, /className=\{`liquid-glass \$\{className\}`\}/u);
   assert.match(zoomControls, /aria-label=\{t\('timeline\.dragToZoom'/u);
@@ -119,6 +122,7 @@ test('evidence is bounded and every meaningful step is captured with a durable a
   ));
   assert.match(journey, /waitForDurableCueRecords/u);
   assert.match(journey, /visibleCueTexts/u);
+  assert.match(journey, /the legal pointer drag never changed the visible multi-cue range/u);
   assert.match(journey, /assertUnchanged/u);
   assert.match(journey, /boundedErrors/u);
 });

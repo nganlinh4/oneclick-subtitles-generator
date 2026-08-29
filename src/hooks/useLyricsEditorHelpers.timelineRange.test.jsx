@@ -70,3 +70,44 @@ it('range-moves only the cues fully inside the selection, not a cue that merely 
   expect(committedRows[4].start).toBeCloseTo(9.0, 5);
 });
 
+it('commits the preview snapshot captured before parent props rerender', () => {
+  const baseline = [
+    { id: 1, start: 3, end: 4, text: 'first' },
+    { id: 2, start: 4.5, end: 5.5, text: 'second' },
+  ];
+  const previewed = baseline.map((cue) => ({
+    ...cue,
+    start: cue.start + 2,
+    end: cue.end + 2,
+  }));
+  const commitLyricsMutation = vi.fn();
+  const onUpdateLyrics = vi.fn();
+  const { result, rerender } = renderHook(
+    ({ lyrics }) => useLyricsEditorHelpers({
+      lyrics,
+      setLyrics: vi.fn(),
+      onUpdateLyrics,
+      commitLyricsMutation,
+    }),
+    { initialProps: { lyrics: baseline } },
+  );
+
+  act(() => {
+    result.current.beginRangeMove(2.7, 6.3);
+    result.current.previewRangeMove(2);
+  });
+  expect(onUpdateLyrics).toHaveBeenLastCalledWith(previewed);
+
+  // This is OutputContainer's controlled-parent shape: the live preview is published upstream,
+  // then matchedLyrics rerenders before pointer-up. The in-flight move must retain its own exact
+  // baseline/latest snapshots rather than committing whichever prop closure rendered last.
+  rerender({ lyrics: previewed });
+  act(() => result.current.commitRangeMove());
+
+  expect(commitLyricsMutation).toHaveBeenCalledExactlyOnceWith(
+    previewed,
+    LYRICS_EDITOR_ACTIONS.MOVE_RANGE,
+    { baseline, alreadyApplied: true },
+  );
+});
+

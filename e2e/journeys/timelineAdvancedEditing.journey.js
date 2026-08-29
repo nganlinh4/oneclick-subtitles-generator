@@ -204,12 +204,27 @@ const selectTimelineRange = async (startSeconds, endSeconds, duration) => {
 const dragRangeMoveHandleOvershoot = async (overshootSeconds, viewEnd, width) => {
   const handle = await $('.range-action-bar button:nth-child(3)');
   await handle.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the range move handle never appeared' });
-  const overshootPx = Math.ceil((overshootSeconds / viewEnd) * width);
+  const timeline = await $('.subtitle-timeline');
+  const handleLocation = await handle.getLocation();
+  const handleSize = await handle.getSize();
+  const timelineLocation = await timeline.getLocation();
+  const timelineSize = await timeline.getSize();
+  const startX = Math.round(handleLocation.x + (handleSize.width / 2));
+  const startY = Math.round(handleLocation.y + (handleSize.height / 2));
+  // Candidate 20 asked WebDriver to move `overshootSeconds` relative to the handle. At the real
+  // timeline width that target sat hundreds of pixels outside the viewport, so a driver was free
+  // to reject or ignore the move while still delivering pointer-up. Drive to the real canvas's
+  // legal right edge instead: it is inside the viewport and, because viewEnd includes the 5% visual
+  // gutter, still requests a move beyond the selectable media boundary for the product to clamp.
+  const targetX = Math.round(timelineLocation.x + timelineSize.width - 2);
+  assert.ok(targetX > startX, `the range move has no legal rightward pointer span: ${startX} -> ${targetX}`);
+  const requestedPx = Math.ceil((overshootSeconds / viewEnd) * width);
+  assert.ok(requestedPx > targetX - startX, 'fixture no longer proves the old pointer target was out of bounds');
   await browser.action('pointer')
-    .move({ origin: handle })
+    .move({ origin: 'viewport', x: startX, y: startY })
     .down({ button: 0 })
     .pause(100)
-    .move({ origin: handle, x: overshootPx, y: 0, duration: 500 })
+    .move({ origin: 'viewport', x: targetX, y: startY, duration: 500 })
     .pause(150)
     .up({ button: 0 })
     .perform();
@@ -396,6 +411,18 @@ describe('customer advanced timeline editing', () => {
     // beyond real media duration -- the multi-cue counterpart of the single-row clamp above.
     const { width, viewEnd } = await selectTimelineRange(2.7, 6.3, duration);
     await dragRangeMoveHandleOvershoot(RANGE_MOVE_OVERSHOOT_SECONDS, viewEnd, width);
+    // Split pointer/preview truth from durability truth. Candidate 20 jumped straight to SQLite,
+    // so an out-of-viewport WebDriver move was misclassified as a swallowed native commit. The
+    // customer's rendered cue row must move first; only then is a durable miss evidence against
+    // the commit/queue boundary.
+    await browser.waitUntil(async () => {
+      const visibleEnd = await visibleTimeControlSeconds(2, 'end');
+      return visibleEnd !== null && visibleEnd > (afterSticky[2].end / 1_000) + 5;
+    }, {
+      timeout: 5_000,
+      interval: 100,
+      timeoutMsg: 'the legal pointer drag never changed the visible multi-cue range',
+    });
     records = await waitForDurableCueRecords(
       root,
       (rows) => rows[2].end > afterSticky[2].end + 5_000,
