@@ -6,9 +6,20 @@ import {
   assertPersistence,
   assertVisualSettled,
   parseArguments,
+  persistenceExpression,
   selectTauriTarget,
   waitForInspection,
 } from './inspect-installed-webview.mjs';
+
+test('installed persistence supplies a stable namespaced project-create identity', () => {
+  const expression = persistenceExpression({
+    phase: 'first-launch',
+    expectedVersion: '1.0.0-rc.1',
+    expectedProjectId: undefined,
+  });
+  assert.match(expression, /invoke\('project_create', \{[\s\S]*?idempotencyKey: "osg\.ciInstalledSmoke\.project\.v1"/u);
+  assert.equal((expression.match(/idempotencyKey:/gu) ?? []).length, 1);
+});
 
 const validInspection = Object.freeze({
   readyState: 'complete',

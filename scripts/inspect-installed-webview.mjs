@@ -12,6 +12,7 @@ const TAURI_ORIGIN = 'https://tauri.localhost';
 const DEFAULT_TIMEOUT_MS = 60_000;
 const VISUAL_SETTLE_TIMEOUT_MS = 3_000;
 const PERSISTENCE_KEY = 'osg.ciInstalledSmoke.v1';
+const PERSISTENCE_PROJECT_CREATE_KEY = 'osg.ciInstalledSmoke.project.v1';
 const PERSISTENCE_PROJECT_INITIAL_NAME = 'OSG installed lifecycle probe';
 const PERSISTENCE_PROJECT_NAME = 'OSG installed lifecycle probe committed';
 const PERSISTENCE_REVISION_REASON = 'OSG installed lifecycle revision';
@@ -352,7 +353,7 @@ const VISUAL_SETTLE_EXPRESSION = `
   return false;
 })()`;
 
-const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) => `
+export const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) => `
 (async () => {
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const key = ${JSON.stringify(PERSISTENCE_KEY)};
@@ -364,6 +365,7 @@ const persistenceExpression = ({ phase, expectedVersion, expectedProjectId }) =>
     localStorage.setItem('onboarding_controls_dismissed', 'true');
     const created = await invoke('project_create', {
       name: ${JSON.stringify(PERSISTENCE_PROJECT_INITIAL_NAME)},
+      idempotencyKey: ${JSON.stringify(PERSISTENCE_PROJECT_CREATE_KEY)},
     });
     const candidate = {
       ...created,
