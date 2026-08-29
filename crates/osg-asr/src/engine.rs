@@ -673,23 +673,17 @@ mod transcription_tests {
         // A model may start its final word at the decoded audio end; the clamp collapses it to a
         // zero-length tail that every consumer's timeline contract refuses. It must be dropped,
         // not published — a real four-window run lost its last window over exactly this payload.
-        let directory = std::env::temp_dir().join(format!(
-            "osg-asr-tail-clamp-{}",
-            std::process::id()
-        ));
+        let directory =
+            std::env::temp_dir().join(format!("osg-asr-tail-clamp-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let wav = directory.join("one-second.wav");
         write_wav(&wav, 1_000);
         let audio = NormalizedAudio::open(&wav).unwrap();
         assert_eq!(audio.duration_ms(), 1_000);
         // One word per segment: the tail word must not be able to hide inside a wider segment.
-        let segmentation = crate::SegmentationOptions::new(
-            crate::SegmentStrategy::Sentence,
-            60,
-            Some(1),
-            800,
-        )
-        .unwrap();
+        let segmentation =
+            crate::SegmentationOptions::new(crate::SegmentStrategy::Sentence, 60, Some(1), 800)
+                .unwrap();
         let request = TranscriptionRequest::new(audio, TranscriptionOptions::new(segmentation));
         let transcription = build_transcription(
             AsrEngineId::FasterWhisperTurbo,
@@ -712,7 +706,10 @@ mod transcription_tests {
             false,
         )
         .expect("a tail-clamped payload must remain publishable");
-        assert!(!transcription.segments.is_empty(), "the real words vanished");
+        assert!(
+            !transcription.segments.is_empty(),
+            "the real words vanished"
+        );
         for segment in &transcription.segments {
             assert!(
                 segment.end_ms > segment.start_ms,
