@@ -14,9 +14,11 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import {
-  basename, dirname, isAbsolute, join, parse, relative, resolve, sep,
+  basename, dirname, isAbsolute, join, relative, resolve, sep,
 } from 'node:path';
 import process from 'node:process';
+
+import { resolveDevelopmentCacheRoot as resolveDevelopmentCacheRootPure } from './developmentCacheRoot.js';
 
 const require = createRequire(import.meta.url);
 const { readAndVerifyE2eApplicationReceipt } = require(
@@ -26,25 +28,12 @@ const { assertWindowsProcessIdentity } = require('../../scripts/windows-process-
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
-const DEVELOPMENT_CACHE_DIRECTORY = join('OSG-Development', 'cache');
 const UNPUBLISHED_APPLICATION_DIRECTORY = '.unpublished';
 const STAGED_APPLICATION_MARKER = '.osg-e2e-staged-application.json';
 const STAGED_APPLICATION_PARENT_MARKER = '.osg-e2e-staging-parent';
 const STAGED_APPLICATION_SCHEMA_VERSION = 1;
 const APPLICATION_HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const STAGED_APPLICATION_ROOT_PATTERN = /^osg-e2e-app-/u;
-const WINDOWS_SEPARATOR = '\\';
-const WINDOWS_DEVICE_PREFIXES = Object.freeze([
-  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}?${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}.${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}??${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}??${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}device${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}device${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}global??${WINDOWS_SEPARATOR}`,
-  `${WINDOWS_SEPARATOR}${WINDOWS_SEPARATOR}global??${WINDOWS_SEPARATOR}`,
-]);
-
 const sameCanonicalPath = (left, right) => (
   process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 );
@@ -52,28 +41,6 @@ const sameCanonicalPath = (left, right) => (
 const hasTraversalSegment = (input) => String(input)
   .split(/[\\/]+/u)
   .some((segment) => segment === '.' || segment === '..');
-
-const hasWindowsDeviceNamespace = (input) => {
-  const windowsPath = String(input).replaceAll('/', WINDOWS_SEPARATOR).toLowerCase();
-  return WINDOWS_DEVICE_PREFIXES.some((prefix) => windowsPath.startsWith(prefix));
-};
-
-const hasAmbiguousWindowsSegment = (input) => String(input)
-  .replaceAll('/', WINDOWS_SEPARATOR)
-  .split(WINDOWS_SEPARATOR)
-  .some((segment) => segment.length > 0 && /[. ]$/u.test(segment));
-
-const canonicalizeExistingPrefix = (input) => {
-  const suffix = [];
-  let existing = resolve(input);
-  while (!existsSync(existing)) {
-    const parent = dirname(existing);
-    if (parent === existing) break;
-    suffix.unshift(basename(existing));
-    existing = parent;
-  }
-  return resolve(realpathSync.native(existing), ...suffix);
-};
 
 const sameResolvedPath = (left, right) => sameCanonicalPath(resolve(left), resolve(right));
 
@@ -86,48 +53,10 @@ const sameOrChildPath = (candidate, parent) => {
   );
 };
 
-/** Resolve the one external development-cache root shared with scripts/dev-cache.ps1. */
-export const resolveDevelopmentCacheRoot = ({
-  environment = process.env,
-  localApplicationData = environment.LOCALAPPDATA,
-  repositoryRoot = REPOSITORY_ROOT,
-} = {}) => {
-  const explicit = typeof environment.OSG_DEV_CACHE_ROOT === 'string'
-    && environment.OSG_DEV_CACHE_ROOT.trim().length > 0
-    ? environment.OSG_DEV_CACHE_ROOT
-    : null;
-  if (explicit === null && (
-    typeof localApplicationData !== 'string' || localApplicationData.trim().length === 0
-  )) {
-    throw new Error('LOCALAPPDATA is unavailable, so the managed E2E cache cannot be located');
-  }
-  const requested = explicit ?? join(localApplicationData, DEVELOPMENT_CACHE_DIRECTORY);
-  if (
-    !isAbsolute(requested)
-    || hasTraversalSegment(requested)
-    || hasWindowsDeviceNamespace(requested)
-    || hasAmbiguousWindowsSegment(requested)
-  ) {
-    throw new Error(`The managed E2E cache must be an absolute path without traversal: ${requested}`);
-  }
-  const root = resolve(requested);
-  if (root === parse(root).root) {
-    throw new Error(`The managed E2E cache cannot be a filesystem root: ${root}`);
-  }
-  const canonicalRoot = canonicalizeExistingPrefix(root);
-  if (!sameCanonicalPath(canonicalRoot, root)) {
-    throw new Error(`The managed E2E cache crosses a redirected filesystem path: ${root}`);
-  }
-  const canonicalRepository = realpathSync.native(resolve(repositoryRoot));
-  if (
-    sameOrChildPath(canonicalRoot, canonicalRepository)
-    || sameOrChildPath(canonicalRepository, canonicalRoot)
-  ) {
-    throw new Error(`The managed E2E cache must be external to the repository: ${root}`);
-  }
-  return canonicalRoot;
-};
-
+export const resolveDevelopmentCacheRoot = (options = {}) => resolveDevelopmentCacheRootPure({
+  ...options,
+  repositoryRoot: options.repositoryRoot ?? REPOSITORY_ROOT,
+});
 export const DEVELOPMENT_CACHE_ROOT = resolveDevelopmentCacheRoot();
 export const E2E_APPLICATIONS_CACHE_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'apps', 'e2e');
 export const E2E_ASSET_CACHE_ROOT = join(DEVELOPMENT_CACHE_ROOT, 'assets', 'e2e');

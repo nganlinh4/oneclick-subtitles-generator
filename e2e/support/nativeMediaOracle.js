@@ -8,7 +8,15 @@ import {
 } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 
-import { NATIVE_TOOLS_CACHE } from './environment.js';
+import { resolveDevelopmentCacheRoot } from './developmentCacheRoot.js';
+
+const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..');
+const NATIVE_TOOLS_CACHE = join(
+  resolveDevelopmentCacheRoot({ repositoryRoot: REPOSITORY_ROOT }),
+  'assets',
+  'e2e',
+  'native-tools',
+);
 
 const findTool = (filename) => {
   const matches = [];
