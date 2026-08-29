@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
@@ -7,6 +9,7 @@ import { tmpdir } from 'node:os';
 import {
   isAbsolute, join, relative, resolve, sep,
 } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import process from 'node:process';
 import test from 'node:test';
 
@@ -33,6 +36,42 @@ const createTestRunRoot = (options = {}) => createRunRoot({
   ...options,
   testStagingRoot: TEST_STAGING_ROOT,
 });
+
+const RUNNER_URL = pathToFileURL(join(import.meta.dirname, 'run-isolated.mjs')).href;
+const ENVIRONMENT_URL = pathToFileURL(join(import.meta.dirname, 'support', 'environment.js')).href;
+const runRunnerSubprocess = ({ cacheRoot, script }) => {
+  const environment = { ...process.env, OSG_DEV_CACHE_ROOT: cacheRoot };
+  delete environment.OSG_E2E_BINARY;
+  return spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: resolve(import.meta.dirname, '..'),
+    env: environment,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+};
+
+const writeHistoricalReceiptFixture = (cacheRoot) => {
+  const binary = Buffer.from('historical-e2e-binary');
+  const binaryHash = createHash('sha256').update(binary).digest('hex');
+  const manifest = Buffer.from(`${JSON.stringify({
+    schemaVersion: 2,
+    hashAlgorithm: 'sha256',
+    entrypoint: 'osg-desktop.exe',
+    resourceDirectories: ['licenses', 'ui-fonts', 'workers'],
+    directories: [],
+    files: [{ path: 'osg-desktop.exe', size: binary.length, sha256: binaryHash }],
+  }, null, 2)}\n`);
+  const applicationHash = createHash('sha256').update(manifest).digest('hex');
+  const applicationRoot = join(cacheRoot, 'apps', 'e2e', 'applications', applicationHash);
+  const receiptsRoot = join(cacheRoot, 'apps', 'e2e', 'receipts');
+  mkdirSync(applicationRoot, { recursive: true });
+  mkdirSync(receiptsRoot, { recursive: true });
+  writeFileSync(join(applicationRoot, 'osg-desktop.exe'), binary);
+  writeFileSync(join(applicationRoot, '.osg-application-manifest.json'), manifest);
+  // Receipt verification reaches the explicit historical-provenance refusal before comparing the
+  // modern receipt schema, faithfully representing a retained schema-v2 pre-provenance build.
+  writeFileSync(join(receiptsRoot, 'current.json'), `${JSON.stringify({ applicationHash })}\n`);
+};
 
 const guardedWindowsGuiFixture = (guards, subsystem = 2) => {
   const bytes = Buffer.alloc(1_024);
@@ -135,6 +174,46 @@ test('removes every inherited isolation and dialog value without mutating the ca
   const clean = isolatedEnvironment(source);
   assert.deepEqual(clean, { SAFE: 'kept' });
   assert.equal(source.OSG_E2E_DATA_ROOT, 'old-root');
+});
+
+test('pure runner import tolerates absent, corrupt, and historical receipts while run fails closed', (context) => {
+  for (const receiptState of ['absent', 'corrupt', 'historical']) {
+    const cacheRoot = mkdtempSync(join(tmpdir(), `osg-runner-${receiptState}-`));
+    context.after(() => rmSync(cacheRoot, { recursive: true, force: true }));
+    if (receiptState === 'corrupt') {
+      const receiptsRoot = join(cacheRoot, 'apps', 'e2e', 'receipts');
+      mkdirSync(receiptsRoot, { recursive: true });
+      writeFileSync(join(receiptsRoot, 'current.json'), '{not-json\n');
+    } else if (receiptState === 'historical') {
+      writeHistoricalReceiptFixture(cacheRoot);
+    }
+
+    const imported = runRunnerSubprocess({
+      cacheRoot,
+      script: [
+        `const runner = await import(${JSON.stringify(RUNNER_URL)});`,
+        `const environment = await import(${JSON.stringify(ENVIRONMENT_URL)});`,
+        "if (!environment.APPLICATION_BINARY.includes('.unpublished')) throw new Error('unsafe receipt selected');",
+        "if (runner.parseArguments(['--repeat', '2']).repeat !== 2) throw new Error('pure import failed');",
+      ].join('\n'),
+    });
+    assert.equal(imported.status, 0, `${receiptState}: ${imported.stderr}`);
+
+    const launchRejected = runRunnerSubprocess({
+      cacheRoot,
+      script: [
+        `const runner = await import(${JSON.stringify(RUNNER_URL)});`,
+        'try {',
+        '  await runner.run({ repeat: 1, journeys: [] });',
+        "  throw new Error('runner accepted an unverified publication');",
+        '} catch (error) {',
+        "  if (error.message === 'runner accepted an unverified publication') throw error;",
+        "  if (!/receipt|publication|application/i.test(error.message)) throw error;",
+        '}',
+      ].join('\n'),
+    });
+    assert.equal(launchRejected.status, 0, `${receiptState}: ${launchRejected.stderr}`);
+  }
 });
 
 test('binds the fixture capability to the disposable root even when the shell supplies another root', () => {

@@ -96,7 +96,10 @@ const assertCanonicalApplicationBinarySource = (source) => {
   assert.match(source, /readAndVerifyE2eApplicationReceipt\(\{\s*applicationsCacheRoot: E2E_APPLICATIONS_CACHE_ROOT,\s*\}\)/su);
   assert.match(source, /export const BUILT_APPLICATION_DIRECTORY = publicationAtModuleLoad\?\.applicationRoot[\s\S]*?UNPUBLISHED_APPLICATION_DIRECTORY/u);
   assert.match(source, /export const APPLICATION_BINARY = stagedApplicationOverride[\s\S]*?publicationAtModuleLoad\?\.binaryPath[\s\S]*?BUILT_APPLICATION_DIRECTORY/u);
-  assert.match(source, /const current = readVerifiedPublishedApplication\(\);/u);
+  assert.match(source, /const current = readVerifiedCurrentPublishedApplication\(\);/u);
+  assert.match(source, /readCleanGitSourceProvenance/u);
+  assert.match(source, /source\.commit !== currentSource\.commit/u);
+  assert.match(source, /source\.tree !== currentSource\.tree/u);
   assert.match(source, /assertApplicationLaunchSource\(binary\);/u);
   assert.match(source, /assertStagedApplicationBinary\(stagedApplicationOverride\)/u);
   assert.doesNotMatch(
@@ -522,7 +525,7 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
 
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
   const outerLease = isolatedRunner.indexOf('withE2eApplicationLease(');
-  const outerVerify = isolatedRunner.indexOf('readVerifiedPublishedApplication()', outerLease);
+  const outerVerify = isolatedRunner.indexOf('readVerifiedCurrentPublishedApplication()', outerLease);
   const stagingLease = isolatedRunner.indexOf('withStagingLease(', outerVerify);
   const evidenceLease = isolatedRunner.indexOf('withEvidenceLease(', stagingLease);
   const supervisedLaunch = isolatedRunner.indexOf('runSupervisedSync({', evidenceLease);
@@ -883,6 +886,7 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
   const updater = read('apps', 'desktop', 'src-tauri', 'src', 'updater.rs');
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
   const environment = read('e2e', 'support', 'environment.js');
+  const automationEnvironment = read('e2e', 'support', 'automationEnvironment.js');
   const capability = JSON.parse(read('apps', 'desktop', 'src-tauri', 'capabilities', 'main.json'));
   const productionConfig = read('apps', 'desktop', 'src-tauri', 'tauri.conf.json');
 
@@ -935,8 +939,9 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
     /if cfg!\(any\(\s*feature = "unsigned-local-build",\s*feature = "e2e-automation"\s*\)\)[\s\S]*?UpdateChannelState::Disabled/u,
   );
   assert.match(isolatedRunner, /scrubAutomationEnvironment\(environment\)/u);
-  assert.match(environment, /!key\.startsWith\('WEBVIEW2_'\)/u);
-  assert.match(environment, /!key\.startsWith\('OSG_E2E_'\)/u);
+  assert.match(automationEnvironment, /!key\.startsWith\('WEBVIEW2_'\)/u);
+  assert.match(automationEnvironment, /!key\.startsWith\('OSG_E2E_'\)/u);
+  assert.match(environment, /export \{ scrubAutomationEnvironment \} from '.\/automationEnvironment\.js'/u);
   assert.deepEqual(
     capability.permissions.filter((permission) => permission.startsWith('core:window:')),
     ['core:window:allow-show'],

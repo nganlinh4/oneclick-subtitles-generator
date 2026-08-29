@@ -15,9 +15,19 @@ const require = createRequire(import.meta.url);
 const {
   publishE2eApplication: publishApplicationWithoutTestProvenance,
 } = require('../../scripts/e2e-application-publication.js');
+const repositoryRoot = resolve(import.meta.dirname, '..', '..');
+const gitObject = (revision) => {
+  const result = spawnSync('git', ['rev-parse', '--verify', revision], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+};
 const TEST_SOURCE_PROVENANCE = Object.freeze({
-  commit: '1'.repeat(40),
-  tree: '2'.repeat(40),
+  commit: gitObject('HEAD'),
+  tree: gitObject('HEAD^{tree}'),
   dirty: false,
 });
 const publishE2eApplication = (input) => publishApplicationWithoutTestProvenance({
@@ -98,6 +108,34 @@ test('default launches resolve only through the verified external application re
     },
   );
   assert.doesNotThrow(() => environment.assertAutomationDialogGuard(publication.binaryPath));
+});
+
+test('launch publication provenance must equal the exact current clean commit and tree', () => {
+  assert.equal(
+    environment.assertPublicationMatchesCurrentSource(publication, TEST_SOURCE_PROVENANCE),
+    publication,
+  );
+  assert.throws(
+    () => environment.assertPublicationMatchesCurrentSource(publication, {
+      ...TEST_SOURCE_PROVENANCE,
+      commit: '3'.repeat(40),
+    }),
+    /does not match the current clean source commit\/tree/u,
+  );
+  assert.throws(
+    () => environment.assertPublicationMatchesCurrentSource(publication, {
+      ...TEST_SOURCE_PROVENANCE,
+      tree: '4'.repeat(40),
+    }),
+    /does not match the current clean source commit\/tree/u,
+  );
+  assert.throws(
+    () => environment.assertPublicationMatchesCurrentSource(publication, {
+      ...TEST_SOURCE_PROVENANCE,
+      dirty: true,
+    }),
+    /does not match the current clean source commit\/tree/u,
+  );
 });
 
 test('development cache resolution rejects relative, traversal, repository, and ancestor roots', () => {
@@ -365,7 +403,6 @@ test('the real cache manager lease protects a verified publication through launc
   skip: process.platform !== 'win32',
 }, () => {
   const leasedCacheRoot = join(root, 'manager-owned-cache');
-  const repositoryRoot = resolve(import.meta.dirname, '..', '..');
   const managerPath = join(repositoryRoot, 'scripts', 'dev-cache.ps1');
   const manager = spawnSync('pwsh', [
     '-NoProfile',

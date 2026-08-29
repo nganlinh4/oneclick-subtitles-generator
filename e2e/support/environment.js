@@ -20,10 +20,13 @@ import process from 'node:process';
 
 import { resolveDevelopmentCacheRoot as resolveDevelopmentCacheRootPure } from './developmentCacheRoot.js';
 
+export { scrubAutomationEnvironment } from './automationEnvironment.js';
+
 const require = createRequire(import.meta.url);
 const { readAndVerifyE2eApplicationReceipt } = require(
   '../../scripts/e2e-application-publication.js'
 );
+const { readCleanGitSourceProvenance } = require('../../scripts/git-source-provenance.js');
 const { assertWindowsProcessIdentity } = require('../../scripts/windows-process-identity.js');
 
 export const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
@@ -68,10 +71,41 @@ export const readVerifiedPublishedApplication = () => readAndVerifyE2eApplicatio
   applicationsCacheRoot: E2E_APPLICATIONS_CACHE_ROOT,
 });
 
+export const assertPublicationMatchesCurrentSource = (publication, currentSource) => {
+  const source = publication?.sourceProvenance;
+  if (
+    source?.dirty !== false
+    || currentSource?.dirty !== false
+    || source.commit !== currentSource.commit
+    || source.tree !== currentSource.tree
+  ) {
+    throw new Error(
+      'The verified E2E application publication does not match the current clean source commit/tree',
+    );
+  }
+  return publication;
+};
+
+/** Verify the immutable publication and prove it was built from this exact clean checkout. */
+export const readVerifiedCurrentPublishedApplication = () => assertPublicationMatchesCurrentSource(
+  readVerifiedPublishedApplication(),
+  readCleanGitSourceProvenance({ repositoryRoot: REPOSITORY_ROOT }),
+);
+
 const currentReceiptPath = join(E2E_APPLICATIONS_CACHE_ROOT, 'receipts', 'current.json');
-const publicationAtModuleLoad = existsSync(currentReceiptPath)
-  ? readVerifiedPublishedApplication()
-  : null;
+// Module import is not launch authority. Source-contract tests and discovery commands must remain
+// usable while a build has not been published yet, and while an old or interrupted publication is
+// waiting to be replaced. Preserve the verified path convenience for a valid receipt, but soften
+// every absent/corrupt/historical receipt to a deliberately nonexistent sentinel. The actual launch
+// path calls readVerifiedPublishedApplication() again and still fails closed before WebDriver starts.
+let publicationAtModuleLoad = null;
+if (existsSync(currentReceiptPath)) {
+  try {
+    publicationAtModuleLoad = readVerifiedPublishedApplication();
+  } catch {
+    publicationAtModuleLoad = null;
+  }
+}
 
 const assertRealUnredirectedTree = (root) => {
   const canonicalRoot = realpathSync.native(root);
@@ -388,19 +422,6 @@ const hasSafeRunRootLayout = (root) => {
   }
 };
 
-/** Remove every ambient capability that could redirect an unattended desktop run. */
-export const scrubAutomationEnvironment = (environment) => Object.fromEntries(
-  Object.entries(environment).filter(([key]) => (
-    !key.startsWith('OSG_E2E_')
-    && !key.startsWith('WEBVIEW2_')
-    && !key.startsWith('WDIO_')
-    && !key.startsWith('__WDIO_TAURI_')
-    && key !== 'TAURI_WEBDRIVER_PORT'
-    && key !== 'TAURI_DATA_DIR'
-    && key !== 'REMOTE_WEBDRIVER_URL'
-  )),
-);
-
 /**
  * Reviewed SUBTITLE fixtures a journey may hand to the application.
  *
@@ -469,10 +490,9 @@ export const LONG_SYNTHETIC_MEDIA_CACHE = join(E2E_ASSET_CACHE_ROOT, 'long-synth
 /**
  * The verified immutable application selected by the current external-cache receipt.
  *
- * A missing receipt gets a deliberately nonexistent EXTERNAL sentinel so source-only tests can
- * still import this module. assertAutomationDialogGuard() resolves the receipt again and refuses
- * before WebDriver starts. A present but corrupt receipt is never softened to that sentinel: module
- * loading itself fails closed.
+ * A missing, corrupt, or historical receipt gets a deliberately nonexistent EXTERNAL sentinel so
+ * source-only tests can still import this module. assertAutomationDialogGuard() resolves the
+ * receipt again and refuses before WebDriver starts.
  */
 export const BUILT_APPLICATION_DIRECTORY = publicationAtModuleLoad?.applicationRoot
   ?? join(E2E_APPLICATIONS_CACHE_ROOT, UNPUBLISHED_APPLICATION_DIRECTORY);
@@ -501,7 +521,7 @@ const assertApplicationLaunchSource = (binary) => {
     assertStagedApplicationBinary(binary);
     return;
   }
-  const current = readVerifiedPublishedApplication();
+  const current = readVerifiedCurrentPublishedApplication();
   if (
     !sameResolvedPath(current.binaryPath, binary)
     || publicationAtModuleLoad?.applicationHash !== current.applicationHash

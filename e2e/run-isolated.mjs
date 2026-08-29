@@ -2,20 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
-import {
-  APPLICATION_BINARY, assertAutomationDialogGuard, createRunRoot, readVerifiedPublishedApplication,
-  removeRunRoot, runRootAuthorization, scrubAutomationEnvironment,
-} from './support/environment.js';
-import {
-  INHERITED_APPLICATION_LEASE, serializeInheritedApplicationLease,
-  withE2eApplicationLease,
-} from './support/applicationLease.js';
-import { withEvidenceLease } from './support/evidenceLease.js';
-import { withStagingLease } from './support/stagingLease.js';
-import {
-  beginWorkflowEvidence, finalizeWorkflowEvidence, preserveRunRootEvidence,
-  refreshWorkflowEvidenceIndex, workflowNameForJourney,
-} from './support/workflowEvidence.js';
+import { scrubAutomationEnvironment } from './support/automationEnvironment.js';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -108,7 +95,28 @@ export const isolatedEnvironment = (environment) => {
   return scrubAutomationEnvironment(environment);
 };
 
-export const run = ({ repeat, journeys }) => {
+const loadLaunchRuntime = async () => {
+  const [environment, applicationLease, evidenceLease, stagingLease, workflowEvidence] = await Promise.all([
+    import('./support/environment.js'),
+    import('./support/applicationLease.js'),
+    import('./support/evidenceLease.js'),
+    import('./support/stagingLease.js'),
+    import('./support/workflowEvidence.js'),
+  ]);
+  return { ...environment, ...applicationLease, ...evidenceLease, ...stagingLease, ...workflowEvidence };
+};
+
+export const run = async ({ repeat, journeys }) => {
+  const {
+    APPLICATION_BINARY, INHERITED_APPLICATION_LEASE, assertAutomationDialogGuard,
+    beginWorkflowEvidence, createRunRoot, finalizeWorkflowEvidence, preserveRunRootEvidence,
+    readVerifiedCurrentPublishedApplication, refreshWorkflowEvidenceIndex, removeRunRoot,
+    runRootAuthorization, serializeInheritedApplicationLease, withE2eApplicationLease,
+    withEvidenceLease, withStagingLease, workflowNameForJourney,
+  } = await loadLaunchRuntime();
+  // Reject an absent, corrupt, dirty, or historical publication before evidence/cache mutation.
+  // The lease-protected verification below remains authoritative for the actual launch.
+  readVerifiedCurrentPublishedApplication();
   const failures = [];
   const started = Date.now();
   // Self-heal the browsable evidence index before trusting or extending it: a prior run killed
@@ -122,7 +130,7 @@ export const run = ({ repeat, journeys }) => {
         const label = `${basename(journey)} (${iteration}/${repeat})`;
         const workflow = workflowNameForJourney(journey);
         withE2eApplicationLease((applicationLease) => {
-          const publication = readVerifiedPublishedApplication();
+          const publication = readVerifiedCurrentPublishedApplication();
           if (!samePath(publication.binaryPath, APPLICATION_BINARY)) {
             fail('the leased immutable binary changed after the isolated runner loaded');
           }
@@ -220,5 +228,5 @@ export const run = ({ repeat, journeys }) => {
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  run(parseArguments(process.argv.slice(2)));
+  await run(parseArguments(process.argv.slice(2)));
 }
