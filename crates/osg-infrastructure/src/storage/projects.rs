@@ -1540,7 +1540,8 @@ mod tests {
         transaction.commit().expect("commit pre-v4 graph");
         connection
             .execute_batch(
-                "DROP TABLE project_render_scenes;
+                "DROP TABLE project_create_receipts;
+                 DROP TABLE project_render_scenes;
                  DROP TABLE project_speech_references;
                  DROP TABLE job_result_deliveries;
                  DROP TRIGGER project_media_requires_lifetime_owner;
