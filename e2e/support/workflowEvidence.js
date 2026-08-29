@@ -260,6 +260,12 @@ const boundedGitState = () => {
     windowsHide: true,
   }).trim();
   assert.match(commit, /^[0-9a-f]{40,64}$/i, 'workflow evidence requires an exact git commit');
+  const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+  assert.match(tree, /^[0-9a-f]{40,64}$/i, 'workflow evidence requires an exact git tree');
   const status = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
     cwd: REPOSITORY_ROOT,
     encoding: 'utf8',
@@ -268,6 +274,7 @@ const boundedGitState = () => {
   }).split(/\r?\n/).filter(Boolean);
   return {
     commit,
+    tree,
     dirty: status.length > 0,
     dirtyEntries: status.slice(0, MAX_DIRTY_ENTRIES),
     dirtyEntriesTruncated: status.length > MAX_DIRTY_ENTRIES,
@@ -1431,11 +1438,27 @@ export const beginWorkflowEvidence = ({
     attemptsRoot,
     `.osg-attempt-${attemptId}-${randomBytes(12).toString('hex')}.tmp`,
   );
+  const attemptProvenance = provenance ?? collectEvidenceProvenance({ binaryPath, requireBinary });
+  assert.match(
+    attemptProvenance?.source?.commit ?? '',
+    /^[0-9a-f]{40,64}$/i,
+    'workflow evidence requires an exact source commit',
+  );
+  assert.match(
+    attemptProvenance?.source?.tree ?? '',
+    /^[0-9a-f]{40,64}$/i,
+    'workflow evidence requires an exact source tree',
+  );
+  assert.equal(
+    typeof attemptProvenance?.source?.dirty,
+    'boolean',
+    'workflow evidence requires an explicit source dirty state',
+  );
   const manifest = initialManifest({
     attemptId,
     iteration,
     journey,
-    provenance: provenance ?? collectEvidenceProvenance({ binaryPath, requireBinary }),
+    provenance: attemptProvenance,
     startedAt,
     workflow,
   });
@@ -1527,6 +1550,7 @@ export const finalizeWorkflowEvidence = ({
       path: `attempts/${attemptId}`,
       endedAt,
       commit: manifest.provenance.source.commit,
+      tree: manifest.provenance.source.tree,
       dirty: manifest.provenance.source.dirty,
       binarySha256: manifest.provenance.binary.sha256,
     };

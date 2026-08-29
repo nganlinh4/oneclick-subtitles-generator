@@ -101,7 +101,7 @@
     "interaction": "Embedded WebDriver protocol only: no SendInput, physical cursor movement, focus stealing, or native picker/save implementation.",
     "command": "npm --prefix e2e run test:screenshot-workflows",
     "authority": "Screenshots expose customer-visible truth and aesthetic defects; files, SQLite, logs, hashes, ffprobe, decoded pixels, and second-process restoration remain the independent success oracles.",
-    "provenance": "Every attempt records the source commit and dirty paths plus the exact E2E executable path, byte size and SHA-256. The three newest attempts and latest successful proof are retained; only a completed passing attempt may atomically replace latest-success.json, so a red rerun cannot erase prior green proof. Retention is inventory-validated, journaled and recoverable after a partial quarantine."
+    "provenance": "Every attempt records the source commit, tree and dirty paths plus the exact E2E executable path, byte size and SHA-256. The three newest attempts and latest successful proof are retained; only a completed passing attempt may atomically replace latest-success.json, so a red rerun cannot erase prior green proof. Retention is inventory-validated, journaled and recoverable after a partial quarantine."
   },
   "recommendedJourneySet": [
     {
@@ -1878,8 +1878,10 @@
   "suiteRun": {
     "$comment": [
       "There is no single invocation that runs every journey against one binary and reports one aggregate result -- journeys run independently, on whatever binary is current when each one is invoked. The single 2026-08-21/c1a5b47d claim this block used to make went stale the moment any one journey re-ran on a newer binary while the others did not, and hand-maintaining it could not keep up.",
-      "The verifier treats each workflow's immutable latest-success.json as authoritative, reports stale hand bindings without trusting them, and classifies proof as current-HEAD, retained historical, or rotated historical from source-bound application manifests. Generated counts and application snapshots are deliberately forbidden here because they become stale external state."
+      "The verifier treats each workflow's immutable latest-success.json as authoritative, reports stale hand bindings without trusting them, validates every retained application's content-addressed manifest and complete file inventory, and requires the evidence, application and clean current source to name the same commit and tree before classifying proof as current-HEAD. Generated counts and application snapshots are deliberately forbidden here because they become stale external state.",
+      "Ordinary audit mode preserves historical reporting. Final/release closure uses --require-current and fails on a dirty source tree, any non-green or non-current journey, or ledger corruption. installed-production-binary proof remains visible but external: it is not safe to equate an installed release with the local source tree, so it cannot satisfy local current-source closure."
     ],
-    "verify": "node e2e/scripts/verify-inventory.mjs"
+    "audit": "node e2e/scripts/verify-inventory.mjs",
+    "verify": "node e2e/scripts/verify-inventory.mjs --require-current"
   }
 }

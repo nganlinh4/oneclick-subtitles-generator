@@ -409,6 +409,43 @@ const verifyApplicationTree = ({ applicationRoot, expectedHash, expectedManifest
   return Object.freeze({ ...collected, sourceProvenance });
 };
 
+/**
+ * Verify one retained content-addressed application without consulting the mutable current receipt.
+ * This is the read-only trust boundary used by inventory/evidence audits.
+ */
+const readAndVerifyPublishedE2eApplication = ({ applicationsRoot, applicationHash }) => {
+  const root = resolveAbsoluteInput(applicationsRoot, 'E2E applications directory');
+  if (!HASH_PATTERN.test(applicationHash)) throw new Error('E2E application hash is invalid');
+  assertRealDirectory(root, 'E2E applications directory');
+  const applicationRoot = path.join(root, applicationHash);
+  assertRealDirectory(applicationRoot, `immutable E2E application ${applicationHash}`);
+  if (!samePath(path.dirname(applicationRoot), root)) {
+    throw new Error(`immutable E2E application escaped its store: ${applicationHash}`);
+  }
+  const manifestPath = path.join(applicationRoot, APPLICATION_MANIFEST);
+  assertPublishedFile(manifestPath, 'immutable E2E application manifest');
+  const manifest = fs.readFileSync(manifestPath);
+  if (manifestHash(manifest) !== applicationHash) {
+    throw new Error(`immutable E2E application manifest hash mismatch: ${applicationHash}`);
+  }
+  const application = verifyApplicationTree({
+    applicationRoot,
+    expectedHash: applicationHash,
+    expectedManifestBytes: manifest,
+  });
+  const binary = application.files.find(({ path: relative }) => relative === APPLICATION_BINARY);
+  if (binary === undefined) {
+    throw new Error(`immutable E2E application has no entrypoint: ${applicationHash}`);
+  }
+  return Object.freeze({
+    applicationHash,
+    applicationRoot,
+    manifestPath,
+    binarySha256: binary.sha256,
+    sourceProvenance: application.sourceProvenance,
+  });
+};
+
 const writePrivateFile = (file, bytes) => {
   const descriptor = fs.openSync(file, 'wx', 0o600);
   try {
@@ -1320,6 +1357,7 @@ module.exports = {
   collectCargoProfileApplication,
   parseCli,
   publishE2eApplication,
+  readAndVerifyPublishedE2eApplication,
   readAndVerifyE2eApplicationReceipt,
   retainBoundedE2eApplications,
   resolveAbsoluteInput,

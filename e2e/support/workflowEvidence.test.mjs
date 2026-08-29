@@ -46,7 +46,8 @@ const workflowForTest = (name) => `contract-${name}-${process.pid}`;
 const workflowEvidenceModuleUrl = new URL('./workflowEvidence.js', import.meta.url).href;
 const fixedProvenance = () => ({
   source: {
-    commit: 'a'.repeat(40), dirty: false, dirtyEntries: [], dirtyEntriesTruncated: false,
+    commit: 'a'.repeat(40), tree: 'b'.repeat(40), dirty: false,
+    dirtyEntries: [], dirtyEntriesTruncated: false,
   },
   binary: { path: resolve('osg-e2e-test.exe'), exists: false, sha256: null, size: null },
 });
@@ -81,6 +82,23 @@ test('derives bounded collision-resistant failure steps from arbitrary test titl
   assert.ok(second.length <= 80);
   assert.notEqual(first, second, 'truncated titles need a digest so their evidence cannot collide');
   assert.match(workflowFailureStepForTest('___'), /^failure-test-[0-9a-f]{8}$/);
+});
+
+test('refuses new evidence whose injected source provenance omits the Git tree', () => {
+  const workflow = workflowForTest('missing-source-tree');
+  const provenance = fixedProvenance();
+  delete provenance.source.tree;
+  try {
+    assert.throws(() => beginWorkflowEvidence({
+      workflow,
+      journey: 'journeys/missing-tree.journey.js',
+      iteration: 1,
+      provenance,
+      requireBinary: false,
+    }), /exact source tree/u);
+  } finally {
+    rmSync(workflowEvidenceDirectory(workflow), { recursive: true, force: true });
+  }
 });
 
 test('bounds and redacts hostile WebdriverIO errors while retaining exact useful identity and stack', () => {
@@ -273,6 +291,7 @@ test('keeps a failed rerun without replacing the latest successful proof', () =>
       createHash('sha256').update(bytes).digest('hex'),
     );
     assert.match(passed.provenance.source.commit, /^[0-9a-f]{40,64}$/);
+    assert.match(passed.provenance.source.tree, /^[0-9a-f]{40,64}$/);
     assert.equal(typeof passed.provenance.source.dirty, 'boolean');
     assert.ok(passed.attempt.startedAt);
     assert.ok(passed.attempt.endedAt);
@@ -293,6 +312,7 @@ test('keeps a failed rerun without replacing the latest successful proof', () =>
 
     const latest = JSON.parse(readFileSync(join(workflowDirectory, 'latest-success.json'), 'utf8'));
     assert.equal(latest.attemptId, first.id, 'failure must not replace the last successful pointer');
+    assert.equal(latest.tree, passed.provenance.source.tree);
     assert.equal(existsSync(first.directory), true);
     assert.equal(existsSync(second.directory), true);
     const failed = JSON.parse(readFileSync(join(second.directory, 'manifest.json'), 'utf8'));
@@ -788,6 +808,7 @@ test('retention removes only exact publisher atomic sidecars and rejects malform
       path: `attempts/${newerSuccess.id}`,
       endedAt: newerManifest.attempt.endedAt,
       commit: newerManifest.provenance.source.commit,
+      tree: newerManifest.provenance.source.tree,
       dirty: newerManifest.provenance.source.dirty,
       binarySha256: newerManifest.provenance.binary.sha256,
     };
