@@ -1376,10 +1376,12 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
+    use super::super::migrations::migrations;
     use super::{
         DatabaseError, MAX_CURRENT_REVISIONS, MAX_PROJECT_CREATE_KEY_UTF16_UNITS,
-        MAX_REDO_REVISIONS, MAX_REDO_STACK_JSON_BYTES, encode_snapshot, insert_revision,
-        push_bounded,
+        MAX_REDO_REVISIONS, MAX_REDO_STACK_JSON_BYTES, create_project_in_transaction,
+        encode_snapshot, insert_revision, push_bounded, update_project_row, write_navigation,
+        write_normalized, write_project_state,
     };
     use crate::storage::Database;
 
@@ -1463,60 +1465,103 @@ mod tests {
             .expect("apply committed version")
     }
 
-    fn seed_pre_v4_unbounded_graph(
+    #[allow(
+        clippy::too_many_lines,
+        reason = "exact legacy v3 schema and graph fixture"
+    )]
+    fn seed_v3_unbounded_graph(
         path: &Path,
         metadata: &ProjectMetadata,
-        current: &ProjectSnapshot,
-    ) -> Vec<RevisionId> {
-        let mut connection = Connection::open(path).expect("open pre-v4 fixture");
+    ) -> (ProjectSnapshot, Vec<RevisionId>) {
+        std::fs::create_dir_all(path.parent().expect("database parent"))
+            .expect("create v3 database parent");
+        let mut connection = Connection::open(path).expect("open v3 fixture");
+        migrations()
+            .to_version(&mut connection, 3)
+            .expect("apply migrations one through three only");
         connection
             .pragma_update(None, "foreign_keys", "ON")
             .expect("enable foreign keys");
-        let (oldest_uuid, oldest_version, current_uuid): (Uuid, i64, Uuid) = connection
-            .query_row(
-                "SELECT r.id, r.state_version, n.current_revision_id
-                 FROM project_revisions r
-                 JOIN revision_navigation n ON n.project_id = r.project_id
-                 WHERE r.project_id = ?1 AND r.parent_id IS NULL",
-                [metadata.id().as_uuid()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        let schema_version: u32 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read v3 schema marker");
+        assert_eq!(schema_version, 3);
+        let v3_objects: Vec<String> = connection
+            .prepare(
+                "SELECT name FROM sqlite_schema
+                 WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'
+                 ORDER BY name",
             )
-            .expect("locate retained root");
-        let oldest = RevisionId::from_uuid(oldest_uuid).expect("valid oldest revision");
-        let current_revision = RevisionId::from_uuid(current_uuid).expect("valid current revision");
-        let transaction = connection.transaction().expect("start fixture transaction");
-        let mut parent = None;
-        for stored_version in 0..oldest_version {
-            let version = u64::try_from(stored_version).expect("non-negative version");
-            let snapshot = ProjectSnapshot::new(metadata.clone(), version, Vec::new(), Vec::new())
-                .expect("valid legacy snapshot");
-            let encoded = encode_snapshot(&snapshot).expect("encode legacy snapshot");
+            .expect("inspect v3 schema")
+            .query_map([], |row| row.get(0))
+            .expect("query v3 schema")
+            .collect::<Result<_, _>>()
+            .expect("collect v3 schema");
+        assert!(
+            v3_objects
+                .iter()
+                .any(|name| name == "jobs_state_updated_idx")
+        );
+        for post_v3 in [
+            "editor_track_revisions",
+            "media_artifacts",
+            "job_result_deliveries",
+            "project_create_receipts",
+        ] {
+            assert!(!v3_objects.iter().any(|name| name == post_v3));
+        }
+
+        let transaction = connection
+            .transaction()
+            .expect("start v3 fixture transaction");
+        let mut current = create_project_in_transaction(&transaction, metadata)
+            .expect("create genuine v3 project");
+        let mut parent_uuid: Uuid = transaction
+            .query_row(
+                "SELECT current_revision_id FROM revision_navigation WHERE project_id = ?1",
+                [metadata.id().as_uuid()],
+                |row| row.get(0),
+            )
+            .expect("read v3 root revision");
+        let mut parent = RevisionId::from_uuid(parent_uuid).expect("valid v3 root revision");
+        for index in 1..=(MAX_CURRENT_REVISIONS + 32) {
+            let version = u64::try_from(index).expect("fixture version");
+            let title = format!("Revision {index}");
+            let snapshot = ProjectSnapshot::new(
+                ProjectMetadata::with_id(metadata.id(), &title).expect("valid v3 metadata"),
+                version,
+                Vec::new(),
+                Vec::new(),
+            )
+            .expect("valid v3 snapshot");
+            let encoded = encode_snapshot(&snapshot).expect("encode v3 snapshot");
             let revision = RevisionId::new();
+            update_project_row(&transaction, &snapshot, version - 1)
+                .expect("advance v3 project row");
+            write_normalized(&transaction, &snapshot).expect("write v3 normalized state");
             insert_revision(
                 &transaction,
                 revision,
                 metadata.id(),
-                parent,
-                "Legacy ancestor",
+                Some(parent),
+                &title,
                 version,
                 &encoded,
-                stored_version,
+                i64::try_from(index).expect("v3 timestamp"),
             )
-            .expect("insert legacy ancestor");
-            parent = Some(revision);
+            .expect("insert v3 revision");
+            write_navigation(&transaction, metadata.id(), revision, &[], 1)
+                .expect("advance v3 navigation");
+            write_project_state(&transaction, &snapshot, revision, 1)
+                .expect("advance v3 project state");
+            parent = revision;
+            parent_uuid = revision.into_uuid();
+            current = snapshot;
         }
-        transaction
-            .execute(
-                "UPDATE project_revisions SET parent_id = ?1 WHERE id = ?2",
-                params![
-                    parent.expect("legacy ancestors").as_uuid(),
-                    oldest.as_uuid()
-                ],
-            )
-            .expect("attach legacy ancestors");
 
         let mut detached = Vec::new();
-        let mut branch_parent = Some(current_revision);
+        let mut branch_parent =
+            Some(RevisionId::from_uuid(parent_uuid).expect("valid v3 current revision"));
         for offset in 1..=2 {
             let version = current.state_version() + offset;
             let snapshot = ProjectSnapshot::new(metadata.clone(), version, Vec::new(), Vec::new())
@@ -1537,24 +1582,8 @@ mod tests {
             detached.push(revision);
             branch_parent = Some(revision);
         }
-        transaction.commit().expect("commit pre-v4 graph");
-        connection
-            .execute_batch(
-                "DROP TABLE project_create_receipts;
-                 DROP TABLE project_render_scenes;
-                 DROP TABLE project_speech_references;
-                 DROP TABLE job_result_deliveries;
-                 DROP TRIGGER project_media_requires_lifetime_owner;
-                 DROP TABLE media_project_owners;
-                 DROP INDEX project_media_single_project_idx;
-                 DROP TABLE media_artifact_job_claims;
-                 DROP TABLE media_artifacts;
-                 DROP TABLE editor_track_navigation;
-                 DROP TABLE editor_track_revisions;
-                 PRAGMA user_version = 3;",
-            )
-            .expect("downgrade fixture schema marker");
-        detached
+        transaction.commit().expect("commit genuine v3 graph");
+        (current, detached)
     }
 
     #[test]
@@ -1874,15 +1903,10 @@ mod tests {
 
     #[test]
     fn v4_upgrade_prunes_legacy_ancestors_and_detached_branches_before_load() {
-        let (_directory, path, database) = database();
+        let directory = TempDir::new().expect("temporary v3 directory");
+        let path = directory.path().join("db/osg.sqlite3");
         let metadata = ProjectMetadata::new("Legacy retention").expect("valid project");
-        let mut current = database.create_project(&metadata).expect("create project");
-        for index in 1..=(MAX_CURRENT_REVISIONS + 32) {
-            current = commit_numbered_revision(&database, &current, index);
-        }
-        drop(database);
-
-        let detached = seed_pre_v4_unbounded_graph(&path, &metadata, &current);
+        let (current, detached) = seed_v3_unbounded_graph(&path, &metadata);
         assert!(revision_count(&path, metadata.id()) > EXPECTED_RETAINED_REVISIONS);
 
         let upgraded = Database::open(&path).expect("migrate and reconcile v3 database");

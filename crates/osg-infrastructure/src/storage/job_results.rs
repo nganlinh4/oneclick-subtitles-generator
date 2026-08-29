@@ -1,7 +1,7 @@
 use osg_application::JobWrite;
 use osg_domain::{AssetId, JobId, JobKind, JobSnapshot, JobState, ProjectId};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::{Uuid, Variant, Version};
 
@@ -29,7 +29,7 @@ type RawDelivery = (
 
 /// Closed vocabulary for result payloads whose producer and consumer contracts are independently
 /// validated at the desktop command boundary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JobResultKind {
     AsrTranscription,
@@ -250,17 +250,19 @@ fn insert(
 
 pub(super) fn list_pending(
     connection: &Connection,
+    kind: Option<JobResultKind>,
 ) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
     let mut statement = connection.prepare(
         "SELECT delivery_id, job_id, kind
          FROM job_result_deliveries
          WHERE acknowledged_at_ms IS NULL
+           AND (?1 IS NULL OR kind = ?1)
          ORDER BY created_at_ms, job_id
-         LIMIT ?1",
+         LIMIT ?2",
     )?;
     let limit = i64::try_from(MAX_PENDING_JOB_RESULT_DELIVERIES)
         .expect("pending delivery limit fits SQLite");
-    let rows = statement.query_map([limit], |row| {
+    let rows = statement.query_map(params![kind.map(JobResultKind::as_str), limit], |row| {
         Ok((
             row.get::<_, Uuid>(0)?,
             row.get::<_, Uuid>(1)?,
@@ -402,7 +404,7 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use super::{JobResultDeliveryDraft, JobResultKind};
+    use super::{JobResultDeliveryDraft, JobResultKind, MAX_PENDING_JOB_RESULT_DELIVERIES};
     use crate::storage::Database;
 
     fn database() -> (TempDir, Database) {
@@ -489,6 +491,75 @@ mod tests {
                 .expect("claim acknowledged result")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn exact_kind_filter_finds_asr_behind_a_full_older_gemini_page() {
+        let (_directory, database) = database();
+        let registry =
+            JobRegistry::restore(Arc::new(database.clone())).expect("restore empty registry");
+        for index in 0..MAX_PENDING_JOB_RESULT_DELIVERIES {
+            let queued = registry
+                .register(JobKind::Translate)
+                .expect("register Gemini text job");
+            let job_id = queued.snapshot().id();
+            registry
+                .apply(job_id, JobUpdate::Start)
+                .expect("start Gemini job");
+            let draft = JobResultDeliveryDraft::new(
+                job_id,
+                JobResultKind::GeminiText,
+                None,
+                None,
+                &json!({"schemaVersion": 1, "text": format!("older {index}"), "usage": null}),
+            )
+            .expect("valid Gemini delivery");
+            registry
+                .apply_with_store(job_id, JobUpdate::Succeed, |store, sequence, snapshot| {
+                    store.complete_job_with_result(sequence, snapshot, &draft)
+                })
+                .expect("complete Gemini job");
+        }
+        let queued = registry
+            .register(JobKind::Transcribe)
+            .expect("register local ASR job");
+        let asr_job_id = queued.snapshot().id();
+        registry
+            .apply(asr_job_id, JobUpdate::Start)
+            .expect("start local ASR job");
+        let asr = JobResultDeliveryDraft::new(
+            asr_job_id,
+            JobResultKind::AsrTranscription,
+            None,
+            None,
+            &json!({"schemaVersion": 1, "transcription": {"segments": []}, "timelineOffsetMs": 0}),
+        )
+        .expect("valid ASR delivery");
+        registry
+            .apply_with_store(
+                asr_job_id,
+                JobUpdate::Succeed,
+                |store, sequence, snapshot| {
+                    store.complete_job_with_result(sequence, snapshot, &asr)
+                },
+            )
+            .expect("complete local ASR job");
+
+        let unfiltered = database
+            .list_pending_job_results()
+            .expect("list bounded unfiltered page");
+        assert_eq!(unfiltered.len(), MAX_PENDING_JOB_RESULT_DELIVERIES);
+        assert!(
+            unfiltered
+                .iter()
+                .all(|header| header.kind == JobResultKind::GeminiText)
+        );
+        let filtered = database
+            .list_pending_job_results_by_kind(Some(JobResultKind::AsrTranscription))
+            .expect("list exact ASR kind");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].job_id, asr_job_id);
+        assert_eq!(filtered[0].kind, JobResultKind::AsrTranscription);
     }
 
     #[test]

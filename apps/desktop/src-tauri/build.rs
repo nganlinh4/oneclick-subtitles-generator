@@ -47,6 +47,7 @@ const COMMANDS: &[&str] = &[
     "jobs_list",
     "job_get",
     "job_cancel",
+    "job_recovery_abandon_transcribe",
     "job_result_pending",
     "job_result_claim",
     "job_result_ack",

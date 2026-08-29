@@ -66,11 +66,11 @@ use commands::{
     active_workspace_begin, active_workspace_clear, active_workspace_get, active_workspace_set,
     app_health, clear_media, credential_delete, credential_set, credential_status,
     credential_upsert, discard_media_candidate, get_session_snapshot, job_cancel, job_get,
-    jobs_list, open_media_asset, project_commit, project_create, project_history_status,
-    project_load, project_redo, project_track_commit, project_track_history_status,
-    project_track_redo, project_track_undo, project_undo, select_media, setting_delete,
-    setting_get, setting_set, settings_clear, settings_set_many, subtitle_project_alias_activate,
-    subtitle_project_alias_remove, subtitle_project_index_get,
+    job_recovery_abandon_transcribe, jobs_list, open_media_asset, project_commit, project_create,
+    project_history_status, project_load, project_redo, project_track_commit,
+    project_track_history_status, project_track_redo, project_track_undo, project_undo,
+    select_media, setting_delete, setting_get, setting_set, settings_clear, settings_set_many,
+    subtitle_project_alias_activate, subtitle_project_alias_remove, subtitle_project_index_get,
 };
 use document_export::{generated_file_export, subtitle_archive_export, subtitle_document_export};
 use download::{
@@ -296,6 +296,7 @@ pub fn run() {
             jobs_list,
             job_get,
             job_cancel,
+            job_recovery_abandon_transcribe,
             job_result_pending,
             job_result_claim,
             job_result_ack,

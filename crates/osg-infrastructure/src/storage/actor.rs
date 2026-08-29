@@ -30,7 +30,7 @@ use super::{
     ArtifactFailureCode, ArtifactId, ArtifactKind, ArtifactRecord, ArtifactRegistration,
     CacheCategory, CacheClearOutcome, CacheClearResult, CacheInfo, CacheKey, CacheLeaseId,
     CacheWrite, ContentHash, JobResultDelivery, JobResultDeliveryDraft, JobResultDeliveryHeader,
-    LeasedArtifact, LegacyImportCandidate, LegacyImportId, LegacyImportItemOutcome,
+    JobResultKind, LeasedArtifact, LegacyImportCandidate, LegacyImportId, LegacyImportItemOutcome,
     LegacyImportItemState, LegacyImportSourceKind, LegacyImportSummary, ProjectAliasEntry,
     ProjectAliasIndex, ProjectAliasMutation, ProjectRenderSceneRecord, ProjectRenderSceneWrite,
     ProjectSpeechReference, ProjectSpeechReferenceWrite, ReconciliationReport, ResolvedArtifact,
@@ -350,6 +350,7 @@ enum Request {
         reply: SyncSender<Result<JobWrite, DatabaseError>>,
     },
     ListPendingJobResults {
+        kind: Option<JobResultKind>,
         reply: SyncSender<Result<Vec<JobResultDeliveryHeader>, DatabaseError>>,
     },
     ClaimJobResult {
@@ -1256,7 +1257,14 @@ impl Database {
     }
 
     pub fn list_pending_job_results(&self) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
-        self.request(|reply| Request::ListPendingJobResults { reply })
+        self.list_pending_job_results_by_kind(None)
+    }
+
+    pub fn list_pending_job_results_by_kind(
+        &self,
+        kind: Option<JobResultKind>,
+    ) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
+        self.request(|reply| Request::ListPendingJobResults { kind, reply })
     }
 
     pub fn claim_job_result(
@@ -2013,8 +2021,8 @@ fn run_actor(
                     expected_state_version,
                 ));
             }
-            Request::ListPendingJobResults { reply } => {
-                let _ = reply.send(super::job_results::list_pending(&connection));
+            Request::ListPendingJobResults { kind, reply } => {
+                let _ = reply.send(super::job_results::list_pending(&connection, kind));
             }
             Request::ClaimJobResult { job_id, reply } => {
                 let _ = reply.send(super::job_results::claim(&connection, job_id));

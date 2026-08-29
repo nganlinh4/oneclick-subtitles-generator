@@ -23,7 +23,7 @@ const MAX_REMEMBERED_JOB_IDS = 64;
 const MAX_JOB_SNAPSHOTS = 512;
 const MAX_RECOVERY_CANDIDATES = MAX_JOB_SNAPSHOTS + MAX_REMEMBERED_JOB_IDS;
 const MAX_PENDING_RESULT_PAGE = 256;
-const MAX_ASR_DISCARD_PASSES = 4;
+const MAX_ASR_DISCARD_PASSES = 16;
 const JOB_KINDS = new Set([
   'importMedia',
   'probeMedia',
@@ -54,6 +54,7 @@ export const RECOVERABLE_NATIVE_JOB_KINDS = Object.freeze([
   'alignNarration',
   'renderVideo',
   'synthesizeNarration',
+  'transcribe',
   'translate',
   'analyzeSubtitles',
 ]);
@@ -218,10 +219,18 @@ const responseJob = (value, expected) => {
   return job;
 };
 
+const matchesPendingDelivery = (value, pending) => (
+  isPlainRecord(value?.delivery)
+  && value.delivery.jobId === pending.jobId
+  && value.delivery.deliveryId === pending.deliveryId
+  && value.delivery.kind === pending.kind
+);
+
 const defaultAdapters = Object.freeze({
   alignNarration: nativeNarrationAlignmentService.getAlignmentResult,
   renderVideo: getNativeRenderResult,
   synthesizeNarration: getSpeechJobResults,
+  transcribe: claimJobResult,
   translate: claimJobResult,
   analyzeSubtitles: claimJobResult,
 });
@@ -231,12 +240,18 @@ export const createNativeJobRecoveryCoordinator = ({
   isNativeRuntime = isDesktopRuntime,
   adapters = defaultAdapters,
   releaseRenderPlayback = releaseNativeRenderPlayback,
-  pendingResults = () => listPendingJobResults({ invokeCommand }),
+  pendingResults = (kind = null) => listPendingJobResults({ invokeCommand, kind }),
   discardAsrResult = (jobId, deliveryId) => acknowledgeJobResult(
     jobId,
     deliveryId,
     { invokeCommand },
   ),
+  discardUnownedGeminiTranscribe = (jobId, deliveryId) => acknowledgeJobResult(
+    jobId,
+    deliveryId,
+    { invokeCommand },
+  ),
+  abandonTranscribe = (jobId) => invokeCommand('job_recovery_abandon_transcribe', { id: jobId }),
   storage: providedStorage,
 } = {}) => {
   const storage = storageOrNull(providedStorage);
@@ -301,21 +316,21 @@ export const createNativeJobRecoveryCoordinator = ({
    */
   const discardOrphanedAsrResults = async () => {
     let discarded = 0;
-    let pending = Object.freeze([]);
     const asrJobIds = new Set();
     for (let pass = 0; pass < MAX_ASR_DISCARD_PASSES; pass += 1) {
+      let pending;
       try {
-        pending = await pendingResults();
+        pending = await pendingResults('asrTranscription');
       } catch {
-        return { discarded, pending: Object.freeze([]), asrJobIds, unavailable: true };
+        return { discarded, asrJobIds, unavailable: true };
       }
-      const orphaned = pending.filter(({ kind }) => kind === 'asrTranscription');
-      orphaned.forEach(({ jobId }) => asrJobIds.add(jobId));
-      if (orphaned.length === 0) {
-        return { discarded, pending, asrJobIds, unavailable: false };
+      if (pending.some(({ kind }) => kind !== 'asrTranscription')) {
+        return { discarded, asrJobIds, unavailable: true };
       }
+      pending.forEach(({ jobId }) => asrJobIds.add(jobId));
+      if (pending.length === 0) return { discarded, asrJobIds, unavailable: false };
       let unavailable = false;
-      for (const { jobId, deliveryId } of orphaned) {
+      for (const { jobId, deliveryId } of pending) {
         try {
           await discardAsrResult(jobId, deliveryId);
           forget(jobId);
@@ -327,18 +342,17 @@ export const createNativeJobRecoveryCoordinator = ({
           unavailable = true;
         }
       }
-      const retained = Object.freeze(pending.filter(({ kind }) => kind !== 'asrTranscription'));
-      if (unavailable) return { discarded, pending: retained, asrJobIds, unavailable: true };
+      if (unavailable) return { discarded, asrJobIds, unavailable: true };
       if (pending.length < MAX_PENDING_RESULT_PAGE) {
-        return { discarded, pending: retained, asrJobIds, unavailable: false };
+        return { discarded, asrJobIds, unavailable: false };
       }
     }
-    // A hostile or very old database may contain more than four full pages. Yield after bounded
+    // A hostile or very old database may contain more than sixteen full pages. Yield after bounded
     // work; `start()` deliberately becomes retryable and the next attempt continues draining.
-    return { discarded, pending: Object.freeze([]), asrJobIds, unavailable: true };
+    return { discarded, asrJobIds, unavailable: true };
   };
 
-  const recoverOne = async (jobId, listedJob, wasRemembered, hasPendingResult) => {
+  const recoverOne = async (jobId, listedJob, wasRemembered, pendingDelivery) => {
     let rawCurrent;
     try {
       rawCurrent = await invokeCommand('job_get', { id: jobId });
@@ -347,7 +361,7 @@ export const createNativeJobRecoveryCoordinator = ({
         forget(jobId);
         return 'discarded';
       }
-      if (wasRemembered || hasPendingResult) remember(jobId);
+      if (wasRemembered || pendingDelivery !== undefined) remember(jobId);
       return 'unavailable';
     }
     let current;
@@ -365,7 +379,15 @@ export const createNativeJobRecoveryCoordinator = ({
       forget(current.id);
       return 'discarded';
     }
-    if (!wasRemembered && !hasPendingResult && !ACTIVE_JOB_STATES.has(current.state)) return 'ignored';
+    if (current.kind === 'transcribe' && pendingDelivery?.kind !== 'geminiText') {
+      // An active transcribe has already been terminalized before candidates are built. Without a
+      // typed Gemini delivery, this ID cannot be distinguished from local ASR and cannot authorize
+      // any replay.
+      forget(current.id);
+      return 'discarded';
+    }
+    if (!wasRemembered && pendingDelivery === undefined
+        && !ACTIVE_JOB_STATES.has(current.state)) return 'ignored';
     if (['failed', 'cancelled'].includes(current.state)) {
       forget(current.id);
       return 'discarded';
@@ -387,20 +409,76 @@ export const createNativeJobRecoveryCoordinator = ({
       remember(current.id);
       return 'unavailable';
     }
+    let latest;
     try {
-      const latest = responseJob(value, current);
+      latest = responseJob(value, current);
+      if (pendingDelivery !== undefined && !matchesPendingDelivery(value, pendingDelivery)) {
+        throw new Error('mismatched delivery');
+      }
       if (['failed', 'cancelled'].includes(latest.state)) {
         forget(latest.id);
         return 'discarded';
       }
-      const entry = Object.freeze({ job: latest, value, wasRemembered });
-      recovered.set(latest.id, entry);
-      remember(latest.id);
-      return 'recovered';
     } catch {
       forget(current.id);
       return 'discarded';
     }
+    if (current.kind === 'transcribe') {
+      // A Gemini media transcription has no durable frontend receipt containing its request and
+      // project revision. Replaying only its text after reload would be an unauthorized merge.
+      // Its native project CAS already protected any commit that completed before reload, so the
+      // only safe ownerless disposition is exact release—not ASR classification or silent leak.
+      try {
+        await discardUnownedGeminiTranscribe(
+          pendingDelivery.jobId,
+          pendingDelivery.deliveryId,
+        );
+        forget(current.id);
+        return 'discarded';
+      } catch {
+        remember(current.id);
+        return 'unavailable';
+      }
+    }
+    const entry = Object.freeze({ job: latest, value, wasRemembered });
+    recovered.set(latest.id, entry);
+    remember(latest.id);
+    return 'recovered';
+  };
+
+  const settleOrphanedTranscribes = async (jobs) => {
+    const settled = new Map(jobs.map((snapshot) => [snapshot.id, snapshot]));
+    const active = jobs.filter((snapshot) => (
+      snapshot.kind === 'transcribe' && ACTIVE_JOB_STATES.has(snapshot.state)
+    ));
+    let discarded = 0;
+    let unavailable = false;
+    for (const snapshot of active) {
+      try {
+        const terminal = normalizeJob(await abandonTranscribe(snapshot.id));
+        if (terminal.id !== snapshot.id || terminal.kind !== 'transcribe'
+            || terminal.sequence < snapshot.sequence || ACTIVE_JOB_STATES.has(terminal.state)) {
+          throw new Error('invalid transcription recovery state');
+        }
+        settled.set(terminal.id, terminal);
+        if (terminal.state !== 'succeeded') {
+          forget(terminal.id);
+          discarded += 1;
+        }
+      } catch {
+        remember(snapshot.id);
+        unavailable = true;
+      }
+    }
+    return {
+      jobs: Object.freeze([...settled.values()].sort((left, right) => left.id.localeCompare(right.id))),
+      activeCount: active.length,
+      discarded,
+      unavailable,
+      unsettledIds: new Set(active
+        .filter(({ id }) => ACTIVE_JOB_STATES.has(settled.get(id)?.state ?? 'running'))
+        .map(({ id }) => id)),
+    };
   };
 
   const runStartAttempt = async () => {
@@ -410,37 +488,58 @@ export const createNativeJobRecoveryCoordinator = ({
       writeRememberedIds(storage, []);
       return unavailableResult(initialRemembered.size);
     }
-    const orphanCleanup = await discardOrphanedAsrResults();
-    const remembered = new Set(readRememberedIds(storage));
+    const firstCleanup = await discardOrphanedAsrResults();
     let jobs;
     try {
       jobs = await invokeCommand('jobs_list', {}).then(normalizeJobList);
     } catch {
-      return unavailableResult(orphanCleanup.discarded);
+      return unavailableResult(firstCleanup.discarded);
     }
-    const pending = orphanCleanup.pending;
+    const settled = await settleOrphanedTranscribes(jobs);
+    jobs = settled.jobs;
+    const secondCleanup = settled.activeCount > 0
+      ? await discardOrphanedAsrResults()
+      : { discarded: 0, asrJobIds: new Set(), unavailable: false };
+    let pending;
+    try {
+      pending = await pendingResults(null);
+    } catch {
+      return unavailableResult(
+        firstCleanup.discarded + settled.discarded + secondCleanup.discarded,
+      );
+    }
+    const remembered = new Set(readRememberedIds(storage));
     const byId = new Map(jobs.map((job) => [job.id, job]));
-    const pendingIds = new Set(pending.map(({ jobId }) => jobId));
+    const pendingById = new Map(pending
+      .filter(({ kind }) => kind === 'geminiText')
+      .map((header) => [header.jobId, header]));
     const candidateIds = new Set([
       ...remembered,
-      ...pendingIds,
+      ...pendingById.keys(),
       ...jobs.filter((job) => (
-        recoverableKinds.has(job.kind) && ACTIVE_JOB_STATES.has(job.state)
+        recoverableKinds.has(job.kind) && job.kind !== 'transcribe'
+        && ACTIVE_JOB_STATES.has(job.state)
       )).map((job) => job.id),
-    ].filter((jobId) => !orphanCleanup.asrJobIds.has(jobId)));
+    ].filter((jobId) => (
+      !firstCleanup.asrJobIds.has(jobId)
+      && !secondCleanup.asrJobIds.has(jobId)
+      && !settled.unsettledIds.has(jobId)
+    )));
     if (candidateIds.size > MAX_RECOVERY_CANDIDATES) {
-      return unavailableResult(orphanCleanup.discarded);
+      return unavailableResult(
+        firstCleanup.discarded + settled.discarded + secondCleanup.discarded,
+      );
     }
     let recoveredCount = 0;
-    let discardedCount = orphanCleanup.discarded;
-    let unavailable = orphanCleanup.unavailable;
+    let discardedCount = firstCleanup.discarded + settled.discarded + secondCleanup.discarded;
+    let unavailable = firstCleanup.unavailable || settled.unavailable || secondCleanup.unavailable;
     for (const jobId of [...candidateIds].sort()) {
       const listedJob = byId.get(jobId);
       const outcome = await recoverOne(
         jobId,
         listedJob,
         remembered.has(jobId),
-        pendingIds.has(jobId),
+        pendingById.get(jobId),
       );
       if (outcome === 'recovered') recoveredCount += 1;
       if (outcome === 'discarded') discardedCount += 1;

@@ -88,9 +88,12 @@ export const normalizeClaimedJobResult = (value) => {
   return Object.freeze({ job, delivery: normalized });
 };
 
-export const listPendingJobResults = async ({ invokeCommand = invokeDesktop } = {}) => (
-  normalizePendingJobResults(await invokeCommand('job_result_pending', {}))
-);
+export const listPendingJobResults = async ({ invokeCommand = invokeDesktop, kind = null } = {}) => {
+  if (kind !== null && !kinds.has(kind)) throw invalid();
+  const pending = normalizePendingJobResults(await invokeCommand('job_result_pending', { kind }));
+  if (kind !== null && pending.some((header) => header.kind !== kind)) throw invalid();
+  return pending;
+};
 
 export const claimJobResult = async (jobId, { invokeCommand = invokeDesktop } = {}) => {
   const id = requireId(jobId);

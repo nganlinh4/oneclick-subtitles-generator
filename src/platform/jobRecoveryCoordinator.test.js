@@ -51,10 +51,19 @@ const createHarness = ({
   storage = new MemoryStorage(),
   adapters = {},
   pending = [],
-  pendingResults = vi.fn().mockResolvedValue(pending),
+  pendingResults = vi.fn(async (kind = null) => (
+    kind === null ? pending : pending.filter((header) => header.kind === kind)
+  )),
   discardAsrResult = vi.fn().mockResolvedValue(true),
+  discardUnownedGeminiTranscribe = vi.fn().mockResolvedValue(true),
+  abandonTranscribe = null,
 } = {}) => {
   const byId = new Map(knownJobs.map((snapshot) => [snapshot.id, snapshot]));
+  const abandon = abandonTranscribe ?? vi.fn(async (jobId) => ({
+    ...byId.get(jobId),
+    state: 'cancelled',
+    sequence: byId.get(jobId).sequence + 1,
+  }));
   const invokeCommand = vi.fn(async (command, args) => {
     if (command === 'jobs_list') return jobs;
     if (command === 'job_get') {
@@ -71,12 +80,16 @@ const createHarness = ({
     adapters,
     pendingResults,
     discardAsrResult,
+    discardUnownedGeminiTranscribe,
+    abandonTranscribe: abandon,
     releaseRenderPlayback,
     storage,
   });
   return {
     coordinator,
+    abandonTranscribe: abandon,
     discardAsrResult,
+    discardUnownedGeminiTranscribe,
     invokeCommand,
     pendingResults,
     releaseRenderPlayback,
@@ -277,6 +290,126 @@ describe('native durable-job startup recovery', () => {
     expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBeNull();
   });
 
+  test('drains a local ASR delivery that completes after WebView reload recovery begins', async () => {
+    const running = job({ id: OTHER_ID, kind: 'transcribe', state: 'running' });
+    const succeeded = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'asrTranscription',
+    };
+    let completed = false;
+    const pendingResults = vi.fn(async (kind = null) => (
+      completed && (kind === null || kind === 'asrTranscription') ? [header] : []
+    ));
+    const abandonTranscribe = vi.fn(async () => {
+      completed = true;
+      return succeeded;
+    });
+    const discardAsrResult = vi.fn(async () => { completed = false; });
+    const { coordinator } = createHarness({
+      jobs: [running],
+      knownJobs: [succeeded],
+      pendingResults,
+      abandonTranscribe,
+      discardAsrResult,
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(abandonTranscribe).toHaveBeenCalledExactlyOnceWith(OTHER_ID);
+    expect(discardAsrResult).toHaveBeenCalledExactlyOnceWith(
+      OTHER_ID,
+      header.deliveryId,
+    );
+    expect(pendingResults).toHaveBeenNthCalledWith(1, 'asrTranscription');
+    expect(pendingResults).toHaveBeenNthCalledWith(2, 'asrTranscription');
+    expect(pendingResults).toHaveBeenLastCalledWith(null);
+  });
+
+  test('terminalizes an orphaned queued transcription before memoizing recovery success', async () => {
+    const queued = job({
+      id: OTHER_ID,
+      kind: 'transcribe',
+      state: 'queued',
+      basisPoints: 0,
+      sequence: 0,
+    });
+    const abandonTranscribe = vi.fn(async () => ({
+      ...queued,
+      state: 'cancelled',
+      sequence: 1,
+    }));
+    const { coordinator } = createHarness({
+      jobs: [queued],
+      knownJobs: [queued],
+      abandonTranscribe,
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(abandonTranscribe).toHaveBeenCalledExactlyOnceWith(OTHER_ID);
+    await coordinator.start();
+    expect(abandonTranscribe).toHaveBeenCalledTimes(1);
+  });
+
+  test('routes a Gemini transcribe delivery by result kind and exactly releases ownerless output', async () => {
+    const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'geminiText',
+    };
+    const transcribe = vi.fn(async () => ({ job: transcription, delivery: header }));
+    const { coordinator, discardAsrResult, discardUnownedGeminiTranscribe } = createHarness({
+      jobs: [transcription],
+      adapters: { transcribe },
+      pending: [header],
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(transcribe).toHaveBeenCalledExactlyOnceWith(OTHER_ID);
+    expect(discardAsrResult).not.toHaveBeenCalled();
+    expect(discardUnownedGeminiTranscribe).toHaveBeenCalledExactlyOnceWith(
+      OTHER_ID,
+      header.deliveryId,
+    );
+  });
+
+  test('retains a Gemini transcribe delivery when its exact ownerless release fails', async () => {
+    const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'geminiText',
+    };
+    const storage = new MemoryStorage();
+    const discardUnownedGeminiTranscribe = vi.fn().mockRejectedValue(new Error('transport lost'));
+    const { coordinator } = createHarness({
+      jobs: [transcription],
+      storage,
+      adapters: { transcribe: vi.fn(async () => ({ job: transcription, delivery: header })) },
+      pending: [header],
+      discardUnownedGeminiTranscribe,
+    });
+
+    await expect(coordinator.ensureReady()).rejects.toMatchObject({
+      code: 'nativeJobRecoveryUnavailable',
+      result: { recovered: 0, discarded: 0, unavailable: true },
+    });
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBe(JSON.stringify([OTHER_ID]));
+  });
+
   test('drains a saturated 256-result ASR page without claiming payloads or exhausting candidates', async () => {
     const headers = Array.from({ length: 256 }, () => ({
       deliveryId: createUuidV7(),
@@ -302,13 +435,15 @@ describe('native durable-job startup recovery', () => {
     });
 
     expect(discardAsrResult).toHaveBeenCalledTimes(256);
-    expect(pendingResults).toHaveBeenCalledTimes(2);
+    expect(pendingResults).toHaveBeenCalledTimes(3);
+    expect(pendingResults).toHaveBeenNthCalledWith(1, 'asrTranscription');
+    expect(pendingResults).toHaveBeenNthCalledWith(3, null);
     expect(adapter).not.toHaveBeenCalled();
     expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('jobs_list', {});
     expect(remaining.size).toBe(0);
   });
 
-  test('bounds an oversized ASR cleanup attempt and deterministically continues on retry', async () => {
+  test('drains more than 1024 filtered ASR deliveries in one bounded recovery attempt', async () => {
     const headers = Array.from({ length: 1_025 }, () => ({
       deliveryId: createUuidV7(),
       jobId: createUuidV7(),
@@ -326,15 +461,9 @@ describe('native durable-job startup recovery', () => {
       discardAsrResult,
     });
 
-    await expect(coordinator.ensureReady()).rejects.toMatchObject({
-      code: 'nativeJobRecoveryUnavailable',
-      result: { recovered: 0, discarded: 1_024, unavailable: true },
-    });
-    expect(remaining.size).toBe(1);
-
     await expect(coordinator.ensureReady()).resolves.toEqual({
       recovered: 0,
-      discarded: 1,
+      discarded: 1_025,
       unavailable: false,
     });
     expect(remaining.size).toBe(0);
@@ -445,7 +574,7 @@ describe('native durable-job startup recovery', () => {
     });
     expect(invokeCommand).toHaveBeenNthCalledWith(1, 'jobs_list', {});
     expect(invokeCommand.mock.calls.slice(1).map((call) => call[0]))
-      .toEqual(['job_get', 'job_get', 'job_get', 'job_get']);
+      .toEqual(['job_get', 'job_get', 'job_get']);
     expect(adapters.renderVideo).toHaveBeenCalledWith(RENDER_ID);
     expect(adapters.synthesizeNarration).toHaveBeenCalledWith(SPEECH_ID);
     expect(adapters.alignNarration).toHaveBeenCalledWith(ALIGNMENT_ID);

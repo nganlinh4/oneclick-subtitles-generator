@@ -6,8 +6,8 @@ use osg_application::{
     inspect_media,
 };
 use osg_domain::{
-    AUDIO_EXTENSIONS, AssetId, JobId, JobSnapshot, JobUpdate, ProjectId, ProjectMetadata,
-    RevisionReason, SubtitleTrack, VIDEO_EXTENSIONS,
+    AUDIO_EXTENSIONS, AssetId, JobId, JobKind, JobSnapshot, JobState, JobUpdate, ProjectId,
+    ProjectMetadata, RevisionReason, SubtitleTrack, VIDEO_EXTENSIONS,
 };
 use osg_infrastructure::secrets::{
     CredentialId, CredentialPurpose, CredentialServiceError, CredentialSetRequest,
@@ -532,6 +532,61 @@ pub(crate) async fn job_cancel(
         .map_err(|_| CommandError::internal("the job cancellation task stopped unexpectedly"))?
         .map(|ticket| ticket.snapshot().clone())
         .map_err(Into::into)
+}
+
+/// Terminates an orphaned transcription after its `WebView` consumer reloads.
+///
+/// `transcribe` is shared by local ASR and Gemini, so the terminal result delivery kind—not this
+/// job kind—decides whether a completed result is discarded or recovered. Active work has no
+/// delivery yet and no consumer after reload. Make queued/running work terminal using exact durable
+/// sequences; a concurrent success wins and is returned for result-kind routing.
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn job_recovery_abandon_transcribe(
+    state: State<'_, DesktopState>,
+    id: JobId,
+) -> CommandResult<JobSnapshot> {
+    let jobs = Arc::clone(&state.jobs);
+    tauri::async_runtime::spawn_blocking(move || abandon_orphaned_transcribe(&jobs, id))
+        .await
+        .map_err(|_| {
+            CommandError::internal("the transcription recovery task stopped unexpectedly")
+        })?
+}
+
+fn abandon_orphaned_transcribe(
+    jobs: &crate::background::DesktopJobs,
+    id: JobId,
+) -> CommandResult<JobSnapshot> {
+    for _ in 0..4 {
+        let current = jobs.get(id).map_err(CommandError::from)?;
+        let snapshot = current.snapshot();
+        if snapshot.kind() != JobKind::Transcribe {
+            return Err(CommandError::invalid_input(
+                "Only an orphaned transcription can be abandoned during recovery.",
+            ));
+        }
+        let update = match snapshot.state() {
+            JobState::Queued | JobState::Running => JobUpdate::RequestCancellation,
+            JobState::Cancelling => JobUpdate::ConfirmCancelled,
+            JobState::Succeeded
+            | JobState::Failed
+            | JobState::Cancelled
+            | JobState::Interrupted => return Ok(snapshot.clone()),
+        };
+        match jobs.apply_if_sequence(id, snapshot.sequence(), update) {
+            Ok(ticket) if ticket.snapshot().state() == JobState::Cancelling => {}
+            Ok(ticket) => return Ok(ticket.snapshot().clone()),
+            Err(osg_application::JobRegistryError::Conflict { .. }) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(CommandError::internal(
+        "the orphaned transcription changed too often during recovery",
+    ))
 }
 
 #[tauri::command]
@@ -1214,20 +1269,25 @@ fn register_resolved_media(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, sync::RwLock};
+    use std::{
+        fs,
+        sync::{Arc, RwLock},
+    };
 
-    use osg_application::{ProjectSnapshot, inspect_media};
+    use osg_application::{JobRegistry, ProjectSnapshot, inspect_media};
     use osg_domain::{
-        AssetId, JobKind, JobSnapshot, MediaAsset, MediaKind, ProjectMetadata, RevisionReason,
+        AssetId, JobKind, JobSnapshot, JobUpdate, MediaAsset, MediaKind, ProjectMetadata,
+        RevisionReason,
     };
     use osg_infrastructure::storage::Database;
     use osg_media_server::MediaServer;
 
     use super::{
         MAX_EXPOSED_ACTIVE_JOBS, MAX_EXPOSED_TERMINAL_JOBS, ProjectMediaAuthorization,
-        begin_media_activation, bounded_job_list, clear_activated_media, commit_activated_media,
-        commit_authorized_activated_media, invalidate_pending_media_activation,
-        media_picker_outcome, prepare_media_candidate, reopen_media_asset,
+        abandon_orphaned_transcribe, begin_media_activation, bounded_job_list,
+        clear_activated_media, commit_activated_media, commit_authorized_activated_media,
+        invalidate_pending_media_activation, media_picker_outcome, prepare_media_candidate,
+        reopen_media_asset,
     };
     use crate::state::EditorSession;
 
@@ -1235,6 +1295,37 @@ mod tests {
     fn media_picker_diagnostic_outcome_is_categorical_and_path_free() {
         assert_eq!(media_picker_outcome(Some(&"private-path")), "selected");
         assert_eq!(media_picker_outcome::<&str>(None), "none");
+    }
+
+    #[test]
+    fn orphaned_transcription_recovery_terminalizes_queued_and_running_work_only() {
+        let directory = tempfile::tempdir().expect("temporary jobs directory");
+        let database = Database::open(directory.path().join("database.sqlite3")).expect("database");
+        let jobs = Arc::new(JobRegistry::restore(Arc::new(database)).expect("job registry"));
+
+        let queued = jobs
+            .register(JobKind::Transcribe)
+            .expect("queued transcription");
+        let queued_id = queued.snapshot().id();
+        let cancelled =
+            abandon_orphaned_transcribe(&jobs, queued_id).expect("abandon queued transcription");
+        assert_eq!(cancelled.state(), osg_domain::JobState::Cancelled);
+
+        let running = jobs
+            .register(JobKind::Transcribe)
+            .expect("running transcription");
+        let running_id = running.snapshot().id();
+        let running = jobs
+            .apply(running_id, JobUpdate::Start)
+            .expect("start transcription");
+        let cancellation = running.cancellation().clone();
+        let cancelled =
+            abandon_orphaned_transcribe(&jobs, running_id).expect("abandon running transcription");
+        assert_eq!(cancelled.state(), osg_domain::JobState::Cancelled);
+        assert!(cancellation.is_cancelled());
+
+        let foreign = jobs.register(JobKind::RenderVideo).expect("foreign job");
+        assert!(abandon_orphaned_transcribe(&jobs, foreign.snapshot().id()).is_err());
     }
 
     fn attach_media_to_project(
