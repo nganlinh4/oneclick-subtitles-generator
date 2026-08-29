@@ -68,7 +68,9 @@ test('the frontend builder uses isolated inputs and never mutates production ver
   const cache = path.join(root, 'cache');
   const productionVersion = path.join(repository, 'src', 'config', 'version.js');
   const productionBuild = path.join(repository, 'build');
-  const versionBefore = fs.readFileSync(productionVersion);
+  const versionBefore = fs.existsSync(productionVersion)
+    ? fs.readFileSync(productionVersion)
+    : null;
   const buildIndex = path.join(productionBuild, 'index.html');
   const buildBefore = fs.existsSync(buildIndex) ? fs.readFileSync(buildIndex) : null;
   const calls = [];
@@ -104,7 +106,8 @@ test('the frontend builder uses isolated inputs and never mutates production ver
   });
   assert.equal(calls.length, 3);
   assert.equal(fs.readFileSync(path.join(result.snapshotRoot, 'index.html'), 'utf8'), 'isolated frontend');
-  assert.ok(fs.readFileSync(productionVersion).equals(versionBefore));
+  if (versionBefore === null) assert.equal(fs.existsSync(productionVersion), false);
+  else assert.ok(fs.readFileSync(productionVersion).equals(versionBefore));
   if (buildBefore === null) assert.equal(fs.existsSync(buildIndex), false);
   else assert.ok(fs.readFileSync(buildIndex).equals(buildBefore));
   assert.throws(() => resolveCacheRoot(repository), /explicit cache root/u);
