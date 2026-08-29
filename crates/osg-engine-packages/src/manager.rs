@@ -121,6 +121,8 @@ struct ManagerInner<K: 'static> {
     quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
     clock: Arc<dyn Fn() -> u64 + Send + Sync>,
     verify_integrity: Arc<IntegrityVerifier>,
+    #[cfg(test)]
+    verification_published_hook: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     activity: Mutex<ActivityState<K>>,
 }
 
@@ -790,6 +792,8 @@ where
             quiesce,
             clock: Arc::new(verified_install::current_unix_seconds),
             verify_integrity: Arc::new(receipt::validate_integrity),
+            #[cfg(test)]
+            verification_published_hook: Mutex::new(None),
             activity: Mutex::new(ActivityState::default()),
         })))
     }
@@ -1496,8 +1500,7 @@ where
         };
         let outcome = match self.0.activity.lock() {
             Ok(mut activity) => {
-                remove_verification_flight(&mut activity, &key, &flight);
-                match result {
+                let outcome = match result {
                     Ok(verification_lease) => {
                         activity.verified_versions.insert(
                             component,
@@ -1512,20 +1515,47 @@ where
                         Ok(())
                     }
                     Err(error) => Err(error),
-                }
+                };
+                // Publish while this exact flight is still discoverable. Any caller that entered
+                // before the completion boundary either already cloned it or will clone the
+                // completed flight after this guard is released; neither can start a duplicate
+                // scan. Waiters never hold the flight mutex while acquiring `activity`, so the
+                // activity -> flight lock order cannot deadlock.
+                flight.complete(outcome.clone());
+                outcome
             }
             Err(poisoned) => {
-                // A poisoned activity mutex must not strand waiters. Recover only far enough to
-                // retire this generation, then publish a fail-closed outcome to every waiter.
-                let mut activity = poisoned.into_inner();
-                remove_verification_flight(&mut activity, &key, &flight);
-                Err(PackageError::StoreUnavailable)
+                // A poisoned activity mutex must not strand waiters. Retain the recovered guard
+                // through fail-closed publication so the poisoned generation stays discoverable
+                // until its outcome exists.
+                let _activity = poisoned.into_inner();
+                let outcome = Err(PackageError::StoreUnavailable);
+                flight.complete(outcome.clone());
+                outcome
             }
         };
-        // The active-map entry is gone before a failure is published: already-waiting callers
-        // retain this Arc and share `outcome`, while a genuinely later caller starts one new
-        // generation instead of inheriting a permanently cached failure.
-        flight.complete(outcome.clone());
+
+        #[cfg(test)]
+        if let Some(hook) = self
+            .0
+            .verification_published_hook
+            .lock()
+            .ok()
+            .and_then(|hook| hook.clone())
+        {
+            hook();
+        }
+
+        // Retirement follows publication. Callers that find the map entry before this exact Arc
+        // is removed share its already-terminal outcome; only callers that acquire `activity`
+        // after removal may own a retry of a failed verification.
+        match self.0.activity.lock() {
+            Ok(mut activity) => remove_verification_flight(&mut activity, &key, &flight),
+            Err(poisoned) => {
+                let mut activity = poisoned.into_inner();
+                remove_verification_flight(&mut activity, &key, &flight);
+            }
+        }
         outcome
     }
 
@@ -2765,6 +2795,7 @@ mod tests {
             quiesce,
             clock,
             verify_integrity,
+            verification_published_hook: Mutex::new(None),
             activity: Mutex::new(ActivityState::default()),
         })))
     }
@@ -2827,6 +2858,7 @@ mod tests {
             quiesce,
             clock: Arc::new(verified_install::current_unix_seconds),
             verify_integrity: Arc::new(receipt::validate_integrity),
+            verification_published_hook: Mutex::new(None),
             activity: Mutex::new(ActivityState::default()),
         })))
     }
@@ -3682,6 +3714,89 @@ mod tests {
             Err(PackageError::InvalidInstall)
         ));
         assert_eq!(verify_calls.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn caller_between_outcome_publication_and_retirement_never_restarts_the_scan() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 4_500_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let verify_calls = Arc::new(AtomicUsize::new(0));
+        let verifier = {
+            let verify_calls = verify_calls.clone();
+            Arc::new(
+                move |_: &Path, _: &PackageDelivery, _: &CancellationToken| {
+                    verify_calls.fetch_add(1, Ordering::AcqRel);
+                    Err(PackageError::InvalidInstall)
+                },
+            )
+        };
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            verifier,
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        now.store(
+            initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS,
+            Ordering::Release,
+        );
+
+        let (published_tx, published_rx) = mpsc::channel();
+        let release_retirement = Arc::new(AtomicBool::new(false));
+        let hook = {
+            let release_retirement = release_retirement.clone();
+            Arc::new(move || {
+                published_tx.send(()).unwrap();
+                while !release_retirement.load(Ordering::Acquire) {
+                    std::thread::yield_now();
+                }
+            })
+        };
+        *manager.0.0.verification_published_hook.lock().unwrap() = Some(hook);
+
+        let owner = {
+            let manager = manager.clone();
+            std::thread::spawn(move || {
+                let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+                manager
+                    .0
+                    .verify_once(EngineId::Parakeet, delivery, &CancellationToken::default())
+            })
+        };
+        published_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+
+        // The deep scan has returned and its failure is terminal, but the hook keeps the old Arc
+        // in `verifying_versions`. A caller entering precisely here must consume that outcome.
+        let (late_tx, late_rx) = mpsc::channel();
+        let late_caller = {
+            let manager = manager.clone();
+            std::thread::spawn(move || {
+                let result = manager
+                    .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+                    .map(|_| ());
+                late_tx.send(result).unwrap();
+            })
+        };
+        let late_outcome = late_rx.recv_timeout(std::time::Duration::from_secs(5));
+        release_retirement.store(true, Ordering::Release);
+
+        assert_eq!(
+            late_outcome.unwrap(),
+            Err(PackageError::InvalidInstall),
+            "the boundary caller must receive the published generation outcome"
+        );
+        assert_eq!(verify_calls.load(Ordering::Acquire), 1);
+        assert_eq!(owner.join().unwrap(), Err(PackageError::InvalidInstall));
+        late_caller.join().unwrap();
     }
 
     #[test]
