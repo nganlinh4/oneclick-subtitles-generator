@@ -229,6 +229,10 @@ export const config = {
       startTimeout: 180_000,
     },
     'wdio:tauriServiceOptions': {
+      // The launcher and worker services consume separate option namespaces. Keeping this only in
+      // `tauri:options` launches the embedded server but leaves the worker on its async bridge,
+      // where every browser.execute call waits for a response that will never arrive.
+      driverProvider: 'embedded',
       embeddedPort: webdriverBinding.port,
       env: guardedWebDriverEnvironment(webdriverBinding),
       // A startup fail-fast (observed once: exit 0xC0000409 before the embedded server was

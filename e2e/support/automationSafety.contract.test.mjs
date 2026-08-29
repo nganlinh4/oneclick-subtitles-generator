@@ -483,7 +483,19 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   );
 
   const config = read('e2e', 'wdio.conf.js');
-  assert.match(config, /driverProvider:\s*'embedded'/u);
+  assert.equal(
+    config.match(/^\s*driverProvider:\s*'embedded'/gmu)?.length ?? 0,
+    2,
+    'both the launcher and worker must select the embedded provider',
+  );
+  assert.match(
+    config,
+    /'tauri:options':\s*\{[\s\S]*?driverProvider:\s*'embedded'[\s\S]*?\},\s*'wdio:tauriServiceOptions'/u,
+  );
+  assert.match(
+    config,
+    /'wdio:tauriServiceOptions':\s*\{[\s\S]*?driverProvider:\s*'embedded'[\s\S]*?embeddedPort:/u,
+  );
   assert.match(config, /assertAutomationDialogGuard\(APPLICATION_BINARY\)/u);
   const receiptVerification = config.indexOf('readInheritedApplicationLease({');
   const leasedVerification = config.indexOf(
