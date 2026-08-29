@@ -2,6 +2,7 @@ import { invokeDesktop } from './desktopRuntime';
 import { isUuidV7, normalizeProjectSnapshot } from './projectSnapshotAdapter';
 
 export const STALE_PROJECT_VERSION = 'staleProjectVersion';
+export const PROJECT_COMMAND_OUTCOME_UNCERTAIN = 'projectCommandOutcomeUncertain';
 
 /**
  * Every command this service issues is a bounded, database-backed request/response -- never a
@@ -11,17 +12,27 @@ export const STALE_PROJECT_VERSION = 'staleProjectVersion';
  * native reply that never arrives -- a lost IPC round trip, not a real rejection -- would
  * therefore stall every later operation on the same project forever, silently: no error to
  * catch, no toast, just an edit (for example the multi-cue range move) that never becomes
- * durable. Bounding every command here turns that silent, permanent stall into one typed,
- * catchable failure so the queue always recovers and the existing save-failed toast (wired by
- * `useLyricsEditorHistory.js`'s `onError`) can tell the customer to retry.
+ * durable. A timeout alone cannot safely recover a mutating queue: `Promise.race` does not cancel
+ * the native command, so Rust may still commit after JavaScript has observed the timeout. This
+ * service therefore latches that project as uncertain, rejects dependent reads and writes, and
+ * clears the latch only after the original native promise settles AND an authoritative load
+ * succeeds. If the native promise never settles, only a full desktop-process restart can prove it
+ * can no longer mutate the store.
  */
 export const PROJECT_COMMAND_TIMEOUT_MS = 20_000;
 
-const withCommandTimeout = (promise, command, timeoutMs, schedule, cancel) => {
+const withCommandTimeout = (
+  promise,
+  command,
+  timeoutMs,
+  schedule,
+  cancel,
+  onTimeout = null
+) => {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
   return new Promise((resolve, reject) => {
     const timer = schedule(() => {
-      reject(new ProjectServiceError(
+      reject(onTimeout?.() ?? new ProjectServiceError(
         'projectCommandTimedOut',
         'The desktop host did not respond to a project command in time',
         { command }
@@ -62,6 +73,14 @@ const TRACK_ORIGINS = new Set(['legacyJson', 'srt']);
 const TRACK_HISTORY_CONFLICT_CODES = new Set([
   'staleProjectTrackHistory',
   'projectTrackHistoryDiverged',
+]);
+const MUTATING_PROJECT_COMMANDS = new Set([
+  'project_commit',
+  'project_undo',
+  'project_redo',
+  'project_track_commit',
+  'project_track_undo',
+  'project_track_redo',
 ]);
 
 const validateProjectId = (id) => {
@@ -215,9 +234,6 @@ export const createProjectService = ({
   schedule = setTimeout,
   cancel = clearTimeout,
 } = {}) => {
-  const invoke = (command, args) => (
-    withCommandTimeout(invokeCommand(command, args), command, commandTimeoutMs, schedule, cancel)
-  );
   let activeSnapshot = null;
   let activationGeneration = 0;
   let activationRequestSequence = 0;
@@ -226,6 +242,8 @@ export const createProjectService = ({
   let pendingPublication = null;
   let publishing = false;
   const projectTails = new Map();
+  const uncertainProjects = new Map();
+  const inFlightProjectMutations = new Map();
   const synchronousMutatorFrames = [];
   const subscribers = new Set();
   const mutationStep = Symbol('mutationStep');
@@ -278,18 +296,189 @@ export const createProjectService = ({
     return true;
   };
 
+  const uncertainOutcomeError = (projectId, state) => {
+    const error = new ProjectServiceError(
+      PROJECT_COMMAND_OUTCOME_UNCERTAIN,
+      state.pending.size > 0
+        ? 'A project command timed out and may still complete. Restart the desktop application before editing this project again.'
+        : 'A project command completed after its timeout, but authoritative recovery has not succeeded.',
+      {
+        projectId,
+        command: state.commands.at(-1) ?? null,
+        pendingNativeCommands: state.pending.size,
+        recoveryRequired: true,
+        requiresDesktopRestart: state.pending.size > 0,
+      }
+    );
+    // Higher layers may retry their own reconciliation after this resolves. It is deliberately
+    // non-enumerable: this in-process coordination promise is not error evidence or transport data.
+    Object.defineProperty(error, 'outcomeRecovery', {
+      value: state.outcomeRecovery,
+      enumerable: false,
+    });
+    return error;
+  };
+
+  const assertProjectCertain = (projectId) => {
+    const state = uncertainProjects.get(projectId);
+    if (state !== undefined) throw uncertainOutcomeError(projectId, state);
+  };
+
+  const beginNativeCall = (command, args) => {
+    try {
+      return Promise.resolve(invokeCommand(command, args));
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  };
+
+  const recoverUncertainProject = (projectId, state) => {
+    if (uncertainProjects.get(projectId) !== state) {
+      return Promise.resolve(copySnapshot(activeSnapshot));
+    }
+    if (state.pending.size > 0) return Promise.reject(uncertainOutcomeError(projectId, state));
+    if (state.recovery !== null) return state.recovery;
+
+    const expectedActivationGeneration = activationGeneration;
+    const nativeLoad = beginNativeCall('project_load', { id: projectId });
+    state.recovery = withCommandTimeout(
+      nativeLoad,
+      'project_load',
+      commandTimeoutMs,
+      schedule,
+      cancel
+    ).then((value) => {
+      const snapshot = copySnapshot(value);
+      if (snapshot !== null && snapshot.metadata.id !== projectId) {
+        throw new ProjectServiceError(
+          'invalidProjectLoad',
+          'The desktop host returned a different project during uncertain-outcome recovery',
+          { projectId, returnedProjectId: snapshot.metadata.id }
+        );
+      }
+      if (uncertainProjects.get(projectId) === state && state.pending.size === 0) {
+        uncertainProjects.delete(projectId);
+        refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
+        state.resolveOutcomeRecovery(snapshot);
+      }
+      return snapshot;
+    }).catch((error) => {
+      state.recovery = null;
+      state.recoveryError = error;
+      throw error;
+    });
+    // Automatic recovery is best effort. Its rejection remains recorded on the latch and is
+    // deliberately observed here; an explicit recovery call may safely retry the read later.
+    void state.recovery.catch(() => undefined);
+    return state.recovery;
+  };
+
+  const markProjectOutcomeUncertain = (projectId, command, nativeCall) => {
+    let state = uncertainProjects.get(projectId);
+    if (state === undefined) {
+      let resolveOutcomeRecovery;
+      const outcomeRecovery = new Promise((resolve) => {
+        resolveOutcomeRecovery = resolve;
+      });
+      state = {
+        commands: [],
+        pending: new Set(),
+        recovery: null,
+        recoveryError: null,
+        outcomeRecovery,
+        resolveOutcomeRecovery,
+      };
+      uncertainProjects.set(projectId, state);
+    }
+    state.commands.push(command);
+    const trackUncertainCall = (call) => {
+      if (state.pending.has(call)) return;
+      state.pending.add(call);
+      const settled = () => {
+        state.pending.delete(call);
+        if (state.pending.size === 0 && uncertainProjects.get(projectId) === state) {
+          void recoverUncertainProject(projectId, state).catch(() => undefined);
+        }
+      };
+      call.then(settled, settled);
+    };
+    // A synchronous re-entrant mutator can already have more than one native CAS in flight when
+    // the first watchdog fires. Every one of them is capable of committing later, even if its own
+    // timeout has not fired yet, so the latch must wait for the whole in-flight set.
+    const inFlight = inFlightProjectMutations.get(projectId);
+    if (inFlight === undefined || inFlight.size === 0) {
+      trackUncertainCall(nativeCall);
+    } else {
+      inFlight.forEach(trackUncertainCall);
+    }
+    return uncertainOutcomeError(projectId, state);
+  };
+
+  const invoke = (command, args) => {
+    const projectId = MUTATING_PROJECT_COMMANDS.has(command)
+      ? args?.id ?? args?.snapshot?.metadata?.id ?? null
+      : null;
+    if (projectId !== null) assertProjectCertain(projectId);
+    const nativeCall = beginNativeCall(command, args);
+    if (projectId !== null) {
+      let inFlight = inFlightProjectMutations.get(projectId);
+      if (inFlight === undefined) {
+        inFlight = new Set();
+        inFlightProjectMutations.set(projectId, inFlight);
+      }
+      inFlight.add(nativeCall);
+      const retire = () => {
+        inFlight.delete(nativeCall);
+        if (inFlight.size === 0 && inFlightProjectMutations.get(projectId) === inFlight) {
+          inFlightProjectMutations.delete(projectId);
+        }
+      };
+      nativeCall.then(retire, retire);
+    }
+    const bounded = withCommandTimeout(
+      nativeCall,
+      command,
+      commandTimeoutMs,
+      schedule,
+      cancel,
+      projectId === null
+        ? null
+        : () => markProjectOutcomeUncertain(projectId, command, nativeCall)
+    );
+    if (projectId === null) return bounded;
+    return bounded.then(
+      (value) => {
+        // Another concurrent same-project mutation may have timed out while this one was pending.
+        // Its result cannot be published independently of the shared authoritative recovery.
+        assertProjectCertain(projectId);
+        return value;
+      },
+      (error) => {
+        const state = uncertainProjects.get(projectId);
+        if (state !== undefined && error?.code !== PROJECT_COMMAND_OUTCOME_UNCERTAIN) {
+          throw uncertainOutcomeError(projectId, state);
+        }
+        throw error;
+      }
+    );
+  };
+
   const enqueueProject = (projectId, operation) => {
+    const guardedOperation = () => {
+      assertProjectCertain(projectId);
+      return operation();
+    };
     const mutatorFrame = synchronousMutatorFrames[synchronousMutatorFrames.length - 1];
     if (mutatorFrame?.projectId === projectId) {
       mutatorFrame.reentered = true;
       try {
-        return Promise.resolve(operation());
+        return Promise.resolve(guardedOperation());
       } catch (error) {
         return Promise.reject(error);
       }
     }
     const previous = projectTails.get(projectId) ?? Promise.resolve();
-    const result = previous.then(operation, operation);
+    const result = previous.then(guardedOperation, guardedOperation);
     const recovered = result.catch(() => undefined);
     projectTails.set(projectId, recovered);
     void recovered.then(() => {
@@ -310,7 +499,12 @@ export const createProjectService = ({
 
   const readDirect = async (id) => {
     const projectId = validateProjectId(id);
+    assertProjectCertain(projectId);
     const snapshot = await invoke('project_load', { id: projectId });
+    // A mutating command that was already in flight can time out while this read is awaiting its
+    // reply. Returning that observation would let a caller reconcile against state which the late
+    // mutation may still change, so check the latch on both sides of the native read.
+    assertProjectCertain(projectId);
     const normalized = copySnapshot(snapshot);
     if (normalized !== null && normalized.metadata.id !== projectId) {
       throw new ProjectServiceError(
@@ -396,6 +590,13 @@ export const createProjectService = ({
       throw new ProjectServiceError('noActiveProject', 'There is no active project to reload');
     }
     return readDirect(id);
+  };
+
+  const recoverProjectCommandOutcome = (id) => {
+    const projectId = validateProjectId(id);
+    const state = uncertainProjects.get(projectId);
+    if (state === undefined) return readDirect(projectId);
+    return recoverUncertainProject(projectId, state);
   };
 
   const activateSnapshot = (snapshot) => {
@@ -860,12 +1061,14 @@ export const createProjectService = ({
     activateProjectSnapshot: activateSnapshot,
     activateProject: activate,
     deactivateProject: deactivate,
+    recoverProjectCommandOutcome,
 
     // Compatibility APIs are deliberately detached. Existing storage callers must not acquire
     // global active-project authority merely by creating, reading, or editing a project.
     createProject: createDetached,
     loadProject: read,
     reloadProject: reloadDetached,
+    recoverProjectOutcome: recoverProjectCommandOutcome,
     commitProject: commitDetached,
     mutateProject: mutateDetached,
     getProjectHistoryStatus: historyStatusDetached,
@@ -898,11 +1101,13 @@ export const redoDetachedProject = projectService.redoDetachedProject;
 export const activateProjectSnapshot = projectService.activateProjectSnapshot;
 export const activateProject = projectService.activateProject;
 export const deactivateProject = projectService.deactivateProject;
+export const recoverProjectCommandOutcome = projectService.recoverProjectCommandOutcome;
 
 // Backward-compatible names intentionally retain detached storage semantics.
 export const createProject = projectService.createProject;
 export const loadProject = projectService.loadProject;
 export const reloadProject = projectService.reloadProject;
+export const recoverProjectOutcome = projectService.recoverProjectOutcome;
 export const commitProject = projectService.commitProject;
 export const mutateProject = projectService.mutateProject;
 export const getProjectHistoryStatus = projectService.getProjectHistoryStatus;

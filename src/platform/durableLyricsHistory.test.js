@@ -458,6 +458,64 @@ it('uses the newer status rows when recovery observes a concurrent divergence', 
   expect(reconciled).toEqual([rows('Status B')]);
 });
 
+it('retries reconciliation only after an uncertain native outcome becomes authoritative', async () => {
+  const outcome = deferred();
+  let outcomeKnown = false;
+  const uncertain = new Error('the native commit may still complete');
+  uncertain.code = 'projectCommandOutcomeUncertain';
+  Object.defineProperty(uncertain, 'outcomeRecovery', {
+    value: outcome.promise,
+    enumerable: false,
+  });
+  const reconciled = [];
+  const revisions = {
+    commit: vi.fn(async () => { throw uncertain; }),
+    load: vi.fn(async () => {
+      if (!outcomeKnown) throw uncertain;
+      return rows('Authoritative late commit');
+    }),
+    status: vi.fn(async () => editorStatus('OSG lyrics editor v1: text', null, 4)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onError: () => undefined,
+    onReconcile: (value) => reconciled.push(value),
+  });
+
+  await expect(history.record(
+    rows('A'),
+    rows('Optimistic'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  )).resolves.toMatchObject({ ok: false, error: uncertain });
+  await vi.waitFor(() => expect(revisions.load).toHaveBeenCalledTimes(1));
+  expect(revisions.status).not.toHaveBeenCalled();
+  expect(reconciled).toEqual([]);
+
+  // The outcome promise is deliberately not part of operationTail. While it is unresolved, a new
+  // optimistic edit fails closed immediately instead of hanging behind the uncertain native call.
+  await expect(history.record(
+    rows('Optimistic'),
+    rows('Later'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  )).resolves.toMatchObject({
+    ok: false,
+    backpressure: true,
+    error: { code: 'historyQueueSaturated' },
+  });
+  await vi.waitFor(() => expect(revisions.load.mock.calls.length).toBeGreaterThanOrEqual(2));
+  const failedRecoveryAttempts = revisions.load.mock.calls.length;
+
+  outcomeKnown = true;
+  outcome.resolve(rows('Authoritative late commit'));
+  await vi.waitFor(() => expect(reconciled).toEqual([rows('Authoritative late commit')]));
+  expect(revisions.load).toHaveBeenCalledTimes(failedRecoveryAttempts + 1);
+  expect(revisions.status).toHaveBeenCalledTimes(1);
+});
+
 it('rejects every concurrent flush in the failure cohort, then permits a later flush', async () => {
   const writeError = new Error('write failed');
   const revisions = {

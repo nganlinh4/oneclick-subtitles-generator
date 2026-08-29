@@ -192,7 +192,8 @@ export const createDurableLyricsHistory = ({
   const reserve = (generation, retainedBytes = 0) => {
     if (pendingOperations >= maxPendingOperations
         || retainedBytes > maxPendingBytes - pendingBytes
-        || recoveringGenerations.has(generation)) return null;
+        || recoveringGenerations.has(generation)
+        || reconciliationRequiredGenerations.has(generation)) return null;
     pendingOperations += 1;
     pendingBytes += retainedBytes;
     let released = false;
@@ -269,6 +270,29 @@ export const createDurableLyricsHistory = ({
       recoveringGenerations.delete(binding.generation);
     });
     operationTail = recovery.catch(() => undefined);
+  };
+
+  const retryReconciliationAfterOutcome = (error, binding) => {
+    const outcomeRecovery = error?.outcomeRecovery;
+    if (outcomeRecovery === null
+        || (typeof outcomeRecovery !== 'object' && typeof outcomeRecovery !== 'function')
+        || typeof outcomeRecovery.then !== 'function') return;
+    // Do not append the uncertain native promise to operationTail: it may never settle, and doing
+    // so would recreate the silent infinite queue this boundary exists to prevent. Once the
+    // project service independently proves an authoritative outcome, wait only for our finite
+    // current reconciliation attempt to retire and then retry it.
+    void Promise.resolve(outcomeRecovery).then(async () => {
+      let observed;
+      do {
+        observed = operationTail;
+        await observed;
+      } while (observed !== operationTail);
+      if (!disposed && binding.generation === bindingGeneration) {
+        scheduleAuthoritativeReconciliation(binding);
+      }
+    }).catch((recoveryError) => {
+      handleFailure(recoveryError, binding, latestSequence);
+    });
   };
 
   const rejectForBackpressure = (
@@ -372,7 +396,10 @@ export const createDurableLyricsHistory = ({
     }, binding.generation);
     return queued.catch((error) => {
       const failure = handleFailure(error, binding, sequence);
-      if (sequence === latestSequence) scheduleAuthoritativeReconciliation(binding);
+      if (sequence === latestSequence) {
+        scheduleAuthoritativeReconciliation(binding);
+        retryReconciliationAfterOutcome(error, binding);
+      }
       return failure;
     });
   };
@@ -422,7 +449,10 @@ export const createDurableLyricsHistory = ({
     }
     return queued.catch((error) => {
       const failure = handleFailure(error, binding, sequence);
-      if (sequence === latestSequence) scheduleAuthoritativeReconciliation(binding);
+      if (sequence === latestSequence) {
+        scheduleAuthoritativeReconciliation(binding);
+        retryReconciliationAfterOutcome(error, binding);
+      }
       return failure;
     });
   };
