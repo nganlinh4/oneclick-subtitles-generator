@@ -6,22 +6,33 @@ import {
   chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
   readFileSync, realpathSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import {
   basename, dirname, isAbsolute, join, relative, resolve, sep,
 } from 'node:path';
 import process from 'node:process';
 
-import {
-  APPLICATION_BINARY, EVIDENCE_CACHE_ROOT, REPOSITORY_ROOT,
-} from './environment.js';
+import { resolveDevelopmentCacheRoot } from './developmentCacheRoot.js';
+
+const require = createRequire(import.meta.url);
+const { readAndVerifyE2eApplicationReceipt } = require(
+  '../../scripts/e2e-application-publication.js',
+);
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
+const developmentCacheRoot = () => resolveDevelopmentCacheRoot({ repositoryRoot: REPOSITORY_ROOT });
+const applicationCacheRoot = () => join(developmentCacheRoot(), 'apps', 'e2e');
+const defaultEvidenceRoot = () => join(developmentCacheRoot(), 'evidence');
+const readDefaultPublishedApplication = () => readAndVerifyE2eApplicationReceipt({
+  applicationsCacheRoot: applicationCacheRoot(),
+});
 
 /* global browser, document, getComputedStyle, window */
 
 const TEST_EVIDENCE_OVERRIDE = 'OSG_E2E_WORKFLOW_EVIDENCE_ROOT';
 const evidenceRootForProcess = () => {
   const requested = process.env[TEST_EVIDENCE_OVERRIDE];
-  if (requested === undefined) return EVIDENCE_CACHE_ROOT;
+  if (requested === undefined) return defaultEvidenceRoot();
   if (process.env.NODE_TEST_CONTEXT === undefined) {
     throw new Error(`${TEST_EVIDENCE_OVERRIDE} is available only to a Node test subprocess`);
   }
@@ -281,15 +292,28 @@ const boundedGitState = () => {
   };
 };
 
-export const collectEvidenceProvenance = ({ binaryPath, requireBinary = true }) => {
+export const collectEvidenceProvenance = ({
+  applicationHash = null,
+  binaryPath,
+  requireBinary = true,
+}) => {
   assert.equal(typeof binaryPath, 'string', 'workflow evidence requires the E2E binary path');
+  assert.ok(
+    applicationHash === null || /^[0-9a-f]{64}$/u.test(applicationHash),
+    'workflow evidence application hash must be an exact SHA-256 or null',
+  );
   const path = resolve(binaryPath);
   if (!existsSync(path)) {
     assert.equal(requireBinary, false, `workflow evidence binary does not exist: ${path}`);
-    return { source: boundedGitState(), binary: { path, exists: false, sha256: null, size: null } };
+    return {
+      applicationHash,
+      source: boundedGitState(),
+      binary: { path, exists: false, sha256: null, size: null },
+    };
   }
   const bytes = readFileSync(path);
   return {
+    applicationHash,
     source: boundedGitState(),
     binary: {
       path,
@@ -304,8 +328,6 @@ const newAttemptId = () => {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '').toLowerCase();
   return `${timestamp}-${process.pid}-${randomBytes(4).toString('hex')}`;
 };
-
-const defaultBinaryPath = () => APPLICATION_BINARY;
 
 const initialManifest = ({ attemptId, iteration, journey, provenance, startedAt, workflow }) => ({
   schemaVersion: 2,
@@ -1259,6 +1281,8 @@ const attemptReadmeContents = (manifest) => {
     `- Started: ${manifest.attempt.startedAt}`,
     `- Ended: ${manifest.attempt.endedAt ?? 'running'}`,
     `- Commit: \`${manifest.provenance.source.commit}\`${manifest.provenance.source.dirty ? ' (dirty)' : ''}`,
+    `- Tree: \`${manifest.provenance.source.tree}\``,
+    `- Application: \`${manifest.provenance.applicationHash ?? 'legacy/unbound'}\``,
     `- Binary: \`${manifest.provenance.binary.path}\``,
     `- Binary SHA-256: \`${manifest.provenance.binary.sha256 ?? 'unavailable'}\``,
     '',
@@ -1418,7 +1442,8 @@ export const beginWorkflowEvidence = ({
   workflow,
   journey,
   iteration,
-  binaryPath = defaultBinaryPath(),
+  applicationHash = null,
+  binaryPath = null,
   provenance = null,
   startedAt = new Date().toISOString(),
   requireBinary = true,
@@ -1438,7 +1463,28 @@ export const beginWorkflowEvidence = ({
     attemptsRoot,
     `.osg-attempt-${attemptId}-${randomBytes(12).toString('hex')}.tmp`,
   );
-  const attemptProvenance = provenance ?? collectEvidenceProvenance({ binaryPath, requireBinary });
+  let selectedBinaryPath = binaryPath;
+  let selectedApplicationHash = applicationHash;
+  if (provenance === null && selectedBinaryPath === null) {
+    if (!requireBinary && process.env.NODE_TEST_CONTEXT !== undefined) {
+      selectedBinaryPath = join(tmpdir(), 'osg-evidence-no-application', 'osg-desktop.exe');
+    } else {
+      const publication = readDefaultPublishedApplication();
+      selectedBinaryPath = publication.binaryPath;
+      selectedApplicationHash = publication.applicationHash;
+    }
+  }
+  const attemptProvenance = provenance ?? collectEvidenceProvenance({
+    applicationHash: selectedApplicationHash,
+    binaryPath: selectedBinaryPath,
+    requireBinary,
+  });
+  assert.ok(
+    attemptProvenance?.applicationHash === undefined
+      || attemptProvenance.applicationHash === null
+      || /^[0-9a-f]{64}$/u.test(attemptProvenance.applicationHash),
+    'workflow evidence application hash must be an exact SHA-256 or null',
+  );
   assert.match(
     attemptProvenance?.source?.commit ?? '',
     /^[0-9a-f]{40,64}$/i,
@@ -1553,6 +1599,10 @@ export const finalizeWorkflowEvidence = ({
       tree: manifest.provenance.source.tree,
       dirty: manifest.provenance.source.dirty,
       binarySha256: manifest.provenance.binary.sha256,
+      ...(manifest.provenance.applicationHash === null
+        || manifest.provenance.applicationHash === undefined
+        ? {}
+        : { applicationHash: manifest.provenance.applicationHash }),
     };
     atomicWriteFile(
       join(workflowEvidenceDirectory(workflow), 'latest-success.json'),

@@ -565,6 +565,11 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
       < installedSmoke.indexOf('Start-Process -FilePath $installer'),
     'the installed-app desktop smoke must refuse local execution before launching anything',
   );
+  assert.match(installedSmoke, /rev-parse --verify 'HEAD\^\{tree\}'/u);
+  assert.match(installedSmoke, /sourceDirtyEntries\.Count -ne 0/u);
+  assert.match(installedSmoke, /publisher = 'osg-installed-production-evidence'/u);
+  assert.match(installedSmoke, /installerSha256 = \$installerSha256/u);
+  assert.match(installedSmoke, /journeys = @\('installedGolden'\)/u);
   assert.ok(
     updaterSmoke.indexOf("$env:GITHUB_ACTIONS -ne 'true'")
       < updaterSmoke.indexOf('$server = Start-Process'),
@@ -633,7 +638,9 @@ test('the fast E2E profile has one canonical nonshipping build and cannot replac
   assert.match(environment, /export const E2E_ASSET_CACHE_ROOT = join\(DEVELOPMENT_CACHE_ROOT, 'assets', 'e2e'\);/u);
   assert.match(environment, /export const EVIDENCE_CACHE_ROOT = join\(DEVELOPMENT_CACHE_ROOT, 'evidence'\);/u);
   assert.match(workflowEvidence, /WORKFLOW_EVIDENCE_ROOT = evidenceRootForProcess\(\)/u);
-  assert.match(workflowEvidence, /if \(requested === undefined\) return EVIDENCE_CACHE_ROOT/u);
+  assert.match(workflowEvidence, /defaultEvidenceRoot = \(\) => join\(developmentCacheRoot\(\), 'evidence'\)/u);
+  assert.match(workflowEvidence, /if \(requested === undefined\) return defaultEvidenceRoot\(\)/u);
+  assert.doesNotMatch(workflowEvidence, /from '.\/environment\.js'/u);
   assert.match(evidenceLease, /'-Lane', 'evidence'/u);
   assert.match(evidenceLease, /'-LeaseOperation', 'Release'/u);
   assert.match(evidenceLease, /'-Action', 'Prune', '-Apply', '-Confirm:\$false', '-ProtectUnit', 'apps-e2e'/u);

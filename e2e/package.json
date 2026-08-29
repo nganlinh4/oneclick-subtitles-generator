@@ -57,6 +57,8 @@
     "recon": "node run-isolated.mjs journeys/reconnaissance.journey.js",
     "verify:inventory": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs",
     "verify:inventory:current": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs --require-current",
+    "verify:inventory:installed": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs --require-installed",
+    "verify:inventory:release": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs --require-current --require-installed",
     "test:provider-boundaries": "node --test support/providerBoundariesJourney.contract.test.mjs && node run-isolated.mjs journeys/providerBoundaries.journey.js",
     "test:about-updater": "node --test support/aboutAndUpdaterLifecycleJourney.contract.test.mjs && node run-isolated.mjs journeys/aboutAndUpdaterLifecycle.journey.js"
   },

@@ -71,7 +71,7 @@ const DOWNLOAD_HANDLERS_SHA256 =
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
   '95103ae096e6b8bbdbc0727d2fa161c9980a6d02924735d69f79663eb1a1adae';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  '9e71711e58296334be2a2629b1685e5ca6bed4aae9b207434c4b99b9cbee16ab';
+  '7874526bd5be43e5fbde1bb3b4ff282f73ff835a02ba4dc1427d306bc013e8f5';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1970,6 +1970,11 @@ function assertInstalledSmokeScript(script) {
     'Installed Windows smoke must not hide executable proof inside block comments');
   const requiredFragments = [
     "$env:CI -ne 'true'",
+    "rev-parse --verify 'HEAD^{tree}'",
+    '$sourceDirtyEntries.Count -ne 0',
+    "publisher = 'osg-installed-production-evidence'",
+    'installerSha256 = $installerSha256',
+    "journeys = @('installedGolden')",
     '$installed = Install-Application',
     "-Phase 'first-launch'",
     "-Phase 'relaunch'",

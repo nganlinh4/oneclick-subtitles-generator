@@ -1,8 +1,9 @@
 // Derive inventory truth from authoritative latest-success pointers and immutable application
-// provenance. Historical successes remain visible, but only a retained application built from the
-// current clean Git commit/tree counts as current-HEAD proof.
+// provenance. Historical successes remain visible, but only the exact retained application hash
+// named by evidence and built from the current clean Git commit/tree counts as current-HEAD proof.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
@@ -26,6 +27,7 @@ const EXTERNAL_EVIDENCE_RUNS_AGAINST = new Set(['installed-production-binary']);
 const HASH_PATTERN = /^[0-9a-f]{40,64}$/u;
 const ATTEMPT_ID_PATTERN = /^[0-9]{17}-[1-9][0-9]*-[0-9a-f]{8}$/u;
 const EVIDENCE_PUBLISHER = 'osg-e2e-workflow-evidence';
+const INSTALLED_EVIDENCE_PUBLISHER = 'osg-installed-production-evidence';
 const FORBIDDEN_SUITE_SNAPSHOTS = [
   'asOf', 'applicationsStore', 'olderBinariesStillCitedByGreenEvidence',
   'generatedStatusCounts',
@@ -56,7 +58,7 @@ const readCurrentSource = (repositoryRoot = DEFAULT_REPOSITORY_ROOT) => {
 };
 
 const readApplications = (applicationsRoot) => {
-  const byDigest = new Map();
+  const byHash = new Map();
   const failures = [];
   const entries = existsSync(applicationsRoot)
     ? readdirSync(applicationsRoot, { withFileTypes: true })
@@ -72,18 +74,21 @@ const readApplications = (applicationsRoot) => {
         applicationsRoot,
         applicationHash,
       });
-      const applications = byDigest.get(application.binarySha256) ?? [];
-      applications.push({
+      byHash.set(applicationHash, {
         applicationHash,
+        binarySha256: application.binarySha256,
         source: application.sourceProvenance,
       });
-      byDigest.set(application.binarySha256, applications);
     } catch (error) {
       failures.push(`retained application ${applicationHash} is invalid: ${error.message}`);
       continue;
     }
   }
-  return { byDigest, failures, retained: entries.filter((entry) => entry.isDirectory()).length };
+  return {
+    byHash,
+    failures,
+    retained: entries.filter((entry) => entry.isDirectory()).length,
+  };
 };
 
 const validGitObject = (value) => HASH_PATTERN.test(value ?? '');
@@ -104,6 +109,11 @@ const evidenceSource = (source, { allowMissingTree }) => {
   };
 };
 
+const optionalApplicationHash = (value) => {
+  if (value === undefined || value === null) return null;
+  return /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
+};
+
 const exactLatestPointer = ({ evidenceRoot, workflow }) => {
   const pointerPath = join(evidenceRoot, workflow, 'latest-success.json');
   if (!existsSync(pointerPath)) {
@@ -121,6 +131,7 @@ const exactLatestPointer = ({ evidenceRoot, workflow }) => {
     || !ATTEMPT_ID_PATTERN.test(pointer.attemptId ?? '')
     || pointer.path !== `attempts/${pointer.attemptId}`
     || !/^[0-9a-f]{64}$/u.test(pointer.binarySha256 ?? '')
+    || optionalApplicationHash(pointer.applicationHash) === undefined
     || evidenceSource(pointer, { allowMissingTree: true }) === null
   ) {
     return { error: `"${workflow}" latest-success pointer has an invalid identity` };
@@ -128,7 +139,7 @@ const exactLatestPointer = ({ evidenceRoot, workflow }) => {
   return { pointer };
 };
 
-const bindLatestSuccess = ({ entry, evidenceRoot, applications, currentSource }) => {
+const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSource }) => {
   const { name, evidenceWorkflow: workflow } = entry;
   if (!workflow) return { error: `"${name}" is green but has no evidenceWorkflow` };
   const pointerResult = exactLatestPointer({ evidenceRoot, workflow });
@@ -156,8 +167,13 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applications, currentSource })
   }
   const pointerSource = evidenceSource(pointer, { allowMissingTree: true });
   const manifestSource = evidenceSource(manifest.provenance?.source, { allowMissingTree: true });
+  const pointerApplicationHash = optionalApplicationHash(pointer.applicationHash);
+  const manifestApplicationHash = optionalApplicationHash(manifest.provenance?.applicationHash);
   if (manifestSource === null) {
     return { error: `"${name}" latest-success manifest has invalid source provenance` };
+  }
+  if (manifestApplicationHash === undefined) {
+    return { error: `"${name}" latest-success manifest has an invalid application hash` };
   }
   if (
     manifest.attempt?.id !== pointer.attemptId
@@ -165,46 +181,97 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applications, currentSource })
     || manifestSource.commit !== pointerSource.commit
     || manifestSource.tree !== pointerSource.tree
     || manifestSource.dirty !== pointerSource.dirty
+    || manifestApplicationHash !== pointerApplicationHash
   ) {
     return { error: `"${name}" latest-success pointer drifted from its immutable manifest` };
   }
   const staleBinding = (
     (entry.attemptId !== undefined && entry.attemptId !== pointer.attemptId)
     || (entry.binaryDigest !== undefined && entry.binaryDigest !== pointer.binarySha256)
+    || (entry.applicationHash !== undefined && entry.applicationHash !== pointerApplicationHash)
   );
-  const retained = applications.get(pointer.binarySha256) ?? [];
+  const exactApplication = manifestApplicationHash === null
+    ? null
+    : applicationStore.byHash.get(manifestApplicationHash) ?? null;
   const exactCurrentEvidence = !currentSource.dirty
     && manifestSource.dirty === false
     && manifestSource.commit === currentSource.commit
     && manifestSource.tree === currentSource.tree;
-  const exactCurrentApplication = retained.some(({ source }) => (
-    source?.dirty === false
-    && source.commit === currentSource.commit
-    && source.tree === currentSource.tree
-  ));
+  const exactApplicationRetained = exactApplication !== null
+    && exactApplication.binarySha256 === pointer.binarySha256
+  const exactCurrentApplication = exactApplicationRetained
+    && exactApplication.source?.dirty === false
+    && exactApplication.source.commit === currentSource.commit
+    && exactApplication.source.tree === currentSource.tree;
   const current = exactCurrentEvidence && exactCurrentApplication;
   let classification = 'current-head';
   if (!current) {
-    classification = retained.length === 0 ? 'historical-rotated' : 'historical-retained';
+    classification = exactApplicationRetained ? 'historical-retained' : 'historical-rotated';
   }
   return {
     name,
     workflow,
     attemptId: pointer.attemptId,
     binaryDigest: pointer.binarySha256,
+    applicationHash: manifestApplicationHash,
     evidenceSource: manifestSource,
     staleBinding,
     classification,
   };
 };
 
-const verifyInventoryState = ({ inventory, evidenceRoot, applicationsRoot, currentSource }) => {
+const installedClosureFailures = ({
+  currentSource,
+  installedEntries,
+  installedProof,
+  installerSha256,
+}) => {
+  if (installedEntries.length === 0) return [];
+  const blockers = [];
+  if (currentSource.dirty) blockers.push('current source worktree is dirty');
+  for (const entry of installedEntries) {
+    if (entry.status !== 'green') {
+      blockers.push(`"${entry.name}" has status ${entry.status}, not green`);
+    }
+  }
+  const requiredJourneys = installedEntries
+    .filter(({ status }) => status === 'green')
+    .map(({ name }) => name)
+    .sort();
+  const exactProof = installedProof !== null
+    && installedProof?.schemaVersion === 1
+    && installedProof?.publisher === INSTALLED_EVIDENCE_PUBLISHER
+    && installedProof?.outcome === 'pass'
+    && installedProof?.source?.dirty === false
+    && installedProof?.source?.commit === currentSource.commit
+    && installedProof?.source?.tree === currentSource.tree
+    && /^[0-9a-f]{64}$/u.test(installedProof?.installerSha256 ?? '')
+    && installedProof.installerSha256 === installerSha256
+    && Array.isArray(installedProof.journeys)
+    && JSON.stringify([...installedProof.journeys].sort())
+      === JSON.stringify(requiredJourneys);
+  if (!exactProof) {
+    blockers.push(
+      'installed-production closure requires a passing current-source proof bound to the exact '
+      + 'installer SHA-256 and complete external journey set',
+    );
+  }
+  return blockers;
+};
+
+const verifyInventoryState = ({
+  inventory,
+  evidenceRoot,
+  applicationsRoot,
+  currentSource,
+  installedProof = null,
+  installerSha256 = null,
+}) => {
   const counts = {};
   const failures = [];
   const local = [];
   const external = [];
   const applicationStore = readApplications(applicationsRoot);
-  const applications = applicationStore.byDigest;
   failures.push(...applicationStore.failures);
   const staleSuiteFields = FORBIDDEN_SUITE_SNAPSHOTS.filter(
     (field) => Object.hasOwn(inventory.suiteRun ?? {}, field),
@@ -221,7 +288,7 @@ const verifyInventoryState = ({ inventory, evidenceRoot, applicationsRoot, curre
       external.push(entry.name);
       continue;
     }
-    const result = bindLatestSuccess({ entry, evidenceRoot, applications, currentSource });
+    const result = bindLatestSuccess({ entry, evidenceRoot, applicationStore, currentSource });
     if (result.error) failures.push(result.error);
     else local.push(result);
   }
@@ -232,22 +299,27 @@ const verifyInventoryState = ({ inventory, evidenceRoot, applicationsRoot, curre
     local.filter((entry) => entry.classification === classification).length,
   ]));
   const localByName = new Map(local.map((entry) => [entry.name, entry]));
-  const closureBlockers = [];
+  const localClosureBlockers = [];
   if (currentSource.dirty) {
-    closureBlockers.push('current source worktree is dirty');
+    localClosureBlockers.push('current source worktree is dirty');
   }
   for (const entry of inventory.journeys ?? []) {
+    if (EXTERNAL_EVIDENCE_RUNS_AGAINST.has(entry.runsAgainst)) continue;
     if (entry.status !== 'green') {
-      closureBlockers.push(`"${entry.name}" has status ${entry.status}, not green`);
-    } else if (EXTERNAL_EVIDENCE_RUNS_AGAINST.has(entry.runsAgainst)) {
-      closureBlockers.push(
-        `"${entry.name}" uses external installed-production-binary evidence; `
-        + 'local current-source closure cannot attest it',
-      );
+      localClosureBlockers.push(`"${entry.name}" has status ${entry.status}, not green`);
     } else if (localByName.get(entry.name)?.classification !== 'current-head') {
-      closureBlockers.push(`"${entry.name}" lacks exact current-HEAD proof`);
+      localClosureBlockers.push(`"${entry.name}" lacks exact current-HEAD proof`);
     }
   }
+  const installedEntries = (inventory.journeys ?? []).filter(
+    ({ runsAgainst }) => EXTERNAL_EVIDENCE_RUNS_AGAINST.has(runsAgainst),
+  );
+  const installedClosureBlockers = installedClosureFailures({
+    currentSource,
+    installedEntries,
+    installedProof,
+    installerSha256,
+  });
   return {
     counts,
     total: Object.values(counts).reduce((sum, count) => sum + count, 0),
@@ -258,14 +330,22 @@ const verifyInventoryState = ({ inventory, evidenceRoot, applicationsRoot, curre
     staleBindings: local.filter(({ staleBinding }) => staleBinding).map(({ name }) => name),
     classifications,
     failures,
-    closureBlockers,
+    closureBlockers: localClosureBlockers,
+    localClosureBlockers,
+    installedClosureBlockers,
     externalPolicy: (
-      'audit-only; installed-production-binary cannot satisfy local current-source closure'
+      'excluded from local current-source closure; installed closure requires a separate '
+      + 'current-source proof bound to the exact installer digest'
     ),
   };
 };
 
-const renderReport = (report, { evidenceRoot, applicationsRoot, requireCurrent = false }) => {
+const renderReport = (report, {
+  evidenceRoot,
+  applicationsRoot,
+  requireCurrent = false,
+  requireInstalled = false,
+}) => {
   const lines = [
     '=== e2e/inventory.json verification ===',
     '',
@@ -305,9 +385,13 @@ const renderReport = (report, { evidenceRoot, applicationsRoot, requireCurrent =
     lines.push('', `-- binding/ledger failures: ${report.failures.length} --`);
     for (const failure of report.failures) lines.push(`  FAIL ${failure}`);
   }
-  if (requireCurrent && report.closureBlockers.length > 0) {
-    lines.push('', `-- current-source closure blockers: ${report.closureBlockers.length} --`);
-    for (const blocker of report.closureBlockers) lines.push(`  BLOCK ${blocker}`);
+  if (requireCurrent && report.localClosureBlockers.length > 0) {
+    lines.push('', `-- local current-source blockers: ${report.localClosureBlockers.length} --`);
+    for (const blocker of report.localClosureBlockers) lines.push(`  BLOCK ${blocker}`);
+  }
+  if (requireInstalled && report.installedClosureBlockers.length > 0) {
+    lines.push('', `-- installed-production blockers: ${report.installedClosureBlockers.length} --`);
+    for (const blocker of report.installedClosureBlockers) lines.push(`  BLOCK ${blocker}`);
   }
   lines.push('', report.failures.length === 0
     ? 'verify-inventory: authoritative latest-success bindings are internally consistent.'
@@ -318,16 +402,25 @@ const renderReport = (report, { evidenceRoot, applicationsRoot, requireCurrent =
     + `${report.classifications['historical-rotated']} rotated historical.`,
   );
   if (requireCurrent) {
-    lines.push(report.closureBlockers.length === 0 && report.failures.length === 0
-      ? 'verify-inventory: exact current-source closure satisfied.'
-      : 'verify-inventory: exact current-source closure NOT satisfied.');
+    lines.push(report.localClosureBlockers.length === 0 && report.failures.length === 0
+      ? 'verify-inventory: exact local current-source closure satisfied.'
+      : 'verify-inventory: exact local current-source closure NOT satisfied.');
+  }
+  if (requireInstalled) {
+    lines.push(report.installedClosureBlockers.length === 0 && report.failures.length === 0
+      ? 'verify-inventory: exact installed-production closure satisfied.'
+      : 'verify-inventory: exact installed-production closure NOT satisfied.');
   }
   return `${lines.join('\n')}\n`;
 };
 
-const verificationExitCode = (report, { requireCurrent = false } = {}) => (
+const verificationExitCode = (report, {
+  requireCurrent = false,
+  requireInstalled = false,
+} = {}) => (
   report.failures.length > 0
-    || (requireCurrent && report.closureBlockers.length > 0)
+    || (requireCurrent && report.localClosureBlockers.length > 0)
+    || (requireInstalled && report.installedClosureBlockers.length > 0)
     ? 1
     : 0
 );
@@ -335,28 +428,46 @@ const verificationExitCode = (report, { requireCurrent = false } = {}) => (
 const main = () => {
   const arguments_ = process.argv.slice(2);
   const unknown = arguments_.filter(
-    (argument) => !['--json', '--require-current'].includes(argument),
+    (argument) => !['--json', '--require-current', '--require-installed'].includes(argument),
   );
   if (unknown.length > 0 || new Set(arguments_).size !== arguments_.length) {
-    throw new Error('usage: verify-inventory.mjs [--json] [--require-current]');
+    throw new Error(
+      'usage: verify-inventory.mjs [--json] [--require-current] [--require-installed]',
+    );
   }
   const requireCurrent = arguments_.includes('--require-current');
+  const requireInstalled = arguments_.includes('--require-installed');
   const inventoryPath = process.env.OSG_E2E_INVENTORY_PATH ?? DEFAULT_INVENTORY_PATH;
   const evidenceRoot = process.env.OSG_E2E_EVIDENCE_ROOT ?? DEFAULT_EVIDENCE_ROOT;
   const applicationsRoot = process.env.OSG_E2E_APPLICATIONS_ROOT ?? DEFAULT_APPLICATIONS_ROOT;
   const repositoryRoot = process.env.OSG_E2E_REPOSITORY_ROOT ?? DEFAULT_REPOSITORY_ROOT;
+  const installedProofPath = process.env.OSG_E2E_INSTALLED_PROOF_PATH;
+  const installerPath = process.env.OSG_E2E_INSTALLER_PATH;
+  const installedProof = requireInstalled && installedProofPath !== undefined
+    ? readJson(installedProofPath)
+    : null;
+  const installerSha256 = requireInstalled && installerPath !== undefined && existsSync(installerPath)
+    ? createHash('sha256').update(readFileSync(installerPath)).digest('hex')
+    : null;
   const report = verifyInventoryState({
     inventory: readJson(inventoryPath),
     evidenceRoot,
     applicationsRoot,
     currentSource: readCurrentSource(repositoryRoot),
+    installedProof,
+    installerSha256,
   });
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
-    process.stdout.write(renderReport(report, { evidenceRoot, applicationsRoot, requireCurrent }));
+    process.stdout.write(renderReport(report, {
+      evidenceRoot,
+      applicationsRoot,
+      requireCurrent,
+      requireInstalled,
+    }));
   }
-  process.exitCode = verificationExitCode(report, { requireCurrent });
+  process.exitCode = verificationExitCode(report, { requireCurrent, requireInstalled });
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

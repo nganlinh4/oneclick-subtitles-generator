@@ -138,6 +138,7 @@ export const run = ({ repeat, journeys }) => {
               workflow,
               journey: relative(E2E_ROOT, journey).replaceAll('\\', '/'),
               iteration,
+              applicationHash: publication.applicationHash,
               binaryPath: publication.binaryPath,
             });
             process.stdout.write(`\n=== isolated journey: ${label} ===\n`);

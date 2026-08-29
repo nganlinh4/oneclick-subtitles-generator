@@ -57,6 +57,7 @@ const fixture = (context, {
       sourceProvenance: applicationSource,
     });
   }
+  const evidenceApplicationHash = application?.applicationHash ?? '9'.repeat(64);
   writeFileSync(join(evidenceRoot, workflow, 'latest-success.json'), JSON.stringify({
     schemaVersion: 1,
     workflow,
@@ -66,13 +67,18 @@ const fixture = (context, {
     tree: evidenceSource.tree,
     dirty: evidenceSource.dirty,
     binarySha256: digest,
+    applicationHash: evidenceApplicationHash,
   }));
   writeFileSync(join(attemptRoot, 'manifest.json'), JSON.stringify({
     schemaVersion: 2,
     publisher: 'osg-e2e-workflow-evidence',
     workflow,
     attempt: { id: ATTEMPT, outcome: 'pass' },
-    provenance: { source: evidenceSource, binary: { sha256: digest } },
+    provenance: {
+      applicationHash: evidenceApplicationHash,
+      source: evidenceSource,
+      binary: { sha256: digest },
+    },
   }));
   const journey = {
     name: 'capability',
@@ -88,9 +94,11 @@ const fixture = (context, {
   };
   return {
     application,
+    applicationCacheRoot,
     applicationsRoot,
     evidenceRoot,
     inventory,
+    profileRoot,
     currentSource: CURRENT,
   };
 };
@@ -111,6 +119,28 @@ test('byte-identical executable from old evidence never becomes current through 
   assert.equal(report.classifications['current-head'], 0);
   assert.equal(report.classifications['historical-retained'], 1);
   assert.match(report.closureBlockers[0], /lacks exact current-HEAD proof/u);
+});
+
+test('same executable in a different application tree cannot cross-bless missing exact app', (context) => {
+  const input = fixture(context);
+  const firstHash = input.application.applicationHash;
+  writeFileSync(join(input.profileRoot, 'ui-fonts', 'font.woff2'), 'different-resource-tree');
+  const second = publishE2eApplication({
+    profileRoot: input.profileRoot,
+    applicationsCacheRoot: input.applicationCacheRoot,
+    sourceProvenance: CURRENT,
+  });
+  assert.notEqual(second.applicationHash, firstHash);
+  assert.equal(
+    createHash('sha256').update(readFileSync(second.binaryPath)).digest('hex'),
+    createHash('sha256').update(readFileSync(input.application.binaryPath)).digest('hex'),
+  );
+  rmSync(input.application.applicationRoot, { recursive: true, force: true });
+  const report = verifyInventoryState(input);
+  assert.deepEqual(report.failures, []);
+  assert.equal(report.classifications['current-head'], 0);
+  assert.equal(report.classifications['historical-rotated'], 1);
+  assert.equal(report.local[0].applicationHash, firstHash);
 });
 
 test('forged retained manifest is rejected instead of supplying source provenance', (context) => {
@@ -141,13 +171,15 @@ test('legacy evidence without a tree stays historical even at the same commit an
   const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   delete pointer.tree;
+  delete pointer.applicationHash;
   delete manifest.provenance.source.tree;
+  delete manifest.provenance.applicationHash;
   writeFileSync(pointerPath, JSON.stringify(pointer));
   writeFileSync(manifestPath, JSON.stringify(manifest));
   const report = verifyInventoryState(input);
   assert.deepEqual(report.failures, []);
   assert.equal(report.classifications['current-head'], 0);
-  assert.equal(report.classifications['historical-retained'], 1);
+  assert.equal(report.classifications['historical-rotated'], 1);
 });
 
 test('dirty current source is audit-visible history and blocks closure', (context) => {
@@ -186,15 +218,51 @@ test('pointer drift and hand-maintained suite snapshots fail closed', (context) 
   assert.match(report.failures[1], /drifted from its immutable manifest/u);
 });
 
-test('external installed production proof is audit-only and cannot close current source', (context) => {
-  const report = verifyInventoryState(fixture(context, {
+test('local and installed closure use separate satisfiable source-bound policies', (context) => {
+  const input = fixture(context, {
     runsAgainst: 'installed-production-binary',
-  }));
+  });
+  const report = verifyInventoryState(input);
   assert.deepEqual(report.failures, []);
   assert.deepEqual(report.external, ['capability']);
   assert.equal(report.local.length, 0);
-  assert.match(report.closureBlockers[0], /cannot attest/u);
-  assert.match(report.externalPolicy, /audit-only/u);
+  assert.deepEqual(report.localClosureBlockers, []);
+  assert.equal(verificationExitCode(report, { requireCurrent: true }), 0);
+  assert.equal(verificationExitCode(report, { requireInstalled: true }), 1);
+  assert.equal(verificationExitCode(report, {
+    requireCurrent: true,
+    requireInstalled: true,
+  }), 1);
+  assert.match(report.installedClosureBlockers[0], /exact installer SHA-256/u);
+
+  const installerSha256 = 'a'.repeat(64);
+  const installedProof = {
+    schemaVersion: 1,
+    publisher: 'osg-installed-production-evidence',
+    outcome: 'pass',
+    source: CURRENT,
+    installerSha256,
+    journeys: ['capability'],
+  };
+  const installed = verifyInventoryState({
+    ...input,
+    installerSha256,
+    installedProof,
+  });
+  assert.deepEqual(installed.installedClosureBlockers, []);
+  assert.equal(verificationExitCode(installed, { requireInstalled: true }), 0);
+  assert.equal(verificationExitCode(installed, {
+    requireCurrent: true,
+    requireInstalled: true,
+  }), 0);
+  assert.match(installed.externalPolicy, /separate/u);
+
+  const drifted = verifyInventoryState({
+    ...input,
+    installerSha256,
+    installedProof: { ...installedProof, source: OLD },
+  });
+  assert.equal(verificationExitCode(drifted, { requireInstalled: true }), 1);
 });
 
 test('non-green journeys are explicit closure blockers', (context) => {

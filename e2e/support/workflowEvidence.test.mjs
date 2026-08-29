@@ -101,6 +101,54 @@ test('refuses new evidence whose injected source provenance omits the Git tree',
   }
 });
 
+test('pure evidence module bootstraps without a current application receipt', () => {
+  for (const historicalReceipt of [false, true]) {
+    const cache = mkdtempSync(join(tmpdir(), 'osg-evidence-bootstrap-cache-'));
+    try {
+      if (historicalReceipt) {
+        const receipts = join(cache, 'apps', 'e2e', 'receipts');
+        mkdirSync(receipts, { recursive: true });
+        writeFileSync(join(receipts, 'current.json'), JSON.stringify({
+          schemaVersion: 2,
+          applicationHash: 'a'.repeat(64),
+          // Deliberately historical/provenance-less and otherwise unverifiable. Pure evidence
+          // import must not consult launch publication; actual launch authority still does.
+        }));
+      }
+      const environment = { ...process.env };
+      delete environment.OSG_E2E_WORKFLOW_EVIDENCE_ROOT;
+      environment.OSG_DEV_CACHE_ROOT = cache;
+      const child = spawnSync(process.execPath, [
+        '--input-type=module',
+        '--eval',
+        `await import(${JSON.stringify(workflowEvidenceModuleUrl)}); process.stdout.write('ok');`,
+      ], {
+        cwd: resolve(import.meta.dirname, '..', '..'),
+        encoding: 'utf8',
+        env: environment,
+        windowsHide: true,
+      });
+      assert.equal(child.status, 0, child.stderr);
+      assert.equal(child.stdout, 'ok');
+      const launchEvidence = spawnSync(process.execPath, [
+        '--input-type=module',
+        '--eval',
+        `const evidence = await import(${JSON.stringify(workflowEvidenceModuleUrl)}); `
+          + "evidence.beginWorkflowEvidence({ workflow: 'bootstrap-launch', "
+          + "journey: 'journeys/bootstrap.journey.js', iteration: 1 });",
+      ], {
+        cwd: resolve(import.meta.dirname, '..', '..'),
+        encoding: 'utf8',
+        env: environment,
+        windowsHide: true,
+      });
+      assert.notEqual(launchEvidence.status, 0, 'an actual journey must still require publication');
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  }
+});
+
 test('bounds and redacts hostile WebdriverIO errors while retaining exact useful identity and stack', () => {
   const credential = 'AIzaSyThisMustNeverEnterImmutableEvidence123456';
   const bearer = 'header-secret-that-must-not-survive';
@@ -277,6 +325,7 @@ test('keeps a failed rerun without replacing the latest successful proof', () =>
       workflow,
       journey: 'journeys/startup.journey.js',
       iteration: 1,
+      applicationHash: 'c'.repeat(64),
       binaryPath: binary,
     });
     const passed = finalizeWorkflowEvidence({
@@ -313,6 +362,8 @@ test('keeps a failed rerun without replacing the latest successful proof', () =>
     const latest = JSON.parse(readFileSync(join(workflowDirectory, 'latest-success.json'), 'utf8'));
     assert.equal(latest.attemptId, first.id, 'failure must not replace the last successful pointer');
     assert.equal(latest.tree, passed.provenance.source.tree);
+    assert.equal(latest.applicationHash, 'c'.repeat(64));
+    assert.equal(passed.provenance.applicationHash, latest.applicationHash);
     assert.equal(existsSync(first.directory), true);
     assert.equal(existsSync(second.directory), true);
     const failed = JSON.parse(readFileSync(join(second.directory, 'manifest.json'), 'utf8'));

@@ -55,6 +55,17 @@ $installer = [IO.Path]::GetFullPath($InstallerPath)
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
   throw "Installer does not exist: $installer"
 }
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$sourceCommit = (& git -C $repositoryRoot rev-parse --verify HEAD).Trim()
+$sourceTree = (& git -C $repositoryRoot rev-parse --verify 'HEAD^{tree}').Trim()
+$sourceDirtyEntries = @(& git -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
+if ($LASTEXITCODE -ne 0 `
+    -or $sourceCommit -notmatch '^[0-9a-f]{40,64}$' `
+    -or $sourceTree -notmatch '^[0-9a-f]{40,64}$' `
+    -or $sourceDirtyEntries.Count -ne 0) {
+  throw 'Installed smoke requires one exact clean Git commit and tree'
+}
+$installerSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $localMediaFixture = $null
 $localMediaFixtureSha256 = $null
@@ -3214,6 +3225,16 @@ OSG installed media smoke
       -ExpectedRemovals 0
   }
   $result = [pscustomobject]@{
+    schemaVersion = 1
+    publisher = 'osg-installed-production-evidence'
+    outcome = 'pass'
+    source = [pscustomobject]@{
+      commit = $sourceCommit
+      tree = $sourceTree
+      dirty = $false
+    }
+    installerSha256 = $installerSha256
+    journeys = @('installedGolden')
     version = $reinstalled.Registry.DisplayVersion
     executableSha256 = $executableSha256
     firstLaunchEvents = $first.NewEventNames
