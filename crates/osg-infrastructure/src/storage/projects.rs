@@ -219,7 +219,7 @@ pub(super) fn create_project(
 
 /// Create one logical project exactly once for a caller-owned durable identity.
 ///
-/// The receipt and the initial project revision commit in one SQLite transaction. A lost IPC
+/// The receipt and the initial project revision commit in one `SQLite` transaction. A lost IPC
 /// response can therefore be retried in the same process or after restart: the exact key returns
 /// the authoritative project instead of allocating another ID. A key cannot be silently reused
 /// for a different requested name.
@@ -304,9 +304,9 @@ fn create_project_in_transaction(
          VALUES (?1, ?2, 0, ?3, ?3)",
         params![metadata.id().as_uuid(), metadata.name(), timestamp],
     )?;
-    write_normalized(&transaction, &snapshot)?;
+    write_normalized(transaction, &snapshot)?;
     insert_revision(
-        &transaction,
+        transaction,
         revision_id,
         metadata.id(),
         None,
@@ -321,7 +321,7 @@ fn create_project_in_transaction(
          ) VALUES (?1, ?2, '[]', ?3)",
         params![metadata.id().as_uuid(), revision_id.as_uuid(), timestamp],
     )?;
-    write_project_state(&transaction, &snapshot, revision_id, timestamp)?;
+    write_project_state(transaction, &snapshot, revision_id, timestamp)?;
     Ok(snapshot)
 }
 
