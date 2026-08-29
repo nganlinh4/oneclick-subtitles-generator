@@ -34,7 +34,9 @@ import {
   SOURCE_SWITCH_MEDIA_CACHE,
 } from './environment.js';
 import { assertLiveE2eAssetLease } from './applicationLease.js';
-import { resolveVerifiedNativeToolExecutable } from './nativeToolsOracle.js';
+import {
+  resolveVerifiedNativeToolExecutable, resolveVerifiedNativeToolRoles,
+} from './nativeToolsOracle.js';
 
 const require = createRequire(import.meta.url);
 const { runSupervisedSync } = require('../../scripts/windows-job-supervisor.js');
@@ -293,11 +295,14 @@ export const verifyRealVideoProbe = (raw) => {
 
 const probeRealVideo = (path, {
   execute = execFileSync,
+  ffprobe = null,
   nativeToolsCache = NATIVE_TOOLS_CACHE,
   resolveTool = resolveVerifiedNativeToolExecutable,
 } = {}) => {
-  const ffprobe = resolveTool({ storeRoot: nativeToolsCache, tool: 'media-tools', role: 'ffprobe' });
-  const raw = JSON.parse(execute(ffprobe, [
+  const executable = ffprobe ?? resolveTool({
+    storeRoot: nativeToolsCache, tool: 'media-tools', role: 'ffprobe',
+  });
+  const raw = JSON.parse(execute(executable, [
     '-v', 'error',
     '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height',
     '-of', 'json',
@@ -519,6 +524,7 @@ const ensureRealVideoCore = ({
   execute = execFileSync,
   nativeToolsCache = NATIVE_TOOLS_CACHE,
   resolveTool = resolveVerifiedNativeToolExecutable,
+  resolveTools = resolveVerifiedNativeToolRoles,
   downloadRunner = (executable, args) => execute(executable, args, {
     encoding: 'utf8', timeout: 300_000, windowsHide: true,
   }),
@@ -534,16 +540,23 @@ const ensureRealVideoCore = ({
   if (cached !== null) return cached;
 
   const ytDlp = resolveTool({ storeRoot: nativeToolsCache, tool: 'yt-dlp', role: 'yt-dlp' });
+  const deno = resolveTool({ storeRoot: nativeToolsCache, tool: 'deno', role: 'deno' });
+  const { ffmpeg, ffprobe } = resolveTools({
+    storeRoot: nativeToolsCache, tool: 'media-tools', roles: ['ffmpeg', 'ffprobe'],
+  });
   const temporary = join(
     cacheRoot,
     `.${REAL_VIDEO.id}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
   );
   try {
     const observation = downloadRunner(ytDlp, [
+      '--js-runtimes', `deno:${deno}`,
       REAL_VIDEO.url,
       '--no-playlist',
       '--quiet',
-      '--format', 'best[ext=mp4]',
+      '--ffmpeg-location', dirname(ffmpeg),
+      '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio',
+      '--merge-output-format', 'mp4',
       '--output', temporary,
       '--print', 'after_move:%(id)s\t%(filepath)s',
     ]);
@@ -551,7 +564,7 @@ const ensureRealVideoCore = ({
       throw new Error('yt-dlp reported success without writing the fixed real-media candidate');
     }
     const observedVideoId = parseYtDlpObservation(observation, temporary);
-    const probe = probeRealVideo(temporary, { execute, nativeToolsCache, resolveTool });
+    const probe = probeRealVideo(temporary, { execute, ffprobe });
     return publishRealVideo({
       assetRoot, assertStillLive, cacheRoot, candidate: temporary, probe, observedVideoId,
       afterPayload, writeReceipt,
@@ -630,6 +643,9 @@ export const createRealMediaBootstrapForTest = ({
   return Object.freeze({
     ensure: () => ensureRealVideoCore({
       assetRoot, assertStillLive, cacheRoot: candidate, execute, resolveTool,
+      resolveTools: ({ storeRoot, tool, roles }) => Object.fromEntries(roles.map(
+        role => [role, resolveTool({ storeRoot, tool, role })],
+      )),
       afterPayload, writeReceipt,
     }),
     publishCandidate: ({ file, probe, observedVideoId = REAL_VIDEO.id, fault = afterPayload }) => (

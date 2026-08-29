@@ -31,7 +31,7 @@ const withAssetRoot = (context) => {
   return { assetRoot, cacheRoot: join(assetRoot, 'real-media') };
 };
 
-const acquisitionDouble = ({ byte = 7, resolveCalls = [] } = {}) => ({
+const acquisitionDouble = ({ byte = 7, resolveCalls = [], downloadArgs = [] } = {}) => ({
   assertLease: () => undefined,
   resolveTool: ({ tool, role }) => {
     resolveCalls.push({ tool, role });
@@ -39,6 +39,7 @@ const acquisitionDouble = ({ byte = 7, resolveCalls = [] } = {}) => ({
   },
   execute: (executable, args) => {
     if (executable === 'yt-dlp-yt-dlp.exe') {
+      downloadArgs.push([...args]);
       const output = args[args.indexOf('--output') + 1];
       writeFileSync(output, mediaBytes(byte));
       return `${REAL_VIDEO.id}\t${output}\n`;
@@ -51,14 +52,31 @@ const acquisitionDouble = ({ byte = 7, resolveCalls = [] } = {}) => ({
 test('a valid receipt reuses media without resolving or re-hashing native tools', (context) => {
   const { cacheRoot } = withAssetRoot(context);
   const resolveCalls = [];
+  const downloadArgs = [];
   const first = createRealMediaBootstrapForTest({
     cacheRoot,
-    ...acquisitionDouble({ resolveCalls }),
+    ...acquisitionDouble({ resolveCalls, downloadArgs }),
   }).ensure();
   assert.deepEqual(resolveCalls, [
     { tool: 'yt-dlp', role: 'yt-dlp' },
+    { tool: 'deno', role: 'deno' },
+    { tool: 'media-tools', role: 'ffmpeg' },
     { tool: 'media-tools', role: 'ffprobe' },
   ]);
+  assert.deepEqual(
+    downloadArgs[0].slice(0, 2),
+    ['--js-runtimes', 'deno:deno-deno.exe'],
+    'bootstrap must use the same reviewed JavaScript runtime contract as the product downloader',
+  );
+  assert.equal(
+    downloadArgs[0][downloadArgs[0].indexOf('--ffmpeg-location') + 1],
+    '.',
+    'bootstrap must merge the provider video/audio pair with reviewed FFmpeg',
+  );
+  assert.equal(
+    downloadArgs[0][downloadArgs[0].indexOf('--format') + 1],
+    'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio',
+  );
 
   let toolResolutionAttempts = 0;
   const reused = createRealMediaBootstrapForTest({
