@@ -202,9 +202,18 @@ test('damaged-install staging copies the verified immutable publication and noth
       expectedChange: 'changed',
     });
     assert.equal(derivative.baseApplicationHash, publication.applicationHash);
-    assert.deepEqual(derivative.changedPaths, [`ui-fonts/${font}`]);
-    assert.deepEqual(derivative.deletedPaths, []);
+    assert.equal(derivative.delta.path, `ui-fonts/${font}`);
+    assert.equal(derivative.delta.change, 'changed');
+    assert.equal(derivative.files.some(({ path }) => path === `ui-fonts/${font}`), true);
     assert.match(derivative.treeSha256, /^[0-9a-f]{64}$/u);
+    assert.doesNotThrow(() => staging.assertStagedApplicationDerivative({
+      staged, publication, derivative,
+    }));
+    writeFileSync(join(staged, 'workers', 'nested', 'worker.py'), 'second unrecorded mutation');
+    assert.throws(
+      () => staging.assertStagedApplicationDerivative({ staged, publication, derivative }),
+      /exactly one changed|changed after its canonical inventory was sealed/u,
+    );
     assert.doesNotThrow(
       () => environment.assertStagedApplicationBinary(binary),
       'intentional payload damage must not invalidate the private staging authority',
@@ -226,7 +235,7 @@ test('an undamaged staged copy cannot cross-bless itself with an arbitrary damag
         expectedPath: `ui-fonts/${font}`,
         expectedChange: 'deleted',
       }),
-      /damage delta is not the intended case/u,
+      /damage must be exactly one changed or deleted base file/u,
     );
   } finally {
     staging.discardStagedApplication(staged);

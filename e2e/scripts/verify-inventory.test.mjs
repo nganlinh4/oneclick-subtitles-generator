@@ -17,6 +17,33 @@ const CURRENT = Object.freeze({ commit: '1'.repeat(40), tree: '2'.repeat(40), di
 const OLD = Object.freeze({ commit: '3'.repeat(40), tree: '4'.repeat(40), dirty: false });
 const ATTEMPT = '20260829000000000-1234-abcdef12';
 
+const deletedFontDerivative = (application) => {
+  const manifestBytes = readFileSync(application.manifestPath);
+  const manifest = JSON.parse(manifestBytes);
+  const baseFiles = [
+    ...manifest.files,
+    {
+      path: '.osg-application-manifest.json',
+      size: manifestBytes.byteLength,
+      sha256: createHash('sha256').update(manifestBytes).digest('hex'),
+    },
+  ].sort((left, right) => left.path.localeCompare(right.path));
+  const base = baseFiles.find(({ path }) => path === 'ui-fonts/font.woff2');
+  const files = baseFiles.filter(({ path }) => path !== base.path);
+  return {
+    kind: 'staged-damage',
+    baseApplicationHash: application.applicationHash,
+    treeSha256: createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex'),
+    files,
+    delta: {
+      change: 'deleted',
+      path: base.path,
+      base: { size: base.size, sha256: base.sha256 },
+      derived: null,
+    },
+  };
+};
+
 const writeProfile = (profileRoot) => {
   mkdirSync(profileRoot, { recursive: true });
   writeFileSync(join(profileRoot, 'osg-desktop.exe'), 'MZ-byte-identical-e2e');
@@ -118,13 +145,7 @@ test('staged damage is explicit pointer-bound metadata on the exact source app',
   const manifestPath = join(input.evidenceRoot, 'proof', 'attempts', ATTEMPT, 'manifest.json');
   const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const derivative = {
-    kind: 'staged-damage',
-    baseApplicationHash: input.application.applicationHash,
-    treeSha256: 'e'.repeat(64),
-    changedPaths: [],
-    deletedPaths: ['ui-fonts/font.woff2'],
-  };
+  const derivative = deletedFontDerivative(input.application);
   pointer.applicationDerivative = derivative;
   manifest.provenance.applicationDerivative = derivative;
   writeFileSync(pointerPath, JSON.stringify(pointer));
@@ -133,7 +154,26 @@ test('staged damage is explicit pointer-bound metadata on the exact source app',
   assert.equal(current.classifications['current-head'], 1);
   assert.deepEqual(current.local[0].applicationDerivative, derivative);
 
+  const forged = JSON.parse(JSON.stringify(derivative));
+  forged.treeSha256 = 'e'.repeat(64);
+  pointer.applicationDerivative = forged;
+  manifest.provenance.applicationDerivative = forged;
+  writeFileSync(pointerPath, JSON.stringify(pointer));
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const forgedReport = verifyInventoryState(input);
+  assert.match(forgedReport.failures[0], /invalid (?:identity|application derivative)/u);
+
+  const wrongDelta = JSON.parse(JSON.stringify(derivative));
+  wrongDelta.delta.base.sha256 = 'f'.repeat(64);
+  pointer.applicationDerivative = wrongDelta;
+  manifest.provenance.applicationDerivative = wrongDelta;
+  writeFileSync(pointerPath, JSON.stringify(pointer));
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const wrongDeltaReport = verifyInventoryState(input);
+  assert.match(wrongDeltaReport.failures[0], /not the exact base delta/u);
+
   delete pointer.applicationDerivative;
+  manifest.provenance.applicationDerivative = derivative;
   writeFileSync(pointerPath, JSON.stringify(pointer));
   const drifted = verifyInventoryState(input);
   assert.match(drifted.failures[0], /drifted from its immutable manifest/u);

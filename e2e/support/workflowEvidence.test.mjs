@@ -16,6 +16,26 @@ const workflowEvidenceTestRoot = mkdtempSync(join(tmpdir(), 'osg-workflow-eviden
 const priorEvidenceRoot = process.env.OSG_E2E_WORKFLOW_EVIDENCE_ROOT;
 process.env.OSG_E2E_WORKFLOW_EVIDENCE_ROOT = workflowEvidenceTestRoot;
 
+const derivativeFixture = (baseApplicationHash) => {
+  const files = [{
+    path: 'osg-desktop.exe',
+    size: 3,
+    sha256: createHash('sha256').update('app').digest('hex'),
+  }];
+  return {
+    kind: 'staged-damage',
+    baseApplicationHash,
+    treeSha256: createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex'),
+    files,
+    delta: {
+      change: 'deleted',
+      path: 'ui-fonts/Inter-Regular.ttf',
+      base: { size: 4, sha256: createHash('sha256').update('font').digest('hex') },
+      derived: null,
+    },
+  };
+};
+
 const {
   WORKFLOW_EVIDENCE_ROOT,
   applyWorkflowEvidenceRetention,
@@ -166,13 +186,7 @@ test('scenario reset and staged derivative retain exact source application ident
       journey: 'journeys/damagedFontPayload.journey.js',
       iteration: 2,
       applicationHash,
-      applicationDerivative: {
-        kind: 'staged-damage',
-        baseApplicationHash: applicationHash,
-        treeSha256: 'e'.repeat(64),
-        changedPaths: [],
-        deletedPaths: ['ui-fonts/Inter-Regular.ttf'],
-      },
+      applicationDerivative: derivativeFixture(applicationHash),
       binaryPath: binary,
     });
     finalizeWorkflowEvidence({
@@ -186,13 +200,7 @@ test('scenario reset and staged derivative retain exact source application ident
       'utf8',
     ));
     assert.equal(pointer.applicationHash, applicationHash);
-    assert.deepEqual(pointer.applicationDerivative, {
-      kind: 'staged-damage',
-      baseApplicationHash: applicationHash,
-      treeSha256: 'e'.repeat(64),
-      changedPaths: [],
-      deletedPaths: ['ui-fonts/Inter-Regular.ttf'],
-    });
+    assert.deepEqual(pointer.applicationDerivative, derivativeFixture(applicationHash));
   } finally {
     delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;
     rmSync(workflowEvidenceDirectory(workflow), { recursive: true, force: true });

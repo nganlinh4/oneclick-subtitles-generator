@@ -37,14 +37,6 @@ const FORBIDDEN_SUITE_SNAPSHOTS = [
 ];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
-const directoryNames = (root) => (
-  existsSync(root)
-    ? readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-    : []
-);
-
 const readCurrentSource = (repositoryRoot = DEFAULT_REPOSITORY_ROOT) => {
   const git = (...args) => String(execFileSync('git', args, {
     cwd: repositoryRoot,
@@ -77,10 +69,21 @@ const readApplications = (applicationsRoot) => {
         applicationsRoot,
         applicationHash,
       });
+      const manifestBytes = readFileSync(application.manifestPath);
+      const manifest = JSON.parse(manifestBytes);
+      const files = [
+        ...manifest.files,
+        {
+          path: '.osg-application-manifest.json',
+          size: manifestBytes.byteLength,
+          sha256: createHash('sha256').update(manifestBytes).digest('hex'),
+        },
+      ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
       byHash.set(applicationHash, {
         applicationHash,
         binarySha256: application.binarySha256,
         source: application.sourceProvenance,
+        files,
       });
     } catch (error) {
       failures.push(`retained application ${applicationHash} is invalid: ${error.message}`);
@@ -117,24 +120,99 @@ const optionalApplicationHash = (value) => {
   return /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
 };
 
+const safeDerivativePath = (value) => typeof value === 'string'
+  && value.length > 0
+  && value.length <= 260
+  && !value.includes('\\')
+  && !value.includes('\0')
+  && value.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+
+const derivativeIdentity = (value) => (
+  value !== null
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && Object.keys(value).sort().join('|') === 'sha256|size'
+  && Number.isSafeInteger(value.size)
+  && value.size >= 0
+  && /^[0-9a-f]{64}$/u.test(value.sha256 ?? '')
+    ? { size: value.size, sha256: value.sha256 }
+    : null
+);
+
 const optionalApplicationDerivative = (value) => {
   if (value === undefined || value === null) return null;
   if (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|')
-      !== 'baseApplicationHash|changedPaths|deletedPaths|kind|treeSha256'
+    || Object.keys(value).sort().join('|') !== 'baseApplicationHash|delta|files|kind|treeSha256'
     || value.kind !== 'staged-damage'
     || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
     || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
-    || !Array.isArray(value.changedPaths)
-    || !Array.isArray(value.deletedPaths)
-    || value.changedPaths.length + value.deletedPaths.length !== 1
-    || [...value.changedPaths, ...value.deletedPaths].some((path) => (
-      typeof path !== 'string' || !path.startsWith('ui-fonts/') || path.includes('..')
-    ))
+    || !Array.isArray(value.files)
+    || value.files.length === 0
+    || value.files.length > 128
   ) return undefined;
-  return value;
+  const files = value.files.map((entry) => {
+    if (
+      entry === null
+      || typeof entry !== 'object'
+      || Array.isArray(entry)
+      || Object.keys(entry).sort().join('|') !== 'path|sha256|size'
+      || !safeDerivativePath(entry.path)
+    ) return null;
+    const identity = derivativeIdentity({ size: entry.size, sha256: entry.sha256 });
+    return identity === null ? null : { path: entry.path, ...identity };
+  });
+  const paths = files.map((entry) => entry?.path);
+  if (
+    files.some((entry) => entry === null)
+    || paths.some((path, index) => index > 0 && paths[index - 1] >= path)
+    || value.treeSha256 !== createHash('sha256')
+      .update(`${JSON.stringify({ files })}\n`).digest('hex')
+  ) return undefined;
+  const delta = value.delta;
+  const base = derivativeIdentity(delta?.base);
+  const derived = delta?.derived === null ? null : derivativeIdentity(delta?.derived);
+  if (
+    delta === null
+    || typeof delta !== 'object'
+    || Array.isArray(delta)
+    || Object.keys(delta).sort().join('|') !== 'base|change|derived|path'
+    || !['changed', 'deleted'].includes(delta.change)
+    || !safeDerivativePath(delta.path)
+    || !delta.path.startsWith('ui-fonts/')
+    || base === null
+    || (delta.change === 'deleted' && delta.derived !== null)
+    || (delta.change === 'changed' && (derived === null
+      || (derived.size === base.size && derived.sha256 === base.sha256)))
+    || (delta.change === 'changed') !== paths.includes(delta.path)
+  ) return undefined;
+  return { ...value, files, delta: { ...delta, base, derived } };
+};
+
+const derivativeMatchesBase = (derivative, application) => {
+  if (derivative === null) return true;
+  if (application === null || derivative.baseApplicationHash !== application.applicationHash) {
+    return false;
+  }
+  const baseByPath = new Map(application.files.map((entry) => [entry.path, entry]));
+  const derivedByPath = new Map(derivative.files.map((entry) => [entry.path, entry]));
+  const changed = application.files.filter((entry) => {
+    const next = derivedByPath.get(entry.path);
+    return next !== undefined && (next.size !== entry.size || next.sha256 !== entry.sha256);
+  });
+  const deleted = application.files.filter(({ path }) => !derivedByPath.has(path));
+  const added = derivative.files.filter(({ path }) => !baseByPath.has(path));
+  if (added.length !== 0 || changed.length + deleted.length !== 1) return false;
+  const base = changed[0] ?? deleted[0];
+  const next = derivedByPath.get(base.path) ?? null;
+  return derivative.delta.path === base.path
+    && derivative.delta.change === (next === null ? 'deleted' : 'changed')
+    && JSON.stringify(derivative.delta.base)
+      === JSON.stringify({ size: base.size, sha256: base.sha256 })
+    && JSON.stringify(derivative.delta.derived) === JSON.stringify(next === null
+      ? null
+      : { size: next.size, sha256: next.sha256 });
 };
 
 const exactLatestPointer = ({ evidenceRoot, workflow }) => {
@@ -234,6 +312,9 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSourc
   const exactApplication = manifestApplicationHash === null
     ? null
     : applicationStore.byHash.get(manifestApplicationHash) ?? null;
+  if (!derivativeMatchesBase(manifestApplicationDerivative, exactApplication)) {
+    return { error: `"${name}" latest-success derivative inventory is not the exact base delta` };
+  }
   const exactCurrentEvidence = !currentSource.dirty
     && manifestSource.dirty === false
     && manifestSource.commit === currentSource.commit

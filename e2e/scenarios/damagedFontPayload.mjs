@@ -6,6 +6,7 @@ import jobSupervisor from '../../scripts/windows-job-supervisor.js';
 import {
   corruptFontResource,
   describeStagedApplicationDerivative,
+  assertStagedApplicationDerivative,
   discardStagedApplication,
   removeFontResource,
   stageApplication,
@@ -108,6 +109,9 @@ for (const [index, testCase] of CASES.entries()) {
           OSG_E2E_RUN_ROOT_AUTHORIZATION: rootAuthorization,
           [INHERITED_APPLICATION_LEASE]: inheritedApplication,
         };
+        // This is the final same-process authority boundary before WebdriverIO can spawn the app.
+        // Re-reading the complete tree here closes the gap between describing damage and using it.
+        assertStagedApplicationDerivative({ staged, publication, derivative });
         const supervised = runSupervisedSync({
           command: process.execPath,
           args: [WDIO, 'run', 'wdio.conf.js', '--spec', SPEC],
@@ -117,16 +121,27 @@ for (const [index, testCase] of CASES.entries()) {
           ownerProcessId: process.pid,
           managedPaths,
         });
-        const passed = !supervised.error && supervised.status === 0;
+        let derivativeError = null;
+        try {
+          // A success may be published only while the staged bytes still equal the inventory the
+          // immutable attempt names. The application repairs its private profile, never its bundle.
+          assertStagedApplicationDerivative({ staged, publication, derivative });
+        } catch (error) {
+          derivativeError = error;
+        }
+        const passed = !supervised.error && supervised.status === 0 && derivativeError === null;
         finalizeWorkflowEvidence({
           workflow: WORKFLOW,
           attemptId: attempt.id,
           outcome: passed ? 'pass' : 'fail',
           exitStatus: supervised.status,
           signal: supervised.signal,
-          failure: supervised.error?.message ?? (passed ? null : `${testCase.name} failed`),
+          failure: supervised.error?.message
+            ?? derivativeError?.message
+            ?? (passed ? null : `${testCase.name} failed`),
         });
         if (supervised.error) throw supervised.error;
+        if (derivativeError) throw derivativeError;
         if (!passed) throw new Error(`${testCase.name} exited with ${supervised.status}`);
       } finally {
         removeRunRoot(root, rootAuthorization);

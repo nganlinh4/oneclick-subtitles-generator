@@ -292,22 +292,77 @@ const boundedGitState = () => {
   };
 };
 
+const safeDerivativePath = (value) => typeof value === 'string'
+  && value.length > 0
+  && value.length <= 260
+  && !value.includes('\\')
+  && !value.includes('\0')
+  && value.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+
+const normalizeDerivativeIdentity = (value) => {
+  if (
+    value === null
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.keys(value).sort().join('|') !== 'sha256|size'
+    || !Number.isSafeInteger(value.size)
+    || value.size < 0
+    || !/^[0-9a-f]{64}$/u.test(value.sha256 ?? '')
+  ) return null;
+  return Object.freeze({ size: value.size, sha256: value.sha256 });
+};
+
 const normalizeApplicationDerivative = (value) => {
   if (value === undefined || value === null) return null;
-  if (
+  const validShape = (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|')
-      !== 'baseApplicationHash|changedPaths|deletedPaths|kind|treeSha256'
+    || Object.keys(value).sort().join('|') !== 'baseApplicationHash|delta|files|kind|treeSha256'
+  );
+  const files = !validShape && Array.isArray(value.files) && value.files.length > 0
+    && value.files.length <= 128
+    ? value.files.map((entry) => {
+      if (
+        entry === null
+        || typeof entry !== 'object'
+        || Array.isArray(entry)
+        || Object.keys(entry).sort().join('|') !== 'path|sha256|size'
+        || !safeDerivativePath(entry.path)
+      ) return null;
+      const identity = normalizeDerivativeIdentity({ size: entry.size, sha256: entry.sha256 });
+      return identity === null ? null : Object.freeze({ path: entry.path, ...identity });
+    })
+    : [];
+  const paths = files.map((entry) => entry?.path);
+  const canonicalFiles = files.length === value.files?.length
+    && files.every(Boolean)
+    && paths.every((path, index) => index === 0 || paths[index - 1] < path);
+  const delta = value?.delta;
+  const base = normalizeDerivativeIdentity(delta?.base);
+  const derived = delta?.derived === null ? null : normalizeDerivativeIdentity(delta?.derived);
+  const deltaShape = delta !== null
+    && typeof delta === 'object'
+    && !Array.isArray(delta)
+    && Object.keys(delta).sort().join('|') === 'base|change|derived|path'
+    && ['changed', 'deleted'].includes(delta.change)
+    && safeDerivativePath(delta.path)
+    && delta.path.startsWith('ui-fonts/')
+    && base !== null
+    && ((delta.change === 'deleted' && delta.derived === null)
+      || (delta.change === 'changed' && derived !== null
+        && (derived.size !== base.size || derived.sha256 !== base.sha256)))
+    && (delta.change === 'changed') === paths.includes(delta.path);
+  const treeSha256 = canonicalFiles
+    ? createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex')
+    : null;
+  if (
+    validShape
     || value.kind !== 'staged-damage'
     || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
     || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
-    || !Array.isArray(value.changedPaths)
-    || !Array.isArray(value.deletedPaths)
-    || value.changedPaths.length + value.deletedPaths.length !== 1
-    || [...value.changedPaths, ...value.deletedPaths].some((path) => (
-      typeof path !== 'string' || !path.startsWith('ui-fonts/') || path.includes('..')
-    ))
+    || !canonicalFiles
+    || !deltaShape
+    || value.treeSha256 !== treeSha256
   ) {
     throw new Error('workflow evidence application derivative is invalid');
   }
@@ -315,8 +370,13 @@ const normalizeApplicationDerivative = (value) => {
     kind: value.kind,
     baseApplicationHash: value.baseApplicationHash,
     treeSha256: value.treeSha256,
-    changedPaths: [...value.changedPaths],
-    deletedPaths: [...value.deletedPaths],
+    files: Object.freeze(files),
+    delta: Object.freeze({
+      change: delta.change,
+      path: delta.path,
+      base,
+      derived,
+    }),
   });
 };
 
@@ -332,6 +392,10 @@ export const collectEvidenceProvenance = ({
     'workflow evidence application hash must be an exact SHA-256 or null',
   );
   const derivative = normalizeApplicationDerivative(applicationDerivative);
+  assert.ok(
+    derivative === null || derivative.baseApplicationHash === applicationHash,
+    'workflow evidence derivative must name the exact base application hash',
+  );
   const path = resolve(binaryPath);
   if (!existsSync(path)) {
     assert.equal(requireBinary, false, `workflow evidence binary does not exist: ${path}`);

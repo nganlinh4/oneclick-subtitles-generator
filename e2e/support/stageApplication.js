@@ -21,7 +21,13 @@ const DERIVATIVE_AUTHORITY_FILES = new Set([
   '.osg-e2e-staging-parent',
 ]);
 
+const sortText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+
 const applicationTreeInventory = (root) => {
+  const canonicalRoot = realpathSync.native(root);
+  if (resolve(canonicalRoot) !== resolve(root)) {
+    throw new Error('application derivative root is redirected');
+  }
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -45,8 +51,57 @@ const applicationTreeInventory = (root) => {
     }
   };
   visit(root);
-  files.sort((left, right) => left.path.localeCompare(right.path));
+  files.sort((left, right) => sortText(left.path, right.path));
   return files;
+};
+
+const inventorySha256 = (files) => createHash('sha256')
+  .update(`${JSON.stringify({ files })}\n`)
+  .digest('hex');
+
+const frozenFiles = (files) => Object.freeze(files.map((entry) => Object.freeze({ ...entry })));
+
+const deltaBetween = (base, derived) => {
+  const baseByPath = new Map(base.map((entry) => [entry.path, entry]));
+  const derivedByPath = new Map(derived.map((entry) => [entry.path, entry]));
+  const changed = base.filter((entry) => {
+    const next = derivedByPath.get(entry.path);
+    return next !== undefined && (next.size !== entry.size || next.sha256 !== entry.sha256);
+  });
+  const deleted = base.filter(({ path }) => !derivedByPath.has(path));
+  const added = derived.filter(({ path }) => !baseByPath.has(path));
+  return { baseByPath, derivedByPath, changed, deleted, added };
+};
+
+const descriptorForTrees = ({ base, derived, baseApplicationHash }) => {
+  const { derivedByPath, changed, deleted, added } = deltaBetween(base, derived);
+  if (added.length !== 0 || changed.length + deleted.length !== 1) {
+    throw new Error(
+      `staged application damage must be exactly one changed or deleted base file: ${JSON.stringify({
+        changed: changed.map(({ path }) => path),
+        deleted: deleted.map(({ path }) => path),
+        added: added.map(({ path }) => path),
+      })}`,
+    );
+  }
+  const baseEntry = changed[0] ?? deleted[0];
+  const derivedEntry = derivedByPath.get(baseEntry.path) ?? null;
+  const delta = Object.freeze({
+    change: derivedEntry === null ? 'deleted' : 'changed',
+    path: baseEntry.path,
+    base: Object.freeze({ size: baseEntry.size, sha256: baseEntry.sha256 }),
+    derived: derivedEntry === null
+      ? null
+      : Object.freeze({ size: derivedEntry.size, sha256: derivedEntry.sha256 }),
+  });
+  const files = frozenFiles(derived);
+  return Object.freeze({
+    kind: 'staged-damage',
+    baseApplicationHash,
+    treeSha256: inventorySha256(files),
+    files,
+    delta,
+  });
 };
 
 /** Mechanically bind a staged derivative to its verified base and exact one-file damage. */
@@ -61,37 +116,36 @@ export const describeStagedApplicationDerivative = ({
   }
   const base = applicationTreeInventory(publication.applicationRoot);
   const derived = applicationTreeInventory(staged);
-  const baseByPath = new Map(base.map((entry) => [entry.path, entry]));
-  const derivedByPath = new Map(derived.map((entry) => [entry.path, entry]));
-  const changedPaths = base
-    .filter((entry) => {
-      const next = derivedByPath.get(entry.path);
-      return next !== undefined && (next.size !== entry.size || next.sha256 !== entry.sha256);
-    })
-    .map(({ path }) => path);
-  const deletedPaths = base.filter(({ path }) => !derivedByPath.has(path)).map(({ path }) => path);
-  const addedPaths = derived.filter(({ path }) => !baseByPath.has(path)).map(({ path }) => path);
-  const expectedChanged = expectedChange === 'changed' ? [expectedPath] : [];
-  const expectedDeleted = expectedChange === 'deleted' ? [expectedPath] : [];
-  if (
-    JSON.stringify(changedPaths) !== JSON.stringify(expectedChanged)
-    || JSON.stringify(deletedPaths) !== JSON.stringify(expectedDeleted)
-    || addedPaths.length !== 0
-  ) {
+  const descriptor = descriptorForTrees({
+    base,
+    derived,
+    baseApplicationHash: publication.applicationHash,
+  });
+  if (descriptor.delta.path !== expectedPath || descriptor.delta.change !== expectedChange) {
     throw new Error(
       `staged application damage delta is not the intended case: ${JSON.stringify({
-        changedPaths, deletedPaths, addedPaths,
+        actual: { path: descriptor.delta.path, change: descriptor.delta.change },
+        expected: { path: expectedPath, change: expectedChange },
       })}`,
     );
   }
-  const treeSha256 = createHash('sha256').update(`${JSON.stringify(derived)}\n`).digest('hex');
-  return Object.freeze({
-    kind: 'staged-damage',
+  return descriptor;
+};
+
+/** Recompute the complete staged tree and exact base delta at an authority boundary. */
+export const assertStagedApplicationDerivative = ({ staged, publication, derivative }) => {
+  if (derivative?.baseApplicationHash !== publication.applicationHash) {
+    throw new Error('staged application derivative changed its verified base application');
+  }
+  const actual = descriptorForTrees({
+    base: applicationTreeInventory(publication.applicationRoot),
+    derived: applicationTreeInventory(staged),
     baseApplicationHash: publication.applicationHash,
-    treeSha256,
-    changedPaths,
-    deletedPaths,
   });
+  if (JSON.stringify(actual) !== JSON.stringify(derivative)) {
+    throw new Error('staged application derivative changed after its canonical inventory was sealed');
+  }
+  return derivative;
 };
 
 /**
