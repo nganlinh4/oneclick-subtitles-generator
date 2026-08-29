@@ -26,6 +26,7 @@ const LEGACY_REVISION_QUERY_LIMIT: i64 = 65_537;
 const PROJECT_RECONCILE_QUERY_LIMIT: i64 = 100_001;
 const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
 const CREATE_REASON: &str = "Project created";
+const MAX_PROJECT_CREATE_KEY_UTF16_UNITS: usize = 8_192;
 
 #[derive(Debug)]
 struct ProjectHeader {
@@ -210,12 +211,85 @@ pub(super) fn create_project(
     connection: &mut Connection,
     metadata: &ProjectMetadata,
 ) -> Result<ProjectSnapshot, DatabaseError> {
+    let transaction = connection.transaction()?;
+    let snapshot = create_project_in_transaction(&transaction, metadata)?;
+    transaction.commit()?;
+    Ok(snapshot)
+}
+
+/// Create one logical project exactly once for a caller-owned durable identity.
+///
+/// The receipt and the initial project revision commit in one SQLite transaction. A lost IPC
+/// response can therefore be retried in the same process or after restart: the exact key returns
+/// the authoritative project instead of allocating another ID. A key cannot be silently reused
+/// for a different requested name.
+pub(super) fn create_project_idempotent(
+    connection: &mut Connection,
+    metadata: &ProjectMetadata,
+    idempotency_key: &str,
+) -> Result<ProjectSnapshot, DatabaseError> {
+    validate_project_create_key(idempotency_key)?;
+    let transaction = connection.transaction()?;
+    let receipt = transaction
+        .query_row(
+            "SELECT project_id, requested_name
+             FROM project_create_receipts
+             WHERE idempotency_key = ?1",
+            [idempotency_key],
+            |row| Ok((row.get::<_, Uuid>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?;
+    if let Some((project_uuid, requested_name)) = receipt {
+        if requested_name != metadata.name() {
+            return Err(DatabaseError::ProjectCreateRequestConflict);
+        }
+        let project_id = ProjectId::from_uuid(project_uuid).map_err(|_| {
+            DatabaseError::Integrity(
+                "project create receipt contains an invalid project ID".to_owned(),
+            )
+        })?;
+        return load_project(&transaction, project_id)?.ok_or_else(|| {
+            DatabaseError::Integrity(
+                "project create receipt references a missing project".to_owned(),
+            )
+        });
+    }
+
+    let snapshot = create_project_in_transaction(&transaction, metadata)?;
+    transaction.execute(
+        "INSERT INTO project_create_receipts(
+           idempotency_key, project_id, requested_name, created_at_ms
+         ) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            idempotency_key,
+            metadata.id().as_uuid(),
+            metadata.name(),
+            now_ms(),
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(snapshot)
+}
+
+fn validate_project_create_key(idempotency_key: &str) -> Result<(), DatabaseError> {
+    if idempotency_key.is_empty()
+        || idempotency_key.encode_utf16().count() > MAX_PROJECT_CREATE_KEY_UTF16_UNITS
+        || idempotency_key.chars().any(char::is_control)
+    {
+        return Err(DatabaseError::InvalidProjectCreateKey);
+    }
+    Ok(())
+}
+
+fn create_project_in_transaction(
+    transaction: &Transaction<'_>,
+    metadata: &ProjectMetadata,
+) -> Result<ProjectSnapshot, DatabaseError> {
     let snapshot = ProjectSnapshot::new(metadata.clone(), 0, Vec::new(), Vec::new())
         .map_err(invalid_snapshot)?;
     let encoded = encode_snapshot(&snapshot)?;
     let revision_id = RevisionId::new();
     let timestamp = now_ms();
-    let transaction = connection.transaction()?;
 
     if transaction.query_row(
         "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
@@ -248,7 +322,6 @@ pub(super) fn create_project(
         params![metadata.id().as_uuid(), revision_id.as_uuid(), timestamp],
     )?;
     write_project_state(&transaction, &snapshot, revision_id, timestamp)?;
-    transaction.commit()?;
     Ok(snapshot)
 }
 
@@ -1304,8 +1377,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        DatabaseError, MAX_CURRENT_REVISIONS, MAX_REDO_REVISIONS, MAX_REDO_STACK_JSON_BYTES,
-        encode_snapshot, insert_revision, push_bounded,
+        DatabaseError, MAX_CURRENT_REVISIONS, MAX_PROJECT_CREATE_KEY_UTF16_UNITS,
+        MAX_REDO_REVISIONS, MAX_REDO_STACK_JSON_BYTES, encode_snapshot, insert_revision,
+        push_bounded,
     };
     use crate::storage::Database;
 
@@ -1502,6 +1576,73 @@ mod tests {
                 .expect("load reopened project"),
             Some(created)
         );
+    }
+
+    #[test]
+    fn idempotent_create_replays_one_authoritative_project_across_restart() {
+        let (_directory, path, database) = database();
+        let first_request = ProjectMetadata::new("Recovered project").expect("first request");
+        let created = database
+            .create_project_idempotent(&first_request, "cache:durable-create")
+            .expect("first create");
+
+        let retry_request = ProjectMetadata::new("Recovered project").expect("retry request");
+        assert_ne!(first_request.id(), retry_request.id());
+        let replayed = database
+            .create_project_idempotent(&retry_request, "cache:durable-create")
+            .expect("same-session replay");
+        assert_eq!(replayed, created);
+        assert!(matches!(
+            database.create_project_idempotent(
+                &ProjectMetadata::new("Different request").expect("conflicting request"),
+                "cache:durable-create",
+            ),
+            Err(DatabaseError::ProjectCreateRequestConflict)
+        ));
+
+        drop(database);
+        let reopened = Database::open(&path).expect("reopen database");
+        let after_restart = reopened
+            .create_project_idempotent(
+                &ProjectMetadata::new("Recovered project").expect("restart request"),
+                "cache:durable-create",
+            )
+            .expect("restart replay");
+        assert_eq!(after_restart, created);
+
+        let connection = Connection::open(path).expect("inspect durable receipt");
+        let project_count: i64 = connection
+            .query_row("SELECT count(*) FROM projects", [], |row| row.get(0))
+            .expect("count projects");
+        let receipt_count: i64 = connection
+            .query_row("SELECT count(*) FROM project_create_receipts", [], |row| {
+                row.get(0)
+            })
+            .expect("count receipts");
+        assert_eq!(project_count, 1);
+        assert_eq!(receipt_count, 1);
+    }
+
+    #[test]
+    fn idempotent_create_rejects_unstable_or_hostile_keys_without_writing() {
+        let (_directory, path, database) = database();
+        let metadata = ProjectMetadata::new("Rejected project").expect("request");
+        for invalid in ["", "contains\ncontrol"] {
+            assert!(matches!(
+                database.create_project_idempotent(&metadata, invalid),
+                Err(DatabaseError::InvalidProjectCreateKey)
+            ));
+        }
+        let oversized = "x".repeat(MAX_PROJECT_CREATE_KEY_UTF16_UNITS + 1);
+        assert!(matches!(
+            database.create_project_idempotent(&metadata, &oversized),
+            Err(DatabaseError::InvalidProjectCreateKey)
+        ));
+        let project_count: i64 = Connection::open(path)
+            .expect("inspect database")
+            .query_row("SELECT count(*) FROM projects", [], |row| row.get(0))
+            .expect("count projects");
+        assert_eq!(project_count, 0);
     }
 
     #[test]
@@ -1760,7 +1901,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 11);
+        assert_eq!(schema_version, 12);
         for revision in detached {
             let exists: bool = connection
                 .query_row(

@@ -15,6 +15,7 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!("sql/0009_job_result_deliveries.sql")),
         M::up(include_str!("sql/0010_project_speech_references.sql")),
         M::up(include_str!("sql/0011_project_render_scenes.sql")),
+        M::up(include_str!("sql/0012_project_create_receipts.sql")),
     ])
 }
 
@@ -502,7 +503,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
         let claim_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM media_artifact_job_claims
@@ -515,8 +516,8 @@ mod tests {
     }
 
     #[test]
-    fn every_prior_schema_version_upgrades_to_v11_idempotently() {
-        for prior_version in 1..=10 {
+    fn every_prior_schema_version_upgrades_to_v12_idempotently() {
+        for prior_version in 1..=11 {
             let database_file = NamedTempFile::new().expect("database file");
             let database_path = database_file.path();
             {
@@ -541,7 +542,7 @@ mod tests {
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version");
-            assert_eq!(version, 11, "failed to upgrade schema v{prior_version}");
+            assert_eq!(version, 12, "failed to upgrade schema v{prior_version}");
         }
     }
 
@@ -1077,7 +1078,7 @@ mod tests {
             assert_eq!(unrelated_after, unrelated_metadata);
         }
 
-        let mut connection = Connection::open(&database_path).expect("reopen v11 database");
+        let mut connection = Connection::open(&database_path).expect("reopen v12 database");
         migrations()
             .to_latest(&mut connection)
             .expect("repeat latest after reopen");
@@ -1087,7 +1088,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
         for (media_id, artifact_id) in valid_pairs {
             let claim_count: i64 = connection
                 .query_row(

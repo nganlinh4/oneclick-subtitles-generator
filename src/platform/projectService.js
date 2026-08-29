@@ -100,6 +100,18 @@ const validateProjectName = (name) => {
   return name;
 };
 
+const validateProjectCreateKey = (idempotencyKey) => {
+  if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0
+      || idempotencyKey.length > 8_192
+      || Array.from(idempotencyKey).some(character => /\p{Cc}/u.test(character))) {
+    throw new ProjectServiceError(
+      'invalidProjectCreateKey',
+      'A bounded stable project create identity is required'
+    );
+  }
+  return idempotencyKey;
+};
+
 const validateReason = (reason) => {
   if (typeof reason !== 'string' || reason.trim().length === 0) {
     throw new ProjectServiceError('invalidRevisionReason', 'A revision reason is required');
@@ -414,7 +426,7 @@ export const createProjectService = ({
     return uncertainOutcomeError(projectId, state);
   };
 
-  const invoke = (command, args) => {
+  const invoke = (command, args, createTimeoutError = null) => {
     const projectId = MUTATING_PROJECT_COMMANDS.has(command)
       ? args?.id ?? args?.snapshot?.metadata?.id ?? null
       : null;
@@ -442,7 +454,7 @@ export const createProjectService = ({
       schedule,
       cancel,
       projectId === null
-        ? null
+        ? createTimeoutError
         : () => markProjectOutcomeUncertain(projectId, command, nativeCall)
     );
     if (projectId === null) return bounded;
@@ -578,10 +590,23 @@ export const createProjectService = ({
     return readDirect(projectId);
   };
 
-  const createDetached = (name) => {
+  const createDetached = (name, idempotencyKey) => {
     const projectName = validateProjectName(name);
+    const createKey = validateProjectCreateKey(idempotencyKey);
     return Promise.resolve().then(async () => copySnapshot(
-      await invoke('project_create', { name: projectName })
+      await invoke(
+        'project_create',
+        { name: projectName, idempotencyKey: createKey },
+        () => new ProjectServiceError(
+          'projectCommandTimedOut',
+          'The desktop host did not respond to a project command in time. Retrying this create identity is safe.',
+          {
+            command: 'project_create',
+            idempotencyKey: createKey,
+            retrySafe: true,
+          }
+        )
+      )
     ));
   };
 

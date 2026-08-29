@@ -132,6 +132,10 @@ pub enum DatabaseError {
     BackupDestinationExists,
     #[error("project {0} already exists")]
     ProjectAlreadyExists(ProjectId),
+    #[error("the project create idempotency key is invalid")]
+    InvalidProjectCreateKey,
+    #[error("the project create idempotency key was already used for a different request")]
+    ProjectCreateRequestConflict,
     #[error("project {0} does not exist")]
     ProjectNotFound(ProjectId),
     #[error(

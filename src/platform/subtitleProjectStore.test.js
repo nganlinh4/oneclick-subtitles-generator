@@ -82,7 +82,7 @@ it('creates a project alias once and commits cache rows through the project muta
     endMs: 2_500,
     text: 'Stored',
   });
-  expect(projects.createProject).toHaveBeenCalledWith('cache-id');
+  expect(projects.createProject).toHaveBeenCalledWith('cache-id', 'cache-id');
   expect(invokeCommand).toHaveBeenCalledWith('subtitle_project_index_set', {
     index: {
       schemaVersion: 1,

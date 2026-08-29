@@ -73,10 +73,10 @@ it('bridges detached create and read using the exact Tauri argument contract', a
   const subscriber = vi.fn();
   service.subscribe(subscriber);
 
-  await expect(service.createDetachedProject('Example')).resolves.toEqual(snapshot());
+  await expect(service.createDetachedProject('Example', 'cache:example')).resolves.toEqual(snapshot());
   await expect(service.readProject(PROJECT_ID)).resolves.toEqual(snapshot(2));
   expect(invokeCommand.mock.calls).toEqual([
-    ['project_create', { name: 'Example' }],
+    ['project_create', { name: 'Example', idempotencyKey: 'cache:example' }],
     ['project_load', { id: PROJECT_ID }],
   ]);
   expect(service.createProject).toBe(service.createDetachedProject);
@@ -84,6 +84,141 @@ it('bridges detached create and read using the exact Tauri argument contract', a
   expect(service.mutateProject).toBe(service.mutateDetachedProject);
   expect(service.getActiveProjectSnapshot()).toEqual(snapshotB());
   expect(subscriber).not.toHaveBeenCalled();
+});
+
+it('requires callers to own a stable create identity before native work starts', () => {
+  const invokeCommand = vi.fn();
+  const service = createProjectService({ invokeCommand });
+
+  expect(() => service.createProject('Example')).toThrow(expect.objectContaining({
+    code: 'invalidProjectCreateKey',
+  }));
+  expect(() => service.createProject('Example', 'hostile\u0085key')).toThrow(expect.objectContaining({
+    code: 'invalidProjectCreateKey',
+  }));
+  expect(invokeCommand).not.toHaveBeenCalled();
+});
+
+it('retries the same durable create identity after timeout and converges on a late success', async () => {
+  vi.useFakeTimers();
+  try {
+    const firstNative = deferred();
+    let durable = null;
+    const invokeCommand = vi.fn((command, args) => {
+      if (command !== 'project_create') throw new Error(`Unexpected command: ${command}`);
+      if (invokeCommand.mock.calls.length === 1) return firstNative.promise;
+      expect(args.idempotencyKey).toBe('cache:late-success');
+      return Promise.resolve(durable);
+    });
+    const service = createProjectService({ invokeCommand });
+    const first = service.createProject('Example', 'cache:late-success');
+    const timeoutAssertion = expect(first).rejects.toMatchObject({
+      code: 'projectCommandTimedOut',
+      command: 'project_create',
+      idempotencyKey: 'cache:late-success',
+      retrySafe: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(PROJECT_COMMAND_TIMEOUT_MS);
+    await timeoutAssertion;
+
+    durable = snapshot();
+    firstNative.resolve(durable);
+    await expect(service.createProject('Example', 'cache:late-success')).resolves.toEqual(durable);
+    expect(invokeCommand).toHaveBeenCalledTimes(2);
+    expect(invokeCommand.mock.calls[0][1]).toEqual(invokeCommand.mock.calls[1][1]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('permits an exact create retry when the timed-out native attempt later fails', async () => {
+  vi.useFakeTimers();
+  try {
+    const firstNative = deferred();
+    const invokeCommand = vi.fn((command) => {
+      if (command !== 'project_create') throw new Error(`Unexpected command: ${command}`);
+      return invokeCommand.mock.calls.length === 1
+        ? firstNative.promise
+        : Promise.resolve(snapshot());
+    });
+    const service = createProjectService({ invokeCommand });
+    const first = service.createProject('Example', 'cache:late-failure');
+    const timeoutAssertion = expect(first).rejects.toMatchObject({
+      code: 'projectCommandTimedOut', retrySafe: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(PROJECT_COMMAND_TIMEOUT_MS);
+    await timeoutAssertion;
+    firstNative.reject(new Error('native transaction failed after timeout'));
+    await expect(service.createProject('Example', 'cache:late-failure')).resolves.toEqual(snapshot());
+    expect(invokeCommand.mock.calls.map(([, args]) => args.idempotencyKey)).toEqual([
+      'cache:late-failure',
+      'cache:late-failure',
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('does not let a never-settling create block its idempotent retry or unrelated projects', async () => {
+  vi.useFakeTimers();
+  try {
+    const invokeCommand = vi.fn((command, args) => {
+      if (command === 'project_load') return Promise.resolve(snapshotB());
+      if (command === 'project_create' && invokeCommand.mock.calls.filter(
+        ([candidate]) => candidate === 'project_create'
+      ).length === 1) return new Promise(() => undefined);
+      if (command === 'project_create') {
+        expect(args.idempotencyKey).toBe('cache:never-settles');
+        return Promise.resolve(snapshot());
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const service = createProjectService({ invokeCommand });
+    const first = service.createProject('Example', 'cache:never-settles');
+    const timeoutAssertion = expect(first).rejects.toMatchObject({
+      code: 'projectCommandTimedOut', retrySafe: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(PROJECT_COMMAND_TIMEOUT_MS);
+    await timeoutAssertion;
+    await expect(service.readProject(PROJECT_B_ID)).resolves.toEqual(snapshotB());
+    await expect(service.createProject('Example', 'cache:never-settles')).resolves.toEqual(snapshot());
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('recovers a lost create reply after desktop restart by replaying the stable identity', async () => {
+  vi.useFakeTimers();
+  try {
+    const durableReceipts = new Map();
+    const oldHost = vi.fn((command, args) => {
+      if (command !== 'project_create') throw new Error(`Unexpected command: ${command}`);
+      durableReceipts.set(args.idempotencyKey, snapshot());
+      return new Promise(() => undefined);
+    });
+    const oldService = createProjectService({ invokeCommand: oldHost });
+    const first = oldService.createProject('Example', 'cache:restart');
+    const timeoutAssertion = expect(first).rejects.toMatchObject({
+      code: 'projectCommandTimedOut', retrySafe: true,
+    });
+    await vi.advanceTimersByTimeAsync(PROJECT_COMMAND_TIMEOUT_MS);
+    await timeoutAssertion;
+
+    const restartedHost = vi.fn((command, args) => {
+      if (command !== 'project_create') throw new Error(`Unexpected command: ${command}`);
+      return Promise.resolve(durableReceipts.get(args.idempotencyKey));
+    });
+    const restartedService = createProjectService({ invokeCommand: restartedHost });
+    await expect(restartedService.createProject('Example', 'cache:restart')).resolves.toEqual(
+      snapshot()
+    );
+    expect(durableReceipts.size).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('serializes detached mutations without optimistic publication', async () => {

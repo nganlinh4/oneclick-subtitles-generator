@@ -43,7 +43,7 @@ const MAX_SETTINGS_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SETTINGS_BATCH_ENTRIES: usize = 4_096;
 const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
-const SCHEMA_VERSION: u32 = 11;
+const SCHEMA_VERSION: u32 = 12;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
 const MAX_MEDIA_RESOLUTION_BATCHES: usize = 64;
 const MAX_ARTIFACT_LIST_ITEMS: usize = 4_096;
@@ -387,6 +387,11 @@ enum Request {
         metadata: ProjectMetadata,
         reply: SyncSender<Result<ProjectSnapshot, DatabaseError>>,
     },
+    CreateProjectIdempotent {
+        metadata: ProjectMetadata,
+        idempotency_key: String,
+        reply: SyncSender<Result<ProjectSnapshot, DatabaseError>>,
+    },
     LoadProject {
         id: ProjectId,
         reply: SyncSender<Result<Option<ProjectSnapshot>, DatabaseError>>,
@@ -537,6 +542,7 @@ impl std::fmt::Debug for Request {
             Self::GetProjectRenderScene { .. } => "GetProjectRenderScene",
             Self::PutProjectRenderScene { .. } => "PutProjectRenderScene",
             Self::CreateProject { .. } => "CreateProject",
+            Self::CreateProjectIdempotent { .. } => "CreateProjectIdempotent",
             Self::LoadProject { .. } => "LoadProject",
             Self::ProjectHistoryStatus { .. } => "ProjectHistoryStatus",
             Self::ProjectTrackHistoryStatus { .. } => "ProjectTrackHistoryStatus",
@@ -1330,6 +1336,18 @@ impl Database {
         })
     }
 
+    pub fn create_project_idempotent(
+        &self,
+        metadata: &ProjectMetadata,
+        idempotency_key: &str,
+    ) -> Result<ProjectSnapshot, DatabaseError> {
+        self.request(|reply| Request::CreateProjectIdempotent {
+            metadata: metadata.clone(),
+            idempotency_key: idempotency_key.to_owned(),
+            reply,
+        })
+    }
+
     pub fn load_project(&self, id: ProjectId) -> Result<Option<ProjectSnapshot>, DatabaseError> {
         self.request(|reply| Request::LoadProject { id, reply })
     }
@@ -2045,6 +2063,17 @@ fn run_actor(
             }
             Request::CreateProject { metadata, reply } => {
                 let _ = reply.send(super::projects::create_project(&mut connection, &metadata));
+            }
+            Request::CreateProjectIdempotent {
+                metadata,
+                idempotency_key,
+                reply,
+            } => {
+                let _ = reply.send(super::projects::create_project_idempotent(
+                    &mut connection,
+                    &metadata,
+                    &idempotency_key,
+                ));
             }
             Request::LoadProject { id, reply } => {
                 let _ = reply.send(super::projects::load_project(&connection, id));

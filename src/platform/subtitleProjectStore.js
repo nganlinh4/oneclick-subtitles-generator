@@ -190,7 +190,10 @@ export const createSubtitleProjectStore = ({
       }
 
       if (entry === null && create) {
-        snapshot = await projects.createProject(projectNameForCache(alias));
+        // The durable cache identity is also the native create idempotency key. If the WebView
+        // loses an IPC response, this exact alias survives reload/restart and every retry resolves
+        // the same transaction receipt instead of allocating another project.
+        snapshot = await projects.createProject(projectNameForCache(alias), alias);
         entry = {
           cacheId: alias,
           projectId: snapshot.metadata.id,

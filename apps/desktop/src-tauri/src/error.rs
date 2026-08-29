@@ -322,6 +322,8 @@ impl From<DatabaseError> for CommandError {
             | DatabaseError::JobResultDeliveryTooLarge
             | DatabaseError::JobResultDeliveryConflict(_)) => database_job_error(error),
             error @ (DatabaseError::ProjectAlreadyExists(_)
+            | DatabaseError::InvalidProjectCreateKey
+            | DatabaseError::ProjectCreateRequestConflict
             | DatabaseError::ProjectNotFound(_)
             | DatabaseError::StaleProjectVersion { .. }
             | DatabaseError::StaleProjectTrackHistory { .. }
@@ -511,6 +513,14 @@ fn database_project_error(error: &DatabaseError) -> CommandError {
         DatabaseError::ProjectAlreadyExists(_) => {
             CommandError::fixed("projectAlreadyExists", "The project already exists.")
         }
+        DatabaseError::InvalidProjectCreateKey => CommandError::fixed(
+            "invalidProjectCreateKey",
+            "The project create identity is invalid.",
+        ),
+        DatabaseError::ProjectCreateRequestConflict => CommandError::fixed(
+            "projectCreateConflict",
+            "The project create identity was already used for a different request.",
+        ),
         DatabaseError::ProjectNotFound(_) => {
             CommandError::fixed("projectNotFound", "The project does not exist.")
         }

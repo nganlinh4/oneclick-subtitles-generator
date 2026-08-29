@@ -291,11 +291,15 @@ pub(crate) async fn subtitle_project_alias_remove(
 pub(crate) async fn project_create(
     state: State<'_, DesktopState>,
     name: String,
+    idempotency_key: String,
 ) -> CommandResult<ProjectSnapshot> {
     let metadata = ProjectMetadata::new(name)
         .map_err(|error| CommandError::invalid_input(error.to_string()))?;
     let database = state.database.clone();
-    run_database_task("create project", move || database.create_project(&metadata)).await
+    run_database_task("create project", move || {
+        database.create_project_idempotent(&metadata, &idempotency_key)
+    })
+    .await
 }
 
 #[tauri::command]
