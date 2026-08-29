@@ -346,14 +346,16 @@ impl AsrService {
         let mut event_count = 0;
         loop {
             let session = state.session.as_mut().ok_or(AsrError::Synchronization)?;
-            if session.try_wait()?.is_some() {
-                return Err(AsrError::WorkerFailed("worker process exited"));
-            }
             match session.receive(POLL_INTERVAL) {
                 SessionPoll::Message(ReaderMessage::Failed(error)) => return Err(error),
                 SessionPoll::Disconnected => {
                     return Err(AsrError::Protocol("worker response stream closed"));
                 }
+                // The stdout reader owns worker termination detection. A fast worker can write a
+                // terminal frame (or reader error) and exit while that reader thread is starved;
+                // consulting the child status on a timeout would replace the queued protocol
+                // outcome with a scheduler-dependent generic crash. EOF disconnects the channel,
+                // so an exited worker cannot leave this loop spinning indefinitely.
                 SessionPoll::Empty => {}
                 SessionPoll::Message(ReaderMessage::Event(event)) => {
                     event_count += 1;
@@ -434,15 +436,15 @@ impl AsrService {
         let mut event_count = 0;
         loop {
             let session = state.session.as_mut().ok_or(AsrError::Synchronization)?;
-            if session.try_wait()?.is_some() {
-                return Err(AsrError::WorkerFailed("worker process exited"));
-            }
-
             match session.receive(POLL_INTERVAL) {
                 SessionPoll::Message(ReaderMessage::Failed(error)) => return Err(error),
                 SessionPoll::Disconnected => {
                     return Err(AsrError::Protocol("worker response stream closed"));
                 }
+                // The stdout reader owns worker termination detection. Process exit can race
+                // ahead of the reader even after a malformed frame is fully written, while EOF
+                // will always close this channel. Waiting for the channel therefore preserves the
+                // specific protocol result without weakening cancellation or timeout handling.
                 SessionPoll::Empty => {}
                 SessionPoll::Message(ReaderMessage::Event(event)) => {
                     event_count += 1;

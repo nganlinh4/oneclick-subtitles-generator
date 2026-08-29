@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 struct Fixture {
-    _serial: MutexGuard<'static, ()>,
+    _serial: Option<MutexGuard<'static, ()>>,
     _directory: tempfile::TempDir,
     service: AsrService,
     request: TranscriptionRequest,
@@ -20,6 +20,14 @@ impl Fixture {
         let serial = worker_test_lock()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::create(mode, Some(serial))
+    }
+
+    fn concurrent(mode: &str) -> Self {
+        Self::create(mode, None)
+    }
+
+    fn create(mode: &str, serial: Option<MutexGuard<'static, ()>>) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let model = directory.path().join("private-model");
         std::fs::create_dir(&model).unwrap();
@@ -257,6 +265,43 @@ fn protocol_drift_and_invalid_model_output_are_fail_closed() {
             _ => unreachable!(),
         }
         assert!(!fixture.service.is_warm());
+    }
+}
+
+#[test]
+fn terminal_reader_failures_win_fast_worker_exit_under_contention() {
+    const WORKERS: usize = 16;
+    let _serial = worker_test_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let barrier = Arc::new(std::sync::Barrier::new(WORKERS));
+    let workers = (0..WORKERS)
+        .map(|index| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let mode = if index % 2 == 0 {
+                    "unframed"
+                } else {
+                    "oversized"
+                };
+                let fixture = Fixture::concurrent(mode);
+                barrier.wait();
+                let error = fixture
+                    .service
+                    .transcribe(
+                        &fixture.request,
+                        &RunControl::new(Duration::from_secs(5)).unwrap(),
+                    )
+                    .unwrap_err();
+                assert!(
+                    matches!(error, AsrError::OutputLimit),
+                    "{mode} returned {error:?}"
+                );
+            })
+        })
+        .collect::<Vec<_>>();
+    for worker in workers {
+        worker.join().unwrap();
     }
 }
 
