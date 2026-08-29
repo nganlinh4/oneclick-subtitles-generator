@@ -51,6 +51,8 @@ const createHarness = ({
   storage = new MemoryStorage(),
   adapters = {},
   pending = [],
+  pendingResults = vi.fn().mockResolvedValue(pending),
+  discardAsrResult = vi.fn().mockResolvedValue(true),
 } = {}) => {
   const byId = new Map(knownJobs.map((snapshot) => [snapshot.id, snapshot]));
   const invokeCommand = vi.fn(async (command, args) => {
@@ -67,11 +69,19 @@ const createHarness = ({
     invokeCommand,
     isNativeRuntime: () => true,
     adapters,
-    pendingResults: vi.fn().mockResolvedValue(pending),
+    pendingResults,
+    discardAsrResult,
     releaseRenderPlayback,
     storage,
   });
-  return { coordinator, invokeCommand, releaseRenderPlayback, storage };
+  return {
+    coordinator,
+    discardAsrResult,
+    invokeCommand,
+    pendingResults,
+    releaseRenderPlayback,
+    storage,
+  };
 };
 
 describe('native durable-job startup recovery', () => {
@@ -92,6 +102,7 @@ describe('native durable-job startup recovery', () => {
     const first = coordinator.start();
     const concurrent = coordinator.start();
     expect(concurrent).toBe(first);
+    await vi.waitFor(() => expect(releaseFirstList).toBeTypeOf('function'));
     releaseFirstList([]);
     await expect(first).resolves.toEqual({ recovered: 0, discarded: 0, unavailable: false });
     await expect(coordinator.start()).resolves.toEqual({
@@ -162,20 +173,22 @@ describe('native durable-job startup recovery', () => {
     expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBeNull();
   });
 
-  test('discovers SQLite result deliveries without localStorage and retains them on transport failure', async () => {
+  test('retains an orphaned ASR result for exact retry when discard transport fails', async () => {
     const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
     const header = {
       deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
       jobId: OTHER_ID,
       kind: 'asrTranscription',
     };
-    const adapter = vi.fn().mockRejectedValue(new Error('WebView transport closed'));
+    const adapter = vi.fn();
+    const discardAsrResult = vi.fn().mockRejectedValue(new Error('WebView transport closed'));
     const storage = new MemoryStorage();
     const { coordinator } = createHarness({
       jobs: [transcription],
       storage,
       adapters: { transcribe: adapter },
       pending: [header],
+      discardAsrResult,
     });
 
     await expect(coordinator.start()).resolves.toEqual({
@@ -183,8 +196,185 @@ describe('native durable-job startup recovery', () => {
       discarded: 0,
       unavailable: true,
     });
-    expect(adapter).toHaveBeenCalledWith(OTHER_ID);
+    expect(discardAsrResult).toHaveBeenCalledExactlyOnceWith(
+      OTHER_ID,
+      header.deliveryId,
+    );
+    expect(adapter).not.toHaveBeenCalled();
     expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBe(JSON.stringify([OTHER_ID]));
+  });
+
+  test.each([
+    ['after window one before aggregate commit', []],
+    ['after aggregate commit before acknowledgement', [{ text: 'durable aggregate' }]],
+    ['after an overlapping editor change', [{ text: 'newer manual edit' }]],
+  ])('relaunch discards exact orphaned ASR output %s without applying or claiming it', async (
+    _crashPoint,
+    durableRows,
+  ) => {
+    const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'asrTranscription',
+    };
+    const adapter = vi.fn();
+    const before = structuredClone(durableRows);
+    const { coordinator, discardAsrResult, invokeCommand } = createHarness({
+      jobs: [transcription],
+      adapters: { transcribe: adapter },
+      pending: [header],
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+
+    expect(discardAsrResult).toHaveBeenCalledExactlyOnceWith(
+      OTHER_ID,
+      header.deliveryId,
+    );
+    expect(adapter).not.toHaveBeenCalled();
+    expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('jobs_list', {});
+    expect(coordinator.list('transcribe')).toEqual([]);
+    expect(durableRows).toEqual(before);
+  });
+
+  test('a lost acknowledgement remains retryable and the next recovery attempt releases it', async () => {
+    const header = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'asrTranscription',
+    };
+    let pending = true;
+    const pendingResults = vi.fn(async () => (pending ? [header] : []));
+    const discardAsrResult = vi.fn()
+      .mockRejectedValueOnce(new Error('transport closed'))
+      .mockImplementationOnce(async () => { pending = false; });
+    const storage = new MemoryStorage();
+    const { coordinator } = createHarness({
+      jobs: [],
+      knownJobs: [],
+      storage,
+      pendingResults,
+      discardAsrResult,
+    });
+
+    await expect(coordinator.ensureReady()).rejects.toMatchObject({
+      code: 'nativeJobRecoveryUnavailable',
+      result: { recovered: 0, discarded: 0, unavailable: true },
+    });
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBe(JSON.stringify([OTHER_ID]));
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(discardAsrResult).toHaveBeenCalledTimes(2);
+    expect(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).toBeNull();
+  });
+
+  test('drains a saturated 256-result ASR page without claiming payloads or exhausting candidates', async () => {
+    const headers = Array.from({ length: 256 }, () => ({
+      deliveryId: createUuidV7(),
+      jobId: createUuidV7(),
+      kind: 'asrTranscription',
+    }));
+    const remaining = new Set(headers.map(({ jobId }) => jobId));
+    const pendingResults = vi.fn(async () => headers.filter(({ jobId }) => remaining.has(jobId)));
+    const discardAsrResult = vi.fn(async (jobId) => { remaining.delete(jobId); });
+    const adapter = vi.fn();
+    const { coordinator, invokeCommand } = createHarness({
+      jobs: [],
+      knownJobs: [],
+      adapters: { transcribe: adapter },
+      pendingResults,
+      discardAsrResult,
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 256,
+      unavailable: false,
+    });
+
+    expect(discardAsrResult).toHaveBeenCalledTimes(256);
+    expect(pendingResults).toHaveBeenCalledTimes(2);
+    expect(adapter).not.toHaveBeenCalled();
+    expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('jobs_list', {});
+    expect(remaining.size).toBe(0);
+  });
+
+  test('bounds an oversized ASR cleanup attempt and deterministically continues on retry', async () => {
+    const headers = Array.from({ length: 1_025 }, () => ({
+      deliveryId: createUuidV7(),
+      jobId: createUuidV7(),
+      kind: 'asrTranscription',
+    }));
+    const remaining = new Set(headers.map(({ jobId }) => jobId));
+    const pendingResults = vi.fn(async () => headers
+      .filter(({ jobId }) => remaining.has(jobId))
+      .slice(0, 256));
+    const discardAsrResult = vi.fn(async (jobId) => { remaining.delete(jobId); });
+    const { coordinator } = createHarness({
+      jobs: [],
+      knownJobs: [],
+      pendingResults,
+      discardAsrResult,
+    });
+
+    await expect(coordinator.ensureReady()).rejects.toMatchObject({
+      code: 'nativeJobRecoveryUnavailable',
+      result: { recovered: 0, discarded: 1_024, unavailable: true },
+    });
+    expect(remaining.size).toBe(1);
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 0,
+      discarded: 1,
+      unavailable: false,
+    });
+    expect(remaining.size).toBe(0);
+    expect(discardAsrResult).toHaveBeenCalledTimes(1_025);
+  });
+
+  test('discards only orphaned ASR deliveries and preserves another feature result for recovery', async () => {
+    const transcription = job({ id: OTHER_ID, kind: 'transcribe', state: 'succeeded' });
+    const translation = job({ id: SPEECH_ID, kind: 'translate', state: 'succeeded' });
+    const asrHeader = {
+      deliveryId: '0198a8d7-dbfb-7ee0-a949-f13427fdd78a',
+      jobId: OTHER_ID,
+      kind: 'asrTranscription',
+    };
+    const translationHeader = {
+      deliveryId: '0198a8d7-dbfc-7ee0-a949-f13427fdd78a',
+      jobId: SPEECH_ID,
+      kind: 'geminiText',
+    };
+    const translate = vi.fn(async () => ({ job: translation, delivery: translationHeader }));
+    const { coordinator, discardAsrResult } = createHarness({
+      jobs: [transcription, translation],
+      adapters: { translate },
+      pending: [asrHeader, translationHeader],
+    });
+
+    await expect(coordinator.ensureReady()).resolves.toEqual({
+      recovered: 1,
+      discarded: 1,
+      unavailable: false,
+    });
+
+    expect(discardAsrResult).toHaveBeenCalledExactlyOnceWith(
+      OTHER_ID,
+      asrHeader.deliveryId,
+    );
+    expect(translate).toHaveBeenCalledExactlyOnceWith(SPEECH_ID);
+    expect(coordinator.list('translate')).toEqual([
+      expect.objectContaining({ job: translation }),
+    ]);
   });
 
   test('synchronously destroys legacy payload records and persists only UUID job IDs', async () => {
@@ -250,8 +440,8 @@ describe('native durable-job startup recovery', () => {
 
     await expect(coordinator.start()).resolves.toEqual({
       recovered: 3,
-      discarded: 0,
-      unavailable: true,
+      discarded: 1,
+      unavailable: false,
     });
     expect(invokeCommand).toHaveBeenNthCalledWith(1, 'jobs_list', {});
     expect(invokeCommand.mock.calls.slice(1).map((call) => call[0]))
@@ -262,7 +452,7 @@ describe('native durable-job startup recovery', () => {
     expect(coordinator.list().map(({ job: snapshot }) => snapshot.id).sort())
       .toEqual([ALIGNMENT_ID, RENDER_ID, SPEECH_ID].sort());
     expect(JSON.parse(storage.getItem(NATIVE_JOB_IDS_STORAGE_KEY)).sort())
-      .toEqual([ALIGNMENT_ID, OTHER_ID, RENDER_ID, SPEECH_ID].sort());
+      .toEqual([ALIGNMENT_ID, RENDER_ID, SPEECH_ID].sort());
   });
 
   test('ignores unremembered interrupted history instead of resurrecting stale work', async () => {

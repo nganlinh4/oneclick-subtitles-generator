@@ -22,6 +22,8 @@ export const LEGACY_NATIVE_JOB_STORAGE_KEYS = Object.freeze([
 const MAX_REMEMBERED_JOB_IDS = 64;
 const MAX_JOB_SNAPSHOTS = 512;
 const MAX_RECOVERY_CANDIDATES = MAX_JOB_SNAPSHOTS + MAX_REMEMBERED_JOB_IDS;
+const MAX_PENDING_RESULT_PAGE = 256;
+const MAX_ASR_DISCARD_PASSES = 4;
 const JOB_KINDS = new Set([
   'importMedia',
   'probeMedia',
@@ -52,7 +54,6 @@ export const RECOVERABLE_NATIVE_JOB_KINDS = Object.freeze([
   'alignNarration',
   'renderVideo',
   'synthesizeNarration',
-  'transcribe',
   'translate',
   'analyzeSubtitles',
 ]);
@@ -221,7 +222,6 @@ const defaultAdapters = Object.freeze({
   alignNarration: nativeNarrationAlignmentService.getAlignmentResult,
   renderVideo: getNativeRenderResult,
   synthesizeNarration: getSpeechJobResults,
-  transcribe: claimJobResult,
   translate: claimJobResult,
   analyzeSubtitles: claimJobResult,
 });
@@ -232,6 +232,11 @@ export const createNativeJobRecoveryCoordinator = ({
   adapters = defaultAdapters,
   releaseRenderPlayback = releaseNativeRenderPlayback,
   pendingResults = () => listPendingJobResults({ invokeCommand }),
+  discardAsrResult = (jobId, deliveryId) => acknowledgeJobResult(
+    jobId,
+    deliveryId,
+    { invokeCommand },
+  ),
   storage: providedStorage,
 } = {}) => {
   const storage = storageOrNull(providedStorage);
@@ -284,6 +289,53 @@ export const createNativeJobRecoveryCoordinator = ({
     return Object.freeze([...recovered.values()]
       .filter((entry) => kind === null || entry.job.kind === kind)
       .sort((left, right) => right.job.id.localeCompare(left.job.id)));
+  };
+
+  /**
+   * ASR windows form one frontend-owned aggregate, but no durable aggregate journal exists. A
+   * process restart therefore destroys the only range-revision capability that could authorize
+   * their merge. Replaying even a complete set would be a stale overwrite; retaining them forever
+   * would eventually exhaust the bounded pending-result page. Release only exact typed ASR
+   * deliveries, in bounded pages, and require the customer to restart inference against a fresh
+   * native revision. Other result kinds remain available to their feature-specific consumers.
+   */
+  const discardOrphanedAsrResults = async () => {
+    let discarded = 0;
+    let pending = Object.freeze([]);
+    const asrJobIds = new Set();
+    for (let pass = 0; pass < MAX_ASR_DISCARD_PASSES; pass += 1) {
+      try {
+        pending = await pendingResults();
+      } catch {
+        return { discarded, pending: Object.freeze([]), asrJobIds, unavailable: true };
+      }
+      const orphaned = pending.filter(({ kind }) => kind === 'asrTranscription');
+      orphaned.forEach(({ jobId }) => asrJobIds.add(jobId));
+      if (orphaned.length === 0) {
+        return { discarded, pending, asrJobIds, unavailable: false };
+      }
+      let unavailable = false;
+      for (const { jobId, deliveryId } of orphaned) {
+        try {
+          await discardAsrResult(jobId, deliveryId);
+          forget(jobId);
+          discarded += 1;
+        } catch {
+          // The native row remains the authority and will be rediscovered. Never claim or expose a
+          // payload whose exact acknowledgement did not complete.
+          remember(jobId);
+          unavailable = true;
+        }
+      }
+      const retained = Object.freeze(pending.filter(({ kind }) => kind !== 'asrTranscription'));
+      if (unavailable) return { discarded, pending: retained, asrJobIds, unavailable: true };
+      if (pending.length < MAX_PENDING_RESULT_PAGE) {
+        return { discarded, pending: retained, asrJobIds, unavailable: false };
+      }
+    }
+    // A hostile or very old database may contain more than four full pages. Yield after bounded
+    // work; `start()` deliberately becomes retryable and the next attempt continues draining.
+    return { discarded, pending: Object.freeze([]), asrJobIds, unavailable: true };
   };
 
   const recoverOne = async (jobId, listedJob, wasRemembered, hasPendingResult) => {
@@ -353,21 +405,20 @@ export const createNativeJobRecoveryCoordinator = ({
 
   const runStartAttempt = async () => {
     scrubLegacyPayloads(storage);
-    const remembered = new Set(readRememberedIds(storage));
+    const initialRemembered = new Set(readRememberedIds(storage));
     if (!isNativeRuntime()) {
       writeRememberedIds(storage, []);
-      return unavailableResult(remembered.size);
+      return unavailableResult(initialRemembered.size);
     }
+    const orphanCleanup = await discardOrphanedAsrResults();
+    const remembered = new Set(readRememberedIds(storage));
     let jobs;
-    let pending;
     try {
-      [jobs, pending] = await Promise.all([
-        invokeCommand('jobs_list', {}).then(normalizeJobList),
-        pendingResults(),
-      ]);
+      jobs = await invokeCommand('jobs_list', {}).then(normalizeJobList);
     } catch {
-      return unavailableResult();
+      return unavailableResult(orphanCleanup.discarded);
     }
+    const pending = orphanCleanup.pending;
     const byId = new Map(jobs.map((job) => [job.id, job]));
     const pendingIds = new Set(pending.map(({ jobId }) => jobId));
     const candidateIds = new Set([
@@ -376,11 +427,13 @@ export const createNativeJobRecoveryCoordinator = ({
       ...jobs.filter((job) => (
         recoverableKinds.has(job.kind) && ACTIVE_JOB_STATES.has(job.state)
       )).map((job) => job.id),
-    ]);
-    if (candidateIds.size > MAX_RECOVERY_CANDIDATES) return unavailableResult();
+    ].filter((jobId) => !orphanCleanup.asrJobIds.has(jobId)));
+    if (candidateIds.size > MAX_RECOVERY_CANDIDATES) {
+      return unavailableResult(orphanCleanup.discarded);
+    }
     let recoveredCount = 0;
-    let discardedCount = 0;
-    let unavailable = false;
+    let discardedCount = orphanCleanup.discarded;
+    let unavailable = orphanCleanup.unavailable;
     for (const jobId of [...candidateIds].sort()) {
       const listedJob = byId.get(jobId);
       const outcome = await recoverOne(

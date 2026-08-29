@@ -207,6 +207,32 @@ it('keeps the native ASR delivery pending when the durable subtitle checkpoint f
   expect(acknowledgeJobResult).not.toHaveBeenCalled();
 });
 
+it('does not turn a committed aggregate into false failure when delivery acknowledgement is lost', async () => {
+  const receipt = {
+    jobId: '018f22ea-6f3e-7cc0-a555-333333333333',
+    deliveryId: '018f22ea-6f3e-7cc0-a555-444444444444',
+  };
+  const generated = [{ start: 10, end: 11, text: 'durably committed' }];
+  processAsrSegment.mockImplementation(async (_engine, _input, part, _options, hooks) => {
+    await hooks.onMergeSegment(part, generated);
+    hooks.onDeliveryReceipt(receipt);
+  });
+  acknowledgeJobResult.mockRejectedValueOnce(new Error('transport closed after native commit'));
+  const params = createParams({
+    persistGeneratedSegment: vi.fn(async () => ({ subtitles: generated })),
+  });
+
+  await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(params.persistGeneratedSegment).toHaveBeenCalledBefore(acknowledgeJobResult);
+  expect(acknowledgeJobResult).toHaveBeenCalledExactlyOnceWith(
+    receipt.jobId,
+    receipt.deliveryId,
+  );
+  expect(publishStreamingComplete).toHaveBeenCalledTimes(1);
+  expect(params.setStatus).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+});
+
 it('restores the current durable rows, not a deleted pre-run baseline, after a later window fails', async () => {
   const baseline = [{ start: 0, end: 2, text: 'baseline later deleted' }];
   const authoritativeAfterFailure = [];
