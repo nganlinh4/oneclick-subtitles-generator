@@ -9,6 +9,10 @@ param(
 
   [string]$ResultPath,
 
+  [switch]$PublishPackageReceipt,
+
+  [string]$RepositoryRoot,
+
   [switch]$IncludeMediaFlow,
 
   [string]$LocalMediaPath
@@ -57,18 +61,37 @@ $installer = [IO.Path]::GetFullPath($InstallerPath)
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
   throw "Installer does not exist: $installer"
 }
+$installerItem = Get-Item -LiteralPath $installer -Force
+if (($installerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+    -or $null -ne $installerItem.LinkType) {
+  throw 'Installer must not be a reparse point or filesystem link'
+}
+$repository = if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+  [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+} else {
+  [IO.Path]::GetFullPath($RepositoryRoot)
+}
 $packageReceipt = if ([string]::IsNullOrWhiteSpace($PackageReceiptPath)) {
   "$installer.osg-package-receipt.json"
 } else {
   [IO.Path]::GetFullPath($PackageReceiptPath)
 }
-$receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
-  --receipt $packageReceipt --installer $installer
-if ($LASTEXITCODE -ne 0) { throw 'Installer package receipt verification failed' }
-$receipt = $receiptJson | ConvertFrom-Json
-$sourceCommit = $receipt.source.commit
-$sourceTree = $receipt.source.tree
-$installerSha256 = $receipt.installerSha256
+$receipt = $null
+if ($PublishPackageReceipt) {
+  if ((Test-Path -LiteralPath $packageReceipt) `
+      -or (Test-Path -LiteralPath "$packageReceipt.sig")) {
+    throw 'Installer package receipt publication paths must be clean'
+  }
+  if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) `
+      -and [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PATH)) {
+    throw 'Installer package receipt publication requires the Tauri updater signing key'
+  }
+} else {
+  $receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+    --receipt $packageReceipt --installer $installer --repository-root $repository
+  if ($LASTEXITCODE -ne 0) { throw 'Installer package receipt verification failed' }
+  $receipt = $receiptJson | ConvertFrom-Json
+}
 
 $localMediaFixture = $null
 $localMediaFixtureSha256 = $null
@@ -116,9 +139,20 @@ function Install-Application {
   if (-not $installRoot.StartsWith($localAppDataRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Install root escaped LOCALAPPDATA: $installRoot"
   }
+  $installRootItem = Get-Item -LiteralPath $installRoot -Force
+  if (-not $installRootItem.PSIsContainer `
+      -or ($installRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+      -or $null -ne $installRootItem.LinkType) {
+    throw 'Install root must be one real directory, not a reparse point or filesystem link'
+  }
   $executable = [IO.Path]::GetFullPath((Join-Path $installRoot 'osg-desktop.exe'))
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Installed executable is missing: $executable"
+  }
+  $executableItem = Get-Item -LiteralPath $executable -Force
+  if (($executableItem.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+      -or $null -ne $executableItem.LinkType) {
+    throw 'Installed executable must not be a reparse point or filesystem link'
   }
 
   [pscustomobject]@{
@@ -3027,6 +3061,11 @@ function Uninstall-Application {
   if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
     throw 'NSIS uninstaller is missing from the validated installation root'
   }
+  $uninstallerItem = Get-Item -LiteralPath $uninstaller -Force
+  if (($uninstallerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) `
+      -or $null -ne $uninstallerItem.LinkType) {
+    throw 'NSIS uninstaller must not be a reparse point or filesystem link'
+  }
   $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
   if ($uninstall.ExitCode -ne 0) {
     throw "NSIS uninstaller exited with code $($uninstall.ExitCode)"
@@ -3043,11 +3082,37 @@ function Uninstall-Application {
 }
 
 $installed = Install-Application
-& node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
-  --receipt $packageReceipt --installer $installer --installed-exe $installed.Executable | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  throw 'Installed application payload does not match the immutable installer package receipt'
+$receiptJson = if ($PublishPackageReceipt) {
+  & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+    --publish true `
+    --receipt $packageReceipt `
+    --installer $installer `
+    --installed-exe $installed.Executable `
+    --repository-root $repository
+} else {
+  & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+    --receipt $packageReceipt `
+    --installer $installer `
+    --installed-exe $installed.Executable `
+    --repository-root $repository
 }
+if ($LASTEXITCODE -ne 0) {
+  throw 'Installed application payload does not match the signed immutable installer package receipt'
+}
+if ($PublishPackageReceipt) {
+  $receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+    --receipt $packageReceipt `
+    --installer $installer `
+    --installed-exe $installed.Executable `
+    --repository-root $repository
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Published installer package receipt failed immediate signed-tree verification'
+  }
+}
+$receipt = $receiptJson | ConvertFrom-Json
+$sourceCommit = $receipt.source.commit
+$sourceTree = $receipt.source.tree
+$installerSha256 = $receipt.installerSha256
 if ((Get-FileHash -LiteralPath $installed.Executable -Algorithm SHA256).Hash.ToLowerInvariant() `
     -cne $receipt.payloadExecutableSha256) {
   throw 'Installed executable does not match the immutable installer package receipt'
@@ -3082,6 +3147,14 @@ $executableSha256 = (Get-FileHash -LiteralPath $installed.Executable -Algorithm 
 Uninstall-Application -Installation $installed
 
 $reinstalled = Install-Application
+& node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+  --receipt $packageReceipt `
+  --installer $installer `
+  --installed-exe $reinstalled.Executable `
+  --repository-root $repository | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw 'Reinstalled application payload differs from the signed immutable installer package receipt'
+}
 if ((Get-FileHash -LiteralPath $reinstalled.Executable -Algorithm SHA256).Hash.ToLowerInvariant() -ne $executableSha256) {
   throw 'Reinstalled executable differs from the validated first installation'
 }
@@ -3247,6 +3320,7 @@ OSG installed media smoke
     }
     installerSha256 = $installerSha256
     packageReceiptSha256 = $receipt.receiptSha256
+    packageReceiptSignatureSha256 = $receipt.receiptSignatureSha256
     applicationHash = $receipt.applicationHash
     payloadExecutableSha256 = $receipt.payloadExecutableSha256
     journeys = @('installedGolden')

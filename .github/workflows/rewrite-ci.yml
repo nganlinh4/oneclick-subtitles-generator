@@ -111,7 +111,7 @@ jobs:
           npm run verify:managed-delivery
 
       - name: Test release-readiness and artifact gates
-        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
+        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/installer-package-receipt.test.js scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
 
       - name: Test frozen CSS compatibility gates
         run: node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs
@@ -378,6 +378,9 @@ jobs:
 
       - name: Install and launch from the isolated clean runner profile
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $installer = Get-ChildItem -LiteralPath "target\x86_64-pc-windows-msvc\release\bundle\nsis" -File -Filter "*.exe"
           if (@($installer).Count -ne 1) {
@@ -385,13 +388,12 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $receipt = "$($installer.FullName).osg-package-receipt.json"
-          node scripts/installer-package-receipt.js --receipt $receipt --installer $installer.FullName --payload-exe "target\x86_64-pc-windows-msvc\release\osg-desktop.exe" --repository-root $PWD
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'
           $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
           if (Test-Path -LiteralPath $pickerEvidencePath) {
             throw 'Installed branch native-picker evidence path was not clean'
           }
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -PublishPackageReceipt -RepositoryRoot $PWD -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed branch smoke omitted its structured result evidence'
           }
@@ -410,6 +412,8 @@ jobs:
             ${{ runner.temp }}/osg-*.png
             ${{ runner.temp }}/osg-installed-branch-result.json
             ${{ runner.temp }}/osg-installed-native-picker-evidence.json
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.osg-package-receipt.json
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.osg-package-receipt.json.sig
           if-no-files-found: warn
           retention-days: 7
 
@@ -459,6 +463,7 @@ jobs:
           Invoke-WebRequest -Uri "$release/$asset" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe")
           Invoke-WebRequest -Uri "$release/$asset.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.sig")
           Invoke-WebRequest -Uri "$release/$asset.osg-package-receipt.json" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json")
+          Invoke-WebRequest -Uri "$release/$asset.osg-package-receipt.json.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json.sig")
 
       - name: Validate installer architecture, resources, and updater signature
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis

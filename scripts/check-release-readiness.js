@@ -71,7 +71,7 @@ const DOWNLOAD_HANDLERS_SHA256 =
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
   '95103ae096e6b8bbdbc0727d2fa161c9980a6d02924735d69f79663eb1a1adae';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  '7671c6c407309dbb39cc4a8a5045cd099c2a40e33ee230b1b2c22d6c8adf7c66';
+  '62e5d3411f136856c74fd65f02ec908dd482dd9c44935bdc06ace0875c5a04a1';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1116,7 +1116,10 @@ function assertWorkflowCommands(workflow) {
     'Build workflow permissions must remain contents: read only',
   );
   const signedUpdaterWrapper = workflowJobBlock(workflow, 'signed-updater-smoke');
-  const unsignedWorkflow = workflow.replace(signedUpdaterWrapper, '');
+  const authenticatedInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
+  const unsignedWorkflow = workflow
+    .replace(signedUpdaterWrapper, '')
+    .replace(authenticatedInstalledSmoke, '');
   invariant(
     /^\s{4}if: github\.event_name == 'workflow_dispatch' && inputs\.job == 'signed-updater-smoke'\s*$/m
       .test(signedUpdaterWrapper)
@@ -1124,6 +1127,20 @@ function assertWorkflowCommands(workflow) {
       && signedUpdaterWrapper.includes('TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}')
       && signedUpdaterWrapper.includes('TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}'),
     'Only the manual signed-updater wrapper may forward the two reviewed signing secrets',
+  );
+  const installedSmokeSecrets = [...authenticatedInstalledSmoke.matchAll(
+    /\$\{\{\s*secrets\.([A-Z0-9_]+)\s*}}/g,
+  )].map((match) => match[1]).sort();
+  invariant(
+    /^\s{4}if: github\.event_name == 'workflow_dispatch' && inputs\.job == 'installed-smoke'\s*$/m
+      .test(authenticatedInstalledSmoke)
+      && JSON.stringify(installedSmokeSecrets) === JSON.stringify([
+        'TAURI_SIGNING_PRIVATE_KEY',
+        'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
+      ])
+      && authenticatedInstalledSmoke.includes('-PublishPackageReceipt')
+      && authenticatedInstalledSmoke.includes('-RepositoryRoot $PWD'),
+    'Only the manual installed smoke may authenticate its complete package receipt with the updater key',
   );
   invariant(!/\$\{\{\s*secrets\./i.test(unsignedWorkflow),
     'Unsigned CI jobs must not depend on repository secrets');
@@ -1972,10 +1989,14 @@ function assertInstalledSmokeScript(script) {
     "$env:CI -ne 'true'",
     "installer-package-receipt.js')",
     '--receipt $packageReceipt --installer $installer',
+    '[switch]$PublishPackageReceipt',
+    '--publish true',
+    '--repository-root $repository',
     '$receipt.payloadExecutableSha256',
     "publisher = 'osg-installed-production-evidence'",
     'installerSha256 = $installerSha256',
     'packageReceiptSha256 = $receipt.receiptSha256',
+    'packageReceiptSignatureSha256 = $receipt.receiptSignatureSha256',
     'applicationHash = $receipt.applicationHash',
     "journeys = @('installedGolden')",
     '$installed = Install-Application',
@@ -2725,8 +2746,19 @@ function assertUpdaterSmokeWorkflow(workflow) {
     .map((match) => match[1]).sort();
   invariant(JSON.stringify(secrets) === JSON.stringify([
     'TAURI_SIGNING_PRIVATE_KEY',
+    'TAURI_SIGNING_PRIVATE_KEY',
     'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
-  ]), 'Signed updater smoke may consume only the two reviewed updater signing secrets');
+    'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
+  ]), 'Signed updater smoke may consume the two reviewed updater signing secrets only in its two signing steps');
+  const secretBearingSteps = workflow.replace(/\r\n/g, '\n')
+    .split('\n      - name: ')
+    .filter((step) => /\$\{\{\s*secrets\./u.test(step))
+    .map((step) => step.slice(0, step.indexOf('\n')))
+    .sort();
+  invariant(JSON.stringify(secretBearingSteps) === JSON.stringify([
+    'Build signed fixture update',
+    'Install base and create durable lifecycle state',
+  ]), 'Signed updater secrets must be scoped to receipt publication and fixture signing only');
   const requiredFragments = [
     'runs-on: windows-2022',
     'OSG_ENABLE_SIGNED_UPDATER_FIXTURE: "1"',
@@ -3613,9 +3645,13 @@ function assertWorkflow(rootDirectory = REPOSITORY_ROOT) {
   assertWorkflowCommands(workflow);
   assertTauriNsisBootstrapScript(readText(rootDirectory, TAURI_NSIS_BOOTSTRAP_PATH));
   const signedUpdaterWrapper = workflowJobBlock(workflow, 'signed-updater-smoke');
-  invariant(!workflow.replace(signedUpdaterWrapper, '').includes('ci-updater-fixture')
-    && !/\$\{\{\s*secrets\./i.test(workflow.replace(signedUpdaterWrapper, '')),
-  'Ordinary rewrite CI jobs must remain unsigned and updater-fixture-free');
+  const authenticatedInstalledSmoke = workflowJobBlock(workflow, 'windows-installed-smoke');
+  const ordinaryWorkflow = workflow
+    .replace(signedUpdaterWrapper, '')
+    .replace(authenticatedInstalledSmoke, '');
+  invariant(!ordinaryWorkflow.includes('ci-updater-fixture')
+    && !/\$\{\{\s*secrets\./i.test(ordinaryWorkflow),
+  'Ordinary rewrite CI jobs must remain credentialless and updater-fixture-free');
   assertInstalledSmokeScript(readText(rootDirectory, 'scripts/test-installed-windows.ps1'));
   assertInstalledLocalMediaInspector(
     readText(rootDirectory, 'scripts/inspect-installed-local-media-flow.mjs'),
