@@ -38,6 +38,8 @@ use crate::verified_install;
 use crate::{CancellationToken, PackageError, Result};
 
 const MIN_FREE_RESERVE_BYTES: u64 = 256 * 1024 * 1024;
+type IntegrityVerifier =
+    dyn Fn(&Path, &PackageDelivery, &CancellationToken) -> Result<()> + Send + Sync;
 
 /// Desktop integration must terminate and reap the engine's supervised worker
 /// process tree before package publication or removal can continue.
@@ -116,6 +118,8 @@ struct ManagerInner<K: 'static> {
     catalog: &'static PackageCatalog<K>,
     fetcher: Arc<dyn ArchiveFetcher>,
     quiesce: Arc<dyn Fn(K) -> Result<()> + Send + Sync>,
+    clock: Arc<dyn Fn() -> u64 + Send + Sync>,
+    verify_integrity: Arc<IntegrityVerifier>,
     activity: Mutex<ActivityState<K>>,
 }
 
@@ -146,7 +150,7 @@ struct InstallStaging<'a, K> {
 struct ActivityState<K> {
     operations: HashSet<K>,
     leases: HashMap<K, usize>,
-    verified_versions: HashMap<K, String>,
+    verified_versions: HashMap<K, VerifiedVersion>,
     verifying_versions: HashSet<(K, String)>,
     /// Components whose most recent attempt to persist a fast-path verification receipt
     /// (`verified_install::write`) failed. The write is best-effort by design -- a failure never
@@ -154,6 +158,22 @@ struct ActivityState<K> {
     /// invisible from outside this crate. Cleared the next time a write for that component
     /// succeeds. See `ManagedPackageManager::receipt_write_degraded`.
     receipt_write_failed: HashSet<K>,
+}
+
+#[derive(Clone, Debug)]
+struct VerifiedVersion {
+    version: String,
+    verified_at_unix_seconds: u64,
+    deep_verify_after_unix_seconds: u64,
+}
+
+impl VerifiedVersion {
+    fn is_current(&self, delivery: &PackageDelivery, now_unix_seconds: u64) -> bool {
+        self.version == delivery.version
+            && self.verified_at_unix_seconds != 0
+            && self.verified_at_unix_seconds <= now_unix_seconds
+            && now_unix_seconds < self.deep_verify_after_unix_seconds
+    }
 }
 
 impl<K> Default for ActivityState<K> {
@@ -713,6 +733,8 @@ where
             catalog,
             fetcher,
             quiesce,
+            clock: Arc::new(verified_install::current_unix_seconds),
+            verify_integrity: Arc::new(receipt::validate_integrity),
             activity: Mutex::new(ActivityState::default()),
         })))
     }
@@ -824,13 +846,25 @@ where
         // populated staging tree into `versions/<version>` before its final digest pass completes.
         // A status probe of that visible target would start another multi-gigabyte verification on
         // every UI poll. The durable operation record owns progress; status preserves only the last
-        // version already verified in this manager lifetime until the mutation commits.
+        // still-current version already verified in this manager lifetime until the mutation
+        // commits. An expired version is never presented as verified, even though the mutator
+        // means its deep recheck must wait until the operation commits.
+        let now_unix_seconds = self.now_unix_seconds();
         match self.0.activity.lock() {
-            Ok(activity) => (
-                activity.operations.contains(&component),
-                activity.verified_versions.get(&component).cloned(),
-                true,
-            ),
+            Ok(activity) => {
+                let operation_in_progress = activity.operations.contains(&component);
+                let verified_version =
+                    activity
+                        .verified_versions
+                        .get(&component)
+                        .and_then(|entry| {
+                            (entry.verified_at_unix_seconds != 0
+                                && entry.verified_at_unix_seconds <= now_unix_seconds
+                                && now_unix_seconds < entry.deep_verify_after_unix_seconds)
+                                .then(|| entry.version.clone())
+                        });
+                (operation_in_progress, verified_version, true)
+            }
             Err(_) => (true, None, false),
         }
     }
@@ -852,7 +886,6 @@ where
         let target = self.version_root(delivery);
         match receipt::validate_integrity(&target, delivery, cancellation) {
             Ok(()) => {
-                self.mark_verified(component, delivery);
                 self.record_verified_receipt(component, delivery);
                 return Ok(self.status(component));
             }
@@ -970,7 +1003,6 @@ where
             install.cancellation,
             install.progress,
         )?;
-        self.mark_verified(install.component, install.effective);
         Ok(())
     }
 
@@ -1166,7 +1198,6 @@ where
                 cancellation,
                 progress,
             )?;
-            self.mark_verified(component, delivery);
             Ok(())
         })();
         if staging.exists() {
@@ -1332,11 +1363,12 @@ where
     }
 
     fn is_verified(&self, component: K, delivery: &PackageDelivery) -> bool {
+        let now_unix_seconds = self.now_unix_seconds();
         self.0.activity.lock().is_ok_and(|activity| {
             activity
                 .verified_versions
                 .get(&component)
-                .is_some_and(|version| version == &delivery.version)
+                .is_some_and(|entry| entry.is_current(delivery, now_unix_seconds))
         })
     }
 
@@ -1353,6 +1385,7 @@ where
         let _verification_lease = self.acquire_lease(component)?;
         let key = (component, delivery.version.clone());
         loop {
+            let now_unix_seconds = self.now_unix_seconds();
             let mut activity = self
                 .0
                 .activity
@@ -1361,7 +1394,7 @@ where
             if activity
                 .verified_versions
                 .get(&component)
-                .is_some_and(|version| version == &delivery.version)
+                .is_some_and(|entry| entry.is_current(delivery, now_unix_seconds))
             {
                 return Ok(());
             }
@@ -1386,14 +1419,22 @@ where
         // — no receipt, a tampered one, or a metadata mismatch — falls back to full content
         // verification exactly as before, and a fresh receipt is written from that success so the
         // next probe in a future process can take the fast path again.
-        let result = if verified_install::try_fast_verify(&self.0.root, &version_root, delivery) {
-            Ok(())
+        let now_unix_seconds = self.now_unix_seconds();
+        let result = if let Some(verification_lease) = verified_install::fast_verification_lease_at(
+            &self.0.root,
+            &version_root,
+            delivery,
+            now_unix_seconds,
+        ) {
+            Ok(verification_lease)
         } else {
-            let full = receipt::validate_integrity(&version_root, delivery, cancellation);
-            if full.is_ok() {
-                self.record_verified_receipt(component, delivery);
+            let full = (self.0.verify_integrity)(&version_root, delivery, cancellation);
+            if let Err(error) = full {
+                Err(error)
+            } else {
+                let verified_at_unix_seconds = self.now_unix_seconds();
+                Ok(self.record_verified_receipt_at(component, delivery, verified_at_unix_seconds))
             }
-            full
         };
         let mut activity = self
             .0
@@ -1401,19 +1442,20 @@ where
             .lock()
             .map_err(|_| PackageError::StoreUnavailable)?;
         activity.verifying_versions.remove(&key);
-        if result.is_ok() {
-            activity
-                .verified_versions
-                .insert(component, delivery.version.clone());
-        }
-        result
-    }
-
-    fn mark_verified(&self, component: K, delivery: &PackageDelivery) {
-        if let Ok(mut activity) = self.0.activity.lock() {
-            activity
-                .verified_versions
-                .insert(component, delivery.version.clone());
+        match result {
+            Ok(verification_lease) => {
+                activity.verified_versions.insert(
+                    component,
+                    VerifiedVersion {
+                        version: delivery.version.clone(),
+                        verified_at_unix_seconds: verification_lease.verified_at_unix_seconds,
+                        deep_verify_after_unix_seconds: verification_lease
+                            .deep_verify_after_unix_seconds,
+                    },
+                );
+                Ok(())
+            }
+            Err(error) => Err(error),
         }
     }
 
@@ -1430,7 +1472,33 @@ where
     /// verification time again. The outcome is still recorded in `ActivityState` (see
     /// `receipt_write_degraded`) so a write that never succeeds does not stay invisible.
     fn record_verified_receipt(&self, component: K, delivery: &PackageDelivery) {
-        let outcome = verified_install::write(&self.0.root, &self.version_root(delivery), delivery);
+        let verification_lease =
+            self.record_verified_receipt_at(component, delivery, self.now_unix_seconds());
+        if let Ok(mut activity) = self.0.activity.lock() {
+            activity.verified_versions.insert(
+                component,
+                VerifiedVersion {
+                    version: delivery.version.clone(),
+                    verified_at_unix_seconds: verification_lease.verified_at_unix_seconds,
+                    deep_verify_after_unix_seconds: verification_lease
+                        .deep_verify_after_unix_seconds,
+                },
+            );
+        }
+    }
+
+    fn record_verified_receipt_at(
+        &self,
+        component: K,
+        delivery: &PackageDelivery,
+        verified_at_unix_seconds: u64,
+    ) -> verified_install::VerificationLease {
+        let outcome = verified_install::write_at(
+            &self.0.root,
+            &self.version_root(delivery),
+            delivery,
+            verified_at_unix_seconds,
+        );
         if let Ok(mut activity) = self.0.activity.lock() {
             if outcome.is_ok() {
                 activity.receipt_write_failed.remove(&component);
@@ -1438,6 +1506,11 @@ where
                 activity.receipt_write_failed.insert(component);
             }
         }
+        verified_install::verification_lease(verified_at_unix_seconds)
+    }
+
+    fn now_unix_seconds(&self) -> u64 {
+        (self.0.clock)()
     }
 
     /// `true` when the most recent attempt to persist `component`'s fast-path verification
@@ -2261,7 +2334,9 @@ fn set_adopted_permissions(_: &Path, _: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Write as _};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Barrier;
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    use std::sync::mpsc;
 
     use serde_json::json;
     use tempfile::TempDir;
@@ -2586,6 +2661,24 @@ mod tests {
         fetcher: Arc<dyn ArchiveFetcher>,
         coordinator: Arc<dyn RuntimeCoordinator>,
     ) -> EnginePackageManager {
+        manager_with_clock_and_verifier(
+            temp,
+            catalog,
+            fetcher,
+            coordinator,
+            Arc::new(verified_install::current_unix_seconds),
+            Arc::new(receipt::validate_integrity),
+        )
+    }
+
+    fn manager_with_clock_and_verifier(
+        temp: &TempDir,
+        catalog: DeliveryCatalog,
+        fetcher: Arc<dyn ArchiveFetcher>,
+        coordinator: Arc<dyn RuntimeCoordinator>,
+        clock: Arc<dyn Fn() -> u64 + Send + Sync>,
+        verify_integrity: Arc<IntegrityVerifier>,
+    ) -> EnginePackageManager {
         let root = initialize_store(&temp.path().join("packages")).unwrap();
         let store_lock = acquire_store_lock(&root).unwrap();
         let staging_authority =
@@ -2600,8 +2693,19 @@ mod tests {
             catalog,
             fetcher,
             quiesce,
+            clock,
+            verify_integrity,
             activity: Mutex::new(ActivityState::default()),
         })))
+    }
+
+    fn fake_clock(
+        initial_unix_seconds: u64,
+    ) -> (Arc<AtomicU64>, Arc<dyn Fn() -> u64 + Send + Sync>) {
+        let now = Arc::new(AtomicU64::new(initial_unix_seconds));
+        let clock_now = now.clone();
+        let clock = Arc::new(move || clock_now.load(Ordering::Acquire));
+        (now, clock)
     }
 
     fn speech_manager(
@@ -2624,6 +2728,8 @@ mod tests {
             catalog,
             fetcher,
             quiesce,
+            clock: Arc::new(verified_install::current_unix_seconds),
+            verify_integrity: Arc::new(receipt::validate_integrity),
             activity: Mutex::new(ActivityState::default()),
         })))
     }
@@ -3188,6 +3294,184 @@ mod tests {
             manager.status(EngineId::Parakeet).state,
             EnginePackageState::Installed
         );
+    }
+
+    #[test]
+    fn verification_deadline_expires_in_one_process_and_refreshes_the_receipt() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 1_000_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let deep_verifies = Arc::new(AtomicUsize::new(0));
+        let verifier = {
+            let deep_verifies = deep_verifies.clone();
+            Arc::new(
+                move |root: &Path, delivery: &PackageDelivery, cancellation: &CancellationToken| {
+                    deep_verifies.fetch_add(1, Ordering::AcqRel);
+                    receipt::validate_integrity(root, delivery, cancellation)
+                },
+            )
+        };
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            verifier,
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let receipt_path = manager.0.0.root.join(".verified/parakeet/1.0.0.json");
+        let first: serde_json::Value =
+            serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+        assert_eq!(first["verifiedAtUnixSeconds"], initial_now);
+
+        let deadline = initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS;
+        now.store(deadline - 1, Ordering::Release);
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        let still_first: serde_json::Value =
+            serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+        assert_eq!(still_first["verifiedAtUnixSeconds"], initial_now);
+        assert_eq!(deep_verifies.load(Ordering::Acquire), 0);
+
+        // The same manager instance crosses the lease boundary. Its in-memory entry and durable
+        // receipt both expire at this exact instant, forcing a full content pass and a refreshed
+        // receipt without relying on a process restart.
+        now.store(deadline, Ordering::Release);
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        let refreshed: serde_json::Value =
+            serde_json::from_slice(&fs::read(&receipt_path).unwrap()).unwrap();
+        assert_eq!(refreshed["verifiedAtUnixSeconds"], deadline);
+        assert_eq!(
+            refreshed["deepVerifyAfterUnixSeconds"],
+            deadline + verified_install::MAX_FAST_VERIFY_AGE_SECONDS
+        );
+        assert_eq!(deep_verifies.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn same_size_tamper_in_one_process_is_detected_at_the_verification_deadline() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 2_000_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            Arc::new(receipt::validate_integrity),
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        let model_file = manager
+            .0
+            .0
+            .root
+            .join("parakeet/versions/1.0.0")
+            .join(MODEL_PATH);
+        assert_eq!(MODEL_BYTES.len(), b"other".len());
+        fs::write(&model_file, b"other").unwrap();
+
+        // The Windows publication is logically immutable, not ACL-enforced. The bounded lease is
+        // therefore allowed to remain cheap until its deadline, but never beyond it.
+        assert_eq!(
+            manager.status(EngineId::Parakeet).state,
+            EnginePackageState::Installed
+        );
+        now.store(
+            initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS,
+            Ordering::Release,
+        );
+        let detected = manager.status(EngineId::Parakeet);
+        assert_eq!(detected.state, EnginePackageState::Corrupt);
+        assert!(!detected.installed);
+        assert_eq!(fs::read(model_file).unwrap(), b"other");
+    }
+
+    #[test]
+    fn expired_verification_is_single_flight_across_concurrent_status_and_launch() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 3_000_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let verify_calls = Arc::new(AtomicUsize::new(0));
+        let release_verify = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let verifier = {
+            let verify_calls = verify_calls.clone();
+            let release_verify = release_verify.clone();
+            Arc::new(
+                move |root: &Path, delivery: &PackageDelivery, cancellation: &CancellationToken| {
+                    verify_calls.fetch_add(1, Ordering::AcqRel);
+                    entered_tx.send(()).unwrap();
+                    while !release_verify.load(Ordering::Acquire) {
+                        cancellation.check()?;
+                        std::thread::yield_now();
+                    }
+                    receipt::validate_integrity(root, delivery, cancellation)
+                },
+            )
+        };
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            verifier,
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        now.store(
+            initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS,
+            Ordering::Release,
+        );
+
+        let start = Arc::new(Barrier::new(3));
+        let status_thread = {
+            let manager = manager.clone();
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                manager.status(EngineId::Parakeet)
+            })
+        };
+        let launch_thread = {
+            let manager = manager.clone();
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                manager
+                    .resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+                    .map(|runtime| runtime.version().to_owned())
+            })
+        };
+        start.wait();
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let calls_while_blocked = verify_calls.load(Ordering::Acquire);
+        release_verify.store(true, Ordering::Release);
+
+        let status = status_thread.join().unwrap();
+        let launched_version = launch_thread.join().unwrap().unwrap();
+        assert_eq!(status.state, EnginePackageState::Installed);
+        assert_eq!(launched_version, "1.0.0");
+        assert_eq!(calls_while_blocked, 1);
+        assert_eq!(verify_calls.load(Ordering::Acquire), 1);
     }
 
     #[test]

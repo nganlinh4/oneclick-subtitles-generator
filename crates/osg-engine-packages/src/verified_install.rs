@@ -60,7 +60,7 @@ const VERIFIED_DIR: &str = ".verified";
 // the catalog's declared maximum; the reviewed Windows runtime is currently about 41k files.
 const MAX_RECEIPT_BYTES: u64 = 128 * 1024 * 1024;
 const SCHEMA_VERSION: u32 = 2;
-const MAX_FAST_VERIFY_AGE_SECONDS: u64 = 7 * 24 * 60 * 60;
+pub(crate) const MAX_FAST_VERIFY_AGE_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -105,6 +105,12 @@ struct FastReceipt {
     receipt_sha256: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct VerificationLease {
+    pub(crate) verified_at_unix_seconds: u64,
+    pub(crate) deep_verify_after_unix_seconds: u64,
+}
+
 impl FastReceipt {
     fn matches(&self, delivery: &PackageDelivery, now_unix_seconds: u64) -> bool {
         self.schema_version == SCHEMA_VERSION
@@ -138,10 +144,20 @@ impl FastReceipt {
 /// `ManagedPackageManager::record_verified_receipt`, which records a failure in `ActivityState`
 /// so it can be surfaced through `receipt_write_degraded` instead of vanishing into a discarded
 /// `Result`.
+#[cfg(test)]
 pub(crate) fn write(
     store_root: &Path,
     version_root: &Path,
     delivery: &PackageDelivery,
+) -> Result<()> {
+    write_at(store_root, version_root, delivery, current_unix_seconds())
+}
+
+pub(crate) fn write_at(
+    store_root: &Path,
+    version_root: &Path,
+    delivery: &PackageDelivery,
+    verified_at_unix_seconds: u64,
 ) -> Result<()> {
     // The delivery's own declared files, used only for `hash_of_hashes`: the published tree also
     // carries the in-tree structural `receipt.json` (and, for a remote-manifest delivery,
@@ -166,9 +182,6 @@ pub(crate) fn write(
         .iter()
         .try_fold(0_u64, |total, file| total.checked_add(file.size_bytes))
         .ok_or(PackageError::InvalidInstall)?;
-    let verified_at_unix_seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
     let mut document = FastReceipt {
         schema_version: SCHEMA_VERSION,
         component: delivery.component.clone(),
@@ -179,8 +192,8 @@ pub(crate) fn write(
         total_bytes,
         hash_of_hashes,
         verified_at_unix_seconds,
-        deep_verify_after_unix_seconds: verified_at_unix_seconds
-            .saturating_add(MAX_FAST_VERIFY_AGE_SECONDS),
+        deep_verify_after_unix_seconds: verification_lease(verified_at_unix_seconds)
+            .deep_verify_after_unix_seconds,
         files,
         receipt_sha256: String::new(),
     };
@@ -213,32 +226,53 @@ pub(crate) fn write(
 /// for this exact version, a tampered or unreadable receipt, or any metadata mismatch): the
 /// caller must fall back to `receipt::validate_integrity` and, on that success, call `write` to
 /// refresh the receipt.
+#[cfg(test)]
 pub(crate) fn try_fast_verify(
     store_root: &Path,
     version_root: &Path,
     delivery: &PackageDelivery,
 ) -> bool {
-    try_fast_verify_at(
-        store_root,
-        version_root,
-        delivery,
-        unix_seconds(SystemTime::now()),
-    )
+    fast_verification_lease_at(store_root, version_root, delivery, current_unix_seconds()).is_some()
 }
 
+#[cfg(test)]
 fn try_fast_verify_at(
     store_root: &Path,
     version_root: &Path,
     delivery: &PackageDelivery,
     now_unix_seconds: u64,
 ) -> bool {
-    let Some(document) = read_matching(store_root, delivery, now_unix_seconds) else {
-        return false;
-    };
+    fast_verification_lease_at(store_root, version_root, delivery, now_unix_seconds).is_some()
+}
+
+pub(crate) fn fast_verification_lease_at(
+    store_root: &Path,
+    version_root: &Path,
+    delivery: &PackageDelivery,
+    now_unix_seconds: u64,
+) -> Option<VerificationLease> {
+    let document = read_matching(store_root, delivery, now_unix_seconds)?;
     let Ok(actual) = observe_tree(version_root) else {
-        return false;
+        return None;
     };
-    actual == document.files && manifest_sidecar_matches(version_root, delivery)
+    (actual == document.files && manifest_sidecar_matches(version_root, delivery)).then_some(
+        VerificationLease {
+            verified_at_unix_seconds: document.verified_at_unix_seconds,
+            deep_verify_after_unix_seconds: document.deep_verify_after_unix_seconds,
+        },
+    )
+}
+
+pub(crate) fn verification_lease(verified_at_unix_seconds: u64) -> VerificationLease {
+    VerificationLease {
+        verified_at_unix_seconds,
+        deep_verify_after_unix_seconds: verified_at_unix_seconds
+            .saturating_add(MAX_FAST_VERIFY_AGE_SECONDS),
+    }
+}
+
+pub(crate) fn current_unix_seconds() -> u64 {
+    unix_seconds(SystemTime::now())
 }
 
 /// Deletes the fast-path receipt for `delivery`, if any. Best-effort cleanup so a removed
