@@ -104,5 +104,9 @@
     "jsdom": "29.1.1",
     "vite": "8.0.16",
     "vitest": "4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "fsevents": false
   }
 }
