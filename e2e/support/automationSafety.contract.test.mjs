@@ -610,10 +610,43 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
     'the installed-app desktop smoke must refuse local execution before launching anything',
   );
   assert.match(installerPackageReceipt, /readCleanGitSourceProvenance\(\{ repositoryRoot \}\)/u);
+  const installStart = installedSmoke.indexOf('$installed = Install-Application');
+  const postInstallReceipt = installedSmoke.indexOf('$receiptJson = if ($PublishPackageReceipt)');
+  const firstApplicationLaunch = installedSmoke.indexOf('$first = Start-And-WaitForReadiness');
+  const preInstallConsumptionReceipt = installedSmoke.indexOf("} else {\n  $receiptJson = & node");
+  const installerLaunch = installedSmoke.indexOf('Start-Process -FilePath $installer');
+  const cleanPublicationOutputs = installedSmoke.indexOf(
+    "throw 'Installer package receipt publication paths must be clean'",
+  );
+  const requiredSigningKey = installedSmoke.indexOf(
+    "throw 'Installer package receipt publication requires the Tauri updater signing key'",
+  );
+  const postInstallReceiptFailure = installedSmoke.indexOf(
+    "throw 'Installed application payload does not match the signed immutable installer package receipt'",
+  );
   assert.ok(
-    installedSmoke.indexOf("installer-package-receipt.js') `")
-      < installedSmoke.indexOf('Start-Process -FilePath $installer'),
-    'the installed-app smoke must verify the source-bound package receipt before installing',
+    installedSmoke.indexOf('if ($PublishPackageReceipt)') >= 0
+      && installerLaunch >= 0
+      && installedSmoke.indexOf('if ($PublishPackageReceipt)') < installerLaunch
+      && cleanPublicationOutputs >= 0
+      && cleanPublicationOutputs < installerLaunch
+      && requiredSigningKey >= 0
+      && requiredSigningKey < installerLaunch,
+    'receipt publication must require clean outputs and the updater signing key before installing',
+  );
+  assert.ok(
+    installStart >= 0
+      && postInstallReceipt > installStart
+      && installedSmoke.indexOf('--publish true', postInstallReceipt) > postInstallReceipt
+      && firstApplicationLaunch > postInstallReceipt
+      && postInstallReceiptFailure > postInstallReceipt
+      && postInstallReceiptFailure < firstApplicationLaunch,
+    'publication mode must inventory and authenticate the complete generated install before app launch',
+  );
+  assert.ok(
+    preInstallConsumptionReceipt >= 0
+      && preInstallConsumptionReceipt < installedSmoke.indexOf('Start-Process -FilePath $installer'),
+    'consumption mode must authenticate the source-bound package receipt before installing',
   );
   assert.match(installedSmoke, /publisher = 'osg-installed-production-evidence'/u);
   assert.match(installedSmoke, /installerSha256 = \$installerSha256/u);
