@@ -3,21 +3,31 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const test = require('node:test');
 
 const {
   APPLICATION_BINARY,
   RESOURCE_DIRECTORIES,
+  applicationManifestBytes,
   collectCargoProfileApplication,
-  publishE2eApplication,
+  publishE2eApplication: publishApplicationWithoutTestProvenance,
   readAndVerifyE2eApplicationReceipt,
   resolveAbsoluteInput,
 } = require('./e2e-application-publication');
 const { readCurrentWindowsProcessIdentity } = require('./windows-process-identity.js');
 
 const execFileAsync = promisify(execFile);
+const TEST_SOURCE_PROVENANCE = Object.freeze({
+  commit: '1'.repeat(40),
+  tree: '2'.repeat(40),
+  dirty: false,
+});
+const publishE2eApplication = (input) => publishApplicationWithoutTestProvenance({
+  ...input,
+  sourceProvenance: input.sourceProvenance ?? TEST_SOURCE_PROVENANCE,
+});
 
 const temporaryRoot = (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-e2e-application-test-'));
@@ -68,6 +78,36 @@ const writeLegacyApplication = ({ cache, profile }) => {
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, manifest);
   return { applicationRoot, hash, manifest, manifestPath };
+};
+
+const writeHistoricalV2Application = ({ cache, profile }) => {
+  const collected = collectCargoProfileApplication(profile);
+  const manifest = applicationManifestBytes(collected);
+  const hash = createHash('sha256').update(manifest).digest('hex');
+  const applicationRoot = path.join(cache, 'applications', hash);
+  for (const relative of collected.directories) {
+    fs.mkdirSync(path.join(applicationRoot, ...relative.split('/')), { recursive: true });
+  }
+  for (const entry of collected.files) {
+    const output = path.join(applicationRoot, ...entry.path.split('/'));
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.copyFileSync(entry.source, output);
+  }
+  const manifestPath = path.join(applicationRoot, '.osg-application-manifest.json');
+  fs.writeFileSync(manifestPath, manifest);
+  const receiptPath = path.join(cache, 'receipts', 'current.json');
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  fs.writeFileSync(receiptPath, `${JSON.stringify({
+    schemaVersion: 2,
+    hashAlgorithm: 'sha256',
+    applicationHash: hash,
+    applicationRoot,
+    binaryPath: path.join(applicationRoot, APPLICATION_BINARY),
+    manifestPath,
+    fileCount: collected.files.length,
+    totalBytes: collected.files.reduce((total, entry) => total + entry.size, 0),
+  }, null, 2)}\n`);
+  return { applicationRoot, hash };
 };
 
 const writeManagedAppLease = (cache, leaseId = 'a'.repeat(32)) => {
@@ -144,6 +184,7 @@ test('unchanged publication preserves mtimes and one byte creates a new immutabl
       receiptPath: first.receiptPath,
       fileCount: first.fileCount,
       totalBytes: first.totalBytes,
+      sourceProvenance: TEST_SOURCE_PROVENANCE,
     },
   );
 
@@ -171,6 +212,47 @@ test('unchanged publication preserves mtimes and one byte creates a new immutabl
   assert.equal(
     readAndVerifyE2eApplicationReceipt({ applicationsCacheRoot: cache }).applicationHash,
     third.applicationHash,
+  );
+});
+
+test('source provenance is content-addressed and receipt drift fails closed', (context) => {
+  const root = temporaryRoot(context);
+  const profile = path.join(root, 'profile');
+  const cache = path.join(root, 'cache');
+  writeProfile(profile, 'provenance');
+
+  assert.throws(
+    () => publishApplicationWithoutTestProvenance({
+      profileRoot: profile,
+      applicationsCacheRoot: cache,
+    }),
+    /source provenance/u,
+  );
+  assert.equal(fs.existsSync(cache), false);
+
+  const first = publishE2eApplication({ profileRoot: profile, applicationsCacheRoot: cache });
+  const secondSource = {
+    commit: '3'.repeat(40),
+    tree: TEST_SOURCE_PROVENANCE.tree,
+    dirty: false,
+  };
+  const second = publishE2eApplication({
+    profileRoot: profile,
+    applicationsCacheRoot: cache,
+    sourceProvenance: secondSource,
+  });
+  assert.notEqual(second.applicationHash, first.applicationHash);
+  assert.deepEqual(
+    readAndVerifyE2eApplicationReceipt({ applicationsCacheRoot: cache }).sourceProvenance,
+    secondSource,
+  );
+
+  const receipt = JSON.parse(fs.readFileSync(second.receiptPath, 'utf8'));
+  receipt.source.commit = TEST_SOURCE_PROVENANCE.commit;
+  fs.writeFileSync(second.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  assert.throws(
+    () => readAndVerifyE2eApplicationReceipt({ applicationsCacheRoot: cache }),
+    /receipt path\/hash or inventory/u,
   );
 });
 
@@ -233,6 +315,27 @@ test('schema v2 publishes beside an untouched legacy v1 application and selects 
   assert.equal(
     readAndVerifyE2eApplicationReceipt({ applicationsCacheRoot: cache }).applicationHash,
     published.applicationHash,
+  );
+});
+
+test('a source-bound publication migrates a provenance-less v2 receipt as historical', (context) => {
+  const root = temporaryRoot(context);
+  const profile = path.join(root, 'profile');
+  const cache = path.join(root, 'cache');
+  writeProfile(profile, 'historical-v2');
+  const historical = writeHistoricalV2Application({ cache, profile });
+  const leaseId = writeManagedAppLease(cache, 'e'.repeat(32));
+
+  const published = publishE2eApplication({
+    profileRoot: profile,
+    applicationsCacheRoot: cache,
+    retentionLeaseId: leaseId,
+  });
+  assert.notEqual(published.applicationHash, historical.hash);
+  assert.equal(fs.existsSync(historical.applicationRoot), true);
+  assert.deepEqual(
+    readAndVerifyE2eApplicationReceipt({ applicationsCacheRoot: cache }).sourceProvenance,
+    TEST_SOURCE_PROVENANCE,
   );
 });
 
@@ -613,6 +716,15 @@ test('concurrent identical publishers converge on one verified immutable applica
   const root = temporaryRoot(context);
   const profile = path.join(root, 'profile');
   const cache = path.join(root, 'cache');
+  const repository = path.join(root, 'source-repository');
+  fs.mkdirSync(repository);
+  execFileSync('git', ['init', '--quiet'], { cwd: repository, windowsHide: true });
+  writeFile(repository, 'tracked.txt', 'source');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: repository, windowsHide: true });
+  execFileSync('git', [
+    '-c', 'user.name=OSG Test', '-c', 'user.email=osg@example.invalid',
+    'commit', '--quiet', '-m', 'fixture',
+  ], { cwd: repository, windowsHide: true });
   writeProfile(profile, 'concurrent');
   for (let index = 0; index < 40; index += 1) {
     writeFile(profile, `workers/nested/${String(index).padStart(2, '0')}.txt`, `file-${index}`);
@@ -622,6 +734,7 @@ test('concurrent identical publishers converge on one verified immutable applica
     script,
     '--profile-root', profile,
     '--applications-cache-root', cache,
+    '--repository-root', repository,
   ], { encoding: 'utf8', windowsHide: true }));
   const results = (await Promise.all(invocations)).map(({ stdout }) => JSON.parse(stdout));
   assert.equal(new Set(results.map(({ applicationHash }) => applicationHash)).size, 1);

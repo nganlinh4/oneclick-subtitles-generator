@@ -8,8 +8,14 @@ const {
   cargoArguments,
   isWindowsNamespacePath,
   parseCacheContract,
+  readCleanGitSourceProvenance,
 } = require('./build-e2e-binary');
 const { tauriFrontendDistOverride } = require('./managed-build-context');
+const TEST_SOURCE_PROVENANCE = Object.freeze({
+  commit: '1'.repeat(40),
+  tree: '2'.repeat(40),
+  dirty: false,
+});
 
 const leaseContract = ({ cacheRoot, leaseId = 'a'.repeat(32) }) => ({
   schemaVersion: 1,
@@ -35,6 +41,42 @@ const leaseContract = ({ cacheRoot, leaseId = 'a'.repeat(32) }) => ({
 
 const hasArguments = (args, ...expected) => expected.every((value) => args.includes(value));
 
+test('Git provenance rejects dirty or ambiguous source identities', () => {
+  const repositoryRoot = path.resolve(__dirname, '..');
+  const gitSpawn = (outputs) => (command, args) => {
+    assert.equal(command, 'git');
+    const key = args.join(' ');
+    return { status: 0, stdout: outputs[key] ?? '', stderr: '' };
+  };
+  const clean = {
+    'rev-parse --show-toplevel': `${repositoryRoot}\n`,
+    'status --porcelain=v1 --untracked-files=all': '',
+    'rev-parse --verify HEAD': `${TEST_SOURCE_PROVENANCE.commit}\n`,
+    'rev-parse --verify HEAD^{tree}': `${TEST_SOURCE_PROVENANCE.tree}\n`,
+  };
+  assert.deepEqual(
+    readCleanGitSourceProvenance({ repositoryRoot, spawn: gitSpawn(clean) }),
+    TEST_SOURCE_PROVENANCE,
+  );
+  assert.throws(
+    () => readCleanGitSourceProvenance({
+      repositoryRoot,
+      spawn: gitSpawn({
+        ...clean,
+        'status --porcelain=v1 --untracked-files=all': ' M src/platform/projectService.js\n',
+      }),
+    }),
+    /must be clean/u,
+  );
+  assert.throws(
+    () => readCleanGitSourceProvenance({
+      repositoryRoot,
+      spawn: gitSpawn({ ...clean, 'rev-parse --verify HEAD': 'not-a-hash\n' }),
+    }),
+    /invalid E2E source/u,
+  );
+});
+
 test('the canonical builder leases external lanes and publishes only a verified immutable app', () => {
   const repositoryRoot = path.resolve(__dirname, '..');
   const cacheRoot = path.join(os.tmpdir(), `osg-builder-contract-${process.pid}`);
@@ -51,6 +93,9 @@ test('the canonical builder leases external lanes and publishes only a verified 
     repositoryRoot,
     cacheRoot,
     processId: 4242,
+    readSourceProvenance() {
+      return TEST_SOURCE_PROVENANCE;
+    },
     buildFrontend(input) {
       calls.push({ kind: 'frontend', input });
       return { snapshotRoot, snapshotHash: 'c'.repeat(64) };
@@ -112,6 +157,7 @@ test('the canonical builder leases external lanes and publishes only a verified 
     profileRoot: path.join(contract.cargoTargetDir, 'x86_64-pc-windows-msvc', 'e2e'),
     applicationsCacheRoot: contract.appPublicationRoot,
     retentionLeaseId: contract.leaseId,
+    sourceProvenance: TEST_SOURCE_PROVENANCE,
   });
   assert.deepEqual(calls.find((call) => call.kind === 'frontend').input, {
     repositoryRoot,
@@ -138,6 +184,9 @@ test('a failed build releases its exact lease, preserves the primary error, and 
     repositoryRoot,
     cacheRoot,
     processId: 4343,
+    readSourceProvenance() {
+      return TEST_SOURCE_PROVENANCE;
+    },
     buildFrontend() {
       throw primary;
     },

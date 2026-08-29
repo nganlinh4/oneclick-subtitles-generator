@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
 const { assertWindowsProcessIdentity } = require('./windows-process-identity.js');
+const { readCleanGitSourceProvenance } = require('./git-source-provenance.js');
 
 const APPLICATION_SCHEMA_VERSION = 2;
 const HASH_ALGORITHM = 'sha256';
@@ -16,6 +17,23 @@ const APPLICATION_OPERATIONS_MARKER = '.osg-application-operations.json';
 const RESOURCE_DIRECTORIES = Object.freeze(['licenses', 'ui-fonts', 'workers']);
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const OPERATION_ID_PATTERN = /^[0-9a-f]{32}$/u;
+const GIT_OBJECT_PATTERN = /^[0-9a-f]{40,64}$/u;
+
+const normalizeSourceProvenance = (source, { allowMissing = false } = {}) => {
+  if (source === undefined && allowMissing) return null;
+  if (
+    source === null
+    || typeof source !== 'object'
+    || Array.isArray(source)
+    || Object.keys(source).sort().join('|') !== 'commit|dirty|tree'
+    || !GIT_OBJECT_PATTERN.test(source.commit ?? '')
+    || !GIT_OBJECT_PATTERN.test(source.tree ?? '')
+    || source.dirty !== false
+  ) {
+    throw new Error('E2E application source provenance must name one clean Git commit and tree');
+  }
+  return Object.freeze({ commit: source.commit, tree: source.tree, dirty: false });
+};
 
 const hasTraversalSegment = (input) => String(input).split(/[\\/]+/u).includes('..');
 
@@ -258,14 +276,21 @@ const publicFiles = (files) => files.map(({ path: relative, size, sha256 }) => (
   sha256,
 }));
 
-const applicationManifestBytes = ({ files, directories }) => Buffer.from(`${JSON.stringify({
-  schemaVersion: APPLICATION_SCHEMA_VERSION,
-  hashAlgorithm: HASH_ALGORITHM,
-  entrypoint: APPLICATION_BINARY,
-  resourceDirectories: RESOURCE_DIRECTORIES,
-  directories,
-  files: publicFiles(files),
-}, null, 2)}\n`, 'utf8');
+const applicationManifestBytes = ({ files, directories, sourceProvenance = null }) => {
+  const source = sourceProvenance === null
+    ? null
+    : normalizeSourceProvenance(sourceProvenance);
+  const manifest = {
+    schemaVersion: APPLICATION_SCHEMA_VERSION,
+    hashAlgorithm: HASH_ALGORITHM,
+    entrypoint: APPLICATION_BINARY,
+    resourceDirectories: RESOURCE_DIRECTORIES,
+  };
+  if (source !== null) manifest.source = source;
+  manifest.directories = directories;
+  manifest.files = publicFiles(files);
+  return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+};
 
 const manifestHash = (bytes) => createHash(HASH_ALGORITHM).update(bytes).digest('hex');
 
@@ -361,15 +386,27 @@ const verifyApplicationTree = ({ applicationRoot, expectedHash, expectedManifest
   if (!fs.readFileSync(manifestPath).equals(expectedManifestBytes)) {
     throw new Error(`immutable E2E application ${expectedHash} has a corrupted manifest`);
   }
+  let recordedManifest;
+  try {
+    recordedManifest = JSON.parse(expectedManifestBytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`immutable E2E application ${expectedHash} has an invalid manifest`, {
+      cause: error,
+    });
+  }
+  const sourceProvenance = normalizeSourceProvenance(recordedManifest.source, {
+    // Schema-v2 applications published before source binding remain valid historical bytes.
+    allowMissing: true,
+  });
   const collected = collectPublishedApplication(applicationRoot);
-  const actualManifest = applicationManifestBytes(collected);
+  const actualManifest = applicationManifestBytes({ ...collected, sourceProvenance });
   const actualHash = manifestHash(actualManifest);
   if (actualHash !== expectedHash || !actualManifest.equals(expectedManifestBytes)) {
     throw new Error(
       `immutable E2E application ${expectedHash} has corrupted inventory ${actualHash}`,
     );
   }
-  return collected;
+  return Object.freeze({ ...collected, sourceProvenance });
 };
 
 const writePrivateFile = (file, bytes) => {
@@ -465,16 +502,20 @@ const publicationPaths = (applicationsCacheRoot, applicationHash) => {
   });
 };
 
-const applicationReceiptBytes = ({ paths, applicationHash, files }) => Buffer.from(`${JSON.stringify({
-  schemaVersion: APPLICATION_SCHEMA_VERSION,
-  hashAlgorithm: HASH_ALGORITHM,
-  applicationHash,
-  applicationRoot: paths.applicationRoot,
-  binaryPath: path.join(paths.applicationRoot, APPLICATION_BINARY),
-  manifestPath: paths.manifestPath,
-  fileCount: files.length,
-  totalBytes: files.reduce((total, entry) => total + entry.size, 0),
-}, null, 2)}\n`, 'utf8');
+const applicationReceiptBytes = ({ paths, applicationHash, files, sourceProvenance }) => {
+  const source = normalizeSourceProvenance(sourceProvenance);
+  return Buffer.from(`${JSON.stringify({
+    schemaVersion: APPLICATION_SCHEMA_VERSION,
+    hashAlgorithm: HASH_ALGORITHM,
+    applicationHash,
+    source,
+    applicationRoot: paths.applicationRoot,
+    binaryPath: path.join(paths.applicationRoot, APPLICATION_BINARY),
+    manifestPath: paths.manifestPath,
+    fileCount: files.length,
+    totalBytes: files.reduce((total, entry) => total + entry.size, 0),
+  }, null, 2)}\n`, 'utf8');
+};
 
 const parseExactJsonFile = (file, expectedKeys, label) => {
   assertPublishedFile(file, label);
@@ -1002,10 +1043,12 @@ const retainBoundedE2eApplications = ({ applicationsCacheRoot, leaseId, previous
 const publishE2eApplication = ({
   profileRoot,
   applicationsCacheRoot,
+  sourceProvenance,
   retentionLeaseId = null,
   failAt = null,
   afterCopy = null,
 }) => {
+  const source = normalizeSourceProvenance(sourceProvenance);
   const profile = collectCargoProfileApplication(profileRoot);
   const cache = resolveAbsoluteInput(applicationsCacheRoot, 'E2E applications cache root');
   if (
@@ -1018,7 +1061,7 @@ const publishE2eApplication = ({
     cacheRoot: cache,
     leaseId: retentionLeaseId,
   });
-  const manifest = applicationManifestBytes(profile);
+  const manifest = applicationManifestBytes({ ...profile, sourceProvenance: source });
   const applicationHash = manifestHash(manifest);
   const paths = publicationPaths(cache, applicationHash);
   createManagedDirectory(paths.applicationsRoot, 'E2E applications directory');
@@ -1041,7 +1084,7 @@ const publishE2eApplication = ({
       } catch {
         throw error;
       }
-      if (legacyReceipt?.schemaVersion !== 1) throw error;
+      if (![1, 2].includes(legacyReceipt?.schemaVersion)) throw error;
       // Schema v1 stored its manifest outside the immutable tree. It cannot satisfy the v2 verifier,
       // but its exact application directory remains untouched while the new schema publishes beside it.
     }
@@ -1081,7 +1124,7 @@ const publishE2eApplication = ({
       });
       if (afterCopy !== null) afterCopy();
       const sourceAfterCopy = collectCargoProfileApplication(profile.root);
-      if (!applicationManifestBytes(sourceAfterCopy).equals(manifest)) {
+      if (!applicationManifestBytes({ ...sourceAfterCopy, sourceProvenance: source }).equals(manifest)) {
         throw new Error('Cargo profile changed while its E2E application was being published');
       }
       if (failAt === 'before-application-commit') {
@@ -1112,13 +1155,14 @@ const publishE2eApplication = ({
   }
 
   const sourceBeforeReceipt = collectCargoProfileApplication(profile.root);
-  if (!applicationManifestBytes(sourceBeforeReceipt).equals(manifest)) {
+  if (!applicationManifestBytes({ ...sourceBeforeReceipt, sourceProvenance: source }).equals(manifest)) {
     throw new Error('Cargo profile changed before its E2E application receipt was published');
   }
   const receipt = applicationReceiptBytes({
     paths,
     applicationHash,
     files: profile.files,
+    sourceProvenance: source,
   });
   let receiptChanged = true;
   if (fs.existsSync(paths.receiptPath)) {
@@ -1157,6 +1201,7 @@ const publishE2eApplication = ({
     applicationCreated,
     receiptChanged,
     retention,
+    sourceProvenance: source,
   });
 };
 
@@ -1200,10 +1245,14 @@ const readAndVerifyE2eApplicationReceipt = ({
     expectedHash: receipt.applicationHash,
     expectedManifestBytes: manifest,
   });
+  if (application.sourceProvenance === null) {
+    throw new Error('E2E application receipt names a historical application without source provenance');
+  }
   const expectedReceipt = applicationReceiptBytes({
     paths,
     applicationHash: receipt.applicationHash,
     files: application.files,
+    sourceProvenance: application.sourceProvenance,
   });
   if (!receiptBytes.equals(expectedReceipt)) {
     throw new Error('E2E application receipt path/hash or inventory does not match its publication');
@@ -1216,6 +1265,7 @@ const readAndVerifyE2eApplicationReceipt = ({
     receiptPath: paths.receiptPath,
     fileCount: application.files.length,
     totalBytes: application.files.reduce((total, entry) => total + entry.size, 0),
+    sourceProvenance: application.sourceProvenance,
   });
 };
 
@@ -1225,26 +1275,31 @@ const parseCli = (argv) => {
     const name = argv[index];
     const value = argv[index + 1];
     if (
-      !['--profile-root', '--applications-cache-root'].includes(name)
+      ![
+        '--profile-root', '--applications-cache-root', '--repository-root',
+      ].includes(name)
       || value === undefined
       || values.has(name)
     ) {
       throw new Error(
         'usage: e2e-application-publication.js '
-        + '--profile-root ABSOLUTE --applications-cache-root ABSOLUTE',
+        + '--profile-root ABSOLUTE --applications-cache-root ABSOLUTE --repository-root ABSOLUTE',
       );
     }
     values.set(name, value);
   }
-  if (values.size !== 2) {
+  if (values.size !== 3) {
     throw new Error(
       'usage: e2e-application-publication.js '
-      + '--profile-root ABSOLUTE --applications-cache-root ABSOLUTE',
+      + '--profile-root ABSOLUTE --applications-cache-root ABSOLUTE --repository-root ABSOLUTE',
     );
   }
   return {
     profileRoot: values.get('--profile-root'),
     applicationsCacheRoot: values.get('--applications-cache-root'),
+    sourceProvenance: readCleanGitSourceProvenance({
+      repositoryRoot: resolveAbsoluteInput(values.get('--repository-root'), 'repository root'),
+    }),
   };
 };
 

@@ -4,6 +4,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runSupervisedSync } = require('./windows-job-supervisor');
 const { tauriFrontendDistOverride } = require('./managed-build-context.js');
+const { readCleanGitSourceProvenance } = require('./git-source-provenance.js');
 
 const { buildE2eFrontendSnapshot } = require('./build-e2e-frontend');
 const {
@@ -103,6 +104,10 @@ const runDirectChild = ({
   }
   return result;
 };
+
+const sameSourceProvenance = (left, right) => (
+  left.commit === right.commit && left.tree === right.tree && left.dirty === right.dirty
+);
 
 const cacheRootArguments = (cacheRoot) => (
   cacheRoot === undefined || cacheRoot === '' ? [] : ['-CacheRoot', cacheRoot]
@@ -263,6 +268,7 @@ const buildE2eBinary = ({
   verifyApplication = readAndVerifyE2eApplicationReceipt,
   spawn = spawnSync,
   supervise = runSupervisedSync,
+  readSourceProvenance = readCleanGitSourceProvenance,
 } = {}) => {
   const repository = path.resolve(repositoryRoot);
   let lease;
@@ -271,6 +277,7 @@ const buildE2eBinary = ({
   const cleanupErrors = [];
 
   try {
+    const sourceProvenance = readSourceProvenance({ repositoryRoot: repository });
     // Reclaim only manager-owned external lanes before taking the build lease. Existing repository
     // targets are intentionally outside this boundary and can only be removed manually.
     pruneManagedCache({
@@ -310,11 +317,16 @@ const buildE2eBinary = ({
         lease.assetCacheRoot,
       ],
     });
+    const sourceAfterBuild = readSourceProvenance({ repositoryRoot: repository });
+    if (!sameSourceProvenance(sourceProvenance, sourceAfterBuild)) {
+      throw new Error('E2E application source revision changed while the binary was built');
+    }
     const profileRoot = path.join(lease.cargoTargetDir, TARGET_TRIPLE, CARGO_PROFILE);
     const published = publishApplication({
       profileRoot,
       applicationsCacheRoot: lease.appPublicationRoot,
       retentionLeaseId: lease.leaseId,
+      sourceProvenance,
     });
     const application = verifyApplication({
       applicationsCacheRoot: lease.appPublicationRoot,
@@ -403,5 +415,6 @@ module.exports = {
   parseCacheContract,
   pruneManagedCache,
   releaseE2eLease,
+  readCleanGitSourceProvenance,
   runChild,
 };

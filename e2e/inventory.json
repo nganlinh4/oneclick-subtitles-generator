@@ -1878,65 +1878,8 @@
   "suiteRun": {
     "$comment": [
       "There is no single invocation that runs every journey against one binary and reports one aggregate result -- journeys run independently, on whatever binary is current when each one is invoked. The single 2026-08-21/c1a5b47d claim this block used to make went stale the moment any one journey re-ran on a newer binary while the others did not, and hand-maintaining it could not keep up.",
-      "Each green journey above instead carries its own evidenceWorkflow/attemptId/binaryDigest, bound to that workflow's newest passing attempt in evidence/<workflow>/attempts/<attemptId>/manifest.json. Run `node e2e/scripts/verify-inventory.mjs` for the current, mechanically-checked truth; this block only records what the e2e application store itself proves as of the date below, so a reader does not have to trust prose here over that script."
+      "The verifier treats each workflow's immutable latest-success.json as authoritative, reports stale hand bindings without trusting them, and classifies proof as current-HEAD, retained historical, or rotated historical from source-bound application manifests. Generated counts and application snapshots are deliberately forbidden here because they become stale external state."
     ],
-    "asOf": "2026-08-28",
-    "verify": "node e2e/scripts/verify-inventory.mjs",
-    "applicationsStore": {
-      "current": {
-        "applicationHash": "45e2f28649943be121283cc786a2af8189a493b4dd666ded2d3d1f372814d1be",
-        "exeSha256": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53",
-        "publishedAt": "2026-08-27T14:56:28.581Z",
-        "source": "apps/e2e/receipts/current.json"
-      },
-      "retained": [
-        {
-          "applicationHash": "b0c16c5982ab45f71e36dbef6fbfad9e110fdb114932a95cac67037edb98a960",
-          "exeSha256": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851",
-          "publishedAt": "2026-08-27T11:22:20.619Z",
-          "greenEntriesBoundToThisDigest": 19
-        },
-        {
-          "applicationHash": "45e2f28649943be121283cc786a2af8189a493b4dd666ded2d3d1f372814d1be",
-          "exeSha256": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53",
-          "publishedAt": "2026-08-27T14:56:28.581Z",
-          "current": true,
-          "greenEntriesBoundToThisDigest": 3
-        }
-      ]
-    },
-    "olderBinariesStillCitedByGreenEvidence": [
-      {
-        "exeSha256": "1645a8f77dadb119e3ea32c021687e4696c3c502c3bdb36cb1ec695822fc7645",
-        "greenEntriesBoundToThisDigest": 2,
-        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
-      },
-      {
-        "exeSha256": "3d63a7f2859f9e4a35902b6bc47abef1071cf9b5f1779d92ce2482bd046d2ee4",
-        "greenEntriesBoundToThisDigest": 2,
-        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
-      },
-      {
-        "exeSha256": "a4f06dc1307e56a1a474e6cd9c28fc61fd7523a61cbbd90fd4080dedaf0c15e8",
-        "greenEntriesBoundToThisDigest": 2,
-        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
-      },
-      {
-        "exeSha256": "f47148d4fee0008b753344168b0405ed3cd0789e57ee3fa7d4d439e767acbeaa",
-        "greenEntriesBoundToThisDigest": 1,
-        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
-      },
-      {
-        "exeSha256": "0b443bb8d34b7b82a9c0dad26b22049490efeae2a4700df33dd407cc460c7028",
-        "greenEntriesBoundToThisDigest": 1,
-        "note": "rotated out of the applications store; the retained evidence manifests remain the proof"
-      }
-    ],
-    "generatedStatusCounts": {
-      "note": "Snapshot from verify-inventory.mjs on asOf; re-run the script for the current numbers rather than trusting this snapshot.",
-      "green": 31,
-      "unproven": 28,
-      "planned": 1
-    }
+    "verify": "node e2e/scripts/verify-inventory.mjs"
   }
 }

@@ -12,7 +12,18 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { publishE2eApplication } = require('../../scripts/e2e-application-publication.js');
+const {
+  publishE2eApplication: publishApplicationWithoutTestProvenance,
+} = require('../../scripts/e2e-application-publication.js');
+const TEST_SOURCE_PROVENANCE = Object.freeze({
+  commit: '1'.repeat(40),
+  tree: '2'.repeat(40),
+  dirty: false,
+});
+const publishE2eApplication = (input) => publishApplicationWithoutTestProvenance({
+  ...input,
+  sourceProvenance: input.sourceProvenance ?? TEST_SOURCE_PROVENANCE,
+});
 const { readCurrentWindowsProcessIdentity } = require('../../scripts/windows-process-identity.js');
 
 const guardedWindowsGuiFixture = () => {
@@ -83,6 +94,7 @@ test('default launches resolve only through the verified external application re
       receiptPath: publication.receiptPath,
       fileCount: publication.fileCount,
       totalBytes: publication.totalBytes,
+      sourceProvenance: TEST_SOURCE_PROVENANCE,
     },
   );
   assert.doesNotThrow(() => environment.assertAutomationDialogGuard(publication.binaryPath));
