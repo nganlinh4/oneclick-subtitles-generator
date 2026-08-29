@@ -104,6 +104,17 @@ test('defect 2: export frame identical to its independent source (source-only) i
   }), /export has no subtitle signal/u);
 });
 
+test('defect 2b: perfect agreement with one preview surface cannot hide abandonment of the other', () => {
+  const observation = baseline();
+  const entry = structuredClone(observation.regions.entry);
+  entry.exportMainMaskCoverage = 1;
+  entry.exportRenderMaskCoverage = 0;
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...observation,
+    regions: { ...observation.regions, entry },
+  }), /weaker surface subtitle mask/u);
+});
+
 // =================================================================================================
 // 3. Wrong placement: ink translated by a meaningful offset, INCLUDING the ROTATED 0.92/0.87 floor.
 //    This is the highest-risk relaxation named in the review brief.

@@ -617,14 +617,21 @@ test('mask agreement branches: strong masks demand overlap, faint masks demand c
   faintLowOverlap.entry.mainRenderMaskOverlap = 0.22;
   verifyExportAnimationParityObservation({ ...valid, regions: faintLowOverlap });
 
-  // Export coverage is judged against a real surface, not the divergence-inflated union: strong
-  // agreement with one surface passes even when the union dilutes, and agreeing with neither
-  // fails regardless of the union number.
+  // Export coverage is judged against each real surface, not the divergence-inflated union:
+  // measured capture-path differences may dilute one surface modestly, but an export cannot use
+  // strong agreement with one surface to conceal substantial disagreement with the other.
   const unionDiluted = { entry: region(), exit: region() };
   unionDiluted.entry.exportSubtitleMaskCoverage = 0.496;
   unionDiluted.entry.exportMainMaskCoverage = 0.81;
-  unionDiluted.entry.exportRenderMaskCoverage = 0.34;
+  unionDiluted.entry.exportRenderMaskCoverage = 0.54;
   verifyExportAnimationParityObservation({ ...valid, regions: unionDiluted });
+
+  const abandonsRenderSurface = { entry: region(), exit: region() };
+  abandonsRenderSurface.entry.exportMainMaskCoverage = 1;
+  abandonsRenderSurface.entry.exportRenderMaskCoverage = 0.49;
+  assert.throws(() => verifyExportAnimationParityObservation({
+    ...valid, regions: abandonsRenderSurface,
+  }), /weaker surface subtitle mask/u);
 
   const coversNeither = { entry: region(), exit: region() };
   coversNeither.entry.exportMainMaskCoverage = 0.40;

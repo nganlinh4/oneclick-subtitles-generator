@@ -24,10 +24,18 @@ const MIN_SURFACE_MASK_OVERLAP = 0.30;
 // Below this per-surface mask size, exact-pixel overlap degenerates into threshold noise and the
 // centroid-distance agreement takes over. Strong samples (holding/typical entries) sit well above.
 const STRONG_SURFACE_MASK_PIXELS = 3_000;
-// The export must reproduce at least this fraction of ONE complete surface's own ink footprint.
+// The export must reproduce at least this fraction of the stronger surface's own ink footprint.
 // Judged per surface rather than against the Main/Render union, whose size varies with how far
-// the two capture paths diverge at a given alpha; agreement with a real surface is the claim.
+// the two capture paths diverge at a given alpha.
 const MIN_EXPORT_MASK_COVERAGE = 0.55;
+// Agreement with only ONE surface is not WYSIWYG parity. The latest preserved 10-case real-binary
+// matrix (export-animation-parity-matrix attempt 20260828053657698-68980-ec400bf2) measured every
+// Main and Render coverage independently. Its lowest legitimate weaker-surface sample was 0.5402
+// (case 05 entry); every other sample was >= 0.5887. A 0.50 floor retains measured rasterization
+// headroom while rejecting an export that follows one preview implementation and abandons the
+// other. Keep the stronger 0.55 claim above as well: two mediocre overlaps are not a substitute
+// for reproducing either real surface strongly.
+const MIN_EXPORT_SECONDARY_MASK_COVERAGE = 0.50;
 // Placement-agreement floor: the export's ink centroid must land close to a real surface's own
 // centroid, not just overlap/cover it loosely. MIN_EXPORT_MASK_COVERAGE alone is fooled by a
 // translated WIDE box (coverage only degrades to (boxWidth-shift)/boxWidth, so a 300px-wide line
@@ -683,16 +691,21 @@ const verifyRegion = (region, definition, phase, expectedGeometry) => {
     `${label}: export/source difference covers ${region.exportMaskRatio} of the frame and cannot `
       + 'prove a localized subtitle composition'
   ));
-  // Coverage is judged against each REAL surface's own ink footprint, and the export must agree
-  // strongly with at least one of them. The old union denominator inflated whenever the two
-  // surfaces' capture paths diverged (which the faint-mask work above documents), so a correct
-  // export could fall a hair under a bound whose 30%-overlap premise no longer holds everywhere.
-  const exportSurfaceCoverage = Math.max(
+  // Coverage is judged against each REAL surface's own ink footprint. The old union denominator
+  // inflated whenever the two capture paths diverged, so the primary claim still uses the
+  // stronger surface. A separate weaker-surface floor prevents an either/or escape in which the
+  // export follows one preview path but substantially abandons the other.
+  const exportSurfaceCoverages = [
     region.exportMainMaskCoverage ?? 0,
     region.exportRenderMaskCoverage ?? 0,
-  );
-  assert.ok(exportSurfaceCoverage >= MIN_EXPORT_MASK_COVERAGE, (
-    `${label}: export covers only ${exportSurfaceCoverage} of the stronger surface subtitle mask`
+  ];
+  const strongerSurfaceCoverage = Math.max(...exportSurfaceCoverages);
+  const weakerSurfaceCoverage = Math.min(...exportSurfaceCoverages);
+  assert.ok(strongerSurfaceCoverage >= MIN_EXPORT_MASK_COVERAGE, (
+    `${label}: export covers only ${strongerSurfaceCoverage} of the stronger surface subtitle mask`
+  ));
+  assert.ok(weakerSurfaceCoverage >= MIN_EXPORT_SECONDARY_MASK_COVERAGE, (
+    `${label}: export covers only ${weakerSurfaceCoverage} of the weaker surface subtitle mask`
   ));
   // Exact-pixel mask geometry is meaningful only when both masks are strong. At a faint sample
   // (low eased alpha over a glow) the per-surface masks are dominated by how each capture path
