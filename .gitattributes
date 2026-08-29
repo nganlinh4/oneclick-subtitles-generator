@@ -6,7 +6,7 @@
 *.js text
 *.mjs text eol=lf
 *.py text eol=lf
-*.md text
+*.md text eol=lf
 *.txt text
 *.html text
 *.css text eol=lf
