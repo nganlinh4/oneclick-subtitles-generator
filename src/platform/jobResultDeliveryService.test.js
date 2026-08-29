@@ -32,7 +32,7 @@ test('discovers bounded identities and claims an exact succeeded-job payload wit
   const raw = claimed();
   const invokeCommand = vi.fn(async (command, args) => {
     if (command === 'job_result_pending') {
-      expect(args).toEqual({ kind: null });
+      expect(args).toEqual({ kind: null, afterDeliveryId: null });
       return [{
         deliveryId: raw.delivery.deliveryId,
         jobId: raw.delivery.jobId,
@@ -45,7 +45,10 @@ test('discovers bounded identities and claims an exact succeeded-job payload wit
   });
 
   await expect(listPendingJobResults({ invokeCommand })).resolves.toHaveLength(1);
-  expect(invokeCommand).toHaveBeenNthCalledWith(1, 'job_result_pending', { kind: null });
+  expect(invokeCommand).toHaveBeenNthCalledWith(1, 'job_result_pending', {
+    kind: null,
+    afterDeliveryId: null,
+  });
   await expect(claimJobResult(raw.job.id, { invokeCommand })).resolves.toEqual(
     normalizeClaimedJobResult(raw),
   );
@@ -64,6 +67,7 @@ test('requests an exact native delivery kind and rejects a cross-kind response',
     .rejects.toMatchObject({ code: 'invalidJobResult' });
   expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('job_result_pending', {
     kind: 'geminiText',
+    afterDeliveryId: null,
   });
 });
 

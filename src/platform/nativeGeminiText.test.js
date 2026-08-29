@@ -32,7 +32,11 @@ const completedEvent = (text = '{"ok":true}') => ({
   usage: null,
 });
 
-const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } = {}) => {
+const createHarness = ({
+  startImplementation,
+  credentialIds = [CREDENTIAL_A],
+  recoveredEntry = null,
+} = {}) => {
   let activeIndex = 0;
   const prepareCredentials = vi.fn().mockResolvedValue(undefined);
   const getCredentialId = vi.fn(() => credentialIds[activeIndex] ?? null);
@@ -46,6 +50,8 @@ const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } =
   const cancel = vi.fn().mockResolvedValue(true);
   const acknowledge = vi.fn().mockResolvedValue(undefined);
   const ensureRecovery = vi.fn().mockResolvedValue({ unavailable: false });
+  const claimRecovered = vi.fn(() => recoveredEntry);
+  const acknowledgeRecovered = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn(startImplementation ?? (async (_request, handlers) => {
     queueMicrotask(() => handlers.onCompleted(completedEvent()));
     return {
@@ -67,6 +73,8 @@ const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } =
       cancel,
       acknowledge,
       ensureRecovery,
+      claimRecovered,
+      acknowledgeRecovered,
     }),
     prepareCredentials,
     getCredentialId,
@@ -75,6 +83,8 @@ const createHarness = ({ startImplementation, credentialIds = [CREDENTIAL_A] } =
     cancel,
     acknowledge,
     ensureRecovery,
+    claimRecovered,
+    acknowledgeRecovered,
   };
 };
 
@@ -106,6 +116,7 @@ test('uses only an opaque credential id and returns the native terminal result',
     maxOutputTokens: undefined,
     thinkingLevel: undefined,
     mediaAssetId: null,
+    recoveryKey: expect.stringMatching(/^[0-9a-f]{64}$/u),
   }, expect.any(Object));
 });
 
@@ -127,7 +138,68 @@ test('forwards exact project ownership to the native admission boundary as one p
     mediaAssetId: null,
     projectId: PROJECT_A,
     expectedProjectStateVersion: 9,
+    recoveryKey: expect.stringMatching(/^[0-9a-f]{64}$/u),
   }, expect.any(Object));
+});
+
+test('reuses a retained paid result before credentials or a second provider request', async () => {
+  const entry = {
+    job: completedEvent().job,
+    value: {
+      delivery: {
+        deliveryId: DELIVERY_A,
+        payload: { text: '{"recovered":true}', usage: null },
+      },
+    },
+  };
+  const harness = createHarness({ recoveredEntry: entry });
+
+  const result = await harness.service.run({
+    ...request,
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 9,
+  });
+
+  expect(result.text).toBe('{"recovered":true}');
+  expect(harness.claimRecovered).toHaveBeenCalledWith(expect.objectContaining({
+    task: 'translate',
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 9,
+    recoveryKey: expect.stringMatching(/^[0-9a-f]{64}$/u),
+  }));
+  expect(harness.prepareCredentials).not.toHaveBeenCalled();
+  expect(harness.start).not.toHaveBeenCalled();
+  await result.acknowledge();
+  expect(harness.acknowledgeRecovered).toHaveBeenCalledExactlyOnceWith(entry);
+});
+
+test('keeps recovered paid output retryable when its acknowledgement response is lost', async () => {
+  const entry = {
+    job: completedEvent().job,
+    value: {
+      delivery: {
+        deliveryId: DELIVERY_A,
+        payload: { text: '{"recovered":true}', usage: null },
+      },
+    },
+  };
+  const harness = createHarness({ recoveredEntry: entry });
+  harness.acknowledgeRecovered
+    .mockRejectedValueOnce(new Error('ack response lost'))
+    .mockResolvedValueOnce(undefined);
+
+  const result = await harness.service.run({
+    ...request,
+    projectId: PROJECT_A,
+    expectedProjectStateVersion: 9,
+  });
+  await expect(result.acknowledge()).rejects.toThrow('ack response lost');
+  await expect(result.acknowledge()).resolves.toBeUndefined();
+  await expect(result.acknowledge()).resolves.toBeUndefined();
+
+  expect(harness.prepareCredentials).not.toHaveBeenCalled();
+  expect(harness.start).not.toHaveBeenCalled();
+  expect(harness.acknowledgeRecovered).toHaveBeenCalledTimes(2);
 });
 
 test('does not prepare credentials or start Gemini while durable recovery is unavailable', async () => {

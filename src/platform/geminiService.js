@@ -75,6 +75,7 @@ const requestKeys = new Set([
   'emptySpeechPolicy',
   'projectId',
   'expectedProjectStateVersion',
+  'recoveryKey',
 ]);
 const handlerKeys = new Set([
   'onEvent',
@@ -267,6 +268,12 @@ export const normalizeGeminiStartRequest = (request) => {
       throw invalidRequest();
     }
     normalized.expectedProjectStateVersion = request.expectedProjectStateVersion;
+  }
+  if (request.recoveryKey !== undefined) {
+    if (typeof request.recoveryKey !== 'string' || !/^[0-9a-f]{64}$/u.test(request.recoveryKey)) {
+      throw invalidRequest();
+    }
+    normalized.recoveryKey = request.recoveryKey;
   }
   if (normalized.task === 'transcribe' && normalized.mediaAssetId === null) {
     throw invalidRequest();

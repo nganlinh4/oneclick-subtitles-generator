@@ -9,7 +9,11 @@ import {
   startGeminiJob,
 } from './geminiService';
 import { acknowledgeJobResult } from './jobResultDeliveryService';
-import { ensureNativeJobRecoveryReady } from './jobRecoveryCoordinator';
+import {
+  acknowledgeRecoveredNativeJob,
+  claimRecoveredGeminiJob,
+  ensureNativeJobRecoveryReady,
+} from './jobRecoveryCoordinator';
 
 const RETRYABLE_CREDENTIAL_CODES = new Set([
   'geminiCredentialRejected',
@@ -30,6 +34,49 @@ const cancelledError = () => {
   error.name = 'AbortError';
   error.code = 'geminiCancelled';
   return error;
+};
+
+const canonical = (value) => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+  }
+  return value;
+};
+
+const recoveryKeyFor = async (request) => {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined) throw fixedError('geminiRecoveryUnavailable');
+  // Project revision ownership already binds the exact current media. Segment clipping may mint a
+  // new derived asset ID after reload, so that process-local ID must not make the same request
+  // unrecoverable. Unowned requests still bind their media asset directly.
+  const identity = request.projectId === undefined
+    ? request
+    : { ...request, mediaAssetId: null };
+  const bytes = new TextEncoder().encode(JSON.stringify(canonical(identity)));
+  const digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const recoveredResult = (entry, acknowledgeRecovered) => {
+  const { payload } = entry.value.delivery;
+  let acknowledgement = null;
+  let acknowledged = false;
+  const acknowledgeConsumption = () => {
+    if (acknowledged) return Promise.resolve();
+    acknowledgement ??= Promise.resolve()
+      .then(() => acknowledgeRecovered(entry))
+      .then(() => { acknowledged = true; })
+      .finally(() => { acknowledgement = null; });
+    return acknowledgement;
+  };
+  return Object.freeze({
+    text: payload.text,
+    usage: payload.usage ?? null,
+    job: entry.job,
+    deliveryId: entry.value.delivery.deliveryId,
+    acknowledge: acknowledgeConsumption,
+  });
 };
 
 const runAttempt = async ({
@@ -128,11 +175,17 @@ export const createNativeGeminiJobRunner = ({
   cancel = cancelGeminiJob,
   acknowledge = acknowledgeJobResult,
   ensureRecovery = ensureNativeJobRecoveryReady,
+  claimRecovered = claimRecoveredGeminiJob,
+  acknowledgeRecovered = acknowledgeRecoveredNativeJob,
 } = {}) => {
   const run = async ({ request, signal, onChunk, onStarted }) => {
     if (signal?.aborted) throw cancelledError();
+    const recoveryKey = await recoveryKeyFor(request);
     await ensureRecovery();
     if (signal?.aborted) throw cancelledError();
+    const recoveryRequest = Object.freeze({ ...request, recoveryKey });
+    const recovered = claimRecovered(recoveryRequest);
+    if (recovered !== null) return recoveredResult(recovered, acknowledgeRecovered);
     try {
       await prepareCredentials();
     } catch (error) {
@@ -158,7 +211,7 @@ export const createNativeGeminiJobRunner = ({
       try {
         return await runAttempt({
           credentialId,
-          request,
+          request: recoveryRequest,
           signal,
           onChunk: typeof onChunk === 'function'
             ? (text) => {

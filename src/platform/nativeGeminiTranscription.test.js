@@ -14,8 +14,6 @@ vi.mock('./geminiService', () => ({
   startGeminiJob: vi.fn(),
 }));
 
-const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
-
 const createHarness = () => {
   const credentialId = uuidv7();
   const assetId = uuidv7();
@@ -77,7 +75,7 @@ it('uses only opaque credential/media IDs and returns the typed completed result
   const onStarted = vi.fn();
   const onChunk = vi.fn();
   const operation = harness.runner.run({ ...harness.request, onStarted, onChunk });
-  await flush();
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledOnce());
 
   expect(harness.start).toHaveBeenCalledWith(expect.objectContaining({
     credentialId: harness.credentialId,
@@ -137,7 +135,7 @@ it('never rotates credentials after exposing part of an attempt', async () => {
     prompt: 'Transcribe this video.',
     onChunk,
   });
-  await flush();
+  await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
   handlers[0].onChunk({ text: '[{"text":"partial"}' });
   handlers[0].onFailed({ error: { code: 'geminiRateLimited' } });
 
@@ -150,7 +148,7 @@ it('never rotates credentials after exposing part of an attempt', async () => {
 it('cancels a malformed Channel and exposes no transport diagnostics', async () => {
   const harness = createHarness();
   const operation = harness.runner.run(harness.request);
-  await flush();
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledOnce());
   harness.getHandlers().onProtocolError(new Error('private provider payload'));
 
   await expect(operation).rejects.toMatchObject({
@@ -165,7 +163,7 @@ it('settles UI cancellation immediately while still cancelling the native job', 
   const harness = createHarness();
   const controller = new AbortController();
   const operation = harness.runner.run({ ...harness.request, signal: controller.signal });
-  await flush();
+  await vi.waitFor(() => expect(harness.start).toHaveBeenCalledOnce());
   controller.abort();
 
   await expect(operation).rejects.toMatchObject({ name: 'AbortError', code: 'geminiCancelled' });

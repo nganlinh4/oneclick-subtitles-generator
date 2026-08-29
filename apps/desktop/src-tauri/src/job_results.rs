@@ -36,10 +36,11 @@ async fn database_task<T: Send + 'static>(
 pub(crate) async fn job_result_pending(
     state: State<'_, DesktopState>,
     kind: Option<JobResultKind>,
+    after_delivery_id: Option<Uuid>,
 ) -> CommandResult<Vec<JobResultDeliveryHeader>> {
     let database = state.database.clone();
     let pending = database_task("job-result discovery", move || {
-        database.list_pending_job_results_by_kind(kind)
+        database.list_pending_job_results_by_kind_after(kind, after_delivery_id)
     })
     .await?;
     if pending.len() > MAX_PENDING_JOB_RESULT_DELIVERIES {

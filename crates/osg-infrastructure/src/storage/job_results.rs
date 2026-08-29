@@ -251,24 +251,30 @@ fn insert(
 pub(super) fn list_pending(
     connection: &Connection,
     kind: Option<JobResultKind>,
+    after_delivery_id: Option<Uuid>,
 ) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
+    let after_delivery_id = after_delivery_id.map(require_v7).transpose()?;
     let mut statement = connection.prepare(
         "SELECT delivery_id, job_id, kind
          FROM job_result_deliveries
          WHERE acknowledged_at_ms IS NULL
            AND (?1 IS NULL OR kind = ?1)
-         ORDER BY created_at_ms, job_id
-         LIMIT ?2",
+           AND (?2 IS NULL OR delivery_id > ?2)
+         ORDER BY delivery_id
+         LIMIT ?3",
     )?;
     let limit = i64::try_from(MAX_PENDING_JOB_RESULT_DELIVERIES)
         .expect("pending delivery limit fits SQLite");
-    let rows = statement.query_map(params![kind.map(JobResultKind::as_str), limit], |row| {
-        Ok((
-            row.get::<_, Uuid>(0)?,
-            row.get::<_, Uuid>(1)?,
-            row.get::<_, String>(2)?,
-        ))
-    })?;
+    let rows = statement.query_map(
+        params![kind.map(JobResultKind::as_str), after_delivery_id, limit],
+        |row| {
+            Ok((
+                row.get::<_, Uuid>(0)?,
+                row.get::<_, Uuid>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
     let mut deliveries = Vec::new();
     for row in rows {
         let (delivery_id, job_id, kind) = row?;
@@ -498,7 +504,7 @@ mod tests {
         let (_directory, database) = database();
         let registry =
             JobRegistry::restore(Arc::new(database.clone())).expect("restore empty registry");
-        for index in 0..MAX_PENDING_JOB_RESULT_DELIVERIES {
+        for index in 0..=MAX_PENDING_JOB_RESULT_DELIVERIES {
             let queued = registry
                 .register(JobKind::Translate)
                 .expect("register Gemini text job");
@@ -560,6 +566,23 @@ mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].job_id, asr_job_id);
         assert_eq!(filtered[0].kind, JobResultKind::AsrTranscription);
+
+        let first_gemini = database
+            .list_pending_job_results_by_kind(Some(JobResultKind::GeminiText))
+            .expect("first exact Gemini page");
+        assert_eq!(first_gemini.len(), MAX_PENDING_JOB_RESULT_DELIVERIES);
+        let second_gemini = database
+            .list_pending_job_results_by_kind_after(
+                Some(JobResultKind::GeminiText),
+                Some(first_gemini.last().expect("cursor row").delivery_id),
+            )
+            .expect("second exact Gemini page");
+        assert_eq!(second_gemini.len(), 1);
+        assert!(first_gemini.iter().all(|left| {
+            second_gemini
+                .iter()
+                .all(|right| left.delivery_id != right.delivery_id)
+        }));
     }
 
     #[test]

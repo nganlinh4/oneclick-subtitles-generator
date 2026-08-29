@@ -24,6 +24,7 @@ const MAX_JOB_SNAPSHOTS = 512;
 const MAX_RECOVERY_CANDIDATES = MAX_JOB_SNAPSHOTS + MAX_REMEMBERED_JOB_IDS;
 const MAX_PENDING_RESULT_PAGE = 256;
 const MAX_ASR_DISCARD_PASSES = 16;
+const MAX_GEMINI_DISCOVERY_PASSES = 16;
 const JOB_KINDS = new Set([
   'importMedia',
   'probeMedia',
@@ -59,6 +60,18 @@ export const RECOVERABLE_NATIVE_JOB_KINDS = Object.freeze([
   'analyzeSubtitles',
 ]);
 const recoverableKinds = new Set(RECOVERABLE_NATIVE_JOB_KINDS);
+const GEMINI_TASK_JOB_KIND = Object.freeze({
+  transcribe: 'transcribe',
+  translate: 'translate',
+  analyzeSubtitles: 'analyzeSubtitles',
+});
+const GEMINI_USAGE_FIELDS = Object.freeze([
+  'promptTokenCount',
+  'candidatesTokenCount',
+  'totalTokenCount',
+  'thoughtsTokenCount',
+  'cachedContentTokenCount',
+]);
 
 export class NativeJobRecoveryUnavailableError extends Error {
   constructor(result) {
@@ -87,6 +100,28 @@ const hasExactKeys = (value, keys) => (
   && Object.keys(value).length === keys.length
   && keys.every((key) => Object.hasOwn(value, key))
 );
+
+const isValidGeminiUsage = (value) => value === null || (
+  hasExactKeys(value, GEMINI_USAGE_FIELDS)
+  && GEMINI_USAGE_FIELDS.every((field) => (
+    value[field] === null || (Number.isSafeInteger(value[field]) && value[field] >= 0)
+  ))
+);
+
+const recoveredGeminiMatches = (entry, request) => {
+  const delivery = entry?.value?.delivery;
+  const payload = delivery?.payload;
+  return entry?.job?.kind === GEMINI_TASK_JOB_KIND[request.task]
+    && delivery?.kind === 'geminiText'
+    && delivery.projectId === (request.projectId ?? null)
+    && (delivery.projectId !== null || delivery.assetId === (request.mediaAssetId ?? null))
+    && payload?.schemaVersion === 2
+    && payload.task === request.task
+    && payload.recoveryKey === request.recoveryKey
+    && payload.expectedProjectStateVersion === (request.expectedProjectStateVersion ?? null)
+    && typeof payload.text === 'string'
+    && isValidGeminiUsage(payload.usage);
+};
 
 const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -240,13 +275,12 @@ export const createNativeJobRecoveryCoordinator = ({
   isNativeRuntime = isDesktopRuntime,
   adapters = defaultAdapters,
   releaseRenderPlayback = releaseNativeRenderPlayback,
-  pendingResults = (kind = null) => listPendingJobResults({ invokeCommand, kind }),
+  pendingResults = (kind = null, afterDeliveryId = null) => listPendingJobResults({
+    invokeCommand,
+    kind,
+    afterDeliveryId,
+  }),
   discardAsrResult = (jobId, deliveryId) => acknowledgeJobResult(
-    jobId,
-    deliveryId,
-    { invokeCommand },
-  ),
-  discardUnownedGeminiTranscribe = (jobId, deliveryId) => acknowledgeJobResult(
     jobId,
     deliveryId,
     { invokeCommand },
@@ -257,6 +291,7 @@ export const createNativeJobRecoveryCoordinator = ({
   const storage = storageOrNull(providedStorage);
   const recovered = new Map();
   let started = null;
+  let pendingGeminiCursor = null;
 
   const remember = (jobId) => {
     if (!isUuidV7(jobId)) return false;
@@ -423,23 +458,10 @@ export const createNativeJobRecoveryCoordinator = ({
       forget(current.id);
       return 'discarded';
     }
-    if (current.kind === 'transcribe') {
-      // A Gemini media transcription has no durable frontend receipt containing its request and
-      // project revision. Replaying only its text after reload would be an unauthorized merge.
-      // Its native project CAS already protected any commit that completed before reload, so the
-      // only safe ownerless disposition is exact release—not ASR classification or silent leak.
-      try {
-        await discardUnownedGeminiTranscribe(
-          pendingDelivery.jobId,
-          pendingDelivery.deliveryId,
-        );
-        forget(current.id);
-        return 'discarded';
-      } catch {
-        remember(current.id);
-        return 'unavailable';
-      }
-    }
+    // A Gemini delivery is paid provider output. Its native payload carries a request digest and
+    // exact project revision, but only the product consumer can parse it and commit the resulting
+    // domain change. Retain that capability until the exact request performs its revision-safe
+    // commit and acknowledges it.
     const entry = Object.freeze({ job: latest, value, wasRemembered });
     recovered.set(latest.id, entry);
     remember(latest.id);
@@ -457,11 +479,14 @@ export const createNativeJobRecoveryCoordinator = ({
       try {
         const terminal = normalizeJob(await abandonTranscribe(snapshot.id));
         if (terminal.id !== snapshot.id || terminal.kind !== 'transcribe'
-            || terminal.sequence < snapshot.sequence || ACTIVE_JOB_STATES.has(terminal.state)) {
+            || terminal.sequence < snapshot.sequence) {
           throw new Error('invalid transcription recovery state');
         }
         settled.set(terminal.id, terminal);
-        if (terminal.state !== 'succeeded') {
+        if (terminal.state === 'cancelling') {
+          remember(terminal.id);
+          unavailable = true;
+        } else if (terminal.state !== 'succeeded') {
           forget(terminal.id);
           discarded += 1;
         }
@@ -479,6 +504,37 @@ export const createNativeJobRecoveryCoordinator = ({
         .filter(({ id }) => ACTIVE_JOB_STATES.has(settled.get(id)?.state ?? 'running'))
         .map(({ id }) => id)),
     };
+  };
+
+  const discoverPendingGeminiResults = async () => {
+    const pending = [];
+    let afterDeliveryId = pendingGeminiCursor;
+    for (let pass = 0; pass < MAX_GEMINI_DISCOVERY_PASSES; pass += 1) {
+      let page;
+      try {
+        page = await pendingResults('geminiText', afterDeliveryId);
+      } catch {
+        pendingGeminiCursor = afterDeliveryId;
+        return { pending: Object.freeze(pending), unavailable: true };
+      }
+      if (page.some(({ kind }) => kind !== 'geminiText')) {
+        return { pending: Object.freeze(pending), unavailable: true };
+      }
+      pending.push(...page);
+      if (page.length < MAX_PENDING_RESULT_PAGE) {
+        pendingGeminiCursor = null;
+        return { pending: Object.freeze(pending), unavailable: false };
+      }
+      const next = page.at(-1)?.deliveryId;
+      if (!isUuidV7(next) || next === afterDeliveryId) {
+        return { pending: Object.freeze(pending), unavailable: true };
+      }
+      afterDeliveryId = next;
+      pendingGeminiCursor = next;
+    }
+    // Do not memoize recovery while a further page may exist. A later attempt is allowed to retry;
+    // ordinary databases never approach this hostile bound.
+    return { pending: Object.freeze(pending), unavailable: true };
   };
 
   const runStartAttempt = async () => {
@@ -500,14 +556,8 @@ export const createNativeJobRecoveryCoordinator = ({
     const secondCleanup = settled.activeCount > 0
       ? await discardOrphanedAsrResults()
       : { discarded: 0, asrJobIds: new Set(), unavailable: false };
-    let pending;
-    try {
-      pending = await pendingResults(null);
-    } catch {
-      return unavailableResult(
-        firstCleanup.discarded + settled.discarded + secondCleanup.discarded,
-      );
-    }
+    const geminiDiscovery = await discoverPendingGeminiResults();
+    const pending = geminiDiscovery.pending;
     const remembered = new Set(readRememberedIds(storage));
     const byId = new Map(jobs.map((job) => [job.id, job]));
     const pendingById = new Map(pending
@@ -524,15 +574,19 @@ export const createNativeJobRecoveryCoordinator = ({
       !firstCleanup.asrJobIds.has(jobId)
       && !secondCleanup.asrJobIds.has(jobId)
       && !settled.unsettledIds.has(jobId)
+      && !recovered.has(jobId)
     )));
-    if (candidateIds.size > MAX_RECOVERY_CANDIDATES) {
+    const nonDeliveryCandidateCount = [...candidateIds]
+      .filter((jobId) => !pendingById.has(jobId)).length;
+    if (nonDeliveryCandidateCount > MAX_RECOVERY_CANDIDATES) {
       return unavailableResult(
         firstCleanup.discarded + settled.discarded + secondCleanup.discarded,
       );
     }
     let recoveredCount = 0;
     let discardedCount = firstCleanup.discarded + settled.discarded + secondCleanup.discarded;
-    let unavailable = firstCleanup.unavailable || settled.unavailable || secondCleanup.unavailable;
+    let unavailable = firstCleanup.unavailable || settled.unavailable || secondCleanup.unavailable
+      || geminiDiscovery.unavailable;
     for (const jobId of [...candidateIds].sort()) {
       const listedJob = byId.get(jobId);
       const outcome = await recoverOne(
@@ -566,7 +620,22 @@ export const createNativeJobRecoveryCoordinator = ({
     return result;
   };
 
-  return Object.freeze({ start, ensureReady, remember, forget, list, claim, discard });
+  const claimGemini = (request) => {
+    const jobKind = GEMINI_TASK_JOB_KIND[request?.task];
+    if (jobKind === undefined || typeof request?.recoveryKey !== 'string') return null;
+    return list(jobKind).find((entry) => recoveredGeminiMatches(entry, request)) ?? null;
+  };
+
+  return Object.freeze({
+    start,
+    ensureReady,
+    remember,
+    forget,
+    list,
+    claim,
+    claimGemini,
+    discard,
+  });
 };
 
 const nativeJobRecovery = createNativeJobRecoveryCoordinator();
@@ -585,4 +654,13 @@ export const acknowledgeRecoveredNativeJob = async (entry) => {
     throw new Error('The recovered durable job result is invalid');
   }
   await acknowledgeJobResult(entry.job.id, delivery.deliveryId);
+  nativeJobRecovery.discard(entry.job.id);
+};
+
+/**
+ * Transfers an exact paid Gemini result back to the same product request after WebView reload.
+ * A changed project revision/request never receives or acknowledges the old provider output.
+ */
+export const claimRecoveredGeminiJob = (request) => {
+  return nativeJobRecovery.claimGemini(request);
 };

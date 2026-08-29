@@ -351,6 +351,7 @@ enum Request {
     },
     ListPendingJobResults {
         kind: Option<JobResultKind>,
+        after_delivery_id: Option<uuid::Uuid>,
         reply: SyncSender<Result<Vec<JobResultDeliveryHeader>, DatabaseError>>,
     },
     ClaimJobResult {
@@ -1257,14 +1258,26 @@ impl Database {
     }
 
     pub fn list_pending_job_results(&self) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
-        self.list_pending_job_results_by_kind(None)
+        self.list_pending_job_results_by_kind_after(None, None)
     }
 
     pub fn list_pending_job_results_by_kind(
         &self,
         kind: Option<JobResultKind>,
     ) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
-        self.request(|reply| Request::ListPendingJobResults { kind, reply })
+        self.list_pending_job_results_by_kind_after(kind, None)
+    }
+
+    pub fn list_pending_job_results_by_kind_after(
+        &self,
+        kind: Option<JobResultKind>,
+        after_delivery_id: Option<uuid::Uuid>,
+    ) -> Result<Vec<JobResultDeliveryHeader>, DatabaseError> {
+        self.request(|reply| Request::ListPendingJobResults {
+            kind,
+            after_delivery_id,
+            reply,
+        })
     }
 
     pub fn claim_job_result(
@@ -2021,8 +2034,16 @@ fn run_actor(
                     expected_state_version,
                 ));
             }
-            Request::ListPendingJobResults { kind, reply } => {
-                let _ = reply.send(super::job_results::list_pending(&connection, kind));
+            Request::ListPendingJobResults {
+                kind,
+                after_delivery_id,
+                reply,
+            } => {
+                let _ = reply.send(super::job_results::list_pending(
+                    &connection,
+                    kind,
+                    after_delivery_id,
+                ));
             }
             Request::ClaimJobResult { job_id, reply } => {
                 let _ = reply.send(super::job_results::claim(&connection, job_id));

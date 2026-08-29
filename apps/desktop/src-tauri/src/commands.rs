@@ -538,8 +538,9 @@ pub(crate) async fn job_cancel(
 ///
 /// `transcribe` is shared by local ASR and Gemini, so the terminal result delivery kind—not this
 /// job kind—decides whether a completed result is discarded or recovered. Active work has no
-/// delivery yet and no consumer after reload. Make queued/running work terminal using exact durable
-/// sequences; a concurrent success wins and is returned for result-kind routing.
+/// delivery yet and no consumer after reload. Request cancellation using the exact durable
+/// sequence, but never forge terminal cancellation before the worker has actually quiesced. A
+/// concurrent success wins and is returned for result-kind routing.
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
@@ -571,14 +572,13 @@ fn abandon_orphaned_transcribe(
         }
         let update = match snapshot.state() {
             JobState::Queued | JobState::Running => JobUpdate::RequestCancellation,
-            JobState::Cancelling => JobUpdate::ConfirmCancelled,
-            JobState::Succeeded
+            JobState::Cancelling
+            | JobState::Succeeded
             | JobState::Failed
             | JobState::Cancelled
             | JobState::Interrupted => return Ok(snapshot.clone()),
         };
         match jobs.apply_if_sequence(id, snapshot.sequence(), update) {
-            Ok(ticket) if ticket.snapshot().state() == JobState::Cancelling => {}
             Ok(ticket) => return Ok(ticket.snapshot().clone()),
             Err(osg_application::JobRegistryError::Conflict { .. }) => {}
             Err(error) => return Err(error.into()),
@@ -1319,10 +1319,17 @@ mod tests {
             .apply(running_id, JobUpdate::Start)
             .expect("start transcription");
         let cancellation = running.cancellation().clone();
-        let cancelled =
+        let cancelling =
             abandon_orphaned_transcribe(&jobs, running_id).expect("abandon running transcription");
-        assert_eq!(cancelled.state(), osg_domain::JobState::Cancelled);
+        assert_eq!(cancelling.state(), osg_domain::JobState::Cancelling);
         assert!(cancellation.is_cancelled());
+        let cancelled = jobs
+            .apply(running_id, JobUpdate::ConfirmCancelled)
+            .expect("worker confirms cancellation");
+        assert_eq!(
+            cancelled.snapshot().state(),
+            osg_domain::JobState::Cancelled
+        );
 
         let foreign = jobs.register(JobKind::RenderVideo).expect("foreign job");
         assert!(abandon_orphaned_transcribe(&jobs, foreign.snapshot().id()).is_err());

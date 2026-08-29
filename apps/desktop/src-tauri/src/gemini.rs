@@ -82,6 +82,7 @@ pub(crate) struct GeminiStartRequest {
     empty_speech_policy: Option<EmptySpeechPolicy>,
     project_id: Option<ProjectId>,
     expected_project_state_version: Option<u64>,
+    recovery_key: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,6 +162,16 @@ impl GeminiStartRequest {
         {
             return Err(CommandError::invalid_input(
                 "Gemini project ownership requires an exact project and state version.",
+            ));
+        }
+        if self.recovery_key.as_ref().is_some_and(|value| {
+            value.len() != 64
+                || !value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        }) {
+            return Err(CommandError::invalid_input(
+                "The Gemini recovery key is invalid.",
             ));
         }
         Ok(())
@@ -267,6 +278,8 @@ pub(crate) async fn gemini_start(
 ) -> CommandResult<JobSnapshot> {
     request.validate()?;
     let project_authority = request.project_authority();
+    let task = request.task;
+    let recovery_key = request.recovery_key.clone();
     verify_project_authority_async(state.database.clone(), project_authority, None).await?;
     let local_media = resolve_media(
         &state,
@@ -324,8 +337,14 @@ pub(crate) async fn gemini_start(
                     let _ = on_event.send(GeminiJobEvent::Failed { job, error });
                     return;
                 }
-                let delivery =
-                    gemini_result_delivery(job_id, project_authority, durable_asset_id, &output);
+                let delivery = gemini_result_delivery(
+                    job_id,
+                    task,
+                    project_authority,
+                    durable_asset_id,
+                    recovery_key.as_deref(),
+                    &output,
+                );
                 let delivery = match delivery {
                     Ok(delivery) => delivery,
                     Err(error) => {
@@ -515,8 +534,10 @@ async fn verify_project_authority_async(
 
 fn gemini_result_delivery(
     job_id: JobId,
+    task: GeminiTask,
     project_authority: Option<GeminiProjectAuthority>,
     durable_asset_id: Option<AssetId>,
+    recovery_key: Option<&str>,
     output: &GeminiOutput,
 ) -> Result<JobResultDeliveryDraft, DatabaseError> {
     JobResultDeliveryDraft::new(
@@ -525,7 +546,10 @@ fn gemini_result_delivery(
         project_authority.map(|authority| authority.project_id),
         durable_asset_id,
         &json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
+            "task": task.diagnostic_name(),
+            "expectedProjectStateVersion": project_authority.map(|authority| authority.expected_state_version),
+            "recoveryKey": recovery_key,
             "text": &output.text,
             "usage": &output.usage,
         }),
@@ -1107,11 +1131,13 @@ mod tests {
         let project_id = project.id();
         let draft = gemini_result_delivery(
             job_id,
+            GeminiTask::Translate,
             Some(GeminiProjectAuthority {
                 project_id,
                 expected_state_version: project_snapshot.state_version(),
             }),
             None,
+            Some(&"a".repeat(64)),
             &GeminiOutput {
                 text: "translated".to_owned(),
                 usage: None,
@@ -1137,6 +1163,13 @@ mod tests {
             .expect("claim")
             .expect("delivery");
         assert_eq!(delivery.project_id, Some(project_id));
+        assert_eq!(delivery.payload["schemaVersion"], 2);
+        assert_eq!(delivery.payload["task"], "translate");
+        assert_eq!(
+            delivery.payload["expectedProjectStateVersion"],
+            project_snapshot.state_version()
+        );
+        assert_eq!(delivery.payload["recoveryKey"], "a".repeat(64));
     }
 
     #[test]
@@ -1164,7 +1197,9 @@ mod tests {
             .expect("change project");
         let draft = gemini_result_delivery(
             job_id,
+            GeminiTask::Translate,
             Some(authority),
+            None,
             None,
             &GeminiOutput {
                 text: "must not publish".to_owned(),
