@@ -96,29 +96,40 @@ export const isolatedEnvironment = (environment) => {
 };
 
 const loadLaunchRuntime = async () => {
-  const [environment, applicationLease, evidenceLease, stagingLease, workflowEvidence] = await Promise.all([
+  const [
+    environment, applicationLease, cacheMaintenance, evidenceLease, stagingLease, workflowEvidence,
+  ] = await Promise.all([
     import('./support/environment.js'),
     import('./support/applicationLease.js'),
+    import('./support/cacheMaintenance.js'),
     import('./support/evidenceLease.js'),
     import('./support/stagingLease.js'),
     import('./support/workflowEvidence.js'),
   ]);
-  return { ...environment, ...applicationLease, ...evidenceLease, ...stagingLease, ...workflowEvidence };
+  return {
+    ...environment,
+    ...applicationLease,
+    ...cacheMaintenance,
+    ...evidenceLease,
+    ...stagingLease,
+    ...workflowEvidence,
+  };
 };
 
 export const run = async ({ repeat, journeys }) => {
   const {
     APPLICATION_BINARY, INHERITED_APPLICATION_LEASE, assertAutomationDialogGuard,
     beginWorkflowEvidence, createRunRoot, finalizeWorkflowEvidence, preserveRunRootEvidence,
+    createE2eCacheMaintenanceBatch,
     readVerifiedCurrentPublishedApplication, refreshWorkflowEvidenceIndex, removeRunRoot,
-    runRootAuthorization, serializeInheritedApplicationLease, withE2eApplicationLease,
-    withEvidenceLease, withStagingLease, workflowNameForJourney,
+    runRootAuthorization, serializeInheritedApplicationLease, workflowNameForJourney,
   } = await loadLaunchRuntime();
   // Reject an absent, corrupt, dirty, or historical publication before evidence/cache mutation.
   // The lease-protected verification below remains authoritative for the actual launch.
   readVerifiedCurrentPublishedApplication();
   const failures = [];
   const started = Date.now();
+  const cacheMaintenance = createE2eCacheMaintenanceBatch();
   // Self-heal the browsable evidence index before trusting or extending it: a prior run killed
   // between an attempt's manifest write and its index refresh (see workflowEvidence.js) can leave
   // the index stale for a workflow this invocation never touches. Refreshing again once the loop
@@ -129,7 +140,9 @@ export const run = async ({ repeat, journeys }) => {
       for (const journey of journeys) {
         const label = `${basename(journey)} (${iteration}/${repeat})`;
         const workflow = workflowNameForJourney(journey);
-        withE2eApplicationLease((applicationLease) => {
+        cacheMaintenance.withLeases(({
+          applicationLease, evidenceLease, stagingLease,
+        }) => {
           const publication = readVerifiedCurrentPublishedApplication();
           if (!samePath(publication.binaryPath, APPLICATION_BINARY)) {
             fail('the leased immutable binary changed after the isolated runner loaded');
@@ -139,79 +152,77 @@ export const run = async ({ repeat, journeys }) => {
             lease: applicationLease,
             publication,
           });
-          withStagingLease((stagingLease) => withEvidenceLease((evidenceLease) => {
-            const runRoot = createRunRoot({ stagingLease });
-            const runAuthorization = runRootAuthorization(runRoot);
-            const attempt = beginWorkflowEvidence({
-              workflow,
-              journey: relative(E2E_ROOT, journey).replaceAll('\\', '/'),
-              iteration,
-              applicationHash: publication.applicationHash,
-              binaryPath: publication.binaryPath,
+          const runRoot = createRunRoot({ stagingLease });
+          const runAuthorization = runRootAuthorization(runRoot);
+          const attempt = beginWorkflowEvidence({
+            workflow,
+            journey: relative(E2E_ROOT, journey).replaceAll('\\', '/'),
+            iteration,
+            applicationHash: publication.applicationHash,
+            binaryPath: publication.binaryPath,
+          });
+          process.stdout.write(`\n=== isolated journey: ${label} ===\n`);
+          const environment = isolatedEnvironment(process.env);
+          environment.OSG_E2E_WORKFLOW = workflow;
+          environment.OSG_E2E_EVIDENCE_ATTEMPT = attempt.id;
+          environment.OSG_E2E_DATA_ROOT = runRoot;
+          environment.OSG_E2E_REUSE_ROOT = '1';
+          environment.OSG_E2E_RUN_ROOT_AUTHORIZATION = runAuthorization;
+          environment[INHERITED_APPLICATION_LEASE] = inheritedApplication;
+          let result;
+          try {
+            result = runSupervisedSync({
+              command: process.execPath,
+              args: [WDIO, 'run', CONFIG, '--spec', journey],
+              cwd: E2E_ROOT,
+              env: environment,
+              stdio: 'inherit',
+              ownerProcessId: process.pid,
+              managedPaths: [
+                ...applicationLease.managedPaths,
+                ...stagingLease.managedPaths,
+                evidenceLease.evidenceRoot,
+              ],
             });
-            process.stdout.write(`\n=== isolated journey: ${label} ===\n`);
-            const environment = isolatedEnvironment(process.env);
-            environment.OSG_E2E_WORKFLOW = workflow;
-            environment.OSG_E2E_EVIDENCE_ATTEMPT = attempt.id;
-            environment.OSG_E2E_DATA_ROOT = runRoot;
-            environment.OSG_E2E_REUSE_ROOT = '1';
-            environment.OSG_E2E_RUN_ROOT_AUTHORIZATION = runAuthorization;
-            environment[INHERITED_APPLICATION_LEASE] = inheritedApplication;
-            let result;
-            try {
-              result = runSupervisedSync({
-                command: process.execPath,
-                args: [WDIO, 'run', CONFIG, '--spec', journey],
-                cwd: E2E_ROOT,
-                env: environment,
-                stdio: 'inherit',
-                ownerProcessId: process.pid,
-                managedPaths: [
-                  ...applicationLease.managedPaths,
-                  ...stagingLease.managedPaths,
-                  evidenceLease.evidenceRoot,
-                ],
-              });
-              const passed = !result.error && result.status === 0;
-              if (!passed) {
-                // The old architecture claimed a failed run root was "kept", but this finally has
-                // always removed it, so the per-case artifacts a journey staged under
-                // <root>/evidence died with the root. Promote them into the durable attempt through
-                // the publisher before the root goes away; diagnosis of a deterministic failure
-                // depends on it.
-                try {
-                  const kept = preserveRunRootEvidence({ workflow, runRoot, attemptId: attempt.id });
-                  if (kept.preserved > 0 || kept.skipped > 0) {
-                    process.stdout.write(
-                      `\n--- run-root evidence preserved in attempt ${attempt.id}: `
-                      + `${kept.preserved} file(s), ${kept.skipped} skipped ---\n`,
-                    );
-                  }
-                } catch (error) {
+            const passed = !result.error && result.status === 0;
+            if (!passed) {
+              // The old architecture claimed a failed run root was "kept", but this finally has
+              // always removed it, so the per-case artifacts a journey staged under
+              // <root>/evidence died with the root. Promote them into the durable attempt through
+              // the publisher before the root goes away; diagnosis of a deterministic failure
+              // depends on it.
+              try {
+                const kept = preserveRunRootEvidence({ workflow, runRoot, attemptId: attempt.id });
+                if (kept.preserved > 0 || kept.skipped > 0) {
                   process.stdout.write(
-                    `\n--- run-root evidence could not be preserved: ${error.message} ---\n`,
+                    `\n--- run-root evidence preserved in attempt ${attempt.id}: `
+                    + `${kept.preserved} file(s), ${kept.skipped} skipped ---\n`,
                   );
                 }
+              } catch (error) {
+                process.stdout.write(
+                  `\n--- run-root evidence could not be preserved: ${error.message} ---\n`,
+                );
               }
-              finalizeWorkflowEvidence({
-                workflow,
-                attemptId: attempt.id,
-                outcome: passed ? 'pass' : 'fail',
-                exitStatus: result.status,
-                signal: result.signal,
-                failure: result.error?.message ?? null,
-              });
-              // A supervisor-level error on ONE journey must not abort the remaining suite: the old
-              // throw here unwound every lease and silently dropped seventeen queued journeys when
-              // a single spawn failed mid-suite. Record it loudly and keep going.
-              if (result.error) {
-                process.stdout.write(`\nFAILED ${label}: supervisor error: ${result.error.message}\n`);
-              }
-              if (!passed) failures.push({ label, status: result.status ?? 'supervisor-error' });
-            } finally {
-              removeRunRoot(runRoot, runAuthorization);
             }
-          }));
+            finalizeWorkflowEvidence({
+              workflow,
+              attemptId: attempt.id,
+              outcome: passed ? 'pass' : 'fail',
+              exitStatus: result.status,
+              signal: result.signal,
+              failure: result.error?.message ?? null,
+            });
+            // A supervisor-level error on ONE journey must not abort the remaining suite: the old
+            // throw here unwound every lease and silently dropped seventeen queued journeys when
+            // a single spawn failed mid-suite. Record it loudly and keep going.
+            if (result.error) {
+              process.stdout.write(`\nFAILED ${label}: supervisor error: ${result.error.message}\n`);
+            }
+            if (!passed) failures.push({ label, status: result.status ?? 'supervisor-error' });
+          } finally {
+            removeRunRoot(runRoot, runAuthorization);
+          }
         });
       }
     }

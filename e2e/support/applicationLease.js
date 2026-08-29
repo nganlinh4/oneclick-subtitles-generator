@@ -33,6 +33,7 @@ export const INHERITED_APPLICATION_LEASE = 'OSG_E2E_LEASED_APPLICATION';
  */
 export const acquireE2eApplicationLease = ({
   acquire = acquireManagedE2eLease,
+  cacheMaintenance = 'standalone',
   prune = pruneManagedCache,
   release = releaseManagedE2eLease,
   processId = process.pid,
@@ -40,6 +41,9 @@ export const acquireE2eApplicationLease = ({
   cacheRoot = DEVELOPMENT_CACHE_ROOT,
   applicationsCacheRoot = E2E_APPLICATIONS_CACHE_ROOT,
 } = {}) => {
+  if (cacheMaintenance !== 'standalone' && cacheMaintenance !== 'external') {
+    throw new Error('E2E application cache maintenance must be standalone or external');
+  }
   const lease = acquire({ repositoryRoot, cacheRoot, processId });
   if (!samePath(lease.appPublicationRoot, applicationsCacheRoot)) {
     try {
@@ -79,12 +83,14 @@ export const acquireE2eApplicationLease = ({
       if (released) return false;
       release({ repositoryRoot, cacheRoot, leaseId: lease.leaseId });
       released = true;
-      prune({
-        repositoryRoot,
-        cacheRoot,
-        protectE2e: false,
-        protectApplication: true,
-      });
+      if (cacheMaintenance === 'standalone') {
+        prune({
+          repositoryRoot,
+          cacheRoot,
+          protectE2e: false,
+          protectApplication: true,
+        });
+      }
       return true;
     },
   });

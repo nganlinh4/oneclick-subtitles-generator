@@ -12,10 +12,9 @@ import {
   runRootAuthorization, scrubAutomationEnvironment,
 } from './environment.js';
 import {
-  INHERITED_APPLICATION_LEASE, serializeInheritedApplicationLease, withE2eApplicationLease,
+  INHERITED_APPLICATION_LEASE, serializeInheritedApplicationLease,
 } from './applicationLease.js';
-import { withEvidenceLease } from './evidenceLease.js';
-import { withStagingLease } from './stagingLease.js';
+import { createE2eCacheMaintenanceBatch } from './cacheMaintenance.js';
 import {
   finalizeWorkflowEvidence,
   resetWorkflowEvidence,
@@ -162,28 +161,26 @@ export const runScenarioProcesses = ({
   }
 };
 
-export const withScenarioLeases = (operation) => withE2eApplicationLease(
-  (applicationLease) => withStagingLease(
-    (stagingLease) => withEvidenceLease((evidenceLease) => {
-      const publication = readVerifiedPublishedApplication();
-      assertAutomationDialogGuard(publication.binaryPath);
-      return operation(Object.freeze({
-        applicationLease,
-        stagingLease,
-        evidenceLease,
+export const withScenarioLeases = (operation) => createE2eCacheMaintenanceBatch().withLeases(
+  ({ applicationLease, evidenceLease, stagingLease }) => {
+    const publication = readVerifiedPublishedApplication();
+    assertAutomationDialogGuard(publication.binaryPath);
+    return operation(Object.freeze({
+      applicationLease,
+      stagingLease,
+      evidenceLease,
+      publication,
+      inheritedApplication: serializeInheritedApplicationLease({
+        lease: applicationLease,
         publication,
-        inheritedApplication: serializeInheritedApplicationLease({
-          lease: applicationLease,
-          publication,
-        }),
-        managedPaths: Object.freeze([
-          ...applicationLease.managedPaths,
-          ...stagingLease.managedPaths,
-          evidenceLease.evidenceRoot,
-        ]),
-      }));
-    }),
-  ),
+      }),
+      managedPaths: Object.freeze([
+        ...applicationLease.managedPaths,
+        ...stagingLease.managedPaths,
+        evidenceLease.evidenceRoot,
+      ]),
+    }));
+  },
 );
 
 export const runTwoProcessScenario = ({ label, spec }) => {

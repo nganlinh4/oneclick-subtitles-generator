@@ -55,6 +55,32 @@ const GUARDED_MOCK_RESTORE = [
   '                        await restoreAllMocks.call({ browser: instance });',
   '                    }',
 ].join('\n');
+const REPEATED_FOCUS_SUPPRESSION = [
+  'function suppressActiveWindowFocus(browser) {',
+  "    userSwitchedWindowCache.add(browser.sessionId || 'default');",
+  '}',
+].join('\n');
+const TRANSITION_FOCUS_SUPPRESSION = [
+  'function suppressActiveWindowFocus(browser) {',
+  "    const sessionKey = browser.sessionId || 'default';",
+  '    if (userSwitchedWindowCache.has(sessionKey)) {',
+  '        return;',
+  '    }',
+  '    userSwitchedWindowCache.add(sessionKey);',
+  "    log$5.debug('Skipping auto-focus: user has explicitly switched windows');",
+  '}',
+].join('\n');
+const REPEATED_FOCUS_CACHE_HIT = [
+  "    if (userSwitchedWindowCache.has(browser.sessionId || 'default')) {",
+  "        log$5.debug('Skipping auto-focus: user has explicitly switched windows');",
+  '        return;',
+  '    }',
+].join('\n');
+const SILENT_FOCUS_CACHE_HIT = [
+  "    if (userSwitchedWindowCache.has(browser.sessionId || 'default')) {",
+  '        return;',
+  '    }',
+].join('\n');
 const SECRET_BEARING_LOG_REPLACEMENTS = Object.freeze([
   Object.freeze({
     description: 'constructor capability dump',
@@ -90,7 +116,8 @@ const SOURCE_SPECS = Object.freeze([
     unsafeSha256: '9f40744cff59af6adfc7d324064de1493aafaa32e88827e1dec5e8f11439b593',
     supersededSafeSha256: '435bb4a102bf06dd4cc0d42db9156c80afb0f1152d4edc4d6d7ce4b64bfe704f',
     preSessionGuardSafeSha256: '6c33a6952109f5c394151b9f9c6fce6c1a8cc1f85a1b00b3fb5593bc6ee01503',
-    safeSha256: '2d266c40ff0bc729e7a130f45e8f1dc3d09d44009f3cf74d99aa0144c7040154',
+    preFocusLogSafeSha256: '2d266c40ff0bc729e7a130f45e8f1dc3d09d44009f3cf74d99aa0144c7040154',
+    safeSha256: 'e6838ab199861e29ae5749136235dd24e2abe34e5ec17d55900b907d25bb3b60',
   }),
   Object.freeze({
     flavor: 'cjs',
@@ -98,7 +125,8 @@ const SOURCE_SPECS = Object.freeze([
     unsafeSha256: '34c47d9b676c0f73870889c49f8ccc612591f42b9a221c9ec305497ac94bfe10',
     supersededSafeSha256: '473aa18ebbafc46c0b343d0230af283ee2046b1095ad6703f364e2033ba0c10a',
     preSessionGuardSafeSha256: '244568917603cc8f2c9bcd1e2df8a7e7449c68672bbe426f8a77552cffbb6e18',
-    safeSha256: '44eae1da8eccc5698b9718292d2e07a3c2ed074c667f6da1ec76fd10a68c9a0d',
+    preFocusLogSafeSha256: '44eae1da8eccc5698b9718292d2e07a3c2ed074c667f6da1ec76fd10a68c9a0d',
+    safeSha256: 'addd4a7aa0827b40ed21e777633f7cb1e8346ed308d69be961e68b2659b40a47',
   }),
 ]);
 
@@ -159,6 +187,15 @@ export function assertTauriServiceSourceSafety(source, spec) {
   if (!source.includes('            else if (this.browser?.sessionId) {')) {
     throw new Error(`${SERVICE_NAME} does not guard single-browser mock restoration by session id`);
   }
+  if (!source.includes(TRANSITION_FOCUS_SUPPRESSION) || source.includes(REPEATED_FOCUS_CACHE_HIT)) {
+    throw new Error(`${SERVICE_NAME} repeats the explicit-window focus diagnostic on every command`);
+  }
+  const focusSuppressionLogs = source.match(
+    /Skipping auto-focus: user has explicitly switched windows/gu,
+  )?.length ?? 0;
+  if (focusSuppressionLogs !== 1 || !source.includes(SILENT_FOCUS_CACHE_HIT)) {
+    throw new Error(`${SERVICE_NAME} does not log focus suppression once at its state transition`);
+  }
   const diagnosticCalls = source.match(/await this\.diagnoseEnvironment\(this\.appBinaryPath\);/gu)?.length ?? 0;
   if (diagnosticCalls !== 1 || !source.includes(SAFE_WORKER_DIAGNOSTICS)) {
     throw new Error(`${SERVICE_NAME} does not exclude embedded workers from external-driver diagnostics`);
@@ -179,7 +216,8 @@ export function patchTauriServiceSource(source, spec) {
   }
   if (digest !== spec.unsafeSha256
       && digest !== spec.supersededSafeSha256
-      && digest !== spec.preSessionGuardSafeSha256) {
+      && digest !== spec.preSessionGuardSafeSha256
+      && digest !== spec.preFocusLogSafeSha256) {
     throw new Error(
       `${SERVICE_NAME} ${SERVICE_VERSION} ${spec.flavor} source drifted before patching `
         + `(sha256 ${digest}); refusing a best-effort rewrite`,
@@ -223,17 +261,31 @@ export function patchTauriServiceSource(source, spec) {
       'unguarded worker environment diagnostics',
     );
   }
+  if (digest !== spec.preFocusLogSafeSha256) {
+    patched = replaceExactlyOnce(
+      patched,
+      SESSIONLESS_MOCK_RESTORE,
+      GUARDED_MOCK_RESTORE,
+      'sessionless multiremote mock restoration',
+    );
+    patched = replaceExactlyOnce(
+      patched,
+      '            else if (this.browser) {',
+      '            else if (this.browser?.sessionId) {',
+      'sessionless single-browser mock restoration',
+    );
+  }
   patched = replaceExactlyOnce(
     patched,
-    SESSIONLESS_MOCK_RESTORE,
-    GUARDED_MOCK_RESTORE,
-    'sessionless multiremote mock restoration',
+    REPEATED_FOCUS_SUPPRESSION,
+    TRANSITION_FOCUS_SUPPRESSION,
+    'unbounded focus-suppression diagnostic',
   );
   patched = replaceExactlyOnce(
     patched,
-    '            else if (this.browser) {',
-    '            else if (this.browser?.sessionId) {',
-    'sessionless single-browser mock restoration',
+    REPEATED_FOCUS_CACHE_HIT,
+    SILENT_FOCUS_CACHE_HIT,
+    'per-command focus-suppression diagnostic',
   );
   assertTauriServiceSourceSafety(patched, spec);
   return Object.freeze({ source: patched, changed: true });

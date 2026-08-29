@@ -68,3 +68,31 @@ test('staging lease is held through work and releases before bounded pruning', (
   ]);
   assert.ok(calls[2].includes(leaseId));
 });
+
+test('external maintenance preserves acquire and release while suppressing both prunes', () => {
+  const calls = [];
+  const spawn = (_command, arguments_) => {
+    calls.push([...arguments_]);
+    if (arguments_.includes('Acquire')) {
+      return { status: 0, stdout: JSON.stringify(contract()), stderr: '' };
+    }
+    return { status: 0, stdout: '{}', stderr: '' };
+  };
+  const lease = acquireStagingLease({
+    cacheMaintenance: 'external', cacheRoot, stagingRoot, repositoryRoot, spawn,
+  });
+  assert.equal(lease.release(), true);
+  assert.deepEqual(calls.map((arguments_) => [
+    arguments_[arguments_.indexOf('-Action') + 1],
+    arguments_[arguments_.indexOf('-LeaseOperation') + 1],
+  ]), [
+    ['Lease', 'Acquire'],
+    ['Lease', 'Release'],
+  ]);
+  assert.throws(
+    () => acquireStagingLease({
+      cacheMaintenance: 'typo', cacheRoot, stagingRoot, repositoryRoot, spawn,
+    }),
+    /standalone or external/u,
+  );
+});

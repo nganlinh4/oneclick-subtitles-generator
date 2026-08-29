@@ -100,6 +100,30 @@ const REVERSE_REPLACEMENTS = Object.freeze([
     "    log.debug('Tauri service capabilities prepared (values redacted)');",
     "    log.debug('Tauri service capabilities after onPrepare:', JSON.stringify(capabilities, null, 2));",
   ]),
+  Object.freeze([[
+    'function suppressActiveWindowFocus(browser) {',
+    "    const sessionKey = browser.sessionId || 'default';",
+    '    if (userSwitchedWindowCache.has(sessionKey)) {',
+    '        return;',
+    '    }',
+    '    userSwitchedWindowCache.add(sessionKey);',
+    "    log$5.debug('Skipping auto-focus: user has explicitly switched windows');",
+    '}',
+  ].join('\n'), [
+    'function suppressActiveWindowFocus(browser) {',
+    "    userSwitchedWindowCache.add(browser.sessionId || 'default');",
+    '}',
+  ].join('\n')]),
+  Object.freeze([[
+    "    if (userSwitchedWindowCache.has(browser.sessionId || 'default')) {",
+    '        return;',
+    '    }',
+  ].join('\n'), [
+    "    if (userSwitchedWindowCache.has(browser.sessionId || 'default')) {",
+    "        log$5.debug('Skipping auto-focus: user has explicitly switched windows');",
+    '        return;',
+    '    }',
+  ].join('\n')]),
 ]);
 
 function installedSource(spec) {
@@ -116,7 +140,7 @@ function upstreamSourceFromPatched(source) {
 }
 
 function supersededSourceFromPatched(source) {
-  let superseded = source;
+  let superseded = preFocusLogSourceFromPatched(source);
   for (const index of [0, 1, 2]) {
     const [safe, unsafe] = REVERSE_REPLACEMENTS[index];
     assert.equal(superseded.split(safe).length - 1, 1);
@@ -126,8 +150,18 @@ function supersededSourceFromPatched(source) {
 }
 
 function preSessionGuardSourceFromPatched(source) {
-  let prior = source;
+  let prior = preFocusLogSourceFromPatched(source);
   for (const index of [0, 1]) {
+    const [safe, unsafe] = REVERSE_REPLACEMENTS[index];
+    assert.equal(prior.split(safe).length - 1, 1);
+    prior = prior.replace(safe, unsafe);
+  }
+  return prior;
+}
+
+function preFocusLogSourceFromPatched(source) {
+  let prior = source;
+  for (const index of [REVERSE_REPLACEMENTS.length - 2, REVERSE_REPLACEMENTS.length - 1]) {
     const [safe, unsafe] = REVERSE_REPLACEMENTS[index];
     assert.equal(prior.split(safe).length - 1, 1);
     prior = prior.replace(safe, unsafe);
@@ -180,6 +214,24 @@ test('the installed service is the exact reviewed archive with both entry points
       /if \(!this\.isEmbeddedMode\) \{\s*await this\.diagnoseEnvironment\(this\.appBinaryPath\);\s*\}/u,
       `${spec.flavor} lets embedded workers enter external-driver diagnostics`,
     );
+    const suppression = source.slice(
+      source.indexOf('function suppressActiveWindowFocus('),
+      source.indexOf('function isInternalWindowSwitch('),
+    );
+    const focusRecovery = source.slice(
+      source.indexOf('async function ensureActiveWindowFocus('),
+      source.indexOf('async function getCurrentWebviewWindowLabel('),
+    );
+    assert.equal(
+      source.match(/Skipping auto-focus: user has explicitly switched windows/gu)?.length,
+      1,
+      `${spec.flavor} does not bound the focus-suppression diagnostic`,
+    );
+    assert.match(suppression, /log\$5\.debug\('Skipping auto-focus/u);
+    assert.doesNotMatch(focusRecovery, /Skipping auto-focus/u);
+    assert.match(focusRecovery, /userSwitchedWindowCache\.has[\s\S]*?return;/u);
+    assert.match(source, /Session provider set to:/u);
+    assert.match(source, /Failed to ensure window focus before command:/u);
   }
 });
 
@@ -219,6 +271,21 @@ test('the prior safety patch migrates by guarding sessionless teardown', () => {
   for (const spec of reviewedTauriServiceSources) {
     const safeSource = installedSource(spec);
     const prior = preSessionGuardSourceFromPatched(safeSource);
+    assert.throws(
+      () => assertTauriServiceSourceSafety(prior, spec),
+      /not the reviewed patch/u,
+    );
+    const migrated = patchTauriServiceSource(prior, spec);
+    assert.equal(migrated.changed, true);
+    assert.equal(migrated.source, safeSource);
+    assertTauriServiceSourceSafety(migrated.source, spec);
+  }
+});
+
+test('the prior reviewed patch migrates by bounding the focus diagnostic', () => {
+  for (const spec of reviewedTauriServiceSources) {
+    const safeSource = installedSource(spec);
+    const prior = preFocusLogSourceFromPatched(safeSource);
     assert.throws(
       () => assertTauriServiceSourceSafety(prior, spec),
       /not the reviewed patch/u,

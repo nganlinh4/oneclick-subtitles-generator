@@ -258,7 +258,8 @@ export const config = {
   // The backend-stream forwarder logs raw stderr lines at their parsed level, which defaults to
   // info for unstructured text such as a panic message; the global 'warn' level would swallow
   // exactly the lines the capture exists for. Observed: this key opens every tauri-service:*
-  // channel, not only :service — the extra debug lines are accepted as failure context.
+  // channel, not only :service. The reviewed service patch therefore bounds its hot-path window
+  // diagnostic at the state transition instead of weakening backend failure capture here.
   logLevels: { 'tauri-service:service': 'trace' },
 
   onPrepare: () => {

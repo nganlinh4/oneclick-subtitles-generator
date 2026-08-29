@@ -128,23 +128,29 @@ export const parseEvidenceLeaseContract = ({
 
 /** Hold the manager-owned evidence lane for one complete workflow attempt. */
 export const acquireEvidenceLease = ({
+  cacheMaintenance = 'standalone',
   cacheRoot = DEVELOPMENT_CACHE_ROOT,
   evidenceRoot = EVIDENCE_CACHE_ROOT,
   processId = process.pid,
   repositoryRoot = REPOSITORY_ROOT,
   spawn = spawnSync,
 } = {}) => {
+  if (cacheMaintenance !== 'standalone' && cacheMaintenance !== 'external') {
+    throw new Error('evidence cache maintenance must be standalone or external');
+  }
   // Converge debris from a prior hard-killed owner before creating another running attempt. An
   // active lease/process scan still protects live bytes; the immutable app remains independently
   // protected because an evidence run must never invalidate the next launch receipt.
-  runManager({
-    arguments: [
-      '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
-    ],
-    cacheRoot,
-    repositoryRoot,
-    spawn,
-  });
+  if (cacheMaintenance === 'standalone') {
+    runManager({
+      arguments: [
+        '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
+      ],
+      cacheRoot,
+      repositoryRoot,
+      spawn,
+    });
+  }
   const acquired = runManager({
     arguments: [
       '-Action', 'Lease',
@@ -187,14 +193,16 @@ export const acquireEvidenceLease = ({
       // Evidence is a dedicated whole unit. Once the completed attempt is durable, let the manager
       // apply its ordinary age/cap policy. Protect only the current immutable application unit: a
       // completed evidence run must not invalidate receipts/current.json for the next journey.
-      runManager({
-        arguments: [
-          '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
-        ],
-        cacheRoot,
-        repositoryRoot,
-        spawn,
-      });
+      if (cacheMaintenance === 'standalone') {
+        runManager({
+          arguments: [
+            '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
+          ],
+          cacheRoot,
+          repositoryRoot,
+          spawn,
+        });
+      }
       return true;
     },
   });

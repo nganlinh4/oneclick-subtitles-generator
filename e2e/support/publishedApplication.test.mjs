@@ -305,6 +305,39 @@ test('the managed application lease validates its lane and releases exactly once
   ]);
 });
 
+test('external application maintenance releases exactly once without pruning', () => {
+  const calls = [];
+  const lease = leases.acquireE2eApplicationLease({
+    acquire: () => {
+      calls.push('acquire');
+      return {
+        leaseId: '9'.repeat(32),
+        appPublicationRoot: applicationsCacheRoot,
+        assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,
+      };
+    },
+    cacheMaintenance: 'external',
+    prune: () => calls.push('prune'),
+    release: () => calls.push('release'),
+    repositoryRoot,
+    cacheRoot: managedCacheRoot,
+    applicationsCacheRoot,
+  });
+  assert.equal(lease.release(), true);
+  assert.equal(lease.release(), false);
+  assert.deepEqual(calls, ['acquire', 'release']);
+  assert.throws(
+    () => leases.acquireE2eApplicationLease({
+      acquire: () => assert.fail('invalid mode must fail before acquisition'),
+      cacheMaintenance: 'typo',
+      repositoryRoot,
+      cacheRoot: managedCacheRoot,
+      applicationsCacheRoot,
+    }),
+    /standalone or external/u,
+  );
+});
+
 test('WDIO children validate inherited hash, path, owner PID, creation time, and active marker', () => {
   const leaseId = '3'.repeat(32);
   const { processCreatedUtc: created } = readCurrentWindowsProcessIdentity();

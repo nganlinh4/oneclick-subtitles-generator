@@ -536,20 +536,18 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   );
 
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
-  const outerLease = isolatedRunner.indexOf('withE2eApplicationLease(');
+  const maintenanceBatch = isolatedRunner.indexOf('createE2eCacheMaintenanceBatch()');
+  const outerLease = isolatedRunner.indexOf('cacheMaintenance.withLeases(', maintenanceBatch);
   const outerVerify = isolatedRunner.indexOf('readVerifiedCurrentPublishedApplication()', outerLease);
-  const stagingLease = isolatedRunner.indexOf('withStagingLease(', outerVerify);
-  const evidenceLease = isolatedRunner.indexOf('withEvidenceLease(', stagingLease);
-  const supervisedLaunch = isolatedRunner.indexOf('runSupervisedSync({', evidenceLease);
+  const supervisedLaunch = isolatedRunner.indexOf('runSupervisedSync({', outerVerify);
   const evidenceFinalization = isolatedRunner.indexOf('finalizeWorkflowEvidence({', supervisedLaunch);
   assert.ok(
-    outerLease >= 0
+    maintenanceBatch >= 0
+      && outerLease > maintenanceBatch
       && outerVerify > outerLease
-      && stagingLease > outerVerify
-      && evidenceLease > stagingLease
-      && supervisedLaunch > evidenceLease
+      && supervisedLaunch > outerVerify
       && evidenceFinalization > supervisedLaunch,
-    'the outer runner must own app/staging/evidence leases through supervised WDIO and final evidence',
+    'the batched runner must own app/staging/evidence leases through supervised WDIO and final evidence',
   );
 
   const multiProcessRunner = read('e2e', 'support', 'twoProcessScenario.js');
@@ -739,6 +737,7 @@ test('the fast E2E profile has one canonical nonshipping build and cannot replac
   assert.doesNotMatch(binaryBuilder, /--release|profile\.release/u);
   assertCanonicalApplicationBinarySource(environment);
   const applicationLease = read('e2e', 'support', 'applicationLease.js');
+  const cacheMaintenance = read('e2e', 'support', 'cacheMaintenance.js');
   const evidenceLease = read('e2e', 'support', 'evidenceLease.js');
   const workflowEvidence = read('e2e', 'support', 'workflowEvidence.js');
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
@@ -761,8 +760,18 @@ test('the fast E2E profile has one canonical nonshipping build and cannot replac
   assert.match(evidenceLease, /'-Action', 'Prune', '-Apply', '-Confirm:\$false', '-ProtectUnit', 'apps-e2e'/u);
   assert.match(
     isolatedRunner,
-    /withE2eApplicationLease\([\s\S]*?withStagingLease\([\s\S]*?withEvidenceLease\([\s\S]*?beginWorkflowEvidence\([\s\S]*?runSupervisedSync\([\s\S]*?finalizeWorkflowEvidence\(/u,
+    /createE2eCacheMaintenanceBatch\(\)[\s\S]*?cacheMaintenance\.withLeases\([\s\S]*?beginWorkflowEvidence\([\s\S]*?runSupervisedSync\([\s\S]*?finalizeWorkflowEvidence\(/u,
     'the runner must retain every cache lease from provenance through supervised evidence finalization',
+  );
+  assert.match(
+    cacheMaintenance,
+    /withApplicationLease\([\s\S]*?if \(!preflightComplete\) \{[\s\S]*?prune\(\)[\s\S]*?withStaging\([\s\S]*?withEvidence\([\s\S]*?operation\([\s\S]*?cacheMaintenance: 'external'[\s\S]*?cacheMaintenance: 'external'[\s\S]*?cacheMaintenance: 'external'/u,
+    'one reviewed batch must retain all three leases while suppressing only their duplicate prunes',
+  );
+  assert.match(
+    cacheMaintenance,
+    /settleWithPostPrune\([\s\S]*?operation: run[\s\S]*?if \(applicationAcquired\) prune\(\)/u,
+    'the boundary prune must run only after the full reverse lease unwind',
   );
   for (const child of [
     'native-tools', 'engine-packages', 'real-media', 'source-switch-media',
@@ -1567,6 +1576,10 @@ test('the compiled WebDriver server is identified, session-bound, and has no int
   assert.match(config, /beforeSession:[\s\S]*?verifyGuardedWebDriverStatus/u);
   assert.match(config, /assertGuardedWebDriverSession\(\s*browser\.capabilities/u);
   assert.match(config, /beforeCommand:[\s\S]*?assertWebDriverCommandIsNonInteractive/u);
+  assert.match(config, /captureBackendLogs:\s*true/u);
+  assert.match(config, /backendLogLevel:\s*'trace'/u);
+  assert.match(config, /^\s*logLevel:\s*'warn'/mu);
+  assert.match(config, /logLevels:\s*\{\s*'tauri-service:service':\s*'trace'\s*\}/u);
   assert.match(
     config,
     /const handle = await browser\.getWindowHandle\(\);\s*await browser\.switchToWindow\(handle\);/u,
@@ -1582,6 +1595,21 @@ test('the compiled WebDriver server is identified, session-bound, and has no int
     /userSwitchedWindowCache\.has\(browser\.sessionId \|\| 'default'\)[\s\S]*?return;/u,
     'the pinned service must suppress its direct-eval focus discovery after the explicit switch',
   );
+  assert.equal(
+    installedService.match(/Skipping auto-focus: user has explicitly switched windows/gu)?.length,
+    1,
+    'focus suppression must be logged once at its transition, never once per WebDriver command',
+  );
+  const focusTransition = installedService.slice(
+    installedService.indexOf('function suppressActiveWindowFocus('),
+    installedService.indexOf('function isInternalWindowSwitch('),
+  );
+  const focusRecovery = installedService.slice(
+    installedService.indexOf('async function ensureActiveWindowFocus('),
+    installedService.indexOf('async function getCurrentWebviewWindowLabel('),
+  );
+  assert.match(focusTransition, /Skipping auto-focus/u);
+  assert.doesNotMatch(focusRecovery, /Skipping auto-focus/u);
   assert.match(
     installedNativeUtils,
     /const waitUntilWindowAvailable = async \(browser\)[\s\S]*?browser\.getWindowHandles\(\)/u,

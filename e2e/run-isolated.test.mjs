@@ -510,6 +510,38 @@ test('an evidence lease is idempotent but never prunes before its exact release'
   )), ['Prune', 'Lease', 'Lease', 'Prune']);
 });
 
+test('external evidence maintenance preserves acquire and release with zero prune scans', () => {
+  const {
+    cacheRoot, evidenceRoot, managerDouble, repositoryRoot,
+  } = evidenceLeaseFixture;
+  const calls = [];
+  const lease = acquireEvidenceLease({
+    cacheMaintenance: 'external',
+    cacheRoot,
+    evidenceRoot,
+    repositoryRoot,
+    spawn: managerDouble({ calls }),
+  });
+  assert.equal(lease.release(), true);
+  assert.deepEqual(calls.map(({ arguments: arguments_ }) => [
+    arguments_[arguments_.indexOf('-Action') + 1],
+    arguments_[arguments_.indexOf('-LeaseOperation') + 1],
+  ]), [
+    ['Lease', 'Acquire'],
+    ['Lease', 'Release'],
+  ]);
+  assert.throws(
+    () => acquireEvidenceLease({
+      cacheMaintenance: 'typo',
+      cacheRoot,
+      evidenceRoot,
+      repositoryRoot,
+      spawn: managerDouble({ calls }),
+    }),
+    /standalone or external/u,
+  );
+});
+
 test('an isolated profile can be reused only with its authority and an approved process role', () => {
   const root = createTestRunRoot({ keepNativeTools: false, keepEnginePackages: false });
   const authorization = runRootAuthorization(root);

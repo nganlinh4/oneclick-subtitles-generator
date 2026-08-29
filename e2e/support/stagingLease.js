@@ -80,21 +80,27 @@ export const parseStagingLeaseContract = ({
 };
 
 export const acquireStagingLease = ({
+  cacheMaintenance = 'standalone',
   cacheRoot = DEVELOPMENT_CACHE_ROOT,
   stagingRoot = E2E_STAGING_ROOT,
   repositoryRoot = REPOSITORY_ROOT,
   processId = process.pid,
   spawn = spawnSync,
 } = {}) => {
-  manager({
-    arguments: [
-      '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
-    ],
-    cacheRoot,
-    repositoryRoot,
-    capture: false,
-    spawn,
-  });
+  if (cacheMaintenance !== 'standalone' && cacheMaintenance !== 'external') {
+    throw new Error('staging cache maintenance must be standalone or external');
+  }
+  if (cacheMaintenance === 'standalone') {
+    manager({
+      arguments: [
+        '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
+      ],
+      cacheRoot,
+      repositoryRoot,
+      capture: false,
+      spawn,
+    });
+  }
   const acquired = manager({
     arguments: [
       '-Action', 'Lease', '-LeaseOperation', 'Acquire', '-Lane', 'staging',
@@ -127,15 +133,17 @@ export const acquireStagingLease = ({
         spawn,
       });
       released = true;
-      manager({
-        arguments: [
-          '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
-        ],
-        cacheRoot,
-        repositoryRoot,
-        capture: false,
-        spawn,
-      });
+      if (cacheMaintenance === 'standalone') {
+        manager({
+          arguments: [
+            '-Action', 'Prune', '-Apply', '-Confirm:$false', '-ProtectUnit', 'apps-e2e',
+          ],
+          cacheRoot,
+          repositoryRoot,
+          capture: false,
+          spawn,
+        });
+      }
       return true;
     },
   });
