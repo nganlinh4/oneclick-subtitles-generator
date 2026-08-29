@@ -310,6 +310,7 @@ test('local and installed closure use separate satisfiable source-bound policies
     source: CURRENT,
     installerSha256,
     packageReceiptSha256: 'b'.repeat(64),
+    packageReceiptSignatureSha256: 'e'.repeat(64),
     applicationHash: 'c'.repeat(64),
     payloadExecutableSha256: 'd'.repeat(64),
     executableSha256: 'd'.repeat(64),
@@ -317,6 +318,7 @@ test('local and installed closure use separate satisfiable source-bound policies
   };
   const installedPackageReceipt = {
     receiptSha256: 'b'.repeat(64),
+    receiptSignatureSha256: 'e'.repeat(64),
     applicationHash: 'c'.repeat(64),
     payloadExecutableSha256: 'd'.repeat(64),
     installerSha256,
@@ -343,6 +345,14 @@ test('local and installed closure use separate satisfiable source-bound policies
     installedPackageReceipt,
   });
   assert.equal(verificationExitCode(drifted, { requireInstalled: true }), 1);
+
+  const unsigned = verifyInventoryState({
+    ...input,
+    installerSha256,
+    installedProof: { ...installedProof, packageReceiptSignatureSha256: undefined },
+    installedPackageReceipt: { ...installedPackageReceipt, receiptSignatureSha256: undefined },
+  });
+  assert.equal(verificationExitCode(unsigned, { requireInstalled: true }), 1);
 });
 
 test('non-green journeys are explicit closure blockers', (context) => {

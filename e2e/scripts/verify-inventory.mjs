@@ -373,6 +373,9 @@ const installedClosureFailures = ({
     && installedProof.installerSha256 === installerSha256
     && installedPackageReceipt !== null
     && installedProof.packageReceiptSha256 === installedPackageReceipt.receiptSha256
+    && /^[0-9a-f]{64}$/u.test(installedProof.packageReceiptSignatureSha256 ?? '')
+    && installedProof.packageReceiptSignatureSha256
+      === installedPackageReceipt.receiptSignatureSha256
     && installedProof.applicationHash === installedPackageReceipt.applicationHash
     && installedProof.payloadExecutableSha256 === installedPackageReceipt.payloadExecutableSha256
     && installedProof.executableSha256 === installedPackageReceipt.payloadExecutableSha256
