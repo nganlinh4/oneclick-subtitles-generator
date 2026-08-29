@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import {
-  FOUR_WINDOW_ASR_FIXTURE,
+  FOUR_WINDOW_ASR_FIXTURE, FOUR_WINDOW_ASR_RECIPE,
   validateFourWindowAsrProbe,
 } from './fourWindowAsrFixture.js';
 
@@ -27,6 +27,14 @@ test('the frozen real-speech recipe requires exactly four one-minute requests', 
     ),
     FOUR_WINDOW_ASR_FIXTURE.expectedWindowCount,
   );
+  assert.equal(
+    FOUR_WINDOW_ASR_FIXTURE.source.sha256,
+    '37cb02502a3116303c6d7295318a8795899a665da5602ada6d114ac5087dcfc2',
+  );
+  assert.equal(FOUR_WINDOW_ASR_FIXTURE.source.bytes, 203_077);
+  assert.equal(FOUR_WINDOW_ASR_RECIPE.repeats, 10);
+  assert.equal(FOUR_WINDOW_ASR_RECIPE.audio.sampleRateHz, 16_000);
+  assert.equal(FOUR_WINDOW_ASR_RECIPE.video.source, 'color=c=black:s=320x180:r=5');
 });
 
 test('the semantic probe accepts the intended real container', () => {
@@ -53,4 +61,3 @@ test('the fixture cannot silently lose speech, video, or the four-window duratio
     assert.throws(() => validateFourWindowAsrProbe(probe), /fixture is invalid/u);
   }
 });
-

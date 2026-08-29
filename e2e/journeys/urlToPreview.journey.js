@@ -31,7 +31,7 @@ import { join } from 'node:path';
 
 import { confirmDownloadOnly } from '../support/download.js';
 import { clickControl, openEditor } from '../support/editor.js';
-import { REAL_VIDEO } from '../support/realMedia.js';
+import { REAL_VIDEO, verifyRealVideoFile } from '../support/realMedia.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'url-to-preview';
@@ -155,6 +155,7 @@ describe('a customer saves a real YouTube video to disk', () => {
     // its lowest rung is a few hundred kilobytes; the bound is loose because the exact encode is
     // yt-dlp's business and changes without notice.
     assert.ok(bytes > 50_000, `the saved file must be a real video, not ${bytes} bytes`);
+    const verifiedMedia = verifyRealVideoFile(join(directory, name));
     assert.deepEqual(seen.errors, [], 'no error may be visible after a successful download');
     assert.deepEqual(seen.errorToasts, [], 'no failure toast may be visible after a successful download');
     assert.equal(seen.modalOpen, false, 'the download modal must close after terminal success');
@@ -168,7 +169,7 @@ describe('a customer saves a real YouTube video to disk', () => {
       workflow: WORKFLOW,
       step: '03-download-complete',
       description: 'The save-to-disk workflow completed with no visible error or stranded modal.',
-      details: { fileName: name, bytes },
+      details: { fileName: name, bytes, probe: verifiedMedia.probe },
     });
   });
 });
@@ -183,3 +184,4 @@ async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options 
     throw new Error(diagnostic(), { cause: error });
   }
 }
+/* global $, browser, console, describe, document, it, process */

@@ -1,13 +1,19 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
-  existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync,
+  rmSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import process from 'node:process';
 
 import { LONG_SYNTHETIC_MEDIA_CACHE, NATIVE_TOOLS_CACHE } from './environment.js';
-import { withE2eApplicationLease } from './applicationLease.js';
+import { assertLiveE2eAssetLease } from './applicationLease.js';
+import {
+  cachedManagedFixture, managedFixtureIdentity, pruneManagedFixtureOrphans,
+  publishManagedFixture, reviewedToolProvenance,
+} from './managedFixturePublication.js';
+import { prepareManagedAssetCache, runSupervisedAssetTool } from './managedAssetCache.js';
+import { resolveVerifiedNativeToolRoles } from './nativeToolsOracle.js';
 
 /**
  * A wholly synthetic, hours-long, near-silent media file built offline with the reviewed
@@ -49,27 +55,25 @@ export const LONG_SYNTHETIC_MEDIA = Object.freeze({
 });
 
 const cacheDirectory = LONG_SYNTHETIC_MEDIA_CACHE;
-const fixturePath = () => join(cacheDirectory, LONG_SYNTHETIC_MEDIA.filename);
 
-const findReviewedMediaTool = (name) => {
-  const pending = [join(NATIVE_TOOLS_CACHE, 'v1')];
-  const matches = [];
-  while (pending.length > 0) {
-    const root = pending.pop();
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      const path = join(root, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.name.toLowerCase() === name) matches.push(path);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `the reviewed native-tools cache must contain exactly one ${name}; found ${matches.length}`,
-    );
-  }
-  return matches[0];
-};
+export const LONG_SYNTHETIC_RECIPE = Object.freeze({
+  source: Object.freeze({
+    video: `color=c=gray:s=${LONG_SYNTHETIC_MEDIA.width}x${LONG_SYNTHETIC_MEDIA.height}:r=${LONG_SYNTHETIC_MEDIA.frameRate}`,
+    audio: `sine=frequency=${LONG_SYNTHETIC_MEDIA.audioFrequencyHz}:sample_rate=${LONG_SYNTHETIC_MEDIA.audioSampleRateHz}`,
+  }),
+  durationSeconds: LONG_SYNTHETIC_MEDIA.durationSeconds,
+  video: Object.freeze({
+    codec: 'libx264', preset: 'veryfast', tune: 'stillimage', pixelFormat: 'yuv420p',
+    frameRate: LONG_SYNTHETIC_MEDIA.frameRate, keyframeInterval: 20,
+  }),
+  audio: Object.freeze({
+    codec: 'aac', bitrate: LONG_SYNTHETIC_MEDIA.audioBitrate,
+    sampleRateHz: LONG_SYNTHETIC_MEDIA.audioSampleRateHz, channels: 1,
+  }),
+  metadata: 'stripped',
+  movflags: '+faststart',
+  termination: 'shortest',
+});
 
 const probe = (path, ffprobe) => JSON.parse(execFileSync(ffprobe, [
   '-v', 'error',
@@ -106,37 +110,65 @@ export const validateLongSyntheticMediaProbe = (raw) => {
   return Object.freeze({ duration, size, videoCodec: video.codec_name, audioCodec: audio.codec_name });
 };
 
-const cachedFixtureIsValid = (path, ffprobe) => {
-  try {
-    validateLongSyntheticMediaProbe(probe(path, ffprobe));
-    return true;
-  } catch {
-    return false;
-  }
+const normalizedProbe = (raw) => {
+  const semantic = validateLongSyntheticMediaProbe(raw);
+  return Object.freeze({
+    durationSeconds: semantic.duration,
+    sizeBytes: semantic.size,
+    videoCodec: semantic.videoCodec,
+    audioCodec: semantic.audioCodec,
+    width: LONG_SYNTHETIC_MEDIA.width,
+    height: LONG_SYNTHETIC_MEDIA.height,
+  });
 };
+
+const validateReceiptProbe = (value) => normalizedProbe({
+  format: { duration: value?.durationSeconds, size: value?.sizeBytes },
+  streams: [
+    {
+      codec_type: 'video', codec_name: value?.videoCodec,
+      width: value?.width, height: value?.height,
+    },
+    { codec_type: 'audio', codec_name: value?.audioCodec },
+  ],
+});
+
+const fixtureAuthority = ({ ffmpeg, ffprobe }) => managedFixtureIdentity({
+  kind: 'long-synthetic-media',
+  recipe: LONG_SYNTHETIC_RECIPE,
+  tools: reviewedToolProvenance({
+    storeRoot: NATIVE_TOOLS_CACHE,
+    roles: { ffmpeg, ffprobe },
+  }),
+});
 
 /**
  * Build the two-hour fixture from pure lavfi sources, without network access or any committed
  * binary input.
  */
-const ensureLongSyntheticMediaWhileLeased = () => {
-  const ffmpeg = findReviewedMediaTool('ffmpeg.exe');
-  const ffprobe = join(dirname(ffmpeg), 'ffprobe.exe');
-  if (!existsSync(ffprobe) || !statSync(ffprobe).isFile()) {
-    throw new Error(`the reviewed FFmpeg package has no sibling ffprobe.exe: ${ffmpeg}`);
-  }
-
-  mkdirSync(cacheDirectory, { recursive: true });
-  const destination = fixturePath();
-  if (existsSync(destination) && cachedFixtureIsValid(destination, ffprobe)) return destination;
-  rmSync(destination, { force: true });
+const ensureLongSyntheticMediaWhileLeased = (applicationLease) => {
+  prepareManagedAssetCache({ applicationLease, cacheRoot: cacheDirectory });
+  const { ffmpeg, ffprobe } = resolveVerifiedNativeToolRoles({
+    storeRoot: NATIVE_TOOLS_CACHE, tool: 'media-tools', roles: ['ffmpeg', 'ffprobe'],
+  });
+  const expectedFixture = fixtureAuthority({ ffmpeg, ffprobe });
+  const cached = cachedManagedFixture({
+    cacheRoot: cacheDirectory,
+    expectedFixture,
+    originalName: LONG_SYNTHETIC_MEDIA.filename,
+    validateProbe: validateReceiptProbe,
+  });
+  if (cached !== null) return cached.path;
+  // Resolving and hashing the reviewed native-tool tree can be slow. Revalidate immediately before
+  // the first cache mutation rather than relying on the check made before that work began.
+  assertLiveE2eAssetLease(applicationLease);
 
   const temporary = join(
     cacheDirectory,
-    `.${basename(destination)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
+    `.${basename(LONG_SYNTHETIC_MEDIA.filename)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
   );
   try {
-    execFileSync(ffmpeg, [
+    runSupervisedAssetTool({ applicationLease, command: ffmpeg, args: [
       '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
       '-f', 'lavfi', '-i', `color=c=gray:s=${LONG_SYNTHETIC_MEDIA.width}x${LONG_SYNTHETIC_MEDIA.height}:r=${LONG_SYNTHETIC_MEDIA.frameRate}`,
       '-f', 'lavfi', '-i', `sine=frequency=${LONG_SYNTHETIC_MEDIA.audioFrequencyHz}:sample_rate=${LONG_SYNTHETIC_MEDIA.audioSampleRateHz}`,
@@ -148,30 +180,67 @@ const ensureLongSyntheticMediaWhileLeased = () => {
       '-ar', String(LONG_SYNTHETIC_MEDIA.audioSampleRateHz), '-ac', '1',
       '-map_metadata', '-1', '-movflags', '+faststart', '-shortest',
       temporary,
-    ], { stdio: 'inherit', timeout: 600_000, windowsHide: true });
-    validateLongSyntheticMediaProbe(probe(temporary, ffprobe));
-    renameSync(temporary, destination);
+    ] });
+    const verifiedProbe = normalizedProbe(probe(temporary, ffprobe));
+    // ffprobe is another external process. A killed/reclaimed owner must never publish after it.
+    assertLiveE2eAssetLease(applicationLease);
+    const destination = publishManagedFixture({
+      assertStillLive: () => assertLiveE2eAssetLease(applicationLease),
+      cacheRoot: cacheDirectory,
+      candidate: temporary,
+      expectedFixture,
+      originalName: LONG_SYNTHETIC_MEDIA.filename,
+      probe: verifiedProbe,
+      validateProbe: validateReceiptProbe,
+    });
+    pruneManagedFixtureOrphans({
+      assertStillLive: () => assertLiveE2eAssetLease(applicationLease),
+      cacheRoot: cacheDirectory,
+      originalName: LONG_SYNTHETIC_MEDIA.filename,
+      selectedPath: destination,
+    });
+    return destination;
   } finally {
-    rmSync(temporary, { force: true });
+    // If authority went stale, even rollback is a cache mutation. Leave the unreferenced temporary
+    // file for the next live lease owner's bounded cache maintenance instead.
+    try {
+      assertLiveE2eAssetLease(applicationLease);
+      rmSync(temporary, { force: true });
+    } catch {
+      // Deliberately mutation-free after stale authority.
+    }
   }
-  return destination;
 };
 
-export const ensureLongSyntheticMedia = ({
-  withApplicationLease = withE2eApplicationLease,
-} = {}) => withApplicationLease(ensureLongSyntheticMediaWhileLeased);
+export const ensureLongSyntheticMedia = ({ applicationLease }) => {
+  return ensureLongSyntheticMediaWhileLeased(applicationLease);
+};
+
+/** Read-only child/config proof after the outer lease owner has prepared the fixture. */
+export const verifiedLongSyntheticMedia = () => {
+  const { ffmpeg, ffprobe } = resolveVerifiedNativeToolRoles({
+    storeRoot: NATIVE_TOOLS_CACHE, tool: 'media-tools', roles: ['ffmpeg', 'ffprobe'],
+  });
+  const cached = cachedManagedFixture({
+    cacheRoot: cacheDirectory,
+    expectedFixture: fixtureAuthority({ ffmpeg, ffprobe }),
+    originalName: LONG_SYNTHETIC_MEDIA.filename,
+    validateProbe: validateReceiptProbe,
+  });
+  if (cached === null) {
+    throw new Error('the outer lease owner did not prepare valid long synthetic media');
+  }
+  return cached.path;
+};
 
 /**
  * Build and stage the asset under an application lease the caller ALREADY holds.
  *
  * A scenario runs inside `withScenarioLeases`, whose live application lease covers the asset lane
  * for its whole run; acquiring here again refuses against that same live hold. The caller proves the
- * hold with the serialized inherited-application lease the scenario distributes to its worker
- * processes, matching `stagedFourWindowAsrVideo`'s contract exactly.
+ * hold with the exact live branded application lease. Only the outer owner stages the resulting
+ * file into its disposable run root; worker processes receive no persistent-cache authority.
  */
-export const stagedLongSyntheticMedia = ({ inheritedApplication, stage }) => {
-  if (typeof inheritedApplication !== 'string' || inheritedApplication.length === 0) {
-    throw new Error("the long synthetic media fixture requires the holder's serialized application lease");
-  }
-  return stage(ensureLongSyntheticMediaWhileLeased());
+export const stagedLongSyntheticMedia = ({ applicationLease, stage }) => {
+  return stage(ensureLongSyntheticMedia({ applicationLease }));
 };

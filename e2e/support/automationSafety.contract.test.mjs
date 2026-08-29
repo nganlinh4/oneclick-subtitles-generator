@@ -517,11 +517,12 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
     /readInheritedApplicationLease/u,
     'workers and private damaged-install copies must validate the outer-owned publication lease',
   );
-  assert.match(
+  assert.doesNotMatch(
     config,
-    /cachedVideo = process\.env\.OSG_E2E_BINARY === undefined \? cachedRealVideo\(\) : null/u,
-    'an unleased damaged-install run must not inspect persistent E2E media',
+    /cachedRealVideo|cachedSourceSwitchVideo|verifiedLongSyntheticMedia|copyFileSync/u,
+    'every WDIO config load, including damaged-install runs, must remain persistent-cache read-only',
   );
+  assert.match(config, /process\.env\.OSG_E2E_MEDIA_SELECTION \?\? null/u);
   assert.match(
     config,
     /onComplete:[\s\S]*?downloadFixtureOrigin\.close\(\)/u,
@@ -573,12 +574,12 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   const twoProcessScenario = read('e2e', 'support', 'twoProcessScenario.js');
   assert.match(
     twoProcessScenario,
-    /withScenarioLeases[\s\S]*?publication,[\s\S]*?resetWorkflowEvidence\(workflow, \{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?binaryPath: publication\.binaryPath/u,
+    /runScenarioAttemptWithEvidence[\s\S]*?resetWorkflowEvidence\(workflow, \{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?binaryPath: publication\.binaryPath[\s\S]*?withScenarioLeases[\s\S]*?runScenarioAttemptWithEvidence\(\{[\s\S]*?publication/u,
   );
   for (const [label, source, expected] of [
     ['two-process support', twoProcessScenario, 2],
-    ['multi-window ASR', read('e2e', 'scenarios', 'multiWindowAsrPersistence.mjs'), 1],
-    ['long-media recovery', read('e2e', 'scenarios', 'longMediaOperationRecovery.mjs'), 1],
+    ['multi-window ASR', read('e2e', 'scenarios', 'multiWindowAsrPersistence.mjs'), 0],
+    ['long-media recovery', read('e2e', 'scenarios', 'longMediaOperationRecovery.mjs'), 0],
   ]) {
     const resets = [...source.matchAll(/resetWorkflowEvidence\(workflow, \{([\s\S]*?)\}\)/gu)];
     assert.equal(resets.length, expected, `${label} has an unexpected evidence-reset surface`);
@@ -586,6 +587,18 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
       assert.match(reset[1], /applicationHash: publication\.applicationHash/u, label);
       assert.match(reset[1], /binaryPath: publication\.binaryPath/u, label);
     }
+  }
+  assert.match(
+    twoProcessScenario,
+    /runScenarioAttemptWithEvidence[\s\S]*?resetWorkflowEvidence[\s\S]*?operation\(\)[\s\S]*?preserveRunRootEvidence[\s\S]*?finalizeWorkflowEvidence/u,
+    'scenario evidence must begin before staging and preserve the root before finalization',
+  );
+  for (const file of ['multiWindowAsrPersistence.mjs', 'longMediaOperationRecovery.mjs']) {
+    assert.match(
+      read('e2e', 'scenarios', file),
+      /runScenarioAttemptWithEvidence\(\{[\s\S]*?operation:\s*\(\)\s*=>[\s\S]*?copyFileSync/u,
+      `${file} must begin its durable attempt before custom fixture staging`,
+    );
   }
   assert.match(
     isolatedRunner,

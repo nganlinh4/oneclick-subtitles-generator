@@ -55,7 +55,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
     process.stdout.write('\nNative tools passed clean install, independent digest proof, tamper detection, and repair.\n');
   } catch (error) {
     failure = error;
-    console.error(`\nNative-tools scenario failed; evidence retained at ${root}`);
+    console.error('\nNative-tools scenario failed; inspect its durable workflow evidence before retrying');
     console.error(error);
     process.exitCode = 1;
   } finally {

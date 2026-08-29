@@ -15,6 +15,7 @@ import test from 'node:test';
 
 import {
   defaultJourneys, isolatedEnvironment, normalizeJourney, parseArguments,
+  runContainedJourneyOperation,
 } from './run-isolated.mjs';
 import {
   acquireEvidenceLease, parseEvidenceLeaseContract, withEvidenceLease,
@@ -28,7 +29,7 @@ import {
   createRunRoot, isolationEnvironment, NATIVE_TOOLS_CACHE, REAL_MEDIA_CACHE, removeRunRoot,
   runRootAuthorization, SOURCE_SWITCH_MEDIA_CACHE, stagedDialogPaths,
 } from './support/environment.js';
-import { LEGACY_REAL_MEDIA_CACHE, cachedRealVideo } from './support/realMedia.js';
+import { cachedRealVideo } from './support/realMedia.js';
 
 const TEST_STAGING_ROOT = mkdtempSync(join(tmpdir(), 'osg-e2e-test-staging-'));
 test.after(() => rmSync(TEST_STAGING_ROOT, { recursive: true, force: true }));
@@ -87,6 +88,7 @@ const guardedWindowsGuiFixture = (guards, subsystem = 2) => {
 test('discovers every product journey while excluding scenario-only diagnostics', () => {
   const names = defaultJourneys().map((path) => path.replaceAll('\\', '/').split('/').at(-1));
   assert.deepEqual(names, [
+    'urlToPreview.journey.js',
     'aboutAndUpdaterLifecycle.journey.js',
     'alternateLocalAsrMatrix.journey.js',
     'bulkTranslationFileIO.journey.js',
@@ -126,7 +128,6 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'timelineBoundary.journey.js',
     'translatedDocumentExports.journey.js',
     'urlLocalAsrPreview.journey.js',
-    'urlToPreview.journey.js',
     'youtubeSearchAndHistory.journey.js',
   ]);
 });
@@ -239,7 +240,66 @@ test('stages media input and output inside the disposable run, never the persist
   assert.doesNotMatch(paths.mediaDestination, /e2e-real-media/i);
 });
 
-test('real-media discovery cannot select a prior export nested under the input cache', () => {
+test('a staging copy failure cannot leak its disposable run root', async () => {
+  const { withDisposableRunRoot } = await import('./run-isolated.mjs');
+  const events = [];
+  assert.throws(
+    () => withDisposableRunRoot({
+      stagingLease: { name: 'lease' },
+      createRunRoot: () => {
+        events.push('create');
+        return 'C:\\Temp\\osg-copy-failure';
+      },
+      runRootAuthorization: () => 'authorization',
+      removeRunRoot: (root, authorization) => events.push(`remove:${root}:${authorization}`),
+    }, () => {
+      events.push('copy');
+      throw new Error('simulated copyFileSync failure');
+    }, ({ runRoot }) => {
+      events.push(`preserve:${runRoot}`);
+    }),
+    /copyFileSync failure/u,
+  );
+  assert.deepEqual(events, [
+    'create',
+    'copy',
+    'preserve:C:\\Temp\\osg-copy-failure',
+    'remove:C:\\Temp\\osg-copy-failure:authorization',
+  ]);
+});
+
+test('bootstrap and staging exceptions are recorded as failed journeys without aborting the queue', () => {
+  const failures = [];
+  const events = [];
+  const output = [];
+  for (const [label, operation] of [
+    ['bootstrap', () => { throw new Error('injected bootstrap refusal'); }],
+    ['copy', () => { throw new Error('injected copy refusal'); }],
+    ['later-journey', () => { events.push('later-ran'); return 17; }],
+  ]) {
+    const result = runContainedJourneyOperation({
+      failures,
+      label,
+      operation,
+      onFailure: (error) => events.push(`evidence:${label}:${error.message}`),
+      write: value => output.push(value),
+    });
+    if (label === 'later-journey') assert.equal(result, 17);
+  }
+  assert.deepEqual(events, [
+    'evidence:bootstrap:injected bootstrap refusal',
+    'evidence:copy:injected copy refusal',
+    'later-ran',
+  ]);
+  assert.deepEqual(failures.map(({ label, status }) => ({ label, status })), [
+    { label: 'bootstrap', status: 'harness-error' },
+    { label: 'copy', status: 'harness-error' },
+  ]);
+  assert.match(output.join(''), /FAILED bootstrap: harness error/u);
+  assert.match(output.join(''), /FAILED copy: harness error/u);
+});
+
+test('real-media discovery refuses unreceipted files and nested prior exports', () => {
   const root = mkdtempSync(join(tmpdir(), 'osg-real-media-cache-'));
   try {
     const input = join(root, 'source.mp4');
@@ -247,27 +307,7 @@ test('real-media discovery cannot select a prior export nested under the input c
     mkdirSync(nested, { recursive: true });
     writeFileSync(input, 'source');
     writeFileSync(join(nested, 'newer-export.mp4'), 'export');
-    assert.equal(cachedRealVideo(root), input);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('external real media wins while the old repository cache remains a read-only rollback input', () => {
-  const root = mkdtempSync(join(tmpdir(), 'osg-real-media-fallback-'));
-  const external = join(root, 'external');
-  const legacy = join(root, 'legacy');
-  mkdirSync(external, { recursive: true });
-  mkdirSync(legacy, { recursive: true });
-  const externalVideo = join(external, 'external.mp4');
-  const legacyVideo = join(legacy, 'legacy.mp4');
-  writeFileSync(legacyVideo, 'legacy');
-  try {
-    assert.equal(cachedRealVideo(external, { legacyCacheRoot: legacy }), legacyVideo);
-    writeFileSync(externalVideo, 'external');
-    assert.equal(cachedRealVideo(external, { legacyCacheRoot: legacy }), externalVideo);
-    assert.deepEqual(readFileSync(legacyVideo, 'utf8'), 'legacy');
-    assert.notEqual(REAL_MEDIA_CACHE, LEGACY_REAL_MEDIA_CACHE);
+    assert.equal(cachedRealVideo(root), null);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

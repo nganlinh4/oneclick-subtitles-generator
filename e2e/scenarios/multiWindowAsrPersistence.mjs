@@ -6,50 +6,40 @@ import {
   createRunRoot, removeRunRoot, runRootAuthorization,
 } from '../support/environment.js';
 import { stagedFourWindowAsrVideo } from '../support/fourWindowAsrFixture.js';
-import { runScenarioProcesses, withScenarioLeases } from '../support/twoProcessScenario.js';
 import {
-  finalizeWorkflowEvidence, resetWorkflowEvidence, workflowNameForJourney,
-} from '../support/workflowEvidence.js';
+  runScenarioAttemptWithEvidence, runScenarioProcesses, withScenarioLeases,
+} from '../support/twoProcessScenario.js';
 
-withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLease }) => {
+withScenarioLeases(({
+  applicationLease, inheritedApplication, managedPaths, publication, stagingLease,
+}) => {
   const label = 'Four-window local ASR persistence';
   const spec = './journeys/multiWindowAsrPersistence.journey.js';
-  const workflow = workflowNameForJourney(spec);
   const root = createRunRoot({ stagingLease });
   const rootAuthorization = runRootAuthorization(root);
-  const attemptDirectory = resetWorkflowEvidence(workflow, {
-    applicationHash: publication.applicationHash,
-    binaryPath: publication.binaryPath,
-  });
-  const attemptId = attemptDirectory.split(/[\\/]/u).at(-1);
-  // The scenario's own live application lease already covers the asset lane; the fixture helper
-  // must not acquire a second time against it.
-  const stagedMediaSelection = stagedFourWindowAsrVideo({
-    inheritedApplication,
-    stage: (source) => {
-      const staged = join(root, 'input', basename(source));
-      copyFileSync(source, staged);
-      return staged;
-    },
-  });
-  let succeeded = false;
   try {
-    succeeded = runScenarioProcesses({
-      label,
-      root,
-      phases: ['seed', 'verify'],
-      spec,
-      stagedMediaSelection,
-      inheritedApplication,
-      managedPaths,
-      publication,
-    });
-    finalizeWorkflowEvidence({
-      workflow,
-      attemptId,
-      outcome: succeeded ? 'pass' : 'fail',
-      exitStatus: succeeded ? 0 : 1,
-      failure: succeeded ? null : `${label} did not complete both hidden desktop processes`,
+    const succeeded = runScenarioAttemptWithEvidence({
+      label, publication, root, spec,
+      operation: () => {
+        const stagedMediaSelection = stagedFourWindowAsrVideo({
+          applicationLease,
+          stage: (source) => {
+            const staged = join(root, 'input', basename(source));
+            copyFileSync(source, staged);
+            return staged;
+          },
+        });
+        return runScenarioProcesses({
+          label,
+          root,
+          phases: ['seed', 'verify'],
+          spec,
+          stagedMediaSelection,
+          inheritedApplication,
+          managedPaths,
+          publication,
+        });
+      },
     });
     if (!succeeded) process.exitCode = 1;
   } finally {

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync,
+  readFileSync, rmSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import process from 'node:process';
@@ -9,7 +9,13 @@ import process from 'node:process';
 import {
   FOUR_WINDOW_ASR_MEDIA_CACHE, NATIVE_TOOLS_CACHE, REPOSITORY_ROOT,
 } from './environment.js';
-import { withE2eApplicationLease } from './applicationLease.js';
+import { assertLiveE2eAssetLease } from './applicationLease.js';
+import {
+  assertOrdinaryFixtureFile, cachedManagedFixture, managedFixtureIdentity,
+  pruneManagedFixtureOrphans, publishManagedFixture, reviewedToolProvenance,
+} from './managedFixturePublication.js';
+import { prepareManagedAssetCache, runSupervisedAssetTool } from './managedAssetCache.js';
+import { resolveVerifiedNativeToolRoles } from './nativeToolsOracle.js';
 
 const SOURCE = Object.freeze({
   path: join(
@@ -37,37 +43,33 @@ export const FOUR_WINDOW_ASR_FIXTURE = Object.freeze({
 });
 
 const cacheDirectory = FOUR_WINDOW_ASR_MEDIA_CACHE;
-const fixturePath = () => join(cacheDirectory, FOUR_WINDOW_ASR_FIXTURE.filename);
+
+export const FOUR_WINDOW_ASR_RECIPE = Object.freeze({
+  repeats: FOUR_WINDOW_ASR_FIXTURE.repeats,
+  durationSeconds: FOUR_WINDOW_ASR_FIXTURE.durationSeconds,
+  video: Object.freeze({
+    source: `color=c=black:s=${FOUR_WINDOW_ASR_FIXTURE.width}x${FOUR_WINDOW_ASR_FIXTURE.height}:r=5`,
+    codec: 'libx264', preset: 'veryfast', tune: 'stillimage', pixelFormat: 'yuv420p',
+    frameRate: 5, keyframeInterval: 25,
+  }),
+  audio: Object.freeze({ codec: 'aac', bitrate: '64k', sampleRateHz: 16_000, channels: 1 }),
+  metadata: 'stripped',
+  movflags: '+faststart',
+  termination: 'shortest',
+});
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 const assertFrozenSource = () => {
+  assertOrdinaryFixtureFile(SOURCE.path, {
+    label: 'tracked real-speech source', parent: dirname(SOURCE.path),
+  });
   const bytes = readFileSync(SOURCE.path);
   if (bytes.byteLength !== SOURCE.bytes || sha256(bytes) !== SOURCE.sha256) {
     throw new Error(
       'the tracked real-speech source changed; review and re-pin it before rebuilding the four-window fixture',
     );
   }
-};
-
-const findReviewedMediaTool = (name) => {
-  const pending = [join(NATIVE_TOOLS_CACHE, 'v1')];
-  const matches = [];
-  while (pending.length > 0) {
-    const root = pending.pop();
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      const path = join(root, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.name.toLowerCase() === name) matches.push(path);
-    }
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `the reviewed native-tools cache must contain exactly one ${name}; found ${matches.length}`,
-    );
-  }
-  return matches[0];
 };
 
 const probe = (path, ffprobe) => JSON.parse(execFileSync(ffprobe, [
@@ -107,14 +109,43 @@ export const validateFourWindowAsrProbe = (raw) => {
   return Object.freeze({ duration, size, videoCodec: video.codec_name, audioCodec: audio.codec_name });
 };
 
-const cachedFixtureIsValid = (path, ffprobe) => {
-  try {
-    validateFourWindowAsrProbe(probe(path, ffprobe));
-    return true;
-  } catch {
-    return false;
-  }
+const normalizedProbe = (raw) => {
+  const semantic = validateFourWindowAsrProbe(raw);
+  return Object.freeze({
+    durationSeconds: semantic.duration,
+    sizeBytes: semantic.size,
+    videoCodec: semantic.videoCodec,
+    audioCodec: semantic.audioCodec,
+    width: FOUR_WINDOW_ASR_FIXTURE.width,
+    height: FOUR_WINDOW_ASR_FIXTURE.height,
+  });
 };
+
+const validateReceiptProbe = (value) => normalizedProbe({
+  format: { duration: value?.durationSeconds, size: value?.sizeBytes },
+  streams: [
+    {
+      codec_type: 'video', codec_name: value?.videoCodec,
+      width: value?.width, height: value?.height,
+    },
+    { codec_type: 'audio', codec_name: value?.audioCodec },
+  ],
+});
+
+const fixtureAuthority = ({ ffmpeg, ffprobe }) => managedFixtureIdentity({
+  kind: 'four-window-asr-media',
+  recipe: FOUR_WINDOW_ASR_RECIPE,
+  source: Object.freeze({
+    filename: basename(SOURCE.path),
+    sizeBytes: SOURCE.bytes,
+    sha256: SOURCE.sha256,
+    durationSeconds: SOURCE.durationSeconds,
+  }),
+  tools: reviewedToolProvenance({
+    storeRoot: NATIVE_TOOLS_CACHE,
+    roles: { ffmpeg, ffprobe },
+  }),
+});
 
 /**
  * Build a compact long-form fixture from tracked real speech, without network access.
@@ -124,25 +155,29 @@ const cachedFixtureIsValid = (path, ffprobe) => {
  * the minimum real H.264 surface needed to exercise the ordinary video-import UI; ASR receives the
  * original speech samples re-encoded as mono AAC.
  */
-const ensureFourWindowAsrVideoWhileLeased = () => {
+const ensureFourWindowAsrVideoWhileLeased = (applicationLease) => {
   assertFrozenSource();
-  const ffmpeg = findReviewedMediaTool('ffmpeg.exe');
-  const ffprobe = join(dirname(ffmpeg), 'ffprobe.exe');
-  if (!existsSync(ffprobe) || !statSync(ffprobe).isFile()) {
-    throw new Error(`the reviewed FFmpeg package has no sibling ffprobe.exe: ${ffmpeg}`);
-  }
-
-  mkdirSync(cacheDirectory, { recursive: true });
-  const destination = fixturePath();
-  if (existsSync(destination) && cachedFixtureIsValid(destination, ffprobe)) return destination;
-  rmSync(destination, { force: true });
-
+  prepareManagedAssetCache({ applicationLease, cacheRoot: cacheDirectory });
+  const { ffmpeg, ffprobe } = resolveVerifiedNativeToolRoles({
+    storeRoot: NATIVE_TOOLS_CACHE, tool: 'media-tools', roles: ['ffmpeg', 'ffprobe'],
+  });
+  const expectedFixture = fixtureAuthority({ ffmpeg, ffprobe });
+  const cached = cachedManagedFixture({
+    cacheRoot: cacheDirectory,
+    expectedFixture,
+    originalName: FOUR_WINDOW_ASR_FIXTURE.filename,
+    validateProbe: validateReceiptProbe,
+  });
+  if (cached !== null) return cached.path;
+  // The native-tool receipt walk hashes a large installed tree. Never mutate from the authority
+  // check made before that work if the owning lease has since become stale.
+  assertLiveE2eAssetLease(applicationLease);
   const temporary = join(
     cacheDirectory,
-    `.${basename(destination)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
+    `.${basename(FOUR_WINDOW_ASR_FIXTURE.filename)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
   );
   try {
-    execFileSync(ffmpeg, [
+    runSupervisedAssetTool({ applicationLease, command: ffmpeg, args: [
       '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
       '-stream_loop', String(FOUR_WINDOW_ASR_FIXTURE.repeats - 1),
       '-i', SOURCE.path,
@@ -154,18 +189,38 @@ const ensureFourWindowAsrVideoWhileLeased = () => {
       '-c:a', 'aac', '-b:a', '64k', '-ar', '16000', '-ac', '1',
       '-map_metadata', '-1', '-movflags', '+faststart', '-shortest',
       temporary,
-    ], { stdio: 'inherit', timeout: 300_000, windowsHide: true });
-    validateFourWindowAsrProbe(probe(temporary, ffprobe));
-    renameSync(temporary, destination);
+    ] });
+    const verifiedProbe = normalizedProbe(probe(temporary, ffprobe));
+    assertLiveE2eAssetLease(applicationLease);
+    const destination = publishManagedFixture({
+      assertStillLive: () => assertLiveE2eAssetLease(applicationLease),
+      cacheRoot: cacheDirectory,
+      candidate: temporary,
+      expectedFixture,
+      originalName: FOUR_WINDOW_ASR_FIXTURE.filename,
+      probe: verifiedProbe,
+      validateProbe: validateReceiptProbe,
+    });
+    pruneManagedFixtureOrphans({
+      assertStillLive: () => assertLiveE2eAssetLease(applicationLease),
+      cacheRoot: cacheDirectory,
+      originalName: FOUR_WINDOW_ASR_FIXTURE.filename,
+      selectedPath: destination,
+    });
+    return destination;
   } finally {
-    rmSync(temporary, { force: true });
+    try {
+      assertLiveE2eAssetLease(applicationLease);
+      rmSync(temporary, { force: true });
+    } catch {
+      // A stale owner performs no rollback mutation; maintenance under a fresh lease removes it.
+    }
   }
-  return destination;
 };
 
-export const ensureFourWindowAsrVideo = ({
-  withApplicationLease = withE2eApplicationLease,
-} = {}) => withApplicationLease(ensureFourWindowAsrVideoWhileLeased);
+export const ensureFourWindowAsrVideo = ({ applicationLease }) => {
+  return ensureFourWindowAsrVideoWhileLeased(applicationLease);
+};
 
 /**
  * Build and stage the asset under an application lease the caller ALREADY holds.
@@ -175,9 +230,6 @@ export const ensureFourWindowAsrVideo = ({
  * the hold with the serialized inherited-application lease the scenario distributes to its worker
  * processes, so the asset stays protected until the staged copy exists in the disposable root.
  */
-export const stagedFourWindowAsrVideo = ({ inheritedApplication, stage }) => {
-  if (typeof inheritedApplication !== 'string' || inheritedApplication.length === 0) {
-    throw new Error("the four-window fixture requires the holder's serialized application lease");
-  }
-  return stage(ensureFourWindowAsrVideoWhileLeased());
+export const stagedFourWindowAsrVideo = ({ applicationLease, stage }) => {
+  return stage(ensureFourWindowAsrVideo({ applicationLease }));
 };

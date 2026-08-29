@@ -51,10 +51,12 @@ test('persistence is two hidden desktop processes over one isolated staged fixtu
   assert.match(journey, /PHASE === 'seed' \|\| PHASE === 'verify'/u);
   assert.match(scenario, /phases: \['seed', 'verify'\]/u);
   assert.match(scenario, /runScenarioProcesses/u);
+  assert.match(scenario, /runScenarioAttemptWithEvidence/u);
   assert.match(scenario, /stagedMediaSelection/u);
   assert.match(scenarioSupport, /OSG_E2E_EVIDENCE_ATTEMPT: process\.env\.OSG_E2E_EVIDENCE_ATTEMPT/u);
   assert.match(fixture, /en-ami-meeting\.flac/u);
-  assert.match(fixture, /findReviewedMediaTool\('ffmpeg\.exe'\)/u);
+  assert.match(fixture, /resolveVerifiedNativeToolRoles\([\s\S]*?roles:\s*\['ffmpeg', 'ffprobe'\]/u);
+  assert.match(fixture, /runSupervisedAssetTool\(\{ applicationLease, command: ffmpeg/u);
   assert.match(fixture, /'-stream_loop'/u);
   assert.doesNotMatch(fixture, /https?:\/\//u);
 });

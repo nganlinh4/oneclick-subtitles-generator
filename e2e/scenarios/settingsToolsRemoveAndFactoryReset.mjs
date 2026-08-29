@@ -37,7 +37,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
     process.stdout.write('\nTools removal and factory reset passed: exact deletion, cleared credential, isolated store untouched otherwise.\n');
   } catch (error) {
     failure = error;
-    console.error(`\nTools removal / factory reset scenario failed; evidence retained at ${root}`);
+    console.error('\nTools removal / factory reset scenario failed; inspect its durable workflow evidence before retrying');
     console.error(error);
     process.exitCode = 1;
   } finally {

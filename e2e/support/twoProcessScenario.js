@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, realpathSync } from 'node:fs';
+import { copyFileSync, lstatSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import {
-  dirname, join, relative, resolve, sep,
+  basename, dirname, join, relative, resolve, sep,
 } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
@@ -16,7 +16,12 @@ import {
 } from './applicationLease.js';
 import { createE2eCacheMaintenanceBatch } from './cacheMaintenance.js';
 import {
+  JOURNEY_MEDIA_REQUIREMENT, journeyMediaRequirement,
+} from './journeyMediaRequirements.js';
+import { ensureRealVideo } from './realMedia.js';
+import {
   finalizeWorkflowEvidence,
+  preserveRunRootEvidence,
   resetWorkflowEvidence,
   workflowNameForJourney,
 } from './workflowEvidence.js';
@@ -155,10 +160,57 @@ export const runScenarioProcesses = ({
     process.stdout.write(`\n${label} passed across ${phases.length} desktop process(es).\n`);
     return true;
   } catch (error) {
-    console.error(`\n${label} failed; evidence retained at ${root}`);
+    console.error(`\n${label} failed; caller will publish bounded run-root evidence before cleanup`);
     console.error(error);
     return false;
   }
+};
+
+/**
+ * Begin evidence before custom fixture staging and publish any root diagnostics before the caller
+ * deletes that root. The injectable publisher exists so copy/bootstrap throws are unit-testable
+ * without opening the managed evidence lane.
+ */
+export const runScenarioAttemptWithEvidence = ({
+  label, operation, publication, root, spec,
+}, publisher = {
+  finalizeWorkflowEvidence,
+  preserveRunRootEvidence,
+  resetWorkflowEvidence,
+}) => {
+  const workflow = workflowNameForJourney(spec);
+  const attemptDirectory = publisher.resetWorkflowEvidence(workflow, {
+    applicationHash: publication.applicationHash,
+    binaryPath: publication.binaryPath,
+  });
+  const attemptId = attemptDirectory.split(/[\\/]/u).at(-1);
+  let failure = null;
+  let succeeded = false;
+  try {
+    succeeded = operation();
+    if (!succeeded) failure = `${label} did not complete every hidden desktop process`;
+  } catch (error) {
+    failure = String(error?.message ?? error ?? 'unknown scenario harness failure').slice(0, 2_000);
+    console.error(`\n${label} failed during scenario bootstrap or staging`);
+    console.error(error);
+  } finally {
+    if (!succeeded) {
+      try {
+        publisher.preserveRunRootEvidence({ workflow, runRoot: root, attemptId });
+      } catch (error) {
+        const preservationFailure = String(error?.message ?? error).slice(0, 1_000);
+        failure = `${failure ?? `${label} failed`}; evidence preservation: ${preservationFailure}`;
+      }
+    }
+    publisher.finalizeWorkflowEvidence({
+      workflow,
+      attemptId,
+      outcome: succeeded ? 'pass' : 'fail',
+      exitStatus: succeeded ? 0 : 1,
+      failure,
+    });
+  }
+  return succeeded;
 };
 
 export const withScenarioLeases = (operation) => createE2eCacheMaintenanceBatch().withLeases(
@@ -185,35 +237,34 @@ export const withScenarioLeases = (operation) => createE2eCacheMaintenanceBatch(
 
 export const runTwoProcessScenario = ({ label, spec }) => {
   return withScenarioLeases(({
-    inheritedApplication, managedPaths, publication, stagingLease,
+    applicationLease, inheritedApplication, managedPaths, publication, stagingLease,
   }) => {
+      const preparedRealMedia = journeyMediaRequirement(spec) === JOURNEY_MEDIA_REQUIREMENT.generic
+        ? ensureRealVideo({ applicationLease })
+        : null;
       const root = createRunRoot({ stagingLease });
       const rootAuthorization = runRootAuthorization(root);
-      const workflow = workflowNameForJourney(spec);
-      const attemptDirectory = resetWorkflowEvidence(workflow, {
-        applicationHash: publication.applicationHash,
-        binaryPath: publication.binaryPath,
-      });
-      const attemptId = attemptDirectory.split(/[\\/]/).at(-1);
-      let succeeded = false;
       try {
-        succeeded = runScenarioProcesses({
-          label,
-          root,
-          phases: ['seed', 'verify'],
-          spec,
-          inheritedApplication,
-          managedPaths,
-          publication,
+        return runScenarioAttemptWithEvidence({
+          label, publication, root, spec,
+          operation: () => {
+            const stagedMediaSelection = preparedRealMedia === null ? null : (() => {
+              const staged = join(root, 'input', basename(preparedRealMedia));
+              copyFileSync(preparedRealMedia, staged);
+              return staged;
+            })();
+            return runScenarioProcesses({
+              label,
+              root,
+              phases: ['seed', 'verify'],
+              spec,
+              stagedMediaSelection,
+              inheritedApplication,
+              managedPaths,
+              publication,
+            });
+          },
         });
-        finalizeWorkflowEvidence({
-          workflow,
-          attemptId,
-          outcome: succeeded ? 'pass' : 'fail',
-          exitStatus: succeeded ? 0 : 1,
-          failure: succeeded ? null : `${label} did not complete every desktop process`,
-        });
-        return succeeded;
       } finally {
         removeRunRoot(root, rootAuthorization);
         delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;

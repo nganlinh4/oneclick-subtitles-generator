@@ -37,7 +37,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
     process.stdout.write('\nNarration model management passed: truthful not-installed status, real install start, clean cancellation.\n');
   } catch (error) {
     failure = error;
-    console.error(`\nNarration model management scenario failed; evidence retained at ${root}`);
+    console.error('\nNarration model management scenario failed; inspect its durable workflow evidence before retrying');
     console.error(error);
     process.exitCode = 1;
   } finally {

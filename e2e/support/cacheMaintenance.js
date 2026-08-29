@@ -75,11 +75,13 @@ export const createE2eCacheMaintenanceBatch = ({
           prune();
           preflightComplete = true;
         }
-        return withStaging((stagingLease) => withEvidence((evidenceLease) => operation({
-          applicationLease,
-          evidenceLease,
-          stagingLease,
-        }), { cacheMaintenance: 'external' }), { cacheMaintenance: 'external' });
+        return withStaging((stagingLease) => withEvidence((evidenceLease) => {
+          const value = operation({ applicationLease, evidenceLease, stagingLease });
+          if (value !== null && typeof value === 'object' && typeof value.then === 'function') {
+            throw new TypeError('E2E lease operations must be synchronous');
+          }
+          return value;
+        }, { cacheMaintenance: 'external' }), { cacheMaintenance: 'external' });
       }, { cacheMaintenance: 'external' });
 
       return settleWithPostPrune({

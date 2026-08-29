@@ -1,7 +1,9 @@
 import { createRequire } from 'node:module';
 import { Buffer } from 'node:buffer';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  isAbsolute, join, relative, resolve, sep,
+} from 'node:path';
 import process from 'node:process';
 
 import {
@@ -24,6 +26,8 @@ const samePath = (left, right) => (
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const LEASE_PATTERN = /^[0-9a-f]{32}$/u;
+const LEASE_MARKER_KEYS = 'laneGroup|leaseId|owner|processCreatedUtc|processId|rootId|schemaVersion';
+const activeApplicationLeases = new WeakMap();
 export const INHERITED_APPLICATION_LEASE = 'OSG_E2E_LEASED_APPLICATION';
 
 /**
@@ -45,6 +49,17 @@ export const acquireE2eApplicationLease = ({
     throw new Error('E2E application cache maintenance must be standalone or external');
   }
   const lease = acquire({ repositoryRoot, cacheRoot, processId });
+  if (!LEASE_PATTERN.test(lease.rootId ?? '')) {
+    try {
+      release({ repositoryRoot, cacheRoot, leaseId: lease.leaseId });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [new Error('managed E2E lease returned an invalid cache generation'), cleanupError],
+        'the invalid managed E2E cache-generation lease could not be released',
+      );
+    }
+    throw new Error('managed E2E lease returned an invalid cache generation');
+  }
   if (!samePath(lease.appPublicationRoot, applicationsCacheRoot)) {
     try {
       release({ repositoryRoot, cacheRoot, leaseId: lease.leaseId });
@@ -68,11 +83,15 @@ export const acquireE2eApplicationLease = ({
     throw new Error('managed E2E lease selected the wrong asset cache root');
   }
   let released = false;
-  return Object.freeze({
+  // rootId intentionally stays out of the public lease object. It names the manager cache
+  // generation and is useful only to this module when matching exact on-disk lease markers.
+  const state = { active: true, rootId: lease.rootId };
+  const result = Object.freeze({
     leaseId: lease.leaseId,
     leaseOwnerProcessId: lease.leaseProcessId,
     leaseOwnerProcessCreatedUtc: lease.leaseProcessCreatedUtc,
     applicationsCacheRoot: lease.appPublicationRoot,
+    assetCacheRoot: lease.assetCacheRoot,
     managedPaths: Object.freeze([
       lease.cargoTargetDir,
       lease.frontendCacheRoot,
@@ -83,6 +102,7 @@ export const acquireE2eApplicationLease = ({
       if (released) return false;
       release({ repositoryRoot, cacheRoot, leaseId: lease.leaseId });
       released = true;
+      state.active = false;
       if (cacheMaintenance === 'standalone') {
         prune({
           repositoryRoot,
@@ -94,15 +114,104 @@ export const acquireE2eApplicationLease = ({
       return true;
     },
   });
+  activeApplicationLeases.set(result, state);
+  return result;
+};
+
+const assertExactLeaseMarker = ({
+  laneRoot, leaseId, processId, processCreatedUtc, rootId,
+}) => {
+  const assetMetadata = lstatSync(laneRoot);
+  if (
+    !assetMetadata.isDirectory()
+    || assetMetadata.isSymbolicLink()
+    || !samePath(realpathSync.native(laneRoot), laneRoot)
+  ) {
+    throw new Error('the managed E2E lease root is redirected');
+  }
+  const markerPath = join(laneRoot, '.osg-cache-lease');
+  const markerMetadata = lstatSync(markerPath);
+  if (
+    !markerMetadata.isFile()
+    || markerMetadata.isSymbolicLink()
+    || markerMetadata.nlink !== 1
+    || markerMetadata.size < 2
+    || markerMetadata.size > 4096
+    || !samePath(realpathSync.native(markerPath), markerPath)
+  ) {
+    throw new Error('the managed E2E lease marker is not one bounded ordinary file');
+  }
+  const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+  if (
+    Object.keys(marker).sort().join('|') !== LEASE_MARKER_KEYS
+    || marker.schemaVersion !== 1
+    || marker.owner !== 'oneclick-subtitles-generator'
+    || marker.rootId !== rootId
+    || marker.leaseId !== leaseId
+    || marker.laneGroup !== 'e2e'
+    || marker.processId !== processId
+    || marker.processCreatedUtc !== processCreatedUtc
+  ) {
+    throw new Error('the managed E2E lease marker no longer belongs to this cache generation and process');
+  }
+};
+
+/** Prove that the caller still owns the manager lease covering the persistent E2E asset lane. */
+export const assertLiveE2eAssetLease = (lease) => {
+  const leaseState = lease !== null && typeof lease === 'object'
+    ? activeApplicationLeases.get(lease)
+    : undefined;
+  if (
+    lease === null
+    || typeof lease !== 'object'
+    || leaseState?.active !== true
+    || !LEASE_PATTERN.test(lease.leaseId ?? '')
+    || lease.leaseOwnerProcessId !== process.pid
+    || typeof lease.leaseOwnerProcessCreatedUtc !== 'string'
+    || !samePath(lease.assetCacheRoot ?? '', E2E_ASSET_CACHE_ROOT)
+    || !Array.isArray(lease.managedPaths)
+    || !lease.managedPaths.some((path) => samePath(path, E2E_ASSET_CACHE_ROOT))
+  ) {
+    throw new Error('the current process does not own the managed E2E asset lane');
+  }
+  assertWindowsProcessIdentity({
+    processId: lease.leaseOwnerProcessId,
+    processCreatedUtc: lease.leaseOwnerProcessCreatedUtc,
+  });
+  assertExactLeaseMarker({
+    laneRoot: E2E_ASSET_CACHE_ROOT,
+    leaseId: lease.leaseId,
+    processId: lease.leaseOwnerProcessId,
+    processCreatedUtc: lease.leaseOwnerProcessCreatedUtc,
+    rootId: leaseState.rootId,
+  });
+  return lease.assetCacheRoot;
+};
+
+/** Safe disk-contract seam: it cannot authorize or inspect either manager-owned E2E lane. */
+export const verifyE2eLeaseMarkerForTest = ({ laneRoot, expected }) => {
+  const candidate = resolve(laneRoot);
+  for (const managed of [E2E_ASSET_CACHE_ROOT, E2E_APPLICATIONS_CACHE_ROOT]) {
+    const inside = relative(resolve(managed), candidate);
+    if (inside === '' || (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))) {
+      throw new Error('the lease-marker test seam refuses manager-owned E2E lanes');
+    }
+  }
+  assertExactLeaseMarker({ laneRoot: candidate, ...expected });
+  return candidate;
 };
 
 export const serializeInheritedApplicationLease = ({ lease, publication }) => {
+  const leaseState = lease !== null && typeof lease === 'object'
+    ? activeApplicationLeases.get(lease)
+    : undefined;
   if (
     lease === null
     || typeof lease !== 'object'
     || !LEASE_PATTERN.test(lease.leaseId ?? '')
     || lease.leaseOwnerProcessId !== process.pid
     || typeof lease.leaseOwnerProcessCreatedUtc !== 'string'
+    || leaseState?.active !== true
     || publication === null
     || typeof publication !== 'object'
     || !HASH_PATTERN.test(publication.applicationHash ?? '')
@@ -115,7 +224,8 @@ export const serializeInheritedApplicationLease = ({ lease, publication }) => {
     throw new Error('cannot serialize an unverified or unowned E2E application lease');
   }
   return Buffer.from(JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
+    cacheRootId: leaseState.rootId,
     leaseId: lease.leaseId,
     leaseOwnerProcessId: lease.leaseOwnerProcessId,
     leaseOwnerProcessCreatedUtc: lease.leaseOwnerProcessCreatedUtc,
@@ -142,8 +252,9 @@ export const readInheritedApplicationLease = ({
     inherited === null
     || typeof inherited !== 'object'
     || Object.keys(inherited).sort().join('|')
-      !== 'applicationHash|applicationRoot|binaryPath|leaseId|leaseOwnerProcessCreatedUtc|leaseOwnerProcessId|schemaVersion'
-    || inherited.schemaVersion !== 1
+      !== 'applicationHash|applicationRoot|binaryPath|cacheRootId|leaseId|leaseOwnerProcessCreatedUtc|leaseOwnerProcessId|schemaVersion'
+    || inherited.schemaVersion !== 2
+    || !LEASE_PATTERN.test(inherited.cacheRootId ?? '')
     || !LEASE_PATTERN.test(inherited.leaseId ?? '')
     || !HASH_PATTERN.test(inherited.applicationHash ?? '')
     || !Number.isSafeInteger(inherited.leaseOwnerProcessId)
@@ -167,15 +278,13 @@ export const readInheritedApplicationLease = ({
       cause: error,
     });
   }
-  const marker = JSON.parse(readFileSync(join(E2E_APPLICATIONS_CACHE_ROOT, '.osg-cache-lease'), 'utf8'));
-  if (
-    marker.leaseId !== inherited.leaseId
-    || marker.laneGroup !== 'e2e'
-    || marker.processId !== inherited.leaseOwnerProcessId
-    || marker.processCreatedUtc !== inherited.leaseOwnerProcessCreatedUtc
-  ) {
-    throw new Error('the inherited E2E application lease does not own the active cache marker');
-  }
+  assertExactLeaseMarker({
+    laneRoot: E2E_APPLICATIONS_CACHE_ROOT,
+    leaseId: inherited.leaseId,
+    processId: inherited.leaseOwnerProcessId,
+    processCreatedUtc: inherited.leaseOwnerProcessCreatedUtc,
+    rootId: inherited.cacheRootId,
+  });
   if (typeof readPublication !== 'function') {
     throw new Error('inherited E2E application validation requires immutable publication verification');
   }
@@ -196,6 +305,9 @@ export const withE2eApplicationLease = (operation, options) => {
   let primaryError;
   try {
     value = operation(lease);
+    if (value !== null && typeof value === 'object' && typeof value.then === 'function') {
+      throw new TypeError('E2E application lease operations must be synchronous');
+    }
   } catch (error) {
     primaryError = error;
   }

@@ -265,6 +265,7 @@ test('the managed application lease validates its lane and releases exactly once
   const acquire = (options) => {
     calls.push(['acquire', options]);
     return {
+      rootId: 'a'.repeat(32),
       leaseId: '1'.repeat(32),
       appPublicationRoot: applicationsCacheRoot,
       assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,
@@ -311,6 +312,7 @@ test('external application maintenance releases exactly once without pruning', (
     acquire: () => {
       calls.push('acquire');
       return {
+        rootId: 'a'.repeat(32),
         leaseId: '9'.repeat(32),
         appPublicationRoot: applicationsCacheRoot,
         assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,
@@ -352,13 +354,25 @@ test('WDIO children validate inherited hash, path, owner PID, creation time, and
     processCreatedUtc: created,
   })}\n`);
   try {
-    const encoded = leases.serializeInheritedApplicationLease({
-      lease: {
+    const lease = leases.acquireE2eApplicationLease({
+      acquire: () => ({
+        rootId: '4'.repeat(32),
         leaseId,
-        leaseOwnerProcessId: process.pid,
-        leaseOwnerProcessCreatedUtc: created,
-        applicationsCacheRoot,
-      },
+        leaseProcessId: process.pid,
+        leaseProcessCreatedUtc: created,
+        appPublicationRoot: applicationsCacheRoot,
+        assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,
+        cargoTargetDir: join(managedCacheRoot, 'cargo'),
+        frontendCacheRoot: join(managedCacheRoot, 'frontend'),
+      }),
+      cacheMaintenance: 'external',
+      release: () => {},
+      repositoryRoot,
+      cacheRoot: managedCacheRoot,
+      applicationsCacheRoot,
+    });
+    const encoded = leases.serializeInheritedApplicationLease({
+      lease,
       publication,
     });
     const inherited = leases.readInheritedApplicationLease({
@@ -376,6 +390,16 @@ test('WDIO children validate inherited hash, path, owner PID, creation time, and
       },
       readPublication: environment.readVerifiedPublishedApplication,
     }), /owner identity is stale or was reused/u);
+    const replacedGeneration = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    replacedGeneration.cacheRootId = '5'.repeat(32);
+    assert.throws(() => leases.readInheritedApplicationLease({
+      environment: {
+        [leases.INHERITED_APPLICATION_LEASE]: Buffer.from(
+          JSON.stringify(replacedGeneration),
+        ).toString('base64'),
+      },
+      readPublication: environment.readVerifiedPublishedApplication,
+    }), /cache generation/u);
     const hostile = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
     hostile.applicationHash = 'f'.repeat(64);
     assert.throws(() => leases.readInheritedApplicationLease({
@@ -384,6 +408,7 @@ test('WDIO children validate inherited hash, path, owner PID, creation time, and
       },
       readPublication: environment.readVerifiedPublishedApplication,
     }), /no longer matches/u);
+    lease.release();
   } finally {
     rmSync(markerPath, { force: true });
   }
@@ -394,6 +419,7 @@ test('a lease for another application lane is released and refused', () => {
   assert.throws(
     () => leases.acquireE2eApplicationLease({
       acquire: () => ({
+        rootId: 'a'.repeat(32),
         leaseId: '2'.repeat(32),
         appPublicationRoot: join(managedCacheRoot, 'apps', 'package'),
         assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,
@@ -413,6 +439,7 @@ test('a lease for another asset lane is released and refused', () => {
   assert.throws(
     () => leases.acquireE2eApplicationLease({
       acquire: () => ({
+        rootId: 'a'.repeat(32),
         leaseId: '3'.repeat(32),
         appPublicationRoot: applicationsCacheRoot,
         assetCacheRoot: join(managedCacheRoot, 'assets', 'package'),
@@ -433,6 +460,7 @@ test('an operation error is preserved when post-lease pruning also fails', () =>
   assert.throws(
     () => leases.withE2eApplicationLease(() => { throw primary; }, {
       acquire: () => ({
+        rootId: 'a'.repeat(32),
         leaseId: '4'.repeat(32),
         appPublicationRoot: applicationsCacheRoot,
         assetCacheRoot: environment.E2E_ASSET_CACHE_ROOT,

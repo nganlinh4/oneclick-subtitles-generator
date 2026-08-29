@@ -16,27 +16,28 @@
  * are yt-dlp's business and change without notice, so nothing here depends on them.
  */
 
-/* global AbortSignal, Buffer, fetch, process */
+/* global Buffer, process */
 
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync,
+  closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync,
+  readSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import {
+  basename, dirname, isAbsolute, join, relative, resolve, sep,
+} from 'node:path';
 
 import {
-  NATIVE_TOOLS_CACHE, REAL_MEDIA_CACHE, REPOSITORY_ROOT, SOURCE_SWITCH_MEDIA_CACHE,
+  E2E_ASSET_CACHE_ROOT, NATIVE_TOOLS_CACHE, REAL_MEDIA_CACHE, REPOSITORY_ROOT,
+  SOURCE_SWITCH_MEDIA_CACHE,
 } from './environment.js';
+import { assertLiveE2eAssetLease } from './applicationLease.js';
+import { resolveVerifiedNativeToolExecutable } from './nativeToolsOracle.js';
 
-/**
- * Read-only rollback input from the pre-managed harness.
- *
- * Existing bytes are intentionally not migrated, copied, renamed, or deleted. A fresh acquisition
- * always writes REAL_MEDIA_CACHE; this fallback only keeps today's verified local workflows usable
- * while the external cache starts empty.
- */
-export const LEGACY_REAL_MEDIA_CACHE = join(REPOSITORY_ROOT, 'target', 'e2e-real-media');
+const require = createRequire(import.meta.url);
+const { runSupervisedSync } = require('../../scripts/windows-job-supervisor.js');
 
 export const REAL_VIDEO_URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
 
@@ -109,83 +110,393 @@ export const verifiedDownloadIdentityVideo = () => {
 
 const sourceSwitchVideoPath = () => join(SOURCE_SWITCH_MEDIA_CACHE, SOURCE_SWITCH_VIDEO.filename);
 
-const verifiedSourceSwitchBytes = (bytes) => (
-  bytes.byteLength === SOURCE_SWITCH_VIDEO.bytes
-  && createHash('sha256').update(bytes).digest('hex') === SOURCE_SWITCH_VIDEO.sha256
-);
+export const cachedSourceSwitchVideo = () => {
+  const path = sourceSwitchVideoPath();
+  try {
+    const metadata = assertOrdinaryFile(path, 'source-switch media');
+    return metadata.size === SOURCE_SWITCH_VIDEO.bytes
+      && sha256File(path) === SOURCE_SWITCH_VIDEO.sha256 ? path : null;
+  } catch {
+    return null;
+  }
+};
+
+const SOURCE_SWITCH_DOWNLOAD_SCRIPT = String.raw`
+import { open } from 'node:fs/promises';
+const [url, output, expectedRaw] = process.argv.slice(1);
+const expected = Number(expectedRaw);
+const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(120_000) });
+if (!response.ok || response.body === null) throw new Error('HTTP ' + response.status);
+const file = await open(output, 'wx', 0o600);
+let total = 0;
+try {
+  for await (const chunk of response.body) {
+    total += chunk.byteLength;
+    if (total > expected) throw new Error('source-switch response exceeded its pinned size');
+    await file.write(chunk);
+  }
+  if (total !== expected) throw new Error('source-switch response length differed');
+  await file.sync();
+} finally {
+  await file.close();
+}
+`;
 
 /** Download the pinned second source once, into its input-only cache. */
-export const ensureSourceSwitchVideo = async () => {
+export const ensureSourceSwitchVideo = ({ applicationLease }) => {
+  const assetRoot = assertLiveE2eAssetLease(applicationLease);
+  if (!samePath(resolve(SOURCE_SWITCH_MEDIA_CACHE, '..'), assetRoot)) {
+    throw new Error('the source-switch cache is not covered by the live asset lease');
+  }
   const destination = sourceSwitchVideoPath();
-  if (existsSync(destination) && verifiedSourceSwitchBytes(readFileSync(destination))) {
-    return destination;
-  }
-  rmSync(destination, { force: true });
-
-  const response = await fetch(SOURCE_SWITCH_VIDEO.url, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(120_000),
-  });
-  if (!response.ok) {
-    throw new Error(`could not acquire the pinned source-switch video: HTTP ${response.status}`);
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (!verifiedSourceSwitchBytes(bytes)) {
-    throw new Error(
-      'the source-switch video no longer matches its pinned bytes: '
-      + `${bytes.byteLength} bytes, sha256 ${createHash('sha256').update(bytes).digest('hex')}`,
-    );
-  }
+  const cached = cachedSourceSwitchVideo();
+  if (cached !== null) return cached;
 
   mkdirSync(SOURCE_SWITCH_MEDIA_CACHE, { recursive: true });
+  assertManagedCacheRoot(SOURCE_SWITCH_MEDIA_CACHE);
   const temporary = join(
     SOURCE_SWITCH_MEDIA_CACHE,
     `.${SOURCE_SWITCH_VIDEO.filename}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
   );
   try {
-    writeFileSync(temporary, bytes);
+    const result = runSupervisedSync({
+      command: process.execPath,
+      args: [
+        '--input-type=module', '--eval', SOURCE_SWITCH_DOWNLOAD_SCRIPT,
+        SOURCE_SWITCH_VIDEO.url, temporary, String(SOURCE_SWITCH_VIDEO.bytes),
+      ],
+      cwd: REPOSITORY_ROOT,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      windowsHide: true,
+      ownerProcessId: process.pid,
+      managedPaths: applicationLease.managedPaths,
+    });
+    if (
+      result.error
+      || result.status !== 0
+      || (result.stdout?.length ?? 0) > 4096
+      || (result.stderr?.length ?? 0) > 4096
+    ) {
+      throw result.error ?? new Error(
+        `the supervised source-switch download failed with exit ${result.status}: `
+        + String(result.stderr ?? '').slice(0, 4096),
+      );
+    }
+    const metadata = assertOrdinaryFile(temporary, 'source-switch download');
+    if (metadata.size !== SOURCE_SWITCH_VIDEO.bytes
+        || sha256File(temporary) !== SOURCE_SWITCH_VIDEO.sha256) {
+      throw new Error('the source-switch download does not match its pinned identity');
+    }
+    assertLiveE2eAssetLease(applicationLease);
+    rmSync(destination, { force: true });
     renameSync(temporary, destination);
   } finally {
-    rmSync(temporary, { force: true });
+    try {
+      assertLiveE2eAssetLease(applicationLease);
+      rmSync(temporary, { force: true });
+    } catch {
+      // Cache reclamation or marker replacement revokes rollback authority as well as publishing.
+    }
   }
   return destination;
 };
 
-/**
- * The newest real video directly in the immutable input cache, or `null` when none exists.
- *
- * Found rather than named, because the application names the file itself — from the title yt-dlp
- * resolved, which is how "Me at the zoo.mp4" appears rather than the video id. A harness that
- * assumed a name would silently stop finding it the day the product improved its naming.
- */
-const newestCachedVideo = (cacheRoot) => {
-  if (!existsSync(cacheRoot)) return null;
-  const found = readdirSync(cacheRoot, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.mp4'))
-    .map((entry) => join(cacheRoot, entry.name));
-  if (found.length === 0) return null;
-  return found.sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)[0];
+const REAL_MEDIA_RECEIPT = 'receipt.json';
+const RECEIPT_KEYS = 'file|probe|schemaVersion|sha256|sizeBytes|url|videoId';
+const PROBE_KEYS = 'audioCodec|durationSeconds|formatName|height|videoCodec|width';
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const MAX_REAL_MEDIA_BYTES = 512 * 1024 * 1024;
+const MAX_RECEIPT_BYTES = 16 * 1024;
+
+const sha256File = (path) => {
+  const digest = createHash('sha256');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  const descriptor = openSync(path, 'r');
+  try {
+    for (;;) {
+      const bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      digest.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  return digest.digest('hex');
+};
+const readJson = (path) => {
+  const metadata = assertOrdinaryFile(path, 'real-media receipt');
+  if (metadata.size < 2 || metadata.size > MAX_RECEIPT_BYTES) {
+    throw new Error('the real-media receipt exceeds its bounded schema size');
+  }
+  return JSON.parse(readFileSync(path, 'utf8'));
+};
+const samePath = (left, right) => (
+  process.platform === 'win32'
+    ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+    : resolve(left) === resolve(right)
+);
+
+const assertOrdinaryFile = (path, label) => {
+  const metadata = lstatSync(path);
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1) {
+    throw new Error(`${label} is not one ordinary singly-linked file`);
+  }
+  if (!samePath(realpathSync.native(path), path)) {
+    throw new Error(`${label} crosses a redirected path`);
+  }
+  return metadata;
 };
 
-export const cachedRealVideo = (
-  cacheRoot = REAL_MEDIA_CACHE,
-  { legacyCacheRoot = cacheRoot === REAL_MEDIA_CACHE ? LEGACY_REAL_MEDIA_CACHE : null } = {},
-) => newestCachedVideo(cacheRoot)
-  ?? (legacyCacheRoot === null ? null : newestCachedVideo(legacyCacheRoot));
-
-/** The yt-dlp the APPLICATION installed for itself, wherever its receipt put it. */
-const installedYtDlp = () => {
-  const roots = [join(NATIVE_TOOLS_CACHE, 'v1')];
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      const path = join(root, entry.name);
-      if (entry.isDirectory()) roots.push(path);
-      else if (entry.name.toLowerCase() === 'yt-dlp.exe') return path;
-    }
+const assertManagedCacheRoot = (cacheRoot) => {
+  const metadata = lstatSync(cacheRoot);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error('the real-media cache root is not one ordinary directory');
   }
-  return null;
+  if (!samePath(realpathSync.native(cacheRoot), cacheRoot)) {
+    throw new Error('the real-media cache root crosses a redirected path');
+  }
+  return cacheRoot;
+};
+
+export const verifyRealVideoProbe = (raw) => {
+  const durationSeconds = Number(raw?.format?.duration);
+  const formatName = String(raw?.format?.format_name ?? '');
+  const streams = Array.isArray(raw?.streams) ? raw.streams : [];
+  const video = streams.find(({ codec_type: type }) => type === 'video');
+  const audio = streams.find(({ codec_type: type }) => type === 'audio');
+  if (
+    !Number.isFinite(durationSeconds)
+    || Math.abs(durationSeconds - REAL_VIDEO.durationSeconds) > REAL_VIDEO.durationToleranceSeconds
+    || !formatName.split(',').includes('mp4')
+    || typeof video?.codec_name !== 'string'
+    || video.codec_name.length === 0
+    || !Number.isSafeInteger(video.width)
+    || video.width < 1
+    || !Number.isSafeInteger(video.height)
+    || video.height < 1
+    || typeof audio?.codec_name !== 'string'
+    || audio.codec_name.length === 0
+  ) {
+    throw new Error(`the real-media candidate failed its semantic probe: ${JSON.stringify(raw)}`);
+  }
+  return Object.freeze({
+    durationSeconds,
+    formatName,
+    videoCodec: video.codec_name,
+    audioCodec: audio.codec_name,
+    width: video.width,
+    height: video.height,
+  });
+};
+
+const probeRealVideo = (path, {
+  execute = execFileSync,
+  nativeToolsCache = NATIVE_TOOLS_CACHE,
+  resolveTool = resolveVerifiedNativeToolExecutable,
+} = {}) => {
+  const ffprobe = resolveTool({ storeRoot: nativeToolsCache, tool: 'media-tools', role: 'ffprobe' });
+  const raw = JSON.parse(execute(ffprobe, [
+    '-v', 'error',
+    '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height',
+    '-of', 'json',
+    path,
+  ], { encoding: 'utf8', timeout: 30_000, windowsHide: true }));
+  return verifyRealVideoProbe(raw);
+};
+
+const receiptFor = ({ file, fileName = basename(file), probe, videoId }) => {
+  const metadata = assertOrdinaryFile(file, 'real-media payload');
+  if (metadata.size <= 50_000 || metadata.size > MAX_REAL_MEDIA_BYTES) {
+    throw new Error(`the real-media payload has an unsafe size: ${metadata.size}`);
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    videoId,
+    url: REAL_VIDEO.url,
+    file: fileName,
+    sizeBytes: metadata.size,
+    sha256: sha256File(file),
+    probe,
+  });
+};
+
+const validateReceiptShape = (receipt) => {
+  if (
+    receipt === null
+    || typeof receipt !== 'object'
+    || Object.keys(receipt).sort().join('|') !== RECEIPT_KEYS
+    || receipt.schemaVersion !== 1
+    || receipt.videoId !== REAL_VIDEO.id
+    || receipt.url !== REAL_VIDEO.url
+    || !new RegExp(`^${REAL_VIDEO.id}-[0-9a-f]{64}\\.mp4$`, 'u').test(receipt.file ?? '')
+    || !Number.isSafeInteger(receipt.sizeBytes)
+    || receipt.sizeBytes <= 50_000
+    || !SHA256_PATTERN.test(receipt.sha256 ?? '')
+    || receipt.probe === null
+    || typeof receipt.probe !== 'object'
+    || Object.keys(receipt.probe).sort().join('|') !== PROBE_KEYS
+  ) return false;
+  try {
+    verifyRealVideoProbe({
+      format: {
+        duration: receipt.probe.durationSeconds,
+        format_name: receipt.probe.formatName,
+      },
+      streams: [
+        {
+          codec_type: 'video', codec_name: receipt.probe.videoCodec,
+          width: receipt.probe.width, height: receipt.probe.height,
+        },
+        { codec_type: 'audio', codec_name: receipt.probe.audioCodec },
+      ],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const cachedRealVideo = (cacheRoot = REAL_MEDIA_CACHE) => {
+  const receiptPath = join(cacheRoot, REAL_MEDIA_RECEIPT);
+  if (!existsSync(receiptPath)) return null;
+  try {
+    const receipt = readJson(receiptPath);
+    if (!validateReceiptShape(receipt)) return null;
+    const video = join(cacheRoot, receipt.file);
+    if (!existsSync(video)) return null;
+    const metadata = assertOrdinaryFile(video, 'cached real media');
+    if (
+      metadata.size !== receipt.sizeBytes
+      || metadata.size > MAX_REAL_MEDIA_BYTES
+      || sha256File(video) !== receipt.sha256
+    ) return null;
+    return video;
+  } catch {
+    return null;
+  }
+};
+
+const atomicWriteJson = (path, value) => {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`,
+  );
+  let descriptor = null;
+  try {
+    descriptor = openSync(temporary, 'wx', 0o600);
+    writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = null;
+    renameSync(temporary, path);
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+    rmSync(temporary, { force: true });
+  }
+};
+
+const publishRealVideo = ({
+  assetRoot, assertStillLive, cacheRoot, candidate, probe, observedVideoId,
+  afterPayload = () => {}, writeReceipt = atomicWriteJson,
+}) => {
+  if (!samePath(resolve(cacheRoot, '..'), assetRoot)) {
+    throw new Error('the real-media cache is not one direct child of the leased asset root');
+  }
+  assertManagedCacheRoot(cacheRoot);
+  const candidateInside = relative(cacheRoot, resolve(candidate));
+  if (
+    candidateInside === ''
+    || candidateInside === '..'
+    || candidateInside.startsWith(`..${sep}`)
+    || candidateInside.includes(sep)
+  ) {
+    throw new Error('the real-media candidate must be one direct child of its managed cache');
+  }
+  assertOrdinaryFile(candidate, 'real-media candidate');
+  const receiptPath = join(cacheRoot, REAL_MEDIA_RECEIPT);
+  // Windows requires a writable handle for FlushFileBuffers (Node's fsync implementation).
+  const descriptor = openSync(candidate, 'r+');
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  const candidateIdentity = receiptFor({ file: candidate, probe, videoId: observedVideoId });
+  const fileName = `${REAL_VIDEO.id}-${candidateIdentity.sha256}.mp4`;
+  const destination = join(cacheRoot, fileName);
+  const receipt = Object.freeze({ ...candidateIdentity, file: fileName });
+  let previous = null;
+  try {
+    previous = existsSync(receiptPath) ? readJson(receiptPath) : null;
+  } catch {
+    // A malformed receipt owns nothing and must not prevent a leased repair.
+  }
+  const destinationAlreadyExists = existsSync(destination);
+  if (destinationAlreadyExists) {
+    const metadata = assertOrdinaryFile(destination, 'existing content-addressed real media');
+    if (
+      metadata.size !== receipt.sizeBytes
+      || metadata.size > MAX_REAL_MEDIA_BYTES
+      || sha256File(destination) !== receipt.sha256
+    ) {
+      throw new Error('the content-addressed real-media destination contains different bytes');
+    }
+    assertStillLive();
+    rmSync(candidate, { force: true });
+  } else {
+    assertStillLive();
+    renameSync(candidate, destination);
+  }
+  try {
+    afterPayload(destination);
+    assertStillLive();
+    writeReceipt(receiptPath, receipt);
+    if (cachedRealVideo(cacheRoot) !== destination) {
+      throw new Error('the published real-media cache failed its receipt read-back');
+    }
+  } catch (error) {
+    // Once authority is stale, this process may not perform even well-intentioned rollback writes.
+    // An unreceipted content-addressed orphan is harmless and recoverable by the next live owner.
+    assertStillLive();
+    if (validateReceiptShape(previous)) atomicWriteJson(receiptPath, previous);
+    else rmSync(receiptPath, { force: true });
+    if (!destinationAlreadyExists) rmSync(destination, { force: true });
+    throw error;
+  }
+  assertStillLive();
+  if (
+    validateReceiptShape(previous)
+    && previous.file !== fileName
+    && new RegExp(`^${REAL_VIDEO.id}-[0-9a-f]{64}\\.mp4$`, 'u').test(previous.file)
+  ) {
+    rmSync(join(cacheRoot, previous.file), { force: true });
+  }
+  return destination;
+};
+
+/** Independently validate a URL-workflow output before it becomes evidence. */
+export const verifyRealVideoFile = (path, options = {}) => {
+  const metadata = assertOrdinaryFile(path, 'real-media candidate');
+  if (metadata.size <= 50_000 || metadata.size > MAX_REAL_MEDIA_BYTES) {
+    throw new Error(`the real-media candidate has an unsafe size: ${metadata.size}`);
+  }
+  const probe = probeRealVideo(path, options);
+  return Object.freeze({ ...receiptFor({ file: path, probe, videoId: REAL_VIDEO.id }), path });
+};
+
+const parseYtDlpObservation = (output, expectedPath) => {
+  if (typeof output !== 'string' || output.length < 3 || output.length > 4096) {
+    throw new Error('yt-dlp returned no bounded provider identity observation');
+  }
+  const lines = output.trim().split(/\r?\n/u);
+  if (lines.length !== 1) throw new Error('yt-dlp returned an ambiguous provider identity observation');
+  const [videoId, path, ...extra] = lines[0].split('\t');
+  if (extra.length !== 0 || videoId !== REAL_VIDEO.id || !samePath(path ?? '', expectedPath)) {
+    throw new Error('yt-dlp resolved a different provider identity or output path');
+  }
+  return videoId;
 };
 
 /**
@@ -201,32 +512,131 @@ const installedYtDlp = () => {
  * produced by the same yt-dlp the product runs — not by whatever happens to be on the developer's
  * PATH, which is the substitution this whole harness exists to avoid.
  */
-export const ensureRealVideo = () => {
-  mkdirSync(REAL_MEDIA_CACHE, { recursive: true });
-  const cached = cachedRealVideo();
+const ensureRealVideoCore = ({
+  assetRoot,
+  assertStillLive,
+  cacheRoot,
+  execute = execFileSync,
+  nativeToolsCache = NATIVE_TOOLS_CACHE,
+  resolveTool = resolveVerifiedNativeToolExecutable,
+  downloadRunner = (executable, args) => execute(executable, args, {
+    encoding: 'utf8', timeout: 300_000, windowsHide: true,
+  }),
+  afterPayload = () => {},
+  writeReceipt = atomicWriteJson,
+} = {}) => {
+  if (!samePath(resolve(cacheRoot, '..'), assetRoot)) {
+    throw new Error('the real-media cache is not one direct child of the leased asset root');
+  }
+  mkdirSync(cacheRoot, { recursive: true });
+  assertManagedCacheRoot(cacheRoot);
+  const cached = cachedRealVideo(cacheRoot);
   if (cached !== null) return cached;
 
-  const ytDlp = installedYtDlp();
-  if (ytDlp === null) {
-    throw new Error(
-       'No real video is cached and the application has not installed yt-dlp yet.\n'
-       + 'Run the URL journey first — it installs the tools and downloads through the product:\n'
-       + '  npm --prefix e2e run test:download',
-    );
+  const ytDlp = resolveTool({ storeRoot: nativeToolsCache, tool: 'yt-dlp', role: 'yt-dlp' });
+  const temporary = join(
+    cacheRoot,
+    `.${REAL_VIDEO.id}.${process.pid}.${randomBytes(6).toString('hex')}.tmp.mp4`,
+  );
+  try {
+    const observation = downloadRunner(ytDlp, [
+      REAL_VIDEO.url,
+      '--no-playlist',
+      '--quiet',
+      '--format', 'best[ext=mp4]',
+      '--output', temporary,
+      '--print', 'after_move:%(id)s\t%(filepath)s',
+    ]);
+    if (!existsSync(temporary)) {
+      throw new Error('yt-dlp reported success without writing the fixed real-media candidate');
+    }
+    const observedVideoId = parseYtDlpObservation(observation, temporary);
+    const probe = probeRealVideo(temporary, { execute, nativeToolsCache, resolveTool });
+    return publishRealVideo({
+      assetRoot, assertStillLive, cacheRoot, candidate: temporary, probe, observedVideoId,
+      afterPayload, writeReceipt,
+    });
+  } finally {
+    rmSync(temporary, { force: true });
   }
+};
 
-  execFileSync(ytDlp, [
-    REAL_VIDEO.url,
-    '--no-playlist',
-    '--quiet',
-    // The lowest rung that is a single self-contained MP4, so nothing has to be muxed afterwards.
-    '--format', 'best[ext=mp4]/best',
-    '--output', join(REAL_MEDIA_CACHE, `${REAL_VIDEO.id}.mp4`),
-  ], { stdio: 'inherit', timeout: 300_000, windowsHide: true });
-
-  const downloaded = cachedRealVideo();
-  if (downloaded === null) {
-    throw new Error(`yt-dlp reported success but wrote no file into ${REAL_MEDIA_CACHE}`);
+/** Managed-cache entry point: authority and mutation behavior are deliberately non-injectable. */
+export const ensureRealVideo = ({ applicationLease } = {}) => {
+  const assertStillLive = () => assertLiveE2eAssetLease(applicationLease);
+  const assetRoot = assertStillLive();
+  try {
+    return ensureRealVideoCore({
+      assetRoot,
+      assertStillLive,
+      cacheRoot: REAL_MEDIA_CACHE,
+      downloadRunner: (executable, args) => {
+      const result = runSupervisedSync({
+        command: executable,
+        args,
+        cwd: REPOSITORY_ROOT,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        ownerProcessId: process.pid,
+        managedPaths: applicationLease.managedPaths,
+      });
+      if (
+        result.error
+        || result.status !== 0
+        || (result.stdout?.length ?? 0) > 4096
+        || (result.stderr?.length ?? 0) > 4096
+      ) {
+        throw result.error ?? new Error(
+          `the supervised yt-dlp acquisition failed with exit ${result.status}: `
+          + String(result.stderr ?? '').slice(0, 4096),
+        );
+      }
+        return result.stdout;
+      },
+    });
+  } catch (error) {
+    if (/not installed|no such file|ENOENT/u.test(String(error?.message))) {
+      throw new Error(
+        'real-media bootstrap requires reviewed native tools; run '
+        + '`npm --prefix e2e run test:download` once, then retry this journey',
+        { cause: error },
+      );
+    }
+    throw error;
   }
-  return downloaded;
+};
+
+/**
+ * Unit-test seam for crash/fault simulation. It is structurally unable to target the manager-owned
+ * E2E asset tree and therefore cannot weaken the production authority boundary above.
+ */
+export const createRealMediaBootstrapForTest = ({
+  cacheRoot, execute = execFileSync, resolveTool = resolveVerifiedNativeToolExecutable,
+  afterPayload = () => {}, writeReceipt = atomicWriteJson, assertStillLive: testLiveness,
+}) => {
+  const candidate = resolve(cacheRoot);
+  const managedRemainder = relative(E2E_ASSET_CACHE_ROOT, candidate);
+  if (
+    samePath(candidate, E2E_ASSET_CACHE_ROOT)
+    || (managedRemainder !== '..'
+      && !managedRemainder.startsWith(`..${sep}`)
+      && !isAbsolute(managedRemainder))
+  ) {
+    throw new Error('the real-media test seam cannot target the manager-owned E2E asset tree');
+  }
+  const assetRoot = dirname(candidate);
+  const assertStillLive = testLiveness ?? (() => assetRoot);
+  return Object.freeze({
+    ensure: () => ensureRealVideoCore({
+      assetRoot, assertStillLive, cacheRoot: candidate, execute, resolveTool,
+      afterPayload, writeReceipt,
+    }),
+    publishCandidate: ({ file, probe, observedVideoId = REAL_VIDEO.id, fault = afterPayload }) => (
+      publishRealVideo({
+        assetRoot, assertStillLive, cacheRoot: candidate, candidate: file, probe,
+        observedVideoId, afterPayload: fault, writeReceipt,
+      })
+    ),
+  });
 };

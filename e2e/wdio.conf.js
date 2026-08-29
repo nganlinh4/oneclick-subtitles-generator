@@ -13,7 +13,7 @@
 
 /* global browser, console, process */
 
-import { copyFileSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 import {
@@ -23,10 +23,6 @@ import {
   runRootAuthorization, stagedDialogPaths,
 } from './support/environment.js';
 import { readInheritedApplicationLease } from './support/applicationLease.js';
-import {
-  cachedRealVideo, ensureSourceSwitchVideo, verifiedDownloadIdentityVideo,
-} from './support/realMedia.js';
-import { stagedLongSyntheticMedia } from './support/longSyntheticMediaFixture.js';
 import { waitForAutomationWindowIsolation } from './support/editor.js';
 import {
   promoteWorkflowFailureEvidence, recordWorkflowTestFailure, workflowFailureStepForTest,
@@ -114,55 +110,10 @@ let guardedWebDriverProcessId = null;
 // channel.
 // A damaged-install run has no E2E asset-lane lease by design. It tests only the private staged
 // application, so it must not even inspect persistent media while that lane can be pruned.
-const cachedVideo = process.env.OSG_E2E_BINARY === undefined ? cachedRealVideo() : null;
-const dialogPaths = stagedDialogPaths(runRoot, cachedVideo);
-if (process.env.OSG_E2E_MEDIA_SELECTION === undefined && cachedVideo !== null) {
-  copyFileSync(cachedVideo, dialogPaths.mediaSelection);
-  process.env.OSG_E2E_MEDIA_SELECTION = dialogPaths.mediaSelection;
-}
-if (process.env.OSG_E2E_WORKFLOW === 'main-preview-controls-and-fullscreen') {
-  if (cachedVideo === null || process.env.OSG_E2E_MEDIA_SELECTION === undefined) {
-    throw new Error('the preview-controls journey requires the cached real YouTube source');
-  }
-  const secondSource = await ensureSourceSwitchVideo();
-  const stagedSecondSource = join(runRoot, 'input', `source-switch-${basename(secondSource)}`);
-  copyFileSync(secondSource, stagedSecondSource);
-  process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
-    process.env.OSG_E2E_MEDIA_SELECTION,
-    stagedSecondSource,
-  ]);
-}
-if (process.env.OSG_E2E_WORKFLOW === 'long-media-resource-bounds') {
-  // This workflow's whole point is a duration the pinned real video does not have. It replaces the
-  // generic real-video default above with a wholly synthetic, offline-generated two-hour file (see
-  // support/longSyntheticMediaFixture.js), and stages an ordinary short real source as the
-  // sequence's second answer so the journey can cancel the long file's in-flight native waveform job
-  // through a real customer action -- selecting different media -- rather than a fabricated hook.
-  // The THIRD answer selects the long file again: the journey returns to it and lets its waveform
-  // complete for real before proving the waveform/timeline-range and resource-bound claims.
-  //
-  // This config loads twice (launcher, then worker) and each load already holds the INHERITED
-  // application lease from run-isolated.mjs's outer withE2eApplicationLease -- stagedLongSyntheticMedia
-  // uses that inherited proof directly rather than acquiring a second, competing lease of its own,
-  // exactly like scenarios/multiWindowAsrPersistence.mjs's stagedFourWindowAsrVideo call.
-  const stagedLongMedia = stagedLongSyntheticMedia({
-    inheritedApplication,
-    stage: (source) => {
-      const staged = join(runRoot, 'input', basename(source));
-      copyFileSync(source, staged);
-      return staged;
-    },
-  });
-  const secondSource = await ensureSourceSwitchVideo();
-  const stagedSecondSource = join(runRoot, 'input', `source-switch-${basename(secondSource)}`);
-  copyFileSync(secondSource, stagedSecondSource);
-  process.env.OSG_E2E_MEDIA_SELECTION = stagedLongMedia;
-  process.env.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
-    stagedLongMedia,
-    stagedSecondSource,
-    stagedLongMedia,
-  ]);
-}
+const dialogPaths = stagedDialogPaths(
+  runRoot,
+  process.env.OSG_E2E_MEDIA_SELECTION ?? null,
+);
 let downloadFixtureOrigin = null;
 if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     || process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale') {
@@ -171,7 +122,19 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
   // inherited, immutable-at-launch environment values. The application cannot choose a URL and a
   // journey cannot widen the allow-list after it starts.
   if (process.env.OSG_E2E_EXACT_DOWNLOAD_URLS === undefined) {
-    const sourceA = await ensureSourceSwitchVideo();
+    const stagedOriginSource = (environmentName) => {
+      const source = process.env[environmentName];
+      if (source === undefined) throw new Error(`the outer lease owner omitted ${environmentName}`);
+      const inputRoot = realpathSync.native(join(runRoot, 'input'));
+      const path = realpathSync.native(source);
+      const metadata = lstatSync(source);
+      if (!metadata.isFile() || metadata.isSymbolicLink() || !samePath(resolve(path, '..'), inputRoot)) {
+        throw new Error(`${environmentName} is not one ordinary direct run-root input`);
+      }
+      return path;
+    };
+    const sourceA = stagedOriginSource('OSG_E2E_SOURCE_SWITCH_MEDIA');
+    const sourceB = stagedOriginSource('OSG_E2E_DOWNLOAD_IDENTITY_MEDIA');
     const failureJourney = process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale';
     downloadFixtureOrigin = await startDownloadFixtureOrigin({
       eventsPath: join(runRoot, 'evidence', 'download-fixture-events.jsonl'),
@@ -179,12 +142,12 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         { label: 'a', path: sourceA },
         // C is still a real, reviewed MP4 for yt-dlp inspection. After that first GET, the exact
         // origin returns 503 so the native job/failure/cleanup path runs without a product mock.
-        { label: 'c', path: verifiedDownloadIdentityVideo(), rejectGetAfter: 1 },
+        { label: 'c', path: sourceB, rejectGetAfter: 1 },
       ] : [
         { label: 'a', path: sourceA },
         // A real committed speech clip, not generated colour bars. Real-network extraction stays
         // independently proven by urlToPreview instead of making cancellation timing depend on it.
-        { label: 'b', path: verifiedDownloadIdentityVideo() },
+        { label: 'b', path: sourceB },
       ],
       chunkDelayMs: failureJourney ? 10 : 120,
       initialDelayMs: failureJourney ? 0 : 2_000,

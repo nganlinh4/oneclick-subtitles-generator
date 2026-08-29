@@ -64,6 +64,35 @@ test('two operations perform N+1 prunes with preflight inside the first applicat
   ]);
 });
 
+test('rejects a thenable before any lease wrapper can release around unfinished work', () => {
+  const events = [];
+  const batch = createE2eCacheMaintenanceBatch({
+    prune: () => events.push('prune'),
+    withApplicationLease: leaseWrapper('application', events),
+    withEvidence: leaseWrapper('evidence', events),
+    withStaging: leaseWrapper('staging', events),
+  });
+
+  assert.throws(
+    () => batch.withLeases(() => {
+      events.push('operation:return-thenable');
+      return { then: () => {} };
+    }),
+    /must be synchronous/u,
+  );
+  assert.deepEqual(events, [
+    'application:acquire',
+    'prune',
+    'staging:acquire',
+    'evidence:acquire',
+    'operation:return-thenable',
+    'evidence:release',
+    'staging:release',
+    'application:release',
+    'prune',
+  ]);
+});
+
 test('operation and post-prune failures retain primary then cleanup error order', () => {
   const events = [];
   const primary = new Error('operation failed');

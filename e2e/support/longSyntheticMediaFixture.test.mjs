@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import {
-  LONG_SYNTHETIC_MEDIA,
+  LONG_SYNTHETIC_MEDIA, LONG_SYNTHETIC_RECIPE,
   validateLongSyntheticMediaProbe,
 } from './longSyntheticMediaFixture.js';
 
@@ -22,6 +22,15 @@ test('the frozen synthetic recipe is unambiguously "long" and tiny on disk', () 
   assert.ok(LONG_SYNTHETIC_MEDIA.height > 0 && LONG_SYNTHETIC_MEDIA.height % 2 === 0);
   assert.ok(LONG_SYNTHETIC_MEDIA.frameRate > 0);
   assert.ok(LONG_SYNTHETIC_MEDIA.audioSampleRateHz > 0);
+  assert.equal(LONG_SYNTHETIC_RECIPE.source.video, 'color=c=gray:s=64x36:r=2');
+  assert.equal(LONG_SYNTHETIC_RECIPE.source.audio, 'sine=frequency=220:sample_rate=8000');
+  assert.deepEqual(LONG_SYNTHETIC_RECIPE.video, {
+    codec: 'libx264', preset: 'veryfast', tune: 'stillimage', pixelFormat: 'yuv420p',
+    frameRate: 2, keyframeInterval: 20,
+  });
+  assert.deepEqual(LONG_SYNTHETIC_RECIPE.audio, {
+    codec: 'aac', bitrate: '16k', sampleRateHz: 8_000, channels: 1,
+  });
 });
 
 test('the semantic probe accepts the intended real synthetic container', () => {
