@@ -2889,14 +2889,11 @@ mod tests {
         assert!(fs::read_dir(quarantine).unwrap().next().is_none());
     }
 
-    /// Documents, at the public API rather than the `verified_install` unit-test level, the
-    /// receipt fast path's bounded trade-off: a same-size content edit made after a receipt was
-    /// written is invisible to the metadata-only status/resolve fast path across a process
-    /// restart, and is only caught once something performs a full content verification again —
-    /// here, calling `install` on the already-"installed" engine, whose own preflight check never
-    /// consults the fast-path receipt.
+    /// Proves at the public API level that a same-size write to the logically immutable but
+    /// Windows-writable publication invalidates the durable receipt across a process restart.
+    /// Status falls through to a deep verify, reports corruption, and install repairs the tree.
     #[test]
-    fn an_unchanged_size_tamper_is_masked_by_the_fast_path_until_reinstalled() {
+    fn an_unchanged_size_tamper_is_detected_after_restart_and_reinstalled() {
         let temp = tempfile::tempdir().unwrap();
         let fixture = fixture();
         let fetcher = Arc::new(MemoryFetcher::new(fixture.archive, false));
@@ -2929,9 +2926,9 @@ mod tests {
             Arc::new(MemoryFetcher::new(restarted_fixture.archive, false)),
             Arc::new(TestCoordinator::default()),
         );
-        let masked = manager.status(EngineId::Parakeet);
-        assert_eq!(masked.state, EnginePackageState::Installed);
-        assert!(masked.installed);
+        let detected = manager.status(EngineId::Parakeet);
+        assert_eq!(detected.state, EnginePackageState::Corrupt);
+        assert!(!detected.installed);
 
         manager
             .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})

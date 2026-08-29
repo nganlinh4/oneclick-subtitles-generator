@@ -15,20 +15,27 @@
 //! enumerates. The store root's own metadata directories (`.downloads`, `.staging`, `.trash`,
 //! `.quarantine`) already work exactly this way.
 //!
-//! Trust in a receipt rests on two independent checks, both metadata-only:
+//! Trust in a receipt rests on four independent checks:
 //! - a whole-receipt SHA-256 (`receipt_sha256`) that detects any edit to the receipt file itself
 //!   (bit rot, a partial write, manual tampering that does not also recompute the checksum);
+//! - a fingerprint of the effective catalog delivery, including the catalog-pinned manifest and
+//!   source identities for manifest-driven deliveries;
 //! - a walk of the receipt's own file list confirming every entry still exists at its recorded
-//!   size, and that no untracked file has appeared in the tree.
+//!   size, write/change timestamps and, where stable APIs expose it, filesystem identity, with no
+//!   untracked file alongside it;
+//! - for manifest-driven deliveries, a SHA-256 of the small installed manifest sidecar against
+//!   the digest pinned by the current catalog.
 //!
-//! **Bounded trade-off.** The fast path never re-reads file content, so a same-size content edit
-//! made after a receipt was written is invisible to it. `manager::verify_once` treats any
-//! fast-path miss — including one only a later deep verify happens to notice — as a reason to
-//! fall back to full content verification and rewrite the receipt from that result. The gap
-//! between those two events is bounded primarily by the store's own no-clobber, read-only
-//! publication (`path_security::initialize_store`, `ManagedPackageManager::publish_staged`):
-//! nothing in this application ever reopens a published file for writing after publication, so a
-//! same-size substitution requires something outside the application's own write path.
+//! **Windows publication assumption and bounded trade-off.** Publication is *logically*
+//! immutable: OSG never reopens a published runtime file for writing. Windows does not enforce
+//! that invariant with an ACL or read-only attribute, however, so another process running as the
+//! same user can replace a file. An ordinary same-size overwrite/replacement changes NTFS write or
+//! creation metadata and is rejected on the next process start. An actor able to forge those
+//! fields and recompute this unkeyed receipt is outside the cheap-path threat
+//! model. Even non-forged metadata is not trusted indefinitely: every receipt expires after a
+//! bounded interval, forcing `manager::verify_once` through full catalog-pinned content hashes and
+//! refreshing the receipt only after success. Thus the 41k-file tree is stat'ed at startup, but is
+//! never content-hashed on every startup.
 
 use std::collections::HashSet;
 use std::fs;
@@ -41,21 +48,35 @@ use sha2::{Digest as _, Sha256};
 
 use crate::catalog::{MAX_FILES, PackageDelivery};
 use crate::path_security::{
-    collect_regular_file_sizes, ensure_direct_child, is_link_or_reparse, resolve_owned,
-    validate_manifest_path,
+    collect_regular_file_metadata, ensure_direct_child, is_link_or_reparse, require_regular_file,
+    resolve_owned, validate_manifest_path,
 };
 use crate::receipt;
 use crate::{PackageError, Result};
 
 const VERIFIED_DIR: &str = ".verified";
-const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
-const SCHEMA_VERSION: u32 = 1;
+// A 100k-entry catalog at the portable path-length bound needs more than the old size-only
+// receipt's 64 MiB once timestamps are included. Keep the parser bounded while leaving room for
+// the catalog's declared maximum; the reviewed Windows runtime is currently about 41k files.
+const MAX_RECEIPT_BYTES: u64 = 128 * 1024 * 1024;
+const SCHEMA_VERSION: u32 = 2;
+const MAX_FAST_VERIFY_AGE_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct FastFile {
     path: String,
     size_bytes: u64,
+    metadata: FastMetadata,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FastMetadata {
+    write_marker: String,
+    change_marker: String,
+    device_id: Option<u64>,
+    file_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -65,6 +86,7 @@ struct FastReceipt {
     component: String,
     platform: String,
     version: String,
+    delivery_fingerprint: String,
     file_count: u64,
     total_bytes: u64,
     /// A single SHA-256 over every inventoried file's already-verified content hash, in path
@@ -74,6 +96,7 @@ struct FastReceipt {
     /// written from.
     hash_of_hashes: String,
     verified_at_unix_seconds: u64,
+    deep_verify_after_unix_seconds: u64,
     files: Vec<FastFile>,
     /// SHA-256 over this document with `receipt_sha256` itself blanked. Detects any edit to the
     /// receipt at rest; it is a plain checksum, not a keyed signature, so — like the in-tree
@@ -83,12 +106,27 @@ struct FastReceipt {
 }
 
 impl FastReceipt {
-    fn matches(&self, delivery: &PackageDelivery) -> bool {
+    fn matches(&self, delivery: &PackageDelivery, now_unix_seconds: u64) -> bool {
         self.schema_version == SCHEMA_VERSION
             && self.component == delivery.component
             && self.platform == delivery.platform
             && self.version == delivery.version
+            && self.delivery_fingerprint == delivery_fingerprint(delivery)
             && self.files.len() as u64 == self.file_count
+            && self.verified_at_unix_seconds != 0
+            && self.verified_at_unix_seconds <= now_unix_seconds
+            && now_unix_seconds < self.deep_verify_after_unix_seconds
+            && self.deep_verify_after_unix_seconds
+                == self
+                    .verified_at_unix_seconds
+                    .saturating_add(MAX_FAST_VERIFY_AGE_SECONDS)
+            && self
+                .files
+                .iter()
+                .try_fold(0_u64, |total, file| total.checked_add(file.size_bytes))
+                == Some(self.total_bytes)
+            && is_sha256(&self.delivery_fingerprint)
+            && is_sha256(&self.hash_of_hashes)
     }
 }
 
@@ -119,15 +157,11 @@ pub(crate) fn write(
     // The complete actual tree, taken fresh right after `validate_integrity` confirmed it is
     // exactly `delivery.files` plus its sidecars — this is what a later metadata walk must be
     // compared against, so it is built the same way here rather than reconstructed by name.
-    let actual = collect_regular_file_sizes(version_root)?;
+    let actual = observe_tree(version_root)?;
     if actual.is_empty() {
         return Err(PackageError::InvalidInstall);
     }
-    let mut files = actual
-        .into_iter()
-        .map(|(path, size_bytes)| FastFile { path, size_bytes })
-        .collect::<Vec<_>>();
-    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let files = actual;
     let total_bytes = files
         .iter()
         .try_fold(0_u64, |total, file| total.checked_add(file.size_bytes))
@@ -140,10 +174,13 @@ pub(crate) fn write(
         component: delivery.component.clone(),
         platform: delivery.platform.clone(),
         version: delivery.version.clone(),
+        delivery_fingerprint: delivery_fingerprint(delivery),
         file_count: files.len() as u64,
         total_bytes,
         hash_of_hashes,
         verified_at_unix_seconds,
+        deep_verify_after_unix_seconds: verified_at_unix_seconds
+            .saturating_add(MAX_FAST_VERIFY_AGE_SECONDS),
         files,
         receipt_sha256: String::new(),
     };
@@ -181,19 +218,27 @@ pub(crate) fn try_fast_verify(
     version_root: &Path,
     delivery: &PackageDelivery,
 ) -> bool {
-    let Some(document) = read_matching(store_root, delivery) else {
+    try_fast_verify_at(
+        store_root,
+        version_root,
+        delivery,
+        unix_seconds(SystemTime::now()),
+    )
+}
+
+fn try_fast_verify_at(
+    store_root: &Path,
+    version_root: &Path,
+    delivery: &PackageDelivery,
+    now_unix_seconds: u64,
+) -> bool {
+    let Some(document) = read_matching(store_root, delivery, now_unix_seconds) else {
         return false;
     };
-    let Ok(actual) = collect_regular_file_sizes(version_root) else {
+    let Ok(actual) = observe_tree(version_root) else {
         return false;
     };
-    // Every receipt path is distinct (checked below) and confirmed present at the recorded size,
-    // so an equal count rules out an untracked extra file without a second directory walk.
-    actual.len() == document.files.len()
-        && document
-            .files
-            .iter()
-            .all(|file| actual.get(&file.path) == Some(&file.size_bytes))
+    actual == document.files && manifest_sidecar_matches(version_root, delivery)
 }
 
 /// Deletes the fast-path receipt for `delivery`, if any. Best-effort cleanup so a removed
@@ -219,7 +264,11 @@ fn receipt_file_name(version: &str) -> String {
     format!("{version}.json")
 }
 
-fn read_matching(store_root: &Path, delivery: &PackageDelivery) -> Option<FastReceipt> {
+fn read_matching(
+    store_root: &Path,
+    delivery: &PackageDelivery,
+    now_unix_seconds: u64,
+) -> Option<FastReceipt> {
     let path = store_root
         .join(VERIFIED_DIR)
         .join(&delivery.component)
@@ -243,7 +292,7 @@ fn read_matching(store_root: &Path, delivery: &PackageDelivery) -> Option<FastRe
         return None;
     }
     let document: FastReceipt = serde_json::from_slice(&encoded).ok()?;
-    if document.files.len() > MAX_FILES || !document.matches(delivery) {
+    if document.files.len() > MAX_FILES || !document.matches(delivery, now_unix_seconds) {
         return None;
     }
     if self_hash(&document).ok()? != document.receipt_sha256 {
@@ -279,10 +328,178 @@ fn hash_of_hashes<'a>(content_hashes_in_path_order: impl Iterator<Item = &'a str
     format!("{:x}", hasher.finalize())
 }
 
+fn observe_tree(root: &Path) -> Result<Vec<FastFile>> {
+    let observed = collect_regular_file_metadata(root, |_, metadata| {
+        Ok((metadata.len(), metadata_fingerprint(metadata)))
+    })?;
+    let mut files = Vec::with_capacity(observed.len());
+    for (path, (size_bytes, metadata)) in observed {
+        files.push(FastFile {
+            path,
+            size_bytes,
+            metadata,
+        });
+    }
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(files)
+}
+
+fn manifest_sidecar_matches(root: &Path, delivery: &PackageDelivery) -> bool {
+    let Some(expected) = &delivery.manifest else {
+        return true;
+    };
+    let Ok(path) = resolve_owned(root, receipt::DELIVERY_MANIFEST_NAME) else {
+        return false;
+    };
+    let Ok(before) = require_regular_file(&path) else {
+        return false;
+    };
+    if before.len() != expected.size_bytes {
+        return false;
+    }
+    let before_fingerprint = metadata_fingerprint(&before);
+    let Ok(actual_hash) = receipt::hash_file(&path, &crate::CancellationToken::default()) else {
+        return false;
+    };
+    let Ok(after) = require_regular_file(&path) else {
+        return false;
+    };
+    before.len() == after.len()
+        && before_fingerprint == metadata_fingerprint(&after)
+        && actual_hash == expected.sha256
+}
+
+fn delivery_fingerprint(delivery: &PackageDelivery) -> String {
+    let mut hasher = Sha256::new();
+    fingerprint_field(&mut hasher, b"osg-package-delivery-v1");
+    fingerprint_field(&mut hasher, delivery.component.as_bytes());
+    fingerprint_field(&mut hasher, delivery.platform.as_bytes());
+    fingerprint_field(&mut hasher, delivery.version.as_bytes());
+    fingerprint_field(&mut hasher, delivery.asset.as_bytes());
+    fingerprint_field(&mut hasher, delivery.source_url.as_bytes());
+    fingerprint_u64(&mut hasher, delivery.size_bytes);
+    fingerprint_field(&mut hasher, delivery.sha256.as_bytes());
+    fingerprint_u64(&mut hasher, delivery.unpacked_size_bytes);
+    fingerprint_field(&mut hasher, delivery.python_relative_path.as_bytes());
+    fingerprint_u64(&mut hasher, u64::from(delivery.primary_executable));
+    fingerprint_optional(&mut hasher, delivery.model_relative_path.as_deref());
+    fingerprint_optional(&mut hasher, delivery.aligner_relative_path.as_deref());
+
+    // A manifest's catalog-pinned digest is the authoritative file-inventory identity. Prepared
+    // deliveries populate `files` from that manifest at install time, while the next process sees
+    // the original catalog delivery with an empty `files` vector. Excluding that derived vector is
+    // what makes both views produce the same fingerprint without weakening catalog binding.
+    if delivery.manifest.is_none() {
+        fingerprint_u64(&mut hasher, delivery.files.len() as u64);
+        for file in &delivery.files {
+            fingerprint_field(&mut hasher, file.path.as_bytes());
+            fingerprint_u64(&mut hasher, file.size_bytes);
+            fingerprint_field(&mut hasher, file.sha256.as_bytes());
+            fingerprint_u64(&mut hasher, u64::from(file.executable));
+            fingerprint_u64(&mut hasher, file.role as u64);
+        }
+    } else {
+        fingerprint_u64(&mut hasher, 0);
+    }
+
+    fingerprint_u64(&mut hasher, delivery.sources.len() as u64);
+    for source in &delivery.sources {
+        fingerprint_u64(&mut hasher, source.kind as u64);
+        fingerprint_asset(&mut hasher, &source.asset);
+    }
+    match &delivery.manifest {
+        Some(manifest) => {
+            fingerprint_u64(&mut hasher, 1);
+            fingerprint_asset(&mut hasher, manifest);
+        }
+        None => fingerprint_u64(&mut hasher, 0),
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn fingerprint_asset(hasher: &mut Sha256, asset: &crate::catalog::DeliveryAsset) {
+    fingerprint_field(hasher, asset.asset.as_bytes());
+    fingerprint_u64(hasher, asset.urls.len() as u64);
+    for url in &asset.urls {
+        fingerprint_field(hasher, url.as_bytes());
+    }
+    fingerprint_u64(hasher, asset.size_bytes);
+    fingerprint_field(hasher, asset.sha256.as_bytes());
+}
+
+fn fingerprint_optional(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            fingerprint_u64(hasher, 1);
+            fingerprint_field(hasher, value.as_bytes());
+        }
+        None => fingerprint_u64(hasher, 0),
+    }
+}
+
+fn fingerprint_field(hasher: &mut Sha256, value: &[u8]) {
+    fingerprint_u64(hasher, value.len() as u64);
+    hasher.update(value);
+}
+
+fn fingerprint_u64(hasher: &mut Sha256, value: u64) {
+    hasher.update(value.to_le_bytes());
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn unix_seconds(value: SystemTime) -> u64 {
+    value
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
+#[cfg(windows)]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> FastMetadata {
+    use std::os::windows::fs::MetadataExt as _;
+
+    FastMetadata {
+        write_marker: format!("windows:{}", metadata.last_write_time()),
+        change_marker: format!("windows:{}", metadata.creation_time()),
+        // Stable Rust does not yet expose Windows by-handle volume/file IDs. Creation plus
+        // last-write markers catch normal overwrite and replacement; the bounded deep-verify
+        // deadline is the backstop for metadata-preserving replacement.
+        device_id: None,
+        file_id: None,
+    }
+}
+
+#[cfg(unix)]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> FastMetadata {
+    use std::os::unix::fs::MetadataExt as _;
+
+    FastMetadata {
+        write_marker: format!("unix:{}:{}", metadata.mtime(), metadata.mtime_nsec()),
+        change_marker: format!("unix:{}:{}", metadata.ctime(), metadata.ctime_nsec()),
+        device_id: Some(metadata.dev()),
+        file_id: Some(metadata.ino()),
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn metadata_fingerprint(metadata: &fs::Metadata) -> FastMetadata {
+    FastMetadata {
+        write_marker: format!("portable:{:?}", metadata.modified().ok()),
+        change_marker: format!("portable:{:?}", metadata.created().ok()),
+        device_id: None,
+        file_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{DeliveryFile, FileRole};
+    use crate::catalog::{DeliveryAsset, DeliveryFile, FileRole};
 
     fn digest(bytes: &[u8]) -> String {
         let mut hasher = Sha256::new();
@@ -345,11 +562,57 @@ mod tests {
         ("model/config.json", b"{\"weights\":true}"),
     ];
 
+    fn fast_receipt_path(store_root: &Path, delivery: &PackageDelivery) -> std::path::PathBuf {
+        store_root
+            .join(VERIFIED_DIR)
+            .join(&delivery.component)
+            .join(receipt_file_name(&delivery.version))
+    }
+
+    fn rewrite_fast_receipt(
+        store_root: &Path,
+        delivery: &PackageDelivery,
+        mutate: impl FnOnce(&mut FastReceipt),
+    ) {
+        let path = fast_receipt_path(store_root, delivery);
+        let mut document: FastReceipt = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        mutate(&mut document);
+        document.receipt_sha256 = self_hash(&document).unwrap();
+        fs::write(path, serde_json::to_vec(&document).unwrap()).unwrap();
+    }
+
+    fn enable_manifest(version_root: &Path, delivery: &mut PackageDelivery, manifest_bytes: &[u8]) {
+        fs::write(
+            version_root.join(receipt::DELIVERY_MANIFEST_NAME),
+            manifest_bytes,
+        )
+        .unwrap();
+        delivery.manifest = Some(DeliveryAsset {
+            asset: "delivery-manifest.json".to_owned(),
+            urls: vec!["https://example.invalid/delivery-manifest.json".to_owned()],
+            size_bytes: manifest_bytes.len() as u64,
+            sha256: digest(manifest_bytes),
+        });
+        fs::remove_file(version_root.join(receipt::RECEIPT_NAME)).unwrap();
+        receipt::write(version_root, delivery).unwrap();
+    }
+
     #[test]
     fn receipt_round_trip_lets_fast_verify_succeed() {
         let (_temp, store_root, version_root, delivery) = install_fixture(FILES);
         write(&store_root, &version_root, &delivery).unwrap();
         assert!(try_fast_verify(&store_root, &version_root, &delivery));
+    }
+
+    #[test]
+    fn changed_same_version_catalog_delivery_rejects_the_old_receipt() {
+        let (_temp, store_root, version_root, delivery) = install_fixture(FILES);
+        write(&store_root, &version_root, &delivery).unwrap();
+
+        let mut changed = delivery.clone();
+        changed.source_url = "https://mirror.invalid/repacked-parakeet.zip".to_owned();
+        assert_eq!(changed.version, delivery.version);
+        assert!(!try_fast_verify(&store_root, &version_root, &changed));
     }
 
     #[test]
@@ -364,15 +627,12 @@ mod tests {
         assert!(!try_fast_verify(&store_root, &version_root, &delivery));
     }
 
-    /// Documents the bounded trade-off: a content edit that preserves the file's size is
-    /// invisible to the metadata-only fast path, and is only caught once something runs the full
-    /// content hash (`receipt::validate_integrity`) again — which the fast-path miss above, or a
-    /// scheduled deep verify/repair, is what triggers.
     #[test]
-    fn a_same_size_content_tamper_passes_the_fast_path_but_deep_verify_still_catches_it() {
-        let (_temp, store_root, version_root, delivery) = install_fixture(FILES);
+    fn a_same_size_writable_file_replacement_is_caught_after_restart() {
+        let (temp, store_root, version_root, delivery) = install_fixture(FILES);
         write(&store_root, &version_root, &delivery).unwrap();
-        let original = fs::read(version_root.join("model/config.json")).unwrap();
+        let path = version_root.join("model/config.json");
+        let original = fs::read(&path).unwrap();
         let mut tampered = original.clone();
         tampered[1] = tampered[1].wrapping_add(1);
         assert_eq!(
@@ -380,17 +640,105 @@ mod tests {
             original.len(),
             "the tamper must not change size"
         );
-        fs::write(version_root.join("model/config.json"), &tampered).unwrap();
+        // Move the old file outside the publication and create a distinct same-size file at the
+        // declared path. Keeping the displaced file alive prevents inode/file-index reuse and
+        // models the replacement a same-user Windows process can perform.
+        fs::rename(&path, temp.path().join("displaced-config.json")).unwrap();
+        fs::write(&path, &tampered).unwrap();
+
+        let restarted_store = crate::path_security::initialize_store(&store_root).unwrap();
 
         assert!(
-            try_fast_verify(&store_root, &version_root, &delivery),
-            "same-size content tampering is outside the fast path's bounded guarantee"
+            !try_fast_verify(&restarted_store, &version_root, &delivery),
+            "replacement identity/timestamps must survive and fail across process initialization"
         );
         let cancellation = crate::CancellationToken::default();
         assert!(
             receipt::validate_integrity(&version_root, &delivery, &cancellation).is_err(),
             "full content verification must still catch what the fast path cannot"
         );
+    }
+
+    #[test]
+    fn manifest_delivery_binds_effective_files_to_the_current_catalog_and_pinned_sidecar() {
+        let (_temp, store_root, version_root, mut effective) = install_fixture(FILES);
+        let manifest = br#"{\"schemaVersion\":1,\"files\":[]}"#;
+        enable_manifest(&version_root, &mut effective, manifest);
+        write(&store_root, &version_root, &effective).unwrap();
+
+        // A new process has the catalog view, not the install-time manifest-expanded file vector.
+        let mut current_catalog = effective.clone();
+        current_catalog.files.clear();
+        assert_eq!(
+            delivery_fingerprint(&effective),
+            delivery_fingerprint(&current_catalog)
+        );
+        assert!(try_fast_verify(
+            &store_root,
+            &version_root,
+            &current_catalog
+        ));
+
+        let sidecar = version_root.join(receipt::DELIVERY_MANIFEST_NAME);
+        let mut drifted = manifest.to_vec();
+        drifted[1] = if drifted[1] == b'X' { b'Y' } else { b'X' };
+        assert_eq!(drifted.len(), manifest.len());
+        fs::write(&sidecar, drifted).unwrap();
+
+        // Give the hostile receipt its best case: refresh the sidecar's cheap metadata and
+        // recompute the unkeyed outer checksum. The catalog-pinned sidecar digest must still be
+        // independently authoritative.
+        let current_files = observe_tree(&version_root).unwrap();
+        let current_sidecar = current_files
+            .into_iter()
+            .find(|file| file.path == receipt::DELIVERY_MANIFEST_NAME)
+            .unwrap();
+        rewrite_fast_receipt(&store_root, &effective, |document| {
+            *document
+                .files
+                .iter_mut()
+                .find(|file| file.path == receipt::DELIVERY_MANIFEST_NAME)
+                .unwrap() = current_sidecar;
+        });
+        assert!(!try_fast_verify(
+            &store_root,
+            &version_root,
+            &current_catalog
+        ));
+    }
+
+    #[test]
+    fn scheduled_deep_verify_refreshes_the_receipt_and_repair_restores_fast_path() {
+        let (_temp, store_root, version_root, delivery) = install_fixture(FILES);
+        write(&store_root, &version_root, &delivery).unwrap();
+        let now = unix_seconds(SystemTime::now());
+        rewrite_fast_receipt(&store_root, &delivery, |document| {
+            document.verified_at_unix_seconds = now
+                .saturating_sub(MAX_FAST_VERIFY_AGE_SECONDS)
+                .saturating_sub(1);
+            document.deep_verify_after_unix_seconds = document
+                .verified_at_unix_seconds
+                .saturating_add(MAX_FAST_VERIFY_AGE_SECONDS);
+        });
+        assert!(!try_fast_verify_at(
+            &store_root,
+            &version_root,
+            &delivery,
+            now
+        ));
+
+        let cancellation = crate::CancellationToken::default();
+        receipt::validate_integrity(&version_root, &delivery, &cancellation).unwrap();
+        write(&store_root, &version_root, &delivery).unwrap();
+        assert!(try_fast_verify(&store_root, &version_root, &delivery));
+
+        let model = version_root.join("model/config.json");
+        fs::write(&model, b"{\"weights\":xxxx}").unwrap();
+        assert!(receipt::validate_integrity(&version_root, &delivery, &cancellation).is_err());
+        fs::write(&model, b"{\"weights\":true}").unwrap();
+        receipt::validate_integrity(&version_root, &delivery, &cancellation).unwrap();
+        write(&store_root, &version_root, &delivery).unwrap();
+        assert!(try_fast_verify(&store_root, &version_root, &delivery));
     }
 
     #[test]

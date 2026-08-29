@@ -256,6 +256,16 @@ pub(crate) fn collect_regular_files(root: &Path) -> Result<HashSet<String>> {
 /// that both the exact-tree checks and the receipt fast path can read existence and size from,
 /// without opening or hashing any file content.
 pub(crate) fn collect_regular_file_sizes(root: &Path) -> Result<HashMap<String, u64>> {
+    collect_regular_file_metadata(root, |_, metadata| Ok(metadata.len()))
+}
+
+/// Performs the same bounded, reparse-refusing recursive walk as
+/// `collect_regular_file_sizes`, while letting a caller retain additional cheap metadata from
+/// the already-issued directory-entry stat. The callback must not open or mutate the file.
+pub(crate) fn collect_regular_file_metadata<T>(
+    root: &Path,
+    mut observe: impl FnMut(&Path, &fs::Metadata) -> Result<T>,
+) -> Result<HashMap<String, T>> {
     require_directory(root).map_err(|_| PackageError::InvalidInstall)?;
     let mut files = HashMap::new();
     let mut pending = vec![root.to_path_buf()];
@@ -267,16 +277,16 @@ pub(crate) fn collect_regular_file_sizes(root: &Path) -> Result<HashMap<String, 
             .ok_or(PackageError::InvalidInstall)?;
         for entry in fs::read_dir(&directory).map_err(|_| PackageError::InvalidInstall)? {
             let entry = entry.map_err(|_| PackageError::InvalidInstall)?;
+            let entry_path = entry.path();
             let metadata =
-                fs::symlink_metadata(entry.path()).map_err(|_| PackageError::InvalidInstall)?;
+                fs::symlink_metadata(&entry_path).map_err(|_| PackageError::InvalidInstall)?;
             if is_link_or_reparse(&metadata) {
                 return Err(PackageError::InvalidInstall);
             }
             if metadata.is_dir() {
-                pending.push(entry.path());
+                pending.push(entry_path);
             } else if metadata.is_file() {
-                let relative = entry
-                    .path()
+                let relative = entry_path
                     .strip_prefix(root)
                     .map_err(|_| PackageError::InvalidInstall)?
                     .components()
@@ -288,7 +298,8 @@ pub(crate) fn collect_regular_file_sizes(root: &Path) -> Result<HashMap<String, 
                     .ok_or(PackageError::InvalidInstall)?
                     .join("/");
                 validate_manifest_path(&relative).map_err(|_| PackageError::InvalidInstall)?;
-                if files.insert(relative, metadata.len()).is_some() || files.len() > MAX_FILES + 1 {
+                let observed = observe(&entry_path, &metadata)?;
+                if files.insert(relative, observed).is_some() || files.len() > MAX_FILES + 1 {
                     return Err(PackageError::InvalidInstall);
                 }
             } else {
