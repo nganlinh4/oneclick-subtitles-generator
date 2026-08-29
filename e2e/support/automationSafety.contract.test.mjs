@@ -602,14 +602,19 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   }
 
   const installedSmoke = read('scripts', 'test-installed-windows.ps1');
+  const installerPackageReceipt = read('scripts', 'installer-package-receipt.js');
   const updaterSmoke = read('scripts', 'test-signed-updater-windows.ps1');
   assert.ok(
     installedSmoke.indexOf("if ($env:CI -ne 'true')")
       < installedSmoke.indexOf('Start-Process -FilePath $installer'),
     'the installed-app desktop smoke must refuse local execution before launching anything',
   );
-  assert.match(installedSmoke, /rev-parse --verify 'HEAD\^\{tree\}'/u);
-  assert.match(installedSmoke, /sourceDirtyEntries\.Count -ne 0/u);
+  assert.match(installerPackageReceipt, /readCleanGitSourceProvenance\(\{ repositoryRoot \}\)/u);
+  assert.ok(
+    installedSmoke.indexOf("installer-package-receipt.js') `")
+      < installedSmoke.indexOf('Start-Process -FilePath $installer'),
+    'the installed-app smoke must verify the source-bound package receipt before installing',
+  );
   assert.match(installedSmoke, /publisher = 'osg-installed-production-evidence'/u);
   assert.match(installedSmoke, /installerSha256 = \$installerSha256/u);
   assert.match(installedSmoke, /journeys = @\('installedGolden'\)/u);
