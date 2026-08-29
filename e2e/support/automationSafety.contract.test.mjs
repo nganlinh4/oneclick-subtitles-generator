@@ -557,6 +557,46 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
     /withScenarioLeases\([\s\S]*?beginWorkflowEvidence\([\s\S]*?runSupervisedSync\([\s\S]*?finalizeWorkflowEvidence\(/u,
     'damaged-install app, staging, and evidence must remain leased through supervised finalization',
   );
+  const twoProcessScenario = read('e2e', 'support', 'twoProcessScenario.js');
+  assert.match(
+    twoProcessScenario,
+    /withScenarioLeases[\s\S]*?publication,[\s\S]*?resetWorkflowEvidence\(workflow, \{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?binaryPath: publication\.binaryPath/u,
+  );
+  for (const [label, source, expected] of [
+    ['two-process support', twoProcessScenario, 2],
+    ['multi-window ASR', read('e2e', 'scenarios', 'multiWindowAsrPersistence.mjs'), 1],
+    ['long-media recovery', read('e2e', 'scenarios', 'longMediaOperationRecovery.mjs'), 1],
+  ]) {
+    const resets = [...source.matchAll(/resetWorkflowEvidence\(workflow, \{([\s\S]*?)\}\)/gu)];
+    assert.equal(resets.length, expected, `${label} has an unexpected evidence-reset surface`);
+    for (const reset of resets) {
+      assert.match(reset[1], /applicationHash: publication\.applicationHash/u, label);
+      assert.match(reset[1], /binaryPath: publication\.binaryPath/u, label);
+    }
+  }
+  assert.match(
+    isolatedRunner,
+    /beginWorkflowEvidence\(\{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?binaryPath: publication\.binaryPath/u,
+  );
+  const damagedFont = read('e2e', 'scenarios', 'damagedFontPayload.mjs');
+  assert.match(
+    damagedFont,
+    /beginWorkflowEvidence\(\{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?kind: 'staged-damage',[\s\S]*?binaryPath: binary/u,
+  );
+  for (const file of [
+    'nativeToolsInstall.mjs',
+    'settingsNarrationModelManagement.mjs',
+    'settingsToolsRemoveAndFactoryReset.mjs',
+    'multiWindowAsrPersistence.mjs',
+    'longMediaOperationRecovery.mjs',
+  ]) {
+    const source = read('e2e', 'scenarios', file);
+    const calls = [...source.matchAll(/runScenarioProcesses\(\{([\s\S]*?)\n\s*\}\);/gu)];
+    assert.ok(calls.length > 0, `${file} has no supervised scenario call`);
+    for (const call of calls) {
+      assert.match(call[1], /\bpublication\b/u, `${file} dropped publication provenance`);
+    }
+  }
 
   const installedSmoke = read('scripts', 'test-installed-windows.ps1');
   const updaterSmoke = read('scripts', 'test-signed-updater-windows.ps1');

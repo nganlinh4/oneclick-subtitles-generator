@@ -69,7 +69,7 @@ let failures = 0;
 for (const [index, testCase] of CASES.entries()) {
   try {
     withScenarioLeases(({
-      applicationLease, inheritedApplication, managedPaths, stagingLease,
+      applicationLease, inheritedApplication, managedPaths, publication, stagingLease,
     }) => {
       const staged = stageApplication({ applicationLease, stagingLease });
       const root = createRunRoot({
@@ -86,6 +86,11 @@ for (const [index, testCase] of CASES.entries()) {
           workflow: WORKFLOW,
           journey: SPEC,
           iteration: index + 1,
+          applicationHash: publication.applicationHash,
+          applicationDerivative: {
+            kind: 'staged-damage',
+            description: `${testCase.name}: ${damaged}`,
+          },
           binaryPath: binary,
         });
         const environment = {

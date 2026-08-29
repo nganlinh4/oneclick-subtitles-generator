@@ -292,7 +292,24 @@ const boundedGitState = () => {
   };
 };
 
+const normalizeApplicationDerivative = (value) => {
+  if (value === undefined || value === null) return null;
+  if (
+    typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.keys(value).sort().join('|') !== 'description|kind'
+    || value.kind !== 'staged-damage'
+    || typeof value.description !== 'string'
+    || value.description.length === 0
+    || value.description.length > 260
+  ) {
+    throw new Error('workflow evidence application derivative is invalid');
+  }
+  return Object.freeze({ kind: value.kind, description: value.description });
+};
+
 export const collectEvidenceProvenance = ({
+  applicationDerivative = null,
   applicationHash = null,
   binaryPath,
   requireBinary = true,
@@ -302,11 +319,13 @@ export const collectEvidenceProvenance = ({
     applicationHash === null || /^[0-9a-f]{64}$/u.test(applicationHash),
     'workflow evidence application hash must be an exact SHA-256 or null',
   );
+  const derivative = normalizeApplicationDerivative(applicationDerivative);
   const path = resolve(binaryPath);
   if (!existsSync(path)) {
     assert.equal(requireBinary, false, `workflow evidence binary does not exist: ${path}`);
     return {
       applicationHash,
+      applicationDerivative: derivative,
       source: boundedGitState(),
       binary: { path, exists: false, sha256: null, size: null },
     };
@@ -314,6 +333,7 @@ export const collectEvidenceProvenance = ({
   const bytes = readFileSync(path);
   return {
     applicationHash,
+    applicationDerivative: derivative,
     source: boundedGitState(),
     binary: {
       path,
@@ -1283,6 +1303,10 @@ const attemptReadmeContents = (manifest) => {
     `- Commit: \`${manifest.provenance.source.commit}\`${manifest.provenance.source.dirty ? ' (dirty)' : ''}`,
     `- Tree: \`${manifest.provenance.source.tree}\``,
     `- Application: \`${manifest.provenance.applicationHash ?? 'legacy/unbound'}\``,
+    `- Application derivative: \`${manifest.provenance.applicationDerivative === null
+      || manifest.provenance.applicationDerivative === undefined
+      ? 'none'
+      : `${manifest.provenance.applicationDerivative.kind}: ${manifest.provenance.applicationDerivative.description}`}\``,
     `- Binary: \`${manifest.provenance.binary.path}\``,
     `- Binary SHA-256: \`${manifest.provenance.binary.sha256 ?? 'unavailable'}\``,
     '',
@@ -1442,6 +1466,7 @@ export const beginWorkflowEvidence = ({
   workflow,
   journey,
   iteration,
+  applicationDerivative = null,
   applicationHash = null,
   binaryPath = null,
   provenance = null,
@@ -1475,6 +1500,7 @@ export const beginWorkflowEvidence = ({
     }
   }
   const attemptProvenance = provenance ?? collectEvidenceProvenance({
+    applicationDerivative,
     applicationHash: selectedApplicationHash,
     binaryPath: selectedBinaryPath,
     requireBinary,
@@ -1485,6 +1511,7 @@ export const beginWorkflowEvidence = ({
       || /^[0-9a-f]{64}$/u.test(attemptProvenance.applicationHash),
     'workflow evidence application hash must be an exact SHA-256 or null',
   );
+  normalizeApplicationDerivative(attemptProvenance?.applicationDerivative);
   assert.match(
     attemptProvenance?.source?.commit ?? '',
     /^[0-9a-f]{40,64}$/i,
@@ -1603,6 +1630,10 @@ export const finalizeWorkflowEvidence = ({
         || manifest.provenance.applicationHash === undefined
         ? {}
         : { applicationHash: manifest.provenance.applicationHash }),
+      ...(manifest.provenance.applicationDerivative === null
+        || manifest.provenance.applicationDerivative === undefined
+        ? {}
+        : { applicationDerivative: manifest.provenance.applicationDerivative }),
     };
     atomicWriteFile(
       join(workflowEvidenceDirectory(workflow), 'latest-success.json'),
@@ -1619,12 +1650,20 @@ export const finalizeWorkflowEvidence = ({
  * Backward-compatible scenario entry point. "Reset" starts a new immutable attempt. Finalization
  * applies the same bounded latest-success-plus-recent retention as the single-process runner.
  */
-export const resetWorkflowEvidence = (workflow) => {
+export const resetWorkflowEvidence = (workflow, {
+  applicationHash = null,
+  binaryPath = null,
+} = {}) => {
+  if ((applicationHash === null) !== (binaryPath === null)) {
+    throw new Error('scenario evidence application hash and binary must be supplied together');
+  }
   const attempt = beginWorkflowEvidence({
     workflow,
     journey: 'legacy-multi-process-scenario',
     iteration: 1,
-    requireBinary: false,
+    applicationHash,
+    binaryPath,
+    requireBinary: applicationHash !== null,
   });
   process.env[ATTEMPT_ENVIRONMENT_KEY] = attempt.id;
   return attempt.directory;

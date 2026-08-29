@@ -14,7 +14,7 @@ import {
 // journey's honesty claim (an empty profile truthfully reports "not installed", and cancelling a
 // real install leaves no orphaned bytes) only holds if the engine-packages cache is genuinely
 // disposable for this run, not the persistent, shared cache other journeys reuse across runs.
-withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
+withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLease }) => {
   const spec = './journeys/settingsNarrationModelManagement.journey.js';
   const workflow = workflowNameForJourney(spec);
   const root = createRunRoot({ keepNativeTools: true, keepEnginePackages: false, stagingLease });
@@ -31,6 +31,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
       spec,
       inheritedApplication,
       managedPaths,
+      publication,
     });
     if (!succeeded) throw new Error('the narration model management process failed');
     process.stdout.write('\nNarration model management passed: truthful not-installed status, real install start, clean cancellation.\n');

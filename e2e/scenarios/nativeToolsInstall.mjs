@@ -13,7 +13,7 @@ import {
 
 /* global console */
 
-withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
+withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLease }) => {
   const spec = './journeys/nativeToolsInstall.journey.js';
   const workflow = workflowNameForJourney(spec);
   const root = createRunRoot({ keepNativeTools: false, stagingLease });
@@ -30,6 +30,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
       spec,
       inheritedApplication,
       managedPaths,
+      publication,
     });
     if (!installed) throw new Error('the from-empty install process failed');
 
@@ -47,6 +48,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
       spec,
       inheritedApplication,
       managedPaths,
+      publication,
     });
     if (!repaired) throw new Error('the repair process failed');
     succeeded = true;

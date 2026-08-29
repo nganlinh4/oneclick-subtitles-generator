@@ -149,6 +149,52 @@ test('pure evidence module bootstraps without a current application receipt', ()
   }
 });
 
+test('scenario reset and staged derivative retain exact source application identity', () => {
+  const workflow = workflowForTest('scenario-application');
+  const scratch = mkdtempSync(join(tmpdir(), 'osg-evidence-scenario-application-'));
+  const binary = join(scratch, 'osg-e2e.exe');
+  const applicationHash = 'd'.repeat(64);
+  writeFileSync(binary, 'scenario-application-binary');
+  try {
+    const resetDirectory = resetWorkflowEvidence(workflow, { applicationHash, binaryPath: binary });
+    const resetManifest = JSON.parse(readFileSync(join(resetDirectory, 'manifest.json'), 'utf8'));
+    assert.equal(resetManifest.provenance.applicationHash, applicationHash);
+    assert.equal(resetManifest.provenance.applicationDerivative, null);
+
+    const derivative = beginWorkflowEvidence({
+      workflow,
+      journey: 'journeys/damagedFontPayload.journey.js',
+      iteration: 2,
+      applicationHash,
+      applicationDerivative: {
+        kind: 'staged-damage',
+        description: 'missing ui-fonts/Inter-Regular.ttf',
+      },
+      binaryPath: binary,
+    });
+    finalizeWorkflowEvidence({
+      workflow,
+      attemptId: derivative.id,
+      outcome: 'pass',
+      exitStatus: 0,
+    });
+    const pointer = JSON.parse(readFileSync(
+      join(workflowEvidenceDirectory(workflow), 'latest-success.json'),
+      'utf8',
+    ));
+    assert.equal(pointer.applicationHash, applicationHash);
+    assert.deepEqual(pointer.applicationDerivative, {
+      kind: 'staged-damage',
+      description: 'missing ui-fonts/Inter-Regular.ttf',
+    });
+  } finally {
+    delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;
+    rmSync(workflowEvidenceDirectory(workflow), { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
+    refreshWorkflowEvidenceIndex();
+  }
+});
+
 test('bounds and redacts hostile WebdriverIO errors while retaining exact useful identity and stack', () => {
   const credential = 'AIzaSyThisMustNeverEnterImmutableEvidence123456';
   const bearer = 'header-secret-that-must-not-survive';
@@ -894,6 +940,8 @@ test('legacy evidence reset starts another confined attempt without deleting suc
     assert.notEqual(first, second);
     assert.equal(existsSync(first), true);
     assert.equal(existsSync(second), true);
+    const legacyManifest = JSON.parse(readFileSync(join(second, 'manifest.json'), 'utf8'));
+    assert.equal(legacyManifest.provenance.applicationHash, null);
     assert.throws(() => workflowEvidenceDirectory('../outside'), /bounded slug/);
   } finally {
     if (priorAttempt === undefined) delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;

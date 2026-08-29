@@ -14,7 +14,7 @@ import {
 // safe here: this run's `data/native-tools` is not the persistent cache other journeys junction in
 // and reuse, so installing one small tool and permanently removing it again cannot force any other
 // journey to re-download it.
-withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
+withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLease }) => {
   const spec = './journeys/settingsToolsRemoveAndFactoryReset.journey.js';
   const workflow = workflowNameForJourney(spec);
   const root = createRunRoot({ keepNativeTools: false, keepEnginePackages: true, stagingLease });
@@ -31,6 +31,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
       spec,
       inheritedApplication,
       managedPaths,
+      publication,
     });
     if (!succeeded) throw new Error('the tool-removal / factory-reset process failed');
     process.stdout.write('\nTools removal and factory reset passed: exact deletion, cleared credential, isolated store untouched otherwise.\n');

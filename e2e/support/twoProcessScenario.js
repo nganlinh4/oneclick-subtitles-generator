@@ -81,12 +81,25 @@ export const runScenarioProcesses = ({
   stagedMediaSelection = null,
   inheritedApplication,
   managedPaths,
+  publication = null,
 }) => {
   if (typeof inheritedApplication !== 'string' || !Array.isArray(managedPaths)) {
     throw new Error('scenario processes require outer-owned application/staging/evidence leases');
   }
   const workflow = workflowNameForJourney(spec);
-  if (resetEvidence) resetWorkflowEvidence(workflow);
+  if (resetEvidence) {
+    if (
+      publication === null
+      || !/^[0-9a-f]{64}$/u.test(publication.applicationHash ?? '')
+      || typeof publication.binaryPath !== 'string'
+    ) {
+      throw new Error('scenario evidence requires the exact verified application publication');
+    }
+    resetWorkflowEvidence(workflow, {
+      applicationHash: publication.applicationHash,
+      binaryPath: publication.binaryPath,
+    });
+  }
   let reviewedSelection = null;
   if (stagedMediaSelection !== null) {
     const inputRoot = realpathSync.native(join(root, 'input'));
@@ -158,6 +171,7 @@ export const withScenarioLeases = (operation) => withE2eApplicationLease(
         applicationLease,
         stagingLease,
         evidenceLease,
+        publication,
         inheritedApplication: serializeInheritedApplicationLease({
           lease: applicationLease,
           publication,
@@ -174,12 +188,15 @@ export const withScenarioLeases = (operation) => withE2eApplicationLease(
 
 export const runTwoProcessScenario = ({ label, spec }) => {
   return withScenarioLeases(({
-    inheritedApplication, managedPaths, stagingLease,
+    inheritedApplication, managedPaths, publication, stagingLease,
   }) => {
       const root = createRunRoot({ stagingLease });
       const rootAuthorization = runRootAuthorization(root);
       const workflow = workflowNameForJourney(spec);
-      const attemptDirectory = resetWorkflowEvidence(workflow);
+      const attemptDirectory = resetWorkflowEvidence(workflow, {
+        applicationHash: publication.applicationHash,
+        binaryPath: publication.binaryPath,
+      });
       const attemptId = attemptDirectory.split(/[\\/]/).at(-1);
       let succeeded = false;
       try {
@@ -190,6 +207,7 @@ export const runTwoProcessScenario = ({ label, spec }) => {
           spec,
           inheritedApplication,
           managedPaths,
+          publication,
         });
         finalizeWorkflowEvidence({
           workflow,

@@ -114,6 +114,20 @@ const optionalApplicationHash = (value) => {
   return /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
 };
 
+const optionalApplicationDerivative = (value) => {
+  if (value === undefined || value === null) return null;
+  if (
+    typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.keys(value).sort().join('|') !== 'description|kind'
+    || value.kind !== 'staged-damage'
+    || typeof value.description !== 'string'
+    || value.description.length === 0
+    || value.description.length > 260
+  ) return undefined;
+  return { kind: value.kind, description: value.description };
+};
+
 const exactLatestPointer = ({ evidenceRoot, workflow }) => {
   const pointerPath = join(evidenceRoot, workflow, 'latest-success.json');
   if (!existsSync(pointerPath)) {
@@ -132,6 +146,7 @@ const exactLatestPointer = ({ evidenceRoot, workflow }) => {
     || pointer.path !== `attempts/${pointer.attemptId}`
     || !/^[0-9a-f]{64}$/u.test(pointer.binarySha256 ?? '')
     || optionalApplicationHash(pointer.applicationHash) === undefined
+    || optionalApplicationDerivative(pointer.applicationDerivative) === undefined
     || evidenceSource(pointer, { allowMissingTree: true }) === null
   ) {
     return { error: `"${workflow}" latest-success pointer has an invalid identity` };
@@ -169,11 +184,20 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSourc
   const manifestSource = evidenceSource(manifest.provenance?.source, { allowMissingTree: true });
   const pointerApplicationHash = optionalApplicationHash(pointer.applicationHash);
   const manifestApplicationHash = optionalApplicationHash(manifest.provenance?.applicationHash);
+  const pointerApplicationDerivative = optionalApplicationDerivative(
+    pointer.applicationDerivative,
+  );
+  const manifestApplicationDerivative = optionalApplicationDerivative(
+    manifest.provenance?.applicationDerivative,
+  );
   if (manifestSource === null) {
     return { error: `"${name}" latest-success manifest has invalid source provenance` };
   }
   if (manifestApplicationHash === undefined) {
     return { error: `"${name}" latest-success manifest has an invalid application hash` };
+  }
+  if (manifestApplicationDerivative === undefined) {
+    return { error: `"${name}" latest-success manifest has an invalid application derivative` };
   }
   if (
     manifest.attempt?.id !== pointer.attemptId
@@ -182,6 +206,8 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSourc
     || manifestSource.tree !== pointerSource.tree
     || manifestSource.dirty !== pointerSource.dirty
     || manifestApplicationHash !== pointerApplicationHash
+    || JSON.stringify(manifestApplicationDerivative)
+      !== JSON.stringify(pointerApplicationDerivative)
   ) {
     return { error: `"${name}" latest-success pointer drifted from its immutable manifest` };
   }
@@ -214,6 +240,7 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSourc
     attemptId: pointer.attemptId,
     binaryDigest: pointer.binarySha256,
     applicationHash: manifestApplicationHash,
+    applicationDerivative: manifestApplicationDerivative,
     evidenceSource: manifestSource,
     staleBinding,
     classification,

@@ -11,13 +11,16 @@ import {
   finalizeWorkflowEvidence, resetWorkflowEvidence, workflowNameForJourney,
 } from '../support/workflowEvidence.js';
 
-withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
+withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLease }) => {
   const label = 'Four-window local ASR persistence';
   const spec = './journeys/multiWindowAsrPersistence.journey.js';
   const workflow = workflowNameForJourney(spec);
   const root = createRunRoot({ stagingLease });
   const rootAuthorization = runRootAuthorization(root);
-  const attemptDirectory = resetWorkflowEvidence(workflow);
+  const attemptDirectory = resetWorkflowEvidence(workflow, {
+    applicationHash: publication.applicationHash,
+    binaryPath: publication.binaryPath,
+  });
   const attemptId = attemptDirectory.split(/[\\/]/u).at(-1);
   // The scenario's own live application lease already covers the asset lane; the fixture helper
   // must not acquire a second time against it.
@@ -39,6 +42,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, stagingLease }) => {
       stagedMediaSelection,
       inheritedApplication,
       managedPaths,
+      publication,
     });
     finalizeWorkflowEvidence({
       workflow,

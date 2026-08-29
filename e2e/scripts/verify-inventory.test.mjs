@@ -112,6 +112,27 @@ test('exact evidence, application, and clean source identity produce current pro
   assert.deepEqual(report.closureBlockers, []);
 });
 
+test('staged damage is explicit pointer-bound metadata on the exact source app', (context) => {
+  const input = fixture(context);
+  const pointerPath = join(input.evidenceRoot, 'proof', 'latest-success.json');
+  const manifestPath = join(input.evidenceRoot, 'proof', 'attempts', ATTEMPT, 'manifest.json');
+  const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const derivative = { kind: 'staged-damage', description: 'missing ui-fonts/font.woff2' };
+  pointer.applicationDerivative = derivative;
+  manifest.provenance.applicationDerivative = derivative;
+  writeFileSync(pointerPath, JSON.stringify(pointer));
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const current = verifyInventoryState(input);
+  assert.equal(current.classifications['current-head'], 1);
+  assert.deepEqual(current.local[0].applicationDerivative, derivative);
+
+  delete pointer.applicationDerivative;
+  writeFileSync(pointerPath, JSON.stringify(pointer));
+  const drifted = verifyInventoryState(input);
+  assert.match(drifted.failures[0], /drifted from its immutable manifest/u);
+});
+
 test('byte-identical executable from old evidence never becomes current through a newer app', (context) => {
   const input = fixture(context, { applicationSource: CURRENT, evidenceSource: OLD });
   const report = verifyInventoryState(input);
