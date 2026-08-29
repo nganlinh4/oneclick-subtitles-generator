@@ -98,7 +98,9 @@ jobs:
           if ($installer.Count -ne 1) {
             throw "Expected exactly one base NSIS installer, found $($installer.Count)"
           }
+          node scripts/installer-package-receipt.js --receipt "$($installer[0].FullName).osg-package-receipt.json" --installer $installer[0].FullName --payload-exe "target\x86_64-pc-windows-msvc\release\osg-desktop.exe" --repository-root $PWD
           Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe')
+          Copy-Item -LiteralPath "$($installer[0].FullName).osg-package-receipt.json" -Destination (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe.osg-package-receipt.json')
           Remove-Item -LiteralPath $installer[0].FullName
 
       - name: Install base and create durable lifecycle state
@@ -108,6 +110,7 @@ jobs:
         run: |
           ./scripts/test-installed-windows.ps1 `
             -InstallerPath (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe') `
+            -PackageReceiptPath (Join-Path $env:RUNNER_TEMP 'osg-base-installer.exe.osg-package-receipt.json') `
             -ExpectedVersion $env:OSG_UPDATER_BASE_VERSION `
             -ResultPath (Join-Path $env:RUNNER_TEMP 'osg-installed-base.json')
 

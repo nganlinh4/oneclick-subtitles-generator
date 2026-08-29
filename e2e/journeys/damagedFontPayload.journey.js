@@ -23,6 +23,10 @@ const observe = () => browser.execute(() => ({
 
 describe('an installation whose shipped font bytes are damaged', () => {
   it('still starts, and settles on a state a person can act on', async () => {
+    const derivative = JSON.parse(process.env.OSG_E2E_APPLICATION_DERIVATIVE ?? 'null');
+    assert.equal(derivative?.kind, 'staged-damage');
+    assert.equal(derivative.changedPaths.length + derivative.deletedPaths.length, 1);
+    assert.match(derivative.treeSha256, /^[0-9a-f]{64}$/u);
     let seen = await observe();
 
     try {

@@ -195,9 +195,38 @@ test('damaged-install staging copies the verified immutable publication and noth
     assert.doesNotThrow(() => environment.assertStagedApplicationBinary(binary));
     const [font] = staging.stagedFontResources(staged);
     staging.corruptFontResource(staged, font);
+    const derivative = staging.describeStagedApplicationDerivative({
+      staged,
+      publication,
+      expectedPath: `ui-fonts/${font}`,
+      expectedChange: 'changed',
+    });
+    assert.equal(derivative.baseApplicationHash, publication.applicationHash);
+    assert.deepEqual(derivative.changedPaths, [`ui-fonts/${font}`]);
+    assert.deepEqual(derivative.deletedPaths, []);
+    assert.match(derivative.treeSha256, /^[0-9a-f]{64}$/u);
     assert.doesNotThrow(
       () => environment.assertStagedApplicationBinary(binary),
       'intentional payload damage must not invalidate the private staging authority',
+    );
+  } finally {
+    staging.discardStagedApplication(staged);
+  }
+});
+
+test('an undamaged staged copy cannot cross-bless itself with an arbitrary damage label', () => {
+  const testStagingRoot = join(root, 'undamaged-derivative-staging');
+  const staged = staging.stageApplication({ testStagingRoot });
+  try {
+    const [font] = staging.stagedFontResources(staged);
+    assert.throws(
+      () => staging.describeStagedApplicationDerivative({
+        staged,
+        publication,
+        expectedPath: `ui-fonts/${font}`,
+        expectedChange: 'deleted',
+      }),
+      /damage delta is not the intended case/u,
     );
   } finally {
     staging.discardStagedApplication(staged);

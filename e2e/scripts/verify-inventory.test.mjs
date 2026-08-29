@@ -118,7 +118,13 @@ test('staged damage is explicit pointer-bound metadata on the exact source app',
   const manifestPath = join(input.evidenceRoot, 'proof', 'attempts', ATTEMPT, 'manifest.json');
   const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const derivative = { kind: 'staged-damage', description: 'missing ui-fonts/font.woff2' };
+  const derivative = {
+    kind: 'staged-damage',
+    baseApplicationHash: input.application.applicationHash,
+    treeSha256: 'e'.repeat(64),
+    changedPaths: [],
+    deletedPaths: ['ui-fonts/font.woff2'],
+  };
   pointer.applicationDerivative = derivative;
   manifest.provenance.applicationDerivative = derivative;
   writeFileSync(pointerPath, JSON.stringify(pointer));
@@ -263,12 +269,24 @@ test('local and installed closure use separate satisfiable source-bound policies
     outcome: 'pass',
     source: CURRENT,
     installerSha256,
+    packageReceiptSha256: 'b'.repeat(64),
+    applicationHash: 'c'.repeat(64),
+    payloadExecutableSha256: 'd'.repeat(64),
+    executableSha256: 'd'.repeat(64),
     journeys: ['capability'],
+  };
+  const installedPackageReceipt = {
+    receiptSha256: 'b'.repeat(64),
+    applicationHash: 'c'.repeat(64),
+    payloadExecutableSha256: 'd'.repeat(64),
+    installerSha256,
+    source: CURRENT,
   };
   const installed = verifyInventoryState({
     ...input,
     installerSha256,
     installedProof,
+    installedPackageReceipt,
   });
   assert.deepEqual(installed.installedClosureBlockers, []);
   assert.equal(verificationExitCode(installed, { requireInstalled: true }), 0);
@@ -282,6 +300,7 @@ test('local and installed closure use separate satisfiable source-bound policies
     ...input,
     installerSha256,
     installedProof: { ...installedProof, source: OLD },
+    installedPackageReceipt,
   });
   assert.equal(verificationExitCode(drifted, { requireInstalled: true }), 1);
 });

@@ -584,7 +584,7 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   const damagedFont = read('e2e', 'scenarios', 'damagedFontPayload.mjs');
   assert.match(
     damagedFont,
-    /beginWorkflowEvidence\(\{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?kind: 'staged-damage',[\s\S]*?binaryPath: binary/u,
+    /describeStagedApplicationDerivative\(\{[\s\S]*?expectedPath: damaged\.path,[\s\S]*?beginWorkflowEvidence\(\{[\s\S]*?applicationHash: publication\.applicationHash,[\s\S]*?applicationDerivative: derivative,[\s\S]*?binaryPath: binary/u,
   );
   for (const file of [
     'nativeToolsInstall.mjs',

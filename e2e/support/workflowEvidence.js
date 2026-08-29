@@ -297,15 +297,27 @@ const normalizeApplicationDerivative = (value) => {
   if (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|') !== 'description|kind'
+    || Object.keys(value).sort().join('|')
+      !== 'baseApplicationHash|changedPaths|deletedPaths|kind|treeSha256'
     || value.kind !== 'staged-damage'
-    || typeof value.description !== 'string'
-    || value.description.length === 0
-    || value.description.length > 260
+    || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
+    || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
+    || !Array.isArray(value.changedPaths)
+    || !Array.isArray(value.deletedPaths)
+    || value.changedPaths.length + value.deletedPaths.length !== 1
+    || [...value.changedPaths, ...value.deletedPaths].some((path) => (
+      typeof path !== 'string' || !path.startsWith('ui-fonts/') || path.includes('..')
+    ))
   ) {
     throw new Error('workflow evidence application derivative is invalid');
   }
-  return Object.freeze({ kind: value.kind, description: value.description });
+  return Object.freeze({
+    kind: value.kind,
+    baseApplicationHash: value.baseApplicationHash,
+    treeSha256: value.treeSha256,
+    changedPaths: [...value.changedPaths],
+    deletedPaths: [...value.deletedPaths],
+  });
 };
 
 export const collectEvidenceProvenance = ({

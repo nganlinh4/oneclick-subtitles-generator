@@ -384,12 +384,14 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          $receipt = "$($installer.FullName).osg-package-receipt.json"
+          node scripts/installer-package-receipt.js --receipt $receipt --installer $installer.FullName --payload-exe "target\x86_64-pc-windows-msvc\release\osg-desktop.exe" --repository-root $PWD
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'
           $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
           if (Test-Path -LiteralPath $pickerEvidencePath) {
             throw 'Installed branch native-picker evidence path was not clean'
           }
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed branch smoke omitted its structured result evidence'
           }
@@ -456,6 +458,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Invoke-WebRequest -Uri "$release/$asset" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe")
           Invoke-WebRequest -Uri "$release/$asset.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.sig")
+          Invoke-WebRequest -Uri "$release/$asset.osg-package-receipt.json" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json")
 
       - name: Validate installer architecture, resources, and updater signature
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
@@ -490,12 +493,13 @@ jobs:
             throw "Expected exactly one NSIS installer, found $(@($installer).Count)"
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
+          $receipt = "$($installer.FullName).osg-package-receipt.json"
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'
           $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
           if (Test-Path -LiteralPath $pickerEvidencePath) {
             throw 'Installed published native-picker evidence path was not clean'
           }
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed published smoke omitted its structured result evidence'
           }

@@ -15,6 +15,9 @@ const require = createRequire(import.meta.url);
 const { readAndVerifyPublishedE2eApplication } = require(
   '../../scripts/e2e-application-publication.js',
 );
+const { readAndVerifyInstallerPackageReceipt } = require(
+  '../../scripts/installer-package-receipt.js',
+);
 const DEFAULT_INVENTORY_PATH = join(HERE, '..', 'inventory.json');
 const DEFAULT_REPOSITORY_ROOT = resolve(HERE, '..', '..');
 const DEVELOPMENT_CACHE_ROOT = process.env.OSG_DEV_CACHE_ROOT
@@ -119,13 +122,19 @@ const optionalApplicationDerivative = (value) => {
   if (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|') !== 'description|kind'
+    || Object.keys(value).sort().join('|')
+      !== 'baseApplicationHash|changedPaths|deletedPaths|kind|treeSha256'
     || value.kind !== 'staged-damage'
-    || typeof value.description !== 'string'
-    || value.description.length === 0
-    || value.description.length > 260
+    || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
+    || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
+    || !Array.isArray(value.changedPaths)
+    || !Array.isArray(value.deletedPaths)
+    || value.changedPaths.length + value.deletedPaths.length !== 1
+    || [...value.changedPaths, ...value.deletedPaths].some((path) => (
+      typeof path !== 'string' || !path.startsWith('ui-fonts/') || path.includes('..')
+    ))
   ) return undefined;
-  return { kind: value.kind, description: value.description };
+  return value;
 };
 
 const exactLatestPointer = ({ evidenceRoot, workflow }) => {
@@ -200,6 +209,12 @@ const bindLatestSuccess = ({ entry, evidenceRoot, applicationStore, currentSourc
     return { error: `"${name}" latest-success manifest has an invalid application derivative` };
   }
   if (
+    manifestApplicationDerivative !== null
+    && manifestApplicationDerivative.baseApplicationHash !== manifestApplicationHash
+  ) {
+    return { error: `"${name}" latest-success derivative is not bound to its base application` };
+  }
+  if (
     manifest.attempt?.id !== pointer.attemptId
     || manifest.provenance?.binary?.sha256 !== pointer.binarySha256
     || manifestSource.commit !== pointerSource.commit
@@ -252,6 +267,7 @@ const installedClosureFailures = ({
   installedEntries,
   installedProof,
   installerSha256,
+  installedPackageReceipt = null,
 }) => {
   if (installedEntries.length === 0) return [];
   const blockers = [];
@@ -274,6 +290,14 @@ const installedClosureFailures = ({
     && installedProof?.source?.tree === currentSource.tree
     && /^[0-9a-f]{64}$/u.test(installedProof?.installerSha256 ?? '')
     && installedProof.installerSha256 === installerSha256
+    && installedPackageReceipt !== null
+    && installedProof.packageReceiptSha256 === installedPackageReceipt.receiptSha256
+    && installedProof.applicationHash === installedPackageReceipt.applicationHash
+    && installedProof.payloadExecutableSha256 === installedPackageReceipt.payloadExecutableSha256
+    && installedProof.executableSha256 === installedPackageReceipt.payloadExecutableSha256
+    && installedPackageReceipt.source.commit === currentSource.commit
+    && installedPackageReceipt.source.tree === currentSource.tree
+    && installedPackageReceipt.installerSha256 === installerSha256
     && Array.isArray(installedProof.journeys)
     && JSON.stringify([...installedProof.journeys].sort())
       === JSON.stringify(requiredJourneys);
@@ -293,6 +317,7 @@ const verifyInventoryState = ({
   currentSource,
   installedProof = null,
   installerSha256 = null,
+  installedPackageReceipt = null,
 }) => {
   const counts = {};
   const failures = [];
@@ -346,6 +371,7 @@ const verifyInventoryState = ({
     installedEntries,
     installedProof,
     installerSha256,
+    installedPackageReceipt,
   });
   return {
     counts,
@@ -470,11 +496,17 @@ const main = () => {
   const repositoryRoot = process.env.OSG_E2E_REPOSITORY_ROOT ?? DEFAULT_REPOSITORY_ROOT;
   const installedProofPath = process.env.OSG_E2E_INSTALLED_PROOF_PATH;
   const installerPath = process.env.OSG_E2E_INSTALLER_PATH;
+  const packageReceiptPath = process.env.OSG_E2E_INSTALLER_RECEIPT_PATH;
   const installedProof = requireInstalled && installedProofPath !== undefined
     ? readJson(installedProofPath)
     : null;
   const installerSha256 = requireInstalled && installerPath !== undefined && existsSync(installerPath)
     ? createHash('sha256').update(readFileSync(installerPath)).digest('hex')
+    : null;
+  const installedPackageReceipt = requireInstalled
+    && packageReceiptPath !== undefined
+    && installerPath !== undefined
+    ? readAndVerifyInstallerPackageReceipt({ receiptPath: packageReceiptPath, installerPath })
     : null;
   const report = verifyInventoryState({
     inventory: readJson(inventoryPath),
@@ -483,6 +515,7 @@ const main = () => {
     currentSource: readCurrentSource(repositoryRoot),
     installedProof,
     installerSha256,
+    installedPackageReceipt,
   });
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

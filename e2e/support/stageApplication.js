@@ -1,10 +1,11 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import {
   copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync,
   rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 
 import {
@@ -14,6 +15,84 @@ import {
 
 const require = createRequire(import.meta.url);
 const { assertWindowsProcessIdentity } = require('../../scripts/windows-process-identity.js');
+
+const DERIVATIVE_AUTHORITY_FILES = new Set([
+  '.osg-e2e-staged-application.json',
+  '.osg-e2e-staging-parent',
+]);
+
+const applicationTreeInventory = (root) => {
+  const files = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolute = join(directory, entry.name);
+      const portable = relative(root, absolute).replaceAll('\\', '/');
+      const status = lstatSync(absolute);
+      if (entry.isSymbolicLink() || status.isSymbolicLink()) {
+        throw new Error(`application derivative contains a redirected entry: ${portable}`);
+      }
+      if (entry.isDirectory() && status.isDirectory()) visit(absolute);
+      else if (entry.isFile() && status.isFile() && status.nlink === 1) {
+        if (!DERIVATIVE_AUTHORITY_FILES.has(portable)) {
+          const bytes = readFileSync(absolute);
+          files.push({
+            path: portable,
+            size: bytes.byteLength,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+          });
+        }
+      } else throw new Error(`application derivative contains an unsafe entry: ${portable}`);
+    }
+  };
+  visit(root);
+  files.sort((left, right) => left.path.localeCompare(right.path));
+  return files;
+};
+
+/** Mechanically bind a staged derivative to its verified base and exact one-file damage. */
+export const describeStagedApplicationDerivative = ({
+  staged,
+  publication,
+  expectedPath,
+  expectedChange,
+}) => {
+  if (!['changed', 'deleted'].includes(expectedChange)) {
+    throw new Error('staged application derivative requires an intended changed/deleted case');
+  }
+  const base = applicationTreeInventory(publication.applicationRoot);
+  const derived = applicationTreeInventory(staged);
+  const baseByPath = new Map(base.map((entry) => [entry.path, entry]));
+  const derivedByPath = new Map(derived.map((entry) => [entry.path, entry]));
+  const changedPaths = base
+    .filter((entry) => {
+      const next = derivedByPath.get(entry.path);
+      return next !== undefined && (next.size !== entry.size || next.sha256 !== entry.sha256);
+    })
+    .map(({ path }) => path);
+  const deletedPaths = base.filter(({ path }) => !derivedByPath.has(path)).map(({ path }) => path);
+  const addedPaths = derived.filter(({ path }) => !baseByPath.has(path)).map(({ path }) => path);
+  const expectedChanged = expectedChange === 'changed' ? [expectedPath] : [];
+  const expectedDeleted = expectedChange === 'deleted' ? [expectedPath] : [];
+  if (
+    JSON.stringify(changedPaths) !== JSON.stringify(expectedChanged)
+    || JSON.stringify(deletedPaths) !== JSON.stringify(expectedDeleted)
+    || addedPaths.length !== 0
+  ) {
+    throw new Error(
+      `staged application damage delta is not the intended case: ${JSON.stringify({
+        changedPaths, deletedPaths, addedPaths,
+      })}`,
+    );
+  }
+  const treeSha256 = createHash('sha256').update(`${JSON.stringify(derived)}\n`).digest('hex');
+  return Object.freeze({
+    kind: 'staged-damage',
+    baseApplicationHash: publication.applicationHash,
+    treeSha256,
+    changedPaths,
+    deletedPaths,
+  });
+};
 
 /**
  * A throwaway copy of the verified immutable application publication, so a journey can damage

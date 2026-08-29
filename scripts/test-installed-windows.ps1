@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ExpectedVersion,
 
+  [string]$PackageReceiptPath,
+
   [string]$ResultPath,
 
   [switch]$IncludeMediaFlow,
@@ -55,17 +57,18 @@ $installer = [IO.Path]::GetFullPath($InstallerPath)
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
   throw "Installer does not exist: $installer"
 }
-$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$sourceCommit = (& git -C $repositoryRoot rev-parse --verify HEAD).Trim()
-$sourceTree = (& git -C $repositoryRoot rev-parse --verify 'HEAD^{tree}').Trim()
-$sourceDirtyEntries = @(& git -C $repositoryRoot status --porcelain=v1 --untracked-files=all)
-if ($LASTEXITCODE -ne 0 `
-    -or $sourceCommit -notmatch '^[0-9a-f]{40,64}$' `
-    -or $sourceTree -notmatch '^[0-9a-f]{40,64}$' `
-    -or $sourceDirtyEntries.Count -ne 0) {
-  throw 'Installed smoke requires one exact clean Git commit and tree'
+$packageReceipt = if ([string]::IsNullOrWhiteSpace($PackageReceiptPath)) {
+  "$installer.osg-package-receipt.json"
+} else {
+  [IO.Path]::GetFullPath($PackageReceiptPath)
 }
-$installerSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+$receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+  --receipt $packageReceipt --installer $installer
+if ($LASTEXITCODE -ne 0) { throw 'Installer package receipt verification failed' }
+$receipt = $receiptJson | ConvertFrom-Json
+$sourceCommit = $receipt.source.commit
+$sourceTree = $receipt.source.tree
+$installerSha256 = $receipt.installerSha256
 
 $localMediaFixture = $null
 $localMediaFixtureSha256 = $null
@@ -3040,6 +3043,15 @@ function Uninstall-Application {
 }
 
 $installed = Install-Application
+& node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+  --receipt $packageReceipt --installer $installer --installed-exe $installed.Executable | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw 'Installed application payload does not match the immutable installer package receipt'
+}
+if ((Get-FileHash -LiteralPath $installed.Executable -Algorithm SHA256).Hash.ToLowerInvariant() `
+    -cne $receipt.payloadExecutableSha256) {
+  throw 'Installed executable does not match the immutable installer package receipt'
+}
 $logPath = Join-Path $profileRoot 'logs\osg.log'
 $fontRoot = Join-Path $profileRoot 'ui-fonts\v1'
 $first = Start-And-WaitForReadiness `
@@ -3234,6 +3246,9 @@ OSG installed media smoke
       dirty = $false
     }
     installerSha256 = $installerSha256
+    packageReceiptSha256 = $receipt.receiptSha256
+    applicationHash = $receipt.applicationHash
+    payloadExecutableSha256 = $receipt.payloadExecutableSha256
     journeys = @('installedGolden')
     version = $reinstalled.Registry.DisplayVersion
     executableSha256 = $executableSha256

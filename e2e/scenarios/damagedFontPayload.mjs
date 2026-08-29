@@ -5,6 +5,7 @@ import jobSupervisor from '../../scripts/windows-job-supervisor.js';
 
 import {
   corruptFontResource,
+  describeStagedApplicationDerivative,
   discardStagedApplication,
   removeFontResource,
   stageApplication,
@@ -44,7 +45,7 @@ const CASES = [
       // Same length, different bytes: only the digest can tell, which is the point of naming a
       // resource after its own hash.
       const bytes = corruptFontResource(staged, first);
-      return `${first} (${bytes} bytes replaced)`;
+      return { path: `ui-fonts/${first}`, change: 'changed', detail: `${bytes} bytes replaced` };
     },
   },
   {
@@ -53,7 +54,7 @@ const CASES = [
       const [first] = stagedFontResources(staged);
       if (!first) throw new Error('the staged application ships no font resources to damage');
       removeFontResource(staged, first);
-      return first;
+      return { path: `ui-fonts/${first}`, change: 'deleted', detail: 'removed' };
     },
   },
 ];
@@ -80,22 +81,26 @@ for (const [index, testCase] of CASES.entries()) {
       const rootAuthorization = runRootAuthorization(root);
       try {
         const damaged = testCase.damage(staged);
-        console.log(`\n=== ${testCase.name}\n    damaged: ${damaged}`);
+        const derivative = describeStagedApplicationDerivative({
+          staged,
+          publication,
+          expectedPath: damaged.path,
+          expectedChange: damaged.change,
+        });
+        console.log(`\n=== ${testCase.name}\n    damaged: ${damaged.path} (${damaged.detail})`);
         const binary = stagedBinary(staged);
         const attempt = beginWorkflowEvidence({
           workflow: WORKFLOW,
           journey: SPEC,
           iteration: index + 1,
           applicationHash: publication.applicationHash,
-          applicationDerivative: {
-            kind: 'staged-damage',
-            description: `${testCase.name}: ${damaged}`,
-          },
+          applicationDerivative: derivative,
           binaryPath: binary,
         });
         const environment = {
           ...scrubAutomationEnvironment(process.env),
           OSG_E2E_BINARY: binary,
+          OSG_E2E_APPLICATION_DERIVATIVE: JSON.stringify(derivative),
           OSG_E2E_WORKFLOW: WORKFLOW,
           OSG_E2E_EVIDENCE_ATTEMPT: attempt.id,
           OSG_E2E_DATA_ROOT: root,

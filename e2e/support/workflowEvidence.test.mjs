@@ -168,7 +168,10 @@ test('scenario reset and staged derivative retain exact source application ident
       applicationHash,
       applicationDerivative: {
         kind: 'staged-damage',
-        description: 'missing ui-fonts/Inter-Regular.ttf',
+        baseApplicationHash: applicationHash,
+        treeSha256: 'e'.repeat(64),
+        changedPaths: [],
+        deletedPaths: ['ui-fonts/Inter-Regular.ttf'],
       },
       binaryPath: binary,
     });
@@ -185,7 +188,10 @@ test('scenario reset and staged derivative retain exact source application ident
     assert.equal(pointer.applicationHash, applicationHash);
     assert.deepEqual(pointer.applicationDerivative, {
       kind: 'staged-damage',
-      description: 'missing ui-fonts/Inter-Regular.ttf',
+      baseApplicationHash: applicationHash,
+      treeSha256: 'e'.repeat(64),
+      changedPaths: [],
+      deletedPaths: ['ui-fonts/Inter-Regular.ttf'],
     });
   } finally {
     delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;
