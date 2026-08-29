@@ -10,13 +10,14 @@
 mod common;
 
 use common::frames::compositor;
-use common::ink::inked;
+use common::ink::{count_where, inked, reddish};
 use common::{
     BASELINE_PX, FAMILY, HOLD_FRAME, INK_CELL, WEIGHT, atlas, baked_line, scene, staged_with_atlas,
     staged_with_run, style, style_spec,
 };
 use osg_compositor::{
-    AtlasPages, Compositor, CueLine, CueRun, Frame, SubtitleScene, SubtitleStyleSpec,
+    AtlasPages, Compositor, CueLine, CueRun, Frame, SubtitleDecorationSpec, SubtitleScene,
+    SubtitleStyleSpec,
 };
 use osg_scene::glyph::{AtlasGlyph, Direction, GlyphAtlasDescriptor};
 
@@ -127,6 +128,28 @@ fn typing(fade_in: f64) -> SubtitleStyleSpec {
     }
 }
 
+fn typing_over_decoration_box(fade_in: f64) -> SubtitleStyleSpec {
+    SubtitleStyleSpec {
+        background_opacity: 50.0,
+        background_color: "#000000".to_owned(),
+        decoration: SubtitleDecorationSpec {
+            border_width: 12.0,
+            border_color: "#ff0000".to_owned(),
+            border_style: "double".to_owned(),
+            ..SubtitleDecorationSpec::default()
+        },
+        ..typing(fade_in)
+    }
+}
+
+/// Count neutral, non-black glyph pixels without counting the black box or red border. The frame
+/// is premultiplied, so anti-aliased white remains equal in all three colour channels.
+fn glyph_pixels(frame: &Frame) -> usize {
+    count_where(frame, |pixel| {
+        pixel[3] > 0 && pixel[0] > 8 && pixel[0] == pixel[1] && pixel[1] == pixel[2]
+    })
+}
+
 fn render(scene: &SubtitleScene, compositor: &Compositor, frame_index: u32) -> Frame {
     compositor
         .render_scene(scene, frame_index)
@@ -166,6 +189,48 @@ fn the_reveal_is_progressive_and_reaches_nothing_and_everything() {
     let full = render(&scene, &compositor, HOLD_FRAME);
     assert_ne!(partial.pixels(), empty.pixels());
     assert_ne!(partial.pixels(), full.pixels());
+}
+
+#[test]
+fn the_reveal_progresses_while_the_decoration_box_remains_drawn() {
+    let compositor = compositor!();
+    let scene = staged_with_run(&typing_over_decoration_box(0.3), four_cells());
+
+    let frames: Vec<Frame> = [
+        NOTHING_REVEALED,
+        ONE_REVEALED,
+        TWO_REVEALED,
+        THREE_REVEALED,
+        HOLD_FRAME,
+    ]
+    .into_iter()
+    .map(|frame| render(&scene, &compositor, frame))
+    .collect();
+    let glyph_counts: Vec<usize> = frames.iter().map(glyph_pixels).collect();
+
+    assert_eq!(
+        glyph_counts[0], 0,
+        "the decoration must not masquerade as revealed text"
+    );
+    for window in glyph_counts.windows(2) {
+        assert!(
+            window[1] > window[0],
+            "glyph reveal must keep growing above the box, got {glyph_counts:?}"
+        );
+    }
+    for frame in &frames {
+        let background_pixels = count_where(frame, |pixel| {
+            pixel[3] > 0 && pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0
+        });
+        assert!(
+            background_pixels > 0,
+            "the half-opaque background box disappeared during the reveal"
+        );
+        assert!(
+            count_where(frame, reddish) > 0,
+            "the double red border disappeared during the reveal"
+        );
+    }
 }
 
 /// The reveal has to be the *animation*, not the fade: the same frame with the animation off draws
