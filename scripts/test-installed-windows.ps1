@@ -29,6 +29,20 @@ if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
   throw 'The installed Windows smoke test requires RUNNER_TEMP.'
 }
 
+# The updater key authenticates the receipt, not the installer or application processes. Capture it
+# in this PowerShell owner and remove it from the process environment before any child can launch.
+# Publication restores it only around the signer subprocess and clears it again before the first
+# application launch. A package under test must never be able to inherit the release signing key.
+$receiptSigningPrivateKey = $env:TAURI_SIGNING_PRIVATE_KEY
+$receiptSigningPrivateKeyPath = $env:TAURI_SIGNING_PRIVATE_KEY_PATH
+$receiptSigningPrivateKeyPassword = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+function Clear-ReceiptSigningEnvironment {
+  Remove-Item Env:\TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:\TAURI_SIGNING_PRIVATE_KEY_PATH -ErrorAction SilentlyContinue
+  Remove-Item Env:\TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
+}
+Clear-ReceiptSigningEnvironment
+
 $runnerTempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
 $nativePickerEvidencePath = Join-Path $runnerTempRoot 'osg-installed-native-picker-evidence.json'
 $nativePickerEvidenceTemporaryPath = "$nativePickerEvidencePath.tmp"
@@ -82,8 +96,8 @@ if ($PublishPackageReceipt) {
       -or (Test-Path -LiteralPath "$packageReceipt.sig")) {
     throw 'Installer package receipt publication paths must be clean'
   }
-  if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) `
-      -and [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PATH)) {
+  if ([string]::IsNullOrWhiteSpace($receiptSigningPrivateKey) `
+      -and [string]::IsNullOrWhiteSpace($receiptSigningPrivateKeyPath)) {
     throw 'Installer package receipt publication requires the Tauri updater signing key'
   }
 } else {
@@ -3082,21 +3096,40 @@ function Uninstall-Application {
 }
 
 $installed = Install-Application
-$receiptJson = if ($PublishPackageReceipt) {
-  & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
-    --publish true `
-    --receipt $packageReceipt `
-    --installer $installer `
-    --installed-exe $installed.Executable `
-    --repository-root $repository
+$receiptExitCode = 0
+if ($PublishPackageReceipt) {
+  try {
+    if (-not [string]::IsNullOrWhiteSpace($receiptSigningPrivateKey)) {
+      $env:TAURI_SIGNING_PRIVATE_KEY = $receiptSigningPrivateKey
+    }
+    if (-not [string]::IsNullOrWhiteSpace($receiptSigningPrivateKeyPath)) {
+      $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $receiptSigningPrivateKeyPath
+    }
+    if ($null -ne $receiptSigningPrivateKeyPassword) {
+      $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $receiptSigningPrivateKeyPassword
+    }
+    $receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+      --publish true `
+      --receipt $packageReceipt `
+      --installer $installer `
+      --installed-exe $installed.Executable `
+      --repository-root $repository
+    $receiptExitCode = $LASTEXITCODE
+  } finally {
+    Clear-ReceiptSigningEnvironment
+    $receiptSigningPrivateKey = $null
+    $receiptSigningPrivateKeyPath = $null
+    $receiptSigningPrivateKeyPassword = $null
+  }
 } else {
-  & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
+  $receiptJson = & node (Join-Path $PSScriptRoot 'installer-package-receipt.js') `
     --receipt $packageReceipt `
     --installer $installer `
     --installed-exe $installed.Executable `
     --repository-root $repository
+  $receiptExitCode = $LASTEXITCODE
 }
-if ($LASTEXITCODE -ne 0) {
+if ($receiptExitCode -ne 0) {
   throw 'Installed application payload does not match the signed immutable installer package receipt'
 }
 if ($PublishPackageReceipt) {

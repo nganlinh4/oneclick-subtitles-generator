@@ -71,7 +71,7 @@ const DOWNLOAD_HANDLERS_SHA256 =
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
   '95103ae096e6b8bbdbc0727d2fa161c9980a6d02924735d69f79663eb1a1adae';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  '62e5d3411f136856c74fd65f02ec908dd482dd9c44935bdc06ace0875c5a04a1';
+  'a538b7789dcbd250ef318f6738f09a6b7a82a9a8a0b7b2f81e895d8ed6c5bf2f';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -1990,6 +1990,9 @@ function assertInstalledSmokeScript(script) {
     "installer-package-receipt.js')",
     '--receipt $packageReceipt --installer $installer',
     '[switch]$PublishPackageReceipt',
+    '$receiptSigningPrivateKey = $env:TAURI_SIGNING_PRIVATE_KEY',
+    'function Clear-ReceiptSigningEnvironment',
+    'Clear-ReceiptSigningEnvironment',
     '--publish true',
     '--repository-root $repository',
     '$receipt.payloadExecutableSha256',

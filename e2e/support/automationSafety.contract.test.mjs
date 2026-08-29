@@ -611,7 +611,7 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   );
   assert.match(installerPackageReceipt, /readCleanGitSourceProvenance\(\{ repositoryRoot \}\)/u);
   const installStart = installedSmoke.indexOf('$installed = Install-Application');
-  const postInstallReceipt = installedSmoke.indexOf('$receiptJson = if ($PublishPackageReceipt)');
+  const postInstallReceipt = installedSmoke.indexOf('if ($PublishPackageReceipt) {', installStart);
   const firstApplicationLaunch = installedSmoke.indexOf('$first = Start-And-WaitForReadiness');
   const preInstallConsumptionReceipt = installedSmoke.indexOf("} else {\n  $receiptJson = & node");
   const installerLaunch = installedSmoke.indexOf('Start-Process -FilePath $installer');
@@ -624,6 +624,18 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
   const postInstallReceiptFailure = installedSmoke.indexOf(
     "throw 'Installed application payload does not match the signed immutable installer package receipt'",
   );
+  const signingKeyCapture = installedSmoke.indexOf(
+    '$receiptSigningPrivateKey = $env:TAURI_SIGNING_PRIVATE_KEY',
+  );
+  const initialSigningEnvironmentClear = installedSmoke.indexOf(
+    '\nClear-ReceiptSigningEnvironment\n', signingKeyCapture,
+  );
+  const publicationSigningRestore = installedSmoke.indexOf(
+    '$env:TAURI_SIGNING_PRIVATE_KEY = $receiptSigningPrivateKey', postInstallReceipt,
+  );
+  const postPublicationSigningClear = installedSmoke.indexOf(
+    '\n    Clear-ReceiptSigningEnvironment\n', publicationSigningRestore,
+  );
   assert.ok(
     installedSmoke.indexOf('if ($PublishPackageReceipt)') >= 0
       && installerLaunch >= 0
@@ -633,6 +645,16 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
       && requiredSigningKey >= 0
       && requiredSigningKey < installerLaunch,
     'receipt publication must require clean outputs and the updater signing key before installing',
+  );
+  assert.ok(
+    signingKeyCapture >= 0
+      && initialSigningEnvironmentClear > signingKeyCapture
+      && initialSigningEnvironmentClear < installerLaunch
+      && publicationSigningRestore > installStart
+      && postPublicationSigningClear > publicationSigningRestore
+      && postPublicationSigningClear < firstApplicationLaunch
+      && installedSmoke.includes('Remove-Item Env:\\TAURI_SIGNING_PRIVATE_KEY_PASSWORD'),
+    'the installer and application must never inherit the updater receipt-signing secret',
   );
   assert.ok(
     installStart >= 0
