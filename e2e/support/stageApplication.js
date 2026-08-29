@@ -22,13 +22,17 @@ const DERIVATIVE_AUTHORITY_FILES = new Set([
 ]);
 
 const sortText = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+const samePath = (left, right) => process.platform === 'win32'
+  ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
+  : resolve(left) === resolve(right);
 
 const applicationTreeInventory = (root) => {
   const canonicalRoot = realpathSync.native(root);
-  if (resolve(canonicalRoot) !== resolve(root)) {
+  if (!samePath(canonicalRoot, root)) {
     throw new Error('application derivative root is redirected');
   }
   const files = [];
+  const directories = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const absolute = join(directory, entry.name);
@@ -37,7 +41,13 @@ const applicationTreeInventory = (root) => {
       if (entry.isSymbolicLink() || status.isSymbolicLink()) {
         throw new Error(`application derivative contains a redirected entry: ${portable}`);
       }
-      if (entry.isDirectory() && status.isDirectory()) visit(absolute);
+      if (!samePath(realpathSync.native(absolute), absolute)) {
+        throw new Error(`application derivative crosses a redirected entry: ${portable}`);
+      }
+      if (entry.isDirectory() && status.isDirectory()) {
+        directories.push(portable);
+        visit(absolute);
+      }
       else if (entry.isFile() && status.isFile() && status.nlink === 1) {
         if (!DERIVATIVE_AUTHORITY_FILES.has(portable)) {
           const bytes = readFileSync(absolute);
@@ -52,11 +62,12 @@ const applicationTreeInventory = (root) => {
   };
   visit(root);
   files.sort((left, right) => sortText(left.path, right.path));
-  return files;
+  directories.sort(sortText);
+  return { directories, files };
 };
 
-const inventorySha256 = (files) => createHash('sha256')
-  .update(`${JSON.stringify({ files })}\n`)
+const inventorySha256 = ({ directories, files }) => createHash('sha256')
+  .update(`${JSON.stringify({ directories, files })}\n`)
   .digest('hex');
 
 const frozenFiles = (files) => Object.freeze(files.map((entry) => Object.freeze({ ...entry })));
@@ -74,7 +85,10 @@ const deltaBetween = (base, derived) => {
 };
 
 const descriptorForTrees = ({ base, derived, baseApplicationHash }) => {
-  const { derivedByPath, changed, deleted, added } = deltaBetween(base, derived);
+  if (JSON.stringify(base.directories) !== JSON.stringify(derived.directories)) {
+    throw new Error('staged application damage changed the canonical directory inventory');
+  }
+  const { derivedByPath, changed, deleted, added } = deltaBetween(base.files, derived.files);
   if (added.length !== 0 || changed.length + deleted.length !== 1) {
     throw new Error(
       `staged application damage must be exactly one changed or deleted base file: ${JSON.stringify({
@@ -94,11 +108,13 @@ const descriptorForTrees = ({ base, derived, baseApplicationHash }) => {
       ? null
       : Object.freeze({ size: derivedEntry.size, sha256: derivedEntry.sha256 }),
   });
-  const files = frozenFiles(derived);
+  const files = frozenFiles(derived.files);
+  const directories = Object.freeze([...derived.directories]);
   return Object.freeze({
     kind: 'staged-damage',
     baseApplicationHash,
-    treeSha256: inventorySha256(files),
+    treeSha256: inventorySha256({ directories, files }),
+    directories,
     files,
     delta,
   });

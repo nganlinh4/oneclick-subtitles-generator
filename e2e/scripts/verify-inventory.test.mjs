@@ -20,6 +20,7 @@ const ATTEMPT = '20260829000000000-1234-abcdef12';
 const deletedFontDerivative = (application) => {
   const manifestBytes = readFileSync(application.manifestPath);
   const manifest = JSON.parse(manifestBytes);
+  const directories = [...manifest.directories];
   const baseFiles = [
     ...manifest.files,
     {
@@ -33,7 +34,9 @@ const deletedFontDerivative = (application) => {
   return {
     kind: 'staged-damage',
     baseApplicationHash: application.applicationHash,
-    treeSha256: createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex'),
+    treeSha256: createHash('sha256')
+      .update(`${JSON.stringify({ directories, files })}\n`).digest('hex'),
+    directories,
     files,
     delta: {
       change: 'deleted',

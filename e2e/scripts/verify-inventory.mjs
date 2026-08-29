@@ -83,6 +83,7 @@ const readApplications = (applicationsRoot) => {
         applicationHash,
         binarySha256: application.binarySha256,
         source: application.sourceProvenance,
+        directories: manifest.directories,
         files,
       });
     } catch (error) {
@@ -144,13 +145,20 @@ const optionalApplicationDerivative = (value) => {
   if (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|') !== 'baseApplicationHash|delta|files|kind|treeSha256'
+    || Object.keys(value).sort().join('|')
+      !== 'baseApplicationHash|delta|directories|files|kind|treeSha256'
     || value.kind !== 'staged-damage'
     || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
     || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
     || !Array.isArray(value.files)
     || value.files.length === 0
     || value.files.length > 128
+  ) return undefined;
+  if (
+    !Array.isArray(value.directories)
+    || value.directories.length > 64
+    || !value.directories.every(safeDerivativePath)
+    || value.directories.some((path, index) => index > 0 && value.directories[index - 1] >= path)
   ) return undefined;
   const files = value.files.map((entry) => {
     if (
@@ -168,7 +176,7 @@ const optionalApplicationDerivative = (value) => {
     files.some((entry) => entry === null)
     || paths.some((path, index) => index > 0 && paths[index - 1] >= path)
     || value.treeSha256 !== createHash('sha256')
-      .update(`${JSON.stringify({ files })}\n`).digest('hex')
+      .update(`${JSON.stringify({ directories: value.directories, files })}\n`).digest('hex')
   ) return undefined;
   const delta = value.delta;
   const base = derivativeIdentity(delta?.base);
@@ -193,6 +201,9 @@ const optionalApplicationDerivative = (value) => {
 const derivativeMatchesBase = (derivative, application) => {
   if (derivative === null) return true;
   if (application === null || derivative.baseApplicationHash !== application.applicationHash) {
+    return false;
+  }
+  if (JSON.stringify(derivative.directories) !== JSON.stringify(application.directories)) {
     return false;
   }
   const baseByPath = new Map(application.files.map((entry) => [entry.path, entry]));

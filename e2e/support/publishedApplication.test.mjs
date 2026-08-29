@@ -209,6 +209,12 @@ test('damaged-install staging copies the verified immutable publication and noth
     assert.doesNotThrow(() => staging.assertStagedApplicationDerivative({
       staged, publication, derivative,
     }));
+    mkdirSync(join(staged, 'unexpected-empty-directory'));
+    assert.throws(
+      () => staging.assertStagedApplicationDerivative({ staged, publication, derivative }),
+      /changed the canonical directory inventory/u,
+    );
+    rmSync(join(staged, 'unexpected-empty-directory'), { recursive: true });
     writeFileSync(join(staged, 'workers', 'nested', 'worker.py'), 'second unrecorded mutation');
     assert.throws(
       () => staging.assertStagedApplicationDerivative({ staged, publication, derivative }),

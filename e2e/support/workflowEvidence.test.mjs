@@ -17,6 +17,7 @@ const priorEvidenceRoot = process.env.OSG_E2E_WORKFLOW_EVIDENCE_ROOT;
 process.env.OSG_E2E_WORKFLOW_EVIDENCE_ROOT = workflowEvidenceTestRoot;
 
 const derivativeFixture = (baseApplicationHash) => {
+  const directories = [];
   const files = [{
     path: 'osg-desktop.exe',
     size: 3,
@@ -25,7 +26,9 @@ const derivativeFixture = (baseApplicationHash) => {
   return {
     kind: 'staged-damage',
     baseApplicationHash,
-    treeSha256: createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex'),
+    treeSha256: createHash('sha256')
+      .update(`${JSON.stringify({ directories, files })}\n`).digest('hex'),
+    directories,
     files,
     delta: {
       change: 'deleted',

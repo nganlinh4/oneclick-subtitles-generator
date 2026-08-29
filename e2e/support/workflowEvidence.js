@@ -317,8 +317,15 @@ const normalizeApplicationDerivative = (value) => {
   const validShape = (
     typeof value !== 'object'
     || Array.isArray(value)
-    || Object.keys(value).sort().join('|') !== 'baseApplicationHash|delta|files|kind|treeSha256'
+    || Object.keys(value).sort().join('|')
+      !== 'baseApplicationHash|delta|directories|files|kind|treeSha256'
   );
+  const directories = !validShape && Array.isArray(value.directories)
+    && value.directories.length <= 64
+    && value.directories.every(safeDerivativePath)
+    && value.directories.every((path, index) => index === 0 || value.directories[index - 1] < path)
+    ? [...value.directories]
+    : null;
   const files = !validShape && Array.isArray(value.files) && value.files.length > 0
     && value.files.length <= 128
     ? value.files.map((entry) => {
@@ -352,8 +359,8 @@ const normalizeApplicationDerivative = (value) => {
       || (delta.change === 'changed' && derived !== null
         && (derived.size !== base.size || derived.sha256 !== base.sha256)))
     && (delta.change === 'changed') === paths.includes(delta.path);
-  const treeSha256 = canonicalFiles
-    ? createHash('sha256').update(`${JSON.stringify({ files })}\n`).digest('hex')
+  const treeSha256 = canonicalFiles && directories !== null
+    ? createHash('sha256').update(`${JSON.stringify({ directories, files })}\n`).digest('hex')
     : null;
   if (
     validShape
@@ -361,6 +368,7 @@ const normalizeApplicationDerivative = (value) => {
     || !/^[0-9a-f]{64}$/u.test(value.baseApplicationHash ?? '')
     || !/^[0-9a-f]{64}$/u.test(value.treeSha256 ?? '')
     || !canonicalFiles
+    || directories === null
     || !deltaShape
     || value.treeSha256 !== treeSha256
   ) {
@@ -370,6 +378,7 @@ const normalizeApplicationDerivative = (value) => {
     kind: value.kind,
     baseApplicationHash: value.baseApplicationHash,
     treeSha256: value.treeSha256,
+    directories: Object.freeze(directories),
     files: Object.freeze(files),
     delta: Object.freeze({
       change: delta.change,
