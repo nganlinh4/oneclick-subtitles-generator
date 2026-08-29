@@ -4,7 +4,8 @@ use std::fs;
 use std::hash::Hash;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
 use serde::Serialize;
@@ -151,13 +152,53 @@ struct ActivityState<K> {
     operations: HashSet<K>,
     leases: HashMap<K, usize>,
     verified_versions: HashMap<K, VerifiedVersion>,
-    verifying_versions: HashSet<(K, String)>,
+    verifying_versions: HashMap<(K, String), Arc<VerificationFlight>>,
     /// Components whose most recent attempt to persist a fast-path verification receipt
     /// (`verified_install::write`) failed. The write is best-effort by design -- a failure never
     /// blocks install, adoption, or verification -- but that made a durably-broken write path
     /// invisible from outside this crate. Cleared the next time a write for that component
     /// succeeds. See `ManagedPackageManager::receipt_write_degraded`.
     receipt_write_failed: HashSet<K>,
+}
+
+#[derive(Debug, Default)]
+struct VerificationFlight {
+    outcome: Mutex<Option<Result<()>>>,
+    completed: Condvar,
+}
+
+impl VerificationFlight {
+    fn wait(&self, cancellation: &CancellationToken) -> Result<()> {
+        let mut outcome = self
+            .outcome
+            .lock()
+            .map_err(|_| PackageError::StoreUnavailable)?;
+        loop {
+            if let Some(outcome) = outcome.as_ref() {
+                return outcome.clone();
+            }
+            cancellation.check()?;
+            let (next, _) = self
+                .completed
+                .wait_timeout(outcome, Duration::from_millis(100))
+                .map_err(|_| PackageError::StoreUnavailable)?;
+            outcome = next;
+        }
+    }
+
+    fn complete(&self, outcome: Result<()>) {
+        // Recover the guard solely to publish a terminal error and wake waiters. The poisoned
+        // mutex remains poisoned, so every waiter still fails closed with StoreUnavailable.
+        let mut stored = self
+            .outcome
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if stored.is_none() {
+            *stored = Some(outcome);
+        }
+        drop(stored);
+        self.completed.notify_all();
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -182,9 +223,23 @@ impl<K> Default for ActivityState<K> {
             operations: HashSet::new(),
             leases: HashMap::new(),
             verified_versions: HashMap::new(),
-            verifying_versions: HashSet::new(),
+            verifying_versions: HashMap::new(),
             receipt_write_failed: HashSet::new(),
         }
+    }
+}
+
+fn remove_verification_flight<K: Eq + Hash>(
+    activity: &mut ActivityState<K>,
+    key: &(K, String),
+    flight: &Arc<VerificationFlight>,
+) {
+    if activity
+        .verifying_versions
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, flight))
+    {
+        activity.verifying_versions.remove(key);
     }
 }
 
@@ -1384,7 +1439,7 @@ where
         // readers; the lease prevents a reader-versus-writer race.
         let _verification_lease = self.acquire_lease(component)?;
         let key = (component, delivery.version.clone());
-        loop {
+        let flight = {
             let now_unix_seconds = self.now_unix_seconds();
             let mut activity = self
                 .0
@@ -1401,17 +1456,20 @@ where
             if activity.operations.contains(&component) {
                 return Err(PackageError::RuntimeBusy);
             }
-            if activity.verifying_versions.insert(key.clone()) {
-                break;
+            if let Some(flight) = activity.verifying_versions.get(&key).cloned() {
+                drop(activity);
+                // This caller joined this exact generation while it was active. It must receive
+                // that generation's terminal verdict, including failure, rather than serially
+                // becoming the next owner and repeating a multi-gigabyte scan. Its own
+                // cancellation remains independent while it waits.
+                return flight.wait(cancellation);
             }
-            // Another status probe is already reading this exact tree. Waiting for its verdict is
-            // the only truthful answer: mapping the collision to an error made the racing caller
-            // report a fully installed multi-gigabyte engine as missing, and the UI settled on
-            // "not installed" while the winning probe was still hashing.
-            drop(activity);
-            cancellation.check()?;
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
+            let flight = Arc::new(VerificationFlight::default());
+            activity
+                .verifying_versions
+                .insert(key.clone(), flight.clone());
+            flight
+        };
 
         let version_root = self.version_root(delivery);
         // The bounded metadata-only fast path stands in for a full content verification when a
@@ -1436,27 +1494,39 @@ where
                 Ok(self.record_verified_receipt_at(component, delivery, verified_at_unix_seconds))
             }
         };
-        let mut activity = self
-            .0
-            .activity
-            .lock()
-            .map_err(|_| PackageError::StoreUnavailable)?;
-        activity.verifying_versions.remove(&key);
-        match result {
-            Ok(verification_lease) => {
-                activity.verified_versions.insert(
-                    component,
-                    VerifiedVersion {
-                        version: delivery.version.clone(),
-                        verified_at_unix_seconds: verification_lease.verified_at_unix_seconds,
-                        deep_verify_after_unix_seconds: verification_lease
-                            .deep_verify_after_unix_seconds,
-                    },
-                );
-                Ok(())
+        let outcome = match self.0.activity.lock() {
+            Ok(mut activity) => {
+                remove_verification_flight(&mut activity, &key, &flight);
+                match result {
+                    Ok(verification_lease) => {
+                        activity.verified_versions.insert(
+                            component,
+                            VerifiedVersion {
+                                version: delivery.version.clone(),
+                                verified_at_unix_seconds: verification_lease
+                                    .verified_at_unix_seconds,
+                                deep_verify_after_unix_seconds: verification_lease
+                                    .deep_verify_after_unix_seconds,
+                            },
+                        );
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                }
             }
-            Err(error) => Err(error),
-        }
+            Err(poisoned) => {
+                // A poisoned activity mutex must not strand waiters. Recover only far enough to
+                // retire this generation, then publish a fail-closed outcome to every waiter.
+                let mut activity = poisoned.into_inner();
+                remove_verification_flight(&mut activity, &key, &flight);
+                Err(PackageError::StoreUnavailable)
+            }
+        };
+        // The active-map entry is gone before a failure is published: already-waiting callers
+        // retain this Arc and share `outcome`, while a genuinely later caller starts one new
+        // generation instead of inheriting a permanently cached failure.
+        flight.complete(outcome.clone());
+        outcome
     }
 
     fn clear_verified(&self, component: K) {
@@ -2708,6 +2778,33 @@ mod tests {
         (now, clock)
     }
 
+    fn wait_for_flight_holders(
+        manager: &EnginePackageManager,
+        key: &(EngineId, String),
+        minimum_holders: usize,
+    ) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let joined = manager
+                .0
+                .0
+                .activity
+                .lock()
+                .unwrap()
+                .verifying_versions
+                .get(key)
+                .is_some_and(|flight| Arc::strong_count(flight) >= minimum_holders);
+            if joined {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "concurrent callers never joined the active verification generation"
+            );
+            std::thread::yield_now();
+        }
+    }
+
     fn speech_manager(
         temp: &TempDir,
         catalog: SpeechDeliveryCatalog,
@@ -3475,6 +3572,194 @@ mod tests {
     }
 
     #[test]
+    fn failed_verification_is_shared_by_waiters_but_a_later_call_may_retry() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 4_000_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let verify_calls = Arc::new(AtomicUsize::new(0));
+        let release_first = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let verifier = {
+            let verify_calls = verify_calls.clone();
+            let release_first = release_first.clone();
+            Arc::new(
+                move |_: &Path, _: &PackageDelivery, cancellation: &CancellationToken| {
+                    let call = verify_calls.fetch_add(1, Ordering::AcqRel);
+                    if call == 0 {
+                        entered_tx.send(()).unwrap();
+                        while !release_first.load(Ordering::Acquire) {
+                            cancellation.check()?;
+                            std::thread::yield_now();
+                        }
+                    }
+                    Err(PackageError::InvalidInstall)
+                },
+            )
+        };
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            verifier,
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        now.store(
+            initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS,
+            Ordering::Release,
+        );
+
+        let start = Arc::new(Barrier::new(4));
+        let status_thread = {
+            let manager = manager.clone();
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                manager.status(EngineId::Parakeet)
+            })
+        };
+        let launch_thread = {
+            let manager = manager.clone();
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                manager.resolve_for_launch(EngineId::Parakeet, &CancellationToken::default())
+            })
+        };
+        let verdict_thread = {
+            let manager = manager.clone();
+            let start = start.clone();
+            std::thread::spawn(move || {
+                start.wait();
+                let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+                manager
+                    .0
+                    .verify_once(EngineId::Parakeet, delivery, &CancellationToken::default())
+            })
+        };
+        start.wait();
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+
+        // The active map, owner and two waiters each hold this exact generation Arc. Do not
+        // release the hostile verifier until both public callers and the raw-verdict witness are
+        // deterministically participating.
+        let key = (EngineId::Parakeet, "1.0.0".to_string());
+        wait_for_flight_holders(&manager, &key, 4);
+
+        // A caller cancelled while waiting keeps its own cancellation verdict; it neither starts
+        // another scan nor cancels the shared generation for the remaining callers.
+        let cancelled = CancellationToken::default();
+        cancelled.cancel();
+        assert!(matches!(
+            manager.resolve_for_launch(EngineId::Parakeet, &cancelled),
+            Err(PackageError::Cancelled)
+        ));
+        assert_eq!(verify_calls.load(Ordering::Acquire), 1);
+        release_first.store(true, Ordering::Release);
+
+        let status = status_thread.join().unwrap();
+        let launch = launch_thread.join().unwrap();
+        let shared_verdict = verdict_thread.join().unwrap();
+        assert_eq!(status.state, EnginePackageState::Corrupt);
+        assert!(matches!(launch, Err(PackageError::InvalidInstall)));
+        assert_eq!(shared_verdict, Err(PackageError::InvalidInstall));
+        assert_eq!(
+            verify_calls.load(Ordering::Acquire),
+            1,
+            "all callers already waiting on the failed generation must share one deep verdict"
+        );
+
+        // Failure is not a durable or in-memory negative cache. Once the failed generation has
+        // retired, one independent later launch may own exactly one fresh retry.
+        assert!(matches!(
+            manager.resolve_for_launch(EngineId::Parakeet, &CancellationToken::default()),
+            Err(PackageError::InvalidInstall)
+        ));
+        assert_eq!(verify_calls.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn poisoned_activity_completion_fails_closed_and_wakes_the_generation() {
+        let temp = tempfile::tempdir().unwrap();
+        let fixture = fixture();
+        let initial_now = 5_000_000_u64;
+        let (now, clock) = fake_clock(initial_now);
+        let verify_calls = Arc::new(AtomicUsize::new(0));
+        let release_verify = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let verifier = {
+            let verify_calls = verify_calls.clone();
+            let release_verify = release_verify.clone();
+            Arc::new(
+                move |_: &Path, _: &PackageDelivery, cancellation: &CancellationToken| {
+                    verify_calls.fetch_add(1, Ordering::AcqRel);
+                    entered_tx.send(()).unwrap();
+                    while !release_verify.load(Ordering::Acquire) {
+                        cancellation.check()?;
+                        std::thread::yield_now();
+                    }
+                    Err(PackageError::InvalidInstall)
+                },
+            )
+        };
+        let manager = manager_with_clock_and_verifier(
+            &temp,
+            fixture.catalog,
+            Arc::new(MemoryFetcher::new(fixture.archive, false)),
+            Arc::new(TestCoordinator::default()),
+            clock,
+            verifier,
+        );
+        manager
+            .install(EngineId::Parakeet, &CancellationToken::default(), &|_| {})
+            .unwrap();
+        now.store(
+            initial_now + verified_install::MAX_FAST_VERIFY_AGE_SECONDS,
+            Ordering::Release,
+        );
+
+        let verify = |manager: EnginePackageManager| {
+            std::thread::spawn(move || {
+                let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
+                manager
+                    .0
+                    .verify_once(EngineId::Parakeet, delivery, &CancellationToken::default())
+            })
+        };
+        let owner = verify(manager.clone());
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        let waiter = verify(manager.clone());
+        let key = (EngineId::Parakeet, "1.0.0".to_string());
+        wait_for_flight_holders(&manager, &key, 3);
+
+        let poisoner = {
+            let manager = manager.clone();
+            std::thread::spawn(move || {
+                let _activity = manager.0.0.activity.lock().unwrap();
+                panic!("deliberately poison activity completion");
+            })
+        };
+        assert!(poisoner.join().is_err());
+        release_verify.store(true, Ordering::Release);
+
+        assert_eq!(owner.join().unwrap(), Err(PackageError::StoreUnavailable));
+        assert_eq!(
+            waiter.join().unwrap(),
+            Err(PackageError::StoreUnavailable),
+            "the poisoned owner must still publish and wake its existing waiter"
+        );
+        assert_eq!(verify_calls.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
     fn cold_integrity_verification_is_single_flight_across_status_and_launch() {
         let temp = tempfile::tempdir().unwrap();
         let fixture = fixture();
@@ -3490,6 +3775,7 @@ mod tests {
         let delivery = manager.0.0.catalog.current(&EngineId::Parakeet).unwrap();
         manager.0.clear_verified(EngineId::Parakeet);
         let key = (EngineId::Parakeet, delivery.version.clone());
+        let flight = Arc::new(VerificationFlight::default());
         manager
             .0
             .0
@@ -3497,7 +3783,7 @@ mod tests {
             .lock()
             .unwrap()
             .verifying_versions
-            .insert(key.clone());
+            .insert(key.clone(), flight.clone());
 
         // A probe that collides with an in-flight verification WAITS for its verdict rather than
         // inventing one: reporting the collision as an error once made a racing status call show a
@@ -3515,12 +3801,12 @@ mod tests {
 
         manager
             .0
-            .0
-            .activity
-            .lock()
-            .unwrap()
-            .verifying_versions
-            .remove(&key);
+            .record_verified_receipt(EngineId::Parakeet, delivery);
+        {
+            let mut activity = manager.0.0.activity.lock().unwrap();
+            remove_verification_flight(&mut activity, &key, &flight);
+        }
+        flight.complete(Ok(()));
         let concurrent_status = waiter.join().unwrap();
         assert_eq!(concurrent_status.state, EnginePackageState::Installed);
         assert_eq!(
