@@ -467,9 +467,19 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
         && !(await anyRetryingRow())
         && regeneratedRecords.length === 1;
     }, {
-      timeout: 180_000,
+      timeout: 90_000,
       interval: 1_000,
-      diagnostic: () => `regenerating the middle cue never published one new durable job and artifact: ${JSON.stringify({ failedRegenerateJob })}`,
+      diagnostic: () => {
+        const newJobs = afterRegenerate?.jobs.filter((job) => (
+          job.kind === 'synthesizeNarration' && !beforeRegenerateJobIds.has(job.id)
+        )) ?? [];
+        return `regenerating the middle cue never published one new durable job and artifact: ${JSON.stringify({
+          failedRegenerateJob,
+          newJobs,
+          artifactDelta: (afterRegenerate?.artifacts.length ?? 0) - beforeRegenerate.artifacts.length,
+          narrationRecordCount: regeneratedRecords.length,
+        })}`;
+      },
     });
     if (failedRegenerateJob !== null) {
       throw new Error(`native narration regenerate job terminated: ${JSON.stringify(failedRegenerateJob)}`);
