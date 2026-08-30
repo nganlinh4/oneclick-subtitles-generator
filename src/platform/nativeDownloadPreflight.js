@@ -322,9 +322,14 @@ export const createNativeDownloadPreflight = ({
     return rejectWithNotice('nativeDownloadUnavailable');
   };
 
+  const ensureMediaToolsReady = (rawOptions) => (
+    ensureRequiredTools(['media-tools'], validateOptions(rawOptions))
+  );
+
   return Object.freeze({
     ensureInspectionReady,
     ensureDownloadReady,
+    ensureMediaToolsReady,
     cancelActive: () => {
       if (active === null) return false;
       active.controller.abort();
@@ -474,3 +479,7 @@ export const ensureNativeDownloadReady = (
   readiness,
   options
 ) => nativeDownloadPreflight.ensureDownloadReady(readiness, options);
+
+export const ensureNativeMediaToolsReady = (options) => (
+  nativeDownloadPreflight.ensureMediaToolsReady(options)
+);

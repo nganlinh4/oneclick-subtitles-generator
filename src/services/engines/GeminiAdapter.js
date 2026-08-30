@@ -1,6 +1,8 @@
 import { bindGeminiTranscriptionDeliveries } from '../gemini/transcriptionDelivery';
 
-const MAX_ACTIVE_GEMINI_WINDOWS = 4;
+// The native media pipeline admits two clip operations. Matching that capacity prevents windows
+// three and four from being rejected before they reach Gemini on a clean split-media run.
+const MAX_ACTIVE_GEMINI_WINDOWS = 2;
 
 const aborted = (signal) => {
   if (signal?.reason instanceof Error) return signal.reason;

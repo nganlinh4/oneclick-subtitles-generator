@@ -10,6 +10,7 @@ import {
 } from '../../platform/mediaPipelineService';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { runNativeGeminiTranscription } from '../../platform/nativeGeminiTranscription';
+import { ensureNativeMediaToolsReady } from '../../platform/nativeDownloadPreflight';
 import { createSubtitleSchema } from '../../utils/schemaUtils';
 import { parseGeminiResponse } from '../../utils/subtitle';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
@@ -107,6 +108,11 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     let mediaAssetId = input.assetId;
     let mediaKind = input.type?.startsWith('audio/') ? 'audio' : 'video';
     if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
+      // A bounded Gemini request must materialize an exact native clip. A clean install may not
+      // have the reviewed media toolchain yet; install and activate it here instead of turning the
+      // customer's public split setting into an opaque mediaPipeline failure. Concurrent windows
+      // share one preflight promise, so four ranges never start four downloads.
+      await ensureNativeMediaToolsReady({ signal });
       if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
       const clip = await runMediaPipeline({
         operation: 'analysisClip',

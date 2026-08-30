@@ -382,6 +382,36 @@ it('offers the reviewed media-tool download only when the current platform catal
   expect(install).toHaveBeenCalledWith('media-tools', expect.any(Object), expect.any(Object));
 });
 
+it('coalesces media-processing preflight and installs only the reviewed media tool', async () => {
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const preflight = service({
+    install,
+    readStatus: vi.fn()
+      .mockResolvedValueOnce(status({
+        'media-tools': {
+          deliveryAvailable: true,
+          state: 'missing',
+          availableVersion: '8.1.2',
+        },
+        'yt-dlp': readyStatus().tools[1],
+        deno: readyStatus().tools[2],
+      }))
+      .mockResolvedValue(readyStatus()),
+  });
+
+  await expect(Promise.all([
+    preflight.ensureMediaToolsReady(),
+    preflight.ensureMediaToolsReady(),
+    preflight.ensureMediaToolsReady(),
+  ])).resolves.toEqual([{ ready: true }, { ready: true }, { ready: true }]);
+  expect(install).toHaveBeenCalledTimes(1);
+  expect(install).toHaveBeenCalledWith('media-tools', expect.any(Object), expect.any(Object));
+});
+
 it('rejects invalid options and a hostile completion that still requires restart', async () => {
   const preflight = service();
   await expect(preflight.ensureInspectionReady({ inspectAvailable: false }, { extra: true }))

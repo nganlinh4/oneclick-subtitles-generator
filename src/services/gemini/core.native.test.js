@@ -6,6 +6,7 @@ import {
 } from '../../platform/mediaPipelineService';
 import { getEmptySpeechPolicy, getTranscriptionPrompt } from './promptManagement';
 import { createRequestController } from './requestManagement';
+import { ensureNativeMediaToolsReady } from '../../platform/nativeDownloadPreflight';
 
 const ownership = vi.hoisted(() => ({
   assertCurrent: vi.fn((context) => context),
@@ -22,6 +23,9 @@ vi.mock('../../platform/nativeGeminiTranscription', () => ({
 vi.mock('../../platform/mediaPipelineService', () => ({
   inspectMediaPipelineAsset: vi.fn(),
   runMediaPipeline: vi.fn(),
+}));
+vi.mock('../../platform/nativeDownloadPreflight', () => ({
+  ensureNativeMediaToolsReady: vi.fn(),
 }));
 vi.mock('./requestManagement', () => ({
   createRequestController: vi.fn(() => ({
@@ -75,6 +79,7 @@ beforeEach(() => {
     },
   });
   inspectMediaPipelineAsset.mockResolvedValue({ durationUs: 60_000_000 });
+  ensureNativeMediaToolsReady.mockResolvedValue({ ready: true });
 });
 
 it('routes native transcription through opaque media and credential services', async () => {
@@ -167,6 +172,9 @@ it('clips a native segment first and sends only the derived asset to Gemini', as
   await expect(callGeminiApi(media, 'video', {
     segmentInfo: { start: 10, end: 20, duration: 10 },
   })).resolves.toHaveLength(1);
+  expect(ensureNativeMediaToolsReady).toHaveBeenCalledWith({
+    signal: expect.any(AbortSignal),
+  });
   expect(runMediaPipeline).toHaveBeenCalledWith({
     operation: 'analysisClip',
     assetId: media.assetId,
@@ -196,6 +204,7 @@ it('sends a whole-source segment directly without a redundant media re-encode', 
   })).resolves.toHaveLength(1);
 
   expect(inspectMediaPipelineAsset).toHaveBeenCalledWith(media.assetId);
+  expect(ensureNativeMediaToolsReady).not.toHaveBeenCalled();
   expect(runMediaPipeline).not.toHaveBeenCalled();
   expect(runNativeGeminiTranscription).toHaveBeenCalledWith(expect.objectContaining({
     assetId: media.assetId,
