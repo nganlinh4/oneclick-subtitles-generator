@@ -327,6 +327,14 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
         })),
       },
     });
+    for (const close of await $$('.toast-item.live .close-icon')) await close.click();
+    await browser.waitUntil(async () => browser.execute(() => (
+      document.querySelectorAll('.toast-item.live .toast-error').length === 0
+    )), {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: 'the acknowledged missing-key toast did not dismiss',
+    });
 
     await openSettings();
     await activateTab('video-processing');

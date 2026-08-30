@@ -85,6 +85,14 @@ const clearAndReopenGenerateModal = async (root) => {
 /** Select the local ASR method in the freshly opened processing modal. */
 const selectAsrMethod = async () => {
   const method = await $(`[data-transcription-method="${ASR_ENGINE}"]`);
+  if (!(await method.isDisplayed().catch(() => false))) {
+    const reopen = await $('.method-selection-reopen-btn');
+    await reopen.waitForClickable({
+      timeout: 30_000,
+      timeoutMsg: 'neither the method chooser nor its reopen control became available',
+    });
+    await reopen.click();
+  }
   await method.waitForDisplayed({ timeout: 60_000, timeoutMsg: 'the ASR method chooser did not open' });
   await waitUntilWithFreshDiagnostic(async () => (
     (await method.getAttribute('data-method-available')) === 'true'

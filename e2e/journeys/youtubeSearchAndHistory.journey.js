@@ -214,6 +214,12 @@ describe('a customer searches YouTube, then acquires and revisits videos through
         })),
       },
     });
+    for (const close of await $$('.toast-item.live .close-icon')) await close.click();
+    await browser.waitUntil(async () => (await searchState()).errorToasts.length === 0, {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: 'the acknowledged missing-key toast did not dismiss',
+    });
 
     // --- Part B: a URL entry reaches the same acquisition path urlToPreview proves, records to
     // history, and reselecting that history entry reaches the identical path a search result's

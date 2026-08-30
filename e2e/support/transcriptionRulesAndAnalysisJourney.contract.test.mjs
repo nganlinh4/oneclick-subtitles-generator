@@ -41,6 +41,7 @@ const assertJourneyContract = (source) => {
   assert.match(source, /verifySegmentationShapeDirection\(\{ wordCapped, sentence \}\)/u);
   assert.match(source, /selectAsrStrategy\('word'\)/u);
   assert.match(source, /selectAsrStrategy\('sentence'\)/u);
+  assert.match(source, /\.method-selection-reopen-btn/u);
   assert.match(source, /selector: '#asr-max-words'/u);
   assert.match(source, /clickControl\('#asr-preserve-sentences'\)/u);
 
