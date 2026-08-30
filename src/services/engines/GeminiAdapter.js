@@ -28,6 +28,32 @@ const waitForLaunchSlot = (milliseconds, signal) => {
   });
 };
 
+const windowIdentity = (windowIndex, value) => {
+  if (value === null || value === undefined) return value;
+  let encoded;
+  try { encoded = JSON.stringify(value); } catch { encoded = String(value); }
+  return `gemini-window-${windowIndex}:${typeof value}:${encoded}`;
+};
+
+// Every Gemini response numbers its own cues from one. Those identifiers are local to one request,
+// but the merged track is persisted as one revision; carrying them across the merge produces
+// duplicate legacy IDs and makes an otherwise successful four-window run impossible to save.
+// Namespace both cue and lineage identities at the boundary where the window is still known.
+const namespaceWindowRows = (rows, windowIndex) => rows.map((row) => {
+  const next = { ...row };
+  if (Object.hasOwn(next, 'id')) next.id = windowIdentity(windowIndex, next.id);
+  if (Object.hasOwn(next, 'originalId')) {
+    next.originalId = windowIdentity(windowIndex, next.originalId);
+  }
+  if (Object.hasOwn(next, 'sourceId')) {
+    // The legacy persistence adapter resolves originalId against the other namespaced rows. An
+    // explicit UUID would otherwise be checked against UUIDs that have not been assigned yet.
+    next.originalId = windowIdentity(windowIndex, next.sourceId);
+    delete next.sourceId;
+  }
+  return next;
+});
+
 /**
  * @typedef {{
  *  fps?: number,
@@ -123,7 +149,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       (status) => onStatus?.(status),
       (subtitles, isStreaming) => {
         if (!Array.isArray(subtitles)) return;
-        segmentRows[index] = subtitles;
+        segmentRows[index] = namespaceWindowRows(subtitles, index);
         onStreamingUpdate?.(mergedRows(), isStreaming || completed < windows.length, {
           segmentIndex: index,
           totalSegments: windows.length,
@@ -132,8 +158,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       },
       t
     );
-    segmentRows[index] = result;
-    results[index] = result;
+    const namespacedResult = namespaceWindowRows(result, index);
+    segmentRows[index] = namespacedResult;
+    results[index] = bindGeminiTranscriptionDeliveries(namespacedResult, result);
     completed += 1;
     onStreamingUpdate?.(mergedRows(), completed < windows.length, {
       segmentIndex: index,

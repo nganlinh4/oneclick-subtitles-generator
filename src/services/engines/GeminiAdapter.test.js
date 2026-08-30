@@ -4,6 +4,7 @@ import {
   bindNativeGeminiTranscriptionDelivery,
   getGeminiTranscriptionDeliveries,
 } from '../gemini/transcriptionDelivery';
+import { legacyRowsToCanonicalTrack } from '../../platform/projectSnapshotAdapter';
 
 vi.mock('../../utils/videoProcessing/processingUtils', () => ({
   processSegmentWithStreaming: vi.fn(),
@@ -25,7 +26,13 @@ it('turns the advertised request maximum into independent native ranges and merg
     _media, window, childOptions, _onStatus, onSubtitleUpdate
   ) => {
     const index = Math.round(window.start / 60);
-    const row = { start: window.start + 1, end: window.start + 2, text: `part-${index + 1}` };
+    const row = {
+      id: 1,
+      originalId: 1,
+      start: window.start + 1,
+      end: window.start + 2,
+      text: `part-${index + 1}`,
+    };
     onSubtitleUpdate([row], true);
     const acknowledge = vi.fn();
     acknowledgements.push(acknowledge);
@@ -56,6 +63,9 @@ it('turns the advertised request maximum into independent native ranges and merg
       && call[2].signal instanceof AbortSignal
   ))).toBe(true);
   expect(result.map(({ text }) => text)).toEqual(['part-1', 'part-2', 'part-3', 'part-4']);
+  expect(new Set(result.map(({ id }) => id)).size).toBe(4);
+  expect(result.every(({ id, originalId }) => id === originalId)).toBe(true);
+  expect(() => legacyRowsToCanonicalTrack(result)).not.toThrow();
   expect(getGeminiTranscriptionDeliveries(result).map(({ jobId }) => jobId)).toEqual([
     'job-1', 'job-2', 'job-3', 'job-4',
   ]);
