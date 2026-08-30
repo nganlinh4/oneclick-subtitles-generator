@@ -83,6 +83,8 @@ test('the journey reaches About through the same real Settings navigation settin
   assert.match(journey, /data-settings-tab="about"/u);
   assert.match(journey, /clickSettingsControl/u);
   assert.match(journey, /data-settings-action="close"/u);
+  assert.match(journey, /await openEditor\(\)/u);
+  assert.doesNotMatch(journey, /openProjectWithMedia/u);
 });
 
 test('the durable-state oracle this journey depends on reads real SQLite, not a fixture', () => {

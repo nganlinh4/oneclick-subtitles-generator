@@ -56,9 +56,8 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
-import { clickControl } from '../support/editor.js';
+import { clickControl, openEditor } from '../support/editor.js';
 import { clickSettingsControl } from '../support/settingsControls.js';
-import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'about-and-updater-lifecycle';
@@ -89,7 +88,10 @@ describe('About reports the real installed version and the updater proves its co
   it('opens Settings, reaches About through real navigation, and finds the updater deterministically disabled with no network attempt', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the about/updater journey requires an isolated root');
-    await openProjectWithMedia();
+    // About is application state, not project state. Opening media here schedules waveform work
+    // that can legitimately finish while the updater is checked and makes an unrelated artifact
+    // look updater-owned. Clear onboarding only; keep this proof causally isolated.
+    await openEditor();
     const before = durableState(root);
 
     await clickControl('[data-app-action="open-settings"]');

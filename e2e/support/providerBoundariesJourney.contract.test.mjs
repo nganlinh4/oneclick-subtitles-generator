@@ -39,6 +39,11 @@ test('the fixed refusal message this journey shares comes from the real credenti
   assert.match(journey, /NATIVE_GEMINI_REFUSAL_MESSAGE/u);
 });
 
+test('toast refusal text reads the customer message, not the close icon or localized heading', () => {
+  assert.match(oracle, /toast\.querySelector\('p'\) \?\? toast/u);
+  assert.match(oracle, /\.map\(toastMessage\)/u);
+});
+
 test('document consolidate/summarize and translation both route through the same unwrapped nativeGeminiText call', () => {
   assert.match(documentRequest, /runNativeGeminiText/u);
   assert.match(documentRequest, /task: 'analyzeSubtitles'/u);

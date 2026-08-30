@@ -34,11 +34,12 @@ export const collectTopDocumentToasts = () => {
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   };
   const text = (node) => (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ');
+  const toastMessage = (toast) => text(toast.querySelector('p') ?? toast);
   return {
     errorToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
-      .filter(visible).map(text).filter(Boolean),
+      .filter(visible).map(toastMessage).filter(Boolean),
     warningToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-warning')]
-      .filter(visible).map(text).filter(Boolean),
+      .filter(visible).map(toastMessage).filter(Boolean),
     inlineErrors: [...document.querySelectorAll('.error, .error-message, [role="alert"]')]
       .filter((node) => node.closest('.toast-item') === null && visible(node))
       .map(text).filter(Boolean),
