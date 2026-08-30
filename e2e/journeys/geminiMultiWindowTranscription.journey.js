@@ -97,6 +97,10 @@ describe('Gemini transcribes a real four-window source', () => {
       surface = await browser.execute(() => ({
         processing: document.querySelector('[data-osg-action="generate-subtitles"]')
           ?.classList.contains('processing') === true,
+        toasts: [...document.querySelectorAll('.toast')].map((node) => ({
+          kind: [...node.classList].find((name) => name.startsWith('toast-')) ?? null,
+          text: (node.innerText || '').trim(),
+        })),
         errorToasts: [...document.querySelectorAll('.toast-error')]
           .map((node) => (node.querySelector('p')?.innerText || node.innerText || '').trim())
           .filter(Boolean),
@@ -110,6 +114,7 @@ describe('Gemini transcribes a real four-window source', () => {
             kind, state, progress,
           })),
           processing: surface.processing,
+          toasts: surface.toasts,
           errorToasts: surface.errorToasts,
           visibleCueCount: surface.visibleCueCount,
           publishedRangeShapes: witness.ranges.map((ranges) => ranges.length),
@@ -119,6 +124,11 @@ describe('Gemini transcribes a real four-window source', () => {
       }
       if (surface.errorToasts.length > 0 || jobs.some(({ state }) => terminalStates.has(state))) {
         throw new Error(`Gemini multi-window run terminated: ${JSON.stringify({ jobs, surface, witness })}`);
+      }
+      if (surface.processing === false && jobs.length === 0 && witness.streams.length === 0) {
+        throw new Error(
+          `Gemini multi-window run stopped before creating a provider job: ${JSON.stringify({ surface, witness })}`,
+        );
       }
       return jobs.length === EXPECTED_WINDOWS
         && jobs.every(({ state }) => state === 'succeeded')
