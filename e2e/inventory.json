@@ -1439,23 +1439,23 @@
     {
       "finding": "Typewriter reveal WITH a decoration box has zero coverage in either suite: the e2e growth claim was removed as redundant, but the compositor tests it deferred to always render with background_opacity 0.0.",
       "foundBy": "independent adversarial threshold audit",
-      "status": "open",
+      "status": "fixed",
       "severity": "moderate",
-      "note": "The removal of the typewriter growth ratio was justified on the grounds that reveal progression is owned natively, and that is mostly true and in fact stricter: the compositor asserts strict monotone growth with no tolerance and pins an exact 8-frame reveal sequence with a discrimination check. But its typing() helper hardcodes background_opacity: 0.0, so every typewriter test renders glyph ink with no box -- exactly the configuration the deleted e2e claim was measuring, since that case ships with borderStyle \"double\". Net coverage of \"typewriter reveal progresses with a decoration box\" is now zero on both sides. Compounding it, the whole compositor file is a silent no-op without a GPU adapter (it returns early printing SKIPPED), so even the coverage that does exist holds only on adapter-bearing runners."
+      "note": "Fixed in ee3bb7fe. subtitle_typewriter_render.rs now renders the shipped half-opaque background and double border while asserting that glyph-only pixels grow strictly through every reveal frame and that both box and border remain present. The test separates neutral glyph pixels from black/red decoration pixels, so decoration cannot masquerade as reveal progress. The current adapter-bearing Windows workspace is the release platform this GPU proof targets."
     },
     {
       "finding": "The export mask coverage claim still accepts agreement with EITHER preview surface, the same either/or escape just removed from the placement claim.",
       "foundBy": "independent adversarial threshold audit",
-      "status": "open",
+      "status": "fixed",
       "severity": "moderate",
-      "note": "exportSurfaceCoverage takes Math.max of the Main and Render mask coverages, so an export that tracks one surface while diverging from the other scores 1.000 against the 0.55 floor. This is structurally identical to the placement defect fixed in the same audit, where judging against the farther surface halved a measured 60px blind zone. It is filed rather than fixed because, unlike the placement change, the worst-surface form of this claim was NOT validated against the preserved baselines; tightening it without that measurement risks a false failure on real evidence. It needs the same treatment: measure both forms against the 10-case matrix, confirm no baseline regresses, then take the worse surface."
+      "note": "Fixed after measuring both surface coverages independently on the preserved ten-case matrix. verifyRegion retains the 0.55 stronger-surface floor and now also requires the weaker surface to cover at least 0.50; the lowest legitimate weaker-surface sample was 0.5402 and every other sample was at least 0.5887. An export can no longer follow one preview surface while abandoning the other."
     },
     {
       "finding": "A commit inverted a documented subtitle-background parity decision -- from refusing an #rrggbbaa background to multiplying it by background_opacity -- without mentioning the change in its commit body.",
       "foundBy": "independent adversarial threshold audit",
-      "status": "open",
+      "status": "resolved",
       "severity": "moderate",
-      "note": "The renamed compositor test deleted the doc comment recording WHY the old behaviour existed (\"an #rrggbbaa background silently disappears. Here it is a refusal instead: same pixels, findable cause.\") and swapped the leak probe from a valid eight-digit hex to a malformed value, which no longer probes the same thing. The decision may well be correct, but it was made inside a large multi-file feature commit with no measurement, no explanation and no mutation evidence, and it reverses a choice the codebase had deliberately written down. It needs an owner ruling: either restore the refusal, or keep the multiply and record the reasoning where the old comment was, with a probe that actually exercises an alpha-carrying background."
+      "note": "Owner direction is WYSIWYG correctness rather than preserving a legacy disappearance bug. The native preview and export therefore parse #rgba/#rrggbbaa and multiply the colour's own alpha by the independent background-opacity control, matching CSS compositing semantics. osg-scene and osg-compositor both pin the exact alpha-carrying case (0x88 at 50% becomes 68), invalid colours remain typed refusals, and NATIVE_RENDERER.md now records this as an intentional correction."
     },
     {
       "finding": "When a model install is refused for lack of disk space, the customer is told only \"The narration model operation failed\" -- the specific reason survives the platform boundary and is then discarded at the UI.",
@@ -1502,9 +1502,9 @@
     {
       "finding": "A small IPC payload sent during subtitle timeline editing carries null where the native boundary requires an unsigned integer, so the operation is rejected and the only trace is a console line.",
       "foundBy": "timelineAdvancedEditing on candidates 19 and 20",
-      "status": "open-under-investigation",
+      "status": "superseded-refuted",
       "severity": "major",
-      "note": "Recorded twice on candidate 20 at JSON offsets 85 and 101, and once on candidate 19, always during the multi-cue range-move step, so it is repeatable rather than the ambient noise an earlier investigation concluded. The subtitle track contract was cleared by that investigation, and the offsets are far too small for a full track, so the payload is something narrower - the glyph-atlas staging structs carry exactly this shape of unsigned pixel field and are re-baked while cues change. Being traced on both sides of the boundary; the customer-visible consequence is unknown and part of the same task, since a rejected staging call could silently drop rendered ink."
+      "note": "Superseded by the later dedicated root-cause entry above. The payload was the vendored WebDriver plugin's private JSON report colliding with Tauri's broadcast channel, not an application invoke or glyph-atlas request; exact column arithmetic reproduced every offset. Posting the harness report as an object prevents Tauri from parsing it, and the plugin is compile-time absent from production."
     },
     {
       "finding": "Importing a subtitle document moments after opening media could be refused for a project-scope mismatch the customer never caused, because the binding publishes its cache id synchronously long before that binding is durable.",

@@ -45,8 +45,10 @@ must be reproduced deliberately or fixed deliberately:
    the established quadratic. One generated bit-exact fixture keeps preview and export WYSIWYG.
 3. The fade window makes a cue visible before its `start` and after its `end`.
 4. Only the first matching cue renders, so overlapping cues silently vanish.
-5. `backgroundOpacity` is concatenated as hex alpha, so an `#rrggbbaa` colour — which every
-   validator accepts — yields a 10-character invalid colour and the background disappears.
+5. The legacy renderer concatenated `backgroundOpacity` as another hex alpha, so an `#rrggbbaa`
+   colour yielded an invalid 10-character colour and disappeared. Native preview/export
+   deliberately fix this: the colour's own alpha is multiplied by the independent opacity control,
+   with the same quantization in both surfaces.
 6. `gradient` sets `background-clip: text`, which also clips the subtitle box away.
 7. `glow` is a box-shadow, not a text glow.
 8. `scale` animates in and out; `bounce` only in.
