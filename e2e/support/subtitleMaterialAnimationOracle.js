@@ -869,6 +869,24 @@ const assertInkEnergyMagnitude = ({ animation, frameProofs }) => {
   }
 };
 
+const inkEnergyMeasurements = ({ animation, frameProofs }) => Object.freeze(Object.fromEntries(
+  ANIMATION_PHASES
+    .filter(phase => phase.name !== 'steady')
+    .map((phase) => {
+      const eased = sweepEasedProgress(animation.easing, phase.expectedProgress);
+      const measured = frameProofs[phase.name].subtitleGeometry.meanChangedChannelDelta;
+      const steady = frameProofs.steady.subtitleGeometry.meanChangedChannelDelta;
+      const expected = steady * eased;
+      return [phase.name, Object.freeze({
+        eased,
+        measured,
+        steady,
+        ratio: expected > 0 ? measured / expected : null,
+        asserted: eased >= MIN_INK_ENERGY_EASED_GATE,
+      })];
+    }),
+));
+
 /**
  * Prove a font-bearing preset rebuild never publishes an incomplete visible composition.
  *
@@ -1161,6 +1179,7 @@ export const verifyAnimationObservation = ({
     sourceDeltas: Object.freeze(Object.fromEntries(
       ANIMATION_PHASES.map(phase => [phase.name, frameProofs[phase.name].subtitlePixels.changedPixels]),
     )),
+    inkEnergy: inkEnergyMeasurements({ animation, frameProofs }),
     visualSummary,
     entryChangedPixels: entryChange?.pixels?.changedPixels ?? null,
     easingFingerprint: ANIMATION_PHASES
