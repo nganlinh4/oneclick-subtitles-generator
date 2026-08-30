@@ -30,6 +30,7 @@
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
 
+import { clickControl } from '../support/editor.js';
 import { durableState } from '../support/database.js';
 import { LONG_SYNTHETIC_MEDIA } from '../support/longSyntheticMediaFixture.js';
 import {
@@ -98,6 +99,23 @@ const waveformJobs = (root) => durableState(root).jobs.filter(({ kind }) => kind
 const waveformState = () => browser.execute(() => (
   document.querySelector('[data-osg-waveform-state]')?.getAttribute('data-osg-waveform-state') ?? null
 ));
+
+const enableLongMediaWaveform = async () => {
+  await clickControl('[data-app-action="open-settings"]');
+  await $('.settings-modal').waitForDisplayed({ timeout: 30_000, timeoutMsg: 'Settings did not open' });
+  await clickControl('[data-settings-tab="video-processing"]');
+  const control = await $('#show-waveform-long-videos');
+  await control.waitForExist({ timeout: 30_000, timeoutMsg: 'the long-video waveform setting is unavailable' });
+  if (!(await browser.execute(() => document.querySelector('#show-waveform-long-videos')?.selected === true))) {
+    await clickControl('#show-waveform-long-videos');
+  }
+  await browser.waitUntil(
+    () => browser.execute(() => document.querySelector('#show-waveform-long-videos')?.selected === true),
+    { timeout: 10_000, interval: 100, timeoutMsg: 'the long-video waveform setting did not enable' },
+  );
+  await clickControl('.save-btn');
+  await $('.settings-modal').waitForExist({ reverse: true, timeout: 30_000 });
+};
 
 const activeVideoDuration = () => browser.execute(() => {
   const video = document.querySelector('.video-preview video.video-player');
@@ -191,13 +209,16 @@ describe('long media resource bounds', () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the harness must have an isolated data root');
 
-    // --- 1. Open the long synthetic source and let its real waveform complete. ---
+    // --- 1. Open the long synthetic source, enable its opt-in through Settings, and let the real
+    // waveform complete. The product intentionally leaves >30-minute waveforms off by default;
+    // expecting a job without exercising this customer control would test an impossible state.
     await openProjectWithMedia();
     const duration = await activeVideoDuration();
     assert.ok(
       Math.abs(duration - LONG_SYNTHETIC_MEDIA.durationSeconds) <= LONG_SYNTHETIC_MEDIA.durationToleranceSeconds,
       `the long synthetic source has no usable two-hour duration: ${duration}`,
     );
+    await enableLongMediaWaveform();
     await waitUntilWithFreshDiagnostic(async () => (await waveformState()) === 'ready', {
       timeout: 300_000,
       interval: 250,

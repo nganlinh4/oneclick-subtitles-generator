@@ -33,6 +33,7 @@ test('the resource-bounds journey drives only the public UI and never substitute
   assert.doesNotMatch(boundsJourney, /localStorage\.setItem/u);
   assert.match(boundsJourney, /assertManagedArtifactLedgerMatchesDisk\(root\)/u);
   assert.match(boundsJourney, /openProjectWithMedia\(\)/u);
+  assert.match(boundsJourney, /clickControl\('#show-waveform-long-videos'\)/u);
   assert.match(boundsJourney, /browser\.capabilities\['osg:e2eProcessId'\]/u);
 });
 
