@@ -89,8 +89,13 @@ describe('long-media waveform interruption and relaunch recovery', () => {
     if (PHASE === 'verify') {
       // The application booted before this session attached, so recovery has already run.
       const jobs = waveformJobs(root);
-      assert.equal(jobs.length, 1, `the seed left ${jobs.length} waveform jobs instead of one`);
-      const [interrupted] = jobs;
+      const interruptedJobs = jobs.filter(({ state }) => state === 'interrupted');
+      assert.equal(
+        interruptedJobs.length,
+        1,
+        `relaunch did not retain exactly one interrupted predecessor: ${JSON.stringify(jobs)}`,
+      );
+      const [interrupted] = interruptedJobs;
       // Not merely one of several honest terminal states: crates/osg-infrastructure/src/storage/
       // jobs.rs's interrupt_in_flight unconditionally selects every job with state IN ('running',
       // 'cancelling') at boot and applies JobUpdate::Interrupt to each -- there is no branch that
@@ -110,9 +115,9 @@ describe('long-media waveform interruption and relaunch recovery', () => {
         focusSelector: '.timeline-container',
       });
 
-      // Full recovery means the media's waveform is ordinary from here: the session restores the
-      // same project/media (matching editPersistRelaunch's own openEditor()-only verify phase) and
-      // the product's own effect re-requests and completes a fresh waveform for it.
+      // Full recovery means the media's waveform is ordinary from here. Restoring the editor may
+      // admit the replacement job before WebDriver attaches, so it is correct for `jobs` above to
+      // contain both the interrupted predecessor and a running/succeeded replacement.
       await openEditor();
       await waitUntilWithFreshDiagnostic(async () => (await waveformState()) === 'ready', {
         timeout: 300_000,
