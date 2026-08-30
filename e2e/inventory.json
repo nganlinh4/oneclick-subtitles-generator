@@ -934,15 +934,15 @@
     {
       "name": "geminiDocumentConsolidateAndSummarize",
       "kind": "workflow",
-      "file": "journeys/providerBoundaries.journey.js",
-      "capability": "Complete-document and summary processing honor split duration, model and custom prompt, then save the exact provider result.",
-      "status": "authored-unproven",
-      "recommendedJourney": "translationProviderAndDocuments",
-      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: both Complete Document and Summarize route through src/services/gemini/documentRequest.js's runGeminiDocumentRequestResult -> src/platform/nativeGeminiText.js -> nativeGeminiJobLifecycle.js's createNativeGeminiJobRunner, the SAME credential wall geminiCredentialBoundary already proves for transcription; with the default Split Duration (0, 'No Split') the missing-credential NativeGeminiError is thrown UNWRAPPED, so both process types refuse through one bounded toast reading exactly 'The native Gemini operation could not be completed' (not the friendlier 'Please set your API key...' transcription shows), with no durable artifact and no jobs-table row. The credential-free Split Duration control (src/components/DownloadOptionsModal.js's #consolidation-split-duration-slider) is proven positively: real, native, and its live label updates. A SEPARATE finding is recorded rather than tested: a NONZERO split duration takes consolidationService.js's completeDocumentByChunks path, which catches each chunk's failure internally and resolves a {status:'refused'|'partial'} object instead of throwing, so LyricsDisplay.js's handleProcess never re-throws and DownloadOptionsModal shows NO toast at all for that path -- only the inline .consolidation-status line updates. This journey deliberately keeps Split Duration at 0 for its refusal proof, which is the one path that actually produces the actionable toast a customer would see by default.",
+      "file": "journeys/geminiDocumentSuccess.journey.js",
+      "capability": "Complete-document and summary processing each run through a real Gemini job and save the returned plain-text customer document.",
+      "status": "green",
+      "recommendedJourney": "geminiDocumentSuccess",
+      "note": "Proven against the real offscreen desktop binary on 2026-08-30 with all twenty reviewed credentials enrolled through public Settings. Complete Document and Summarize each registered one distinct succeeded native Gemini job, closed only after the guarded native save completed, and produced independently read non-empty plain-text files (223 and 276 bytes) with the expected _completed.txt and _summary.txt customer names. Neither operation leaked a structured provider envelope, painted an inline error, or showed an error toast. Evidence: gemini-document-success attempt 20260830201438430-25704-6c13b661, application 27f94cb58d80f83e7e97189a3e2505c6edf2c2cbf66a0769cbb61e9744ae8a64, binary SHA-256 f43486cb2ba6f8c9642b9ee9e5bbde8d4906d8e2bb782d2b9949b92df498a1b1.",
       "dependencies": {
-        "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini credential and network access to prove a SUCCESSFUL Complete Document / Summarize result honoring split duration, model and custom prompt",
-        "note": "The credential-free refusal for both process types (default Split Duration) and the split-duration control itself are now proven; provider SUCCESS remains gated on a real credential."
+        "owner": "none",
+        "requires": "none for the two proven default-model unsplit success paths; credentials are supplied by the isolated harness",
+        "note": "Default-model unsplit provider success and customer-save ownership are proven. Multi-chunk consolidation, non-default model selection and a custom prompt remain separate parameter-matrix coverage and are not implied by this receipt."
       }
     },
     {
