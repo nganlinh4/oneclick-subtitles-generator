@@ -121,7 +121,7 @@ describe('About reports the real installed version and the updater proves its co
       step: '01-about-current-version',
       description: 'About is reached through real Settings navigation and reports the real installed application version, independent of the updater channel.',
       details: { versionDisplay: surface.versionDisplay },
-      focusSelector: '.about-section',
+      focusSelector: '.version-info',
     });
 
     // The disabled-channel outcome: no update, and the exact "Unable to check for updates" branch.
@@ -141,7 +141,7 @@ describe('About reports the real installed version and the updater proves its co
       step: '02-updater-disabled-channel',
       description: 'The compiled-disabled updater channel (e2e-automation) makes app_update_check report unconfigured; About shows the honest "Unable to check for updates" branch, never a fabricated up-to-date or available state.',
       details: { surface },
-      focusSelector: '.about-section',
+      focusSelector: '.update-check-failed',
     });
 
     const after = durableState(root);
