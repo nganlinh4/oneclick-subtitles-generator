@@ -23,6 +23,10 @@
 *.ps1 text eol=lf
 LICENSE text eol=lf
 
+# These extensionless files are addressed by their raw SHA-256. A Windows checkout must never
+# rewrite their line endings or the bundled offline source no longer matches its own filename.
+apps/desktop/src-tauri/resources/ui-fonts/* -text
+
 # Denote all files that are truly binary and should not be modified
 *.png binary
 *.jpg binary

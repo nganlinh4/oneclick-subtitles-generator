@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
@@ -37,11 +38,19 @@ import {
  * what the journey checks, so this is deterministic on a build machine and on an air-gapped one.
  */
 
+// The WOFF2 subsets are the largest bundled font resources. Damage the largest one so a reported
+// Ready state must be backed by repaired bytes the WebView actually draws; damaging only a notice
+// file would test package provenance while leaving the rendering capability intact.
+const activeFontResource = (staged) => stagedFontResources(staged).sort((left, right) => (
+  statSync(join(staged, 'ui-fonts', right)).size
+    - statSync(join(staged, 'ui-fonts', left)).size
+))[0];
+
 const CASES = [
   {
     name: 'a shipped font resource whose bytes are not what its name claims',
     damage: (staged) => {
-      const [first] = stagedFontResources(staged);
+      const first = activeFontResource(staged);
       if (!first) throw new Error('the staged application ships no font resources to damage');
       // Same length, different bytes: only the digest can tell, which is the point of naming a
       // resource after its own hash.
@@ -52,7 +61,7 @@ const CASES = [
   {
     name: 'a shipped font resource that is missing entirely',
     damage: (staged) => {
-      const [first] = stagedFontResources(staged);
+      const first = activeFontResource(staged);
       if (!first) throw new Error('the staged application ships no font resources to damage');
       removeFontResource(staged, first);
       return { path: `ui-fonts/${first}`, change: 'deleted', detail: 'removed' };

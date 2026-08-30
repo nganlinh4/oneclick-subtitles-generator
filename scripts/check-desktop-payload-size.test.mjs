@@ -83,6 +83,15 @@ test('accepts the reviewed payload: workers, licences and pinned font bytes', ()
   });
 });
 
+test('Windows checkouts preserve extensionless content-addressed font bytes verbatim', () => {
+  const attributes = fs.readFileSync(path.join(import.meta.dirname, '..', '.gitattributes'), 'utf8');
+  assert.match(
+    attributes,
+    /^apps\/desktop\/src-tauri\/resources\/ui-fonts\/\* -text$/mu,
+    'content-addressed font resources must bypass line-ending conversion',
+  );
+});
+
 test('rejects native tools or model weights hidden in the frontend', () => {
   withFixture((root) => {
     fs.writeFileSync(path.join(root, 'build', 'ffmpeg.exe'), 'MZ');
