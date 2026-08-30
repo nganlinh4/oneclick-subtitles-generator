@@ -9,10 +9,10 @@
 //
 // Per-cue narration controls (regenerate one cue, play one cue) are proven with the same reviewed
 // gTTS provider smoke narrationGeneration.journey.js uses, and drive a precise ownership claim a
-// customer needs from "regenerate this one line": regenerating exactly one cue rebinds only that
-// cue's revision-owned checkpoint entry and durable artifact, while every sibling cue's artifact
-// stays byte-identical on disk -- proven by an independent SHA-256 read before and after, not by
-// trusting the UI's own "succeeded" state.
+// customer needs from "regenerate this one line": a new synthesis job completes for exactly that
+// cue while every sibling cue's artifact stays byte-identical. A deterministic provider may return
+// identical bytes, in which case the content-addressed artifact store correctly reuses the target's
+// existing row instead of manufacturing a duplicate.
 
 /* global $, browser, describe, document, it, window */
 
@@ -27,14 +27,13 @@ import { ensureEngineReady } from '../support/engines.js';
 import { measureAudioSignal, probeMedia } from '../support/nativeMediaOracle.js';
 import {
   REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE,
-  verifyPerCueRegenerationRebinding,
+  verifyPerCueRegenerationOwnership,
   verifySiblingArtifactsUntouched,
 } from '../support/narrationControlOracle.js';
 import {
   durableProjectNarrations,
   resolveManagedArtifact,
   verifyNarrationGenerationOwnership,
-  verifySingleProjectArtifact,
 } from '../support/narrationJourneyOracle.js';
 import { importSubtitleDocument, openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -50,6 +49,8 @@ const looksLikeMp3 = (bytes) => (
   && ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)
     || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0))
 );
+
+const normalizedId = (value) => String(value ?? '').replaceAll('-', '').toLowerCase();
 
 const srtTime = (seconds) => {
   const milliseconds = Math.round(seconds * 1_000);
@@ -462,8 +463,7 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
         job.state === 'failed' || job.state === 'cancelled' || job.state === 'interrupted'
       )) ?? null;
       if (failedRegenerateJob !== null) return true;
-      return afterRegenerate.jobs.length > beforeRegenerate.jobs.length
-        && afterRegenerate.artifacts.length > beforeRegenerate.artifacts.length
+      return newJobs.some((job) => job.state === 'succeeded')
         && !(await anyRetryingRow())
         && regeneratedRecords.length === 1;
     }, {
@@ -485,22 +485,20 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
       throw new Error(`native narration regenerate job terminated: ${JSON.stringify(failedRegenerateJob)}`);
     }
 
-    const regeneration = verifySingleProjectArtifact({
-      before: beforeRegenerate,
-      after: afterRegenerate,
-      expectedProjectId: generation.projectId,
-      jobKind: 'synthesizeNarration',
-      artifactKind: 'narrationOutput',
-    });
     const afterResults = regeneratedRecords[0].value.results;
-    const rebinding = verifyPerCueRegenerationRebinding({
+    const rebinding = verifyPerCueRegenerationOwnership({
       beforeResults,
       afterResults,
       regeneratedOrdinal: REGENERATED_ORDINAL,
-      newArtifactId: regeneration.artifact.id,
     });
+    const regeneratedArtifact = afterRegenerate.artifacts.find((artifact) => (
+      normalizedId(artifact.id) === normalizedId(rebinding.artifactId)
+    ));
+    assert.ok(regeneratedArtifact, 'the regenerated cue points to an unavailable durable artifact');
+    assert.equal(regeneratedArtifact.kind, 'narrationOutput');
+    assert.equal(normalizedId(regeneratedArtifact.project_id), normalizedId(generation.projectId));
 
-    const regeneratedPath = resolveManagedArtifact(root, regeneration.artifact.relative_path);
+    const regeneratedPath = resolveManagedArtifact(root, regeneratedArtifact.relative_path);
     const regeneratedBytes = readFileSync(regeneratedPath);
     assert.equal(looksLikeMp3(regeneratedBytes.subarray(0, 3)), true, 'the regenerated artifact is not MP3 audio');
     const regeneratedProbe = probeMedia(regeneratedPath);
@@ -514,11 +512,20 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
       Number.isFinite(regeneratedSignal.peakVolumeDb) && regeneratedSignal.peakVolumeDb > -50,
       `the regenerated cue independently decodes as silence: ${JSON.stringify(regeneratedSignal)}`,
     );
-    assert.notEqual(
-      sha256File(regeneratedPath),
-      preRegenerateHashes.get(REGENERATED_ORDINAL).sha256,
-      'the regenerated cue reused the exact same bytes as its stale artifact',
-    );
+    const regeneratedHash = sha256File(regeneratedPath);
+    if (rebinding.deduplicated) {
+      assert.equal(
+        regeneratedHash,
+        preRegenerateHashes.get(REGENERATED_ORDINAL).sha256,
+        'a deduplicated narration artifact changed bytes in place',
+      );
+    } else {
+      assert.notEqual(
+        regeneratedHash,
+        preRegenerateHashes.get(REGENERATED_ORDINAL).sha256,
+        'a newly identified narration artifact reused different content-addressed bytes',
+      );
+    }
 
     // --- Every sibling cue's artifact stayed byte-identical on disk. -------------------------------
     const siblings = rebinding.siblingOrdinals.map((ordinal) => {
@@ -536,7 +543,7 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '04-single-cue-regenerate-complete',
-      description: 'Regenerating cue 2 rebound only cue 2 durably; cues 1 and 3 stayed byte-identical on disk.',
+      description: 'Regenerating cue 2 completed a new job; cues 1 and 3 stayed byte-identical on disk.',
       details: { rebinding, siblings: siblings.map(({ ordinal, beforeSha256 }) => ({ ordinal, sha256: beforeSha256 })) },
       focusSelector: '.narration-section',
     });

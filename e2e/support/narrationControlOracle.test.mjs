@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import {
   REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE,
-  verifyPerCueRegenerationRebinding,
+  verifyPerCueRegenerationOwnership,
   verifySiblingArtifactsUntouched,
 } from './narrationControlOracle.js';
 
@@ -29,13 +29,13 @@ test('a clean single-cue regenerate rebinds only the regenerated ordinal', () =>
   const after = baseResults();
   after[1] = { ...after[1], artifactId: 'artifact-2b' };
 
-  const outcome = verifyPerCueRegenerationRebinding({
+  const outcome = verifyPerCueRegenerationOwnership({
     beforeResults: before,
     afterResults: after,
     regeneratedOrdinal: 2,
-    newArtifactId: 'artifact-2b',
   });
   assert.deepEqual(outcome.siblingOrdinals, [1, 3]);
+  assert.equal(outcome.deduplicated, false);
 });
 
 test('rebinding a sibling cue is a hard failure', () => {
@@ -45,29 +45,26 @@ test('rebinding a sibling cue is a hard failure', () => {
   after[2] = { ...after[2], artifactId: 'artifact-3-drifted' };
 
   assert.throws(
-    () => verifyPerCueRegenerationRebinding({
+    () => verifyPerCueRegenerationOwnership({
       beforeResults: before,
       afterResults: after,
       regeneratedOrdinal: 2,
-      newArtifactId: 'artifact-2b',
     }),
     /cue 3 was rebound to a different artifact/u,
   );
 });
 
-test('a regenerate that keeps the stale artifact id is a hard failure', () => {
+test('a deterministic regenerate may reuse its byte-identical content-addressed artifact', () => {
   const before = baseResults();
   const after = baseResults();
 
-  assert.throws(
-    () => verifyPerCueRegenerationRebinding({
-      beforeResults: before,
-      afterResults: after,
-      regeneratedOrdinal: 2,
-      newArtifactId: 'artifact-2a',
-    }),
-    /kept its stale artifact id/u,
-  );
+  const outcome = verifyPerCueRegenerationOwnership({
+    beforeResults: before,
+    afterResults: after,
+    regeneratedOrdinal: 2,
+  });
+  assert.equal(outcome.artifactId, 'artifact-2a');
+  assert.equal(outcome.deduplicated, true);
 });
 
 test('editing a sibling cue text during an unrelated regenerate is a hard failure', () => {
@@ -77,11 +74,10 @@ test('editing a sibling cue text during an unrelated regenerate is a hard failur
   after[0] = { ...after[0], text: 'Cue one alpha, edited' };
 
   assert.throws(
-    () => verifyPerCueRegenerationRebinding({
+    () => verifyPerCueRegenerationOwnership({
       beforeResults: before,
       afterResults: after,
       regeneratedOrdinal: 2,
-      newArtifactId: 'artifact-2b',
     }),
     /narration text changed/u,
   );
@@ -91,11 +87,10 @@ test('a checkpoint that drops or gains a cue is a hard failure', () => {
   const before = baseResults();
   const after = baseResults().slice(0, 2);
   assert.throws(
-    () => verifyPerCueRegenerationRebinding({
+    () => verifyPerCueRegenerationOwnership({
       beforeResults: before,
       afterResults: after,
       regeneratedOrdinal: 2,
-      newArtifactId: 'artifact-2b',
     }),
     /changed the total number/u,
   );
@@ -108,11 +103,10 @@ test('two artifacts rebinding at once is a hard failure even if the target ordin
   after[2] = { ...after[2], artifactId: 'artifact-3b' };
 
   assert.throws(
-    () => verifyPerCueRegenerationRebinding({
+    () => verifyPerCueRegenerationOwnership({
       beforeResults: before,
       afterResults: after,
       regeneratedOrdinal: 2,
-      newArtifactId: 'artifact-2b',
     }),
     /rebound to a different artifact/u,
   );

@@ -39,10 +39,11 @@ const assertJourneyContract = (source) => {
   assert.match(source, /document\.querySelector\(`#method-\$\{method\}`\)\?\.click\(\)/u);
 
   // Part 2: the durable per-cue regenerate ownership claim.
-  assert.match(source, /verifyPerCueRegenerationRebinding\(/u);
+  assert.match(source, /verifyPerCueRegenerationOwnership\(/u);
   assert.match(source, /verifySiblingArtifactsUntouched\(siblings\)/u);
   assert.match(source, /regeneratedOrdinal: REGENERATED_ORDINAL/u);
-  assert.match(source, /assert\.notEqual\(\s*\n\s*sha256File\(regeneratedPath\),\s*\n\s*preRegenerateHashes\.get\(REGENERATED_ORDINAL\)\.sha256,/u);
+  assert.match(source, /if \(rebinding\.deduplicated\)/u);
+  assert.match(source, /newJobs\.some\(\(job\) => job\.state === 'succeeded'\)/u);
   assert.match(source, /afterSize: statSync\(path\)\.size/u);
   assert.match(source, /afterSha256: sha256File\(path\)/u);
 
@@ -67,7 +68,7 @@ test('the journey proves the honest reference-voice boundary and single-cue rege
 
 test('the contract fails when any one load-bearing assertion is removed', () => {
   for (const needle of [
-    'verifyPerCueRegenerationRebinding(',
+    'verifyPerCueRegenerationOwnership(',
     'verifySiblingArtifactsUntouched(siblings)',
     "assert.equal(state.unavailableClass, true, `${method}'s label lost its unavailable styling`);",
     'document.querySelector(`#method-${method}`)?.click()',

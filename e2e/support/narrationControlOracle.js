@@ -29,21 +29,21 @@ export const REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = (
 const normalizeId = (value) => String(value ?? '').replaceAll('-', '').toLowerCase();
 
 /**
- * Prove that regenerating ONE cue's narration rebinds only that cue's revision-owned checkpoint
- * entry to a new artifact, while every other cue's entry still names its pre-existing artifact.
+ * Prove that regenerating ONE cue preserves one valid checkpoint entry for that cue while every
+ * other cue still names its pre-existing artifact. A content-addressed store may legitimately
+ * reuse the target's prior artifact when a deterministic provider returns byte-identical audio;
+ * the journey separately proves that a new synthesis job actually ran and succeeded.
  *
  * `beforeResults`/`afterResults` are the exact `results` arrays narrationJourneyOracle.js's
  * `durableProjectNarrations` decodes from the `projectNarration` checkpoint row, keyed by the
  * durable cue ordinal (`outputIndex`) the same way `verifyNarrationGenerationOwnership` does.
  */
-export const verifyPerCueRegenerationRebinding = ({
+export const verifyPerCueRegenerationOwnership = ({
   beforeResults,
   afterResults,
   regeneratedOrdinal,
-  newArtifactId,
 }) => {
   assert.ok(Number.isSafeInteger(regeneratedOrdinal), 'regenerated cue ordinal must be an integer');
-  assert.equal(typeof newArtifactId, 'string', 'the regenerated artifact id must be a string');
   assert.equal(
     afterResults.length,
     beforeResults.length,
@@ -59,22 +59,18 @@ export const verifyPerCueRegenerationRebinding = ({
   );
   assert.ok(beforeByOrdinal.has(regeneratedOrdinal), `no prior narration result exists for cue ${regeneratedOrdinal}`);
 
-  const rebound = [];
+  let regeneratedArtifactId = null;
+  let deduplicated = null;
   for (const [ordinal, before] of beforeByOrdinal) {
     const after = afterByOrdinal.get(ordinal);
     assert.ok(after, `cue ${ordinal} lost its narration result after an unrelated cue was regenerated`);
     if (ordinal === regeneratedOrdinal) {
-      assert.equal(
-        normalizeId(after.artifactId),
-        normalizeId(newArtifactId),
-        `cue ${ordinal} was not rebound to the newly generated artifact`,
-      );
-      assert.notEqual(
-        normalizeId(after.artifactId),
-        normalizeId(before.artifactId),
-        `cue ${ordinal} kept its stale artifact id after being regenerated`,
-      );
-      rebound.push(ordinal);
+      assert.ok(normalizeId(after.artifactId), `cue ${ordinal} lost its narration artifact`);
+      assert.equal(after.text, before.text, `cue ${ordinal} narration text changed during regeneration`);
+      assert.equal(after.startMicros, before.startMicros, `cue ${ordinal} start time changed during regeneration`);
+      assert.equal(after.endMicros, before.endMicros, `cue ${ordinal} end time changed during regeneration`);
+      regeneratedArtifactId = after.artifactId;
+      deduplicated = normalizeId(after.artifactId) === normalizeId(before.artifactId);
     } else {
       assert.equal(
         normalizeId(after.artifactId),
@@ -93,12 +89,8 @@ export const verifyPerCueRegenerationRebinding = ({
       );
     }
   }
-  assert.deepEqual(
-    rebound,
-    [regeneratedOrdinal],
-    'exactly one cue must be rebound by a single-cue regenerate',
-  );
-  return Object.freeze({ regeneratedOrdinal, newArtifactId, siblingOrdinals: Object.freeze(
+  assert.equal(typeof regeneratedArtifactId, 'string', 'the regenerated cue has no durable artifact id');
+  return Object.freeze({ regeneratedOrdinal, artifactId: regeneratedArtifactId, deduplicated, siblingOrdinals: Object.freeze(
     [...beforeByOrdinal.keys()].filter((ordinal) => ordinal !== regeneratedOrdinal).sort((left, right) => left - right),
   ) });
 };
