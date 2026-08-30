@@ -20,6 +20,10 @@ const oracle = readFileSync(new URL('./longMediaResourceOracle.js', import.meta.
 const runIsolated = readFileSync(new URL('../run-isolated.mjs', import.meta.url), 'utf8');
 const packageJson = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 const wdioConf = readFileSync(new URL('../wdio.conf.js', import.meta.url), 'utf8');
+const mediaPipeline = readFileSync(
+  new URL('../../apps/desktop/src-tauri/src/media_pipeline.rs', import.meta.url),
+  'utf8',
+);
 
 test('the long-media fixture is wholly synthetic, offline, and reviewed-tool-driven', () => {
   assert.doesNotMatch(fixture, /https?:\/\//u);
@@ -106,6 +110,11 @@ test('recovery is a two-process PHASE-gated scenario over the same synthetic lon
   assert.match(recoveryScenario, /runScenarioAttemptWithEvidence/u);
   assert.match(recoveryScenario, /stagedMediaSelection/u);
   assert.match(recoveryScenario, /stagedLongSyntheticMedia/u);
+  assert.match(
+    mediaPipeline,
+    /#\[cfg\(feature = "e2e-automation"\)\][\s\S]*?OSG_E2E_WORKFLOW[\s\S]*?OSG_E2E_PERSISTENCE_PHASE/u,
+  );
+  assert.match(mediaPipeline, /tokio::time::sleep\(Duration::from_secs\(60\)\)/u);
 });
 
 test('both heavy long-media journeys are excluded from the default suite with their own npm scripts', () => {

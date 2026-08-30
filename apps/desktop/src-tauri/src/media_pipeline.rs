@@ -39,6 +39,11 @@ const PROCESSING_START_BASIS_POINTS: u16 = 500;
 const PROCESSING_END_BASIS_POINTS: u16 = 9_500;
 const PUBLISHING_BASIS_POINTS: u16 = 9_700;
 
+#[cfg(feature = "e2e-automation")]
+const LONG_MEDIA_RECOVERY_WORKFLOW: &str = "long-media-operation-recovery";
+#[cfg(feature = "e2e-automation")]
+const LONG_MEDIA_RECOVERY_SEED_PHASE: &str = "seed";
+
 #[derive(Clone)]
 pub(crate) struct MediaPipelineRuntime {
     pipeline: Arc<RwLock<Option<MediaPipeline>>>,
@@ -774,6 +779,21 @@ pub(crate) async fn media_pipeline_start(
         let source_asset_id = request.asset_id;
         let publication_metadata = request.operation.publication_metadata(source_asset_id);
         let requested_operation = request.operation;
+        #[cfg(feature = "e2e-automation")]
+        if matches!(
+            requested_operation,
+            ValidatedOperation::GenerateWaveform { .. }
+        ) && std::env::var("OSG_E2E_WORKFLOW").as_deref() == Ok(LONG_MEDIA_RECOVERY_WORKFLOW)
+            && std::env::var("OSG_E2E_PERSISTENCE_PHASE").as_deref()
+                == Ok(LONG_MEDIA_RECOVERY_SEED_PHASE)
+        {
+            // This channel-only hold starts after the durable job is registered as running. Real
+            // two-hour waveform generation is faster than WebDriver screenshot capture on modern
+            // machines, so duration alone cannot make a process-death test deterministic. The
+            // supervisor tears this process down while the sleep is pending; no release build can
+            // compile this branch, and the finite bound prevents a stranded automation process.
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
         let operation_database = database.clone();
         let source_content_hash = resolved.content_hash();
         let native_result = tauri::async_runtime::spawn_blocking(move || {
