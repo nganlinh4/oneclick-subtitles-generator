@@ -196,9 +196,11 @@ const tagResultControlButton = (cueText, iconName) => browser.execute((text, ico
   const row = rows.find((node) => (node.querySelector('.result-text')?.textContent || '').includes(text));
   if (row === undefined) return { found: false, reason: 'noMatchingRow', rowCount: rows.length };
   const buttons = [...row.querySelectorAll('.result-controls button')];
-  const button = buttons.find((node) => (
-    (node.querySelector('.material-symbols-rounded')?.textContent || '').trim() === icon
-  ));
+  const button = icon === 'refresh'
+    ? row.querySelector('[data-osg-action="regenerate-narration-cue"]')
+    : buttons.find((node) => (
+      (node.querySelector('.material-symbols-rounded')?.textContent || '').trim() === icon
+    ));
   if (button === undefined) {
     return {
       found: false,

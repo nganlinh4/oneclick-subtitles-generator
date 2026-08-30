@@ -53,3 +53,15 @@ it.each(cases)('allows the %s row retry when every prerequisite is authoritative
   fireEvent.click(screen.getByTitle(title));
   expect(data.onRetry).toHaveBeenCalledWith(result.subtitle_id);
 });
+
+it('distinguishes successful-cue regeneration from the adjacent speed reset control', () => {
+  const result = { subtitle_id: 3, text: 'Ready', success: true, pending: false, filename: 'voice.wav' };
+  render(<ResultRow index={0} style={{}} data={dataFor(result, {
+    retryAvailable: true,
+    retryBlockedReason: '',
+  })} />);
+
+  const regenerate = screen.getByRole('button', { name: 'Retry generation' });
+  expect(regenerate).toHaveAttribute('data-osg-action', 'regenerate-narration-cue');
+  expect(regenerate).toHaveAttribute('data-subtitle-id', '3');
+});

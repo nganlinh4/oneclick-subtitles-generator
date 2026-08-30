@@ -116,6 +116,8 @@ test('ground truth: ResultRow exposes exactly play/download/regenerate for a suc
   assert.match(resultRow, /onClick=\{\(\) => playAudio\(result\)\}/u);
   assert.match(resultRow, /onClick=\{\(\) => downloadAudio\(result\)\}/u);
   assert.match(resultRow, /onClick=\{retry\}/u);
+  assert.match(resultRow, /data-osg-action="regenerate-narration-cue"/u);
+  assert.match(resultRow, /aria-label=\{retryTitle\}/u);
   assert.doesNotMatch(resultRow, /onDelete|onRemove|delete-button|remove-button/iu);
   assert.match(resultRow, /'play_arrow'/u);
   assert.match(resultRow, /'pause'/u);

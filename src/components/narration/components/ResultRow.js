@@ -213,6 +213,9 @@ const ResultRow = ({ index, style, data }) => {
                 className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
                 onClick={retry}
                 title={retryTitle}
+                aria-label={retryTitle}
+                data-osg-action="regenerate-narration-cue"
+                data-subtitle-id={String(subtitle_id)}
                 disabled={!retryAvailable || retryingSubtitleId === subtitle_id || !!data.itemProcessing[subtitle_id]?.inProgress}
               >
                 {retryingSubtitleId === subtitle_id ? (
