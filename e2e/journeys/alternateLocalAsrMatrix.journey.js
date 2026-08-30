@@ -11,9 +11,9 @@
 //   1. The Tools engine-selection surface (src/components/engines/EnginesPanel.js /
 //      EngineCard.js) never lies. Each card's public data-engine-state is cross-checked against
 //      an INDEPENDENT oracle -- not the same native status call the card itself renders from --
-//      the real on-disk package directory under data/engine-packages/<id> (crates/
-//      osg-engine-packages/src/manager.rs:1433-1436's ensure_component_layout keys the store by
-//      exactly this id). A card claiming installed with no bytes on disk, or not-installed with
+//      the real on-disk package directory under data/engine-packages/v1/<id> (the desktop wires
+//      that versioned store root into EnginePackageManager, whose ensure_component_layout keys it
+//      by exactly this id). A card claiming installed with no bytes on disk, or not-installed with
 //      real bytes present, would fail here.
 //   2. Selecting an uninstalled engine offers a real install rather than silently failing:
 //      clicking Download on whichever catalog engine has no on-disk directory starts a real
@@ -37,7 +37,9 @@ import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
 import process from 'node:process';
 
-import { ASR_CATALOG_ENGINES, isTruthfulCardState, pickNotInstalledEngine } from '../support/engineCatalogOracle.js';
+import {
+  ASR_CATALOG_ENGINES, enginePackageDirectory, isTruthfulCardState, pickNotInstalledEngine,
+} from '../support/engineCatalogOracle.js';
 import { openEditor } from '../support/editor.js';
 import {
   engineState, installThenCancelBounded, openToolsSettings, waitForSettledEngineState,
@@ -51,8 +53,6 @@ const WORKFLOW = 'alternate-local-asr-matrix';
 // ensureEngineReady's own 20-minute bound for the identical probe (e2e/support/engines.js).
 const SETTLE_TIMEOUT_MS = 1_200_000;
 
-const packageDirectory = (root, packageId) => join(root, 'data', 'engine-packages', packageId);
-
 describe('the ASR engine catalog reports every entry truthfully and offers a real install', () => {
   it('never lies about install state, and lets a customer start and cleanly cancel a real install', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
@@ -65,13 +65,13 @@ describe('the ASR engine catalog reports every entry truthfully and offers a rea
     const existsByPackageId = new Map();
     for (const engine of ASR_CATALOG_ENGINES) {
       const settled = await waitForSettledEngineState(engine.cardId, SETTLE_TIMEOUT_MS);
-      const digest = directoryShapeDigest(packageDirectory(root, engine.packageId));
+      const digest = directoryShapeDigest(enginePackageDirectory(root, engine.packageId));
       existsByPackageId.set(engine.packageId, digest.exists);
       assert.equal(
         isTruthfulCardState(settled.state, digest.exists),
         true,
         `${engine.cardId} reports data-engine-state="${settled.state}" but its on-disk directory `
-          + `${digest.exists ? 'exists' : 'does not exist'} (${packageDirectory(root, engine.packageId)})`,
+          + `${digest.exists ? 'exists' : 'does not exist'} (${enginePackageDirectory(root, engine.packageId)})`,
       );
       findings.push({
         cardId: engine.cardId,
@@ -100,11 +100,11 @@ describe('the ASR engine catalog reports every entry truthfully and offers a rea
     );
     assert.ok(
       target !== null,
-      `every catalog ASR engine already has an on-disk directory in ${join(root, 'data', 'engine-packages')}; `
+      `every catalog ASR engine already has an on-disk directory in ${join(root, 'data', 'engine-packages', 'v1')}; `
         + 'no not-installed engine remains to prove the install-offer path against',
     );
 
-    const before = directoryShapeDigest(packageDirectory(root, target.packageId));
+    const before = directoryShapeDigest(enginePackageDirectory(root, target.packageId));
     assert.equal(before.exists, false, `${target.cardId} was expected to be not-installed before this proof`);
 
     const { installing, cancelled } = await installThenCancelBounded(target.cardId);
@@ -120,7 +120,7 @@ describe('the ASR engine catalog reports every entry truthfully and offers a rea
     assert.equal(cancelled.state, 'not-installed', (
       `cancelling the ${target.cardId} install left it looking installed or corrupt: ${JSON.stringify(cancelled)}`
     ));
-    const after = directoryShapeDigest(packageDirectory(root, target.packageId));
+    const after = directoryShapeDigest(enginePackageDirectory(root, target.packageId));
     assert.deepEqual(after, before, (
       `cancelling the ${target.cardId} install left orphaned bytes under its package directory`
     ));

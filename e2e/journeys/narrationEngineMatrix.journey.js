@@ -22,7 +22,7 @@
 // What this journey proves instead, for the whole narration catalog at once, mirroring
 // alternateLocalAsrMatrix.journey.js exactly:
 //   1. The Tools engine-selection surface never lies: every narration card's data-engine-state is
-//      cross-checked against the independent on-disk oracle (data/engine-packages/<packageId>,
+//      cross-checked against the independent on-disk oracle (data/engine-packages/v1/<packageId>,
 //      the SAME store ASR packages use -- crates/osg-engine-packages/src/manager.rs:1433-1436 --
 //      keyed by the package id, not the frontend card id; F5-TTS's card id 'f5tts' maps to package
 //      id 'f5-tts', src/platform/managedEngineCatalog.js).
@@ -42,7 +42,9 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { openEditor } from '../support/editor.js';
-import { NARRATION_CATALOG_ENGINES, isTruthfulCardState, pickNotInstalledEngine } from '../support/engineCatalogOracle.js';
+import {
+  enginePackageDirectory, isTruthfulCardState, NARRATION_CATALOG_ENGINES, pickNotInstalledEngine,
+} from '../support/engineCatalogOracle.js';
 import {
   engineState, installThenCancelBounded, openToolsSettings, waitForSettledEngineState,
 } from '../support/engines.js';
@@ -51,8 +53,6 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'narration-engine-matrix';
 const SETTLE_TIMEOUT_MS = 1_200_000;
-
-const packageDirectory = (root, packageId) => join(root, 'data', 'engine-packages', packageId);
 
 describe('the narration engine catalog reports every entry truthfully and offers a real install', () => {
   it('never lies about install state, and lets a customer start and cleanly cancel a real install', async () => {
@@ -66,13 +66,13 @@ describe('the narration engine catalog reports every entry truthfully and offers
     const existsByPackageId = new Map();
     for (const engine of NARRATION_CATALOG_ENGINES) {
       const settled = await waitForSettledEngineState(engine.cardId, SETTLE_TIMEOUT_MS);
-      const digest = directoryShapeDigest(packageDirectory(root, engine.packageId));
+      const digest = directoryShapeDigest(enginePackageDirectory(root, engine.packageId));
       existsByPackageId.set(engine.packageId, digest.exists);
       assert.equal(
         isTruthfulCardState(settled.state, digest.exists),
         true,
         `${engine.cardId} reports data-engine-state="${settled.state}" but its on-disk directory `
-          + `${digest.exists ? 'exists' : 'does not exist'} (${packageDirectory(root, engine.packageId)})`,
+          + `${digest.exists ? 'exists' : 'does not exist'} (${enginePackageDirectory(root, engine.packageId)})`,
       );
       findings.push({
         cardId: engine.cardId,
@@ -101,11 +101,11 @@ describe('the narration engine catalog reports every entry truthfully and offers
     );
     assert.ok(
       target !== null,
-      `every catalog narration engine already has an on-disk directory in ${join(root, 'data', 'engine-packages')}; `
+      `every catalog narration engine already has an on-disk directory in ${join(root, 'data', 'engine-packages', 'v1')}; `
         + 'no not-installed engine remains to prove the install-offer path against',
     );
 
-    const before = directoryShapeDigest(packageDirectory(root, target.packageId));
+    const before = directoryShapeDigest(enginePackageDirectory(root, target.packageId));
     assert.equal(before.exists, false, `${target.cardId} was expected to be not-installed before this proof`);
 
     const { installing, cancelled } = await installThenCancelBounded(target.cardId);
@@ -121,7 +121,7 @@ describe('the narration engine catalog reports every entry truthfully and offers
     assert.equal(cancelled.state, 'not-installed', (
       `cancelling the ${target.cardId} install left it looking installed or corrupt: ${JSON.stringify(cancelled)}`
     ));
-    const after = directoryShapeDigest(packageDirectory(root, target.packageId));
+    const after = directoryShapeDigest(enginePackageDirectory(root, target.packageId));
     assert.deepEqual(after, before, (
       `cancelling the ${target.cardId} install left orphaned bytes under its package directory`
     ));

@@ -11,13 +11,21 @@
 //   Frontend card id <-> managed-package id mapping:
 //                         src/platform/managedEngineCatalog.js:1-33 (only f5tts/f5-tts differ)
 //   Card state derivation: src/components/engines/EngineCard.js:67-79
-//   On-disk package layout: crates/osg-engine-packages/src/manager.rs:1433-1436
+//   Store root wiring: apps/desktop/src-tauri/src/lib.rs (`engine-packages/v1`)
+//   On-disk package layout: crates/osg-engine-packages/src/manager.rs (`ensure_component_layout`)
 //                         (ensure_component_layout joins the store root with the package id
 //                         directly -- ASR and narration/speech packages share ONE store,
-//                         `data/engine-packages`, keyed by their own id string)
+//                         `data/engine-packages/v1`, keyed by their own id string)
 //
 // Every download/installed size and hardware verdict for these entries is recorded in
 // docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md, cited back to the same delivery catalogs.
+
+import { join } from 'node:path';
+
+/** The package component directory used by the shipping desktop store. */
+export const enginePackageDirectory = (dataRoot, packageId) => (
+  join(dataRoot, 'data', 'engine-packages', 'v1', packageId)
+);
 
 /**
  * `cardId` is the frontend `[data-engine-id]` value (src/components/engines/EnginesPanel.js).

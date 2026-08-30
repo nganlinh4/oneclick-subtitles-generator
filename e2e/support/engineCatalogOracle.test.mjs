@@ -4,11 +4,19 @@ import test from 'node:test';
 import {
   ASR_CATALOG_ENGINES,
   expectedCardStatesForPackagePresence,
+  enginePackageDirectory,
   isTruthfulCardState,
   NARRATION_CATALOG_ENGINES,
   pickNotInstalledEngine,
   SETTLED_CARD_STATES,
 } from './engineCatalogOracle.js';
+
+test('the filesystem oracle includes the versioned desktop store root', () => {
+  assert.equal(
+    enginePackageDirectory('C:\\isolated', 'faster-whisper-turbo'),
+    'C:\\isolated\\data\\engine-packages\\v1\\faster-whisper-turbo',
+  );
+});
 
 test('the ASR catalog mirror matches crates/osg-asr/src/catalog.rs:67-103 exactly', () => {
   assert.deepEqual(ASR_CATALOG_ENGINES.map(({ cardId }) => cardId), [
