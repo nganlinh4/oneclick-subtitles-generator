@@ -83,6 +83,7 @@ export const runScenarioProcesses = ({
   resetEvidence = false,
   spec,
   stagedMediaSelection = null,
+  stagedMediaSelectionSequence = null,
   inheritedApplication,
   managedPaths,
   publication = null,
@@ -104,10 +105,18 @@ export const runScenarioProcesses = ({
       binaryPath: publication.binaryPath,
     });
   }
-  let reviewedSelection = null;
-  if (stagedMediaSelection !== null) {
+  if (stagedMediaSelection !== null && stagedMediaSelectionSequence !== null) {
+    throw new Error('scenario processes accept either one staged selection or a sequence, never both');
+  }
+  const selections = stagedMediaSelectionSequence ?? (
+    stagedMediaSelection === null ? [] : [stagedMediaSelection]
+  );
+  if (!Array.isArray(selections) || selections.length > 8) {
+    throw new Error('the staged scenario media sequence is outside the native dialog bound');
+  }
+  const reviewedSelections = selections.map((selection) => {
     const inputRoot = realpathSync.native(join(root, 'input'));
-    reviewedSelection = realpathSync.native(resolve(stagedMediaSelection));
+    const reviewedSelection = realpathSync.native(resolve(selection));
     const inside = relative(inputRoot, reviewedSelection);
     const status = lstatSync(reviewedSelection);
     if (
@@ -120,7 +129,8 @@ export const runScenarioProcesses = ({
     ) {
       throw new Error('the staged scenario media must be one ordinary file directly inside the isolated input root');
     }
-  }
+    return reviewedSelection;
+  });
   const runPhase = (phase) => {
     const environment = {
       ...scrubAutomationEnvironment(process.env),
@@ -133,7 +143,12 @@ export const runScenarioProcesses = ({
         ? {}
         : { OSG_E2E_EVIDENCE_ATTEMPT: process.env.OSG_E2E_EVIDENCE_ATTEMPT }),
       [phaseVariable]: phase,
-      ...(reviewedSelection === null ? {} : { OSG_E2E_MEDIA_SELECTION: reviewedSelection }),
+      ...(reviewedSelections.length === 1
+        ? { OSG_E2E_MEDIA_SELECTION: reviewedSelections[0] }
+        : {}),
+      ...(reviewedSelections.length > 1
+        ? { OSG_E2E_MEDIA_SELECTION_SEQUENCE: JSON.stringify(reviewedSelections) }
+        : {}),
       [INHERITED_APPLICATION_LEASE]: inheritedApplication,
     };
     process.stdout.write(`\n=== ${label} process: ${phase} ===\n`);

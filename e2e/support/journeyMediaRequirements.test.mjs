@@ -33,6 +33,7 @@ test('every journey has exactly the media classification its shipping actions re
     'classification must be an exact exhaustive union of every journey source',
   );
   assert.deepEqual(classified.custom, [
+    'geminiBackgroundImageSuccess.journey.js',
     'geminiMultiWindowTranscription.journey.js',
     'longMediaOperationRecovery.journey.js',
     'longMediaResourceBounds.journey.js',
