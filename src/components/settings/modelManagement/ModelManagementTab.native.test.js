@@ -6,6 +6,7 @@ import {
   installNarrationModelPackage,
   removeNarrationModelPackage,
 } from '../../../services/modelService';
+import { showErrorToast } from '../../../utils/toastUtils';
 import ModelManagementTab from './ModelManagementTab';
 
 const i18nMocks = vi.hoisted(() => ({
@@ -130,4 +131,21 @@ it('survives StrictMode effect replay and leaves a failed probe actionable', asy
   expect(await screen.findByText('Status unavailable')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled();
   expect(document.querySelector('[data-model-package-state="failed"]')).not.toBeNull();
+});
+
+it.each([
+  ['packageInsufficientSpace', 'not enough disk space'],
+  ['packageNetwork', 'could not be downloaded'],
+  ['packageIntegrity', 'failed its integrity check'],
+])('shows an actionable %s install failure instead of the generic dead end', async (code, message) => {
+  installNarrationModelPackage.mockImplementation(async (handlers) => {
+    handlers.onFailed({ error: { code, message: 'redacted native failure' } });
+    return { started: true, job: { id: 'native-job' } };
+  });
+  render(<ModelManagementTab activeTab="model-management" />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+
+  await waitFor(() => expect(showErrorToast).toHaveBeenCalledWith(expect.stringContaining(message)));
+  expect(showErrorToast).not.toHaveBeenCalledWith('The narration model operation failed.');
 });

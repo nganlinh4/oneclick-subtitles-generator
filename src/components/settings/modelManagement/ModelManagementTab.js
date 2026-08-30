@@ -11,6 +11,33 @@ import { showErrorToast, showSuccessToast } from '../../../utils/toastUtils';
 import { formatBytes } from '../../../utils/formatUtils';
 import '../../../styles/settings/modelManagement.css';
 
+const packageFailureCopy = (code) => {
+  switch (code) {
+    case 'packageInsufficientSpace':
+      return [
+        'settings.modelManagement.insufficientSpace',
+        'There is not enough disk space to install this narration model. Free some space and try again.',
+      ];
+    case 'packageNetwork':
+      return [
+        'settings.modelManagement.networkFailed',
+        'The narration model could not be downloaded. Check your connection and try again.',
+      ];
+    case 'packageIntegrity':
+    case 'packageDownloadInvalid':
+    case 'packageInstallInvalid':
+      return [
+        'settings.modelManagement.integrityFailed',
+        'The downloaded narration model failed its integrity check. Try installing it again.',
+      ];
+    default:
+      return [
+        'settings.modelManagement.actionFailed',
+        'The narration model operation failed.',
+      ];
+  }
+};
+
 const stateCopy = (t, status) => {
   if (!status) return t('settings.modelManagement.checking', 'Checking package…');
   if (status.state === 'failed') {
@@ -134,11 +161,10 @@ const ModelManagementTab = ({ activeTab }) => {
       'settings.modelManagement.cancelled',
       'The narration model operation was cancelled.'
     ),
-    onFailed: () => settle(
-      'settings.modelManagement.actionFailed',
-      'The narration model operation failed.',
-      'error'
-    ),
+    onFailed: ({ error } = {}) => {
+      const [messageKey, fallback] = packageFailureCopy(error?.code);
+      settle(messageKey, fallback, 'error');
+    },
     onProtocolError: () => settle(
       'settings.modelManagement.actionFailed',
       'The narration model operation failed.',
@@ -151,8 +177,9 @@ const ModelManagementTab = ({ activeTab }) => {
     try {
       await installNarrationModelPackage(operationHandlers('install'));
       await refresh();
-    } catch {
-      showErrorToast(t('settings.modelManagement.actionFailed', 'The narration model operation failed.'));
+    } catch (error) {
+      const [messageKey, fallback] = packageFailureCopy(error?.code);
+      showErrorToast(t(messageKey, fallback));
     } finally {
       if (mountedRef.current) setLaunching(null);
     }
@@ -164,8 +191,9 @@ const ModelManagementTab = ({ activeTab }) => {
     try {
       await removeNarrationModelPackage(operationHandlers('remove'));
       await refresh();
-    } catch {
-      showErrorToast(t('settings.modelManagement.actionFailed', 'The narration model operation failed.'));
+    } catch (error) {
+      const [messageKey, fallback] = packageFailureCopy(error?.code);
+      showErrorToast(t(messageKey, fallback));
     } finally {
       if (mountedRef.current) setLaunching(null);
     }
