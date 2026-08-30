@@ -185,6 +185,7 @@ describe('native narration compatibility adapter', () => {
       subtitles: [{
         id: 42,
         text: 'Hello',
+        outputIndex: 7,
         original_ids: [7, 8],
         start: 1.25,
         end: 2.5,
@@ -197,6 +198,7 @@ describe('native narration compatibility adapter', () => {
       pending: true,
       filename: null,
       audioData: null,
+      outputIndex: 7,
       original_ids: [7, 8],
       start: 1.25,
       end: 2.5,
@@ -217,6 +219,7 @@ describe('native narration compatibility adapter', () => {
       nativeArtifactId: ARTIFACT_ID,
       filename: `osg-speech-artifact:${ARTIFACT_ID}`,
       audioData: null,
+      outputIndex: 7,
       original_ids: [7, 8],
       start: 1.25,
       end: 2.5,
@@ -227,6 +230,28 @@ describe('native narration compatibility adapter', () => {
     const encoded = JSON.stringify(startSpeechJob.mock.calls[0][0]);
     expect(encoded).not.toContain('filepath');
     expect(encoded).not.toContain('apiKey');
+  });
+
+  test('rejects duplicate or out-of-range cue ordinals before starting native speech', async () => {
+    const speech = { startSpeechJob: vi.fn() };
+    const adapter = createNativeNarrationAdapter({ speech });
+    const request = (subtitles) => ({
+      method: 'gtts',
+      projectId: PROJECT_ID,
+      expectedProjectStateVersion: 7,
+      lifecycleEpoch: 7,
+      subtitles,
+      settings: { lang: 'en' },
+    });
+
+    await expect(adapter.generate(request([
+      { id: 1, text: 'One', outputIndex: 2 },
+      { id: 2, text: 'Two', outputIndex: 2 },
+    ]))).rejects.toMatchObject({ code: 'invalidNarrationAdapterRequest' });
+    await expect(adapter.generate(request([
+      { id: 1, text: 'One', outputIndex: 0 },
+    ]))).rejects.toMatchObject({ code: 'invalidNarrationAdapterRequest' });
+    expect(speech.startSpeechJob).not.toHaveBeenCalled();
   });
 
   test('uses only a durable artifact capability for reference-based synthesis', async () => {

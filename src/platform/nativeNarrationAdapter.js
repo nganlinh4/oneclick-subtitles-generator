@@ -205,16 +205,23 @@ const normalizeSubtitles = (subtitles) => {
       throw invalid();
     }
     const timing = normalizeSubtitleTiming(subtitle);
+    const outputIndex = subtitle.outputIndex ?? index + 1;
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 1 || outputIndex > 1_000) {
+      throw invalid();
+    }
     return Object.freeze({
       nativeId: `segment-${index + 1}`,
       subtitleId,
       text,
-      outputIndex: index + 1,
+      outputIndex,
       originalIds: Object.freeze(originalIds.map((id) => normalizeSubtitleId(id, null))),
       start: timing.start,
       end: timing.end,
     });
   });
+  if (new Set(mappings.map(({ outputIndex }) => outputIndex)).size !== mappings.length) {
+    throw invalid();
+  }
   return Object.freeze(mappings);
 };
 

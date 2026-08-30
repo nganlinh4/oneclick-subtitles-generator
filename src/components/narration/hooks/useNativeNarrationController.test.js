@@ -307,6 +307,63 @@ test('routes all five narration engines through the native job contract', async 
   expect(result.current.error).toBe('');
 });
 
+test('regenerating one cue preserves its ordinal and every sibling narration result', async () => {
+  const secondArtifactId = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a5';
+  const thirdArtifactId = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a6';
+  const subtitles = [
+    { id: 1, text: 'one', start: 0, end: 1 },
+    { id: 2, text: 'two', start: 1, end: 2 },
+    { id: 3, text: 'three', start: 2, end: 3 },
+  ];
+  const existing = subtitles.map((subtitle, index) => ({
+    ...originalEditedResult,
+    subtitle_id: subtitle.id,
+    text: subtitle.text,
+    nativeArtifactId: [ARTIFACT_ID, secondArtifactId, thirdArtifactId][index],
+    filename: `osg-speech-artifact:${[ARTIFACT_ID, secondArtifactId, thirdArtifactId][index]}`,
+    original_ids: [subtitle.id],
+    outputIndex: index + 1,
+    start: subtitle.start,
+    end: subtitle.end,
+  }));
+  runNativeNarrationJob.mockImplementation(async (request) => ({
+    status: 'completed',
+    results: [{
+      ...existing[1],
+      outputIndex: request.subtitles[0].outputIndex,
+    }],
+  }));
+  const { result } = renderHook(() => useHarness({
+    subtitles,
+    originalSubtitles: subtitles,
+    initialGenerationResults: existing,
+  }));
+
+  await act(async () => result.current.controller.retryGTTSNarration(2));
+
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({
+      subtitles: [expect.objectContaining({ id: 2, outputIndex: 2 })],
+    }),
+    expect.any(Object),
+  );
+  expect(narrationStoreMocks.saveProjectNarration).toHaveBeenCalledWith(expect.objectContaining({
+    results: [
+      expect.objectContaining({ subtitle_id: 1, outputIndex: 1 }),
+      expect.objectContaining({ subtitle_id: 2, outputIndex: 2 }),
+      expect.objectContaining({ subtitle_id: 3, outputIndex: 3 }),
+    ],
+  }));
+  expect(result.current.generationResults.map(({ subtitle_id, outputIndex }) => ({
+    subtitle_id,
+    outputIndex,
+  }))).toEqual([
+    { subtitle_id: 1, outputIndex: 1 },
+    { subtitle_id: 2, outputIndex: 2 },
+    { subtitle_id: 3, outputIndex: 3 },
+  ]);
+});
+
 test('refuses an unavailable translated source instead of narrating original rows under its label', async () => {
   const { result } = renderHook(() => useHarness({
     subtitleSource: 'translated',

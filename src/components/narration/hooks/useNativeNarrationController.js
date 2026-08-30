@@ -165,11 +165,22 @@ const nativeMethodSettings = async (method, state) => {
   }
 };
 
-const prepareSubtitles = (subtitles) => subtitles.map((subtitle, index) => ({
-  ...subtitle,
-  id: deriveSubtitleId(subtitle, index),
-  original_ids: subtitle.original_ids || [deriveSubtitleId(subtitle, index)],
-}));
+const prepareSubtitles = (subtitles, completePlan = subtitles) => {
+  const completeIds = completePlan.map((subtitle, index) => deriveSubtitleId(subtitle, index));
+  return subtitles.map((subtitle, index) => {
+    const id = deriveSubtitleId(subtitle, index);
+    const completeIndex = completeIds.findIndex((candidate) => idsEqual(candidate, id));
+    if (completeIndex < 0) {
+      throw new TypeError('A narration request is not part of the selected subtitle plan');
+    }
+    return {
+      ...subtitle,
+      id,
+      outputIndex: completeIndex + 1,
+      original_ids: subtitle.original_ids || [id],
+    };
+  });
+};
 
 const pendingResult = (subtitle, index, method) => ({
   subtitle_id: subtitle.id,
@@ -178,7 +189,7 @@ const pendingResult = (subtitle, index, method) => ({
   pending: true,
   audioData: null,
   filename: null,
-  outputIndex: index + 1,
+  outputIndex: subtitle.outputIndex ?? index + 1,
   original_ids: subtitle.original_ids,
   start: subtitle.start,
   end: subtitle.end,
@@ -275,7 +286,10 @@ const useNativeNarrationController = (state) => {
       return false;
     }
     const source = selectedPlan.source;
-    const subtitles = prepareSubtitles(requestedSubtitles || selectedPlan.subtitles);
+    const subtitles = prepareSubtitles(
+      requestedSubtitles || selectedPlan.subtitles,
+      selectedPlan.subtitles,
+    );
     if (subtitles.length === 0) {
       current.setError(current.t('narration.noSubtitlesError', 'No subtitles available for narration'));
       return false;
