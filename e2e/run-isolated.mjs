@@ -27,6 +27,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
   'geminiMultiWindowTranscription.journey.js',
+  'geminiDocumentSuccess.journey.js',
   'geminiTranscriptionSuccess.journey.js',
   'geminiTranslationSuccess.journey.js',
   'longMediaOperationRecovery.journey.js',
