@@ -269,6 +269,13 @@ export const EXPORT_ANIMATION_PARITY_CASES = Object.freeze([
     marginRight: 48,
     maxWidth: 32,
     fontSize: 60,
+    // At the default 12-frame offset this dark, narrow gradient is only one-third through its
+    // ease-in-out fade. The real H.264 round trip preserves the composition but quantizes enough
+    // of that faint high-frequency ink below the mask threshold to make the oracle measure codec
+    // loss instead of placement parity (2.1% Render/export ROI change, 3.7 mean RGB distance in
+    // preserved attempt 20260830150231440-44040-b19471e6). Sample at two-thirds progress, still
+    // inside the animated edge, where the authored motion and wrapping remain fully exercised.
+    sampleOffsetFrames: 6,
   }),
   caseDefinition({
     id: '06-scale-custom-gradient',

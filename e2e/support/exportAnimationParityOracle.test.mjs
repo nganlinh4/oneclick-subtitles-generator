@@ -16,6 +16,18 @@ import { parseVolumeDetect } from './nativeMediaOracle.js';
 
 const cloneCases = () => structuredClone(EXPORT_ANIMATION_PARITY_CASES);
 
+test('the narrow gradient samples both animated edges above the codec-noise opacity region', () => {
+  const definition = EXPORT_ANIMATION_PARITY_CASES.find(
+    ({ id }) => id === '05-slide-right-narrow-gradient',
+  );
+  assert.ok(definition, 'the narrow gradient parity case is missing');
+  assert.equal(definition.sampleOffsetFrames, 6);
+  assert.equal(definition.entryFrame, definition.startFrame - 6);
+  assert.equal(definition.exitFrame, definition.endFrame + 6);
+  assert.equal(definition.animationType, 'slide-right');
+  assert.equal(definition.animationEasing, 'ease-in-out');
+});
+
 const probe = ({ width = 480, height = 360, fps = '30/1', duration = 19 } = {}) => ({
   streams: [
     { codec_type: 'video', width, height, avg_frame_rate: fps },
