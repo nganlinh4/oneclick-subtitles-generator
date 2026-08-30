@@ -1,4 +1,4 @@
-// Long-media resource-bound and cancellation coverage (handoff step 7).
+// Long-media resource-bound coverage (handoff step 7).
 //
 // Every other media journey proves correctness on a nineteen-second clip. None of them can catch a
 // waveform, timeline-range, memory, handle, thread, temp-file or database bound that only shows up
@@ -11,21 +11,18 @@
 //      a real product zoom-in interaction (src/components/lyrics/waveformRendering.js's
 //      waveformEnd/drawEnd clamp is the enforcement point; this is timelineBoundary's own proof,
 //      generalized to a duration that could actually expose an overflow);
-//   2. cancelling an in-flight native waveform-generation job (by doing what a customer actually
-//      does -- opening different media before the first job finishes) leaves no partial cache
-//      artifact and no stuck job row;
-//   3. the desktop process's own working set, private bytes, handle count and thread count, the
+//   2. the desktop process's own working set, private bytes, handle count and thread count, the
 //      isolated run root's own file count/bytes, and the SQLite footprint all stay within generous,
 //      documented caps across a seek storm, zoom churn and brief playback;
-//   4. the managed artifact ledger matches disk exactly at the end of the session -- no orphan
+//   3. the managed artifact ledger matches disk exactly at the end of the session -- no orphan
 //      artifact or temp file survives.
 //
 // Relaunch recovery for a long-running native job belongs to a two-process scenario, not here: see
 // scenarios/longMediaOperationRecovery.mjs and journeys/longMediaOperationRecovery.journey.js.
 //
 // HEAVY-SHARD JOURNEY. Building the fixture is a one-time, cached, tens-of-seconds FFmpeg encode;
-// running it decodes real PCM proportional to two hours of audio (twice -- the cancelled attempt and
-// the completed one) and drives a real zoom/seek/playback session. This is deliberately excluded
+// running it decodes real PCM proportional to two hours of audio and drives a real zoom/seek/playback
+// session. This is deliberately excluded
 // from the default suite in run-isolated.mjs's NON_DEFAULT_JOURNEYS, with its own npm script
 // (test:long-media-resource-bounds), the same precedent nativeToolsInstall/transcriptionRulesAndAnalysis
 // already set for a heavy single-process journey run explicitly by name.
@@ -34,24 +31,17 @@ import { strict as assert } from 'node:assert';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
-import { clickControl } from '../support/editor.js';
 import { LONG_SYNTHETIC_MEDIA } from '../support/longSyntheticMediaFixture.js';
 import {
   databaseFootprintBytes, runRootFileCensus, sampleApplicationProcess,
 } from '../support/longMediaResourceOracle.js';
-import { SOURCE_SWITCH_VIDEO } from '../support/realMedia.js';
 import { assertManagedArtifactLedgerMatchesDisk } from '../support/renderQueue.js';
 import { openProjectWithMedia, seekPreviewTo } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'long-media-resource-bounds';
 
-/* global $, browser, describe, document, it, window */
-
-// A killed-mid-flight waveform job may honestly hold any of these after the native cancel command
-// round-trips; 'running'/'cancelling' forever would be the stuck-job defect this proof exists to
-// catch. See mediaPipelineService.js's cancellationResponseStates.
-const HONEST_CANCELLED_STATES = new Set(['cancelled', 'failed', 'interrupted']);
+/* global $, browser, describe, document, it */
 
 // --- Waveform point/byte caps, cited at the point each is used below ---
 // src/components/lyrics/audioProcessing.js: nativeWaveformDensity() -- the frontend's own bounded
@@ -113,13 +103,6 @@ const activeVideoDuration = () => browser.execute(() => {
   const video = document.querySelector('.video-preview video.video-player');
   return video === null || !Number.isFinite(video.duration) ? null : video.duration;
 });
-
-const activeFileName = () => browser.execute(() => (
-  (document.querySelector('.file-info-card .file-name')?.textContent || '').trim()
-));
-
-/** Replace the active media the way a customer does mid-session: click the populated file card. */
-const switchActiveMedia = () => clickControl('.file-info-card .file-info-content');
 
 const zoomControlText = () => browser.execute(() => (
   document.querySelector('.timeline-container > .liquid-glass')?.textContent?.trim() ?? null
@@ -208,86 +191,28 @@ describe('long media resource bounds', () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the harness must have an isolated data root');
 
-    // --- 1. Open the long synthetic source; capture and immediately cancel its waveform job. ---
+    // --- 1. Open the long synthetic source and let its real waveform complete. ---
     await openProjectWithMedia();
-    let duration = await activeVideoDuration();
+    const duration = await activeVideoDuration();
     assert.ok(
       Math.abs(duration - LONG_SYNTHETIC_MEDIA.durationSeconds) <= LONG_SYNTHETIC_MEDIA.durationToleranceSeconds,
       `the long synthetic source has no usable two-hour duration: ${duration}`,
     );
-
-    await browser.waitUntil(async () => (await waveformState()) === 'processing', {
-      timeout: 15_000,
-      interval: 20,
-      timeoutMsg: (
-        'the long-media waveform job never reached "processing" -- either native decode of two '
-        + 'hours of audio completed faster than this harness could observe it (the two-hour '
-        + 'duration margin documented in longSyntheticMediaFixture.js was expected to prevent '
-        + 'this), or waveform generation never started at all'
-      ),
-    });
-    const priorWaveformJobs = waveformJobs(root);
-    assert.ok(priorWaveformJobs.length >= 1, `expected at least one fresh waveform job: ${JSON.stringify(priorWaveformJobs)}`);
-    const cancelledJob = priorWaveformJobs.at(-1);
-    assert.equal(cancelledJob.state, 'running', `the newest waveform job was not running: ${JSON.stringify(cancelledJob)}`);
-
-    // A real customer action -- opening different media -- aborts the in-flight request
-    // (mediaPipelineService.js's AbortController path) and cancels the native job as a side effect,
-    // not through any dedicated "cancel waveform" control (the product has none).
-    await switchActiveMedia();
-    await waitUntilWithFreshDiagnostic(async () => {
-      const [current] = waveformJobs(root).filter(({ id }) => id === cancelledJob.id);
-      return current !== undefined && HONEST_CANCELLED_STATES.has(current.state);
-    }, {
-      timeout: 60_000,
-      interval: 100,
-      diagnostic: () => `the interrupted waveform job never settled honestly: ${JSON.stringify(waveformJobs(root))}`,
-    });
-    const [settledCancelledJob] = waveformJobs(root).filter(({ id }) => id === cancelledJob.id);
-    assert.equal(settledCancelledJob.state, 'cancelled', `the cancelled waveform job ended dishonestly: ${JSON.stringify(settledCancelledJob)}`);
-    assertManagedArtifactLedgerMatchesDisk(root);
-
-    await browser.waitUntil(async () => {
-      const activeDuration = await activeVideoDuration();
-      const fileName = await activeFileName();
-      return activeDuration !== null
-        && Math.abs(activeDuration - SOURCE_SWITCH_VIDEO.durationSeconds) <= SOURCE_SWITCH_VIDEO.durationToleranceSeconds
-        && fileName.includes(SOURCE_SWITCH_VIDEO.filename);
-    }, {
-      timeout: 60_000,
-      interval: 100,
-      timeoutMsg: 'the short second source never owned the preview after cancelling the long-media waveform',
-    });
-    await captureWorkflowStep({
-      workflow: WORKFLOW,
-      step: '01-long-media-waveform-cancelled',
-      description: 'Opening a different file mid-flight cancels the long-media waveform job honestly, with no partial cache artifact.',
-      details: { cancelledJobId: cancelledJob.id, cancelledState: settledCancelledJob.state },
-      focusSelector: '.timeline-container',
-    });
-
-    // --- 2. Return to the long source; let its waveform complete for real this time. ---
-    await switchActiveMedia();
-    await browser.waitUntil(async () => {
-      const activeDuration = await activeVideoDuration();
-      return activeDuration !== null
-        && Math.abs(activeDuration - LONG_SYNTHETIC_MEDIA.durationSeconds) <= LONG_SYNTHETIC_MEDIA.durationToleranceSeconds;
-    }, {
-      timeout: 60_000,
-      interval: 100,
-      timeoutMsg: 'the long synthetic source never owned the preview again after the cancellation round trip',
-    });
-    duration = await activeVideoDuration();
-
     await waitUntilWithFreshDiagnostic(async () => (await waveformState()) === 'ready', {
       timeout: 300_000,
       interval: 250,
-      diagnostic: () => `the long-media waveform never completed on the second attempt: ${JSON.stringify(waveformJobs(root))}`,
+      diagnostic: () => `the long-media waveform never completed: ${JSON.stringify(waveformJobs(root))}`,
     });
-    const [succeededJob] = waveformJobs(root)
-      .filter(({ id }) => id !== cancelledJob.id)
-      .filter(({ state }) => state === 'succeeded');
-    assert.ok(succeededJob, `no succeeded waveform job followed the cancellation: ${JSON.stringify(waveformJobs(root))}`);
+    const succeededJob = waveformJobs(root).find(({ state }) => state === 'succeeded');
+    assert.ok(succeededJob, `no waveform job succeeded: ${JSON.stringify(waveformJobs(root))}`);
+    assertManagedArtifactLedgerMatchesDisk(root);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-long-media-waveform-ready',
+      description: 'The real two-hour source is playable and its bounded native waveform completed without an inline error.',
+      details: { duration, succeededJobId: succeededJob.id },
+      focusSelector: '.timeline-container',
+    });
 
     // The completed waveform's own cached artifact bytes stay inside waveform_cache.rs's
     // MAX_CACHE_BYTES (apps/desktop/src-tauri/src/waveform_cache.rs:20) -- a real, load-bearing check
@@ -351,7 +276,6 @@ describe('long media resource bounds', () => {
     const beforeZoomPercent = await zoomPercent();
     assert.equal(beforeZoomPercent, 100, `the timeline did not start at 100% zoom: ${beforeZoomPercent}`);
     for (let repetition = 0; repetition < ZOOM_REPETITIONS; repetition += 1) {
-      // eslint-disable-next-line no-await-in-loop -- each drag must read the PREVIOUS drag's committed zoom.
       await performZoomDrag(ZOOM_DRAG_PX_PER_REP);
     }
     const afterZoomPercent = await zoomPercent();

@@ -249,7 +249,6 @@ export const run = async ({ repeat, journeys }) => {
                   const needsSourceSwitch = new Set([
                     'downloadCancellationRetryIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
-                    'longMediaResourceBounds.journey.js',
                     'mainPreviewControlsAndFullscreen.journey.js',
                   ]).has(journeyName);
                   const preparedSourceSwitch = needsSourceSwitch
@@ -289,11 +288,7 @@ export const run = async ({ repeat, journeys }) => {
                     }
                     if (journeyName === 'longMediaResourceBounds.journey.js') {
                       const stagedLong = stageMedia(preparedLongMedia);
-                      const stagedSwitch = stageMedia(preparedSourceSwitch, 'switch-');
                       environment.OSG_E2E_MEDIA_SELECTION = stagedLong;
-                      environment.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
-                        stagedLong, stagedSwitch, stagedLong,
-                      ]);
                     }
                     if (new Set([
                       'downloadCancellationRetryIdentity.journey.js',

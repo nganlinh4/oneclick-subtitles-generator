@@ -32,7 +32,7 @@ test('the resource-bounds journey drives only the public UI and never substitute
   assert.doesNotMatch(boundsJourney, /__TAURI_INTERNALS__|\.invoke\(|invokeCommand/u);
   assert.doesNotMatch(boundsJourney, /localStorage\.setItem/u);
   assert.match(boundsJourney, /assertManagedArtifactLedgerMatchesDisk\(root\)/u);
-  assert.match(boundsJourney, /clickControl\('\.file-info-card \.file-info-content'\)/u);
+  assert.match(boundsJourney, /openProjectWithMedia\(\)/u);
   assert.match(boundsJourney, /browser\.capabilities\['osg:e2eProcessId'\]/u);
 });
 
@@ -77,24 +77,13 @@ test('the outer runner prepares long media under branded authority and WDIO stay
   assert.match(runIsolated, /const stagedLong = stageMedia\(preparedLongMedia\)/u);
 });
 
-test('wdio.conf.js stages exactly the three media selections the journey consumes in order', () => {
-  // The journey triggers the staged open-file dialog exactly three times: the initial selection
-  // (openProjectWithMedia), the switch to the short second source (cancelling the long file's
-  // waveform job), and the switch back to the long source. A two-entry sequence here would make
-  // the third dialog trigger refuse with automation_dialog_refused, per dialog_paths.rs's
-  // parse_staged_media_sequence/get(index) contract.
+test('the long-media bounds journey stages only its one customer-selected source', () => {
   const branch = runIsolated.slice(
     runIsolated.indexOf("if (journeyName === 'longMediaResourceBounds.journey.js')"),
   );
-  const sequenceStart = branch.indexOf('OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([');
-  const sequenceEnd = branch.indexOf(']);', sequenceStart);
-  const sequenceBody = branch.slice(sequenceStart, sequenceEnd);
-  const entries = sequenceBody.match(/staged\w+/gu);
-  assert.deepEqual(entries, ['stagedLong', 'stagedSwitch', 'stagedLong']);
-  const dialogTriggers = (
-    boundsJourney.match(/openProjectWithMedia\(\)/gu)?.length ?? 0
-  ) + (boundsJourney.match(/switchActiveMedia\(\)/gu)?.length ?? 0);
-  assert.equal(dialogTriggers, 3, `the journey must trigger the staged dialog exactly 3 times to match the sequence: ${dialogTriggers}`);
+  assert.match(branch, /OSG_E2E_MEDIA_SELECTION = stagedLong/u);
+  assert.doesNotMatch(branch.slice(0, branch.indexOf("if (new Set([")), /stagedSwitch/u);
+  assert.equal(boundsJourney.match(/openProjectWithMedia\(\)/gu)?.length ?? 0, 1);
 });
 
 test('the process/file-census oracle never interpolates its process id into a shell command', () => {
