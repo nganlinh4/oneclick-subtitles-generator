@@ -44,6 +44,14 @@ const LONG_MEDIA_RECOVERY_WORKFLOW: &str = "long-media-operation-recovery";
 #[cfg(feature = "e2e-automation")]
 const LONG_MEDIA_RECOVERY_SEED_PHASE: &str = "seed";
 
+#[cfg(feature = "e2e-automation")]
+fn should_hold_waveform_for_recovery(operation: &ValidatedOperation) -> bool {
+    matches!(operation, ValidatedOperation::GenerateWaveform { .. })
+        && std::env::var("OSG_E2E_WORKFLOW").as_deref() == Ok(LONG_MEDIA_RECOVERY_WORKFLOW)
+        && std::env::var("OSG_E2E_PERSISTENCE_PHASE").as_deref()
+            == Ok(LONG_MEDIA_RECOVERY_SEED_PHASE)
+}
+
 #[derive(Clone)]
 pub(crate) struct MediaPipelineRuntime {
     pipeline: Arc<RwLock<Option<MediaPipeline>>>,
@@ -780,13 +788,7 @@ pub(crate) async fn media_pipeline_start(
         let publication_metadata = request.operation.publication_metadata(source_asset_id);
         let requested_operation = request.operation;
         #[cfg(feature = "e2e-automation")]
-        if matches!(
-            requested_operation,
-            ValidatedOperation::GenerateWaveform { .. }
-        ) && std::env::var("OSG_E2E_WORKFLOW").as_deref() == Ok(LONG_MEDIA_RECOVERY_WORKFLOW)
-            && std::env::var("OSG_E2E_PERSISTENCE_PHASE").as_deref()
-                == Ok(LONG_MEDIA_RECOVERY_SEED_PHASE)
-        {
+        if should_hold_waveform_for_recovery(&requested_operation) {
             // This channel-only hold starts after the durable job is registered as running. Real
             // two-hour waveform generation is faster than WebDriver screenshot capture on modern
             // machines, so duration alone cannot make a process-death test deterministic. The
