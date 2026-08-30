@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "cd9f742e36d91209d746b3e0aad5cc68cdd31c65",
+  "baselineRevision": "693e71aad4a06a0221fceaf71b7b0986f74beb48",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -1112,7 +1112,7 @@
       ]
     },
     "src/i18n/locales/en/output.json": {
-      "hash": "c3501b3fd1ad08b84d36b8647f1e7dfe9b6c2c5e7272a68cbf6ffc94caf8e443",
+      "hash": "a216e0b260c61eb30ed47c09f5a30ba33e8ffa57a31e7c640b6c96b842409c2c",
       "keys": [
         "analyzingVideo",
         "audioFpsDisabled",
@@ -1194,6 +1194,7 @@
         "semiAutoTooltip",
         "serverSplitting",
         "someSegmentsFailed",
+        "srtFirstPersistFailed",
         "srtOnlyMode",
         "srtOnlyModeHint",
         "srtOnlyModeInfo",
@@ -1496,7 +1497,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "d9a3e9f5bdb71cccb31291b2519ad8eaeea6be1168c0ee54e58104a1147b0293",
+      "hash": "2f3c7d938e7f0072aa0adc00c8f78f5cacd325cc08fc21195421770662226520",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1665,8 +1666,11 @@
         "modelManagement.installed",
         "modelManagement.installedSuccess",
         "modelManagement.installing",
+        "modelManagement.insufficientSpace",
+        "modelManagement.integrityFailed",
         "modelManagement.keep",
         "modelManagement.languages",
+        "modelManagement.networkFailed",
         "modelManagement.notInstalled",
         "modelManagement.operationProgress",
         "modelManagement.refresh",
@@ -1940,7 +1944,7 @@
       ]
     },
     "src/i18n/locales/en/subtitlesInput.json": {
-      "hash": "88c4394f1417fa6619b5afe30a315943d89c44d6683d2c675ffbc32fbc0e541a",
+      "hash": "6379eafddb442b8418d60a739ce287631aec6b6c9616aca8fa91d3b18162cfa2",
       "keys": [
         "addSubtitles",
         "artist",
@@ -1950,6 +1954,7 @@
         "cancel",
         "cleaning",
         "clearSubtitles",
+        "editFailed",
         "editSubtitles",
         "example",
         "exampleTitle",
@@ -2027,7 +2032,7 @@
       ]
     },
     "src/i18n/locales/en/translation.json": {
-      "hash": "671551e498a6fccc5914d9270aeb7592adce0d501f36fe85e71892a88b088be1",
+      "hash": "5164b5cd9168c461dace4ac146c8e0392d06e608537607b57d96e42471755851",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -2046,6 +2051,11 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.rejectedDuplicate",
+        "bulk.rejectedInvalidType",
+        "bulk.rejectedMore",
+        "bulk.rejectedParseError",
+        "bulk.rejectedSummary",
         "bulk.removeAll",
         "bulk.removeFile",
         "bulk.subtitleCount",
@@ -2256,7 +2266,7 @@
       ]
     },
     "src/i18n/locales/en/videoRendering.json": {
-      "hash": "6e06204a344638832666445876d4aa426defe54a1c477aac33a561a56a99ca0a",
+      "hash": "e5f7175d4e9384ba4537dfc133c0e3914ed1e2e96bf3257d28a711a8e92eaa4e",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -2299,6 +2309,7 @@
         "containerLabel",
         "convertingVideo",
         "createdAtLabel",
+        "cropApplyFailed",
         "custom",
         "customPositionX",
         "customPositionY",
@@ -3500,7 +3511,7 @@
       ]
     },
     "src/i18n/locales/ko/output.json": {
-      "hash": "ac864464026628ad2dc1ea4f1817cf896ac68aa24f4ace22b5f24e8f578e23bd",
+      "hash": "8a0214ce7882267d8425b2eaab2cb429156f3c831105f6c883ff8587ffa98ea0",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -3591,6 +3602,7 @@
         "semiAutoTooltip",
         "serverSplitting",
         "someSegmentsFailed",
+        "srtFirstPersistFailed",
         "srtOnlyMode",
         "srtOnlyModeHint",
         "srtOnlyModeInfo",
@@ -3924,7 +3936,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "134912b6359ec5fff173b6bb8139fc6c5a36dbd565699b66ba428cece288798b",
+      "hash": "52cf3e324d5d7ff6053acb07747fdc85d70992c9a927cd3c261e4d66a74e745e",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4117,8 +4129,11 @@
         "modelManagement.installed",
         "modelManagement.installedSuccess",
         "modelManagement.installing",
+        "modelManagement.insufficientSpace",
+        "modelManagement.integrityFailed",
         "modelManagement.keep",
         "modelManagement.languages",
+        "modelManagement.networkFailed",
         "modelManagement.notInstalled",
         "modelManagement.operationProgress",
         "modelManagement.refresh",
@@ -4423,7 +4438,7 @@
       ]
     },
     "src/i18n/locales/ko/subtitlesInput.json": {
-      "hash": "869089c0bc2541f95ffa7d85b22463f6cdaefc800fd349901410e5d40b619903",
+      "hash": "a3389fc0668f0da6dfc57efa4723c84544af916db655fb6aadcbb40147100d31",
       "keys": [
         "addSubtitles",
         "artist",
@@ -4433,6 +4448,7 @@
         "cancel",
         "cleaning",
         "clearSubtitles",
+        "editFailed",
         "editSubtitles",
         "example",
         "exampleTitle",
@@ -4520,7 +4536,7 @@
       ]
     },
     "src/i18n/locales/ko/translation.json": {
-      "hash": "d8049c5c8b66688934b8e064356010e37716bf4e471d72351a80df78615c6de5",
+      "hash": "2146b4361418d94ab9e0f703796fd33b3e0e6b889d03e78861dc72408f63e6d5",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -4540,6 +4556,11 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.rejectedDuplicate",
+        "bulk.rejectedInvalidType",
+        "bulk.rejectedMore",
+        "bulk.rejectedParseError",
+        "bulk.rejectedSummary",
         "bulk.removeAll",
         "bulk.removeFile",
         "bulk.subtitleCount",
@@ -4763,7 +4784,7 @@
       ]
     },
     "src/i18n/locales/ko/videoRendering.json": {
-      "hash": "b8852ba89a819437caedd1add5e45c822254b000154761b2ac21bcf125c4a7aa",
+      "hash": "77a07af2d5a89540309a12963c5cff8d46ff48798b989d7352ff40cc56e10956",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -4811,6 +4832,7 @@
         "containerLabel",
         "convertingVideo",
         "createdAtLabel",
+        "cropApplyFailed",
         "custom",
         "customPositionX",
         "customPositionY",
@@ -6099,7 +6121,7 @@
       ]
     },
     "src/i18n/locales/vi/output.json": {
-      "hash": "7a812d73e91ff8b80dbebb261f89a8a15234a375c2d8f893928d17c38bfa3bf5",
+      "hash": "6148af84ddded0999b9a56c210aa5e645a81f8648a00993fa81949530fe7d0a2",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -6190,6 +6212,7 @@
         "semiAutoTooltip",
         "serverSplitting",
         "someSegmentsFailed",
+        "srtFirstPersistFailed",
         "srtOnlyMode",
         "srtOnlyModeHint",
         "srtOnlyModeInfo",
@@ -6523,7 +6546,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "e1ad1132c3e10928e093a72c4a45917aa12ff9673e3cac271a096b6be60add5a",
+      "hash": "42a4e6ddaac200be34a84edbc005a82e9cbdda4ab195c69b02832255bf7d1289",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6716,8 +6739,11 @@
         "modelManagement.installed",
         "modelManagement.installedSuccess",
         "modelManagement.installing",
+        "modelManagement.insufficientSpace",
+        "modelManagement.integrityFailed",
         "modelManagement.keep",
         "modelManagement.languages",
+        "modelManagement.networkFailed",
         "modelManagement.notInstalled",
         "modelManagement.operationProgress",
         "modelManagement.refresh",
@@ -7027,7 +7053,7 @@
       ]
     },
     "src/i18n/locales/vi/subtitlesInput.json": {
-      "hash": "3752a872439bd3246fbcefe0a14feda7f85e0e381678ad410b4bc5070df17d13",
+      "hash": "a7aa216213c8bd0669bfd5796e43749b299abfe06182e815ba7e67930a7b828d",
       "keys": [
         "addSubtitles",
         "artist",
@@ -7037,6 +7063,7 @@
         "cancel",
         "cleaning",
         "clearSubtitles",
+        "editFailed",
         "editSubtitles",
         "example",
         "exampleTitle",
@@ -7124,7 +7151,7 @@
       ]
     },
     "src/i18n/locales/vi/translation.json": {
-      "hash": "54ec5cb12f1fffe1bd31fcc964cd49b5717fbc8c480ec0c141f5594153201873",
+      "hash": "7f28d7d313cc942bb09bebac797144b9e70bb3170ed599f2d9a7f4f7dc1035ef",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -7144,6 +7171,11 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.rejectedDuplicate",
+        "bulk.rejectedInvalidType",
+        "bulk.rejectedMore",
+        "bulk.rejectedParseError",
+        "bulk.rejectedSummary",
         "bulk.removeAll",
         "bulk.removeFile",
         "bulk.subtitleCount",
@@ -7367,7 +7399,7 @@
       ]
     },
     "src/i18n/locales/vi/videoRendering.json": {
-      "hash": "eb0d05f9c89f910f367a6e828134712f91da66a528bce05c73068fcab0d92062",
+      "hash": "91376233650dc4cb89e4fb4e61c59347db986c034abc04fcd9ebd1ec5038f599",
       "keys": [
         "addToQueue",
         "addVideosToQueue",
@@ -7415,6 +7447,7 @@
         "containerLabel",
         "convertingVideo",
         "createdAtLabel",
+        "cropApplyFailed",
         "custom",
         "customPositionX",
         "customPositionY",
@@ -8122,10 +8155,10 @@
       ]
     },
     "src/components/lyrics/TimelineRangeActionBar.js": {
-      "hash": "ffe16dbeb8e34835b999521b4d78209b0e066f9b3670d7063a625af22bae2640",
+      "hash": "51f7d7f480c5c6f56d0ecb4678f925cc9ba38af4bc122c6c65bdb8b27e852d6c",
       "rootCount": 1,
       "roots": [
-        "0a0134d3fd1158ceda65b1f97405f5b5ef8ce334c38693ce474b2961cd852319"
+        "68a07f1266581883a0358c6d2516ca30fe671ec39786b58c2b1f1aef935349de"
       ]
     },
     "src/components/lyrics/TimelineVisualization.js": {
@@ -8325,10 +8358,10 @@
       ]
     },
     "src/components/narration/components/ResultRow.js": {
-      "hash": "dd25a420af0d259aa4240ba68b8e6f3b86538f7a676700e0d4dab934a75bfd79",
+      "hash": "c4f16a40010394028e5dbfd2530d409e4c8ededa9b60fca6c85d564f9b1a2a0c",
       "rootCount": 1,
       "roots": [
-        "bb253a12a361c968db380d4e3476f7d8dbde095661a02264e2ddad7cb80e34fa"
+        "92243a35ca7ef1b6b1b6ca8d039609199c2235cb98d67ac9c8d5b76a63b5e905"
       ]
     },
     "src/components/narration/components/SubtitleGroupingModal.js": {
