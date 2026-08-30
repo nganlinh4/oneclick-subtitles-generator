@@ -9,7 +9,6 @@ export const JOURNEY_MEDIA_REQUIREMENT = Object.freeze({
 // Explicit because `openProjectWithMedia()` describes the customer action, not the fixture source:
 // long-media and four-window ASR use that same action with deliberately different staged inputs.
 const GENERIC_REAL_MEDIA = new Set([
-  'aboutAndUpdaterLifecycle.journey.js',
   'bulkTranslationFileIO.journey.js',
   'cacheClearSafety.journey.js',
   'canvasPlaybackPerformance.journey.js',
@@ -56,6 +55,7 @@ const CUSTOM_STAGED_MEDIA = new Set([
 ]);
 
 const NO_STAGED_MEDIA = new Set([
+  'aboutAndUpdaterLifecycle.journey.js',
   'alternateLocalAsrMatrix.journey.js',
   'damagedFontPayload.journey.js',
   'defaultFont.journey.js',
