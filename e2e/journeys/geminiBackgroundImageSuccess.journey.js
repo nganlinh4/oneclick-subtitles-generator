@@ -113,6 +113,8 @@ describe('a customer generates and restores a project-owned Gemini background im
         failedTiles: [...document.querySelectorAll('.image-grid .preview-placeholder')]
           .filter((node) => /fail|error/i.test(node.textContent || ''))
           .map((node) => (node.innerText || node.textContent || '').replace(/\s+/gu, ' ').trim()),
+        errorCodes: [...document.querySelectorAll('.image-grid-item[data-osg-image-error]')]
+          .map((node) => node.getAttribute('data-osg-image-error')),
         loading: document.querySelector('.image-header-actions .generate-button:not(.new-prompt-button)')
           ?.classList.contains('loading') ?? null,
       }));

@@ -216,7 +216,11 @@ const ImageGenerationSection = ({
           <>
             <div className={`image-grid image-grid-${Math.min(generatedImages.length, 4)}`}>
               {generatedImages.map((image, index) => (
-                <div className="image-grid-item" key={index}>
+                <div
+                  className="image-grid-item"
+                  key={index}
+                  data-osg-image-error={image.errorCode || undefined}
+                >
                   <div className={`image-preview ${image.isLoading ? 'loading' : ''}`}>
                     {image.url ? (
                       <>

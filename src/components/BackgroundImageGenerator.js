@@ -4,7 +4,7 @@ import '../styles/BackgroundImageGenerator.css';
 import BackgroundPromptEditorButton from './background/BackgroundPromptEditorButton';
 import CustomScrollbarTextarea from './common/CustomScrollbarTextarea';
 import { useCurrentTheme } from './background/themeHook';
-import { getFriendlyErrorMessage } from './background/errorMessages';
+import { boundedBackgroundErrorCode, getFriendlyErrorMessage } from './background/errorMessages';
 import PromptAndAlbumArtSection from './background/PromptAndAlbumArtSection';
 import ImageGenerationSection from './background/ImageGenerationSection';
 
@@ -233,7 +233,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         : Object.freeze({ text: result.text, delivery: result.delivery });
       return result.text;
     } catch (err) {
-      window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
+      window.addToast(getFriendlyErrorMessage(t, err), 'error', 5000);
       console.error('Error generating prompt:', err);
       return null;
     } finally {
@@ -335,14 +335,15 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             break;
           }
           // Show error toast notification
-          window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
+          window.addToast(getFriendlyErrorMessage(t, err), 'error', 5000);
           // Mark this image as failed
           newImages[i] = {
             url: null,
             timestamp: new Date().getTime(),
             prompt: currentPrompt,
             isLoading: false,
-            error: true // Just mark as error, don't store the message
+            error: true,
+            errorCode: boundedBackgroundErrorCode(err),
           };
           setGeneratedImages([...newImages]);
           setPendingImageCount(prev => prev - 1);
@@ -355,7 +356,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       if (controller.signal.aborted || generationRunRef.current !== run || err?.name === 'AbortError') {
         return null;
       }
-      window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
+      window.addToast(getFriendlyErrorMessage(t, err), 'error', 5000);
       console.error('Error in image generation process:', err);
       return null;
     } finally {
@@ -599,14 +600,15 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             break;
           }
           // Show error toast notification
-          window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
+          window.addToast(getFriendlyErrorMessage(t, err), 'error', 5000);
           // Mark this image as failed
           newImages[i] = {
             url: null,
             timestamp: new Date().getTime(),
             prompt: newImages[i].prompt || 'Failed to generate prompt',
             isLoading: false,
-            error: true // Just mark as error, don't store the message
+            error: true,
+            errorCode: boundedBackgroundErrorCode(err),
           };
           setGeneratedImages([...newImages]);
           setPendingImageCount(prev => prev - 1);
@@ -617,7 +619,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       if (controller.signal.aborted || generationRunRef.current !== run || err?.name === 'AbortError') {
         return;
       }
-      window.addToast(getFriendlyErrorMessage(t, err?.message || String(err)), 'error', 5000);
+      window.addToast(getFriendlyErrorMessage(t, err), 'error', 5000);
       console.error('Error in multi-prompt generation process:', err);
     } finally {
       if (generationRunRef.current === run) {
