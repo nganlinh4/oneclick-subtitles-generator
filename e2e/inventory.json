@@ -1465,11 +1465,11 @@
       "note": "Fixed at the customer boundary: ModelManagementTab maps packageInsufficientSpace, packageNetwork and package integrity failures to distinct actionable copy in en/vi/ko while preserving the backend's correct refusal. Focused UI tests exercise all three typed failures and the i18n gate is green."
     },
     {
-      "finding": "STILL OPEN: the multi-cue range move that never persisted on candidate 20 has no confirmed explanation. Its leading suspect was eliminated.",
+      "finding": "A multi-cue range move could fail to persist in a desktop WebView that delivered mouse events without usable pointer events.",
       "foundBy": "candidate-20 timelineAdvancedEditing failure",
-      "status": "open",
+      "status": "fixed",
       "severity": "high",
-      "note": "The durable rows proved the two range cues never moved, and a customer hitting this would see the edit on screen and lose it, so this stays open at high severity until it is actually explained. What has been ruled out: the u32 console errors that accompanied it (harness-only, no app invoke involved, see the corrected entry beside this one), the glyph atlas, and SubtitleTrack::ordinal. The interleaved ProjectSubtitleGroupingError lines are also NOT the cause -- they are a correctly detected staleness race, where the grouping store re-fingerprints durable rows after its own round trips while a drag is still mutating them. That race is worth its own look though, because it means every drag issues extra durable reads concurrent with its own writes. A separate, genuinely useful fix did land from this investigation: durable project commands are now bounded at 20s so an unanswered native reply can no longer stall the operation tail forever and silently swallow later edits. That is defence in depth against a real unbounded wait, and it makes the existing save-failed toast reachable -- but it is NOT a proven fix for this failure, and it must not be recorded as one. The next step is to reproduce the range move against the current binary with the bound in place and see whether it times out (transport) or persists nothing while reporting success (logic)."
+      "note": "Fixed in 9fc888d4: the range handle now supports a mouse-only desktop WebView while de-duplicating compatibility mouse events after pointerdown, and preview/commit preserve stable chronological cue order. The exact timelineAdvancedEditing real-binary journey passed at attempt 20260830084011185-28408-e9b15e88, including durable SQLite checks through mixed move/undo/redo operations."
     },
     {
       "finding": "CORRECTED: the \"invalid type: null, expected u32\" console errors are a HARNESS-ONLY channel collision in the vendored WebDriver plugin, and they never touched a customer or caused the dropped timeline write. The earlier entry claiming they silently swallowed the edit was wrong.",
