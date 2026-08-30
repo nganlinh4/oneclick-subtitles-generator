@@ -105,10 +105,27 @@ describe('a customer generates and restores a project-owned Gemini background im
     const before = durableState(root);
     await clickControl('.image-header-actions .generate-button:not(.new-prompt-button)');
     let image = null;
+    let terminalFailure = null;
     await browser.waitUntil(async () => {
       image = await visibleGeneratedImage();
+      const toasts = await browser.execute(collectTopDocumentToasts);
+      const failure = await browser.execute(() => ({
+        failedTiles: [...document.querySelectorAll('.image-grid .preview-placeholder')]
+          .filter((node) => /fail|error/i.test(node.textContent || ''))
+          .map((node) => (node.innerText || node.textContent || '').replace(/\s+/gu, ' ').trim()),
+        loading: document.querySelector('.image-header-actions .generate-button:not(.new-prompt-button)')
+          ?.classList.contains('loading') ?? null,
+      }));
+      if ((toasts.errorMessages.length > 0 || failure.failedTiles.length > 0)
+          && failure.loading === false) {
+        terminalFailure = { ...failure, errorMessages: toasts.errorMessages };
+        return true;
+      }
       return image?.complete === true && image.width > 0 && image.height > 0;
     }, { timeout: 15 * 60 * 1_000, interval: 1_000, timeoutMsg: 'Gemini returned no visible generated image' });
+    if (terminalFailure !== null) {
+      throw new Error(`background image generation refused before publishing pixels: ${JSON.stringify(terminalFailure)}`);
+    }
 
     const toasts = await browser.execute(collectTopDocumentToasts);
     assert.deepEqual(toasts.errorToasts, [], 'image generation completed with an error toast');
