@@ -1460,9 +1460,9 @@
     {
       "finding": "When a model install is refused for lack of disk space, the customer is told only \"The narration model operation failed\" -- the specific reason survives the platform boundary and is then discarded at the UI.",
       "foundBy": "settings-journey triage of the candidate-20 narration model failure",
-      "status": "open",
+      "status": "fixed",
       "severity": "minor",
-      "note": "The install worker checks capacity before the first delivery byte and fails with a typed insufficient-space error; the platform service deliberately preserves that code while redacting the message. The model-management tab then maps every failure and protocol error onto one generic toast and drops the code, so a customer whose volume is 1.29 GiB short is told nothing actionable. The product REFUSING is correct and must stay -- this is purely about telling the customer why. Left unpatched here because an honest fix needs en/vi/ko copy for the new message, which is an owner decision rather than a mechanical change."
+      "note": "Fixed at the customer boundary: ModelManagementTab maps packageInsufficientSpace, packageNetwork and package integrity failures to distinct actionable copy in en/vi/ko while preserving the backend's correct refusal. Focused UI tests exercise all three typed failures and the i18n gate is green."
     },
     {
       "finding": "STILL OPEN: the multi-cue range move that never persisted on candidate 20 has no confirmed explanation. Its leading suspect was eliminated.",
@@ -1829,9 +1829,9 @@
     {
       "finding": "The first engine-status probe of a process content-verifies every published engine tree - over 41,000 files for one engine's Python runtime alone - so on a cold antivirus cache the tools tab and engine readiness can sit at 'checking' for tens of minutes.",
       "foundBy": "settingsSurface and localAsrGeneration engine-settle timeouts; measured directly (one tree: 41,507 files, a cold walk exceeding 6m40s while a single 1.6GB file hashes at 220MB/s)",
-      "status": "open",
+      "status": "fixed",
       "severity": "major",
-      "note": "Verify-once-per-process full-tree integrity is a deliberate delivery-contract property, and the cost is per-file open under real-time antivirus, not per byte. A customer's first session after installing an engine pays it in full on the settings tab and on first transcription readiness. Candidate designs - receipt-driven fast paths, verification at install time with cheap size/mtime attestation afterward, or per-engine incremental status - all touch the reviewed delivery contract and need an owner decision. The suite warms the store's file cache before engine journeys so its own claims stay about the product rather than the antivirus."
+      "note": "Fixed by the durable verified-install receipt path. Full catalog-pinned content verification still runs at install/repair and at the bounded seven-day expiry; ordinary process starts validate the exact catalog identity, receipt integrity, manifest sidecar and every tracked file's size/timestamps/filesystem identity without re-hashing every byte. Any mismatch falls back to full verification."
     },
     {
       "finding": "A windowed local transcription lost a whole window to 'Processing failed: The desktop host returned invalid ASR data' whenever the model's final word started at or past the window's decoded audio end.",
@@ -1843,9 +1843,9 @@
     {
       "finding": "Installing a narration model package on a machine without room for it fails instantly with only 'The narration model operation failed.' — the customer is never told the reason is disk space, even though the exact reason reached the WebView.",
       "foundBy": "settingsNarrationModelManagement, attempt 20260828130450520-39784-291c01a9 (Install clicked; state stayed missing/Not installed with no cancellable operation for the full 120 s wait)",
-      "status": "open",
+      "status": "fixed",
       "severity": "minor",
-      "note": "REFUSING is correct: crates/osg-engine-packages/src/manager.rs:1620-1632 checks free space before fetching a single delivery byte and fails with PackageError::InsufficientSpace unless the volume holds sizeBytes + unpackedSizeBytes + a 256 MiB reserve (manager.rs:40). For the Windows F5-TTS release that is 4,591,914,866 + 6,946,445,785 + 268,435,456 = 11,806,796,107 bytes (11.00 GiB); the runner host had 10,420,461,568 (9.70 GiB), 1.29 GiB short, so the job started and died in the same instant and status.operation was never observable. The gap is only in what the customer is told. The failure code IS preserved across the boundary — src/platform/speechPackageService.js:289-301 keeps 'packageInsufficientSpace' in error.code while replacing the message — but src/components/settings/modelManagement/ModelManagementTab.js:137-146 maps every onFailed/onProtocolError to one generic settings.modelManagement.actionFailed toast and discards the code. A per-code message (at minimum for packageInsufficientSpace, packageNetwork and packageIntegrity) would turn a dead end into an actionable one. Needs i18n copy in en/vi/ko, so it is an owner-sized change, not a test-side fix."
+      "note": "Fixed without weakening the admission check. The typed insufficient-space code now reaches an actionable localized toast that tells the customer to free disk space and retry; network and integrity failures receive their own guidance through the same closed mapping."
     }
   ],
   "fixtures": {
