@@ -9,14 +9,15 @@
  */
 
 export class TranslationResponseError extends Error {
-  constructor(message = 'The translation provider returned an invalid identity envelope') {
-    super(message);
+  constructor(reason = 'unknown') {
+    super(`The translation provider returned an invalid identity envelope (${reason})`);
     this.name = 'TranslationResponseError';
     this.code = 'invalidTranslationResponse';
+    this.reason = reason;
   }
 }
 
-const invalidResponse = () => new TranslationResponseError();
+const invalidResponse = (reason) => new TranslationResponseError(reason);
 
 const isPlainRecord = (value) => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -36,12 +37,12 @@ const extractJson = (responseData) => {
   const part = responseData?.candidates?.[0]?.content?.parts?.[0];
   if (isPlainRecord(part?.structuredJson)) return part.structuredJson;
   if (typeof part?.text !== 'string' || part.text.trim().length === 0) {
-    throw invalidResponse();
+    throw invalidResponse('missing-json-text');
   }
   try {
     return JSON.parse(part.text);
   } catch {
-    throw invalidResponse();
+    throw invalidResponse('malformed-json-text');
   }
 };
 
@@ -66,7 +67,7 @@ export const processTranslationResponse = (responseData, { languageIds, sourceRo
       || envelope.schemaVersion !== 1
       || !Array.isArray(envelope.translations)
       || envelope.translations.length !== languageIds.length) {
-    throw invalidResponse();
+    throw invalidResponse('envelope-shape');
   }
 
   const seenLanguages = new Set();
@@ -77,7 +78,7 @@ export const processTranslationResponse = (responseData, { languageIds, sourceRo
         || seenLanguages.has(language.languageId)
         || !Array.isArray(language.rows)
         || language.rows.length !== sourceRows.length) {
-      throw invalidResponse();
+      throw invalidResponse(`language-shape-${languageIndex}`);
     }
     seenLanguages.add(language.languageId);
 
@@ -90,7 +91,16 @@ export const processTranslationResponse = (responseData, { languageIds, sourceRo
           || row.original !== expected.text
           || typeof row.translated !== 'string'
           || row.translated.trim().length === 0) {
-        throw invalidResponse();
+        const reason = !hasExactKeys(row, ['sourceId', 'original', 'translated'])
+          ? 'row-shape'
+          : row.sourceId !== expected.sourceId
+            ? 'source-id'
+            : seenSources.has(row.sourceId)
+              ? 'duplicate-source-id'
+              : row.original !== expected.text
+                ? 'original-text'
+                : 'blank-translation';
+        throw invalidResponse(`${reason}-${languageIndex}-${sourceIndex}`);
       }
       seenSources.add(row.sourceId);
       return Object.freeze({
