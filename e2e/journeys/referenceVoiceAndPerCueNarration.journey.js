@@ -244,6 +244,17 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     await openProjectWithMedia();
     await importSubtitleDocumentSettled(threeCueFixture(), 'reference-voice-and-per-cue-narration.srt', CUE_TEXTS[0]);
     await waitForDurableCues(root, CUE_TEXTS.length);
+    // A clean profile intentionally mounts only the service-unavailable summary until at least one
+    // narration provider is ready. Install the small provider through the public Tools flow before
+    // inspecting the full method surface or trying per-cue generation.
+    await ensureEngineReady(ENGINE, {
+      onReady: async (state) => captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '01-engine-ready',
+        description: 'The reviewed gTTS package is visibly installed, running, and ready.',
+        details: { ...state, proofClass: 'network-dependent gTTS provider smoke' },
+      }),
+    });
 
     // --- Part 1: reference-voice cloning is present but honestly unreachable. -------------------
     // Only a fresh profile without the F5-TTS/Chatterbox managed packages can prove this boundary;
@@ -284,7 +295,7 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     );
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '01-reference-voice-boundary',
+      step: '02-reference-voice-boundary',
       description: 'F5-TTS and Chatterbox reference-voice controls are present but truthfully unreachable '
         + 'without their multi-gigabyte engine packages.',
       details: { boundary },
@@ -294,14 +305,6 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     // --- Part 2: durable per-cue narration with the reviewed gTTS provider smoke. ----------------
     await clickControl('label[for="method-gtts"]');
     const generateSelector = '[data-osg-action="generate-narration"][data-narration-method="gtts"]';
-    await ensureEngineReady(ENGINE, {
-      onReady: async (state) => captureWorkflowStep({
-        workflow: WORKFLOW,
-        step: '02-engine-ready',
-        description: 'The reviewed gTTS package is visibly installed, running, and ready.',
-        details: { ...state, proofClass: 'network-dependent gTTS provider smoke' },
-      }),
-    });
     const generate = await $(generateSelector);
     let generateState = null;
     await waitUntilWithFreshDiagnostic(async () => {

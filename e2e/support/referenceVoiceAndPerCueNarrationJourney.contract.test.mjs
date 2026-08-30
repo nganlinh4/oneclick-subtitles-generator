@@ -24,6 +24,7 @@ const narrationGenerationJourney = read('..', 'journeys', 'narrationGeneration.j
 const narrationLocaleEn = JSON.parse(read('..', '..', 'src', 'i18n', 'locales', 'en', 'narration.json'));
 
 const assertJourneyContract = (source) => {
+  assert.match(source, /await ensureEngineReady\(ENGINE,[\s\S]*?referenceVoiceBoundaryState\(\)/u);
   // Part 1: the honest reference-voice boundary. Both cloning methods' radios must be proven
   // disabled, unavailable-styled, tooltip-matched, and functionally inert against a raw click.
   assert.match(source, /REFERENCE_VOICE_METHODS = Object\.freeze\(\['f5tts', 'chatterbox'\]\)/u);
