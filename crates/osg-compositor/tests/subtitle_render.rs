@@ -43,6 +43,15 @@ fn inked(frame: &Frame) -> usize {
     frame.pixels().chunks_exact(4).filter(|p| p[3] > 0).count()
 }
 
+fn maximum_alpha(frame: &Frame) -> u8 {
+    frame
+        .pixels()
+        .chunks_exact(4)
+        .map(|pixel| pixel[3])
+        .max()
+        .unwrap_or(0)
+}
+
 /// The mean row of the inked pixels, or `None` when nothing was drawn.
 fn ink_centre_y(frame: &Frame) -> Option<f64> {
     let mut total = 0.0_f64;
@@ -358,6 +367,38 @@ fn the_fade_window_is_visible_before_the_cue_starts() {
         held.pixels(),
         "a partly faded cue must not be identical to a held one"
     );
+}
+
+/// Magnitude belongs at the renderer boundary, where it is deterministic. A screenshot oracle that
+/// averages only pixels above a difference threshold is nonlinear in opacity: dim pixels leave its
+/// denominator, so a correct one-third fade can look 1.5x or more too strong. The opaque interior
+/// of this fixture's atlas cell has no such ambiguity and pins the actual UNORM output byte.
+#[test]
+fn eased_and_flat_opacity_reach_the_exact_output_alpha() {
+    let compositor = compositor!();
+    let linear = SubtitleStyleSpec {
+        background_opacity: 0.0,
+        easing: "linear".to_owned(),
+        ..style_spec()
+    };
+    let half = SubtitleStyleSpec {
+        opacity: 0.5,
+        ..linear.clone()
+    };
+
+    let fading = compositor
+        .render_scene(&staged(&linear), FADING_FRAME)
+        .expect("one-third fade composes");
+    let held = compositor
+        .render_scene(&staged(&linear), HOLD_FRAME)
+        .expect("held cue composes");
+    let half_held = compositor
+        .render_scene(&staged(&half), HOLD_FRAME)
+        .expect("half-opacity cue composes");
+
+    assert_eq!(maximum_alpha(&fading), 85, "one-third linear fade");
+    assert_eq!(maximum_alpha(&held), 255, "fully held cue");
+    assert_eq!(maximum_alpha(&half_held), 128, "half flat opacity");
 }
 
 /// A second line must lower the ink, and a blank cell in front of the glyph must push it right by
