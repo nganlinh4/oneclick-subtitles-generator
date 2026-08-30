@@ -252,6 +252,15 @@ const anyRetryingRow = () => browser.execute(() => (
   document.querySelector('.result-item.retrying') !== null
 ));
 
+const narrationActionSurface = () => browser.execute(() => ({
+  retrying: document.querySelector('.result-item.retrying') !== null,
+  alerts: [...document.querySelectorAll('[role="alert"], .toast, .notification')]
+    .map((node) => (node.textContent || '').trim())
+    .filter(Boolean)
+    .slice(0, 8),
+  sectionText: (document.querySelector('.narration-section')?.textContent || '').trim().slice(-2_000),
+}));
+
 describe('a customer regenerates and plays one narration cue, and reference-voice cloning refuses honestly', () => {
   it('proves the honest reference-voice boundary, then a precise single-cue regenerate ownership claim', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
@@ -414,6 +423,31 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
       interval: 50,
       timeoutMsg: `the delivered regenerate click was not accepted by the controller: ${JSON.stringify(regenerateClick)}`,
     });
+
+    let regenerateAdmission = null;
+    let regenerateRefusal = null;
+    await browser.waitUntil(async () => {
+      const current = durableState(root);
+      regenerateAdmission = current.jobs.find((job) => (
+        job.kind === 'synthesizeNarration' && !beforeRegenerateJobIds.has(job.id)
+      )) ?? null;
+      if (regenerateAdmission !== null) return true;
+      const surface = await narrationActionSurface();
+      if (!surface.retrying) {
+        regenerateRefusal = surface;
+        return true;
+      }
+      return false;
+    }, {
+      timeout: 10_000,
+      interval: 50,
+      timeoutMsg: 'the accepted regenerate action neither registered a native job nor terminated',
+    });
+    assert.notEqual(
+      regenerateAdmission,
+      null,
+      `the accepted regenerate action refused before native admission: ${JSON.stringify(regenerateRefusal)}`,
+    );
 
     let afterRegenerate = null;
     let regeneratedRecords = [];
