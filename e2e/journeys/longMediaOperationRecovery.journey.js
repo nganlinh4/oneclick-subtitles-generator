@@ -16,7 +16,7 @@ import { strict as assert } from 'node:assert';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
-import { openEditor } from '../support/editor.js';
+import { clickControl, openEditor } from '../support/editor.js';
 import { assertManagedArtifactLedgerMatchesDisk } from '../support/renderQueue.js';
 import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -31,6 +31,34 @@ const waveformJobs = (root) => durableState(root).jobs.filter(({ kind }) => kind
 const waveformState = () => browser.execute(() => (
   document.querySelector('[data-osg-waveform-state]')?.getAttribute('data-osg-waveform-state') ?? null
 ));
+
+const enableLongMediaWaveform = async () => {
+  await clickControl('[data-app-action="open-settings"]');
+  await $('.settings-modal').waitForDisplayed({ timeout: 30_000, timeoutMsg: 'Settings did not open' });
+  await clickControl('[data-settings-tab="video-processing"]');
+  const control = await $('#show-waveform-long-videos');
+  await control.waitForExist({
+    timeout: 30_000,
+    timeoutMsg: 'the long-video waveform setting is unavailable',
+  });
+  if (!(await browser.execute(() => (
+    document.querySelector('#show-waveform-long-videos')?.selected === true
+  )))) {
+    await clickControl('#show-waveform-long-videos');
+  }
+  await browser.waitUntil(
+    () => browser.execute(() => (
+      document.querySelector('#show-waveform-long-videos')?.selected === true
+    )),
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: 'the long-video waveform setting did not enable',
+    },
+  );
+  await clickControl('.save-btn');
+  await $('.settings-modal').waitForExist({ reverse: true, timeout: 30_000 });
+};
 
 /**
  * `waitUntil`'s own `timeoutMsg` must be a static string -- the options object is evaluated eagerly
@@ -107,6 +135,10 @@ describe('long-media waveform interruption and relaunch recovery', () => {
     }
 
     await openProjectWithMedia();
+    // The product intentionally disables waveform work above 30 minutes. Exercise the public
+    // opt-in before expecting a job; the previous journey waited for an impossible default state
+    // and therefore never tested recovery at all.
+    await enableLongMediaWaveform();
     await browser.waitUntil(async () => (await waveformState()) === 'processing', {
       timeout: 15_000,
       interval: 20,

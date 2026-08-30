@@ -598,11 +598,11 @@
       ],
       "runsAgainst": "two independent guarded e2e-binary processes sharing one isolated profile",
       "status": "green",
-      "note": "Green on 2026-08-27 across both hidden desktop processes with all six screenshots inspected: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an 82-cue durable merge equal to the streamed union, and a second process restoring the exact track (the virtualized lyrics list is verified through the editor's own count surface plus viewport-prefix equality). Along the way this journey flushed out and drove fixes for the engine-status verification race, the Ctrl+A dead half-second, and the scenario's nested application-lease acquisition; one intermittent aggregate death remains recorded under knownProductFindings with a fail-fast capture armed.",
+      "note": "Green again on 2026-08-30 against application af89ee6c after the original green run and four intervening full passes: four owned native jobs from the public one-minute setting, one live in-window publication per range while the aggregate stayed active, an exact durable merge, and a second process restoring the same track. The one historical aggregate death did not recur in five subsequent complete executions and the fail-fast generation-death capture remains armed as a regression oracle.",
       "evidenceWorkflow": "multi-window-asr-persistence",
-      "attemptId": "20260828071007597-78160-6cab189d",
-      "lastGreenBinary": "9484e4a8e60cf2729e5db6a9e0ba384d7c44b3d6a8e575bf0436edd17af4c742",
-      "binaryDigest": "9484e4a8e60cf2729e5db6a9e0ba384d7c44b3d6a8e575bf0436edd17af4c742"
+      "attemptId": "20260830112531438-41876-974952de",
+      "lastGreenBinary": "af89ee6c52dc53a4404e098042cba237ca21c54252da4a2c8858381a58faebbb",
+      "binaryDigest": "af89ee6c52dc53a4404e098042cba237ca21c54252da4a2c8858381a58faebbb"
     },
     {
       "name": "geminiGeneration",
@@ -1642,9 +1642,9 @@
     {
       "finding": "A four-window local ASR aggregate intermittently stopped after the second window with the visible timeline wiped and no error surface.",
       "foundBy": "multiWindowAsrGeneration",
-      "status": "open",
+      "status": "not-reproduced",
       "severity": "critical",
-      "note": "Observed once on binary 813c5c18: two of four transcribe jobs existed (both succeeded natively), only window one ever published a streaming update, and the error path restored the pre-run baseline of zero rows, leaving an empty timeline with generation inactive, no toast captured, and no runtime or inline error. The window-two completion must have thrown between native success and the streaming publish (result mapping or delivery validation). The journey now fails fast at generation-death and captures the toast history in the same instant, so the next recurrence names the thrown error. Not reproduced across four later full runs.",
+      "note": "Observed once on binary 813c5c18, then not reproduced across five later complete runs. The latest retained attempt 20260830112531438-41876-974952de on application af89ee6c proved four distinct successful jobs, monotonic visible publication, exact durable merge, and a second-process restore. No unsupported causal fix is being invented; the fail-fast generation-death capture stays armed so any recurrence will retain the thrown code and toast history.",
       "recurrenceWatch": "the seed phase's generation-death capture in journeys/multiWindowAsrPersistence.journey.js"
     },
     {

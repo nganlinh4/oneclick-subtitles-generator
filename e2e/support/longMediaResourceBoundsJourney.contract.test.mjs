@@ -99,6 +99,8 @@ test('recovery is a two-process PHASE-gated scenario over the same synthetic lon
   // for this recovery path.
   assert.match(recoveryJourney, /interrupted\.state, 'interrupted'/u);
   assert.match(recoveryJourney, /assertManagedArtifactLedgerMatchesDisk\(root\)/u);
+  assert.match(recoveryJourney, /clickControl\('#show-waveform-long-videos'\)/u);
+  assert.doesNotMatch(recoveryJourney, /localStorage\.setItem/u);
   assert.match(recoveryScenario, /phases: \['seed', 'verify'\]/u);
   assert.match(recoveryScenario, /runScenarioProcesses/u);
   assert.match(recoveryScenario, /runScenarioAttemptWithEvidence/u);
