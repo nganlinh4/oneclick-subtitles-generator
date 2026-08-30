@@ -31,6 +31,8 @@ MAX_FRAME_BYTES = 1024 * 1024
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
 WORKER_VERSION = "native-1.0"
+PROVIDER_CONNECT_TIMEOUT_SECONDS = 10
+PROVIDER_READ_TIMEOUT_SECONDS = 30
 BACKENDS = {"f5_tts", "chatterbox", "edge_tts", "gtts", "gemini_live"}
 FORMATS = {"f5_tts": "wav", "chatterbox": "wav", "edge_tts": "mp3", "gtts": "mp3", "gemini_live": "wav"}
 GEMINI_MODELS = {
@@ -936,8 +938,14 @@ def _synthesize_gtts(text: str, settings: dict[str, Any], output: Path) -> None:
         raise WorkerFailure("invalid_request")
     try:
         from gtts import gTTS
-        _require_keywords(gTTS, {"text", "lang", "tld", "slow"})
-        gTTS(text=text, lang=language, tld=domain, slow=settings["slow"]).save(str(output))
+        _require_keywords(gTTS, {"text", "lang", "tld", "slow", "timeout"})
+        gTTS(
+            text=text,
+            lang=language,
+            tld=domain,
+            slow=settings["slow"],
+            timeout=(PROVIDER_CONNECT_TIMEOUT_SECONDS, PROVIDER_READ_TIMEOUT_SECONDS),
+        ).save(str(output))
     except ImportError:
         raise WorkerFailure("model_unavailable") from None
     except Exception:

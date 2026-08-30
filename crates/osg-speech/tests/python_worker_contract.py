@@ -180,6 +180,43 @@ class WorkerContractTests(unittest.TestCase):
         with self.assertRaisesRegex(worker.WorkerFailure, "model_unavailable"):
             worker._require_keywords(exact, {"text", "voice", "rate"})
 
+    def test_gtts_provider_io_is_bounded(self):
+        worker = load_worker()
+        calls = []
+
+        class FakeGtts:
+            def __init__(self, *, text, lang, tld, slow, timeout):
+                calls.append({
+                    "text": text,
+                    "lang": lang,
+                    "tld": tld,
+                    "slow": slow,
+                    "timeout": timeout,
+                })
+
+            def save(self, output):
+                calls[-1]["output"] = output
+
+        package = ModuleType("gtts")
+        package.gTTS = FakeGtts
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(sys.modules, {"gtts": package}):
+            output = Path(directory) / "bounded.mp3"
+            worker._synthesize_gtts(
+                "Bounded provider request.",
+                {"language": "en", "domain": "com", "slow": False},
+                output,
+            )
+
+        self.assertEqual(calls, [{
+            "text": "Bounded provider request.",
+            "lang": "en",
+            "tld": "com",
+            "slow": False,
+            "timeout": (10, 30),
+            "output": str(output),
+        }])
+
     def test_invalid_chatterbox_language_never_loads_a_model(self):
         worker = load_worker()
         settings = {
