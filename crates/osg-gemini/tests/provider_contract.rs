@@ -161,11 +161,11 @@ async fn image_generation_uses_stable_video_capable_model_and_bounded_binary_out
     assert_eq!(body["generationConfig"]["responseModalities"][0], "IMAGE");
     assert_eq!(
         body["generationConfig"]["responseFormat"]["image"]["aspectRatio"],
-        "16:9"
+        "ASPECT_RATIO_SIXTEEN_BY_NINE"
     );
     assert_eq!(
         body["generationConfig"]["responseFormat"]["image"]["imageSize"],
-        "1K"
+        "IMAGE_SIZE_ONE_K"
     );
 }
 

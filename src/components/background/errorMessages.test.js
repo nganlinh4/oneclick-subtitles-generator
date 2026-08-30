@@ -16,6 +16,7 @@ describe('background generation errors', () => {
     expect(getFriendlyErrorMessage(t, { code: 'geminiCredentialRejected' })).toMatch(/unauthorized/i);
     expect(getFriendlyErrorMessage(t, { code: 'geminiRateLimited' })).toMatch(/quota/i);
     expect(getFriendlyErrorMessage(t, { code: 'invalidImageModel' })).toMatch(/model is unavailable/i);
+    expect(getFriendlyErrorMessage(t, { code: 'invalidGeminiRequest' })).toMatch(/rejected the image model or request/i);
     expect(getFriendlyErrorMessage(t, { code: 'staleGeminiImageProject' })).toMatch(/project changed/i);
     expect(getFriendlyErrorMessage(t, { code: 'geminiImageEmpty' })).toMatch(/no image was returned/i);
   });

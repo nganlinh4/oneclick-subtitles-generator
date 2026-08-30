@@ -18,6 +18,9 @@ export const getFriendlyErrorMessage = (t, raw = '') => {
   if (code === 'invalidImageModel') {
     return t('backgroundGenerator.error.modelUnavailable', 'The selected image model is unavailable. Choose another image model and try again.');
   }
+  if (code === 'invalidGeminiRequest') {
+    return t('backgroundGenerator.error.requestRejected', 'Gemini rejected the image model or request. Check model access and try again.');
+  }
   if (code === 'geminiCredentialUnavailable') {
     return t('backgroundGenerator.error.apiKeyMissing', 'Gemini API key not set. Please set it in settings.');
   }

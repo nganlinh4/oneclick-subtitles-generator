@@ -40,7 +40,9 @@ pub enum ImageAspectRatio {
 impl ImageAspectRatio {
     const fn wire_value(self) -> &'static str {
         match self {
-            Self::Landscape16By9 => "16:9",
+            // The v1 REST schema uses protobuf enum names. The human-readable "16:9" accepted by
+            // SDK convenience layers is rejected by the raw endpoint as INVALID_ARGUMENT.
+            Self::Landscape16By9 => "ASPECT_RATIO_SIXTEEN_BY_NINE",
         }
     }
 }
@@ -55,7 +57,7 @@ pub enum ImageSize {
 impl ImageSize {
     const fn wire_value(self) -> &'static str {
         match self {
-            Self::OneK => "1K",
+            Self::OneK => "IMAGE_SIZE_ONE_K",
         }
     }
 }
@@ -410,11 +412,11 @@ mod tests {
         assert_eq!(value["generationConfig"]["responseModalities"][0], "IMAGE");
         assert_eq!(
             value["generationConfig"]["responseFormat"]["image"]["aspectRatio"],
-            "16:9"
+            "ASPECT_RATIO_SIXTEEN_BY_NINE"
         );
         assert_eq!(
             value["generationConfig"]["responseFormat"]["image"]["imageSize"],
-            "1K"
+            "IMAGE_SIZE_ONE_K"
         );
     }
 
