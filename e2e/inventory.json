@@ -1011,15 +1011,31 @@
     {
       "name": "providerTranslation",
       "kind": "workflow",
-      "file": "journeys/providerBoundaries.journey.js",
-      "capability": "Gemini translates persisted cues into one or more selected target languages, streams progress, draws the chosen result and restores it after relaunch.",
-      "status": "authored-unproven",
+      "file": "journeys/geminiTranslationSuccess.journey.js",
+      "capability": "A credential enrolled through Settings lets Gemini translate persisted cues, publish the visible result and durably complete the native job.",
+      "chain": [
+        "open real media and import three real subtitle cues",
+        "enrol the ignored twenty-key test pool through the public write-only Settings controls",
+        "request Vietnamese through the customer translation controls",
+        "publish three nonblank translated rows and persist the project-owned complete record"
+      ],
+      "oracles": [
+        "visible translated result rows with no error toast or inline error",
+        "the application's own SQLite translation record and succeeded native job, read only",
+        "bounded provider lifecycle diagnostics that contain no credential or translated text"
+      ],
+      "runsAgainst": "e2e-binary with live Gemini network access",
+      "status": "green",
+      "evidenceWorkflow": "gemini-translation-success",
+      "attemptId": "20260830175406827-33924-5f96e362",
+      "binaryDigest": "14a49c8bda33ef56067c91157375718c98477db5ef6e07102d79f10c5b0bb2f9",
+      "result": "Proven on 2026-08-30 with all twenty reviewed keys enrolled through Settings and one real three-cue Gemini translation completed, displayed and persisted.",
       "recommendedJourney": "translationProviderAndDocuments",
-      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: bulkTranslationFileIO.journey.js (also authored-unproven) already proves this exact credential wall for the BULK-only code path (useTranslationBulk.js's per-file catch collapsing into one refusal); this journey proves the separate, previously-untested MAIN-track path instead -- useTranslationState.js's direct, unwrapped translateSubtitles(...) call, reached by adding one real target language (no bulk files present) and clicking the same .translate-button. Both paths share the identical refusal text ('The native Gemini operation could not be completed', TranslationError.js's showErrorToast, never inline), and both leave the jobs table and the durable cue track untouched.",
+      "note": "The first live run disproved the old credential-gated note: both repos carry the reviewed twenty-slot pool. It found a product defect instead: the editor's blank language input affordance was filtered out of the provider request but passed into final formatting, which rejected Gemini's valid response as an invalid identity envelope. Commit 998517d4 canonicalizes the chain at the universal run boundary; the unchanged journey then passed in 17.2 seconds. This entry proves one target language, visible publication and durable persistence. Multi-language provider success, translated native-frame selection and relaunch hydration remain covered only by lower credential-free layers or future live journeys, not claimed here.",
       "dependencies": {
-        "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini credential and network access to prove a SUCCESSFUL provider translation, its streaming progress, drawn preview and relaunch persistence",
-        "note": "translationPersistence proves credential-free Format mode. The credential-free refusal is now proven for BOTH the bulk pool (bulkTranslationFileIO) and the main track (this journey); provider SUCCESS, streaming and relaunch persistence remain gated on a credential."
+        "owner": "live-test-network",
+        "requires": "network and provider quota for repeat execution; credentials are already available in the ignored root .env",
+        "note": "The live journey is deliberately excluded from default sweeps so routine tests do not consume provider quota."
       }
     },
     {
