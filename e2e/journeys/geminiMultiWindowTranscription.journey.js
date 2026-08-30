@@ -1,4 +1,4 @@
-/* global $, browser, describe, document, it, window */
+/* global $, browser, describe, document, it, localStorage, window */
 
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
@@ -91,6 +91,7 @@ describe('Gemini transcribes a real four-window source', () => {
     let surface = null;
     let witness = null;
     let lastProgressTrace = 0;
+    let terminalFailure = null;
     await browser.waitUntil(async () => {
       durable = durableState(root);
       jobs = durable.jobs.filter(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
@@ -101,6 +102,14 @@ describe('Gemini transcribes a real four-window source', () => {
           kind: [...node.classList].find((name) => name.startsWith('toast-')) ?? null,
           text: (node.innerText || '').trim(),
         })),
+        toastHistory: (() => {
+          try {
+            const rows = JSON.parse(localStorage.getItem('toast_history_v1') || '[]');
+            return Array.isArray(rows)
+              ? rows.slice(0, 8).map(({ type, message }) => ({ type, message }))
+              : [];
+          } catch { return []; }
+        })(),
         errorToasts: [...document.querySelectorAll('.toast-error')]
           .map((node) => (node.querySelector('p')?.innerText || node.innerText || '').trim())
           .filter(Boolean),
@@ -115,6 +124,7 @@ describe('Gemini transcribes a real four-window source', () => {
           })),
           processing: surface.processing,
           toasts: surface.toasts,
+          toastHistory: surface.toastHistory,
           errorToasts: surface.errorToasts,
           visibleCueCount: surface.visibleCueCount,
           publishedRangeShapes: witness.ranges.map((ranges) => ranges.length),
@@ -123,12 +133,12 @@ describe('Gemini transcribes a real four-window source', () => {
         });
       }
       if (surface.errorToasts.length > 0 || jobs.some(({ state }) => terminalStates.has(state))) {
-        throw new Error(`Gemini multi-window run terminated: ${JSON.stringify({ jobs, surface, witness })}`);
+        terminalFailure = `Gemini multi-window run terminated: ${JSON.stringify({ jobs, surface, witness })}`;
+        return true;
       }
       if (surface.processing === false && jobs.length === 0 && witness.streams.length === 0) {
-        throw new Error(
-          `Gemini multi-window run stopped before creating a provider job: ${JSON.stringify({ surface, witness })}`,
-        );
+        terminalFailure = `Gemini multi-window run stopped before creating a provider job: ${JSON.stringify({ surface, witness })}`;
+        return true;
       }
       return jobs.length === EXPECTED_WINDOWS
         && jobs.every(({ state }) => state === 'succeeded')
@@ -140,6 +150,7 @@ describe('Gemini transcribes a real four-window source', () => {
       interval: 2_000,
       timeoutMsg: 'the four-window Gemini run never completed four succeeded jobs',
     });
+    if (terminalFailure !== null) throw new Error(terminalFailure);
 
     const ranges = witness.ranges.find((entry) => entry.length === EXPECTED_WINDOWS);
     assert.ok(ranges, `the UI never published four request windows: ${JSON.stringify(witness.ranges)}`);
