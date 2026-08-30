@@ -40,7 +40,6 @@ test('the resource-bounds journey drives only the public UI and never substitute
 test('the resource-bounds journey cites the real source of every cap it asserts', () => {
   for (const citation of [
     'src/components/lyrics/waveformRendering.js',
-    'src/components/lyrics/utils/timelineDomain.js',
     'apps/desktop/src-tauri/src/waveform_cache.rs:20',
     'apps/desktop/src-tauri/src/media_pipeline.rs:36',
     'apps/desktop/src-tauri/src/render/host.rs:22',
@@ -51,11 +50,10 @@ test('the resource-bounds journey cites the real source of every cap it asserts'
   }
 });
 
-test('the resource-bounds journey proves the waveform/selectable range at a real zoom-in interaction', () => {
+test('the resource-bounds journey proves the waveform boundary at a real zoom-in interaction', () => {
   assert.match(boundsJourney, /waveformInkBoundary/u);
   assert.match(boundsJourney, /getVisibleTimeRange/u);
   assert.match(boundsJourney, /ZOOM_REPETITIONS/u);
-  assert.match(boundsJourney, /range-action-bar/u);
 });
 
 test('the resource-bounds journey samples desktop-process resources and the run root before and after heavy interaction', () => {

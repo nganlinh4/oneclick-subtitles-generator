@@ -1,5 +1,4 @@
 const EMPTY_VIEW_SECONDS = 1;
-const END_GUTTER_RATIO = 0.05;
 
 const finiteNonNegative = (value) => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -20,10 +19,11 @@ const finiteCueTimes = (lyrics) => {
  * One time-domain description shared by drawing, zooming, selection and seeking.
  *
  * `seekableEnd` is media playback truth. Once media exists it is also the hard selection bound:
- * dragging into the visual gutter or across a malformed cue may never create a range the video
+ * dragging across an out-of-bounds or malformed cue may never create a range the video
  * cannot play. In subtitle-only mode the cue end is the only available bound. `contentEnd` still
- * keeps an out-of-bounds cue visible so it can be repaired, and `viewEnd` adds a non-content gutter
- * for legibility; neither is selectable or seekable.
+ * keeps an out-of-bounds cue visible so it can be repaired. `viewEnd` ends at actual content: a
+ * media-backed ruler must not advertise phantom time after the video, while subtitle-only content
+ * and genuinely out-of-bounds cues remain visible for repair.
  */
 export const createTimelineDomain = (lyrics, mediaDuration) => {
   const cues = finiteCueTimes(lyrics);
@@ -36,9 +36,7 @@ export const createTimelineDomain = (lyrics, mediaDuration) => {
     : 0;
   const selectableEnd = seekableEnd > 0 ? seekableEnd : cueEnd;
   const contentEnd = Math.max(seekableEnd, cueEnd);
-  const viewEnd = contentEnd > 0
-    ? contentEnd * (1 + END_GUTTER_RATIO)
-    : EMPTY_VIEW_SECONDS;
+  const viewEnd = contentEnd > 0 ? contentEnd : EMPTY_VIEW_SECONDS;
 
   return Object.freeze({
     start: 0,

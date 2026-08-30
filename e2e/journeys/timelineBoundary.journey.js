@@ -60,7 +60,7 @@ describe('timeline boundaries', () => {
         if (canvas === null || canvas.width <= 0 || canvas.height <= 0) return null;
         const context = canvas.getContext('2d');
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-        const viewEnd = contentEnd * 1.05;
+        const viewEnd = contentEnd;
         const expectedBoundary = (mediaEnd / viewEnd) * canvas.width;
         const columnHasInk = (x) => {
           for (let y = 0; y < canvas.height; y += 1) {

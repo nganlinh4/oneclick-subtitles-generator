@@ -18,7 +18,7 @@ const measuredBoundaryCue = [{
   text: 'last cue',
 }];
 
-it('separates seekable/selectable media from repairable cue content and the visual gutter', () => {
+it('separates seekable/selectable media from repairable cue content without phantom ruler time', () => {
   const domain = createTimelineDomain(measuredBoundaryCue, 214.274);
 
   expect(domain).toEqual({
@@ -28,7 +28,7 @@ it('separates seekable/selectable media from repairable cue content and the visu
     cueStart: 214.080,
     cueEnd: 216.159,
     contentEnd: 216.159,
-    viewEnd: 216.159 * 1.05,
+    viewEnd: 216.159,
   });
   expect(getVisibleTimeRange(measuredBoundaryCue, 214.274, 0, 1)).toMatchObject({
     start: 0,
@@ -103,13 +103,16 @@ it('clamps seeking separately when the pointer lands on subtitle-only time', () 
   const canvas = {
     getBoundingClientRect: () => ({ left: 100, width: 1_000 }),
   };
+  const visible = { start: 0, end: 216.159 };
+  const subtitleOnlyX = canvas.getBoundingClientRect().left
+    + ((215 / visible.end) * canvas.getBoundingClientRect().width);
 
   handleTimelineClick(
-    { clientX: 1_050 },
+    { clientX: subtitleOnlyX },
     canvas,
     214.274,
     onTimelineClick,
-    { start: 0, end: 216.159 * 1.05 },
+    visible,
     lastManualPanTime,
   );
 

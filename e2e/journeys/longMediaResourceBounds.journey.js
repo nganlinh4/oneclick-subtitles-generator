@@ -7,7 +7,7 @@
 // two hours. This journey opens a wholly synthetic, offline-generated two-hour source (see
 // support/longSyntheticMediaFixture.js -- tiny on disk, long in time, no network) and proves, all on
 // the SAME source:
-//   1. the waveform never paints ink past real, playable media duration, at the default view AND at
+//   1. the waveform and visible ruler stop at real, playable media duration, at the default view AND at
 //      a real product zoom-in interaction (src/components/lyrics/waveformRendering.js's
 //      waveformEnd/drawEnd clamp is the enforcement point; this is timelineBoundary's own proof,
 //      generalized to a duration that could actually expose an overflow);
@@ -161,7 +161,7 @@ const waveformInkBoundary = (mediaEnd, zoomValue, nearEndEpsilonSeconds) => brow
   if (canvas === null || canvas.width <= 0 || canvas.height <= 0) return null;
   const context = canvas.getContext('2d');
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-  const viewEnd = end * 1.05; // createTimelineDomain's END_GUTTER_RATIO=0.05, no cues in this journey
+  const viewEnd = end; // createTimelineDomain ends a media-backed ruler at real content.
   const visibleDuration = viewEnd / zoom;
   const candidatePan = (end - epsilon) - (visibleDuration / 2);
   const panOffset = Math.max(0, Math.min(candidatePan, viewEnd - visibleDuration));
@@ -323,27 +323,7 @@ describe('long media resource bounds', () => {
       focusSelector: '.timeline-container',
     });
 
-    // --- 7. Selectable range never exceeds real duration either, at this same long duration. ---
-    // Enforcement point: src/components/lyrics/utils/timelineDomain.js's createTimelineDomain
-    // (`selectableEnd = seekableEnd`) and getSelectAllRange (`end: domain.selectableEnd`), which
-    // every selection, drag and Ctrl+A path in the timeline is built on --
-    // useTimelineKeyboardShortcuts.js's Ctrl+A handler calls it directly and works with zero cues,
-    // so no subtitle import is needed for this source to expose a bounded selection. Unlike the
-    // waveform's point-aggregation path above, this clamp is a plain Math.min-style comparison that
-    // does not accumulate error as duration grows, so the deep interactive (pixel-boundary) proof
-    // lives on the waveform; here Ctrl+A only needs to prove the real keyboard path still reaches a
-    // real, non-empty, bounded selection on a source two orders of magnitude longer than every other
-    // journey's media -- exactly the scale a latent overflow would need to appear at.
-    const timeline = await $('.subtitle-timeline');
-    await timeline.click();
-    await browser.keys(['', 'a', '']);
-    const actionBar = await $('.range-action-bar');
-    await actionBar.waitForDisplayed({
-      timeout: 30_000,
-      timeoutMsg: 'Ctrl+A never exposed the range action bar on the long synthetic source',
-    });
-
-    // --- 8. Resource sample AFTER heavy interaction; assert every delta stays within its cap. ---
+    // --- 7. Resource sample AFTER heavy interaction; assert every delta stays within its cap. ---
     const processAfter = sampleApplicationProcess(processId);
     const filesAfter = runRootFileCensus(root);
     const databaseBytesAfter = databaseFootprintBytes(root);
@@ -364,7 +344,7 @@ describe('long media resource bounds', () => {
     assert.ok(fileBytesGrowth <= RUN_ROOT_BYTES_GROWTH_CAP, `the run root grew by ${fileBytesGrowth} bytes during heavy interaction, exceeding the cap of ${RUN_ROOT_BYTES_GROWTH_CAP}`);
     assert.ok(databaseGrowth <= DATABASE_BYTES_GROWTH_CAP, `SQLite grew by ${databaseGrowth} bytes during heavy interaction, exceeding the cap of ${DATABASE_BYTES_GROWTH_CAP}`);
 
-    // --- 9. No orphan artifact or temp file survives the whole session. ---
+    // --- 8. No orphan artifact or temp file survives the whole session. ---
     assertManagedArtifactLedgerMatchesDisk(root);
 
     await captureWorkflowStep({

@@ -186,8 +186,8 @@ const selectTimelineRange = async (startSeconds, endSeconds, duration) => {
   await timeline.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the subtitle timeline never appeared' });
   const { width } = await timeline.getSize();
   assert.ok(width >= 100, `the subtitle timeline is too narrow to select: ${width}px`);
-  // Matches createTimelineDomain's 5% end gutter (END_GUTTER_RATIO) at zoom 1 / pan 0.
-  const viewEnd = duration * 1.05;
+  // Matches createTimelineDomain's media-backed view at zoom 1 / pan 0.
+  const viewEnd = duration;
   const toOffsetPx = (seconds) => Math.round((seconds / viewEnd) * width) - Math.floor(width / 2);
   await browser.action('pointer')
     .move({ origin: timeline, x: toOffsetPx(startSeconds) + 3, y: 0 })
