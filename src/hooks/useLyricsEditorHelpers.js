@@ -6,6 +6,11 @@ import {
   cueWithinTimelineRange,
 } from '../components/lyrics/utils/timelineDomain';
 
+const chronologicalRows = (rows) => rows
+  .map((row, index) => ({ row, index }))
+  .sort((left, right) => left.row.start - right.row.start || left.index - right.index)
+  .map(({ row }) => row);
+
 /**
  * Editing helpers for the lyrics editor: the translation-warning emitter and the
  * range-based operations (clear / move / live-preview move).
@@ -61,14 +66,14 @@ export const useLyricsEditorHelpers = ({
   // doc comment for why a merely-overlapping cue must stay put).
   const moveSubtitlesInRange = useCallback((start, end, delta) => {
     if (start == null || end == null || end <= start || !delta) return;
-    const updated = lyrics.map(l => {
+    const updated = chronologicalRows(lyrics.map(l => {
       if (cueWithinTimelineRange(l, start, end)) {
         const newStart = Math.max(0, l.start + delta);
         const newEnd = Math.max(newStart + 0.1, l.end + delta);
         return { ...l, start: newStart, end: newEnd };
       }
       return l;
-    });
+    }));
     commitLyricsMutation(updated, LYRICS_EDITOR_ACTIONS.MOVE_RANGE);
 
     window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
@@ -100,14 +105,14 @@ export const useLyricsEditorHelpers = ({
     const state = movingRangeRef.current;
     if (!state.active || state.baseline == null) return;
     const { start, end, baseline } = state;
-    const updated = baseline.map(l => {
+    const updated = chronologicalRows(baseline.map(l => {
       if (cueWithinTimelineRange(l, start, end)) {
         const newStart = Math.max(0, l.start + delta);
         const newEnd = Math.max(newStart + 0.1, l.end + delta);
         return { ...l, start: newStart, end: newEnd };
       }
       return l;
-    });
+    }));
     movingRangeRef.current.latest = updated;
     setLyrics(updated);
     onUpdateLyrics && onUpdateLyrics(updated);

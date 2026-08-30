@@ -45,8 +45,13 @@ const TimelineRangeActionBar = ({
 
     // Unified Pointer Events handler (robust on mobile): keeps capture during drag
     const handleMovePointerDown = (e) => {
+        // Browsers dispatch a compatibility mousedown after pointerdown. Accept mousedown as a
+        // fallback for desktop WebViews/drivers that do not expose Pointer Events, but never start
+        // a second session when both event families are delivered.
+        if (isRangeMoveDraggingRef.current) return;
         e.preventDefault();
         e.stopPropagation();
+        const usesMouseFallback = e.type === 'mousedown';
         const startX = e.clientX;
         const startOffset = moveDragOffsetPx;
         const startRange = actionBarRange;
@@ -79,6 +84,8 @@ const TimelineRangeActionBar = ({
             window.removeEventListener('pointermove', onMove, true);
             window.removeEventListener('pointerup', onUp, true);
             window.removeEventListener('pointercancel', onUp, true);
+            window.removeEventListener('mousemove', onMove, true);
+            window.removeEventListener('mouseup', onUp, true);
         };
 
         const onUp = () => {
@@ -95,9 +102,14 @@ const TimelineRangeActionBar = ({
             isRangeMoveDraggingRef.current = false;
         };
 
-        window.addEventListener('pointermove', onMove, { capture: true, passive: false });
-        window.addEventListener('pointerup', onUp, { capture: true });
-        window.addEventListener('pointercancel', onUp, { capture: true });
+        if (usesMouseFallback) {
+            window.addEventListener('mousemove', onMove, { capture: true, passive: false });
+            window.addEventListener('mouseup', onUp, { capture: true });
+        } else {
+            window.addEventListener('pointermove', onMove, { capture: true, passive: false });
+            window.addEventListener('pointerup', onUp, { capture: true });
+            window.addEventListener('pointercancel', onUp, { capture: true });
+        }
     };
 
     if (!canvas) return null;
@@ -188,6 +200,7 @@ const TimelineRangeActionBar = ({
                     className="btn-base btn-primary btn-small"
                     title={t('timeline.moveRange', 'Drag to move subtitles in range')}
                     onPointerDown={handleMovePointerDown}
+                    onMouseDown={handleMovePointerDown}
                     style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab', touchAction: 'none' }}
                 >
                     <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>drag_indicator</span>

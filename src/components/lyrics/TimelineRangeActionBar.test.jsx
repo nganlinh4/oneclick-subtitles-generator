@@ -79,3 +79,33 @@ it('clamps the preview delta at media duration before committing', () => {
 
   expect(props.onCommitMoveRange).toHaveBeenCalledTimes(1);
 });
+
+it('supports a mouse-only desktop WebView without double-starting after pointerdown', () => {
+  const order = [];
+  const props = baseProps({
+    onBeginMoveRange: vi.fn(() => order.push('begin')),
+    onPreviewMoveRange: vi.fn(() => order.push('preview')),
+    onCommitMoveRange: vi.fn(() => order.push('commit')),
+  });
+  const { unmount } = render(<TimelineRangeActionBar {...props} />);
+  const handle = screen.getByTitle('Drag to move subtitles in range');
+
+  fireEvent.mouseDown(handle, { clientX: 100 });
+  fireEvent.mouseMove(window, { clientX: 800 });
+  fireEvent.mouseUp(window, { clientX: 800 });
+  expect(order).toEqual(['begin', 'preview', 'commit']);
+  unmount();
+
+  const duplicateProps = baseProps({
+    onBeginMoveRange: vi.fn(() => order.push('begin-duplicate-check')),
+    onCommitMoveRange: vi.fn(() => order.push('commit-duplicate-check')),
+  });
+  render(<TimelineRangeActionBar {...duplicateProps} />);
+  const duplicateHandle = screen.getByTitle('Drag to move subtitles in range');
+  fireEvent.pointerDown(duplicateHandle, { clientX: 100, pointerId: 9 });
+  fireEvent.mouseDown(duplicateHandle, { clientX: 100 });
+  fireEvent.pointerUp(window, { clientX: 100, pointerId: 9 });
+
+  expect(duplicateProps.onBeginMoveRange).toHaveBeenCalledTimes(1);
+  expect(duplicateProps.onCommitMoveRange).toHaveBeenCalledTimes(1);
+});

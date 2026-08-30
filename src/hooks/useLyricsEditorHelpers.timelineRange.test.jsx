@@ -59,15 +59,17 @@ it('range-moves only the cues fully inside the selection, not a cue that merely 
   const [committedRows, action] = commitLyricsMutation.mock.calls[0];
   expect(action).toBe(LYRICS_EDITOR_ACTIONS.MOVE_RANGE);
 
+  const byId = new Map(committedRows.map((row) => [row.id, row]));
   // The wide interior cue was never inside the selection: it must stay exactly where it started.
-  expect(committedRows[0].start).toBeCloseTo(0, 5);
-  expect(committedRows[0].end).toBeCloseTo(19.010, 5);
+  expect(byId.get(1).start).toBeCloseTo(0, 5);
+  expect(byId.get(1).end).toBeCloseTo(19.010, 5);
   // The two move-together cues were fully inside the selection: both shift by the same delta.
-  expect(committedRows[1].start).toBeCloseTo(3.0 + 12.71, 5);
-  expect(committedRows[2].start).toBeCloseTo(4.5 + 12.71, 5);
+  expect(byId.get(2).start).toBeCloseTo(3.0 + 12.71, 5);
+  expect(byId.get(3).start).toBeCloseTo(4.5 + 12.71, 5);
   // Cues outside the selection entirely are untouched.
-  expect(committedRows[3].start).toBeCloseTo(8.0, 5);
-  expect(committedRows[4].start).toBeCloseTo(9.0, 5);
+  expect(byId.get(4).start).toBeCloseTo(8.0, 5);
+  expect(byId.get(5).start).toBeCloseTo(9.0, 5);
+  expect(committedRows.map((row) => row.id)).toEqual([1, 4, 5, 2, 3]);
 });
 
 it('commits the preview snapshot captured before parent props rerender', () => {

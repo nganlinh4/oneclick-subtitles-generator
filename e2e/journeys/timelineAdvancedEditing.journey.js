@@ -106,6 +106,15 @@ const visibleTimeControlSeconds = async (index, field) => {
   return text === null ? null : parseVisibleClockSeconds(text);
 };
 
+const visibleCueTimeSeconds = async (text, field) => {
+  const clock = await browser.execute((cueText, className) => {
+    const row = [...document.querySelectorAll('.lyric-item')]
+      .find((candidate) => candidate.querySelector('.lyric-text')?.textContent?.trim() === cueText);
+    return row?.querySelector(`.time-control.${className}`)?.textContent ?? null;
+  }, text, field === 'start' ? 'start-time' : 'end-time');
+  return clock === null ? null : parseVisibleClockSeconds(clock);
+};
+
 const closeTo = (actual, expected, tolerance = EPSILON_MS) => Math.abs(actual - expected) <= tolerance;
 
 const durableCueRecords = (root) => durableState(root).cues
@@ -205,26 +214,22 @@ const dragRangeMoveHandleOvershoot = async (overshootSeconds, viewEnd, width) =>
   const handle = await $('.range-action-bar button:nth-child(3)');
   await handle.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the range move handle never appeared' });
   const timeline = await $('.subtitle-timeline');
-  const handleLocation = await handle.getLocation();
-  const handleSize = await handle.getSize();
-  const timelineLocation = await timeline.getLocation();
   const timelineSize = await timeline.getSize();
-  const startX = Math.round(handleLocation.x + (handleSize.width / 2));
-  const startY = Math.round(handleLocation.y + (handleSize.height / 2));
   // Candidate 20 asked WebDriver to move `overshootSeconds` relative to the handle. At the real
   // timeline width that target sat hundreds of pixels outside the viewport, so a driver was free
-  // to reject or ignore the move while still delivering pointer-up. Drive to the real canvas's
-  // legal right edge instead: it is inside the viewport and, because viewEnd includes the 5% visual
-  // gutter, still requests a move beyond the selectable media boundary for the product to clamp.
-  const targetX = Math.round(timelineLocation.x + timelineSize.width - 2);
-  assert.ok(targetX > startX, `the range move has no legal rightward pointer span: ${startX} -> ${targetX}`);
+  // to reject or ignore the move while still delivering pointer-up. Drive from the real handle to
+  // the real canvas's legal right edge using element-relative origins. Mixing getLocation()'s
+  // document coordinates with a viewport-origin action misses the handle whenever the page has
+  // scrolled, which made a harness miss look like a swallowed product commit.
+  const targetOffsetX = Math.floor(timelineSize.width / 2) - 2;
+  assert.ok(targetOffsetX > 0, `the range move has no legal rightward pointer span: ${timelineSize.width}px`);
   const requestedPx = Math.ceil((overshootSeconds / viewEnd) * width);
-  assert.ok(requestedPx > targetX - startX, 'fixture no longer proves the old pointer target was out of bounds');
+  assert.ok(requestedPx > timelineSize.width, 'fixture no longer proves the old pointer target was out of bounds');
   await browser.action('pointer')
-    .move({ origin: 'viewport', x: startX, y: startY })
+    .move({ origin: handle })
     .down({ button: 0 })
     .pause(100)
-    .move({ origin: 'viewport', x: targetX, y: startY, duration: 500 })
+    .move({ origin: timeline, x: targetOffsetX, y: 0, duration: 500 })
     .pause(150)
     .up({ button: 0 })
     .perform();
@@ -416,7 +421,7 @@ describe('customer advanced timeline editing', () => {
     // customer's rendered cue row must move first; only then is a durable miss evidence against
     // the commit/queue boundary.
     await browser.waitUntil(async () => {
-      const visibleEnd = await visibleTimeControlSeconds(2, 'end');
+      const visibleEnd = await visibleCueTimeSeconds(CUE_RANGE_B, 'end');
       return visibleEnd !== null && visibleEnd > (afterSticky[2].end / 1_000) + 5;
     }, {
       timeout: 5_000,
@@ -425,26 +430,33 @@ describe('customer advanced timeline editing', () => {
     });
     records = await waitForDurableCueRecords(
       root,
-      (rows) => rows[2].end > afterSticky[2].end + 5_000,
+      (rows) => rows.find((row) => row.text === CUE_RANGE_B)?.end > afterSticky[2].end + 5_000,
       'the multi-cue range move never applied durably',
     );
-    const deltaA = records[1].start - afterSticky[1].start;
-    const deltaB = records[2].start - afterSticky[2].start;
+    const movedA = records.find((row) => row.text === CUE_RANGE_A);
+    const movedB = records.find((row) => row.text === CUE_RANGE_B);
+    const deltaA = movedA.start - afterSticky[1].start;
+    const deltaB = movedB.start - afterSticky[2].start;
     assert.ok(closeTo(deltaA, deltaB, EPSILON_MS), (
       `the range move applied different deltas to its two cues: ${deltaA}ms vs ${deltaB}ms`
     ));
-    assert.ok(records[1].end <= durationMs + EPSILON_MS, `moved cue A exceeded media duration: ${records[1].end}`);
-    assert.ok(records[2].end <= durationMs + EPSILON_MS, `moved cue B exceeded media duration: ${records[2].end}`);
-    assert.ok(records[2].end >= durationMs - 1_500, (
-      `the range move stopped well short of the boundary instead of clamping against it: ${records[2].end} vs ${durationMs}`
+    assert.ok(movedA.end <= durationMs + EPSILON_MS, `moved cue A exceeded media duration: ${movedA.end}`);
+    assert.ok(movedB.end <= durationMs + EPSILON_MS, `moved cue B exceeded media duration: ${movedB.end}`);
+    assert.ok(movedB.end >= durationMs - 1_500, (
+      `the range move stopped well short of the boundary instead of clamping against it: ${movedB.end} vs ${durationMs}`
     ));
-    assertUnchanged(records, [0, 3, 4], afterSticky, 'multi-cue range move');
+    for (const text of [CUE_DRAG, CUE_STICKY_BASE, CUE_STICKY_FOLLOWER]) {
+      const actual = records.find((row) => row.text === text);
+      const expected = afterSticky.find((row) => row.text === text);
+      assert.ok(closeTo(actual.start, expected.start), `multi-cue range move: ${text} start moved`);
+      assert.ok(closeTo(actual.end, expected.end), `multi-cue range move: ${text} end moved`);
+    }
     assert.equal(latestRevisionReason(root), REASON_MOVE_RANGE, 'the range move left the wrong revision reason');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '06-multi-cue-range-move-clamped-at-duration',
       description: 'Dragging the range move handle far past media end shifts both selected cues by one identical delta, clamped at real duration.',
-      details: { deltaMs: deltaA, movedCueBEndMs: records[2].end, durationMs },
+      details: { deltaMs: deltaA, movedCueBEndMs: movedB.end, durationMs },
       focusSelector: '.lyrics-container-wrapper',
     });
     const afterRangeMove = records;
@@ -529,7 +541,7 @@ describe('customer advanced timeline editing', () => {
       return video === null ? null : { currentTime: video.currentTime, paused: video.paused };
     });
     assert.deepEqual(afterZoomVideoState, beforeZoomVideoState, 'zooming the timeline moved or (un)paused playback');
-    assert.deepEqual(await visibleCueTexts(), IMPORTED_CUES.map((cue) => cue.text), (
+    assert.deepEqual(await visibleCueTexts(), afterRangeMove.map((cue) => cue.text), (
       'zooming the timeline changed the visible cue list'
     ));
     const afterZoomRecords = durableCueRecords(root);

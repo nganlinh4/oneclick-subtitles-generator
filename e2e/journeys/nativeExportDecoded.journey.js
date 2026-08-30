@@ -294,8 +294,14 @@ describe('a customer exports the subtitled video they previewed', () => {
     )) === 0, { timeout: 10_000, interval: 100, timeoutMsg: 'old notices did not dismiss' });
 
     await clickControl(renderSelector);
-    await browser.pause(5_000);
-    const admission = await browser.execute(() => ({
+    let admission = null;
+    let progressToastSeen = false;
+    let refusalToastSeen = false;
+    // Sample the real UI while the job is active. A short native render can finish and remove its
+    // keyed progress toast before a fixed post-click pause returns; that is success, not missing
+    // feedback. Stop when progress was witnessed or the queue reached a terminal state.
+    await browser.waitUntil(async () => {
+      admission = await browser.execute(() => ({
         queue: [...document.querySelectorAll('.video-rendering-section .queue-item')]
           .map((node) => ({
             className: node.className,
@@ -314,17 +320,31 @@ describe('a customer exports the subtitled video they previewed', () => {
         inlineStatus: document.querySelector('.render-admission-status, .rendering-overlay')
           ?.innerText?.trim() ?? null,
       }));
+      progressToastSeen ||= admission.toasts.some(({ className }) => (
+        /(?:^|\s)toast-info(?:\s|$)/.test(className)
+      ));
+      refusalToastSeen ||= admission.toasts.some(({ className }) => (
+        /toast-(?:error|warning)/.test(className)
+      ));
+      return progressToastSeen || refusalToastSeen || admission.queue.some(({ className }) => (
+        /(?:^|\s)(?:completed|failed)(?:\s|$)/.test(className)
+      ));
+    }, {
+      timeout: 10_000,
+      interval: 50,
+      timeoutMsg: 'render admission produced no progress toast, refusal, or terminal queue item',
+    });
     assert.ok(
       admission.queue.length > 0 || admission.toasts.length > 0,
       `Render produced no job and no refusal: ${JSON.stringify(admission)}`,
     );
     assert.equal(
-      admission.toasts.some(({ className }) => /toast-(?:error|warning)/.test(className)),
+      refusalToastSeen,
       false,
       `Render was refused before admission: ${JSON.stringify(admission)}`,
     );
     assert.equal(
-      admission.toasts.some(({ className }) => /(?:^|\s)toast-info(?:\s|$)/.test(className)),
+      progressToastSeen,
       true,
       `render progress did not move to a toast: ${JSON.stringify(admission)}`,
     );
