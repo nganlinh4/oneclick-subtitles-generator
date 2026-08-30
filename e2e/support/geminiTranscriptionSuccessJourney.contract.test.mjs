@@ -9,6 +9,7 @@ test('live Gemini transcription uses public controls and independent durable/pix
   assert.match(journey, /enrollGeminiCredentials/u);
   assert.match(journey, /data-osg-action="generate-subtitles"/u);
   assert.match(journey, /data-transcription-method="new"/u);
+  assert.match(journey, /data-transcription-method="old"/u);
   assert.match(journey, /data-osg-action="process-subtitles"/u);
   assert.match(journey, /durableState/u);
   assert.match(journey, /waitForCanvasSubtitleFrame/u);

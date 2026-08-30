@@ -83,12 +83,72 @@ describe('a customer generates subtitles through live Gemini', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-live-gemini-cues-drawn',
-      description: 'Live Gemini transcribed real media, persisted a valid cue track and drew it through the native preview.',
+      description: 'The new Gemini method transcribed real media, persisted a valid cue track and drew it through the native preview.',
       details: {
         enrolledCredentialCount: enrollment.enrolled,
         cueCount: durable.counts.cues,
         jobState: job.state,
       },
+      focusSelector: '.video-preview .video-container',
+    });
+
+    await timeline.click();
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    await browser.keys(['\uE017']);
+    await browser.waitUntil(async () => {
+      const current = await surfaceState();
+      return current.cues.length === 0 && durableState(root).counts.cues === 0;
+    }, {
+      timeout: 60_000,
+      interval: 500,
+      timeoutMsg: 'clearing the new-method result did not produce an empty durable track',
+    });
+
+    const beforeOld = durableState(root);
+    const priorOldJobs = new Set(
+      beforeOld.jobs.filter(({ kind }) => kind === 'transcribe').map(({ id }) => id),
+    );
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await timeline.click();
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    const oldMethod = await $('[data-transcription-method="old"]');
+    await oldMethod.waitForClickable({ timeout: 60_000 });
+    assert.equal(await oldMethod.getAttribute('data-method-available'), 'true');
+    await oldMethod.click();
+    await clickControl('[data-osg-action="process-subtitles"]');
+
+    let oldSurface = null;
+    let oldJob = null;
+    let oldDurable = null;
+    await browser.waitUntil(async () => {
+      oldSurface = await surfaceState();
+      oldDurable = durableState(root);
+      const jobs = oldDurable.jobs.filter(({ id, kind }) => (
+        kind === 'transcribe' && !priorOldJobs.has(id)
+      ));
+      assert.ok(jobs.length <= 1, `one old-method click created multiple jobs: ${JSON.stringify(jobs)}`);
+      [oldJob = null] = jobs;
+      if (oldSurface.errorToasts.length > 0 || terminalStates.has(oldJob?.state)) {
+        throw new Error(`old Gemini transcription terminated: ${JSON.stringify({ oldJob, oldSurface })}`);
+      }
+      return oldJob?.state === 'succeeded'
+        && oldSurface.processing === false
+        && oldSurface.cues.length > 0
+        && oldDurable.counts.cues > 0;
+    }, {
+      timeout: 10 * 60_000,
+      interval: 1_000,
+      timeoutMsg: 'the old Gemini method never produced a succeeded durable cue track',
+    });
+    assert.deepEqual(oldSurface.inlineErrors, [], 'the old Gemini method painted an inline error');
+    const oldFirst = oldDurable.cues[0];
+    await seekPreviewTo((Number(oldFirst.start_ms) + Number(oldFirst.end_ms)) / 2_000);
+    await waitForCanvasSubtitleFrame(180_000);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-old-gemini-cues-drawn',
+      description: 'The old Gemini method independently produced a succeeded durable cue track and native preview.',
+      details: { cueCount: oldDurable.counts.cues, jobState: oldJob.state },
       focusSelector: '.video-preview .video-container',
     });
   });
