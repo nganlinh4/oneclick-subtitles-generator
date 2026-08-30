@@ -112,6 +112,14 @@ describe('a customer generates subtitles through live Gemini', () => {
     await timeline.click();
     await browser.keys(['\uE009', 'a', '\uE000']);
     const oldMethod = await $('[data-transcription-method="old"]');
+    if (!(await oldMethod.isDisplayed().catch(() => false))) {
+      const reopen = await $('.method-selection-reopen-btn');
+      await reopen.waitForClickable({
+        timeout: 60_000,
+        timeoutMsg: 'the processing modal did not expose its change-method control',
+      });
+      await reopen.click();
+    }
     await oldMethod.waitForClickable({ timeout: 60_000 });
     assert.equal(await oldMethod.getAttribute('data-method-available'), 'true');
     await oldMethod.click();
