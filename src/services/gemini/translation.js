@@ -162,8 +162,8 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     const isFormatMode = Array.isArray(targetLanguage) && targetLanguage.length === 0;
 
     const languageIds = isFormatMode ? Object.freeze([]) : requestedLanguageIds(targetLanguage);
-    const runnableChainItems = isFormatMode && Array.isArray(chainItems)
-        ? normalizeRunnableLanguageChain(chainItems, { formatOnly: true })
+    const runnableChainItems = Array.isArray(chainItems)
+        ? normalizeRunnableLanguageChain(chainItems, { formatOnly: isFormatMode })
         : chainItems;
     if (isFormatMode && Array.isArray(runnableChainItems) && runnableChainItems.some((item) => (
         item?.type === 'language' && !item.isOriginal
@@ -301,7 +301,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             delimiter,
             useParentheses,
             bracketStyle,
-            chainItems,
+            runnableChainItems,
             restTime,
             fileContext,
             translateChunk,
@@ -388,7 +388,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
             subtitles: sourceSubtitles,
             providerResult,
             languageIds,
-            chainItems,
+            chainItems: runnableChainItems,
             delimiter,
             useParentheses,
             bracketStyle,

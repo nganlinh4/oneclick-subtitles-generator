@@ -281,6 +281,33 @@ test('format-only mode ignores the editor blank target placeholder', async () =>
   expect(runNativeGeminiText).not.toHaveBeenCalled();
 });
 
+test('translation removes the editor blank target and its delimiter before formatting', async () => {
+  const subtitles = [{ id: 1, start: 0, end: 1, text: 'One' }];
+  runNativeGeminiText.mockResolvedValue({
+    text: providerText(subtitles, { Vietnamese: ['Một'] }),
+    usage: null,
+  });
+
+  const outcome = await translateSubtitles(
+    subtitles,
+    ['Vietnamese'],
+    'gemini-3.5-flash-lite',
+    null,
+    0,
+    false,
+    ' ',
+    false,
+    null,
+    [
+      { id: 1, type: 'language', value: '', isOriginal: false },
+      { id: 2, type: 'delimiter', value: ' ', style: { open: '', close: '' } },
+      { id: 3, type: 'language', value: 'Vietnamese', isOriginal: false },
+    ]
+  );
+
+  expect(outcome.rows).toEqual([expect.objectContaining({ text: 'Một' })]);
+});
+
 test.each([
   [['Korean', 'korean'], 'unique'],
   [[' Korean'], 'non-blank'],

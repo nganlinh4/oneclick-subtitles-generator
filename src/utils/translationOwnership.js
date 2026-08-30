@@ -366,21 +366,36 @@ export const normalizeLanguageChain = (
 /**
  * Produce the exact chain a translation run is allowed to execute and persist.
  *
- * The editor intentionally keeps one empty target-language chip as an input affordance. In
- * format-only mode that chip has no semantic value: mode detection ignores it, and allowing it to
- * cross the run boundary used to make the button say "Format" while the formatter refused the
- * request. Strip only empty target placeholders. A non-empty target remains present and is still
- * rejected by the format-only provider boundary rather than being mistaken for literal text.
+ * The editor intentionally keeps empty target-language chips as input affordances. They have no
+ * semantic value in either mode and must never cross the run boundary. In translation mode remove
+ * the delimiter that belonged to the empty chip as well; otherwise a blank first chip silently
+ * becomes a prefix on the first real translation. Format-only mode deliberately retains
+ * delimiters because they may be literal decoration around the Original item.
  */
 export const normalizeRunnableLanguageChain = (value, { formatOnly = false } = {}) => {
   const parsed = normalizeLanguageChain(value, { allowEmptyLanguage: true });
+  const translationItems = [...parsed];
+  if (!formatOnly) {
+    for (let index = translationItems.length - 1; index >= 0; index -= 1) {
+      const item = translationItems[index];
+      if (item.type !== 'language' || item.isOriginal || item.value.trim().length > 0) continue;
+      if (index > 0 && translationItems[index - 1].type === 'delimiter') {
+        translationItems.splice(index - 1, 2);
+      } else if (index + 1 < translationItems.length
+          && translationItems[index + 1].type === 'delimiter') {
+        translationItems.splice(index, 2);
+      } else {
+        translationItems.splice(index, 1);
+      }
+    }
+  }
   const runnable = formatOnly
     ? parsed.filter((item) => (
       item.type !== 'language' || item.isOriginal || item.value.trim().length > 0
     ))
-    : parsed;
+    : translationItems;
   return normalizeLanguageChain(runnable, {
-    allowEmptyLanguage: !formatOnly,
+    allowEmptyLanguage: false,
     requireRunnable: true,
   });
 };

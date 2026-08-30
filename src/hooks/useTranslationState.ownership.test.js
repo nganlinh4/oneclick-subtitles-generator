@@ -261,6 +261,44 @@ it('canonicalizes the blank editor target out of a format-only run and durable r
   view.unmount();
 });
 
+it('canonicalizes blank editor targets out of a translated run and durable record', async () => {
+  const view = await mount();
+  const editorChain = [
+    { id: 1, type: 'language', value: '', isOriginal: false },
+    { id: 2, type: 'delimiter', value: ' ', style: { open: '', close: '' } },
+    { id: 3, type: 'language', value: 'Vietnamese', isOriginal: false },
+  ];
+
+  let outcome;
+  await act(async () => {
+    outcome = await view.result.current.handleTranslate(
+      ['Vietnamese'], ' ', false, null, editorChain
+    );
+  });
+  expect(outcome).toMatchObject({ status: 'complete' });
+  const runnable = [editorChain[2]];
+  expect(mocks.translate).toHaveBeenCalledWith(
+    expect.any(Array),
+    'Vietnamese',
+    'gemini-3.5-flash-lite',
+    null,
+    0,
+    false,
+    ' ',
+    false,
+    null,
+    runnable,
+    'main',
+    false,
+    expect.any(Object)
+  );
+  expect(mocks.persist).toHaveBeenCalledWith(
+    expect.any(Object),
+    expect.objectContaining({ languageChain: runnable })
+  );
+  view.unmount();
+});
+
 it('acquires a synchronous lease so same-tick double click starts one run', async () => {
   const view = await mount();
   const checkpoint = deferred();
