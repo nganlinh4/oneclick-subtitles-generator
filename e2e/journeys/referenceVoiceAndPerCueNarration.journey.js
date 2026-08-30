@@ -14,7 +14,7 @@
 // stays byte-identical on disk -- proven by an independent SHA-256 read before and after, not by
 // trusting the UI's own "succeeded" state.
 
-/* global $, browser, describe, document, it */
+/* global $, browser, describe, document, it, window */
 
 import { strict as assert } from 'node:assert';
 import { readFileSync, statSync } from 'node:fs';
@@ -215,10 +215,24 @@ const tagResultControlButton = (cueText, iconName) => browser.execute((text, ico
 const clickResultControlButton = async (cueText, iconName, label) => {
   const tagged = await tagResultControlButton(cueText, iconName);
   assert.equal(tagged.found, true, `${label}: ${JSON.stringify(tagged)}`);
+  await browser.execute(() => {
+    const node = document.querySelector('[data-e2e-narration-control="1"]');
+    window.__OSG_E2E_NARRATION_CLICK__ = {
+      delivered: false,
+      disabledBefore: node?.disabled ?? null,
+      subtitleId: node?.getAttribute('data-subtitle-id') ?? null,
+    };
+    node?.addEventListener('click', () => {
+      window.__OSG_E2E_NARRATION_CLICK__.delivered = true;
+    }, { once: true });
+  });
   await clickControl('[data-e2e-narration-control="1"]');
+  const delivery = await browser.execute(() => window.__OSG_E2E_NARRATION_CLICK__ ?? null);
+  assert.equal(delivery?.delivered, true, `${label} never received a DOM click: ${JSON.stringify(delivery)}`);
   await browser.execute(() => {
     document.querySelector('[data-e2e-narration-control]')?.removeAttribute('data-e2e-narration-control');
   });
+  return delivery;
 };
 
 const resultRowSurface = (cueText) => browser.execute((text) => {
@@ -383,7 +397,23 @@ describe('a customer regenerates and plays one narration cue, and reference-voic
     // --- Regenerate exactly the middle cue. -------------------------------------------------------
     const beforeRegenerate = durableState(root);
     const beforeRegenerateJobIds = new Set(beforeRegenerate.jobs.map(({ id }) => id));
-    await clickResultControlButton(CUE_TEXTS[REGENERATED_ORDINAL - 1], 'refresh', 'regenerate control');
+    const regenerateClick = await clickResultControlButton(
+      CUE_TEXTS[REGENERATED_ORDINAL - 1],
+      'refresh',
+      'regenerate control',
+    );
+
+    let regenerateAccepted = false;
+    await browser.waitUntil(async () => {
+      regenerateAccepted = await anyRetryingRow();
+      if (regenerateAccepted) return true;
+      const current = durableState(root);
+      return current.jobs.length > beforeRegenerate.jobs.length;
+    }, {
+      timeout: 5_000,
+      interval: 50,
+      timeoutMsg: `the delivered regenerate click was not accepted by the controller: ${JSON.stringify(regenerateClick)}`,
+    });
 
     let afterRegenerate = null;
     let regeneratedRecords = [];
