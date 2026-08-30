@@ -90,6 +90,7 @@ describe('Gemini transcribes a real four-window source', () => {
     let durable = null;
     let surface = null;
     let witness = null;
+    let lastProgressTrace = 0;
     await browser.waitUntil(async () => {
       durable = durableState(root);
       jobs = durable.jobs.filter(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
@@ -102,6 +103,20 @@ describe('Gemini transcribes a real four-window source', () => {
         visibleCueCount: document.querySelectorAll('.lyric-text').length,
       }));
       witness = await readWitness();
+      if (Date.now() - lastProgressTrace >= 10_000) {
+        lastProgressTrace = Date.now();
+        milestone('processing-observation', {
+          jobs: jobs.map(({ kind, state, progress_basis_points: progress }) => ({
+            kind, state, progress,
+          })),
+          processing: surface.processing,
+          errorToasts: surface.errorToasts,
+          visibleCueCount: surface.visibleCueCount,
+          publishedRangeShapes: witness.ranges.map((ranges) => ranges.length),
+          streamPublications: witness.streams.length,
+          runtimeErrors: witness.errors,
+        });
+      }
       if (surface.errorToasts.length > 0 || jobs.some(({ state }) => terminalStates.has(state))) {
         throw new Error(`Gemini multi-window run terminated: ${JSON.stringify({ jobs, surface, witness })}`);
       }
