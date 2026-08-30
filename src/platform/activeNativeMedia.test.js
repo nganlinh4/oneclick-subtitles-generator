@@ -1,5 +1,6 @@
 import {
   ActiveNativeMediaError,
+  createActiveMediaIdentityEpoch,
   createActiveNativeMediaResolver,
   resolveActiveNativeMediaAssetId,
 } from './activeNativeMedia';
@@ -69,6 +70,22 @@ const createHarness = () => {
 
 beforeEach(() => {
   isDesktopRuntime.mockReturnValue(true);
+});
+
+it('advances its activation epoch only when the active project or media identity changes', () => {
+  const epoch = createActiveMediaIdentityEpoch();
+  const mediaA = asset(ASSET_A);
+
+  expect(epoch.read()).toBe(0);
+  expect(epoch.publish(project(PROJECT_A, 7, mediaA))).toBe(1);
+  expect(epoch.publish(project(PROJECT_A, 8, mediaA))).toBe(1);
+  expect(epoch.publish(project(PROJECT_A, 8, mediaA))).toBe(1);
+
+  expect(epoch.publish(project(PROJECT_B, 1, asset(ASSET_B)))).toBe(2);
+  expect(epoch.publish(project(PROJECT_A, 8, mediaA))).toBe(3);
+  expect(epoch.publish(project(PROJECT_A, 9, asset(ASSET_B)))).toBe(4);
+  expect(epoch.publish(null)).toBe(5);
+  expect(epoch.publish(null)).toBe(5);
 });
 
 it('returns a frozen capability only when project, alias owner, and native playback agree', async () => {

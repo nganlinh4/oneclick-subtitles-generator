@@ -15,9 +15,44 @@ import {
 } from './projectService';
 
 const MAX_CACHE_ID_CHARACTERS = 8_192;
-let activeProjectEpoch = 0;
-subscribeToActiveProject(() => {
-  activeProjectEpoch += 1;
+const UNSEEN_ACTIVE_MEDIA = Symbol('unseenActiveMedia');
+
+const activeMediaIdentity = (snapshot) => {
+  const projectId = snapshot?.metadata?.id;
+  const media = snapshot?.media;
+  const assetId = Array.isArray(media) && media.length === 1 ? media[0]?.id : null;
+  return typeof projectId === 'string' && typeof assetId === 'string'
+    ? `${projectId}\u0000${assetId}`
+    : null;
+};
+
+/**
+ * Monotonic identity epoch for the active project/media pair.
+ *
+ * Project subscribers also publish ordinary forward revisions and authoritative no-op refreshes.
+ * Counting those as activations made a same-media subtitle commit look like an A -> B -> A media
+ * replacement whenever it landed during an asynchronous native-media check. Identity transitions
+ * still advance on A -> B -> A (twice), on media replacement inside one project, and on removal.
+ */
+export const createActiveMediaIdentityEpoch = () => {
+  let identity = UNSEEN_ACTIVE_MEDIA;
+  let epoch = 0;
+  return Object.freeze({
+    publish(snapshot) {
+      const nextIdentity = activeMediaIdentity(snapshot);
+      if (nextIdentity !== identity) {
+        identity = nextIdentity;
+        epoch += 1;
+      }
+      return epoch;
+    },
+    read: () => epoch,
+  });
+};
+
+const activeMediaEpoch = createActiveMediaIdentityEpoch();
+subscribeToActiveProject((snapshot) => {
+  activeMediaEpoch.publish(snapshot);
 });
 
 export class ActiveNativeMediaError extends Error {
@@ -123,7 +158,7 @@ export const createActiveNativeMediaResolver = ({
   resolveOwner = resolveOwnedNativeMediaProject,
   getPlayback = getSelectedMedia,
   restorePlayback = restoreMediaAsset,
-  readActivationEpoch = () => activeProjectEpoch,
+  readActivationEpoch = activeMediaEpoch.read,
 } = {}) => {
   if (typeof isDesktop !== 'function'
       || typeof getActiveSnapshot !== 'function'
