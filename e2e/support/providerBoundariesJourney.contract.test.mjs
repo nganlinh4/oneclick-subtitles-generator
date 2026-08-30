@@ -41,7 +41,8 @@ test('the fixed refusal message this journey shares comes from the real credenti
 
 test('toast refusal text reads the customer message, not the close icon or localized heading', () => {
   assert.match(oracle, /toast\.querySelector\('p'\) \?\? toast/u);
-  assert.match(oracle, /\.map\(toastMessage\)/u);
+  assert.match(oracle, /errorMessages: errorNodes\.map\(toastMessage\)/u);
+  assert.match(journey, /toasts\.errorMessages, \[expectedMessage\]/u);
 });
 
 test('document consolidate/summarize and translation both route through the same unwrapped nativeGeminiText call', () => {

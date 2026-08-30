@@ -134,7 +134,7 @@ const clickTabLabelled = async (containerSelector, label) => {
 /** Read the exact same one-typed-refusal shape every credential-free Gemini boundary in this suite proves. */
 const assertCleanTextRefusal = async ({ toasts, expectedMessage, before, after, label }) => {
   assert.equal(toasts.errorToasts.length, 1, `${label}: expected exactly one refusal toast, saw ${JSON.stringify(toasts.errorToasts)}`);
-  assert.equal(toasts.errorToasts[0], expectedMessage, `${label}: refusal toast text changed`);
+  assert.deepEqual(toasts.errorMessages, [expectedMessage], `${label}: refusal toast message changed`);
   assert.deepEqual(toasts.inlineErrors, [], `${label}: the refusal rendered inline -- an explicitly watched defect class`);
   assert.deepEqual(jobsOfKind(after), jobsOfKind(before), `${label}: a missing credential registered a native provider job`);
 };
@@ -200,7 +200,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
         generateDisabled: document.querySelector('[data-osg-action="generate-subtitles"]')?.disabled ?? null,
         processModalPresent: document.querySelector('.processing-modal-overlay') !== null,
       }));
-      return refusalA.errorToasts.some((message) => /API/i.test(message))
+      return refusalA.errorMessages.some((message) => /API/i.test(message))
         && idle.generateDisabled === false
         && idle.processModalPresent === false;
     }, {

@@ -35,11 +35,18 @@ export const collectTopDocumentToasts = () => {
   };
   const text = (node) => (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ');
   const toastMessage = (toast) => text(toast.querySelector('p') ?? toast);
+  const errorNodes = [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
+    .filter(visible);
+  const warningNodes = [...document.querySelectorAll('.toast-item.live .toast.toast-warning')]
+    .filter(visible);
   return {
-    errorToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
-      .filter(visible).map(toastMessage).filter(Boolean),
-    warningToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-warning')]
-      .filter(visible).map(toastMessage).filter(Boolean),
+    // Complete customer-visible text is retained for workflowEvidence's exact screenshot
+    // allowance. Semantic assertions use the message body so a close icon or localized heading
+    // cannot masquerade as a provider error-code change.
+    errorToasts: errorNodes.map(text).filter(Boolean),
+    errorMessages: errorNodes.map(toastMessage).filter(Boolean),
+    warningToasts: warningNodes.map(text).filter(Boolean),
+    warningMessages: warningNodes.map(toastMessage).filter(Boolean),
     inlineErrors: [...document.querySelectorAll('.error, .error-message, [role="alert"]')]
       .filter((node) => node.closest('.toast-item') === null && visible(node))
       .map(text).filter(Boolean),
