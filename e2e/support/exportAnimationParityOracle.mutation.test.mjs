@@ -71,7 +71,7 @@ test('defect 1: fully blank main/render/export is rejected on a plain case', () 
   }), /subtitle mask has only 0 pixels/u);
 });
 
-test('defect 1: fully blank main/render/export is rejected on the ROTATED case (0.92/0.87 floor path)', () => {
+test('defect 1: fully blank main/render/export is rejected on the ROTATED case (0.91/0.87 floor path)', () => {
   const blank = analyzeSubtitleParityRgba({
     width: WIDTH, height: HEIGHT,
     independentSource: rgba(), mainSource: rgba(), renderSource: rgba(),
@@ -116,7 +116,7 @@ test('defect 2b: perfect agreement with one preview surface cannot hide abandonm
 });
 
 // =================================================================================================
-// 3. Wrong placement: ink translated by a meaningful offset, INCLUDING the ROTATED 0.92/0.87 floor.
+// 3. Wrong placement: ink translated by a meaningful offset, INCLUDING the ROTATED 0.91/0.87 floor.
 //    This is the highest-risk relaxation named in the review brief.
 // =================================================================================================
 

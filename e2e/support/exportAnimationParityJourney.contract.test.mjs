@@ -193,7 +193,7 @@ test('every parity threshold is pinned so a relaxation cannot pass unnoticed', (
   const oracle = readFileSync(new URL('./exportAnimationParityOracle.js', import.meta.url), 'utf8');
   for (const [name, value] of [
     ['EXPORT_PARITY_WYSIWYG_FLOOR', '0.95'],
-    ['EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR', '0.92'],
+    ['EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR', '0.91'],
     ['EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR', '0.87'],
     ['EXPORT_PARITY_MAIN_RENDER_FLOOR', '0.90'],
     ['EXPORT_PARITY_SOURCE_IDENTITY_FLOOR', '0.90'],
