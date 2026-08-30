@@ -14,6 +14,9 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 const WORKFLOW = 'gemini-multi-window-transcription';
 const EXPECTED_WINDOWS = FOUR_WINDOW_ASR_FIXTURE.expectedWindowCount;
 const terminalStates = new Set(['failed', 'cancelled', 'interrupted']);
+const milestone = (name, details = {}) => {
+  process.stdout.write(`[gemini-multi-window] ${name} ${JSON.stringify(details)}\n`);
+};
 
 const readWitness = () => browser.execute(() => JSON.parse(JSON.stringify(
   window.__OSG_GEMINI_WINDOWS__ ?? { ranges: [], streams: [], errors: [] },
@@ -24,13 +27,16 @@ describe('Gemini transcribes a real four-window source', () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the Gemini multi-window journey requires an isolated root');
     await openProjectWithMedia();
+    milestone('media-ready');
     const enrollment = await enrollGeminiCredentials({ limit: 20 });
     assert.equal(enrollment.enrolled, 20);
+    milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
     assert.ok(Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
       <= FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds,
     `the staged source has unexpected duration ${duration}`);
+    milestone('duration-verified', { duration });
 
     await browser.execute(() => {
       const ledger = { ranges: [], streams: [], errors: [] };
@@ -55,6 +61,7 @@ describe('Gemini transcribes a real four-window source', () => {
     const baseline = durableState(root);
     const priorJobs = new Set(baseline.jobs.filter(({ kind }) => kind === 'transcribe').map(({ id }) => id));
     await clickControl('[data-osg-action="generate-subtitles"]');
+    milestone('generation-opened');
     const timeline = await $('.subtitle-timeline');
     await timeline.waitForDisplayed({ timeout: 60_000 });
     await timeline.click();
@@ -62,6 +69,7 @@ describe('Gemini transcribes a real four-window source', () => {
     const method = await $('[data-transcription-method="new"]');
     await method.waitForClickable({ timeout: 60_000 });
     await method.click();
+    milestone('method-selected');
     const actuation = await actuateNativeRange({
       driver: browser,
       selector: '#max-duration-slider',
@@ -69,7 +77,14 @@ describe('Gemini transcribes a real four-window source', () => {
       label: 'Gemini one-minute maximum request duration',
     });
     assert.equal(actuation.value, 1);
+    milestone('request-window-selected', { minutes: actuation.value });
+    milestone('before-process', await browser.execute(() => ({
+      actionDisabled: document.querySelector('[data-osg-action="process-subtitles"]')?.disabled ?? null,
+      selectedRange: document.querySelector('#max-duration-slider')?.value ?? null,
+      modalText: (document.querySelector('.video-processing-modal')?.innerText || '').slice(0, 500),
+    })));
     await clickControl('[data-osg-action="process-subtitles"]');
+    milestone('process-clicked');
 
     let jobs = [];
     let durable = null;
