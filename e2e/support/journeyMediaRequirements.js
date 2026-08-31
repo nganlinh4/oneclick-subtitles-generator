@@ -65,6 +65,7 @@ const NO_STAGED_MEDIA = new Set([
   'downloadQualityVariants.journey.js',
   'failedDownloadNoStale.journey.js',
   'freshInstallVisual.journey.js',
+  'geminiLiveMusicSuccess.journey.js',
   'narrationEngineMatrix.journey.js',
   'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',

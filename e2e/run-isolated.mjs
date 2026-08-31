@@ -29,6 +29,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'geminiBackgroundImageSuccess.journey.js',
   'geminiMultiWindowTranscription.journey.js',
   'geminiDocumentSuccess.journey.js',
+  'geminiLiveMusicSuccess.journey.js',
   'geminiTranscriptionSuccess.journey.js',
   'geminiTranslationSuccess.journey.js',
   'geminiVideoAnalysisSuccess.journey.js',
