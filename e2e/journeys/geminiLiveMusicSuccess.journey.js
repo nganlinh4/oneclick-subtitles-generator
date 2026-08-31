@@ -84,7 +84,7 @@ const clickActivePromptKnob = async () => {
 };
 
 describe('a customer generates, records and exports live Gemini music', () => {
-  it('drives PromptDJ through its real nested WebViews and receives real PCM', async () => {
+  it('drives the real embedded PromptDJ application and receives real PCM', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the live-music journey requires an isolated root');
     await openEditor();
@@ -179,7 +179,7 @@ describe('a customer generates, records and exports live Gemini music', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-prompts-pause-resume-reset',
-      description: 'A real knob drag updated Gemini, Pause and Play reused one session, and Reset Context was applied.',
+      description: 'A real knob click updated Gemini, Pause and Play reused one session, and Reset Context was applied.',
       details: { session: initialSession, promptId: beforeMutation.promptId },
       focusSelector: '.music-generator-section',
     });

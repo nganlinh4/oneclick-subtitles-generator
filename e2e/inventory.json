@@ -1353,30 +1353,30 @@
       "name": "backgroundMusicPromptDj",
       "kind": "workflow",
       "file": "journeys/geminiLiveMusicSuccess.journey.js",
-      "capability": "PromptDJ starts a native Gemini live-music session, plays non-silent PCM, records exact provider frames, previews a finite recording, saves it and stops cleanly.",
+      "capability": "PromptDJ starts one native Gemini live-music session, mutates weighted prompts, pauses and resumes that session, resets context, records exact provider frames, previews a finite recording and saves it.",
       "status": "green",
       "recommendedJourney": "creativeGenerators",
       "evidenceWorkflow": "gemini-live-music-success",
-      "attemptId": "20260831041113238-41192-0d406caa",
-      "binaryDigest": "87311f9f8dbc198c6a620f45d6fb971c7f3fe7bd327c3160a45b37c7a0077ed0",
-      "note": "Green against the real offscreen desktop binary on 2026-08-31. Twenty reviewed credentials were enrolled through the product, the nested PromptDJ transport connected to live Gemini in about 300 ms, reached playing with measured non-silent PCM, recorded for five seconds, published a finite four-second preview, exported a guarded native WAV with an independently checked RIFF signature, and stopped the session. The run exposed and drove three root fixes: the credential bridge now targets the actual top-window owner, streaming WebM MediaRecorder capture was replaced by deterministic exact-PCM WAV capture because Chromium produced Infinity-duration files, and owned recording bytes now go directly to native export instead of hanging while re-fetching their own blob URL. Three ordered screenshots contain no semantic error alert, error toast or overflow.",
+      "attemptId": "20260831052703697-35860-d634492b",
+      "binaryDigest": "773c5514a0da3fef92bb67b63f7f044530748aeaef2427ee57dbddd0a1f7c8dc",
+      "note": "Green against the real offscreen desktop binary on 2026-08-31. Twenty reviewed credentials were enrolled through the product. One native Gemini session reached playing with measured non-silent PCM; a real prompt-knob click produced a second provider prompt receipt; Pause and immediate Resume produced native Pause/Play controls without a second session; Reset Context reached the same session; recording produced a finite six-second preview; and guarded native export wrote a 1,152,044-byte WAV with an independently checked RIFF signature. Four ordered screenshots contain no semantic error alert, error toast or overflow. The run removed a redundant nested srcDoc iframe, replaced a silent 500 ms transport-click discard with state-owned control, made weights accessible by click and keyboard, and proved prompt updates with bounded Rust diagnostics.",
       "dependencies": {
-        "owner": "none for the proven live generation, recording, preview, save and stop path",
+        "owner": "none for the proven live generation, prompt mutation, pause/resume, reset, recording, preview and save path",
         "requires": "none beyond the reviewed credential pool already supplied to the isolated harness",
-        "note": "Weighted-prompt mutation, pause/resume, reset-context and physical MIDI remain distinct coverage; this receipt does not imply hardware behavior."
+        "note": "Only physical MIDI input remains distinct; this receipt does not imply hardware behavior."
       }
     },
     {
-      "name": "backgroundMusicPromptDjControlsAndMidi",
+      "name": "backgroundMusicPromptDjMidi",
       "kind": "planned",
       "file": null,
-      "capability": "PromptDJ mutates weighted prompts during a live session, pauses/resumes, resets context, and maps explicitly isolated MIDI input without corrupting recording.",
+      "capability": "PromptDJ maps an explicitly isolated physical or virtual MIDI input to prompt weights without corrupting the already-proven live session and recording path.",
       "status": "planned",
       "recommendedJourney": "creativeGenerators",
       "dependencies": {
         "owner": "test-hardware for physical MIDI only",
-        "requires": "an isolated virtual or physical MIDI device for the hardware branch; prompt mutation and transport controls require no new owner input",
-        "note": "Keep hardware input separate from the now-green live generation/record/save journey so unavailable MIDI cannot erase provider proof."
+        "requires": "an isolated virtual or physical MIDI device",
+        "note": "Hardware input remains separate from the green software controls and live generation/record/save journey so unavailable MIDI cannot erase provider proof."
       }
     },
     {
