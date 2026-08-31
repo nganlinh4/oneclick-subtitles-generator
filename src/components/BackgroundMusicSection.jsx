@@ -22,6 +22,7 @@ import HelpIcon from './common/HelpIcon.jsx';
 import AudioPlayer from './common/AudioPlayer';
 import { formatTime } from '../utils/timeFormatter';
 import { trimSilenceFromBlob } from '../utils/audioTrim';
+import { startPromptDjReadinessBridge } from './backgroundMusic/promptDjReadiness';
 
 // Collapsible section embedding the promptdj-midi app with start/stop recording controls
 const BackgroundMusicSection = () => {
@@ -477,6 +478,23 @@ const BackgroundMusicSection = () => {
     postNativeAvailability();
     return unsubscribe;
   }, [nativeRuntime, postNativeAvailability]);
+
+  useEffect(() => {
+    if (!nativeRuntime || isCollapsed) return undefined;
+    return startPromptDjReadinessBridge({
+      isReady: () => {
+        try {
+          const target = getPromptDjWindow();
+          const host = target?.document?.querySelector('prompt-dj-midi');
+          return host !== null && host !== undefined
+            && typeof host.credentialAvailable === 'boolean';
+        } catch {
+          return false;
+        }
+      },
+      publish: postNativeAvailability,
+    });
+  }, [getPromptDjWindow, isCollapsed, nativeRuntime, postNativeAvailability]);
 
   useEffect(() => () => {
     closeAfterStartRef.current = true;
