@@ -99,19 +99,28 @@ export class WeightKnob extends LitElement {
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
     this.onLostPointerCapture = this.onLostPointerCapture.bind(this);
     this.onWindowBlur = this.onWindowBlur.bind(this);
   }
 
   connectedCallback(): void {
     super.connectedCallback();
+    this.tabIndex = 0;
+    this.setAttribute('role', 'slider');
+    this.setAttribute('aria-label', 'Prompt weight');
+    this.setAttribute('aria-valuemin', '0');
+    this.setAttribute('aria-valuemax', '2');
+    this.setAttribute('aria-valuenow', String(this.value));
     this.addEventListener('wheel', this.handleWheel, { passive: true });
+    this.addEventListener('keydown', this.handleKeyDown);
   }
 
   disconnectedCallback(): void {
     // Ensure we always cleanup listeners if the element is removed
     this.teardownDragListeners();
     this.removeEventListener('wheel', this.handleWheel);
+    this.removeEventListener('keydown', this.handleKeyDown);
     super.disconnectedCallback();
   }
 
@@ -192,6 +201,27 @@ export class WeightKnob extends LitElement {
     this.value = this.value + delta * -0.0025;
     this.value = Math.max(0, Math.min(2, this.value));
     this.dispatchEvent(new CustomEvent<number>('input', { detail: this.value }));
+  }
+
+  private handleKeyDown(e: KeyboardEvent) {
+    let next = this.value;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') next += 0.1;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') next -= 0.1;
+    else if (e.key === 'PageUp') next += 0.5;
+    else if (e.key === 'PageDown') next -= 0.5;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = 2;
+    else return;
+    e.preventDefault();
+    this.value = Math.max(0, Math.min(2, next));
+    this.setAttribute('aria-valuenow', String(this.value));
+    this.dispatchEvent(new CustomEvent<number>('input', { detail: this.value }));
+  }
+
+  protected override updated(changedProperties: Map<PropertyKey, unknown>) {
+    if (changedProperties.has('value')) {
+      this.setAttribute('aria-valuenow', String(this.value));
+    }
   }
 
   private describeArc(

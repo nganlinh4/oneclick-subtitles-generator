@@ -66,21 +66,20 @@ const activePromptKnob = () => browser.execute(() => {
   };
 });
 
-const dragActivePromptKnob = async () => {
+const adjustActivePromptKnob = async () => {
   const before = await activePromptKnob();
   assert.ok(before, 'PromptDJ has no active weighted prompt control');
-  await browser.performActions([{
-    type: 'pointer',
-    id: 'prompt-weight-pointer',
-    parameters: { pointerType: 'mouse' },
-    actions: [
-      { type: 'pointerMove', duration: 0, origin: 'viewport', x: before.x, y: before.y },
-      { type: 'pointerDown', button: 0 },
-      { type: 'pointerMove', duration: 500, origin: 'viewport', x: before.x, y: before.y - 35 },
-      { type: 'pointerUp', button: 0 },
-    ],
-  }]);
-  await browser.releaseActions();
+  const focused = await browser.execute((promptId) => {
+    const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
+    const host = outer?.contentDocument?.querySelector('prompt-dj-midi');
+    const controller = [...(host?.shadowRoot?.querySelectorAll('prompt-controller') ?? [])]
+      .find((candidate) => candidate.promptId === promptId);
+    const knob = controller?.shadowRoot?.querySelector('weight-knob');
+    knob?.focus();
+    return knob?.matches(':focus') ?? false;
+  }, before.promptId);
+  assert.equal(focused, true, `PromptDJ weight ${before.promptId} is not keyboard focusable`);
+  await browser.keys(['ArrowUp']);
   return before;
 };
 
@@ -130,7 +129,7 @@ describe('a customer generates, records and exports live Gemini music', () => {
 
     const initialSession = liveMusicDiagnostics(root).find((entry) => entry.event === 'live-music.started')?.session;
     assert.ok(initialSession, 'the playing surface has no native live-music session receipt');
-    const beforeMutation = await dragActivePromptKnob();
+    const beforeMutation = await adjustActivePromptKnob();
     await browser.waitUntil(async () => {
       const after = await activePromptKnob();
       return after?.promptId === beforeMutation.promptId
@@ -138,7 +137,7 @@ describe('a customer generates, records and exports live Gemini music', () => {
         && liveMusicDiagnostics(root).filter((entry) => (
           entry.event === 'live-music.prompts-sent' && entry.session === initialSession
         )).length >= 2;
-    }, { timeout: 30_000, interval: 100, timeoutMsg: 'the real prompt-weight drag never reached Gemini' });
+    }, { timeout: 30_000, interval: 100, timeoutMsg: 'the real prompt-weight keyboard change never reached Gemini' });
 
     assert.equal(await clickPromptDjTransport(), true, 'the PromptDJ pause control disappeared');
     await browser.waitUntil(async () => (
