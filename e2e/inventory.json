@@ -765,13 +765,13 @@
     {
       "name": "authenticatedAndRestrictedUrlAcquisition",
       "kind": "workflow",
-      "capability": "Cookie-backed, age-gated, private and playlist URLs download the selected item without reusing stale media.",
+      "capability": "Cookie-backed, age-gated and private URLs download the selected item without reusing stale media.",
       "status": "unproven",
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
       "dependencies": {
         "owner": "user-or-isolated-browser-fixture",
         "requires": "reviewed isolated test accounts/cookies and stable fixtures for the authenticated, private and age-gated axes",
-        "note": "Public YouTube and public Dailymotion downloads are green in separate real-network journeys. Authentication, browser-cookie handoff, private/age-gated media and playlist selection remain deliberately unclaimed; a public alternate provider no longer belongs to this dependency."
+        "note": "Public YouTube, public Dailymotion and selected-item playlist watch URLs are green in separate real-network journeys. Authentication, browser-cookie handoff and private/age-gated media remain deliberately unclaimed."
       }
     },
     {
@@ -795,6 +795,29 @@
         "owner": "none",
         "requires": "the public Dailymotion fixture and network access for repeat execution",
         "note": "This proves credential-free alternate-provider extraction and download only. Cookies, private media, age gates and playlists remain owned by authenticatedAndRestrictedUrlAcquisition."
+      }
+    },
+    {
+      "name": "playlistWatchSelection",
+      "kind": "workflow",
+      "file": "journeys/playlistWatchSelection.journey.js",
+      "capability": "A playlist-bearing YouTube watch URL resolves and downloads only the customer-selected item, never adjacent playlist entries.",
+      "status": "green",
+      "evidenceWorkflow": "playlist-watch-selection",
+      "attemptId": "20260831081539968-53396-09fc8474",
+      "binaryDigest": "70287fb6d4e089859213fdb68f77045c15c92c972d80862bff9388b7985d8bdb",
+      "result": "A watch URL inside a maintained four-item playlist published exactly one JOD4.mp4; independent ffprobe identified the selected fourth item at 192x144 and 154.09 seconds.",
+      "oracles": [
+        "the public acquisition surface canonicalizes the watch URL to selected video id DpNKHkMbULM",
+        "the managed yt-dlp scan exposes real 240p and 144p formats for that selected item",
+        "the isolated customer destination receives exactly one new file named for JOD4",
+        "independent ffprobe distinguishes the selected 154-second item from its three playlist neighbours"
+      ],
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "none",
+        "requires": "the maintained public yt-dlp playlist fixture and network access for repeat execution",
+        "note": "This proves public selected-item playlist behavior. Cookie-backed, private and age-gated media remain owned by authenticatedAndRestrictedUrlAcquisition."
       }
     },
     {
