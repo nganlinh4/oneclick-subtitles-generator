@@ -165,7 +165,7 @@ export const createNativeDownloadPreflight = ({
     throw error;
   };
 
-  const perform = async (options, controller, requiredIds) => {
+  const perform = async (options, controller, requiredIds, forceInstallIds) => {
     const abort = () => controller.abort();
     const operationToastKeys = new Set();
     const dismissOperationToasts = () => {
@@ -193,7 +193,8 @@ export const createNativeDownloadPreflight = ({
         return rejectWithNotice('nativeToolUnavailable');
       }
 
-      const installTargets = required.filter((tool) => tool.status.state === 'missing'
+      const installTargets = required.filter((tool) => forceInstallIds.has(tool.id)
+        || tool.status.state === 'missing'
         || (tool.status.state === 'installed'
           && !tool.status.pendingRemoval
           && (!tool.status.activeRuntime || tool.status.restartRequired)));
@@ -287,10 +288,10 @@ export const createNativeDownloadPreflight = ({
     }
   };
 
-  const ensureRequiredTools = (requiredIds, options) => {
+  const ensureRequiredTools = (requiredIds, options, forceInstallIds = new Set()) => {
     if (active === null) {
       const controller = new AbortController();
-      const promise = perform(options, controller, requiredIds).finally(() => {
+      const promise = perform(options, controller, requiredIds, forceInstallIds).finally(() => {
         if (active?.promise === promise) active = null;
       });
       active = Object.freeze({ controller, promise });
@@ -306,7 +307,14 @@ export const createNativeDownloadPreflight = ({
       // updates only after a real downloader execution failure.
       return Object.freeze({ ready: true });
     }
-    return ensureRequiredTools(MANAGED_DOWNLOAD_TOOL_IDS, options);
+    const forceInstallIds = new Set();
+    if (readiness?.reason === 'downloaderUnavailable'
+        || readiness?.reason === 'downloaderHealthCheckFailed') {
+      forceInstallIds.add('yt-dlp');
+    } else if (readiness?.reason === 'javascriptRuntimeUnavailable') {
+      forceInstallIds.add('deno');
+    }
+    return ensureRequiredTools(MANAGED_DOWNLOAD_TOOL_IDS, options, forceInstallIds);
   };
 
   const ensureDownloadReady = async (readiness, rawOptions) => {

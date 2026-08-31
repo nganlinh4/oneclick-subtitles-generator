@@ -145,6 +145,27 @@ it('does not invoke even a failing updater before a healthy inspection', async (
   expect(refreshDownloader).not.toHaveBeenCalled();
 });
 
+it.each([
+  ['downloaderUnavailable', 'yt-dlp'],
+  ['downloaderHealthCheckFailed', 'yt-dlp'],
+  ['javascriptRuntimeUnavailable', 'deno'],
+])('repairs the installed package whose consumer is unhealthy for %s', async (reason, expectedTool) => {
+  const install = vi.fn(async (tool, handlers) => {
+    const job = runningJob();
+    queueMicrotask(() => handlers.onCompleted(completedEvent(tool, job.id)));
+    return job;
+  });
+  const readStatus = vi.fn(async () => readyStatus());
+  const preflight = service({ install, readStatus });
+
+  await expect(preflight.ensureInspectionReady({ inspectAvailable: false, reason }))
+    .resolves.toEqual({ ready: true });
+
+  expect(install).toHaveBeenCalledTimes(1);
+  expect(install).toHaveBeenCalledWith(expectedTool, expect.any(Object), expect.any(Object));
+  expect(readStatus).toHaveBeenCalledTimes(2);
+});
+
 it('automatically installs the required batch in parallel and reports aggregate progress', async () => {
   const ui = presentation();
   const started = [];
