@@ -765,13 +765,37 @@
     {
       "name": "authenticatedAndRestrictedUrlAcquisition",
       "kind": "workflow",
-      "capability": "Cookie-backed, age-gated and private URLs download the selected item without reusing stale media.",
+      "capability": "Provider-private and age-gated URLs download the selected item through a real isolated provider account without reusing stale media.",
       "status": "unproven",
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
       "dependencies": {
         "owner": "user-or-isolated-browser-fixture",
-        "requires": "reviewed isolated test accounts/cookies and stable fixtures for the authenticated, private and age-gated axes",
-        "note": "Public YouTube, public Dailymotion and selected-item playlist watch URLs are green in separate real-network journeys. Authentication, browser-cookie handoff and private/age-gated media remain deliberately unclaimed."
+        "requires": "a reviewed disposable provider account with stable private or age-gated media, plus a disposable browser profile, to prove provider-specific profile extraction and access policy",
+        "note": "The isolated cookie boundary, public YouTube, public Dailymotion and selected-item playlist watch URLs are green in separate real-binary journeys. Only live browser-database extraction and provider-private/age-gated behavior remain deliberately unclaimed."
+      }
+    },
+    {
+      "name": "isolatedCookieAuthenticatedDownload",
+      "kind": "workflow",
+      "file": "journeys/authenticatedCookieDownload.journey.js",
+      "capability": "A saved browser-cookie preference authenticates both media inspection and transfer, publishes only the selected protected format, and never exposes the cookie or reads a customer browser profile during automation.",
+      "status": "green",
+      "evidenceWorkflow": "authenticated-cookie-download",
+      "attemptId": "20260831093606101-54668-7c307025",
+      "binaryDigest": "527c9ae756df3080bb54feb6c3cba089c8fae86febee17f56997d0b7ef9ce020",
+      "result": "The protected origin refused an unauthenticated request with 401, then the real hidden app used one isolated Netscape cookie authority for yt-dlp scan and transfer and published exactly one independently decoded 320x180 MP4.",
+      "oracles": [
+        "an independent fetch without the cookie receives HTTP 401 from the exact protected origin",
+        "the public Settings surface persists cookie use and the Download Only modal reports Browser Cookie Added",
+        "the origin ledger proves every product page and media request was authenticated without recording the secret",
+        "the isolated customer destination receives exactly one new file and independent ffprobe identifies the selected 180p rung",
+        "the automation binary accepts only a nonempty, size-bounded regular cookie file beneath its disposable fixture input and never reads a live browser profile"
+      ],
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "none",
+        "requires": "the committed real MP4 fixtures and the compile-time isolated automation authority",
+        "note": "This proves the product's cookie preference, yt-dlp cookie-file boundary, capability binding, authenticated scan and authenticated transfer. Provider-specific browser database extraction, private media and age gates remain owned by authenticatedAndRestrictedUrlAcquisition."
       }
     },
     {
