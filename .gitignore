@@ -178,6 +178,8 @@ package.json.bak
 =0.104.0
 # Anchored: an unanchored `bin` also matches a real nested source directory such as a crate's
 # src/bin/, the same class of bug .gitignore already carried for `subtitles/` and `debug/`.
+e2e/tools/**/bin/
+e2e/tools/**/obj/
 /bin
 electron-dist
 manual-dist-v2/

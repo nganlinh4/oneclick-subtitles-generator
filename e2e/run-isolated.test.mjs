@@ -117,6 +117,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'narrationGeneration.journey.js',
     'nativeExportDecoded.journey.js',
     'playlistWatchSelection.journey.js',
+    'promptDjMidiInput.journey.js',
     'providerBoundaries.journey.js',
     'referenceVoiceAndPerCueNarration.journey.js',
     'renderAudioNarrationMix.journey.js',
