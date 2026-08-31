@@ -144,7 +144,6 @@ export const createNativeDownloadPreflight = ({
   readCatalog = getNativeToolsCatalog,
   readStatus = getNativeToolsStatus,
   install = installNativeTool,
-  refreshDownloader = async () => Object.freeze({ updated: false, throttled: false }),
   presentation = defaultPresentation,
   t = i18n.t.bind(i18n),
   installTimeoutMs = DEFAULT_INSTALL_TIMEOUT_MS,
@@ -302,9 +301,9 @@ export const createNativeDownloadPreflight = ({
   const ensureInspectionReady = async (readiness, rawOptions) => {
     const options = validateOptions(rawOptions);
     if (readiness?.inspectAvailable === true) {
-      // Keep an already healthy installation current before it produces new capabilities.
-      // Refresh failure is non-blocking: the verified active version remains usable offline.
-      await Promise.resolve(refreshDownloader()).catch(() => undefined);
+      // Inspection must use the verified runtime that produced this readiness snapshot. Updating
+      // yt-dlp here can retire that activation between status and download_inspect; recovery owns
+      // updates only after a real downloader execution failure.
       return Object.freeze({ ready: true });
     }
     return ensureRequiredTools(MANAGED_DOWNLOAD_TOOL_IDS, options);
@@ -466,9 +465,7 @@ export const resetNativeDownloaderRecoveryForTest = () => {
   lastAutomaticRecoveryResult = null;
 };
 
-const nativeDownloadPreflight = createNativeDownloadPreflight({
-  refreshDownloader: recoverNativeDownloaderAfterFailure,
-});
+const nativeDownloadPreflight = createNativeDownloadPreflight();
 
 export const ensureNativeDownloadInspectionReady = (
   readiness,

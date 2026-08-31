@@ -121,7 +121,7 @@ it('is production-reachable only through typed download preflights and has no ne
   expect(downloadSource).toContain('ensureNativeDownloadReady');
 });
 
-it('refreshes a ready downloader once before inspection without repeating tool setup', async () => {
+it('uses the verified active downloader for inspection without mutating its runtime', async () => {
   const readCatalog = vi.fn();
   const readStatus = vi.fn();
   const refreshDownloader = vi.fn().mockResolvedValue({ updated: false, throttled: false });
@@ -133,16 +133,16 @@ it('refreshes a ready downloader once before inspection without repeating tool s
     .resolves.toEqual({ ready: true });
   expect(readCatalog).not.toHaveBeenCalled();
   expect(readStatus).not.toHaveBeenCalled();
-  expect(refreshDownloader).toHaveBeenCalledTimes(1);
+  expect(refreshDownloader).not.toHaveBeenCalled();
 });
 
-it('keeps an existing verified downloader usable when its proactive refresh is offline', async () => {
+it('does not invoke even a failing updater before a healthy inspection', async () => {
   const refreshDownloader = vi.fn().mockRejectedValue(new Error('offline'));
   const preflight = service({ refreshDownloader });
 
   await expect(preflight.ensureInspectionReady({ inspectAvailable: true }))
     .resolves.toEqual({ ready: true });
-  expect(refreshDownloader).toHaveBeenCalledTimes(1);
+  expect(refreshDownloader).not.toHaveBeenCalled();
 });
 
 it('automatically installs the required batch in parallel and reports aggregate progress', async () => {
