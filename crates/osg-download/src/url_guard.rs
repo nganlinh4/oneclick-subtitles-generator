@@ -61,8 +61,8 @@ impl UrlValidator<SystemResolver> {
     /// This is deliberately a different constructor from [`Self::system`]. Merely compiling the
     /// automation feature cannot make a loopback URL valid, and production does not compile this
     /// constructor at all. Every allowed value must be canonical, use an explicit unprivileged
-    /// port, name an MP4 path, and carry one 256-bit token. Validation and pre-launch revalidation
-    /// both require byte-for-byte membership in this list.
+    /// port, name an MP4 media path or HTML extractor page, and carry one 256-bit token. Validation
+    /// and pre-launch revalidation both require byte-for-byte membership in this list.
     #[cfg(feature = "e2e-automation")]
     pub fn system_with_exact_automation_urls(policy: UrlPolicy, values: &[String]) -> Result<Self> {
         if values.is_empty() || values.len() > 8 {
@@ -115,9 +115,10 @@ impl<R: AddressResolver> UrlValidator<R> {
         }
         #[cfg(feature = "e2e-automation")]
         if self.is_exact_automation_url(value, &url) {
+            let direct_mp4_passthrough = has_extension(url.path(), "mp4");
             return Ok(ValidatedMediaUrl {
                 url,
-                direct_mp4_passthrough: true,
+                direct_mp4_passthrough,
                 automation_loopback: true,
             });
         }
@@ -254,9 +255,9 @@ fn parse_exact_automation_url(value: &str) -> Result<Url> {
         && url.host() == Some(Host::Ipv4(Ipv4Addr::LOCALHOST))
         && url.port().is_some_and(|port| port >= 1_024)
         && url.fragment().is_none()
-        && std::path::Path::new(url.path())
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("mp4"))
+        && ["mp4", "html"]
+            .iter()
+            .any(|extension| has_extension(url.path(), extension))
         && !url.path().contains("..")
         && !url.path().contains('%')
         && url.query().is_some_and(|query| !query.contains('%'));
@@ -271,6 +272,13 @@ fn parse_exact_automation_url(value: &str) -> Result<Url> {
         ));
     }
     Ok(url)
+}
+
+#[cfg(feature = "e2e-automation")]
+fn has_extension(path: &str, expected: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(expected))
 }
 
 fn is_exact_installed_media_smoke_url(value: &str, url: &Url) -> bool {
@@ -537,7 +545,8 @@ mod tests {
     fn automation_validator_accepts_only_its_canonical_tokenized_exact_urls() {
         const FIRST: &str = "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         const SECOND: &str = "http://127.0.0.1:43123/b.mp4?token=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-        let values = vec![FIRST.to_owned(), SECOND.to_owned()];
+        const PAGE: &str = "http://127.0.0.1:43123/multi.html?token=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let values = vec![FIRST.to_owned(), SECOND.to_owned(), PAGE.to_owned()];
         let validator =
             UrlValidator::system_with_exact_automation_urls(UrlPolicy::SupportedSitesOnly, &values)
                 .expect("exact automation validator");
@@ -549,6 +558,11 @@ mod tests {
                 .revalidate(&validated)
                 .expect("exact revalidation");
         }
+        let page = validator.validate(PAGE).expect("allowed exact HTML page");
+        assert!(!page.allows_direct_mp4_passthrough());
+        validator
+            .revalidate(&page)
+            .expect("exact page revalidation");
 
         for near_miss in [
             "http://127.0.0.1:43123/c.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -557,6 +571,7 @@ mod tests {
             "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&extra=1",
             "http://127.0.0.1:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#fragment",
             "http://localhost:43123/a.mp4?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "http://127.0.0.1:43123/multi.js?token=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         ] {
             assert!(
                 validator.validate(near_miss).is_err(),
