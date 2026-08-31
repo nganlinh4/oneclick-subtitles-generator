@@ -765,13 +765,36 @@
     {
       "name": "authenticatedAndRestrictedUrlAcquisition",
       "kind": "workflow",
-      "capability": "Cookie-backed, age-gated, private, playlist and non-YouTube URLs download the selected item without reusing stale media.",
+      "capability": "Cookie-backed, age-gated, private and playlist URLs download the selected item without reusing stale media.",
       "status": "unproven",
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
       "dependencies": {
         "owner": "user-or-isolated-browser-fixture",
-        "requires": "reviewed test accounts/cookies and stable network fixtures for each supported provider",
-        "note": "Public youtube.com/watch URLs are green; authenticated cookies, playlists and alternate providers are not. Re-checked 2026-08-28: this capability has no journey file and no evidence lane, so it is UNAUTHORED rather than failing -- there is nothing here to diagnose or repair. It cannot be closed inside this suite's substitution budget either: the only origin the suite substitutes is the compile-time exact loopback range fixture, which stands in for the remote BYTES of an already-resolved public URL, not for provider resolution, a signed-in session, an age gate, or a playlist expansion. Each remaining axis needs a reviewed account/cookie jar or a real alternate-provider fixture that the repository deliberately does not carry."
+        "requires": "reviewed isolated test accounts/cookies and stable fixtures for the authenticated, private and age-gated axes",
+        "note": "Public YouTube and public Dailymotion downloads are green in separate real-network journeys. Authentication, browser-cookie handoff, private/age-gated media and playlist selection remain deliberately unclaimed; a public alternate provider no longer belongs to this dependency."
+      }
+    },
+    {
+      "name": "alternateProviderAcquisition",
+      "kind": "workflow",
+      "file": "journeys/alternateProviderDownload.journey.js",
+      "capability": "A customer can inspect real formats from a supported non-YouTube provider and save only the selected provider media.",
+      "status": "green",
+      "evidenceWorkflow": "alternate-provider-download",
+      "attemptId": "20260831075825177-52460-5a7ba505",
+      "binaryDigest": "92ce0ab1a2e90a2745cdb230f9c5875352729ac5e2a59a9c98b1d1a04c91017c",
+      "result": "The real Dailymotion extractor exposed 480p and 384p choices and published exactly one independently decoded 216x384, 19.60-second MP4 with no error surface or stale media.",
+      "oracles": [
+        "the public all-sites input retains the exact Dailymotion URL and provider identity",
+        "the managed yt-dlp runtime exposes two real provider formats through the public Download Only modal",
+        "the isolated customer destination receives exactly one new file larger than 50 KiB",
+        "independent ffprobe verifies decodable video geometry and the expected provider duration"
+      ],
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "none",
+        "requires": "the public Dailymotion fixture and network access for repeat execution",
+        "note": "This proves credential-free alternate-provider extraction and download only. Cookies, private media, age gates and playlists remain owned by authenticatedAndRestrictedUrlAcquisition."
       }
     },
     {
