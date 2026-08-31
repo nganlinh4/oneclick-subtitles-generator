@@ -140,6 +140,11 @@ export const startDownloadFixtureOrigin = async ({
     name: 'osg_e2e_auth',
     value: randomBytes(TOKEN_BYTES).toString('hex'),
   }) : null;
+  const cookieBootstrap = requireCookie ? Object.freeze({
+    label: 'cookie-bootstrap',
+    pathname: '/cookie-bootstrap.html',
+    token: randomBytes(TOKEN_BYTES).toString('hex'),
+  }) : null;
   if (new Set(routes.map(({ label }) => label)).size !== routes.length) {
     throw new Error('download fixture route labels must be unique');
   }
@@ -175,6 +180,22 @@ export const startDownloadFixtureOrigin = async ({
         response.end();
         return true;
       };
+      if (cookieBootstrap !== null
+          && cookieBootstrap.pathname === requestUrl.pathname
+          && requestUrl.searchParams.size === 1
+          && requestUrl.searchParams.get('token') === cookieBootstrap.token
+          && request.method === 'GET') {
+        const body = Buffer.from('<!doctype html><title>OSG isolated browser profile</title>', 'utf8');
+        record(cookieBootstrap, 'cookie-issued', { method: request.method, status: 200 });
+        response.writeHead(200, {
+          'cache-control': 'no-store',
+          'content-length': String(body.length),
+          'content-type': 'text/html; charset=utf-8',
+          'set-cookie': `${cookie.name}=${cookie.value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`,
+        });
+        response.end(body);
+        return;
+      }
       if (page !== null
           && page.pathname === requestUrl.pathname
           && requestUrl.searchParams.size === 1
@@ -357,6 +378,9 @@ export const startDownloadFixtureOrigin = async ({
     multiFormatUrl: page === null
       ? null
       : `http://127.0.0.1:${address.port}${page.pathname}?token=${page.token}`,
+    cookieBootstrapUrl: cookieBootstrap === null
+      ? null
+      : `http://127.0.0.1:${address.port}${cookieBootstrap.pathname}?token=${cookieBootstrap.token}`,
     cookie,
     close: async () => {
       for (const socket of sockets) socket.destroy();

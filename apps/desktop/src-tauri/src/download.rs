@@ -10,8 +10,6 @@ use osg_domain::{
     AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset,
     media_kind_for_extension,
 };
-#[cfg(feature = "e2e-automation")]
-use osg_download::AutomationCookieFile;
 use osg_download::{
     AudioDownloadFormat, AudioQuality, BrowserCookieSource, CancellationToken, DownloadCookies,
     DownloadDestination, DownloadEngine, DownloadError, DownloadPhase, DownloadPlan,
@@ -20,6 +18,8 @@ use osg_download::{
     MediaSelection, ProcessFailureKind, ProgressSink, RunControl, SubtitleSelection,
     SubtitleSource, UrlPolicy, VideoHeight, VideoQuality, YtDlpSearch,
 };
+#[cfg(feature = "e2e-automation")]
+use osg_download::{AutomationBrowserProfile, AutomationCookieFile};
 use osg_infrastructure::storage::{
     ArtifactKind, ContentHash, Database, publish_durable_media_candidate as publish_media_artifact,
 };
@@ -44,6 +44,8 @@ const MAX_SUBTITLE_IPC_BYTES: u64 = 8 * 1024 * 1024;
 const EXACT_AUTOMATION_DOWNLOAD_URLS_ENV: &str = "OSG_E2E_EXACT_DOWNLOAD_URLS";
 #[cfg(feature = "e2e-automation")]
 const AUTOMATION_COOKIE_FILE_ENV: &str = "OSG_E2E_DOWNLOAD_COOKIE_FILE";
+#[cfg(feature = "e2e-automation")]
+const AUTOMATION_BROWSER_PROFILE_ENV: &str = "OSG_E2E_DOWNLOAD_BROWSER_PROFILE";
 #[cfg(feature = "e2e-automation")]
 const AUTOMATION_FIXTURE_ROOT_ENV: &str = "OSG_E2E_FIXTURE_ROOT";
 
@@ -113,17 +115,26 @@ fn resolve_browser_cookie_source(request: CookieSourceRequest) -> CommandResult<
     if request == CookieSourceRequest::None {
         return Ok(DownloadCookies::None);
     }
-    let path = std::env::var_os(AUTOMATION_COOKIE_FILE_ENV).ok_or_else(|| {
+    let root = std::env::var_os(AUTOMATION_FIXTURE_ROOT_ENV).ok_or_else(|| {
+        CommandError::invalid_input("The automation cookie fixture is unavailable.")
+    })?;
+    if let Some(path) = std::env::var_os(AUTOMATION_COOKIE_FILE_ENV) {
+        return AutomationCookieFile::new(Path::new(&path), Path::new(&root))
+            .map(DownloadCookies::AutomationFile)
+            .map_err(|_| CommandError::invalid_input("The automation cookie fixture is invalid."));
+    }
+    let path = std::env::var_os(AUTOMATION_BROWSER_PROFILE_ENV).ok_or_else(|| {
         CommandError::invalid_input(
             "The automation build refused access to a live browser profile.",
         )
     })?;
-    let root = std::env::var_os(AUTOMATION_FIXTURE_ROOT_ENV).ok_or_else(|| {
-        CommandError::invalid_input("The automation cookie fixture is unavailable.")
-    })?;
-    AutomationCookieFile::new(Path::new(&path), Path::new(&root))
-        .map(DownloadCookies::AutomationFile)
-        .map_err(|_| CommandError::invalid_input("The automation cookie fixture is invalid."))
+    AutomationBrowserProfile::new(
+        BrowserCookieSource::from(request),
+        Path::new(&path),
+        Path::new(&root),
+    )
+    .map(DownloadCookies::AutomationBrowserProfile)
+    .map_err(|_| CommandError::invalid_input("The automation browser profile is invalid."))
 }
 
 #[derive(Deserialize)]

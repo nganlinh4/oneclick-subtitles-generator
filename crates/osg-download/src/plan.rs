@@ -95,6 +95,79 @@ impl fmt::Debug for AutomationCookieFile {
     }
 }
 
+#[cfg(feature = "e2e-automation")]
+#[derive(Clone, PartialEq, Eq)]
+pub struct AutomationBrowserProfile {
+    browser: BrowserCookieSource,
+    path: PathBuf,
+}
+
+#[cfg(feature = "e2e-automation")]
+impl AutomationBrowserProfile {
+    pub fn new(browser: BrowserCookieSource, path: &Path, fixture_root: &Path) -> Result<Self> {
+        if browser == BrowserCookieSource::None {
+            return Err(DownloadError::InvalidOption(
+                "automation browser profile has no browser",
+            ));
+        }
+        let root_status = std::fs::symlink_metadata(fixture_root)
+            .map_err(|_| DownloadError::InvalidOption("automation fixture root is unavailable"))?;
+        let profile_status = std::fs::symlink_metadata(path).map_err(|_| {
+            DownloadError::InvalidOption("automation browser profile is unavailable")
+        })?;
+        if root_status.file_type().is_symlink()
+            || !root_status.is_dir()
+            || profile_status.file_type().is_symlink()
+            || !profile_status.is_dir()
+        {
+            return Err(DownloadError::InvalidOption(
+                "automation browser profile is invalid",
+            ));
+        }
+        let root = fixture_root
+            .canonicalize()
+            .map_err(|_| DownloadError::InvalidOption("automation fixture root is unavailable"))?;
+        let input = root
+            .join("input")
+            .canonicalize()
+            .map_err(|_| DownloadError::InvalidOption("automation fixture input is unavailable"))?;
+        let profile = path.canonicalize().map_err(|_| {
+            DownloadError::InvalidOption("automation browser profile is unavailable")
+        })?;
+        if !input.starts_with(&root) || !profile.starts_with(&input) || profile == input {
+            return Err(DownloadError::InvalidOption(
+                "automation browser profile escaped its fixture input",
+            ));
+        }
+        Ok(Self {
+            browser,
+            path: profile,
+        })
+    }
+
+    fn yt_dlp_argument(&self) -> OsString {
+        let mut argument = OsString::from(
+            self.browser
+                .yt_dlp_name()
+                .expect("automation browser profile is never none"),
+        );
+        argument.push(":");
+        argument.push(self.path.as_os_str());
+        argument
+    }
+}
+
+#[cfg(feature = "e2e-automation")]
+impl fmt::Debug for AutomationBrowserProfile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AutomationBrowserProfile")
+            .field("browser", &self.browser)
+            .field("path", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum DownloadCookies {
     #[default]
@@ -102,6 +175,8 @@ pub enum DownloadCookies {
     Browser(BrowserCookieSource),
     #[cfg(feature = "e2e-automation")]
     AutomationFile(AutomationCookieFile),
+    #[cfg(feature = "e2e-automation")]
+    AutomationBrowserProfile(AutomationBrowserProfile),
 }
 
 impl From<BrowserCookieSource> for DownloadCookies {
@@ -517,6 +592,12 @@ fn base_arguments(cookies: &DownloadCookies) -> Vec<OsString> {
             file.path().as_os_str().to_owned(),
             OsString::from("--no-cookies-from-browser"),
         ]),
+        #[cfg(feature = "e2e-automation")]
+        DownloadCookies::AutomationBrowserProfile(profile) => arguments.extend([
+            OsString::from("--no-cookies"),
+            OsString::from("--cookies-from-browser"),
+            profile.yt_dlp_argument(),
+        ]),
     }
     arguments
 }
@@ -589,6 +670,40 @@ mod tests {
         let outside = root.path().join("outside.txt");
         std::fs::write(&outside, b"# Netscape HTTP Cookie File\n").expect("outside fixture");
         assert!(AutomationCookieFile::new(&outside, root.path()).is_err());
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn automation_browser_profile_is_input_bounded_and_path_redacted() {
+        let root = tempfile::tempdir().expect("fixture root");
+        let input = root.path().join("input");
+        let profile = input.join("browser-profile").join("Default");
+        std::fs::create_dir_all(&profile).expect("browser profile");
+        let authority =
+            AutomationBrowserProfile::new(BrowserCookieSource::Chrome, &profile, root.path())
+                .expect("browser authority");
+        let debug = format!("{authority:?}");
+        assert!(!debug.contains(root.path().to_string_lossy().as_ref()));
+        assert!(debug.contains("redacted"));
+
+        let (url, _) = inspected();
+        let arguments =
+            inventory_arguments(&url, DownloadCookies::AutomationBrowserProfile(authority));
+        let browser_index = arguments
+            .iter()
+            .position(|argument| argument == "--cookies-from-browser")
+            .expect("browser-profile argument");
+        let mut expected = OsString::from("chrome:");
+        expected.push(profile.canonicalize().unwrap());
+        assert_eq!(arguments[browser_index + 1], expected);
+        assert!(arguments.iter().any(|argument| argument == "--no-cookies"));
+
+        let outside = root.path().join("outside-profile");
+        std::fs::create_dir(&outside).expect("outside profile");
+        assert!(
+            AutomationBrowserProfile::new(BrowserCookieSource::Chrome, &outside, root.path(),)
+                .is_err()
+        );
     }
 
     fn direct_mp4() -> (ValidatedMediaUrl, MediaInventory) {

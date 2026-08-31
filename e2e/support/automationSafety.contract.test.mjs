@@ -1183,13 +1183,18 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
   );
   assert.match(
     download,
-    /#\[cfg\(feature = "e2e-automation"\)\]\s*fn resolve_browser_cookie_source\([\s\S]*?if request == CookieSourceRequest::None[\s\S]*?AUTOMATION_COOKIE_FILE_ENV[\s\S]*?refused access to a live browser profile[\s\S]*?AutomationCookieFile::new/u,
-    'the E2E binary must substitute only its typed fixture file for a requested browser source',
+    /#\[cfg\(feature = "e2e-automation"\)\]\s*fn resolve_browser_cookie_source\([\s\S]*?if request == CookieSourceRequest::None[\s\S]*?AUTOMATION_COOKIE_FILE_ENV[\s\S]*?AutomationCookieFile::new[\s\S]*?AUTOMATION_BROWSER_PROFILE_ENV[\s\S]*?refused access to a live browser profile[\s\S]*?AutomationBrowserProfile::new/u,
+    'the E2E binary must substitute only a typed file or disposable browser-profile authority',
   );
   assert.match(
     downloadPlan,
     /#\[cfg\(feature = "e2e-automation"\)\][\s\S]*?pub struct AutomationCookieFile\(PathBuf\)[\s\S]*?join\("input"\)[\s\S]*?!file\.starts_with\(&input\)[\s\S]*?AutomationCookieFile\(<redacted>\)/u,
     'the automation cookie authority must stay under fixture input and redact its path',
+  );
+  assert.match(
+    downloadPlan,
+    /pub struct AutomationBrowserProfile[\s\S]*?browser: BrowserCookieSource[\s\S]*?join\("input"\)[\s\S]*?!profile\.starts_with\(&input\)[\s\S]*?AutomationBrowserProfile[\s\S]*?"<redacted>"/u,
+    'the automation browser authority must stay under fixture input and redact its path',
   );
 });
 

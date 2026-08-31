@@ -119,12 +119,16 @@ test('the protected origin rejects missing cookies and never records the secret'
       requireCookie: true,
     });
     assert.equal((await fetch(origin.multiFormatUrl)).status, 401);
+    const bootstrap = await fetch(origin.cookieBootstrapUrl);
+    assert.equal(bootstrap.status, 200);
+    assert.match(bootstrap.headers.get('set-cookie') ?? '', /^osg_e2e_auth=/u);
     const accepted = await fetch(origin.multiFormatUrl, {
       headers: { Cookie: `${origin.cookie.name}=${origin.cookie.value}` },
     });
     assert.equal(accepted.status, 200);
     const events = readDownloadFixtureEvents(eventsPath);
     assert.ok(events.some(({ status, authenticated }) => status === 401 && authenticated === false));
+    assert.ok(events.some(({ event }) => event === 'cookie-issued'));
     assert.ok(events.some(({ event }) => event === 'request-complete'));
     assert.equal(JSON.stringify(events).includes(origin.cookie.value), false, 'event ledger leaked the cookie');
   } finally {

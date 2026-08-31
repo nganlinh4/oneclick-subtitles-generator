@@ -11,7 +11,14 @@ import { probeMedia } from '../support/nativeMediaOracle.js';
 import { clickSettingsControl } from '../support/settingsControls.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
-const WORKFLOW = 'authenticated-cookie-download';
+const WORKFLOW = process.env.OSG_E2E_WORKFLOW;
+const AUTHORITY = WORKFLOW === 'browser-profile-cookie-download'
+  ? 'isolated-browser-profile'
+  : 'isolated-cookie-file';
+assert.ok(
+  WORKFLOW === 'authenticated-cookie-download' || WORKFLOW === 'browser-profile-cookie-download',
+  'the authenticated download journey received an unknown workflow authority',
+);
 
 const switchSelected = (selector) => browser.execute(
   (target) => document.querySelector(target)?.selected ?? null, selector,
@@ -51,7 +58,11 @@ describe('a customer uses browser-cookie authentication for a protected download
       workflow: WORKFLOW,
       step: '01-cookie-setting-enabled',
       description: 'The public Settings surface enabled the reviewed browser-cookie source.',
-      details: { browserSource: 'chrome', unauthenticatedStatus: unauthenticated.status },
+      details: {
+        browserSource: 'chrome',
+        authority: AUTHORITY,
+        unauthenticatedStatus: unauthenticated.status,
+      },
     });
 
     const before = new Set(readdirSync(destination));
@@ -119,6 +130,7 @@ describe('a customer uses browser-cookie authentication for a protected download
         width: video.width,
         height: video.height,
         authenticatedRequests: starts.length,
+        authority: AUTHORITY,
       },
     });
   });

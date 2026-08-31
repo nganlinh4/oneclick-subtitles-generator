@@ -256,6 +256,7 @@ export const run = async ({ repeat, journeys }) => {
                   const journeyName = basename(journey);
                   const needsSourceSwitch = new Set([
                     'authenticatedCookieDownload.journey.js',
+                    'browserProfileCookieDownload.journey.js',
                     'downloadCancellationRetryIdentity.journey.js',
                     'downloadQualityCancellationIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
@@ -302,6 +303,7 @@ export const run = async ({ repeat, journeys }) => {
                     }
                     if (new Set([
                       'authenticatedCookieDownload.journey.js',
+                      'browserProfileCookieDownload.journey.js',
                       'downloadCancellationRetryIdentity.journey.js',
                       'downloadQualityCancellationIdentity.journey.js',
                       'failedDownloadNoStale.journey.js',

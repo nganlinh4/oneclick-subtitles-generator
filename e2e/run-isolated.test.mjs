@@ -93,6 +93,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'alternateLocalAsrMatrix.journey.js',
     'alternateProviderDownload.journey.js',
     'authenticatedCookieDownload.journey.js',
+    'browserProfileCookieDownload.journey.js',
     'bulkTranslationFileIO.journey.js',
     'cacheClearSafety.journey.js',
     'canvasPlaybackPerformance.journey.js',

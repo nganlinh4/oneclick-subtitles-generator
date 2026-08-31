@@ -13,7 +13,8 @@
 
 /* global browser, console, process */
 
-import { lstatSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 import {
@@ -119,6 +120,7 @@ let downloadFixtureOrigin = null;
 if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     || process.env.OSG_E2E_WORKFLOW === 'download-quality-cancellation-identity'
     || process.env.OSG_E2E_WORKFLOW === 'authenticated-cookie-download'
+    || process.env.OSG_E2E_WORKFLOW === 'browser-profile-cookie-download'
     || process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale') {
   // This configuration is loaded once by the WDIO launcher and again by its worker. Only the
   // launcher creates the origin; the exact capabilities then reach both the worker and the app as
@@ -143,6 +145,9 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
       === 'download-quality-cancellation-identity';
     const authenticatedCookieJourney = process.env.OSG_E2E_WORKFLOW
       === 'authenticated-cookie-download';
+    const browserProfileCookieJourney = process.env.OSG_E2E_WORKFLOW
+      === 'browser-profile-cookie-download';
+    const protectedCookieJourney = authenticatedCookieJourney || browserProfileCookieJourney;
     downloadFixtureOrigin = await startDownloadFixtureOrigin({
       eventsPath: join(runRoot, 'evidence', 'download-fixture-events.jsonl'),
       sources: failureJourney ? [
@@ -154,7 +159,7 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         {
           label: 'a',
           path: sourceA,
-          height: qualityCancellationJourney || authenticatedCookieJourney
+          height: qualityCancellationJourney || protectedCookieJourney
             ? SOURCE_SWITCH_VIDEO.height : null,
         },
         // A real committed speech clip, not generated colour bars. Real-network extraction stays
@@ -162,14 +167,14 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         {
           label: 'b',
           path: sourceB,
-          height: qualityCancellationJourney || authenticatedCookieJourney
+          height: qualityCancellationJourney || protectedCookieJourney
             ? DOWNLOAD_IDENTITY_VIDEO.height : null,
         },
       ],
       chunkDelayMs: failureJourney ? 10 : 120,
       initialDelayMs: failureJourney ? 0 : 2_000,
-      multiFormatPage: qualityCancellationJourney || authenticatedCookieJourney,
-      requireCookie: authenticatedCookieJourney,
+      multiFormatPage: qualityCancellationJourney || protectedCookieJourney,
+      requireCookie: protectedCookieJourney,
     });
     process.env.OSG_E2E_EXACT_DOWNLOAD_URLS = JSON.stringify(
       [
@@ -185,7 +190,7 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     if (downloadFixtureOrigin.multiFormatUrl !== null) {
       process.env.OSG_E2E_MULTI_FORMAT_URL = downloadFixtureOrigin.multiFormatUrl;
     }
-    if (downloadFixtureOrigin.cookie !== null) {
+    if (authenticatedCookieJourney && downloadFixtureOrigin.cookie !== null) {
       const cookiePath = join(runRoot, 'input', 'download-cookies.txt');
       const expires = Math.floor(Date.now() / 1_000) + 60 * 60;
       writeFileSync(
@@ -194,6 +199,37 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         { flag: 'wx', mode: 0o600 },
       );
       process.env.OSG_E2E_DOWNLOAD_COOKIE_FILE = cookiePath;
+    }
+    if (browserProfileCookieJourney && downloadFixtureOrigin.cookieBootstrapUrl !== null) {
+      const chrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+      const chromeStatus = lstatSync(chrome);
+      if (!chromeStatus.isFile() || chromeStatus.isSymbolicLink()) {
+        throw new Error('the isolated browser-profile journey requires the reviewed Chrome binary');
+      }
+      const userData = join(runRoot, 'input', 'chrome-user-data');
+      mkdirSync(userData, { recursive: false });
+      execFileSync(chrome, [
+        '--headless=new',
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-sync',
+        '--no-default-browser-check',
+        '--no-first-run',
+        `--user-data-dir=${userData}`,
+        '--dump-dom',
+        downloadFixtureOrigin.cookieBootstrapUrl,
+      ], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30_000,
+        windowsHide: true,
+      });
+      const profile = join(userData, 'Default');
+      const profileStatus = lstatSync(profile);
+      if (!profileStatus.isDirectory() || profileStatus.isSymbolicLink()) {
+        throw new Error('Chrome did not publish one ordinary isolated Default profile');
+      }
+      process.env.OSG_E2E_DOWNLOAD_BROWSER_PROFILE = profile;
     }
   }
 }
