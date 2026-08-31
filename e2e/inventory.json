@@ -938,6 +938,9 @@
       "capability": "Complete-document and summary processing each run through a real Gemini job and save the returned plain-text customer document.",
       "status": "green",
       "recommendedJourney": "geminiDocumentSuccess",
+      "evidenceWorkflow": "gemini-document-success",
+      "attemptId": "20260830201438430-25704-6c13b661",
+      "binaryDigest": "f43486cb2ba6f8c9642b9ee9e5bbde8d4906d8e2bb782d2b9949b92df498a1b1",
       "note": "Proven against the real offscreen desktop binary on 2026-08-30 with all twenty reviewed credentials enrolled through public Settings. Complete Document and Summarize each registered one distinct succeeded native Gemini job, closed only after the guarded native save completed, and produced independently read non-empty plain-text files (223 and 276 bytes) with the expected _completed.txt and _summary.txt customer names. Neither operation leaked a structured provider envelope, painted an inline error, or showed an error toast. Evidence: gemini-document-success attempt 20260830201438430-25704-6c13b661, application 27f94cb58d80f83e7e97189a3e2505c6edf2c2cbf66a0769cbb61e9744ae8a64, binary SHA-256 f43486cb2ba6f8c9642b9ee9e5bbde8d4906d8e2bb782d2b9949b92df498a1b1.",
       "dependencies": {
         "owner": "none",
@@ -952,6 +955,9 @@
       "capability": "Gemini new and old transcription methods process the requested timeline windows, stream only fresh cues and durably recover or retry failed segments.",
       "status": "green",
       "recommendedJourney": "geminiMultiWindowTranscription",
+      "evidenceWorkflow": "gemini-multi-window-transcription",
+      "attemptId": "20260830200118136-50184-d8f9b6f3",
+      "binaryDigest": "51d273baf1bd6b988b85ebe6760c47454715b897792bd8bb7078fa7ec3c6f826",
       "note": "Proven against the real offscreen desktop binary on 2026-08-30 with all twenty reviewed credentials enrolled through the public Settings UI. The public one-minute maximum split the reviewed 204-second H.264/AAC speech fixture into exactly four durable native Gemini jobs. All four jobs succeeded, the editor published 27 incremental streaming updates before completion, and the merged canonical track persisted 35 unique cues. The live run exposed and drove two product fixes before it passed: clean profiles could not create partial analysis clips because the split path never provisioned the reviewed media tools, and independent provider windows reused local cue identifiers that the canonical persistence boundary correctly rejected as duplicates. Commit b17815cd adds one shared native media-tools preflight and aligns provider concurrency with the two-slot native media pipeline; commit 0a32cf9f namespaces window-local cue identities before merging. Evidence: gemini-multi-window-transcription attempt 20260830200118136-50184-d8f9b6f3, application 280a37bcb7225269f037fcc4772fc217c959cf04047d8b48c771fce58a261fe8, binary SHA-256 51d273baf1bd6b988b85ebe6760c47454715b897792bd8bb7078fa7ec3c6f826.",
       "dependencies": {
         "owner": "none",
@@ -1308,15 +1314,18 @@
     {
       "name": "backgroundImageGeneration",
       "kind": "workflow",
-      "file": "journeys/providerBoundaries.journey.js",
+      "file": "journeys/geminiBackgroundImageSuccess.journey.js",
       "capability": "Prompt and album-art flows generate a project-owned Gemini background image, preview it, save it and restore it.",
-      "status": "authored-unproven",
+      "status": "green",
       "recommendedJourney": "creativeGenerators",
-      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: BackgroundImageGenerator.js's generatePrompt() needs only lyrics text (no album art, no credential) and calls src/services/gemini/imageGenerationService.js's generateBackgroundPrompt -> the same unwrapped runNativeGeminiText/nativeGeminiJobLifecycle wall as transcription/translation/documents. Its raw NativeGeminiError text does not match ANY of src/components/background/errorMessages.js's specific patterns (api key / quota / HTTP status / CORS / network), so the customer-visible toast is the GENERIC fallback 'Generation failed' -- bounded and actionable (a toast, never inline), but honestly less specific than other features' copy; this journey asserts that real text rather than a nicer one the product does not produce. Both image-generate buttons (Generate with Same Prompt / Generate with Unique Prompts) are proven to stay disabled afterward because they still require a prompt this refusal never produced -- proving the gating chain without ever needing album art or the native file-selection dialog.",
+      "evidenceWorkflow": "gemini-background-image-success",
+      "attemptId": "20260830204458075-52964-000e581a",
+      "binaryDigest": "1f29896bc3b2cc828dd07b3c3024bbc2056b8bbd227df34bcfb776b77b26014c",
+      "note": "Green against the real offscreen desktop binary on 2026-08-30. Live Gemini produced the customer-visible prompt, the staged native picker loaded a real PNG reference, credential rotation reached an image-capable key, and Gemini returned a 1376x768 image. The product published exactly one 619,135-byte ready project-owned artifact and one succeeded native generateImage job; a second independently launched process restored the same pixels from durable storage. The run first exposed and drove the v1 request-schema fix: aspect ratio and image size are enum wire values, not the human-facing 16:9/1K labels. Three ordered screenshots contain no error toast or inline error.",
       "dependencies": {
-        "owner": "user-or-test-secret-provider",
-        "requires": "a budget-bounded Gemini image credential/model and network access to prove a SUCCESSFUL generated prompt/image, its preview, save and restore",
-        "note": "The credential-free prompt-generation refusal, its generic toast text, and the resulting honest button-disabled state are now proven. Album-art selection (native file dialog) and provider SUCCESS remain unproven; album-art selection specifically needs its own OSG_E2E_MEDIA_SELECTION-bounded pass, not attempted here since the credential wall blocks image generation regardless."
+        "owner": "none",
+        "requires": "none for the proven prompt/reference/generate/persist/relaunch path; the isolated harness supplies the reviewed credential pool",
+        "note": "Single-image success and persistence are proven. Four-image batch generation, customer save/export, deletion and PromptDJ remain distinct creative-generator coverage and are not implied by this receipt."
       }
     },
     {
