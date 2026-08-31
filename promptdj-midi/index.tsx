@@ -222,7 +222,10 @@ function main() {
   });
 
   window.addEventListener('message', (event: MessageEvent) => {
-    if (event.source !== window.parent || event.origin !== parentOrigin) return;
+    // The main application intentionally talks directly to this nested frame. `window.parent` is
+    // only the inert srcDoc sizing wrapper, while the authenticated application host is top -- the
+    // same exact window postParent() uses for every outbound native request.
+    if (event.source !== window.top || event.origin !== parentOrigin) return;
     const data = event.data as Record<string, unknown>;
     if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
 
