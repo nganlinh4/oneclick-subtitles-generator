@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import CloseButton from '../../common/CloseButton';
+import { removeSingletonCredential } from '../../../platform/credentialStateController';
+import { showConfirmationToast, showErrorToast } from '../../../utils/toastUtils';
 import { animateToggle } from '../utils/keyVisibilityAnimation';
 import GeminiKeysManager, { useGeminiKeys } from './GeminiKeysManager';
 import YoutubeAuthSection from './YoutubeAuthSection';
@@ -35,6 +37,28 @@ const ApiKeysTab = ({
   enableYoutubeSearch
 }) => {
   const { t } = useTranslation();
+
+  const requestCredentialRemoval = (purpose, label) => showConfirmationToast({
+    key: `clear-${purpose}`,
+    message: t(
+      'settings.credentials.confirmClear',
+      'Remove the saved {{label}} credential from this device?',
+      { label },
+    ),
+    confirmText: t('common.confirm', 'Confirm'),
+    onConfirm: async () => {
+      try {
+        await removeSingletonCredential(purpose);
+        return true;
+      } catch {
+        showErrorToast(t(
+          'settings.credentials.clearFailed',
+          'The saved credential could not be removed. Please try again.',
+        ));
+        return false;
+      }
+    },
+  });
 
   // Gemini multi-key state + handlers
   const geminiKeys = useGeminiKeys({ setGeminiApiKey, setApiKeysSet });
@@ -191,6 +215,20 @@ const ApiKeysTab = ({
             </button>
           </div>
 
+          {apiKeysSet.genius && (
+            <button
+              type="button"
+              className="oauth-clear-btn"
+              data-credential-action="clear-genius"
+              onClick={() => requestCredentialRemoval(
+                'geniusAccessToken',
+                t('settings.geniusApiKey', 'Genius API Key'),
+              )}
+            >
+              {t('settings.clearSavedCredential', 'Clear saved credential')}
+            </button>
+          )}
+
           <p className="api-key-help">
             {t('settings.geniusApiKeyHelp', 'Required for lyrics fetching. Get one at')}
             <a
@@ -235,6 +273,10 @@ const ApiKeysTab = ({
             setIsAuthenticated={setIsAuthenticated}
             apiKeysSet={apiKeysSet}
             setApiKeysSet={setApiKeysSet}
+            onClearApiKey={() => requestCredentialRemoval(
+              'youtubeApiKey',
+              t('settings.youtubeApiKey', 'YouTube API Key'),
+            )}
           />
         )}
       </div>

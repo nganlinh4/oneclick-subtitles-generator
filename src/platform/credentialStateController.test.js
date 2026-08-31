@@ -234,6 +234,22 @@ it('does not allow a singleton purpose to be overwritten without an atomic backe
   expect(credentialApi.setCredential).not.toHaveBeenCalled();
 });
 
+it('removes a singleton credential by purpose without exposing its secret', async () => {
+  const genius = status('geniusAccessToken');
+  const youtube = status('youtubeApiKey');
+  const { controller, credentialApi } = createHarness({
+    initialCredentials: [genius, youtube],
+  });
+  await controller.initialize();
+
+  await expect(controller.removeSingletonCredential('geniusAccessToken')).resolves.toBe(true);
+
+  expect(credentialApi.deleteCredential).toHaveBeenCalledWith(genius.id);
+  expect(controller.getSnapshot().credentials).toEqual([youtube]);
+  await expect(controller.removeSingletonCredential('geminiApiKey'))
+    .rejects.toBeInstanceOf(CredentialStateError);
+});
+
 it('formats a unique display reference using only safe metadata', () => {
   const credential = status('geminiApiKey', { last4: '9XYZ' });
   const reference = formatCredentialReference(credential);

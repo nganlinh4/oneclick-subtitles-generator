@@ -2,6 +2,20 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import ApiKeysTab from './ApiKeysTab';
 
+const credentialMocks = vi.hoisted(() => ({
+  removeSingletonCredential: vi.fn(),
+  showConfirmationToast: vi.fn(),
+  showErrorToast: vi.fn(),
+}));
+
+vi.mock('../../../platform/credentialStateController', () => ({
+  removeSingletonCredential: credentialMocks.removeSingletonCredential,
+}));
+vi.mock('../../../utils/toastUtils', () => ({
+  showConfirmationToast: credentialMocks.showConfirmationToast,
+  showErrorToast: credentialMocks.showErrorToast,
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key, fallbackOrValues, explicitValues = {}) => {
@@ -59,6 +73,7 @@ const defaultProps = {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.clearAllMocks();
 });
 
 it('keeps the product notice without rendering or persisting the removed UDBM promotion', () => {
@@ -73,4 +88,18 @@ it('keeps the product notice without rendering or persisting the removed UDBM pr
   fireEvent.click(screen.getByRole('button', { name: 'settings.closeMessage' }));
   expect(screen.getByText('settings.noNewNotifications')).toBeInTheDocument();
   expect(localStorage.getItem('udbmMessageClosed')).toBe('true');
+});
+
+it('offers confirmed removal for an already-saved Genius credential', async () => {
+  credentialMocks.removeSingletonCredential.mockResolvedValue(true);
+  render(<ApiKeysTab
+    {...defaultProps}
+    apiKeysSet={{ ...defaultProps.apiKeysSet, genius: true }}
+  />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear saved credential' }));
+  const request = credentialMocks.showConfirmationToast.mock.calls[0][0];
+  expect(request.key).toBe('clear-geniusAccessToken');
+  await expect(request.onConfirm()).resolves.toBe(true);
+  expect(credentialMocks.removeSingletonCredential).toHaveBeenCalledWith('geniusAccessToken');
 });

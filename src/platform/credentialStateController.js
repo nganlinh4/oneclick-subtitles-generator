@@ -13,6 +13,12 @@ export const GEMINI_CREDENTIAL_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MAX_LEGACY_GEMINI_KEYS = 32;
 const GEMINI_PURPOSE = 'geminiApiKey';
+const SINGLETON_PURPOSES = new Set([
+  'geniusAccessToken',
+  'youtubeApiKey',
+  'youtubeOauthClient',
+  'youtubeOauthToken',
+]);
 const LEGACY_SECRET_KEYS = Object.freeze([
   'gemini_api_key',
   'gemini_api_keys',
@@ -400,6 +406,20 @@ export const createCredentialStateController = ({
     });
   };
 
+  const removeSingletonCredential = async (purpose) => {
+    if (!SINGLETON_PURPOSES.has(purpose)) throw invalidSelection();
+    await initialize();
+    return enqueue(async () => {
+      const matches = snapshot.credentials.filter((credential) => credential.purpose === purpose);
+      let deleted = false;
+      for (const { id } of matches) {
+        deleted = (await credentialApi.deleteCredential(id)) || deleted;
+      }
+      publish(await credentialApi.getCredentialStatus());
+      return deleted;
+    });
+  };
+
   const selectGeminiCredential = async (id) => {
     await initialize();
     return enqueue(async () => {
@@ -489,6 +509,7 @@ export const createCredentialStateController = ({
     addSingletonCredential,
     upsertSingletonCredential,
     removeGeminiCredential,
+    removeSingletonCredential,
     selectGeminiCredential,
     rotateGeminiCredential,
     clearCredentials,
@@ -512,6 +533,7 @@ export const addGeminiCredential = credentialStateController.addGeminiCredential
 export const addSingletonCredential = credentialStateController.addSingletonCredential;
 export const upsertSingletonCredential = credentialStateController.upsertSingletonCredential;
 export const removeGeminiCredential = credentialStateController.removeGeminiCredential;
+export const removeSingletonCredential = credentialStateController.removeSingletonCredential;
 export const selectGeminiCredential = credentialStateController.selectGeminiCredential;
 export const rotateGeminiCredential = credentialStateController.rotateGeminiCredential;
 export const clearCredentials = credentialStateController.clearCredentials;

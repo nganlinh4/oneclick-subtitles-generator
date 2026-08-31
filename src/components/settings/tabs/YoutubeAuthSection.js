@@ -26,6 +26,7 @@ const YoutubeAuthSection = ({
   setIsAuthenticated,
   apiKeysSet,
   setApiKeysSet,
+  onClearApiKey,
 }) => {
   const { t } = useTranslation();
 
@@ -130,6 +131,16 @@ const YoutubeAuthSection = ({
             {showYoutubeKey ? t('settings.hide') : t('settings.show')}
           </button>
         </div>
+        {apiKeysSet.youtube && (
+          <button
+            type="button"
+            className="oauth-clear-btn"
+            data-credential-action="clear-youtube-api-key"
+            onClick={onClearApiKey}
+          >
+            {t('settings.clearSavedCredential', 'Clear saved credential')}
+          </button>
+        )}
         <p className="api-key-help">
           {t('settings.youtubeApiKeyHelp', 'Required for YouTube search. Get one at')}
           <a
@@ -254,14 +265,13 @@ const YoutubeAuthSection = ({
           >
             {t('settings.authenticateWithYouTube', 'Authenticate with YouTube')}
           </button>
-          {isAuthenticated && (
-            <button
-              className="oauth-clear-btn"
-              onClick={() => handleClearOAuth(setIsAuthenticated)}
-            >
-              {t('settings.clearAuth', 'Clear Authentication')}
-            </button>
-          )}
+          <button
+            className="oauth-clear-btn"
+            data-credential-action="clear-youtube-oauth"
+            onClick={() => handleClearOAuth(setIsAuthenticated)}
+          >
+            {t('settings.clearAuth', 'Clear Authentication')}
+          </button>
         </div>
 
         <p className="api-key-help">
