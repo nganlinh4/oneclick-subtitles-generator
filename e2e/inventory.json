@@ -1408,13 +1408,18 @@
     {
       "name": "settingsCredentialsAndYoutubeOAuth",
       "kind": "workflow",
-      "capability": "Gemini, YouTube and Genius credentials plus YouTube OAuth save, redact, validate, persist and clear safely.",
-      "status": "unproven",
+      "file": "journeys/settingsCredentialLifecycle.journey.js",
+      "capability": "Gemini, YouTube and Genius credentials plus a partial YouTube OAuth client save as write-only native references, leave no browser secret residue, persist and clear individually.",
+      "status": "green",
+      "evidenceWorkflow": "settings-credential-lifecycle",
+      "attemptId": "20260831063505474-46764-6f3a528f",
+      "binaryDigest": "d5b05cba2a97155111991b74fd3b51244114fedc2b48337dcb78875dd0a7a0fe",
       "recommendedJourney": "settingsAndRecovery",
+      "note": "GREEN SCOPE: the hidden real binary enrolled one live Gemini credential through the public write-only control, saved local-only Genius and YouTube drafts, reopened Settings with every field and legacy browser alias empty, verified only safe native purpose references existed, removed each provider independently, then persisted and cleared a YouTube OAuth client while still unauthenticated. Live Gemini validity is already proven by the provider-success journeys. A completed Google OAuth redirect/token and authenticated YouTube query remain owned by authenticatedAndRestrictedUrlAcquisition, not implied here.",
       "dependencies": {
         "owner": "user-or-isolated-test-account-provider",
         "requires": "scoped disposable credentials and an OAuth redirect fixture",
-        "note": "Safe missing-Gemini refusal is green; entering, persisting and clearing credentials is not."
+        "note": "Only completed YouTube OAuth authorization remains account/redirect-gated; write-only save, redaction, persistence, individual removal and client-only recovery are green."
       }
     },
     {
