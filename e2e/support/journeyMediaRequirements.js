@@ -58,6 +58,7 @@ const CUSTOM_STAGED_MEDIA = new Set([
 
 const NO_STAGED_MEDIA = new Set([
   'aboutAndUpdaterLifecycle.journey.js',
+  'alternateProviderDownload.journey.js',
   'alternateLocalAsrMatrix.journey.js',
   'damagedFontPayload.journey.js',
   'defaultFont.journey.js',
