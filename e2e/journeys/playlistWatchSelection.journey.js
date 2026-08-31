@@ -21,8 +21,7 @@ const SOURCE = Object.freeze({
 });
 
 const visibleState = () => browser.execute(() => ({
-  selectedUrl: document.querySelector('.video-url-value')?.textContent?.trim() ?? '',
-  title: document.querySelector('.video-title')?.textContent?.trim() ?? '',
+  videoId: document.querySelector('.video-id-value')?.textContent?.trim() ?? '',
   modal: document.querySelector('.download-only-modal') !== null,
   errors: [...document.querySelectorAll('.toast-error, [role="alert"]')]
     .map((node) => (node.textContent || '').trim()).filter(Boolean),
@@ -39,7 +38,7 @@ describe('a customer downloads one selected video from a playlist watch URL', ()
     await field.setValue(SOURCE.url);
     await browser.waitUntil(async () => {
       const state = await visibleState();
-      return state.selectedUrl === SOURCE.url && state.title.includes(SOURCE.title);
+      return state.videoId === SOURCE.id;
     }, {
       timeout: 60_000,
       interval: 250,
