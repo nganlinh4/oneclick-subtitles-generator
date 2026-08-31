@@ -62,6 +62,17 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'about-and-updater-lifecycle';
 
+const disabledUpdaterAllowance = (surface) => (
+  surface.updateCheckFailedText === 'Unable to check for updates'
+    ? {
+        errorAlerts: [{
+          text: surface.updateCheckFailedText,
+          reason: 'This exact compiled-disabled updater outcome is the customer state under test.',
+        }],
+      }
+    : {}
+);
+
 const waitUntilWithDiagnostic = async (predicate, { diagnostic, ...options }) => {
   try {
     return await browser.waitUntil(predicate, { ...options, timeoutMsg: 'condition did not settle before its timeout' });
@@ -123,6 +134,7 @@ describe('About reports the real installed version and the updater proves its co
       description: 'About is reached through real Settings navigation and reports the real installed application version, independent of the updater channel.',
       details: { versionDisplay: surface.versionDisplay },
       focusSelector: '.version-info',
+      allowVisibleProblems: disabledUpdaterAllowance(surface),
     });
 
     // The disabled-channel outcome: no update, and the exact "Unable to check for updates" branch.
@@ -144,12 +156,7 @@ describe('About reports the real installed version and the updater proves its co
       description: 'The compiled-disabled updater channel (e2e-automation) makes app_update_check report unconfigured; About shows the honest "Unable to check for updates" branch, never a fabricated up-to-date or available state.',
       details: { surface },
       focusSelector: '.update-check-failed',
-      allowVisibleProblems: {
-        errorAlerts: [{
-          text: surface.updateCheckFailedText,
-          reason: 'This exact compiled-disabled updater outcome is the customer state under test.',
-        }],
-      },
+      allowVisibleProblems: disabledUpdaterAllowance(surface),
     });
 
     const after = durableState(root);

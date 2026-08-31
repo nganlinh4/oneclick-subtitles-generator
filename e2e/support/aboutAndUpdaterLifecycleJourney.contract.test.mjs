@@ -74,7 +74,8 @@ test('the honest failed-check branch is the one this journey asserts, not a fabr
   assert.match(aboutTab, /className="up-to-date"/u);
   assert.match(journey, /updateCheckFailedPresent, true/u);
   assert.match(journey, /updateCheckFailedText, 'Unable to check for updates'/u);
-  assert.match(journey, /allowVisibleProblems:\s*\{\s*errorAlerts:/u);
+  assert.match(journey, /const disabledUpdaterAllowance =/u);
+  assert.equal((journey.match(/allowVisibleProblems: disabledUpdaterAllowance\(surface\)/gu) ?? []).length, 2);
   assert.match(journey, /updateAvailablePresent, false/u);
   assert.match(journey, /upToDatePresent, false/u);
 });
