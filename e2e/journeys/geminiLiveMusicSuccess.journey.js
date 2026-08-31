@@ -10,6 +10,7 @@ import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-live-music-success';
+const WEB_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
 const liveMusicDiagnostics = (root) => {
   try {
@@ -75,9 +76,9 @@ const dragActivePromptKnob = async () => {
   assert.ok(before, 'PromptDJ has no active weighted prompt control');
   try {
     const outer = await browser.$('.music-generator-section iframe[title="promptdj-midi"]');
-    await browser.switchToFrame(outer.elementId);
+    await browser.switchToFrame({ [WEB_ELEMENT_KEY]: outer.elementId });
     const inner = await browser.$('#promptdj-inner');
-    await browser.switchToFrame(inner.elementId);
+    await browser.switchToFrame({ [WEB_ELEMENT_KEY]: inner.elementId });
     const host = await browser.$('prompt-dj-midi');
     const controllers = await host.shadow$$('prompt-controller');
     let target = null;
