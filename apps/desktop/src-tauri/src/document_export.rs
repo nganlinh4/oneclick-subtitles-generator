@@ -8,8 +8,8 @@ use serde::Deserialize;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager};
 
-use crate::dialog_paths;
 use crate::diagnostics;
+use crate::dialog_paths;
 use crate::error::{CommandError, CommandResult};
 use crate::media_export::copy_export;
 
@@ -235,19 +235,19 @@ pub(crate) async fn generated_file_export(
         .get(CONTENT_TYPE_HEADER)
         .and_then(|value| value.to_str().ok())
         .and_then(GeneratedFileFormat::from_content_type)
-        .ok_or_else(invalid_generated_file)?;
+        .ok_or_else(|| refused_generated_file("contentType"))?;
     let suggested_name = request
         .headers()
         .get(FILE_NAME_HEADER)
         .and_then(|value| value.to_str().ok())
         .filter(|value| is_safe_generated_name(value, format))
-        .ok_or_else(invalid_generated_file)?
+        .ok_or_else(|| refused_generated_file("fileName"))?
         .to_owned();
     let InvokeBody::Raw(bytes) = request.body() else {
-        return Err(invalid_generated_file());
+        return Err(refused_generated_file("body"));
     };
     if bytes.is_empty() || bytes.len() > MAX_ARCHIVE_BYTES || !format.has_valid_signature(bytes) {
-        return Err(invalid_generated_file());
+        return Err(refused_generated_file("signature"));
     }
     diagnostics::record(
         "generated-file.export_started",
@@ -360,6 +360,14 @@ fn is_safe_generated_name(value: &str, format: GeneratedFileFormat) -> bool {
 
 fn invalid_generated_file() -> CommandError {
     CommandError::invalid_input("The generated file is invalid.")
+}
+
+fn refused_generated_file(stage: &'static str) -> CommandError {
+    diagnostics::record(
+        "generated-file.export_refused",
+        &[("stage", stage.to_owned())],
+    );
+    invalid_generated_file()
 }
 
 fn invalid_archive() -> CommandError {
