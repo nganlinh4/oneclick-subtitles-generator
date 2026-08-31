@@ -77,9 +77,13 @@ const dragActivePromptKnob = async () => {
   try {
     const outer = await browser.$('.music-generator-section iframe[title="promptdj-midi"]');
     await browser.switchToFrame({ [WEB_ELEMENT_KEY]: outer.elementId });
-    const inner = await browser.$('#promptdj-inner');
-    await browser.switchToFrame({ [WEB_ELEMENT_KEY]: inner.elementId });
-    const host = await browser.$('prompt-dj-midi');
+    let host = await browser.$('prompt-dj-midi');
+    if (!(await host.isExisting())) {
+      const inner = await browser.$('#promptdj-inner');
+      assert.equal(await inner.isExisting(), true, 'PromptDJ wrapper has no nested application frame');
+      await browser.switchToFrame({ [WEB_ELEMENT_KEY]: inner.elementId });
+      host = await browser.$('prompt-dj-midi');
+    }
     const controllers = await host.shadow$$('prompt-controller');
     let target = null;
     for (const controller of controllers) {
