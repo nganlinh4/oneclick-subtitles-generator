@@ -85,3 +85,22 @@ test('exports generated background music through the native save dialog', async 
   expect(exportGenerated).toHaveBeenCalledWith(blob, 'background_music.wav');
   expect(createAnchor).not.toHaveBeenCalled();
 });
+
+test('exports an owned recording blob without re-fetching its ephemeral playback URL', async () => {
+  const blob = new Blob(['RIFF0000WAVEdata'], { type: 'audio/wav' });
+  const fetchAudio = vi.fn(() => {
+    throw new Error('the owned recording must not be fetched through its blob URL');
+  });
+  const exportGenerated = vi.fn(async () => true);
+
+  await expect(downloadAudioSource('blob:recording', {
+    filename: 'background_music.wav',
+    blob,
+  }, {
+    fetchAudio,
+    exportGenerated,
+    isNativeRuntime: () => true,
+  })).resolves.toBe(true);
+  expect(fetchAudio).not.toHaveBeenCalled();
+  expect(exportGenerated).toHaveBeenCalledWith(blob, 'background_music.wav');
+});

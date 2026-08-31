@@ -31,6 +31,7 @@ const BackgroundMusicSection = () => {
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
+  const [recordingBlob, setRecordingBlob] = useState(null);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -183,6 +184,7 @@ const BackgroundMusicSection = () => {
       }
     }
     setRecordingUrl('');
+    setRecordingBlob(null);
     setRecordingStartTime(Date.now());
     postToPromptDj({ type: 'pm-dj-start-recording' });
   }, [postToPromptDj, recordingUrl]);
@@ -198,6 +200,7 @@ const BackgroundMusicSection = () => {
       }
     }
     setRecordingUrl('');
+    setRecordingBlob(null);
   }, [recordingUrl]);
 
   // Timer like narration
@@ -346,6 +349,7 @@ const BackgroundMusicSection = () => {
               }
               const finalBlob = trimmed || data.blob;
               const url = URL.createObjectURL(finalBlob);
+              setRecordingBlob(finalBlob);
               setRecordingUrl(url);
             }
           } catch (err) {
@@ -354,6 +358,7 @@ const BackgroundMusicSection = () => {
               if (recordingUrl) { URL.revokeObjectURL(recordingUrl); }
               if (data.blob) {
                 const url = URL.createObjectURL(data.blob);
+                setRecordingBlob(data.blob);
                 setRecordingUrl(url);
               }
             } catch {
@@ -591,7 +596,7 @@ const BackgroundMusicSection = () => {
               {/* Inline audio preview when available (match narration styles) */}
               {recordingUrl && (
                 <div className="audio-preview" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <AudioPlayer audioSrc={recordingUrl} referenceAudio={{ filename: 'background_music.wav' }} height={18} style={{ width: '-webkit-fill-available' }} />
+                  <AudioPlayer audioSrc={recordingUrl} referenceAudio={{ filename: 'background_music.wav', blob: recordingBlob }} height={18} style={{ width: '-webkit-fill-available' }} />
                   <button
                     className="pill-button error clear-button"
                     onClick={clearReferenceAudio}

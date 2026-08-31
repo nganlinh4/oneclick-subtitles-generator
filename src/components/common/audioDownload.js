@@ -20,8 +20,9 @@ export const downloadAudioSource = async (audioSrc, referenceAudio, {
   if (isNativeMediaPlaybackUrl(audioSrc)) {
     throw new Error('Native audio export requires an artifact capability');
   }
-  const response = await fetchBrowserResource(audioSrc, undefined, { fetchImpl: fetchAudio });
-  const blob = await response.blob();
+  const blob = referenceAudio?.blob instanceof Blob
+    ? referenceAudio.blob
+    : await (await fetchBrowserResource(audioSrc, undefined, { fetchImpl: fetchAudio })).blob();
   if (isNativeRuntime()) {
     return exportGenerated(blob, referenceAudio?.filename || 'recording');
   }
