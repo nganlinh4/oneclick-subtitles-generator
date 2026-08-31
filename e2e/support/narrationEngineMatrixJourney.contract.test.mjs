@@ -24,7 +24,10 @@ test('the journey is discoverable in the default sweep and wired into e2e/packag
 
 test('every catalog engine is checked against an independent filesystem oracle, not the DOM alone', () => {
   assert.match(journeySource, /NARRATION_CATALOG_ENGINES/u);
-  assert.match(journeySource, /directoryShapeDigest\(packageDirectory\(root, engine\.packageId\)\)/u);
+  assert.match(
+    journeySource,
+    /directoryShapeDigest\(enginePackageDirectory\(root, engine\.packageId\)\)/u,
+  );
   assert.match(journeySource, /isTruthfulCardState\(settled\.state, digest\.exists\)/u);
 });
 
