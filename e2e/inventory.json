@@ -1411,10 +1411,13 @@
     {
       "name": "settingsVideoProcessingAndPrompts",
       "kind": "workflow",
-      "capability": "Segment duration, model, time format, waveform, video optimization, cookies, search, subtitle import, analysis, effects, thinking budgets, custom models and prompts save and affect only their documented consumers.",
-      "status": "unproven",
+      "capability": "Auto-split and its maximum length, Gemini effects, automatic site-subtitle import, YouTube search, download-cookie source and the transcription prompt save, restore and reach their documented consumers.",
+      "status": "green",
+      "evidenceWorkflow": "settings-video-processing-and-prompts",
+      "attemptId": "20260831055322222-26788-1f9aaca0",
+      "binaryDigest": "10f759039448c08d586260bc775ef1bd445acf3c0725c29ff44baf9c707ea7cb",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "authored, unexecuted in this pass: journeys/settingsVideoProcessingAndPrompts.journey.js now exists and extends settingsSurface (itself currently unproven -- see its own entry; the settingsAppearancePersistence scenario separately carries relaunch hydration and remains green) with the eight settings it does not assert on (auto-split, favorite max length, Gemini effects, auto-import, YouTube search, download cookies + source, and a consumption-focused recheck of transcription_prompt). Its consumption claim is deliberately layered rather than exhaustive: this journey proves Settings Save mirrors the exact SQLite value into the exact localStorage key each production reader consumes (cited by file:line in the journey's header comment), and separately walks transcription_prompt through the real generate flow to the same missing-credential refusal geminiCredentialBoundary proves is side-effect-free. It does not execute buildAutoGenerateOptions or the download pipeline itself; that pure-function behavior is exercised independently by src/components/app/hooks/autoGenerateOptions.test.js. Segment duration, model selection, video optimization, thinking budgets and custom Gemini models remain out of this journey's scope. Status stays unproven until a real WDIO run against the guarded binary is recorded.",
+      "note": "GREEN SCOPE: a hidden real-binary run changed the eight settings named by this entry through public controls, observed Gemini effects alter the live animation runtime, committed the exact values to SQLite and the shipping localStorage consumer keys, walked the edited transcription prompt to the safe no-credential request boundary without creating a provider job, reopened Settings and proved every value restored. This does not claim segment duration, model selection, time format, waveform, video optimization, thinking budgets or custom-model management; those belong to settingsSurface or settingsNarrationModelManagement and are not smuggled into this receipt. buildAutoGenerateOptions and the download-cookie reader remain fast production-code contract proofs rather than duplicated network work here.",
       "file": "journeys/settingsVideoProcessingAndPrompts.journey.js",
       "oracles": [
         "the real Video Processing and Prompts tab controls",
