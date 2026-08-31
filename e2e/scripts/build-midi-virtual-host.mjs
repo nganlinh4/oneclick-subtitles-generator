@@ -56,10 +56,16 @@ const xml = (value) => value
   .replaceAll('>', '&gt;');
 
 const localAppData = process.env.LOCALAPPDATA;
-if (process.platform !== 'win32' || typeof localAppData !== 'string' || localAppData.length === 0) {
+const userProfile = process.env.USERPROFILE;
+if (process.platform !== 'win32'
+    || typeof localAppData !== 'string' || localAppData.length === 0
+    || typeof userProfile !== 'string' || userProfile.length === 0) {
   throw new Error('the virtual MIDI host can only be built in a bounded Windows development cache');
 }
-const cache = join(localAppData, 'OSG-Development', 'cache', 'midi-e2e-toolchain');
+// This toolchain is intentionally outside the repository's lease-managed build cache: it is a
+// separately bounded external dependency cache containing one pinned SDK package and its locked
+// NuGet graph. Placing arbitrary SDK bytes at the managed cache root correctly trips dev-cache.ps1.
+const cache = join(localAppData, 'OSG-Midi-E2E');
 const sourceRoot = join(cache, 'package-source');
 const packages = join(cache, 'packages');
 mkdirSync(sourceRoot, { recursive: true });
@@ -67,7 +73,7 @@ mkdirSync(packages, { recursive: true });
 await ensurePackage(sourceRoot);
 
 const configuredDotnet = process.env.OSG_E2E_DOTNET_10;
-const cachedDotnet = join(localAppData, 'OSG-Development', 'cache', 'dotnet-sdk-10', 'dotnet.exe');
+const cachedDotnet = join(userProfile, '.dotnet', 'dotnet.exe');
 const dotnet = typeof configuredDotnet === 'string' && configuredDotnet.length > 0
   ? configuredDotnet
   : cachedDotnet;
