@@ -134,7 +134,7 @@ function main() {
       pdjMidi.playbackState = 'stopped';
       return;
     }
-    liveMusicHelper.stop();
+    liveMusicHelper.pause();
   });
   pdjMidi.addEventListener('play-pause', () => {
     if (!nativeAvailable) {
@@ -278,7 +278,10 @@ function main() {
     if (data.type === 'midi:setActiveInput' && typeof data.id === 'string' && data.id.length <= 512) {
       (pdjMidi as any).setActiveMidiInputId?.(data.id);
     }
-    if (data.type === 'pm-dj-reset') pdjMidi.resetAll();
+    if (data.type === 'pm-dj-reset') {
+      pdjMidi.resetAll();
+      liveMusicHelper.resetContext();
+    }
   });
 }
 

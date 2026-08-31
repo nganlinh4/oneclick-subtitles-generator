@@ -155,6 +155,7 @@ impl fmt::Debug for ClientCommand {
 pub enum ServerEvent {
     SetupComplete,
     Audio(Vec<u8>),
+    PromptsSent { count: usize },
     FilteredPrompt { text: String, reason: String },
     Warning(String),
     ControlSent(PlaybackControl),
@@ -167,6 +168,10 @@ impl fmt::Debug for ServerEvent {
             Self::Audio(bytes) => formatter
                 .debug_struct("Audio")
                 .field("bytes", &bytes.len())
+                .finish(),
+            Self::PromptsSent { count } => formatter
+                .debug_struct("PromptsSent")
+                .field("count", count)
                 .finish(),
             Self::FilteredPrompt { .. } => formatter
                 .debug_struct("FilteredPrompt")
@@ -255,6 +260,10 @@ impl LiveMusicClient {
         await_setup(&mut sink, &mut stream, &cancellation).await?;
         on_event(ServerEvent::SetupComplete).map_err(|()| Error::OutputClosed)?;
         send_prompts(&mut sink, &initial_prompts).await?;
+        on_event(ServerEvent::PromptsSent {
+            count: initial_prompts.len(),
+        })
+        .map_err(|()| Error::OutputClosed)?;
         send_control(&mut sink, PlaybackControl::Play).await?;
         on_event(ServerEvent::ControlSent(PlaybackControl::Play))
             .map_err(|()| Error::OutputClosed)?;
@@ -401,6 +410,10 @@ where
                     ClientCommand::SetWeightedPrompts(prompts) => {
                         validate_weighted_prompts(&prompts)?;
                         send_prompts(sink, &prompts).await?;
+                        on_event(ServerEvent::PromptsSent {
+                            count: prompts.len(),
+                        })
+                        .map_err(|()| Error::OutputClosed)?;
                     }
                     ClientCommand::Control(control) => {
                         send_control(sink, control).await?;
@@ -847,6 +860,7 @@ mod tests {
                             cancellation_for_callback.cancel();
                         }
                         ServerEvent::FilteredPrompt { .. }
+                        | ServerEvent::PromptsSent { .. }
                         | ServerEvent::Warning(_)
                         | ServerEvent::ControlSent(_) => {}
                     }

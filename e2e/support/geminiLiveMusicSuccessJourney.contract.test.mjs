@@ -5,10 +5,15 @@ import test from 'node:test';
 
 const source = readFileSync(join(import.meta.dirname, '..', 'journeys', 'geminiLiveMusicSuccess.journey.js'), 'utf8');
 
-test('the live music journey uses real nested controls, PCM, recording and an independent file signature', () => {
+test('the live music journey uses real controls, one native session, PCM, recording and an independent signature', () => {
   for (const witness of [
     'enrollGeminiCredentials({ limit: 20 })',
     'clickPromptDjTransport()',
+    'dragActivePromptKnob()',
+    "entry.control === 'Pause'",
+    "entry.control === 'Play'",
+    "entry.control === 'ResetContext'",
+    "entry.event === 'live-music.started').length === 1",
     "live.playbackState === 'playing'",
     'peakLevel > 0.0001',
     'browser.pause(5_000)',

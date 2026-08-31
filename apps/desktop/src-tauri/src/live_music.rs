@@ -350,6 +350,16 @@ fn spawn_live_music_session(task: LiveMusicTask) {
                             .send(LiveMusicEvent::Ready { session_id })
                             .map_err(|_| ())
                     }
+                    ServerEvent::PromptsSent { count } => {
+                        diagnostics::record(
+                            "live-music.prompts-sent",
+                            &[
+                                ("session", session_id.to_string()),
+                                ("count", count.to_string()),
+                            ],
+                        );
+                        Ok(())
+                    }
                     ServerEvent::ControlSent(control) => {
                         diagnostics::record(
                             "live-music.control",

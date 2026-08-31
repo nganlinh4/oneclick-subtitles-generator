@@ -11,6 +11,18 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-live-music-success';
 
+const liveMusicDiagnostics = (root) => {
+  try {
+    return readFileSync(join(root, 'logs', 'osg.log'), 'utf8')
+      .split(/\r?\n/u)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => typeof entry?.event === 'string' && entry.event.startsWith('live-music.'));
+  } catch {
+    return [];
+  }
+};
+
 const promptDjState = () => browser.execute(() => {
   const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
   const inner = outer?.contentDocument?.getElementById('promptdj-inner');
@@ -37,6 +49,44 @@ const clickPromptDjTransport = () => browser.execute(() => {
   control.click();
   return true;
 });
+
+const activePromptKnob = () => browser.execute(() => {
+  const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
+  const inner = outer?.contentDocument?.getElementById('promptdj-inner');
+  const host = inner?.contentDocument?.querySelector('prompt-dj-midi');
+  const controller = [...(host?.shadowRoot?.querySelectorAll('prompt-controller') ?? [])]
+    .find((candidate) => Number(candidate.weight) > 0);
+  const knob = controller?.shadowRoot?.querySelector('weight-knob');
+  const target = knob?.shadowRoot?.querySelector('svg:last-of-type');
+  if (!outer || !inner || !knob || !target) return null;
+  const outerRect = outer.getBoundingClientRect();
+  const innerRect = inner.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  return {
+    promptId: controller.promptId,
+    weight: Number(knob.value),
+    x: Math.round(outerRect.left + innerRect.left + targetRect.left + targetRect.width / 2),
+    y: Math.round(outerRect.top + innerRect.top + targetRect.top + targetRect.height / 2),
+  };
+});
+
+const dragActivePromptKnob = async () => {
+  const before = await activePromptKnob();
+  assert.ok(before, 'PromptDJ has no active weighted prompt control');
+  await browser.performActions([{
+    type: 'pointer',
+    id: 'prompt-weight-pointer',
+    parameters: { pointerType: 'mouse' },
+    actions: [
+      { type: 'pointerMove', duration: 0, origin: 'viewport', x: before.x, y: before.y },
+      { type: 'pointerDown', button: 0 },
+      { type: 'pointerMove', duration: 500, origin: 'viewport', x: before.x, y: before.y - 35 },
+      { type: 'pointerUp', button: 0 },
+    ],
+  }]);
+  await browser.releaseActions();
+  return before;
+};
 
 describe('a customer generates, records and exports live Gemini music', () => {
   it('drives PromptDJ through its real nested WebViews and receives real PCM', async () => {
@@ -82,6 +132,63 @@ describe('a customer generates, records and exports live Gemini music', () => {
       focusSelector: '.music-generator-section',
     });
 
+    const initialSession = liveMusicDiagnostics(root).find((entry) => entry.event === 'live-music.started')?.session;
+    assert.ok(initialSession, 'the playing surface has no native live-music session receipt');
+    const beforeMutation = await dragActivePromptKnob();
+    await browser.waitUntil(async () => {
+      const after = await activePromptKnob();
+      return after?.promptId === beforeMutation.promptId
+        && after.weight > beforeMutation.weight
+        && liveMusicDiagnostics(root).filter((entry) => (
+          entry.event === 'live-music.prompts-sent' && entry.session === initialSession
+        )).length >= 2;
+    }, { timeout: 30_000, interval: 100, timeoutMsg: 'the real prompt-weight drag never reached Gemini' });
+
+    assert.equal(await clickPromptDjTransport(), true, 'the PromptDJ pause control disappeared');
+    await browser.waitUntil(async () => (
+      (await promptDjState()).playbackState === 'paused'
+      && liveMusicDiagnostics(root).some((entry) => (
+        entry.event === 'live-music.control'
+        && entry.session === initialSession
+        && entry.control === 'Pause'
+      ))
+    ), { timeout: 30_000, interval: 100, timeoutMsg: 'PromptDJ did not pause its native session' });
+
+    assert.equal(await clickPromptDjTransport(), true, 'the PromptDJ resume control disappeared');
+    peakLevel = 0;
+    await browser.waitUntil(async () => {
+      const resumed = await promptDjState();
+      peakLevel = Math.max(peakLevel, resumed.audioLevel);
+      const diagnostics = liveMusicDiagnostics(root);
+      return resumed.playbackState === 'playing'
+        && peakLevel > 0.0001
+        && diagnostics.filter((entry) => entry.event === 'live-music.started').length === 1
+        && diagnostics.some((entry) => (
+          entry.event === 'live-music.control'
+          && entry.session === initialSession
+          && entry.control === 'Play'
+        ));
+    }, { timeout: 60_000, interval: 100, timeoutMsg: 'PromptDJ did not resume the same native session' });
+
+    await clickControl('.music-generator-section button[title="Reset"]');
+    await browser.waitUntil(async () => liveMusicDiagnostics(root).some((entry) => (
+      entry.event === 'live-music.control'
+      && entry.session === initialSession
+      && entry.control === 'ResetContext'
+    )), { timeout: 30_000, interval: 100, timeoutMsg: 'PromptDJ reset never reached the native session' });
+    assert.equal(
+      liveMusicDiagnostics(root).filter((entry) => entry.event === 'live-music.started').length,
+      1,
+      'PromptDJ controls replaced the live session instead of controlling it',
+    );
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-prompts-pause-resume-reset',
+      description: 'A real knob drag updated Gemini, Pause and Play reused one session, and Reset Context was applied.',
+      details: { session: initialSession, promptId: beforeMutation.promptId },
+      focusSelector: '.music-generator-section',
+    });
+
     await clickControl('.music-generator-section .header-controls .pill-button.primary');
     await browser.waitUntil(async () => browser.execute(() => (
       document.querySelector('.music-generator-section .header-controls .pill-button.error') !== null
@@ -95,7 +202,7 @@ describe('a customer generates, records and exports live Gemini music', () => {
     }), { timeout: 60_000, interval: 250, timeoutMsg: 'the recorded live music preview is empty' });
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-live-music-recorded',
+      step: '03-live-music-recorded',
       description: 'The customer Record and Stop controls produced a playable, non-empty audio preview.',
       details: { recordingSeconds: 5 },
       focusSelector: '.music-generator-section',
@@ -120,8 +227,8 @@ describe('a customer generates, records and exports live Gemini music', () => {
     });
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '03-live-music-exported-and-stopped',
-      description: 'The recording exported as an independently identified WebM file and the live session stopped cleanly.',
+      step: '04-live-music-exported-and-paused',
+      description: 'The recording exported as an independently identified WAV file and the live session paused cleanly.',
       details: { bytes: statSync(exported).size, signature },
       focusSelector: '.music-generator-section',
     });

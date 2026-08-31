@@ -155,7 +155,11 @@ export class LiveMusicHelper extends EventTarget {
     if (this.extraDestination) this.outputNode.connect(this.extraDestination);
     this.outputNode.gain.setValueAtTime(0, this.audioContext.currentTime);
     this.outputNode.gain.linearRampToValueAtTime(1, this.audioContext.currentTime + 0.1);
-    this.transport.start(this.weightedPrompts());
+    if (this.sessionActive) {
+      this.transport.control('play');
+    } else {
+      this.transport.start(this.weightedPrompts());
+    }
   }
 
   public pause() {
@@ -172,6 +176,10 @@ export class LiveMusicHelper extends EventTarget {
     this.transport.close();
     this.sessionActive = false;
     this.resetPlayback('stopped');
+  }
+
+  public resetContext() {
+    if (this.sessionActive) this.transport.control('resetContext');
   }
 
   private resetPlayback(state: PlaybackState) {
