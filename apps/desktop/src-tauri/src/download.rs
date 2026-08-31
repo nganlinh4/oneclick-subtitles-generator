@@ -472,6 +472,14 @@ impl DownloadRuntimeHandle {
         ffmpeg: Option<FfmpegDirectory>,
     ) -> CommandResult<()> {
         let tools = DownloadRuntime::resolve_tools(search, js_search, ffmpeg);
+        diagnostics::record(
+            "download.runtime_refreshed",
+            &[
+                ("downloader", tools.engine.is_some().to_string()),
+                ("javascriptRuntime", tools.js_runtime_available.to_string()),
+                ("mediaTools", tools.ffmpeg_available.to_string()),
+            ],
+        );
         *self
             .tools
             .write()
@@ -705,6 +713,14 @@ pub(crate) async fn download_status(
     } else {
         (true, None)
     };
+    diagnostics::record(
+        "download.status_resolved",
+        &[
+            ("available", available.to_string()),
+            ("inspectAvailable", "true".to_owned()),
+            ("mediaTools", tools.ffmpeg_available.to_string()),
+        ],
+    );
     Ok(status_response(
         available,
         inspect_available,
@@ -748,6 +764,16 @@ pub(crate) async fn download_inspect(
     #[cfg(not(feature = "e2e-automation"))]
     let cookies = BrowserCookieSource::from(request.cookie_source);
     let engine = runtime.engine().inspect_err(|error| {
+        if let Ok(tools) = runtime.tools() {
+            diagnostics::record(
+                "download.inspection_runtime_unavailable",
+                &[
+                    ("downloader", tools.engine.is_some().to_string()),
+                    ("javascriptRuntime", tools.js_runtime_available.to_string()),
+                    ("mediaTools", tools.ffmpeg_available.to_string()),
+                ],
+            );
+        }
         record_download_inspection_failure("runtime-unavailable", Some(error.code()));
     })?;
     let _permit = runtime.inspection_slots.acquire().ok_or_else(|| {
