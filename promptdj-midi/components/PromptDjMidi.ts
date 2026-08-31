@@ -196,6 +196,13 @@ export class PromptDjMidi extends LitElement {
     }
     this.prompts = new Map(this.basePrompts);
     this.midiDispatcher = new MidiDispatcher();
+    this.midiDispatcher.addEventListener('inputs-changed', (event) => {
+      if (!this.showMidi) return;
+      const detail = (event as CustomEvent<{ inputs: string[]; activeId: string | null }>).detail;
+      this.midiInputIds = detail.inputs;
+      this.activeMidiInputId = detail.activeId;
+      this.dispatchEvent(new CustomEvent('midi-inputs-changed', { detail }));
+    });
 
     // Load saved state if present
     try {
@@ -340,7 +347,7 @@ export class PromptDjMidi extends LitElement {
   public getMidiInputs(): string[] { return this.midiInputIds; }
   public getActiveMidiInputId(): string | null { return this.activeMidiInputId; }
   public setActiveMidiInputId(id: string) {
-    if (!id) return;
+    if (!id || !this.midiInputIds.includes(id)) return;
     this.activeMidiInputId = id;
     this.midiDispatcher.activeMidiInputId = id;
     this.dispatchEvent(new CustomEvent('midi-inputs-changed', { detail: { inputs: this.midiInputIds, activeId: this.activeMidiInputId }}));
