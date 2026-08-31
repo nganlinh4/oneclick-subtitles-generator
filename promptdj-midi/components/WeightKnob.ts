@@ -92,6 +92,7 @@ export class WeightKnob extends LitElement {
   private dragStartValue = 0;
   private activePointerId: number | null = null;
   private isDragging = false;
+  private dragChangedValue = false;
 
   constructor() {
     super();
@@ -100,6 +101,7 @@ export class WeightKnob extends LitElement {
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleClick = this.handleClick.bind(this);
     this.onLostPointerCapture = this.onLostPointerCapture.bind(this);
     this.onWindowBlur = this.onWindowBlur.bind(this);
   }
@@ -114,6 +116,7 @@ export class WeightKnob extends LitElement {
     this.setAttribute('aria-valuenow', String(this.value));
     this.addEventListener('wheel', this.handleWheel, { passive: true });
     this.addEventListener('keydown', this.handleKeyDown);
+    this.addEventListener('click', this.handleClick);
   }
 
   disconnectedCallback(): void {
@@ -121,6 +124,7 @@ export class WeightKnob extends LitElement {
     this.teardownDragListeners();
     this.removeEventListener('wheel', this.handleWheel);
     this.removeEventListener('keydown', this.handleKeyDown);
+    this.removeEventListener('click', this.handleClick);
     super.disconnectedCallback();
   }
 
@@ -149,6 +153,7 @@ export class WeightKnob extends LitElement {
     this.dragStartValue = this.value;
     this.activePointerId = e.pointerId;
     this.isDragging = true;
+    this.dragChangedValue = false;
     document.body.classList.add('dragging');
     // Try to retain events even when pointer leaves the iframe/element
     try {
@@ -160,6 +165,7 @@ export class WeightKnob extends LitElement {
   private handlePointerMove(e: PointerEvent) {
     if (!this.isDragging || (this.activePointerId !== null && e.pointerId !== this.activePointerId)) return;
     const delta = this.dragStartPos - e.clientY;
+    if (Math.abs(delta) >= 1) this.dragChangedValue = true;
     this.value = this.dragStartValue + delta * 0.01;
     this.value = Math.max(0, Math.min(2, this.value));
     this.dispatchEvent(new CustomEvent<number>('input', { detail: this.value }));
@@ -214,6 +220,16 @@ export class WeightKnob extends LitElement {
     else return;
     e.preventDefault();
     this.value = Math.max(0, Math.min(2, next));
+    this.setAttribute('aria-valuenow', String(this.value));
+    this.dispatchEvent(new CustomEvent<number>('input', { detail: this.value }));
+  }
+
+  private handleClick() {
+    if (this.dragChangedValue) {
+      this.dragChangedValue = false;
+      return;
+    }
+    this.value = Math.min(2, this.value + 0.1);
     this.setAttribute('aria-valuenow', String(this.value));
     this.dispatchEvent(new CustomEvent<number>('input', { detail: this.value }));
   }

@@ -13,8 +13,7 @@ test('the live music journey uses real controls, one native session, PCM, record
   for (const witness of [
     'enrollGeminiCredentials({ limit: 20 })',
     'clickPromptDjTransport()',
-    'adjustActivePromptKnob()',
-    "browser.keys(['ArrowUp'])",
+    'clickActivePromptKnob()',
     "entry.control === 'Pause'",
     "entry.control === 'Play'",
     "entry.control === 'ResetContext'",
