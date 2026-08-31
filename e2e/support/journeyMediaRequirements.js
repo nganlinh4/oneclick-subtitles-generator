@@ -70,6 +70,7 @@ const NO_STAGED_MEDIA = new Set([
   'nativeToolsInstall.journey.js',
   'reconnaissance.journey.js',
   'settingsAppearancePersistence.journey.js',
+  'settingsCredentialLifecycle.journey.js',
   'settingsNarrationModelManagement.journey.js',
   'settingsToolsRemoveAndFactoryReset.journey.js',
   'startup.journey.js',
