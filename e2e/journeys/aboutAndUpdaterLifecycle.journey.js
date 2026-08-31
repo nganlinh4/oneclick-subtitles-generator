@@ -78,6 +78,7 @@ const aboutSurface = () => browser.execute(() => {
     versionDisplay: text('.version-display'),
     checking: document.querySelector('.checking-update') !== null,
     updateCheckFailedPresent: document.querySelector('.update-check-failed') !== null,
+    updateCheckFailedText: text('.update-check-failed'),
     updateAvailablePresent: document.querySelector('.update-notification') !== null,
     upToDatePresent: document.querySelector('.up-to-date') !== null,
     replayOnboardingPresent: document.querySelector('.replay-onboarding-button') !== null,
@@ -134,6 +135,7 @@ describe('About reports the real installed version and the updater proves its co
       diagnostic: () => `the About update check never settled: ${JSON.stringify(surface)}`,
     });
     assert.equal(surface.updateCheckFailedPresent, true, 'the disabled updater channel did not surface "Unable to check for updates"');
+    assert.equal(surface.updateCheckFailedText, 'Unable to check for updates');
     assert.equal(surface.updateAvailablePresent, false, 'a disabled updater channel reported an update as available');
     assert.equal(surface.upToDatePresent, false, 'a disabled updater channel reported the app as up to date instead of failing honestly');
     await captureWorkflowStep({
@@ -142,6 +144,12 @@ describe('About reports the real installed version and the updater proves its co
       description: 'The compiled-disabled updater channel (e2e-automation) makes app_update_check report unconfigured; About shows the honest "Unable to check for updates" branch, never a fabricated up-to-date or available state.',
       details: { surface },
       focusSelector: '.update-check-failed',
+      allowVisibleProblems: {
+        errorAlerts: [{
+          text: surface.updateCheckFailedText,
+          reason: 'This exact compiled-disabled updater outcome is the customer state under test.',
+        }],
+      },
     });
 
     const after = durableState(root);
