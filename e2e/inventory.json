@@ -742,7 +742,7 @@
       "name": "youtubeSearchAndHistory",
       "kind": "workflow",
       "file": "journeys/youtubeSearchAndHistory.journey.js",
-      "capability": "A customer searches YouTube by title, selects the intended result, reuses or clears search history, and acquires that exact video.",
+      "capability": "YouTube search is correctly credential-gated before native work, and URL/search history remains bounded, does not resurrect evicted entries, and reuses the shared acquisition path.",
       "oracles": [
         "the real Settings > Video Processing 'Enable YouTube Search' toggle, which unlocks the tab",
         "the visible credential-free refusal toast, search-result count and searching indicator",
@@ -750,9 +750,12 @@
         "the shared acquisition-path preview (.video-id-value/.download-only-btn) urlToPreview independently proves end to end"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "authored-unproven",
+      "status": "green",
+      "evidenceWorkflow": "youtube-search-and-history",
+      "attemptId": "20260831060039858-55648-8d5cac19",
+      "binaryDigest": "4c2d4aa45f32b032bd4463f1ddb7b0c8b162909b6d4fb6eba1053af090ff1ce1",
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
-      "note": "Authored and statically validated by support/youtubeSearchAndHistoryJourney.contract.test.mjs plus support/youtubeSearchAndHistoryOracle.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH CHANGED THE SCOPE: search has NO credential-free path at all -- src/components/inputs/YoutubeSearchInput.js refuses before calling searchYouTubeVideos, and src/platform/providerService.js's requireReadyCredential throws before the native youtube_search command is ever invoked -- so this journey proves that refusal boundary honestly (as geminiCredentialBoundary does for Gemini) instead of a fabricated 'search results' claim. It also found that 'history' here is bounded browser localStorage (src/utils/historyUtils.js, MAX_HISTORY_ITEMS=10 per key), entirely separate from the SQLite project/media/alias durability the download-identity journeys use, and that the shipped UnifiedUrlInput history dropdown has NO per-item delete control -- so 'never resurrects a deleted entry' is proven at the real bounded-eviction boundary (an explicit re-entry is the only way an evicted entry returns) rather than a delete button that does not exist. '(b) selecting a result reaches the same acquisition path' is proven at the one credential-free instance of the identical setSelectedVideo call search results also use: reselecting a URL-history entry, landing on the exact preview urlToPreview already proves. Remains credential-gated and therefore unproven for actual search RESULTS, quota errors and OAuth; authenticatedAndRestrictedUrlAcquisition below stays the separate, still-fully-unauthored tracker for those.",
+      "note": "GREEN SCOPE: the hidden real binary enabled the search tab through public Settings, proved the no-credential refusal occurs before native search work, exercised the shared URL-history acquisition selection, and filled the real bounded localStorage histories past their cap to prove eviction and no resurrection. Actual authenticated search results, result identity, quota errors and OAuth remain explicitly owned by authenticatedAndRestrictedUrlAcquisition below; this receipt does not imply them.",
       "dependencies": {
         "owner": "user-or-test-secret-provider",
         "requires": "a scoped YouTube Data API key or an isolated OAuth test account, plus network access, to prove real search RESULTS rather than the refusal boundary",
@@ -986,9 +989,12 @@
         "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "authored-unproven",
+      "status": "green",
+      "evidenceWorkflow": "alternate-local-asr-matrix",
+      "attemptId": "20260831060704975-46692-7ab4f611",
+      "binaryDigest": "f8189ae887f40581b4f11f21723fbb8f5325add00a21bc2df7edab987526f195",
       "recommendedJourney": "alternateLocalAsrMatrix",
-      "note": "Authored and statically validated by support/engineCatalogOracle.test.mjs plus support/alternateLocalAsrMatrixJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE, RECORDED IN docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md: all four variants are 5.43-9.15 GiB compressed / 7.59-11.31 GiB installed (crates/osg-engine-packages/delivery/engine-packages.delivery.json), the same or a larger size class than the already-proven Faster-Whisper Turbo (4.56 GiB / 6.73 GiB) -- completing a second full install-and-transcribe run would only re-exercise localAsrGeneration's own already-proven pipeline at multi-gigabyte/multi-hour cost, not add new coverage, so none gets a second full generate-and-verify path. What IS proven instead, for the whole five-engine catalog (including Faster-Whisper Turbo) at once: every card's truthful install state against an independent on-disk oracle, and a bounded (cancel-on-appearance, never completed) real install for whichever catalog engine is not yet installed. A repository-wide search for cuda/gpu/directml/coreml across crates/osg-asr/src and apps/desktop/src-tauri/src/asr.rs finds no hardware-capability check and no 'unsupported on this hardware' state in EngineCard.js's state machine, so this journey does not fabricate a hardware-refusal assertion -- that absence is recorded as a finding in ENGINE_CATALOG_FEASIBILITY.md instead.",
+      "note": "GREEN SCOPE: the hidden real binary settled every ASR catalog card and each state matched the independent data/engine-packages/v1/<packageId> filesystem oracle. It then started a real native install for an uninstalled engine, observed the public Cancel state, cancelled, returned to not-installed and left the package directory at its exact baseline. Full multi-gigabyte installs and alternate-engine transcription remain outside this deliberately bounded capability.",
       "dependencies": {
         "owner": "project-delivery-and-test-hardware",
         "requires": "reviewed managed packages plus 6-12 GiB of free disk and a multi-hour download window per engine to prove a SUCCESSFUL install, transcribe, stream, cancel-mid-progress and clean-uninstall cycle",
@@ -1125,7 +1131,10 @@
         "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "authored-unproven",
+      "status": "green",
+      "evidenceWorkflow": "narration-engine-matrix",
+      "attemptId": "20260831060823333-45416-519171da",
+      "binaryDigest": "f8189ae887f40581b4f11f21723fbb8f5325add00a21bc2df7edab987526f195",
       "recommendedJourney": "narrationEngineMatrix",
       "note": "Authored and statically validated by support/engineCatalogOracle.test.mjs plus support/narrationEngineMatrixJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH DETERMINED FROM SOURCE, RECORDED IN docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md: F5-TTS is 4.28 GiB / 6.47 GiB installed and Chatterbox is 8.93 GiB / 11.12 GiB installed (crates/osg-speech/delivery/speech-packages.delivery.json) -- both size-gated the same way as settingsNarrationModelManagement.journey.js already established for F5-TTS's OWN dedicated Model Management tab; this journey proves the SAME truthful-status/bounded-install-cancel claim through the different, catalog-wide Tools EnginesPanel surface instead (src/components/engines/EnginesPanel.js), which is the literal 'engine selection surface' this capability is about. Gemini Live TTS is CREDENTIAL-GATED, not size-gated (19.29 MiB / 58.99 MiB installed) -- its narration method radio only enables once BOTH the package is ready and a usable Gemini credential exists (useAvailabilityCheck.js:216-217, geminiAvailable = geminiBackendAvailable && credentialAvailability.available); a fresh E2E profile has none, and this is the SAME method-radio enforcement point referenceVoiceAndPerCueNarration.journey.js already proved honest for F5-TTS, so a second dedicated credential-refusal journey is not authored here. No narration backend carries a hardware-gated verdict either, for the same reason recorded against alternateLocalAsrEngines.",
       "dependencies": {
@@ -1447,10 +1456,13 @@
     {
       "name": "settingsNarrationModelManagement",
       "kind": "workflow",
-      "capability": "Available/installed narration models, add/edit/delete/download/cancel actions correspond to operations the native backend actually supports.",
-      "status": "unproven",
+      "capability": "The dedicated narration Model Management tab truthfully reports an empty F5-TTS store and a real install either cancels cleanly or refuses for measured capacity without leaving bytes.",
+      "status": "green",
+      "evidenceWorkflow": "settings-narration-model-management",
+      "attemptId": "20260831055924214-50948-a6d49b6a",
+      "binaryDigest": "4c2d4aa45f32b032bd4463f1ddb7b0c8b162909b6d4fb6eba1053af090ff1ce1",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "Step 01 (a genuinely empty engine-packages store is reported state=missing truthfully) is proven by real published evidence. The install half was corrected 2026-08-28 after attempt 20260828130450520-39784-291c01a9 failed with 'clicking Install never produced a cancellable operation': the journey had assumed Install always starts a job, but crates/osg-engine-packages/src/manager.rs:1620-1632 refuses the operation before its first delivery byte unless the store's volume holds sizeBytes + unpackedSizeBytes + a 256 MiB reserve (11,806,796,107 bytes / 11.00 GiB for the Windows F5-TTS release). The runner host had 9.70 GiB, so the job started and died in the same instant and the Cancel control could never render. That is the product correctly refusing a download it cannot finish, not a defect. The journey now measures the real requirement against the real volume through e2e/support/speechPackageCapacity.js and proves whichever honest outcome the host can reach: below the line, step 02-refused-without-room asserts the status stays truthfully not-installed, the refusal is announced to the customer, and the store digest is byte-identical to its pre-click shape; at or above the line, the original 02-install-begun / 03-cancelled-cleanly start-and-cancel proof runs unchanged, citing crates/osg-runtime-staging/src/lib.rs:432-513's OwnedStagingDirectory Drop-cleanup. Remove, repair and update-in-place stay out of scope. The opaque copy the refusal branch observes is recorded separately in knownProductFindings. Status stays unproven until a real run against the guarded binary records both steps.",
+      "note": "GREEN SCOPE: an isolated hidden real-binary run started with a genuinely empty engine-packages store, observed F5-TTS as missing with Install available, measured the actual catalog capacity requirement against the store volume, began the real native install on this host, cancelled it through the public control, returned to missing and proved the whole store digest exactly matched its baseline. Full installation, removal, repair and update-in-place are not implied.",
       "file": "journeys/settingsNarrationModelManagement.journey.js",
       "oracles": [
         "the real Model Management tab controls and data-model-* attributes",
