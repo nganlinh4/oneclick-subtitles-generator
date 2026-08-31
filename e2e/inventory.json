@@ -1357,8 +1357,8 @@
       "status": "green",
       "recommendedJourney": "creativeGenerators",
       "evidenceWorkflow": "gemini-live-music-success",
-      "attemptId": "20260831052703697-35860-d634492b",
-      "binaryDigest": "773c5514a0da3fef92bb67b63f7f044530748aeaef2427ee57dbddd0a1f7c8dc",
+      "attemptId": "20260831053444345-46200-7605d075",
+      "binaryDigest": "fc9ddde3f498964f7162e2c0681d81bbf443d61b92bbfc98b73f812a8df0df79",
       "note": "Green against the real offscreen desktop binary on 2026-08-31. Twenty reviewed credentials were enrolled through the product. One native Gemini session reached playing with measured non-silent PCM; a real prompt-knob click produced a second provider prompt receipt; Pause and immediate Resume produced native Pause/Play controls without a second session; Reset Context reached the same session; recording produced a finite six-second preview; and guarded native export wrote a 1,152,044-byte WAV with an independently checked RIFF signature. Four ordered screenshots contain no semantic error alert, error toast or overflow. The run removed a redundant nested srcDoc iframe, replaced a silent 500 ms transport-click discard with state-owned control, made weights accessible by click and keyboard, and proved prompt updates with bounded Rust diagnostics.",
       "dependencies": {
         "owner": "none for the proven live generation, prompt mutation, pause/resume, reset, recording, preview and save path",
