@@ -75,9 +75,9 @@ const dragActivePromptKnob = async () => {
   assert.ok(before, 'PromptDJ has no active weighted prompt control');
   try {
     const outer = await browser.$('.music-generator-section iframe[title="promptdj-midi"]');
-    await browser.switchFrame(outer);
+    await browser.switchToFrame(outer.elementId);
     const inner = await browser.$('#promptdj-inner');
-    await browser.switchFrame(inner);
+    await browser.switchToFrame(inner.elementId);
     const host = await browser.$('prompt-dj-midi');
     const controllers = await host.shadow$$('prompt-controller');
     let target = null;
@@ -90,7 +90,7 @@ const dragActivePromptKnob = async () => {
     assert.ok(target, `PromptDJ lost weighted prompt ${before.promptId}`);
     await target.dragAndDrop({ x: 0, y: -35 }, { duration: 500 });
   } finally {
-    await browser.switchFrame(null);
+    await browser.switchToFrame(null);
   }
   return before;
 };
