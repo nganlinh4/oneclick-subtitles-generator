@@ -9,7 +9,6 @@ import { clickControl, openEditor } from '../support/editor.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'prompt-dj-midi-input';
-const ENDPOINT = 'OSG Isolated MIDI Controller';
 const HOST = resolve(
   import.meta.dirname,
   '..',
@@ -31,6 +30,7 @@ const startMidiHost = () => {
   });
   const records = [];
   const waiters = [];
+  const diagnostics = [];
   let buffered = '';
   process.stdout.setEncoding('utf8');
   process.stdout.on('data', (chunk) => {
@@ -44,6 +44,11 @@ const startMidiHost = () => {
       else records.push(record);
     }
   });
+  process.stderr.setEncoding('utf8');
+  process.stderr.on('data', (chunk) => {
+    diagnostics.push(...chunk.split(/\r?\n/u).filter(Boolean));
+    if (diagnostics.length > 20) diagnostics.splice(0, diagnostics.length - 20);
+  });
   const nextRecord = (timeoutMs = 15_000) => {
     if (records.length > 0) return Promise.resolve(records.shift());
     return new Promise((resolveRecord, reject) => {
@@ -56,7 +61,9 @@ const startMidiHost = () => {
       const timer = setTimeout(() => {
         const index = waiters.indexOf(waiter);
         if (index >= 0) waiters.splice(index, 1);
-        reject(new Error('the isolated MIDI host produced no bounded response'));
+        const exit = process.exitCode === null ? 'running' : `exit ${process.exitCode}`;
+        const detail = diagnostics.length > 0 ? diagnostics.join(' | ') : 'no diagnostics';
+        reject(new Error(`the isolated MIDI host produced no bounded response (${exit}; ${detail})`));
       }, timeoutMs);
       waiters.push(waiter);
     });
@@ -82,10 +89,13 @@ const promptDjMidiState = () => browser.execute(() => {
 });
 
 describe('a customer controls PromptDJ with a MIDI device', () => {
-  it('discovers a real process-owned endpoint and maps its CC value to one prompt', async () => {
+  it('discovers a real Windows loopback endpoint and maps its CC value to one prompt', async () => {
     const midi = startMidiHost();
     try {
-      assert.deepEqual(await midi.nextRecord(), { ready: true, name: ENDPOINT });
+      const ready = await midi.nextRecord();
+      assert.equal(ready.ready, true, `the Windows MIDI diagnostics endpoint refused: ${ready.reason ?? 'unknown'}`);
+      assert.equal(typeof ready.name, 'string');
+      assert.ok(ready.name.length > 0 && ready.name.length <= 512, 'the MIDI endpoint name is invalid');
       await openEditor();
       const collapsed = await browser.execute(
         () => document.querySelector('.music-generator-section')?.classList.contains('collapsed') ?? null,
@@ -99,7 +109,7 @@ describe('a customer controls PromptDJ with a MIDI device', () => {
       await clickControl('.music-generator-section .midi-controls md-switch');
       await browser.waitUntil(async () => {
         const state = await promptDjMidiState();
-        return state.endpoint.includes(ENDPOINT) && typeof state.activeInputId === 'string';
+        return state.endpoint.includes(ready.name) && typeof state.activeInputId === 'string';
       }, {
         timeout: 60_000,
         interval: 250,
@@ -110,8 +120,8 @@ describe('a customer controls PromptDJ with a MIDI device', () => {
       await captureWorkflowStep({
         workflow: WORKFLOW,
         step: '01-midi-endpoint-selected',
-        description: 'PromptDJ enumerated and selected the process-owned Windows MIDI endpoint.',
-        details: { endpoint: ENDPOINT, promptId: 'prompt-0', cc: before.cc },
+        description: 'PromptDJ enumerated and selected the Windows MIDI diagnostics endpoint.',
+        details: { endpoint: ready.name, promptId: 'prompt-0', cc: before.cc },
         focusSelector: '.music-generator-section',
       });
 
