@@ -77,7 +77,7 @@ describe('credential settings are write-only, persistent and individually remova
     // This is the same real credential pool used by green live-provider journeys. The helper clears
     // the input before IPC and never includes the secret in evidence or desktop environment state.
     await enrollGeminiCredentials({ limit: 1 });
-    await waitForPurposes(root, ['geminiApiKey']);
+    await waitForPurposes(root, ['gemini_api_key']);
 
     // Enable the shipping YouTube credential surface through its public setting.
     await clickControl('[data-app-action="open-settings"]');
@@ -89,7 +89,7 @@ describe('credential settings are write-only, persistent and individually remova
     await $('#genius-key-input').setValue(GENIUS_DRAFT);
     await $('#youtube-key-input').setValue(YOUTUBE_DRAFT);
     await saveSettings();
-    await waitForPurposes(root, ['geminiApiKey', 'geniusAccessToken', 'youtubeApiKey']);
+    await waitForPurposes(root, ['gemini_api_key', 'genius_access_token', 'youtube_api_key']);
 
     await openApiKeys();
     const redacted = await browserSecretState();
@@ -107,11 +107,11 @@ describe('credential settings are write-only, persistent and individually remova
 
     await clickSettingsControl('[data-credential-action="clear-genius"]');
     await confirmWarning();
-    await waitForPurposes(root, ['geminiApiKey', 'youtubeApiKey']);
+    await waitForPurposes(root, ['gemini_api_key', 'youtube_api_key']);
 
     await clickSettingsControl('[data-credential-action="clear-youtube-api-key"]');
     await confirmWarning();
-    await waitForPurposes(root, ['geminiApiKey']);
+    await waitForPurposes(root, ['gemini_api_key']);
 
     await clickSettingsControl('.gemini-key-item .remove-key');
     await waitForPurposes(root, []);
@@ -129,7 +129,7 @@ describe('credential settings are write-only, persistent and individually remova
     await $('#client-id-input').setValue(OAUTH_CLIENT_ID);
     await $('#client-secret-input').setValue(OAUTH_CLIENT_SECRET);
     await saveSettings();
-    await waitForPurposes(root, ['youtubeOauthClient']);
+    await waitForPurposes(root, ['youtube_oauth_client']);
 
     await openApiKeys();
     const oauthRedacted = await browserSecretState();
