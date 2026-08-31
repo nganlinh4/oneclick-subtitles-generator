@@ -70,6 +70,7 @@ const NO_STAGED_MEDIA = new Set([
   'geminiLiveMusicSuccess.journey.js',
   'narrationEngineMatrix.journey.js',
   'nativeToolsInstall.journey.js',
+  'playlistWatchSelection.journey.js',
   'reconnaissance.journey.js',
   'settingsAppearancePersistence.journey.js',
   'settingsCredentialLifecycle.journey.js',
