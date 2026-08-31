@@ -13,14 +13,14 @@ import {
   type NativeLiveMusicTransport,
 } from './utils/LiveMusicHelper';
 import { AudioAnalyser } from './utils/AudioAnalyser';
+import { PcmRecording } from './utils/PcmRecording.js';
 
 const parentOrigin = window.location.origin;
 const MAX_PCM_BYTES = 512 * 1024;
 const MAX_PROMPTS = 16;
 
 let teeNode: GainNode | null = null;
-let mediaDest: MediaStreamAudioDestinationNode | null = null;
-let mediaRecorder: MediaRecorder | null = null;
+let pcmRecording: PcmRecording | null = null;
 
 function postParent(message: object, transfer: Transferable[] = []) {
   const host = window.top;
@@ -167,30 +167,12 @@ function main() {
   function startRecording() {
     try {
       if (!teeNode) return;
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') return;
-      const destination = liveMusicHelper.audioContext.createMediaStreamDestination();
-      teeNode.connect(destination);
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-      const recorder = new MediaRecorder(destination.stream, { mimeType: mime });
-      const chunks: BlobPart[] = [];
-      mediaDest = destination;
-      mediaRecorder = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onstop = () => {
-        try { teeNode?.disconnect(destination); } catch {}
-        if (mediaDest === destination) mediaDest = null;
-        if (mediaRecorder === recorder) mediaRecorder = null;
-        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        postParent({ type: 'pm-dj-recording-stopped', blob });
-      };
-      recorder.onerror = () => {
-        postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be completed.' });
-      };
-      recorder.start(250);
+      if (pcmRecording !== null) return;
+      pcmRecording = new PcmRecording({
+        sampleRate: 48_000,
+        channels: 2,
+        maxBytes: 512 * 1024 * 1024,
+      });
       postParent({ type: 'pm-dj-recording-started' });
     } catch {
       postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be started.' });
@@ -199,7 +181,12 @@ function main() {
 
   function stopRecording() {
     try {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      const recording = pcmRecording;
+      pcmRecording = null;
+      if (recording === null) return;
+      const wav = recording.finish();
+      const blob = new Blob([wav], { type: 'audio/wav' });
+      postParent({ type: 'pm-dj-recording-stopped', blob });
     } catch {
       postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be stopped.' });
     }
@@ -242,6 +229,12 @@ function main() {
         && data.pcm.byteLength >= 4
         && data.pcm.byteLength <= MAX_PCM_BYTES
         && data.pcm.byteLength % 4 === 0) {
+      try {
+        pcmRecording?.append(data.pcm);
+      } catch {
+        pcmRecording = null;
+        postParent({ type: 'pm-dj-recording-error', error: 'Recording could not be completed.' });
+      }
       liveMusicHelper.handlePcm(data.pcm).catch(() => {
         toastMessage.show('The live music audio stream is invalid.');
         liveMusicHelper.stop();

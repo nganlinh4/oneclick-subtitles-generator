@@ -332,7 +332,7 @@ const BackgroundMusicSection = () => {
             if (data.blob instanceof Blob
                 && data.blob.size > 0
                 && data.blob.size <= 512 * 1024 * 1024
-                && /^audio\/webm(?:;|$)/i.test(data.blob.type)) {
+                && /^audio\/(?:wav|webm)(?:;|$)/i.test(data.blob.type)) {
               const trimmed = await trimSilenceFromBlob(data.blob, {
                 silenceThreshold: 0.004, // ~ -48 dBFS
                 minSilenceMs: 180,

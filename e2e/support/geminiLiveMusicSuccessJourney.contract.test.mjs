@@ -12,7 +12,7 @@ test('the live music journey uses real nested controls, PCM, recording and an in
     "live.playbackState === 'playing'",
     'peakLevel > 0.0001',
     'browser.pause(5_000)',
-    "signature, '1a45dfa3'",
+    "signature, '52494646'",
   ]) assert.ok(source.includes(witness), `missing live-music witness: ${witness}`);
   assert.doesNotMatch(source, /dispatchEvent|postMessage|live_music_start|executeAsync/u);
 });

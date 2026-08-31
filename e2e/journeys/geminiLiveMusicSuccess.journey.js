@@ -110,7 +110,7 @@ describe('a customer generates, records and exports live Gemini music', () => {
       return statSync(exported).size > 1_024;
     }, { timeout: 60_000, interval: 250, timeoutMsg: 'the recorded live music was not exported' });
     const signature = readFileSync(exported).subarray(0, 4).toString('hex');
-    assert.equal(signature, '1a45dfa3', 'the exported recording is not a WebM container');
+    assert.equal(signature, '52494646', 'the exported recording is not a finite WAV container');
 
     assert.equal(await clickPromptDjTransport(), true, 'the real PromptDJ stop control disappeared');
     await browser.waitUntil(async () => ['paused', 'stopped'].includes((await promptDjState()).playbackState), {
