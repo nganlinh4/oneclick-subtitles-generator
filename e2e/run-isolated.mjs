@@ -256,6 +256,7 @@ export const run = async ({ repeat, journeys }) => {
                   const journeyName = basename(journey);
                   const needsSourceSwitch = new Set([
                     'downloadCancellationRetryIdentity.journey.js',
+                    'downloadQualityCancellationIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
                     'mainPreviewControlsAndFullscreen.journey.js',
                   ]).has(journeyName);
@@ -300,6 +301,7 @@ export const run = async ({ repeat, journeys }) => {
                     }
                     if (new Set([
                       'downloadCancellationRetryIdentity.journey.js',
+                      'downloadQualityCancellationIdentity.journey.js',
                       'failedDownloadNoStale.journey.js',
                     ]).has(journeyName)) {
                       environment.OSG_E2E_SOURCE_SWITCH_MEDIA = stageMedia(

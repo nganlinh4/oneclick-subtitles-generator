@@ -116,6 +116,7 @@ const dialogPaths = stagedDialogPaths(
 );
 let downloadFixtureOrigin = null;
 if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
+    || process.env.OSG_E2E_WORKFLOW === 'download-quality-cancellation-identity'
     || process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale') {
   // This configuration is loaded once by the WDIO launcher and again by its worker. Only the
   // launcher creates the origin; the exact capabilities then reach both the worker and the app as
@@ -136,6 +137,8 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     const sourceA = stagedOriginSource('OSG_E2E_SOURCE_SWITCH_MEDIA');
     const sourceB = stagedOriginSource('OSG_E2E_DOWNLOAD_IDENTITY_MEDIA');
     const failureJourney = process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale';
+    const qualityCancellationJourney = process.env.OSG_E2E_WORKFLOW
+      === 'download-quality-cancellation-identity';
     downloadFixtureOrigin = await startDownloadFixtureOrigin({
       eventsPath: join(runRoot, 'evidence', 'download-fixture-events.jsonl'),
       sources: failureJourney ? [
@@ -151,14 +154,22 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
       ],
       chunkDelayMs: failureJourney ? 10 : 120,
       initialDelayMs: failureJourney ? 0 : 2_000,
+      multiFormatPage: qualityCancellationJourney,
     });
     process.env.OSG_E2E_EXACT_DOWNLOAD_URLS = JSON.stringify(
-      downloadFixtureOrigin.manifest.map(({ url }) => url),
+      [
+        ...downloadFixtureOrigin.manifest.map(({ url }) => url),
+        ...(downloadFixtureOrigin.multiFormatUrl === null
+          ? [] : [downloadFixtureOrigin.multiFormatUrl]),
+      ],
     );
     process.env.OSG_E2E_DOWNLOAD_FIXTURE_MANIFEST = JSON.stringify(
       downloadFixtureOrigin.manifest,
     );
     process.env.OSG_E2E_DOWNLOAD_FIXTURE_EVENTS = downloadFixtureOrigin.eventsPath;
+    if (downloadFixtureOrigin.multiFormatUrl !== null) {
+      process.env.OSG_E2E_MULTI_FORMAT_URL = downloadFixtureOrigin.multiFormatUrl;
+    }
   }
 }
 if (process.env.OSG_E2E_MEDIA_DESTINATION === undefined) {

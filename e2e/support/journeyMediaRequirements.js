@@ -62,6 +62,7 @@ const NO_STAGED_MEDIA = new Set([
   'damagedFontPayload.journey.js',
   'defaultFont.journey.js',
   'downloadCancellationRetryIdentity.journey.js',
+  'downloadQualityCancellationIdentity.journey.js',
   'downloadQualityVariants.journey.js',
   'failedDownloadNoStale.journey.js',
   'freshInstallVisual.journey.js',

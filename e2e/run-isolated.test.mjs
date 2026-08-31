@@ -96,6 +96,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'canvasPlaybackPerformance.journey.js',
     'defaultFont.journey.js',
     'downloadCancellationRetryIdentity.journey.js',
+    'downloadQualityCancellationIdentity.journey.js',
     'downloadQualityVariants.journey.js',
     'edgeTtsNarrationGeneration.journey.js',
     'editorCueCrudAndHistory.journey.js',

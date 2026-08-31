@@ -73,6 +73,31 @@ test('the exact origin serves ranges and records an interrupted partial transfer
   }
 });
 
+test('the optional multi-format page exposes both exact throttled sources without widening production', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'osg-download-multi-origin-test-'));
+  const a = join(root, 'source-a.mp4');
+  const b = join(root, 'source-b.mp4');
+  writeFileSync(a, Buffer.from('first-format'));
+  writeFileSync(b, Buffer.from('second-format'));
+  let origin;
+  try {
+    origin = await startDownloadFixtureOrigin({
+      eventsPath: join(root, 'events.jsonl'),
+      sources: [{ label: 'a', path: a }, { label: 'b', path: b }],
+      multiFormatPage: true,
+    });
+    assert.match(origin.multiFormatUrl, /^http:\/\/127\.0\.0\.1:\d+\/multi\.html\?token=[a-f0-9]{64}$/u);
+    const page = await fetch(origin.multiFormatUrl);
+    const body = await page.text();
+    assert.equal(page.status, 200);
+    for (const { url } of origin.manifest) assert.ok(body.includes(url));
+    assert.equal((body.match(/<source /gu) ?? []).length, 2);
+  } finally {
+    if (origin) await origin.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('event reader rejects unbounded or malformed ledgers', () => {
   const root = mkdtempSync(join(tmpdir(), 'osg-download-events-test-'));
   try {

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import {
   appendFileSync, createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync,
   statSync, writeFileSync,
@@ -111,6 +112,7 @@ export const startDownloadFixtureOrigin = async ({
   chunkBytes = 32 * 1024,
   chunkDelayMs = 60,
   initialDelayMs = 0,
+  multiFormatPage = false,
 }) => {
   if (!Array.isArray(sources) || sources.length !== 2) {
     throw new Error('the download identity journey requires exactly two sources');
@@ -123,6 +125,11 @@ export const startDownloadFixtureOrigin = async ({
   const routes = sources.map(({ label, path, rejectGetAfter = null }) => (
     inspectSource(label, path, rejectGetAfter)
   ));
+  const page = multiFormatPage ? Object.freeze({
+    label: 'multi',
+    pathname: '/multi.html',
+    token: randomBytes(TOKEN_BYTES).toString('hex'),
+  }) : null;
   if (new Set(routes.map(({ label }) => label)).size !== routes.length) {
     throw new Error('download fixture route labels must be unique');
   }
@@ -144,6 +151,47 @@ export const startDownloadFixtureOrigin = async ({
   const server = createServer((request, response) => {
     void (async () => {
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+      if (page !== null
+          && page.pathname === requestUrl.pathname
+          && requestUrl.searchParams.size === 1
+          && requestUrl.searchParams.get('token') === page.token
+          && ['GET', 'HEAD'].includes(request.method ?? '')) {
+        const host = request.headers.host;
+        if (typeof host !== 'string' || !/^127\.0\.0\.1:\d+$/u.test(host)) {
+          response.writeHead(400, { 'content-length': '0' });
+          response.end();
+          return;
+        }
+        const sourcesMarkup = routes.map((route) => (
+          `<source src="http://${host}${route.pathname}?token=${route.token}" type="video/mp4">`
+        )).join('');
+        const body = Buffer.from(
+          `<!doctype html><html><head><title>OSG multi-format fixture</title></head>`
+          + `<body><video controls>${sourcesMarkup}</video></body></html>`,
+          'utf8',
+        );
+        const requestId = sequence + 1;
+        record(page, 'request-start', {
+          requestId,
+          method: request.method,
+          rangeStart: 0,
+          rangeEnd: body.length - 1,
+          expectedBytes: body.length,
+        });
+        response.writeHead(200, {
+          'cache-control': 'no-store',
+          'content-length': String(body.length),
+          'content-type': 'text/html; charset=utf-8',
+        });
+        if (request.method === 'HEAD') {
+          response.end();
+          record(page, 'request-complete', { requestId, bytesSent: 0, method: 'HEAD' });
+        } else {
+          response.end(body);
+          record(page, 'request-complete', { requestId, bytesSent: body.length, method: 'GET' });
+        }
+        return;
+      }
       const route = routes.find((candidate) => (
         candidate.pathname === requestUrl.pathname
         && requestUrl.searchParams.size === 1
@@ -275,6 +323,9 @@ export const startDownloadFixtureOrigin = async ({
   return Object.freeze({
     eventsPath,
     manifest,
+    multiFormatUrl: page === null
+      ? null
+      : `http://127.0.0.1:${address.port}${page.pathname}?token=${page.token}`,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve, reject) => {
