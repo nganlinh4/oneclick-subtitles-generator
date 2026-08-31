@@ -1352,15 +1352,31 @@
     {
       "name": "backgroundMusicPromptDj",
       "kind": "workflow",
-      "file": "journeys/providerBoundaries.journey.js",
-      "capability": "PromptDJ starts a native live-music session, updates weighted prompts, plays/pauses/stops/resets, records, previews and saves audio.",
-      "status": "authored-unproven",
+      "file": "journeys/geminiLiveMusicSuccess.journey.js",
+      "capability": "PromptDJ starts a native Gemini live-music session, plays non-silent PCM, records exact provider frames, previews a finite recording, saves it and stops cleanly.",
+      "status": "green",
       "recommendedJourney": "creativeGenerators",
-      "note": "Authored and statically validated by support/providerBoundariesJourney.contract.test.mjs (node --test only); never executed against the real binary, per this lane's no-app-execution rule. GROUND TRUTH: PromptDJ's refusal never reaches Rust at all. src/components/BackgroundMusicSection.jsx posts { type: 'pm-dj-native-init', available: getActiveGeminiCredentialId() !== null } into the embedded app on mount and on every credential-state change; promptdj-midi/index.tsx sets nativeAvailable from that message and mirrors it onto <prompt-dj-midi>'s own credentialAvailable reactive property. promptdj-midi/components/PromptDjMidi.ts's playPause() checks that property directly and, when false, dispatches an 'error' CustomEvent with the fixed text 'Please set your Gemini API key in the main app first.' BEFORE the 'play' event that would reach BackgroundMusicSection.jsx's native bridge is ever dispatched -- so clicking play/pause without a credential never calls startLiveMusicSession and never invokes a Tauri command; apps/desktop/src-tauri/src/live_music.rs records no diagnostic event at all, so SQLite silence (jobs table unchanged) is the only oracle, exactly matching the entirely-client-side shape of this refusal. Reading PromptDJ's own state required walking two same-origin iframes (BackgroundMusicSection.jsx's own srcDoc wrapper, then its nested #promptdj-inner) via contentDocument/contentWindow from browser.execute -- there was no existing harness precedent for this, so it is done explicitly and commented rather than hidden behind a shared helper. MIDI toggle, the collapse/expand panel and the Reset control are all real, native, plain-React elements in the OUTER document (never entering the iframe) and did not need this proof.",
+      "evidenceWorkflow": "gemini-live-music-success",
+      "attemptId": "20260831041113238-41192-0d406caa",
+      "binaryDigest": "87311f9f8dbc198c6a620f45d6fb971c7f3fe7bd327c3160a45b37c7a0077ed0",
+      "note": "Green against the real offscreen desktop binary on 2026-08-31. Twenty reviewed credentials were enrolled through the product, the nested PromptDJ transport connected to live Gemini in about 300 ms, reached playing with measured non-silent PCM, recorded for five seconds, published a finite four-second preview, exported a guarded native WAV with an independently checked RIFF signature, and stopped the session. The run exposed and drove three root fixes: the credential bridge now targets the actual top-window owner, streaming WebM MediaRecorder capture was replaced by deterministic exact-PCM WAV capture because Chromium produced Infinity-duration files, and owned recording bytes now go directly to native export instead of hanging while re-fetching their own blob URL. Three ordered screenshots contain no semantic error alert, error toast or overflow.",
       "dependencies": {
-        "owner": "user-or-test-secret-provider-and-test-hardware",
-        "requires": "a Gemini Live Music credential/network to prove a SUCCESSFUL session, weighted-prompt updates, play/pause/stop/reset and saved audio; MIDI and microphone branches additionally need explicitly isolated test devices",
-        "note": "The credential-free refusal -- proven entirely client-side, with its own bounded in-app toast and no native command ever invoked -- is now proven. A real live-music session, recording and saved audio remain gated on a credential."
+        "owner": "none for the proven live generation, recording, preview, save and stop path",
+        "requires": "none beyond the reviewed credential pool already supplied to the isolated harness",
+        "note": "Weighted-prompt mutation, pause/resume, reset-context and physical MIDI remain distinct coverage; this receipt does not imply hardware behavior."
+      }
+    },
+    {
+      "name": "backgroundMusicPromptDjControlsAndMidi",
+      "kind": "planned",
+      "file": null,
+      "capability": "PromptDJ mutates weighted prompts during a live session, pauses/resumes, resets context, and maps explicitly isolated MIDI input without corrupting recording.",
+      "status": "planned",
+      "recommendedJourney": "creativeGenerators",
+      "dependencies": {
+        "owner": "test-hardware for physical MIDI only",
+        "requires": "an isolated virtual or physical MIDI device for the hardware branch; prompt mutation and transport controls require no new owner input",
+        "note": "Keep hardware input separate from the now-green live generation/record/save journey so unavailable MIDI cannot erase provider proof."
       }
     },
     {
