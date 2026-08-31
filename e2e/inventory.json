@@ -769,9 +769,9 @@
       "status": "unproven",
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
       "dependencies": {
-        "owner": "user-or-isolated-browser-fixture",
-        "requires": "a reviewed disposable provider account with stable private or age-gated media, plus a disposable browser profile, to prove provider-specific profile extraction and access policy",
-        "note": "The isolated cookie boundary, public YouTube, public Dailymotion and selected-item playlist watch URLs are green in separate real-binary journeys. Only live browser-database extraction and provider-private/age-gated behavior remain deliberately unclaimed."
+        "owner": "isolated-provider-account",
+        "requires": "a reviewed disposable provider account with stable private or age-gated media to prove provider-specific access policy without using customer credentials",
+        "note": "Netscape cookie-file and real disposable Chrome-profile extraction, public YouTube, public Dailymotion and selected-item playlist watch URLs are green in separate real-binary journeys. Only provider-private/age-gated behavior remains deliberately unclaimed."
       }
     },
     {
@@ -795,7 +795,31 @@
       "dependencies": {
         "owner": "none",
         "requires": "the committed real MP4 fixtures and the compile-time isolated automation authority",
-        "note": "This proves the product's cookie preference, yt-dlp cookie-file boundary, capability binding, authenticated scan and authenticated transfer. Provider-specific browser database extraction, private media and age gates remain owned by authenticatedAndRestrictedUrlAcquisition."
+        "note": "This proves the product's cookie preference, yt-dlp cookie-file boundary, capability binding, authenticated scan and authenticated transfer. Real disposable Chrome-profile extraction is independently green below; provider-private media and age gates remain owned by authenticatedAndRestrictedUrlAcquisition."
+      }
+    },
+    {
+      "name": "isolatedBrowserProfileCookieExtraction",
+      "kind": "workflow",
+      "file": "journeys/browserProfileCookieDownload.journey.js",
+      "capability": "The customer's Chrome cookie-source choice is extracted from a real disposable browser database and remains bound to authenticated inspection and transfer without touching a customer profile.",
+      "status": "green",
+      "evidenceWorkflow": "browser-profile-cookie-download",
+      "attemptId": "20260831100940056-47312-56bbca42",
+      "binaryDigest": "86b10a2f62c3285ea1f541b94111ef5f567575ade0ace0f49bd49fb7515e4d79",
+      "result": "Headless Chrome created one disposable Default profile and encrypted cookie database; the hidden real app made yt-dlp extract it for scan and transfer, then published exactly one independently decoded 320x180 MP4.",
+      "oracles": [
+        "Chrome loads an unguessable loopback bootstrap into a new user-data directory beneath the isolated fixture input",
+        "the automation binary accepts only the selected closed browser name plus that regular disposable profile directory",
+        "the protected origin records an authenticated HTML scan and authenticated media requests after an independent 401 control",
+        "the public Settings and Download Only surfaces expose Browser Cookie Added and the exact 480p/180p format inventory",
+        "the isolated customer destination receives exactly one file and independent ffprobe verifies the selected 320x180 video"
+      ],
+      "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
+      "dependencies": {
+        "owner": "none",
+        "requires": "installed Chrome, the committed real MP4 fixtures and the compile-time isolated automation authority",
+        "note": "This proves real Chromium cookie-database extraction without reading the developer's profile. Provider-specific private media and age-policy behavior remain owned by authenticatedAndRestrictedUrlAcquisition."
       }
     },
     {

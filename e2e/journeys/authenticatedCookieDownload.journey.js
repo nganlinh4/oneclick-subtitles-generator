@@ -44,7 +44,7 @@ const enableCookiesThroughSettings = async () => {
 };
 
 describe('a customer uses browser-cookie authentication for a protected download', () => {
-  it('crosses the real yt-dlp cookie boundary without reading a live browser profile', async () => {
+  it('crosses the real yt-dlp cookie boundary without reading a customer browser profile', async () => {
     const url = process.env.OSG_E2E_MULTI_FORMAT_URL;
     const eventsPath = process.env.OSG_E2E_DOWNLOAD_FIXTURE_EVENTS;
     const destination = process.env.OSG_E2E_MEDIA_DESTINATION;
