@@ -49,7 +49,7 @@ const openQualityModal = async () => {
 
 const chooseQuality = async (qualities, index) => {
   assert.ok(index >= 0 && index < qualities.length);
-  await clickControl(`#${qualities[index].id}`);
+  await clickControl(`.download-only-modal label[for="${qualities[index].id}"]`);
   const selected = await qualityState();
   assert.equal(selected.qualities[index].checked, true);
   const height = parseQualityHeight(selected.qualities[index].label);
