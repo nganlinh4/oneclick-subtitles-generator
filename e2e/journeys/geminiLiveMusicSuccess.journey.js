@@ -10,7 +10,6 @@ import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-live-music-success';
-const WEB_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
 const liveMusicDiagnostics = (root) => {
   try {
@@ -70,23 +69,18 @@ const activePromptKnob = () => browser.execute(() => {
 const dragActivePromptKnob = async () => {
   const before = await activePromptKnob();
   assert.ok(before, 'PromptDJ has no active weighted prompt control');
-  try {
-    const outer = await browser.$('.music-generator-section iframe[title="promptdj-midi"]');
-    await browser.switchToFrame({ [WEB_ELEMENT_KEY]: outer.elementId });
-    const host = await browser.$('prompt-dj-midi');
-    const controllers = await host.shadow$$('prompt-controller');
-    let target = null;
-    for (const controller of controllers) {
-      if (await controller.getProperty('promptId') !== before.promptId) continue;
-      const knob = await controller.shadow$('weight-knob');
-      target = await knob.shadow$('svg:last-of-type');
-      break;
-    }
-    assert.ok(target, `PromptDJ lost weighted prompt ${before.promptId}`);
-    await target.dragAndDrop({ x: 0, y: -35 }, { duration: 500 });
-  } finally {
-    await browser.switchToFrame(null);
-  }
+  await browser.performActions([{
+    type: 'pointer',
+    id: 'prompt-weight-pointer',
+    parameters: { pointerType: 'mouse' },
+    actions: [
+      { type: 'pointerMove', duration: 0, origin: 'viewport', x: before.x, y: before.y },
+      { type: 'pointerDown', button: 0 },
+      { type: 'pointerMove', duration: 500, origin: 'viewport', x: before.x, y: before.y - 35 },
+      { type: 'pointerUp', button: 0 },
+    ],
+  }]);
+  await browser.releaseActions();
   return before;
 };
 
