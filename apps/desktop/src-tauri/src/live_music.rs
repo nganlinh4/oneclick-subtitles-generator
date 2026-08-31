@@ -5,6 +5,7 @@ use osg_live_music::{
     ClientCommand, Error as LiveMusicError, LiveMusicClient, PlaybackControl, ServerEvent,
     WeightedPrompt,
 };
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use tauri::{
     State,
@@ -15,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::{Uuid, Version};
 
 use crate::{
+    diagnostics,
     error::{CommandError, CommandResult},
     state::DesktopState,
 };
@@ -301,6 +303,142 @@ impl LiveMusicRuntime {
     }
 }
 
+#[allow(
+    missing_debug_implementations,
+    reason = "contains a private provider credential"
+)]
+struct LiveMusicTask {
+    api_key: SecretString,
+    prompts: Vec<WeightedPrompt>,
+    command_rx: mpsc::Receiver<ClientCommand>,
+    cancellation: CancellationToken,
+    managed_runtime: LiveMusicRuntime,
+    on_event: Channel<LiveMusicEvent>,
+    on_audio: Channel<InvokeResponseBody>,
+    session_id: Uuid,
+}
+
+fn spawn_live_music_session(task: LiveMusicTask) {
+    let LiveMusicTask {
+        api_key,
+        prompts,
+        command_rx,
+        cancellation,
+        managed_runtime,
+        on_event,
+        on_audio,
+        session_id,
+    } = task;
+    tauri::async_runtime::spawn(async move {
+        let client = LiveMusicClient::default();
+        let result = client
+            .run(
+                api_key,
+                prompts,
+                command_rx,
+                cancellation,
+                |event| match event {
+                    ServerEvent::Audio(bytes) => on_audio
+                        .send(InvokeResponseBody::Raw(bytes))
+                        .map_err(|_| ()),
+                    ServerEvent::SetupComplete => {
+                        diagnostics::record(
+                            "live-music.ready",
+                            &[("session", session_id.to_string())],
+                        );
+                        on_event
+                            .send(LiveMusicEvent::Ready { session_id })
+                            .map_err(|_| ())
+                    }
+                    ServerEvent::ControlSent(control) => {
+                        diagnostics::record(
+                            "live-music.control",
+                            &[
+                                ("session", session_id.to_string()),
+                                ("control", format!("{control:?}")),
+                            ],
+                        );
+                        on_event
+                            .send(LiveMusicEvent::ControlApplied {
+                                session_id,
+                                control,
+                            })
+                            .map_err(|_| ())
+                    }
+                    ServerEvent::FilteredPrompt { text, reason } => on_event
+                        .send(LiveMusicEvent::FilteredPrompt {
+                            session_id,
+                            text,
+                            reason,
+                        })
+                        .map_err(|_| ()),
+                    ServerEvent::Warning(message) => on_event
+                        .send(LiveMusicEvent::Warning {
+                            session_id,
+                            message,
+                        })
+                        .map_err(|_| ()),
+                },
+            )
+            .await;
+
+        record_live_music_completion(result, session_id, &on_event);
+        managed_runtime.clear_if_current(session_id).await;
+    });
+}
+
+fn record_live_music_completion(
+    result: Result<(), LiveMusicError>,
+    session_id: Uuid,
+    on_event: &Channel<LiveMusicEvent>,
+) {
+    match result {
+        Ok(()) => {
+            diagnostics::record(
+                "live-music.closed",
+                &[
+                    ("session", session_id.to_string()),
+                    ("outcome", "completed".to_owned()),
+                ],
+            );
+            let _ = on_event.send(LiveMusicEvent::Closed { session_id });
+        }
+        Err(LiveMusicError::Cancelled) => {
+            diagnostics::record(
+                "live-music.closed",
+                &[
+                    ("session", session_id.to_string()),
+                    ("outcome", "cancelled".to_owned()),
+                ],
+            );
+            let _ = on_event.send(LiveMusicEvent::Closed { session_id });
+        }
+        Err(LiveMusicError::OutputClosed) => {
+            diagnostics::record(
+                "live-music.closed",
+                &[
+                    ("session", session_id.to_string()),
+                    ("outcome", "outputClosed".to_owned()),
+                ],
+            );
+        }
+        Err(error) => {
+            let public_error = LiveMusicPublicError::from_transport(error);
+            diagnostics::record(
+                "live-music.failed",
+                &[
+                    ("session", session_id.to_string()),
+                    ("code", public_error.code.to_owned()),
+                ],
+            );
+            let _ = on_event.send(LiveMusicEvent::Failed {
+                session_id,
+                error: public_error,
+            });
+        }
+    }
+}
+
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
@@ -339,59 +477,18 @@ pub(crate) async fn live_music_start(
         cancellation: cancellation.clone(),
     });
     drop(active);
+    diagnostics::record("live-music.started", &[("session", session_id.to_string())]);
 
     let managed_runtime = runtime.inner().clone();
-    tauri::async_runtime::spawn(async move {
-        let client = LiveMusicClient::default();
-        let result = client
-            .run(
-                api_key,
-                prompts,
-                command_rx,
-                cancellation,
-                |event| match event {
-                    ServerEvent::Audio(bytes) => on_audio
-                        .send(InvokeResponseBody::Raw(bytes))
-                        .map_err(|_| ()),
-                    ServerEvent::SetupComplete => on_event
-                        .send(LiveMusicEvent::Ready { session_id })
-                        .map_err(|_| ()),
-                    ServerEvent::ControlSent(control) => on_event
-                        .send(LiveMusicEvent::ControlApplied {
-                            session_id,
-                            control,
-                        })
-                        .map_err(|_| ()),
-                    ServerEvent::FilteredPrompt { text, reason } => on_event
-                        .send(LiveMusicEvent::FilteredPrompt {
-                            session_id,
-                            text,
-                            reason,
-                        })
-                        .map_err(|_| ()),
-                    ServerEvent::Warning(message) => on_event
-                        .send(LiveMusicEvent::Warning {
-                            session_id,
-                            message,
-                        })
-                        .map_err(|_| ()),
-                },
-            )
-            .await;
-
-        match result {
-            Ok(()) | Err(LiveMusicError::Cancelled) => {
-                let _ = on_event.send(LiveMusicEvent::Closed { session_id });
-            }
-            Err(LiveMusicError::OutputClosed) => {}
-            Err(error) => {
-                let _ = on_event.send(LiveMusicEvent::Failed {
-                    session_id,
-                    error: LiveMusicPublicError::from_transport(error),
-                });
-            }
-        }
-        managed_runtime.clear_if_current(session_id).await;
+    spawn_live_music_session(LiveMusicTask {
+        api_key,
+        prompts,
+        command_rx,
+        cancellation,
+        managed_runtime,
+        on_event,
+        on_audio,
+        session_id,
     });
 
     Ok(LiveMusicSessionSnapshot::new(session_id))

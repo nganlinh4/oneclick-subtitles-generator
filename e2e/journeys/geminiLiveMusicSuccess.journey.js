@@ -22,7 +22,9 @@ const promptDjState = () => browser.execute(() => {
     credentialAvailable: host?.credentialAvailable ?? null,
     playbackState: host?.playbackState ?? null,
     audioLevel: Number(host?.audioLevel ?? 0),
-    toast: (toast?.shadowRoot?.textContent ?? '').replace(/\s+/gu, ' ').trim(),
+    toast: toast?.showing === true && typeof toast.message === 'string'
+      ? toast.message.replace(/\s+/gu, ' ').trim()
+      : '',
   };
 });
 
