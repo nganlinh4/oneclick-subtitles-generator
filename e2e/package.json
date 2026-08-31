@@ -33,6 +33,7 @@
     "test:gemini-translation-success": "node --test support/liveProviderCredentials.test.mjs support/geminiTranslationSuccessJourney.contract.test.mjs && node run-isolated.mjs journeys/geminiTranslationSuccess.journey.js",
     "test:gemini-document-success": "node --test support/liveProviderCredentials.test.mjs support/geminiDocumentSuccessJourney.contract.test.mjs && node run-isolated.mjs journeys/geminiDocumentSuccess.journey.js",
     "test:gemini-background-success": "node --test support/liveProviderCredentials.test.mjs support/geminiBackgroundImageSuccessJourney.contract.test.mjs && node scenarios/geminiBackgroundImageSuccess.mjs",
+    "test:gemini-analysis-success": "node --test support/liveProviderCredentials.test.mjs support/geminiVideoAnalysisSuccessJourney.contract.test.mjs && node run-isolated.mjs journeys/geminiVideoAnalysisSuccess.journey.js",
     "test:fresh-install-visual": "node run-isolated.mjs journeys/freshInstallVisual.journey.js",
     "test:gemini-output-preview": "node run-isolated.mjs journeys/geminiOutputPreview.journey.js",
     "test:translated-exports": "node --test support/subtitleDocumentOracle.test.mjs && node run-isolated.mjs journeys/translatedDocumentExports.journey.js",

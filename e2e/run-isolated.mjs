@@ -31,6 +31,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'geminiDocumentSuccess.journey.js',
   'geminiTranscriptionSuccess.journey.js',
   'geminiTranslationSuccess.journey.js',
+  'geminiVideoAnalysisSuccess.journey.js',
   'longMediaOperationRecovery.journey.js',
   'longMediaResourceBounds.journey.js',
   'multiWindowAsrPersistence.journey.js',

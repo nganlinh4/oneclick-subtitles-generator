@@ -138,6 +138,21 @@ export const durableUserSubtitles = (root) => withDatabase(root, (database) => (
   })
 ));
 
+/** Project-owned Gemini video analysis and transcription rules, decoded independently. */
+export const durableTranscriptionRules = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    "SELECT key, value_json FROM app_settings WHERE scope = 'app'"
+      + " AND key LIKE 'project.legacyAux.v1.%' ORDER BY key",
+  ).all().map(({ key, value_json: valueJson }) => {
+    const auxiliary = JSON.parse(valueJson);
+    return {
+      key,
+      analysis: auxiliary?.analysis ?? null,
+      transcriptionRules: auxiliary?.transcriptionRules ?? null,
+    };
+  })
+));
+
 /** Project-owned render scenes, decoded independently from the app's command boundary. */
 export const durableRenderScenes = (root) => withDatabase(root, (database) => (
   database.prepare(

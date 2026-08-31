@@ -21,6 +21,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'geminiOutputPreview.journey.js',
   'geminiTranscriptionSuccess.journey.js',
   'geminiTranslationSuccess.journey.js',
+  'geminiVideoAnalysisSuccess.journey.js',
   'localAsrGeneration.journey.js',
   'localFileImport.journey.js',
   'mainPreviewControlsAndFullscreen.journey.js',
