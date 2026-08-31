@@ -13,9 +13,10 @@
 
 /* global browser, console, process */
 
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 
 import {
   APPLICATION_BINARY, BUILT_APPLICATION_DIRECTORY, JOURNEY_TIMEOUT_MS,
@@ -28,6 +29,8 @@ import { waitForAutomationWindowIsolation } from './support/editor.js';
 import {
   promoteWorkflowFailureEvidence, recordWorkflowTestFailure, workflowFailureStepForTest,
 } from './support/workflowEvidence.js';
+
+const execFileAsync = promisify(execFile);
 import { startDownloadFixtureOrigin } from './support/downloadFixtureOrigin.js';
 import { DOWNLOAD_IDENTITY_VIDEO, SOURCE_SWITCH_VIDEO } from './support/realMedia.js';
 import {
@@ -208,7 +211,7 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
       }
       const userData = join(runRoot, 'input', 'chrome-user-data');
       mkdirSync(userData, { recursive: false });
-      execFileSync(chrome, [
+      const { stdout: bootstrapDocument } = await execFileAsync(chrome, [
         '--headless=new',
         '--disable-background-networking',
         '--disable-component-update',
@@ -220,10 +223,12 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         downloadFixtureOrigin.cookieBootstrapUrl,
       ], {
         encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 30_000,
         windowsHide: true,
       });
+      if (!bootstrapDocument.includes('OSG isolated browser profile')) {
+        throw new Error('Chrome did not load the isolated cookie bootstrap document');
+      }
       const profile = join(userData, 'Default');
       const profileStatus = lstatSync(profile);
       if (!profileStatus.isDirectory() || profileStatus.isSymbolicLink()) {
