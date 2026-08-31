@@ -1080,6 +1080,51 @@ test('visible state records bounded root offsets even when the document width eq
   }
 });
 
+test('visible state distinguishes destructive error-coloured controls from semantic error surfaces', () => {
+  const priorDocument = globalThis.document;
+  const priorWindow = globalThis.window;
+  const priorGetComputedStyle = globalThis.getComputedStyle;
+  const node = (text) => ({
+    innerText: text,
+    closest: () => null,
+    getBoundingClientRect: () => ({ width: 100, height: 30 }),
+  });
+  const clearButton = node('close');
+  const refusal = node('The media could not be decoded');
+  globalThis.document = {
+    documentElement: { scrollWidth: 1_400, scrollHeight: 900, scrollLeft: 0 },
+    body: { innerText: 'editor', scrollLeft: 0 },
+    querySelector: () => null,
+    querySelectorAll: (selector) => {
+      if (selector === '.toast-item.live .toast.toast-error'
+          || selector === '.toast-item.live .toast') return [];
+      if (selector === '[role="alert"], [data-osg-error], .engine-card__error, .update-check-failed') {
+        return [refusal];
+      }
+      if (selector === '.error, [role="alert"]') return [clearButton, refusal];
+      return [];
+    },
+  };
+  globalThis.window = { innerWidth: 1_400, innerHeight: 900, scrollX: 0 };
+  globalThis.getComputedStyle = () => ({ display: 'block', visibility: 'visible' });
+  try {
+    const state = collectVisibleStateFromPage();
+    assert.deepEqual(state.errorAlerts, ['The media could not be decoded']);
+    assert.doesNotThrow(() => validateVisibleState({
+      ...state,
+      errorAlerts: [],
+      alerts: [],
+    }));
+  } finally {
+    if (priorDocument === undefined) delete globalThis.document;
+    else globalThis.document = priorDocument;
+    if (priorWindow === undefined) delete globalThis.window;
+    else globalThis.window = priorWindow;
+    if (priorGetComputedStyle === undefined) delete globalThis.getComputedStyle;
+    else globalThis.getComputedStyle = priorGetComputedStyle;
+  }
+});
+
 test('evidence focus scrolling never moves Settings and still centers off-screen page evidence', async () => {
   const workflow = workflowForTest('focus-scroll');
   const workflowDirectory = workflowEvidenceDirectory(workflow);

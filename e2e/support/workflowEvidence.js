@@ -1869,7 +1869,7 @@ export const collectVisibleStateFromPage = () => {
     ...document.querySelectorAll('.toast-item.live .toast.toast-error'),
   ]).slice(-8);
   const errorAlerts = uniqueText([
-    ...document.querySelectorAll('.error, [role="alert"]'),
+    ...document.querySelectorAll('[role="alert"], [data-osg-error], .engine-card__error, .update-check-failed'),
   ].filter((node) => node.closest('.toast-item') === null)).slice(0, 12);
   const overflowPx = Math.max(0, document.documentElement.scrollWidth - window.innerWidth);
   return {
