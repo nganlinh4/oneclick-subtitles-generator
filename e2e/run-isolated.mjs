@@ -40,6 +40,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'reconnaissance.journey.js',
   'renderInterruptRecovery.journey.js',
   'settingsAppearancePersistence.journey.js',
+  'settingsCredentialLifecycle.journey.js',
   'settingsNarrationModelManagement.journey.js',
   'settingsToolsRemoveAndFactoryReset.journey.js',
   'transcriptionRulesAndAnalysis.journey.js',
