@@ -9,6 +9,7 @@ use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager};
 
 use crate::dialog_paths;
+use crate::diagnostics;
 use crate::error::{CommandError, CommandResult};
 use crate::media_export::copy_export;
 
@@ -248,6 +249,13 @@ pub(crate) async fn generated_file_export(
     if bytes.is_empty() || bytes.len() > MAX_ARCHIVE_BYTES || !format.has_valid_signature(bytes) {
         return Err(invalid_generated_file());
     }
+    diagnostics::record(
+        "generated-file.export_started",
+        &[
+            ("format", format.extension().to_owned()),
+            ("bytes", bytes.len().to_string()),
+        ],
+    );
     let bytes = bytes.clone();
 
     let _operation_lease = acquire_export_operation()?;
@@ -278,6 +286,10 @@ pub(crate) async fn generated_file_export(
     .map_err(|_| {
         CommandError::internal("The generated-file export task stopped unexpectedly.")
     })??;
+    diagnostics::record(
+        "generated-file.export_completed",
+        &[("format", format.extension().to_owned())],
+    );
     Ok(true)
 }
 

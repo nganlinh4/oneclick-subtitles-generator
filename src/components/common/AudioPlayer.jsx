@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import PlayPauseMorphType4 from './PlayPauseMorphType4';
 import WavyProgressIndicator from './WavyProgressIndicator';
 import { downloadAudioSource } from './audioDownload';
+import { showErrorToast } from '../../utils/toastUtils';
 
 // Local formatter for time display with one decimal
 const formatTimeOneDecimal = (timeInSeconds) => {
@@ -279,7 +280,7 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
               setDownloadSuccess(true);
               setTimeout(() => setDownloadSuccess(false), 500);
             } catch (e) {
-              console.error('Download failed', e);
+              showErrorToast(e?.message || 'The audio recording could not be saved.');
             }
           }}
           style={{
