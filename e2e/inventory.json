@@ -777,13 +777,24 @@
     {
       "name": "downloadQualityCancellationAndIdentity",
       "kind": "workflow",
+      "file": "journeys/downloadQualityCancellationIdentity.journey.js",
       "capability": "Quality selection, cancellation, retry and consecutive A-then-B downloads always publish only the requested media and clean partial bytes.",
-      "status": "unproven",
+      "status": "green",
+      "evidenceWorkflow": "download-quality-cancellation-identity",
+      "attemptId": "20260831074252759-56068-2788754b",
+      "binaryDigest": "c4b3e284ed9ee281bfb11b998516c98673c059dc94120dab69fe349947b9cf91",
+      "result": "A non-default 180p/480p quality was cancelled during its real throttled transfer with no partial bytes or durable identity, then the other quality alone was published and independently decoded to its selected height.",
+      "oracles": [
+        "the public Download Only modal exposes two yt-dlp-extracted quality controls backed by distinct real MP4 files",
+        "the exact origin ledger proves the selected non-default transfer started and was aborted rather than merely hidden",
+        "read-only SQLite plus scratch, artifact and customer-output walks prove cancellation published no identity or bytes",
+        "independent ffprobe proves retry published exactly the newly selected height, never the cancelled quality"
+      ],
       "recommendedJourney": "acquisitionSearchAndRestrictedUrls",
       "dependencies": {
         "owner": "test-infrastructure",
         "requires": "a range-capable deterministic origin plus one real network smoke",
-        "note": "urlToPreview proves one successful quality choice; downloadCancellationRetryIdentity separately proves cancellation/retry/A-to-B identity and is green again as of attempt 20260828050100510-56484-0731e942; downloadQualityVariants below authors the remaining quality-selection axis and its own lane records a passing attempt 20260828064704053-75084-d033e0f4 (144p and 240p rounds distinct). Re-checked 2026-08-28: this composite entry still has no journey file of its own, so it is UNAUTHORED rather than failing. Exactly two things remain unwritten, and both need a new spec rather than a fix: partial-byte cleanup under a mid-transfer cancellation at a NON-default quality, and stale-result isolation when the customer changes quality between attempts."
+        "note": "The exact compile-time-only origin owns cancellation timing and changed-quality identity; downloadQualityVariants and urlToPreview independently retain real-network provider extraction coverage."
       }
     },
     {
