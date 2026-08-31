@@ -26,10 +26,9 @@ const liveMusicDiagnostics = (root) => {
 
 const promptDjState = () => browser.execute(() => {
   const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
-  const inner = outer?.contentDocument?.getElementById('promptdj-inner');
-  const innerDocument = inner?.contentDocument;
-  const host = innerDocument?.querySelector('prompt-dj-midi');
-  const toast = innerDocument?.querySelector('toast-message');
+  const promptDjDocument = outer?.contentDocument;
+  const host = promptDjDocument?.querySelector('prompt-dj-midi');
+  const toast = promptDjDocument?.querySelector('toast-message');
   return {
     ready: host !== null && host !== undefined,
     credentialAvailable: host?.credentialAvailable ?? null,
@@ -43,8 +42,7 @@ const promptDjState = () => browser.execute(() => {
 
 const clickPromptDjTransport = () => browser.execute(() => {
   const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
-  const inner = outer?.contentDocument?.getElementById('promptdj-inner');
-  const host = inner?.contentDocument?.querySelector('prompt-dj-midi');
+  const host = outer?.contentDocument?.querySelector('prompt-dj-midi');
   const control = host?.shadowRoot?.querySelector('play-pause-morph [role="button"]');
   if (typeof control?.click !== 'function') return false;
   control.click();
@@ -53,21 +51,19 @@ const clickPromptDjTransport = () => browser.execute(() => {
 
 const activePromptKnob = () => browser.execute(() => {
   const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
-  const inner = outer?.contentDocument?.getElementById('promptdj-inner');
-  const host = inner?.contentDocument?.querySelector('prompt-dj-midi');
+  const host = outer?.contentDocument?.querySelector('prompt-dj-midi');
   const controller = [...(host?.shadowRoot?.querySelectorAll('prompt-controller') ?? [])]
     .find((candidate) => Number(candidate.weight) > 0);
   const knob = controller?.shadowRoot?.querySelector('weight-knob');
   const target = knob?.shadowRoot?.querySelector('svg:last-of-type');
-  if (!outer || !inner || !knob || !target) return null;
+  if (!outer || !knob || !target) return null;
   const outerRect = outer.getBoundingClientRect();
-  const innerRect = inner.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
   return {
     promptId: controller.promptId,
     weight: Number(knob.value),
-    x: Math.round(outerRect.left + innerRect.left + targetRect.left + targetRect.width / 2),
-    y: Math.round(outerRect.top + innerRect.top + targetRect.top + targetRect.height / 2),
+    x: Math.round(outerRect.left + targetRect.left + targetRect.width / 2),
+    y: Math.round(outerRect.top + targetRect.top + targetRect.height / 2),
   };
 });
 
@@ -77,13 +73,7 @@ const dragActivePromptKnob = async () => {
   try {
     const outer = await browser.$('.music-generator-section iframe[title="promptdj-midi"]');
     await browser.switchToFrame({ [WEB_ELEMENT_KEY]: outer.elementId });
-    let host = await browser.$('prompt-dj-midi');
-    if (!(await host.isExisting())) {
-      const inner = await browser.$('#promptdj-inner');
-      assert.equal(await inner.isExisting(), true, 'PromptDJ wrapper has no nested application frame');
-      await browser.switchToFrame({ [WEB_ELEMENT_KEY]: inner.elementId });
-      host = await browser.$('prompt-dj-midi');
-    }
+    const host = await browser.$('prompt-dj-midi');
     const controllers = await host.shadow$$('prompt-controller');
     let target = null;
     for (const controller of controllers) {

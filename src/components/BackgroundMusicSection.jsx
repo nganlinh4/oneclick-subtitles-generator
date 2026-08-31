@@ -61,13 +61,6 @@ const BackgroundMusicSection = () => {
     () => new URL('/promptdj/index.html', window.location.origin).href,
     []
   );
-  const wrapperHtml = useMemo(() => `<!doctype html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
-<body style="margin:0;padding:0;background:#111;color:#eee;">
-  <iframe id="promptdj-inner" title="promptdj-inner" src="${midiAppUrl}" allow="microphone; midi; autoplay" style="border:0;width:100%;height:100vh"></iframe>
-</body>
-</html>`, [midiAppUrl]);
   const liveSessionRef = useRef(null);
   const liveStartRef = useRef(null);
   const closeAfterStartRef = useRef(false);
@@ -141,8 +134,7 @@ const BackgroundMusicSection = () => {
 
   const getPromptDjWindow = useCallback(() => {
     try {
-      return iframeRef.current?.contentDocument
-        ?.getElementById('promptdj-inner')?.contentWindow || null;
+      return iframeRef.current?.contentWindow || null;
     } catch {
       return null;
     }
@@ -645,7 +637,7 @@ const BackgroundMusicSection = () => {
             <iframe
               ref={iframeRef}
               title="promptdj-midi"
-              srcDoc={wrapperHtml}
+              src={midiAppUrl}
               onLoad={onIframeLoad}
               allow="microphone; midi; autoplay"
               scrolling="no"

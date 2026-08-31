@@ -42,7 +42,7 @@
 // has no `diagnostics::record` call at all, so there is no log event to assert against; SQLite
 // silence is the only oracle, exactly as the credential-free client-only refusal it is. Reading
 // PromptDJ's own state requires walking two same-origin iframes (the outer srcDoc wrapper
-// BackgroundMusicSection.jsx renders, then its nested `#promptdj-inner` pointing at
+// BackgroundMusicSection.jsx renders its direct PromptDJ application frame pointing at
 // /promptdj/index.html) via `contentDocument`/`contentWindow` from `browser.execute` -- there is no
 // existing harness precedent for this, so it is done explicitly and commented at each step rather
 // than through a shared helper that would hide the two-iframe shape.
@@ -438,15 +438,14 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     // ================================================================================
     await browser.execute(() => document.querySelector('.music-generator-section')?.scrollIntoView({ block: 'center' }));
 
-    // Two same-origin iframes deep: BackgroundMusicSection.jsx's own srcDoc wrapper, then that
-    // wrapper's nested #promptdj-inner pointing at /promptdj/index.html. Both are same-origin, so
-    // contentDocument/contentWindow are reachable directly from the top document.
+    // The direct PromptDJ iframe is same-origin, so its application state remains inspectable
+    // without an inert srcDoc wrapper or a second browsing context.
     const promptDjState = () => browser.execute(() => {
       const outer = document.querySelector('iframe[title="promptdj-midi"]');
-      const innerDoc = outer?.contentDocument?.getElementById('promptdj-inner')?.contentDocument;
-      if (!innerDoc) return null;
-      const pdj = innerDoc.querySelector('prompt-dj-midi');
-      const toast = innerDoc.querySelector('toast-message');
+      const promptDjDocument = outer?.contentDocument;
+      if (!promptDjDocument) return null;
+      const pdj = promptDjDocument.querySelector('prompt-dj-midi');
+      const toast = promptDjDocument.querySelector('toast-message');
       return {
         credentialAvailable: pdj ? pdj.credentialAvailable : null,
         toastShowing: toast ? toast.showing : null,
@@ -474,8 +473,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     const beforeE = durableState(root);
     const clicked = await browser.execute(() => {
       const outer = document.querySelector('iframe[title="promptdj-midi"]');
-      const innerDoc = outer?.contentDocument?.getElementById('promptdj-inner')?.contentDocument;
-      const pdj = innerDoc?.querySelector('prompt-dj-midi');
+      const pdj = outer?.contentDocument?.querySelector('prompt-dj-midi');
       // play-pause-morph renders its own React button directly into its light DOM (no shadow root
       // of its own); prompt-dj-midi itself IS a shadow-DOM Lit element, so the button is reached
       // through its shadowRoot.
@@ -498,7 +496,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     assert.equal(djRefusal.toastMessage, PROMPTDJ_MESSAGE, "PromptDJ's own missing-credential toast text changed");
     const afterE = durableState(root);
     assert.deepEqual(afterE.jobs, beforeE.jobs, 'clicking PromptDJ play/pause without a credential registered a native job -- it must never leave the WebView');
-    // The refusal toast lives inside the nested iframe's own document, so the top-document
+    // The refusal toast lives inside the PromptDJ iframe's own document, so the top-document
     // screenshot guard (workflowEvidence.js's collectVisibleStateFromPage) never sees it and needs
     // no allowVisibleProblems entry here.
     await captureWorkflowStep({

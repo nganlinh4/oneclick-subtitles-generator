@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const source = readFileSync(join(import.meta.dirname, '..', 'journeys', 'geminiLiveMusicSuccess.journey.js'), 'utf8');
+const backgroundMusicSource = readFileSync(
+  join(import.meta.dirname, '..', '..', 'src', 'components', 'BackgroundMusicSection.jsx'),
+  'utf8',
+);
 
 test('the live music journey uses real controls, one native session, PCM, recording and an independent signature', () => {
   for (const witness of [
@@ -20,4 +24,10 @@ test('the live music journey uses real controls, one native session, PCM, record
     "signature, '52494646'",
   ]) assert.ok(source.includes(witness), `missing live-music witness: ${witness}`);
   assert.doesNotMatch(source, /dispatchEvent|postMessage|live_music_start|executeAsync/u);
+});
+
+test('PromptDJ has one direct application frame and one message owner', () => {
+  assert.match(backgroundMusicSource, /src=\{midiAppUrl\}/u);
+  assert.match(backgroundMusicSource, /iframeRef\.current\?\.contentWindow \|\| null/u);
+  assert.doesNotMatch(backgroundMusicSource, /srcDoc|promptdj-inner/u);
 });
