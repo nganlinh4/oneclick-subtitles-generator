@@ -314,6 +314,11 @@ impl ValidatedMediaUrl {
     pub(crate) fn allows_direct_mp4_passthrough(&self) -> bool {
         self.direct_mp4_passthrough
     }
+
+    #[cfg(feature = "e2e-automation")]
+    pub(crate) fn is_exact_automation_extractor_page(&self) -> bool {
+        self.automation_loopback && !self.direct_mp4_passthrough
+    }
 }
 
 impl fmt::Debug for ValidatedMediaUrl {

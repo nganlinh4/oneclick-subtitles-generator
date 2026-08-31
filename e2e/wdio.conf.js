@@ -28,6 +28,7 @@ import {
   promoteWorkflowFailureEvidence, recordWorkflowTestFailure, workflowFailureStepForTest,
 } from './support/workflowEvidence.js';
 import { startDownloadFixtureOrigin } from './support/downloadFixtureOrigin.js';
+import { DOWNLOAD_IDENTITY_VIDEO, SOURCE_SWITCH_VIDEO } from './support/realMedia.js';
 import {
   assertGuardedWebDriverSession,
   assertWebDriverCommandIsNonInteractive,
@@ -147,10 +148,14 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         // origin returns 503 so the native job/failure/cleanup path runs without a product mock.
         { label: 'c', path: sourceB, rejectGetAfter: 1 },
       ] : [
-        { label: 'a', path: sourceA },
+        {
+          label: 'a', path: sourceA, height: qualityCancellationJourney ? SOURCE_SWITCH_VIDEO.height : null,
+        },
         // A real committed speech clip, not generated colour bars. Real-network extraction stays
         // independently proven by urlToPreview instead of making cancellation timing depend on it.
-        { label: 'b', path: sourceB },
+        {
+          label: 'b', path: sourceB, height: qualityCancellationJourney ? DOWNLOAD_IDENTITY_VIDEO.height : null,
+        },
       ],
       chunkDelayMs: failureJourney ? 10 : 120,
       initialDelayMs: failureJourney ? 0 : 2_000,

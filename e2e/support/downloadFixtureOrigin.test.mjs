@@ -83,7 +83,10 @@ test('the optional multi-format page exposes both exact throttled sources withou
   try {
     origin = await startDownloadFixtureOrigin({
       eventsPath: join(root, 'events.jsonl'),
-      sources: [{ label: 'a', path: a }, { label: 'b', path: b }],
+      sources: [
+        { label: 'a', path: a, height: 480 },
+        { label: 'b', path: b, height: 180 },
+      ],
       multiFormatPage: true,
     });
     assert.match(origin.multiFormatUrl, /^http:\/\/127\.0\.0\.1:\d+\/multi\.html\?token=[a-f0-9]{64}$/u);
@@ -92,6 +95,8 @@ test('the optional multi-format page exposes both exact throttled sources withou
     assert.equal(page.status, 200);
     for (const { url } of origin.manifest) assert.ok(body.includes(url));
     assert.equal((body.match(/<source /gu) ?? []).length, 2);
+    assert.match(body, /label="480p" res="480"/u);
+    assert.match(body, /label="180p" res="180"/u);
   } finally {
     if (origin) await origin.close();
     rmSync(root, { recursive: true, force: true });

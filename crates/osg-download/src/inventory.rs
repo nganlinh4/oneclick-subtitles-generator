@@ -327,8 +327,19 @@ fn parse_formats(
         else {
             continue;
         };
-        let has_video = codec_present(format.get("vcodec"));
-        let has_audio = codec_present(format.get("acodec"));
+        let mut has_video = codec_present(format.get("vcodec"));
+        let mut has_audio = codec_present(format.get("acodec"));
+        #[cfg(feature = "e2e-automation")]
+        if url.is_exact_automation_extractor_page()
+            && format.get("ext").and_then(Value::as_str) == Some("mp4")
+            && integer(format.get("height")).is_some_and(|height| (144..=4_320).contains(&height))
+        {
+            // yt-dlp's generic HTML extractor intentionally leaves codec metadata unknown. The
+            // exact compile-time E2E page owns both tokenized MP4 sources, so its bounded `res`
+            // declarations can model combined video rungs without weakening public inventories.
+            has_video = true;
+            has_audio = true;
+        }
         if !has_video && !has_audio {
             continue;
         }
@@ -626,6 +637,54 @@ mod tests {
         UrlValidator::new(PublicDns, UrlPolicy::SupportedSitesOnly)
             .validate(value)
             .unwrap()
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    fn exact_automation_page() -> ValidatedMediaUrl {
+        const PAGE: &str = "http://127.0.0.1:43123/multi.html?token=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        UrlValidator::system_with_exact_automation_urls(
+            UrlPolicy::SupportedSitesOnly,
+            &[PAGE.to_owned()],
+        )
+        .unwrap()
+        .validate(PAGE)
+        .unwrap()
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn exact_automation_html_page_accepts_only_bounded_mp4_rungs() {
+        let inventory = MediaInventory::from_json(
+            &exact_automation_page(),
+            br#"{
+              "title":"fixture", "_type":"video", "format_id":"480p",
+              "formats":[
+                {"format_id":"180p","ext":"mp4","height":180,"vcodec":null,"acodec":null},
+                {"format_id":"480p","ext":"mp4","height":480,"vcodec":null,"acodec":null},
+                {"format_id":"hostile","ext":"webm","height":720,"vcodec":null,"acodec":null},
+                {"format_id":"unbounded","ext":"mp4","vcodec":null,"acodec":null}
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(inventory.formats.video.len(), 2);
+        assert!(
+            inventory
+                .formats
+                .video
+                .iter()
+                .all(|format| format.includes_audio)
+        );
+        assert_eq!(
+            inventory
+                .formats
+                .qualities
+                .iter()
+                .map(|quality| quality.height)
+                .collect::<Vec<_>>(),
+            vec![480, 180]
+        );
     }
 
     #[test]

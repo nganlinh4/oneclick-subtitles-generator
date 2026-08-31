@@ -59,10 +59,13 @@ export const readDownloadFixtureEvents = (path) => {
   });
 };
 
-const inspectSource = (label, source, rejectGetAfter = null) => {
+const inspectSource = (label, source, rejectGetAfter = null, height = null) => {
   if (rejectGetAfter !== null
       && (!Number.isSafeInteger(rejectGetAfter) || rejectGetAfter < 0 || rejectGetAfter > 10)) {
     throw new Error(`download fixture ${label} has an invalid rejection boundary`);
+  }
+  if (height !== null && (!Number.isSafeInteger(height) || height < 144 || height > 4_320)) {
+    throw new Error(`download fixture ${label} has an invalid video height`);
   }
   const path = realpathSync(source);
   const metadata = lstatSync(path);
@@ -77,6 +80,7 @@ const inspectSource = (label, source, rejectGetAfter = null) => {
     token: randomBytes(TOKEN_BYTES).toString('hex'),
     pathname: `/${label}.mp4`,
     rejectGetAfter,
+    height,
   });
 };
 
@@ -122,8 +126,8 @@ export const startDownloadFixtureOrigin = async ({
       || !Number.isSafeInteger(initialDelayMs) || initialDelayMs < 0 || initialDelayMs > 5_000) {
     throw new Error('the fixture throttle is invalid');
   }
-  const routes = sources.map(({ label, path, rejectGetAfter = null }) => (
-    inspectSource(label, path, rejectGetAfter)
+  const routes = sources.map(({ label, path, rejectGetAfter = null, height = null }) => (
+    inspectSource(label, path, rejectGetAfter, height)
   ));
   const page = multiFormatPage ? Object.freeze({
     label: 'multi',
@@ -163,7 +167,9 @@ export const startDownloadFixtureOrigin = async ({
           return;
         }
         const sourcesMarkup = routes.map((route) => (
-          `<source src="http://${host}${route.pathname}?token=${route.token}" type="video/mp4">`
+          `<source src="http://${host}${route.pathname}?token=${route.token}" type="video/mp4"`
+          + (route.height === null ? '' : ` label="${route.height}p" res="${route.height}"`)
+          + '>'
         )).join('');
         const body = Buffer.from(
           `<!doctype html><html><head><title>OSG multi-format fixture</title></head>`
