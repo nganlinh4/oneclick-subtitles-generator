@@ -117,11 +117,13 @@ export const startDownloadFixtureOrigin = async ({
   chunkDelayMs = 60,
   initialDelayMs = 0,
   multiFormatPage = false,
+  requireCookie = false,
 }) => {
   if (!Array.isArray(sources) || sources.length !== 2) {
     throw new Error('the download identity journey requires exactly two sources');
   }
-  if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 4 * 1024 || chunkBytes > 1024 * 1024
+  if (typeof requireCookie !== 'boolean'
+      || !Number.isSafeInteger(chunkBytes) || chunkBytes < 4 * 1024 || chunkBytes > 1024 * 1024
       || !Number.isSafeInteger(chunkDelayMs) || chunkDelayMs < 1 || chunkDelayMs > 5_000
       || !Number.isSafeInteger(initialDelayMs) || initialDelayMs < 0 || initialDelayMs > 5_000) {
     throw new Error('the fixture throttle is invalid');
@@ -133,6 +135,10 @@ export const startDownloadFixtureOrigin = async ({
     label: 'multi',
     pathname: '/multi.html',
     token: randomBytes(TOKEN_BYTES).toString('hex'),
+  }) : null;
+  const cookie = requireCookie ? Object.freeze({
+    name: 'osg_e2e_auth',
+    value: randomBytes(TOKEN_BYTES).toString('hex'),
   }) : null;
   if (new Set(routes.map(({ label }) => label)).size !== routes.length) {
     throw new Error('download fixture route labels must be unique');
@@ -155,11 +161,26 @@ export const startDownloadFixtureOrigin = async ({
   const server = createServer((request, response) => {
     void (async () => {
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const authorized = cookie === null || (request.headers.cookie ?? '').split(';')
+        .map((part) => part.trim())
+        .includes(`${cookie.name}=${cookie.value}`);
+      const refuseUnauthorized = (route) => {
+        if (authorized) return false;
+        record(route, 'request-rejected', { method: request.method, status: 401, authenticated: false });
+        response.writeHead(401, {
+          'cache-control': 'no-store',
+          'content-length': '0',
+          'www-authenticate': 'Cookie realm="OSG E2E fixture"',
+        });
+        response.end();
+        return true;
+      };
       if (page !== null
           && page.pathname === requestUrl.pathname
           && requestUrl.searchParams.size === 1
           && requestUrl.searchParams.get('token') === page.token
           && ['GET', 'HEAD'].includes(request.method ?? '')) {
+        if (refuseUnauthorized(page)) return;
         const host = request.headers.host;
         if (typeof host !== 'string' || !/^127\.0\.0\.1:\d+$/u.test(host)) {
           response.writeHead(400, { 'content-length': '0' });
@@ -183,6 +204,7 @@ export const startDownloadFixtureOrigin = async ({
           rangeStart: 0,
           rangeEnd: body.length - 1,
           expectedBytes: body.length,
+          authenticated: cookie !== null,
         });
         response.writeHead(200, {
           'cache-control': 'no-store',
@@ -208,6 +230,7 @@ export const startDownloadFixtureOrigin = async ({
         response.end();
         return;
       }
+      if (refuseUnauthorized(route)) return;
       const range = parseSingleByteRange(request.headers.range, route.bytes);
       if (range === null) {
         response.writeHead(416, {
@@ -230,6 +253,7 @@ export const startDownloadFixtureOrigin = async ({
         rangeStart: range.start,
         rangeEnd: range.end,
         expectedBytes: length,
+        authenticated: cookie !== null,
       });
       // The failed-download journey lets yt-dlp inspect a real MP4 once, then makes the transfer
       // itself fail at the origin. This is deliberately server-owned rather than an application
@@ -320,6 +344,7 @@ export const startDownloadFixtureOrigin = async ({
     url: `http://127.0.0.1:${address.port}${route.pathname}?token=${route.token}`,
     bytes: route.bytes,
     sha256: route.sha256,
+    height: route.height,
     failure: route.rejectGetAfter === null ? null : Object.freeze({
       kind: 'rejectGetAfter',
       after: route.rejectGetAfter,
@@ -332,6 +357,7 @@ export const startDownloadFixtureOrigin = async ({
     multiFormatUrl: page === null
       ? null
       : `http://127.0.0.1:${address.port}${page.pathname}?token=${page.token}`,
+    cookie,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve, reject) => {

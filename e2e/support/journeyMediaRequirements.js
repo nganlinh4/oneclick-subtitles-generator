@@ -60,6 +60,7 @@ const NO_STAGED_MEDIA = new Set([
   'aboutAndUpdaterLifecycle.journey.js',
   'alternateProviderDownload.journey.js',
   'alternateLocalAsrMatrix.journey.js',
+  'authenticatedCookieDownload.journey.js',
   'damagedFontPayload.journey.js',
   'defaultFont.journey.js',
   'downloadCancellationRetryIdentity.journey.js',

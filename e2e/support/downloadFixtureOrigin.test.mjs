@@ -103,6 +103,36 @@ test('the optional multi-format page exposes both exact throttled sources withou
   }
 });
 
+test('the protected origin rejects missing cookies and never records the secret', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'osg-download-cookie-origin-test-'));
+  const a = join(root, 'source-a.mp4');
+  const b = join(root, 'source-b.mp4');
+  writeFileSync(a, Buffer.from('first-format'));
+  writeFileSync(b, Buffer.from('second-format'));
+  const eventsPath = join(root, 'events.jsonl');
+  let origin;
+  try {
+    origin = await startDownloadFixtureOrigin({
+      eventsPath,
+      sources: [{ label: 'a', path: a }, { label: 'b', path: b }],
+      multiFormatPage: true,
+      requireCookie: true,
+    });
+    assert.equal((await fetch(origin.multiFormatUrl)).status, 401);
+    const accepted = await fetch(origin.multiFormatUrl, {
+      headers: { Cookie: `${origin.cookie.name}=${origin.cookie.value}` },
+    });
+    assert.equal(accepted.status, 200);
+    const events = readDownloadFixtureEvents(eventsPath);
+    assert.ok(events.some(({ status, authenticated }) => status === 401 && authenticated === false));
+    assert.ok(events.some(({ event }) => event === 'request-complete'));
+    assert.equal(JSON.stringify(events).includes(origin.cookie.value), false, 'event ledger leaked the cookie');
+  } finally {
+    if (origin) await origin.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('event reader rejects unbounded or malformed ledgers', () => {
   const root = mkdtempSync(join(tmpdir(), 'osg-download-events-test-'));
   try {

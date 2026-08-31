@@ -15,6 +15,7 @@
     "test:workflows": "node run-isolated.mjs journeys/urlToPreview.journey.js && node scenarios/editPersistRelaunch.mjs && node scenarios/unicodeCues.mjs && node scenarios/translationPersistence.mjs && node scenarios/nativeToolsInstall.mjs && node scenarios/settingsAppearancePersistence.mjs && node scenarios/renderInterruptRecovery.mjs && node scenarios/settingsNarrationModelManagement.mjs && node scenarios/settingsToolsRemoveAndFactoryReset.mjs",
     "test:download": "node run-isolated.mjs journeys/urlToPreview.journey.js",
     "test:alternate-provider": "node run-isolated.mjs journeys/alternateProviderDownload.journey.js",
+    "test:authenticated-cookie": "node run-isolated.mjs journeys/authenticatedCookieDownload.journey.js",
     "test:playlist-selection": "node run-isolated.mjs journeys/playlistWatchSelection.journey.js",
     "test:download-identity": "node --test support/downloadFixtureOrigin.test.mjs support/downloadJourneyOracle.test.mjs && node run-isolated.mjs journeys/downloadCancellationRetryIdentity.journey.js",
     "test:download-failure": "node --test support/failedDownloadFixtureOrigin.test.mjs support/failedDownloadNoStaleJourney.contract.test.mjs support/failedDownloadNoStaleOracle.test.mjs && node run-isolated.mjs journeys/failedDownloadNoStale.journey.js",

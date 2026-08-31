@@ -7,6 +7,8 @@ use serde::Serialize;
 use std::ffi::OsString;
 use std::fmt;
 use std::path::Path;
+#[cfg(feature = "e2e-automation")]
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +39,77 @@ impl BrowserCookieSource {
             Self::Vivaldi => Some("vivaldi"),
             Self::Opera => Some("opera"),
             Self::Whale => Some("whale"),
+        }
+    }
+}
+
+#[cfg(feature = "e2e-automation")]
+#[derive(Clone, PartialEq, Eq)]
+pub struct AutomationCookieFile(PathBuf);
+
+#[cfg(feature = "e2e-automation")]
+impl AutomationCookieFile {
+    pub fn new(path: &Path, fixture_root: &Path) -> Result<Self> {
+        let root_status = std::fs::symlink_metadata(fixture_root)
+            .map_err(|_| DownloadError::InvalidOption("automation fixture root is unavailable"))?;
+        let file_status = std::fs::symlink_metadata(path)
+            .map_err(|_| DownloadError::InvalidOption("automation cookie file is unavailable"))?;
+        if root_status.file_type().is_symlink()
+            || !root_status.is_dir()
+            || file_status.file_type().is_symlink()
+            || !file_status.is_file()
+            || file_status.len() == 0
+            || file_status.len() > 64 * 1024
+        {
+            return Err(DownloadError::InvalidOption(
+                "automation cookie file is invalid",
+            ));
+        }
+        let root = fixture_root
+            .canonicalize()
+            .map_err(|_| DownloadError::InvalidOption("automation fixture root is unavailable"))?;
+        let input = root
+            .join("input")
+            .canonicalize()
+            .map_err(|_| DownloadError::InvalidOption("automation fixture input is unavailable"))?;
+        let file = path
+            .canonicalize()
+            .map_err(|_| DownloadError::InvalidOption("automation cookie file is unavailable"))?;
+        if !input.starts_with(&root) || !file.starts_with(&input) || file == input {
+            return Err(DownloadError::InvalidOption(
+                "automation cookie file escaped its fixture input",
+            ));
+        }
+        Ok(Self(file))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+#[cfg(feature = "e2e-automation")]
+impl fmt::Debug for AutomationCookieFile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AutomationCookieFile(<redacted>)")
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum DownloadCookies {
+    #[default]
+    None,
+    Browser(BrowserCookieSource),
+    #[cfg(feature = "e2e-automation")]
+    AutomationFile(AutomationCookieFile),
+}
+
+impl From<BrowserCookieSource> for DownloadCookies {
+    fn from(value: BrowserCookieSource) -> Self {
+        if value == BrowserCookieSource::None {
+            Self::None
+        } else {
+            Self::Browser(value)
         }
     }
 }
@@ -124,7 +197,7 @@ pub struct DownloadPlan {
     destination: DownloadDestination,
     media: MediaSelection,
     subtitle: SubtitleSelection,
-    cookies: BrowserCookieSource,
+    cookies: DownloadCookies,
     direct_mp4_format_id: Option<String>,
 }
 
@@ -135,7 +208,7 @@ impl DownloadPlan {
         destination: DownloadDestination,
         media: MediaSelection,
         subtitle: SubtitleSelection,
-        cookies: BrowserCookieSource,
+        cookies: impl Into<DownloadCookies>,
     ) -> Result<Self> {
         let binding = source_binding(&url);
         if inventory.binding() != binding {
@@ -198,7 +271,7 @@ impl DownloadPlan {
             destination,
             media,
             subtitle,
-            cookies,
+            cookies: cookies.into(),
             direct_mp4_format_id: direct_mp4_format_id.map(str::to_owned),
         })
     }
@@ -242,7 +315,7 @@ impl DownloadPlan {
             return Err(DownloadError::FormatMismatch);
         }
         let ffmpeg = ffmpeg.ok_or(DownloadError::FfmpegRequired)?;
-        let mut arguments = base_arguments(self.cookies);
+        let mut arguments = base_arguments(&self.cookies);
         let preserve_direct_mp4 = self.direct_mp4_format_id.is_some()
             && matches!(self.media, MediaSelection::Video { .. });
         let output = if preserve_direct_mp4 {
@@ -385,9 +458,10 @@ impl fmt::Debug for DownloadPlan {
 
 pub(crate) fn inventory_arguments(
     url: &ValidatedMediaUrl,
-    cookies: BrowserCookieSource,
+    cookies: impl Into<DownloadCookies>,
 ) -> Vec<OsString> {
-    let mut arguments = base_arguments(cookies);
+    let cookies = cookies.into();
+    let mut arguments = base_arguments(&cookies);
     arguments.extend([
         OsString::from("--dump-single-json"),
         OsString::from("--skip-download"),
@@ -398,7 +472,7 @@ pub(crate) fn inventory_arguments(
     arguments
 }
 
-fn base_arguments(cookies: BrowserCookieSource) -> Vec<OsString> {
+fn base_arguments(cookies: &DownloadCookies) -> Vec<OsString> {
     let mut arguments = vec![
         OsString::from("--ignore-config"),
         OsString::from("--no-config-locations"),
@@ -428,16 +502,21 @@ fn base_arguments(cookies: BrowserCookieSource) -> Vec<OsString> {
         OsString::from("--no-write-comments"),
         OsString::from("--no-exec"),
     ];
-    if let Some(browser) = cookies.yt_dlp_name() {
-        arguments.extend([
-            OsString::from("--cookies-from-browser"),
-            OsString::from(browser),
-        ]);
-    } else {
-        arguments.extend([
+    match cookies {
+        DownloadCookies::None => arguments.extend([
             OsString::from("--no-cookies"),
             OsString::from("--no-cookies-from-browser"),
-        ]);
+        ]),
+        DownloadCookies::Browser(source) => arguments.extend([
+            OsString::from("--cookies-from-browser"),
+            OsString::from(source.yt_dlp_name().expect("browser source is never none")),
+        ]),
+        #[cfg(feature = "e2e-automation")]
+        DownloadCookies::AutomationFile(file) => arguments.extend([
+            OsString::from("--cookies"),
+            file.path().as_os_str().to_owned(),
+            OsString::from("--no-cookies-from-browser"),
+        ]),
     }
     arguments
 }
@@ -479,6 +558,37 @@ mod tests {
         let json = br#"{"title":"clip","formats":[{"format_id":"137","height":1080,"vcodec":"h264","acodec":"none"},{"format_id":"140","vcodec":"none","acodec":"aac"}],"subtitles":{"en":[{"ext":"vtt"}]}}"#;
         let inventory = MediaInventory::from_json(&url, json).unwrap();
         (url, inventory)
+    }
+
+    #[cfg(feature = "e2e-automation")]
+    #[test]
+    fn automation_cookie_file_is_input_bounded_and_path_redacted() {
+        let root = tempfile::tempdir().expect("fixture root");
+        let input = root.path().join("input");
+        std::fs::create_dir(&input).expect("fixture input");
+        let cookie = input.join("cookies.txt");
+        std::fs::write(&cookie, b"# Netscape HTTP Cookie File\n").expect("cookie fixture");
+        let authority = AutomationCookieFile::new(&cookie, root.path()).expect("cookie authority");
+        let debug = format!("{authority:?}");
+        assert!(!debug.contains(root.path().to_string_lossy().as_ref()));
+        assert!(debug.contains("redacted"));
+
+        let (url, _) = inspected();
+        let arguments = inventory_arguments(&url, DownloadCookies::AutomationFile(authority));
+        let cookie_index = arguments
+            .iter()
+            .position(|argument| argument == "--cookies")
+            .expect("cookie-file argument");
+        assert_eq!(arguments[cookie_index + 1], cookie.canonicalize().unwrap());
+        assert!(
+            arguments
+                .iter()
+                .any(|argument| argument == "--no-cookies-from-browser")
+        );
+
+        let outside = root.path().join("outside.txt");
+        std::fs::write(&outside, b"# Netscape HTTP Cookie File\n").expect("outside fixture");
+        assert!(AutomationCookieFile::new(&outside, root.path()).is_err());
     }
 
     fn direct_mp4() -> (ValidatedMediaUrl, MediaInventory) {

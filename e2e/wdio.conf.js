@@ -13,7 +13,7 @@
 
 /* global browser, console, process */
 
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 import {
@@ -118,6 +118,7 @@ const dialogPaths = stagedDialogPaths(
 let downloadFixtureOrigin = null;
 if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     || process.env.OSG_E2E_WORKFLOW === 'download-quality-cancellation-identity'
+    || process.env.OSG_E2E_WORKFLOW === 'authenticated-cookie-download'
     || process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale') {
   // This configuration is loaded once by the WDIO launcher and again by its worker. Only the
   // launcher creates the origin; the exact capabilities then reach both the worker and the app as
@@ -140,6 +141,8 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     const failureJourney = process.env.OSG_E2E_WORKFLOW === 'failed-download-no-stale';
     const qualityCancellationJourney = process.env.OSG_E2E_WORKFLOW
       === 'download-quality-cancellation-identity';
+    const authenticatedCookieJourney = process.env.OSG_E2E_WORKFLOW
+      === 'authenticated-cookie-download';
     downloadFixtureOrigin = await startDownloadFixtureOrigin({
       eventsPath: join(runRoot, 'evidence', 'download-fixture-events.jsonl'),
       sources: failureJourney ? [
@@ -149,17 +152,24 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
         { label: 'c', path: sourceB, rejectGetAfter: 1 },
       ] : [
         {
-          label: 'a', path: sourceA, height: qualityCancellationJourney ? SOURCE_SWITCH_VIDEO.height : null,
+          label: 'a',
+          path: sourceA,
+          height: qualityCancellationJourney || authenticatedCookieJourney
+            ? SOURCE_SWITCH_VIDEO.height : null,
         },
         // A real committed speech clip, not generated colour bars. Real-network extraction stays
         // independently proven by urlToPreview instead of making cancellation timing depend on it.
         {
-          label: 'b', path: sourceB, height: qualityCancellationJourney ? DOWNLOAD_IDENTITY_VIDEO.height : null,
+          label: 'b',
+          path: sourceB,
+          height: qualityCancellationJourney || authenticatedCookieJourney
+            ? DOWNLOAD_IDENTITY_VIDEO.height : null,
         },
       ],
       chunkDelayMs: failureJourney ? 10 : 120,
       initialDelayMs: failureJourney ? 0 : 2_000,
-      multiFormatPage: qualityCancellationJourney,
+      multiFormatPage: qualityCancellationJourney || authenticatedCookieJourney,
+      requireCookie: authenticatedCookieJourney,
     });
     process.env.OSG_E2E_EXACT_DOWNLOAD_URLS = JSON.stringify(
       [
@@ -174,6 +184,16 @@ if (process.env.OSG_E2E_WORKFLOW === 'download-cancellation-retry-identity'
     process.env.OSG_E2E_DOWNLOAD_FIXTURE_EVENTS = downloadFixtureOrigin.eventsPath;
     if (downloadFixtureOrigin.multiFormatUrl !== null) {
       process.env.OSG_E2E_MULTI_FORMAT_URL = downloadFixtureOrigin.multiFormatUrl;
+    }
+    if (downloadFixtureOrigin.cookie !== null) {
+      const cookiePath = join(runRoot, 'input', 'download-cookies.txt');
+      const expires = Math.floor(Date.now() / 1_000) + 60 * 60;
+      writeFileSync(
+        cookiePath,
+        `# Netscape HTTP Cookie File\n127.0.0.1\tFALSE\t/\tFALSE\t${expires}\t${downloadFixtureOrigin.cookie.name}\t${downloadFixtureOrigin.cookie.value}\n`,
+        { flag: 'wx', mode: 0o600 },
+      );
+      process.env.OSG_E2E_DOWNLOAD_COOKIE_FILE = cookiePath;
     }
   }
 }

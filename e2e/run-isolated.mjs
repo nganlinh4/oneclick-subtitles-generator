@@ -255,6 +255,7 @@ export const run = async ({ repeat, journeys }) => {
                     : null;
                   const journeyName = basename(journey);
                   const needsSourceSwitch = new Set([
+                    'authenticatedCookieDownload.journey.js',
                     'downloadCancellationRetryIdentity.journey.js',
                     'downloadQualityCancellationIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
@@ -300,6 +301,7 @@ export const run = async ({ repeat, journeys }) => {
                       environment.OSG_E2E_MEDIA_SELECTION = stagedLong;
                     }
                     if (new Set([
+                      'authenticatedCookieDownload.journey.js',
                       'downloadCancellationRetryIdentity.journey.js',
                       'downloadQualityCancellationIdentity.journey.js',
                       'failedDownloadNoStale.journey.js',

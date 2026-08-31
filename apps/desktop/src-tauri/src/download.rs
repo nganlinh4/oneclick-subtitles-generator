@@ -10,13 +10,15 @@ use osg_domain::{
     AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, MediaAsset,
     media_kind_for_extension,
 };
+#[cfg(feature = "e2e-automation")]
+use osg_download::AutomationCookieFile;
 use osg_download::{
-    AudioDownloadFormat, AudioQuality, BrowserCookieSource, CancellationToken, DownloadDestination,
-    DownloadEngine, DownloadError, DownloadPhase, DownloadPlan, DownloadProgress, DownloadResult,
-    DownloadSummary, FfmpegDirectory, InventoryId, InventoryRegistration, InventoryRegistry,
-    JsRuntimeResolver, JsRuntimeSearch, MediaInventory, MediaSelection, ProcessFailureKind,
-    ProgressSink, RunControl, SubtitleSelection, SubtitleSource, UrlPolicy, VideoHeight,
-    VideoQuality, YtDlpSearch,
+    AudioDownloadFormat, AudioQuality, BrowserCookieSource, CancellationToken, DownloadCookies,
+    DownloadDestination, DownloadEngine, DownloadError, DownloadPhase, DownloadPlan,
+    DownloadProgress, DownloadResult, DownloadSummary, FfmpegDirectory, InventoryId,
+    InventoryRegistration, InventoryRegistry, JsRuntimeResolver, JsRuntimeSearch, MediaInventory,
+    MediaSelection, ProcessFailureKind, ProgressSink, RunControl, SubtitleSelection,
+    SubtitleSource, UrlPolicy, VideoHeight, VideoQuality, YtDlpSearch,
 };
 use osg_infrastructure::storage::{
     ArtifactKind, ContentHash, Database, publish_durable_media_candidate as publish_media_artifact,
@@ -40,6 +42,10 @@ const MAX_CONCURRENT_DOWNLOADS: usize = 4;
 const MAX_SUBTITLE_IPC_BYTES: u64 = 8 * 1024 * 1024;
 #[cfg(feature = "e2e-automation")]
 const EXACT_AUTOMATION_DOWNLOAD_URLS_ENV: &str = "OSG_E2E_EXACT_DOWNLOAD_URLS";
+#[cfg(feature = "e2e-automation")]
+const AUTOMATION_COOKIE_FILE_ENV: &str = "OSG_E2E_DOWNLOAD_COOKIE_FILE";
+#[cfg(feature = "e2e-automation")]
+const AUTOMATION_FIXTURE_ROOT_ENV: &str = "OSG_E2E_FIXTURE_ROOT";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,15 +109,21 @@ impl From<CookieSourceRequest> for BrowserCookieSource {
 }
 
 #[cfg(feature = "e2e-automation")]
-fn resolve_browser_cookie_source(
-    request: CookieSourceRequest,
-) -> CommandResult<BrowserCookieSource> {
-    if request != CookieSourceRequest::None {
-        return Err(CommandError::invalid_input(
-            "The automation build refused access to a live browser profile.",
-        ));
+fn resolve_browser_cookie_source(request: CookieSourceRequest) -> CommandResult<DownloadCookies> {
+    if request == CookieSourceRequest::None {
+        return Ok(DownloadCookies::None);
     }
-    Ok(BrowserCookieSource::None)
+    let path = std::env::var_os(AUTOMATION_COOKIE_FILE_ENV).ok_or_else(|| {
+        CommandError::invalid_input(
+            "The automation build refused access to a live browser profile.",
+        )
+    })?;
+    let root = std::env::var_os(AUTOMATION_FIXTURE_ROOT_ENV).ok_or_else(|| {
+        CommandError::invalid_input("The automation cookie fixture is unavailable.")
+    })?;
+    AutomationCookieFile::new(Path::new(&path), Path::new(&root))
+        .map(DownloadCookies::AutomationFile)
+        .map_err(|_| CommandError::invalid_input("The automation cookie fixture is invalid."))
 }
 
 #[derive(Deserialize)]
@@ -762,7 +774,7 @@ pub(crate) async fn download_inspect(
     #[cfg(feature = "e2e-automation")]
     let cookies = resolve_browser_cookie_source(request.cookie_source)?;
     #[cfg(not(feature = "e2e-automation"))]
-    let cookies = BrowserCookieSource::from(request.cookie_source);
+    let cookies = DownloadCookies::from(BrowserCookieSource::from(request.cookie_source));
     let engine = runtime.engine().inspect_err(|error| {
         if let Ok(tools) = runtime.tools() {
             diagnostics::record(
@@ -780,10 +792,11 @@ pub(crate) async fn download_inspect(
         record_download_inspection_failure("inspection-slots-full", Some("internal"));
         CommandError::internal("Too many media inspections are already running.")
     })?;
+    let inspection_cookies = cookies.clone();
     let (url, inventory) = tauri::async_runtime::spawn_blocking(move || {
         let url = engine.validate_url(&request.url)?;
         let control = RunControl::new(INSPECTION_TIMEOUT)?;
-        let inventory = engine.inspect(&url, cookies, &control)?;
+        let inventory = engine.inspect(&url, inspection_cookies, &control)?;
         Ok::<_, DownloadError>((url, inventory))
     })
     .await
@@ -1024,7 +1037,7 @@ fn create_plan(
         destination,
         media,
         subtitle,
-        capability.cookies(),
+        capability.cookies().clone(),
     )
 }
 

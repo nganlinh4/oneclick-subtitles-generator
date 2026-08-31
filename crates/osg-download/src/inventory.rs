@@ -327,19 +327,7 @@ fn parse_formats(
         else {
             continue;
         };
-        let mut has_video = codec_present(format.get("vcodec"));
-        let mut has_audio = codec_present(format.get("acodec"));
-        #[cfg(feature = "e2e-automation")]
-        if url.is_exact_automation_extractor_page()
-            && format.get("ext").and_then(Value::as_str) == Some("mp4")
-            && integer(format.get("height")).is_some_and(|height| (144..=4_320).contains(&height))
-        {
-            // yt-dlp's generic HTML extractor intentionally leaves codec metadata unknown. The
-            // exact compile-time E2E page owns both tokenized MP4 sources, so its bounded `res`
-            // declarations can model combined video rungs without weakening public inventories.
-            has_video = true;
-            has_audio = true;
-        }
+        let (has_video, has_audio) = codec_presence(url, format);
         if !has_video && !has_audio {
             continue;
         }
@@ -406,6 +394,28 @@ fn parse_formats(
         },
         None,
     ))
+}
+
+fn codec_presence(
+    url: &ValidatedMediaUrl,
+    format: &serde_json::Map<String, Value>,
+) -> (bool, bool) {
+    #[cfg(not(feature = "e2e-automation"))]
+    let _ = url;
+    #[cfg(feature = "e2e-automation")]
+    if url.is_exact_automation_extractor_page()
+        && format.get("ext").and_then(Value::as_str) == Some("mp4")
+        && integer(format.get("height")).is_some_and(|height| (144..=4_320).contains(&height))
+    {
+        // yt-dlp's generic HTML extractor intentionally leaves codec metadata unknown. The exact
+        // compile-time E2E page owns both tokenized MP4 sources, so its bounded `res` declarations
+        // can model combined video rungs without weakening public inventories.
+        return (true, true);
+    }
+    (
+        codec_present(format.get("vcodec")),
+        codec_present(format.get("acodec")),
+    )
 }
 
 fn parse_direct_mp4(

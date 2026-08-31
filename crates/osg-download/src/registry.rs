@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::{Uuid, Variant, Version};
 
-use crate::{BrowserCookieSource, DownloadError, MediaInventory, Result, ValidatedMediaUrl};
+use crate::{DownloadCookies, DownloadError, MediaInventory, Result, ValidatedMediaUrl};
 
 pub const MAX_INVENTORY_CAPABILITIES: usize = 64;
 const INVENTORY_TTL: Duration = Duration::from_mins(15);
@@ -75,7 +75,7 @@ pub struct InventoryRegistration {
 pub struct InventoryCapability {
     url: ValidatedMediaUrl,
     inventory: MediaInventory,
-    cookies: BrowserCookieSource,
+    cookies: DownloadCookies,
 }
 
 impl InventoryCapability {
@@ -90,8 +90,8 @@ impl InventoryCapability {
     }
 
     #[must_use]
-    pub const fn cookies(&self) -> BrowserCookieSource {
-        self.cookies
+    pub const fn cookies(&self) -> &DownloadCookies {
+        &self.cookies
     }
 }
 
@@ -136,9 +136,15 @@ impl InventoryRegistry {
         &self,
         url: ValidatedMediaUrl,
         inventory: MediaInventory,
-        cookies: BrowserCookieSource,
+        cookies: impl Into<DownloadCookies>,
     ) -> Result<InventoryRegistration> {
-        self.insert_at(url, inventory, cookies, Instant::now(), wall_clock_ms())
+        self.insert_at(
+            url,
+            inventory,
+            cookies.into(),
+            Instant::now(),
+            wall_clock_ms(),
+        )
     }
 
     pub fn resolve(&self, id: InventoryId) -> Result<InventoryCapability> {
@@ -149,7 +155,7 @@ impl InventoryRegistry {
         &self,
         url: ValidatedMediaUrl,
         inventory: MediaInventory,
-        cookies: BrowserCookieSource,
+        cookies: DownloadCookies,
         now: Instant,
         wall_clock_ms: u64,
     ) -> Result<InventoryRegistration> {
@@ -234,7 +240,7 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::Arc;
 
-    use crate::{AddressResolver, UrlPolicy, UrlValidator};
+    use crate::{AddressResolver, BrowserCookieSource, UrlPolicy, UrlValidator};
 
     use super::*;
 
@@ -265,7 +271,7 @@ mod tests {
         let now = Instant::now();
         let (url, inventory) = capability(1);
         let registration = registry
-            .insert_at(url, inventory, BrowserCookieSource::Chrome, now, 100)
+            .insert_at(url, inventory, BrowserCookieSource::Chrome.into(), now, 100)
             .expect("register capability");
 
         assert_eq!(registration.expires_at_ms, 30_100);
@@ -274,7 +280,7 @@ mod tests {
                 .resolve_at(registration.id, now + Duration::from_secs(29))
                 .expect("live capability")
                 .cookies(),
-            BrowserCookieSource::Chrome
+            &DownloadCookies::Browser(BrowserCookieSource::Chrome)
         );
         assert!(matches!(
             registry.resolve_at(registration.id, now + Duration::from_secs(30)),

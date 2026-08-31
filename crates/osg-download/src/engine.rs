@@ -3,9 +3,9 @@ use crate::process::{
     DOWNLOAD_STDOUT_LIMIT, INVENTORY_STDOUT_LIMIT, ProcessOutput, ProcessRequest, run,
 };
 use crate::{
-    AddressResolver, BrowserCookieSource, DownloadError, DownloadPlan, FfmpegDirectory,
-    MediaInventory, ProcessFailureKind, ResolvedJsRuntime, ResolvedYtDlp, Result, RunControl,
-    SystemResolver, UrlPolicy, UrlValidator, ValidatedMediaUrl, YtDlpResolver, YtDlpSearch,
+    AddressResolver, DownloadCookies, DownloadError, DownloadPlan, FfmpegDirectory, MediaInventory,
+    ProcessFailureKind, ResolvedJsRuntime, ResolvedYtDlp, Result, RunControl, SystemResolver,
+    UrlPolicy, UrlValidator, ValidatedMediaUrl, YtDlpResolver, YtDlpSearch,
 };
 use serde::Serialize;
 use std::ffi::OsString;
@@ -124,7 +124,7 @@ impl<R: AddressResolver> DownloadEngine<R> {
     pub fn inspect(
         &self,
         url: &ValidatedMediaUrl,
-        cookies: BrowserCookieSource,
+        cookies: impl Into<DownloadCookies>,
         control: &RunControl,
     ) -> Result<MediaInventory> {
         self.validator.revalidate(url)?;

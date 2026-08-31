@@ -794,7 +794,7 @@ pub(crate) async fn media_pipeline_start(
             // machines, so duration alone cannot make a process-death test deterministic. The
             // supervisor tears this process down while the sleep is pending; no release build can
             // compile this branch, and the finite bound prevents a stranded automation process.
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await;
         }
         let operation_database = database.clone();
         let source_content_hash = resolved.content_hash();

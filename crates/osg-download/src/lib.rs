@@ -27,9 +27,11 @@ pub use inventory::{
     VideoFormatOption,
 };
 pub use path::{DownloadDestination, FfmpegDirectory, SafeFileStem};
+#[cfg(feature = "e2e-automation")]
+pub use plan::AutomationCookieFile;
 pub use plan::{
-    AudioDownloadFormat, AudioQuality, BrowserCookieSource, DownloadPlan, MediaSelection,
-    SubtitleSelection, VideoHeight, VideoQuality,
+    AudioDownloadFormat, AudioQuality, BrowserCookieSource, DownloadCookies, DownloadPlan,
+    MediaSelection, SubtitleSelection, VideoHeight, VideoQuality,
 };
 pub use process::{CancellationToken, RunControl};
 pub use progress::{DownloadPhase, DownloadProgress, ProgressSink};

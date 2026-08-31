@@ -977,6 +977,7 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
   const externalLinks = read('apps', 'desktop', 'src-tauri', 'src', 'external_links.rs');
   const providers = read('apps', 'desktop', 'src-tauri', 'src', 'providers.rs');
   const download = read('apps', 'desktop', 'src-tauri', 'src', 'download.rs');
+  const downloadPlan = read('crates', 'osg-download', 'src', 'plan.rs');
   const updater = read('apps', 'desktop', 'src-tauri', 'src', 'updater.rs');
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
   const environment = read('e2e', 'support', 'environment.js');
@@ -1172,16 +1173,23 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
     inspectStart,
   );
   const engineResolution = download.indexOf('let engine = runtime.engine()', inspectStart);
-  const engineInspection = download.indexOf('engine.inspect(&url, cookies, &control)', inspectStart);
+  const engineInspection = download.indexOf(
+    'engine.inspect(&url, inspection_cookies, &control)', inspectStart,
+  );
   assert.ok(inspectStart >= 0, 'download_inspect is missing');
   assert.ok(
     cookieGuard > inspectStart && cookieGuard < engineResolution && cookieGuard < engineInspection,
-    'automation must reject a live browser-cookie source before resolving or invoking the downloader',
+    'automation must resolve cookie authority before resolving or invoking the downloader',
   );
   assert.match(
     download,
-    /#\[cfg\(feature = "e2e-automation"\)\]\s*fn resolve_browser_cookie_source\([\s\S]*?if request != CookieSourceRequest::None \{[\s\S]*?refused access to a live browser profile/u,
-    'the E2E binary must not read Chrome, Edge, Firefox, or another live browser profile',
+    /#\[cfg\(feature = "e2e-automation"\)\]\s*fn resolve_browser_cookie_source\([\s\S]*?if request == CookieSourceRequest::None[\s\S]*?AUTOMATION_COOKIE_FILE_ENV[\s\S]*?refused access to a live browser profile[\s\S]*?AutomationCookieFile::new/u,
+    'the E2E binary must substitute only its typed fixture file for a requested browser source',
+  );
+  assert.match(
+    downloadPlan,
+    /#\[cfg\(feature = "e2e-automation"\)\][\s\S]*?pub struct AutomationCookieFile\(PathBuf\)[\s\S]*?join\("input"\)[\s\S]*?!file\.starts_with\(&input\)[\s\S]*?AutomationCookieFile\(<redacted>\)/u,
+    'the automation cookie authority must stay under fixture input and redact its path',
   );
 });
 
