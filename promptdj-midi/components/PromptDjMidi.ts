@@ -165,7 +165,6 @@ export class PromptDjMidi extends LitElement {
   @state() private activeMidiInputId: string | null = null;
   @state() private optimisticLoading: boolean = false;
   @state() private optimisticPlaying: boolean | null = null; // null = follow real state
-  private clickCooldownUntil: number = 0; // epoch ms; during this window, ignore extra toggles
 
   // Background drift control
   @state() private driftStrength: number = 0; // 0 = at base, 1 = full drift
@@ -364,11 +363,6 @@ export class PromptDjMidi extends LitElement {
   private playPause(e: Event) {
     // Prevent the bubbling play-pause event from also reaching outer listeners
     e.stopPropagation();
-
-    // Debounce rapid clicks to avoid double toggles
-    const now = Date.now();
-    if (now < this.clickCooldownUntil) return;
-    this.clickCooldownUntil = now + 500;
 
     const morphEl = this.renderRoot?.querySelector('play-pause-morph') as HTMLElement | null;
 

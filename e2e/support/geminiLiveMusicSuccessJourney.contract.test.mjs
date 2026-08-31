@@ -8,6 +8,10 @@ const backgroundMusicSource = readFileSync(
   join(import.meta.dirname, '..', '..', 'src', 'components', 'BackgroundMusicSection.jsx'),
   'utf8',
 );
+const promptDjSource = readFileSync(
+  join(import.meta.dirname, '..', '..', 'promptdj-midi', 'components', 'PromptDjMidi.ts'),
+  'utf8',
+);
 
 test('the live music journey uses real controls, one native session, PCM, recording and an independent signature', () => {
   for (const witness of [
@@ -30,4 +34,10 @@ test('PromptDJ has one direct application frame and one message owner', () => {
   assert.match(backgroundMusicSource, /src=\{midiAppUrl\}/u);
   assert.match(backgroundMusicSource, /iframeRef\.current\?\.contentWindow \|\| null/u);
   assert.doesNotMatch(backgroundMusicSource, /srcDoc|promptdj-inner/u);
+});
+
+test('native transport state, not a wall-clock cooldown, owns rapid Pause and Resume', () => {
+  assert.doesNotMatch(promptDjSource, /clickCooldownUntil|Date\.now\(\).*500/u);
+  assert.match(promptDjSource, /this\.playbackState === 'playing' \|\| this\.playbackState === 'loading'/u);
+  assert.match(promptDjSource, /this\.dispatchEvent\(new CustomEvent\('play'/u);
 });
