@@ -89,8 +89,9 @@ const promptDjMidiState = () => browser.execute(() => {
 });
 
 describe('a customer controls PromptDJ with a MIDI device', () => {
-  it('discovers a real Windows loopback endpoint and maps its CC value to one prompt', async () => {
+  it('discovers a real process-owned endpoint and maps its CC value to one prompt', async () => {
     const midi = startMidiHost();
+    let midiEnabled = false;
     try {
       const ready = await midi.nextRecord();
       assert.equal(ready.ready, true, `the Windows MIDI diagnostics endpoint refused: ${ready.reason ?? 'unknown'}`);
@@ -107,6 +108,7 @@ describe('a customer controls PromptDJ with a MIDI device', () => {
         timeoutMsg: 'the embedded PromptDJ surface did not become reachable',
       });
       await clickControl('.music-generator-section .midi-controls md-switch');
+      midiEnabled = true;
       await browser.waitUntil(async () => {
         const state = await promptDjMidiState();
         return state.endpoint.includes(ready.name) && typeof state.activeInputId === 'string';
@@ -120,7 +122,7 @@ describe('a customer controls PromptDJ with a MIDI device', () => {
       await captureWorkflowStep({
         workflow: WORKFLOW,
         step: '01-midi-endpoint-selected',
-        description: 'PromptDJ enumerated and selected the Windows MIDI diagnostics endpoint.',
+        description: 'PromptDJ enumerated and selected the process-owned Windows MIDI endpoint.',
         details: { endpoint: ready.name, promptId: 'prompt-0', cc: before.cc },
         focusSelector: '.music-generator-section',
       });
@@ -154,7 +156,26 @@ describe('a customer controls PromptDJ with a MIDI device', () => {
         details: { beforeWeight: before.weight, afterWeight: after.weight, displayedWeight: after.displayedWeight },
         focusSelector: '.music-generator-section',
       });
+      await clickControl('.music-generator-section .midi-controls md-switch');
+      await browser.waitUntil(async () => (await promptDjMidiState()).activeInputId === null, {
+        timeout: 10_000,
+        interval: 100,
+        timeoutMsg: 'turning MIDI off did not close the selected browser input',
+      });
+      midiEnabled = false;
     } finally {
+      if (midiEnabled) {
+        try {
+          await browser.execute(async () => {
+            const outer = document.querySelector('.music-generator-section iframe[title="promptdj-midi"]');
+            const host = outer?.contentDocument?.querySelector('prompt-dj-midi');
+            await host?.setShowMidi?.(false);
+          });
+        } catch {
+          // The browser session may already be closing. The bounded helper shutdown below will
+          // expose any remaining ownership problem instead of silently abandoning the endpoint.
+        }
+      }
       if (midi.process.exitCode === null) {
         midi.process.stdin.write('quit\n');
         await Promise.race([

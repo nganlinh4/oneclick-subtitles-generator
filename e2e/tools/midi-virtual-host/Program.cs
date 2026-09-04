@@ -1,8 +1,60 @@
 using System.Text.Json;
-using Windows.Devices.Enumeration;
 using Windows.Devices.Midi2;
-using Windows.Devices.Midi2.Diagnostics;
+using Windows.Devices.Midi2.Enumeration;
+using Windows.Devices.Midi2.Transports.Virtual;
 using Windows.Devices.Midi2.Utilities.Messages;
+
+const string EndpointName = "OSG Isolated MIDI Controller";
+
+static MidiVirtualDeviceCreationConfig DefineDevice()
+{
+    var endpoint = new MidiDeclaredEndpointInfo
+    {
+        Name = EndpointName,
+        ProductInstanceId = $"OSG_E2E_{Guid.NewGuid():N}",
+        SpecificationVersionMajor = 1,
+        SpecificationVersionMinor = 1,
+        SupportsMidi10Protocol = true,
+        SupportsMidi20Protocol = true,
+        SupportsReceivingJitterReductionTimestamps = false,
+        SupportsSendingJitterReductionTimestamps = false,
+        HasStaticFunctionBlocks = true,
+    };
+    var identity = new MidiDeclaredDeviceIdentity();
+    identity.SetDeviceFamily(0x01, 0x01);
+    identity.SetDeviceFamilyModelNumber(0x01, 0x01);
+    identity.SetSoftwareRevisionLevel(0x01, 0x00, 0x00, 0x00);
+    identity.SetSystemExclusiveId(0x00, 0x00, 0x7D);
+    var supplied = new MidiEndpointUserSuppliedInfo
+    {
+        Name = EndpointName,
+        Description = "Disposable controller for the guarded OSG real-binary journey",
+    };
+    var config = new MidiVirtualDeviceCreationConfig(
+        EndpointName,
+        "Process-owned test controller",
+        "OSG",
+        endpoint,
+        identity,
+        supplied)
+    {
+        CreateOnlyUmpEndpoints = false,
+    };
+    config.FunctionBlocks.Add(new MidiFunctionBlock
+    {
+        Number = 0,
+        Name = "Controls",
+        IsActive = true,
+        UIHint = MidiFunctionBlockUIHint.Sender,
+        FirstGroup = new MidiGroup(0),
+        GroupCount = 1,
+        Direction = MidiFunctionBlockDirection.BlockOutput,
+        RepresentsMidi10Connection = MidiFunctionBlockRepresentsMidi10Connection.YesBandwidthUnrestricted,
+        MaxSystemExclusive8Streams = 0,
+        MidiCIMessageVersionFormat = 0,
+    });
+    return config;
+}
 
 static void WriteRecord(object record)
 {
@@ -17,38 +69,38 @@ static void WriteStage(string stage)
 }
 
 WriteStage("service-check-start");
-if (!MidiApi.EnsureServiceAvailable())
+if (!MidiApi.EnsureServiceAvailable() || !MidiVirtualDeviceManager.IsTransportAvailable)
 {
     WriteRecord(new { ready = false, reason = "midi-service-unavailable" });
     return 2;
 }
 
 WriteStage("service-check-complete");
-var sendEndpointId = MidiDiagnostics.DiagnosticsLoopbackAEndpointDeviceId;
-var receiveEndpointId = MidiDiagnostics.DiagnosticsLoopbackBEndpointDeviceId;
-var receiveEndpoint = await DeviceInformation.CreateFromIdAsync(receiveEndpointId);
-if (receiveEndpoint is null)
-{
-    WriteRecord(new { ready = false, reason = "diagnostics-endpoint-unavailable" });
-    return 3;
-}
-
-WriteStage("session-create-start");
 using var session = MidiSession.Create("OSG isolated MIDI journey");
 if (session is null)
 {
     WriteRecord(new { ready = false, reason = "session-unavailable" });
+    return 3;
+}
+
+WriteStage("device-create-start");
+var device = MidiVirtualDeviceManager.CreateVirtualDevice(DefineDevice());
+if (device is null)
+{
+    WriteRecord(new { ready = false, reason = "virtual-device-unavailable" });
     return 4;
 }
 
-WriteStage("session-create-complete");
-var connection = session.CreateEndpointConnection(sendEndpointId);
+WriteStage("device-create-complete");
+device.SuppressHandledMessages = true;
+var connection = session.CreateEndpointConnection(device.DeviceEndpointDeviceId);
 if (connection is null)
 {
     WriteRecord(new { ready = false, reason = "connection-unavailable" });
     return 5;
 }
 
+connection.AddMessageProcessingPlugin(device);
 WriteStage("connection-open-start");
 if (!connection.Open())
 {
@@ -57,21 +109,12 @@ if (!connection.Open())
 }
 
 WriteStage("connection-open-complete");
-WriteRecord(new
-{
-    ready = true,
-    name = receiveEndpoint.Name,
-    endpointId = receiveEndpointId,
-});
-
+WriteRecord(new { ready = true, name = EndpointName });
 string? line;
 while ((line = Console.In.ReadLine()) is not null)
 {
     var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (parts.Length == 1 && parts[0] == "quit")
-    {
-        break;
-    }
+    if (parts.Length == 1 && parts[0] == "quit") break;
     if (parts.Length != 4
         || parts[0] != "cc"
         || !byte.TryParse(parts[1], out var channel)
@@ -101,5 +144,11 @@ while ((line = Console.In.ReadLine()) is not null)
     });
 }
 
+// The WebView closes every MIDIInput before asking this helper to leave. Removing a virtual
+// endpoint while WinMM/Web MIDI still owns it can wedge MidiSrv, so teardown ordering is part of
+// the journey contract rather than a best-effort cleanup detail.
+WriteStage("connection-close-start");
+connection.RemoveMessageProcessingPlugin(device.PluginId);
 session.DisconnectEndpointConnection(connection.ConnectionId);
+WriteStage("connection-close-complete");
 return 0;
