@@ -9,6 +9,7 @@ const input = (id: string, name = id): MutableMidiInput => ({
   id,
   name,
   onmidimessage: null,
+  close: vi.fn(() => Promise.resolve({} as MIDIInput)),
 } as MutableMidiInput);
 
 const access = (inputs: MutableMidiInput[]): MutableMidiAccess => ({
@@ -65,5 +66,21 @@ describe('MidiDispatcher', () => {
     midiAccess.onstatechange?.({} as MIDIConnectionEvent);
     expect(dispatcher.activeMidiInputId).toBe('second');
     expect(changes.at(-1)).toEqual({ inputs: ['second'], activeId: 'second' });
+  });
+
+  it('closes every browser port before a removable device is disconnected', async () => {
+    const first = input('first');
+    const second = input('second');
+    installRequest(access([first, second]));
+    const dispatcher = new MidiDispatcher();
+    await dispatcher.getMidiAccess();
+
+    await dispatcher.closeInputs();
+
+    expect(first.onmidimessage).toBeNull();
+    expect(second.onmidimessage).toBeNull();
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(second.close).toHaveBeenCalledOnce();
+    expect(dispatcher.activeMidiInputId).toBeNull();
   });
 });

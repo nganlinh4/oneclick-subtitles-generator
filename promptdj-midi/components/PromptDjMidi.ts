@@ -319,7 +319,15 @@ export class PromptDjMidi extends LitElement {
 
   public async setShowMidi(show: boolean) {
     this.showMidi = show;
-    if (!this.showMidi) return;
+    if (!this.showMidi) {
+      await this.midiDispatcher.closeInputs();
+      this.midiInputIds = [];
+      this.activeMidiInputId = null;
+      this.dispatchEvent(new CustomEvent('midi-inputs-changed', {
+        detail: { inputs: this.midiInputIds, activeId: this.activeMidiInputId },
+      }));
+      return;
+    }
     try {
       const inputIds = await this.midiDispatcher.getMidiAccess();
       this.midiInputIds = inputIds;

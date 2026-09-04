@@ -56,6 +56,14 @@ export class MidiDispatcher extends EventTarget {
     return this.refreshInputs(false);
   }
 
+  async closeInputs(): Promise<void> {
+    if (!this.access) return;
+    const inputs = [...this.access.inputs.values()];
+    for (const input of inputs) input.onmidimessage = null;
+    await Promise.all(inputs.map((input) => input.close()));
+    this.activeMidiInputId = null;
+  }
+
   getDeviceName(id: string): string | null {
     if (!this.access) {
       return null;
