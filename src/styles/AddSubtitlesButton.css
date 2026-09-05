@@ -198,17 +198,7 @@
 }
 
 .add-subtitles-button.processing::after {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
-  opacity: 0;
-  animation: pulse-glow 2s var(--md-easing-emphasized) infinite;
-  pointer-events: none;
-  z-index: -1;
+  content: none;
 }
 
 /* Processing text container */
@@ -244,20 +234,6 @@
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-@keyframes pulse-glow {
-  0% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.2;
-  }
-  100% {
-    transform: scale(1.0);
-    opacity: 0;
-  }
 }
 
 /* Gemini icon container and mini icons */

@@ -1926,7 +1926,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 12);
+        assert_eq!(schema_version, 13);
         for revision in detached {
             let exists: bool = connection
                 .query_row(

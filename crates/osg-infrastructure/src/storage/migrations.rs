@@ -16,6 +16,7 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!("sql/0010_project_speech_references.sql")),
         M::up(include_str!("sql/0011_project_render_scenes.sql")),
         M::up(include_str!("sql/0012_project_create_receipts.sql")),
+        M::up(include_str!("sql/0013_legacy_default_subtitle_scale.sql")),
     ])
 }
 
@@ -503,7 +504,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         let claim_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM media_artifact_job_claims
@@ -516,8 +517,8 @@ mod tests {
     }
 
     #[test]
-    fn every_prior_schema_version_upgrades_to_v12_idempotently() {
-        for prior_version in 1..=11 {
+    fn every_prior_schema_version_upgrades_to_v13_idempotently() {
+        for prior_version in 1..=12 {
             let database_file = NamedTempFile::new().expect("database file");
             let database_path = database_file.path();
             {
@@ -542,8 +543,115 @@ mod tests {
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version");
-            assert_eq!(version, 12, "failed to upgrade schema v{prior_version}");
+            assert_eq!(version, 13, "failed to upgrade schema v{prior_version}");
         }
+    }
+
+    #[test]
+    fn legacy_default_subtitle_scale_migrates_once_without_overwriting_custom_styles() {
+        let mut connection = Connection::open_in_memory().expect("open database");
+        migrations()
+            .to_version(&mut connection, 12)
+            .expect("prepare v12 database");
+
+        let legacy_default = json!({
+            "customization": {
+                "fontSize": 28,
+                "fontFamily": "'Google Sans', sans-serif",
+                "fontWeight": 400,
+                "textColor": "#ffffff",
+                "textAlign": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "backgroundColor": "#000000",
+                "backgroundOpacity": 70,
+                "backgroundPaddingX": 16,
+                "backgroundPaddingY": 8,
+                "borderWidth": 0,
+                "textShadowEnabled": true,
+                "glowEnabled": false,
+                "gradientEnabled": false,
+                "strokeEnabled": false,
+                "multiShadowEnabled": false,
+                "pulseEnabled": false,
+                "shakeEnabled": false,
+                "position": "bottom",
+                "marginBottom": 80,
+                "marginTop": 80,
+                "marginLeft": 0,
+                "marginRight": 0,
+                "maxWidth": 80,
+                "fadeInDuration": 0.3,
+                "fadeOutDuration": 0.3,
+                "animationType": "fade",
+                "wordWrap": true,
+                "maxLines": 3,
+                "preset": "default"
+            }
+        });
+        let customized = {
+            let mut value = legacy_default.clone();
+            value["customization"]["textColor"] = json!("#ff00ff");
+            value
+        };
+        let current_default = {
+            let mut value = legacy_default.clone();
+            value["customization"]["fontSize"] = json!(48);
+            value
+        };
+
+        let fixtures = [legacy_default, customized, current_default];
+        let project_ids = [Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()];
+        for (index, (project_id, scene)) in project_ids.iter().zip(fixtures).enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO projects(id, title, state_version, created_at_ms, updated_at_ms)
+                     VALUES (?1, ?2, 0, 1, 1)",
+                    params![project_id, format!("project {index}")],
+                )
+                .expect("seed project");
+            connection
+                .execute(
+                    "INSERT INTO project_render_scenes(
+                        project_id, scene_revision, schema_version, scene_json, updated_at_ms
+                     ) VALUES (?1, 1, 1, ?2, 1)",
+                    params![project_id, scene.to_string()],
+                )
+                .expect("seed scene");
+        }
+
+        migrations()
+            .to_latest(&mut connection)
+            .expect("upgrade v12 database");
+
+        {
+            let read_scene = |project_id: Uuid| -> (i64, i64) {
+                connection
+                    .query_row(
+                        "SELECT scene_revision,
+                                json_extract(scene_json, '$.customization.fontSize')
+                         FROM project_render_scenes WHERE project_id = ?1",
+                        [project_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .expect("read migrated scene")
+            };
+            assert_eq!(read_scene(project_ids[0]), (2, 48));
+            assert_eq!(read_scene(project_ids[1]), (1, 28));
+            assert_eq!(read_scene(project_ids[2]), (1, 48));
+        }
+
+        migrations()
+            .to_latest(&mut connection)
+            .expect("repeat latest migration");
+        let revision: i64 = connection
+            .query_row(
+                "SELECT scene_revision FROM project_render_scenes WHERE project_id = ?1",
+                [project_ids[0]],
+                |row| row.get(0),
+            )
+            .expect("read scene after repeated migration");
+        assert_eq!(revision, 2);
     }
 
     #[test]
@@ -1078,7 +1186,7 @@ mod tests {
             assert_eq!(unrelated_after, unrelated_metadata);
         }
 
-        let mut connection = Connection::open(&database_path).expect("reopen v12 database");
+        let mut connection = Connection::open(&database_path).expect("reopen v13 database");
         migrations()
             .to_latest(&mut connection)
             .expect("repeat latest after reopen");
@@ -1088,7 +1196,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         for (media_id, artifact_id) in valid_pairs {
             let claim_count: i64 = connection
                 .query_row(

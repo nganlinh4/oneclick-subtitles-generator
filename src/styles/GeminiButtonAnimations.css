@@ -62,30 +62,13 @@
   z-index: 2;
 }
 
-/* Special styling for different particle types */
-.gemini-mini-icon.pulse {
-  /* No filter, box-shadow, or background to prevent blue square effect */
-  filter: none !important;
-  box-shadow: none !important;
-  background: none !important;
-  transition: opacity 0.2s var(--md-easing-emphasized);
-}
-
 /* Allow SVG filters for star-like glow effects */
-.gemini-mini-icon.pulse svg,
-.gemini-mini-icon.pulse svg path,
 .gemini-mini-icon.dynamic svg,
 .gemini-mini-icon.dynamic svg path {
   /* Allow SVG filters but prevent CSS filters */
   box-shadow: none !important;
   -webkit-filter: none !important;
-  /* Add a subtle animation */
-  animation: star-twinkle 3s infinite alternate ease-in-out;
-}
-
-@keyframes star-twinkle {
-  0% { opacity: 0.9; }
-  100% { opacity: 1; }
+  animation: none;
 }
 
 .gemini-mini-icon.trail {
@@ -184,18 +167,6 @@
   100% { transform: translate(10px, 10px); opacity: 0; }
 }
 
-@keyframes pulse-fade {
-  0% { transform: scale(1); opacity: 0; }
-  50% { transform: scale(1); opacity: 0.3; }
-  100% { transform: scale(1); opacity: 0; }
-}
-
-@keyframes pulse-fade-rotate {
-  0% { transform: rotate(0deg); opacity: 0; }
-  50% { transform: rotate(180deg); opacity: 0.3; }
-  100% { transform: rotate(360deg); opacity: 0; }
-}
-
 @keyframes rotate-fade-cw {
   0% { transform: rotate(0deg); opacity: 0; }
   50% { transform: rotate(180deg); opacity: 0.3; }
@@ -260,15 +231,9 @@
   height: 200%;
   background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
   opacity: 0;
-  animation: pulse-glow 2s var(--md-easing-emphasized) infinite;
+  animation: none;
   pointer-events: none;
   z-index: -1;
-}
-
-@keyframes pulse-glow {
-  0% { opacity: 0; transform: scale(0.8); }
-  50% { opacity: 0.5; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.8); }
 }
 
 /* All processing animations now handled by dynamic particle system */
@@ -294,19 +259,13 @@
 .lets-go-btn:hover .gemini-mini-icon svg {
   transform: scale(1.2);
   transition: transform 0.3s ease-out;
-  animation: hover-star-twinkle 1.5s infinite alternate ease-in-out !important;
+  animation: none !important;
 }
 
 /* Keep generate button stars small but allow XS/SM variations via size classes */
 .generate-btn .gemini-mini-icon.size-xs { width: 8px !important; height: 8px !important; }
 .generate-btn .gemini-mini-icon.size-sm { width: 12px !important; height: 12px !important; }
 .generate-btn:hover .gemini-mini-icon svg { transform: none !important; }
-
-@keyframes hover-star-twinkle {
-  0% { opacity: 0.9; }
-  50% { opacity: 1; }
-  100% { opacity: 0.9; }
-}
 
 /* Cursor-reactive animations - removed in favor of physics-based interactions */
 /* This is now handled by the JavaScript physics engine */

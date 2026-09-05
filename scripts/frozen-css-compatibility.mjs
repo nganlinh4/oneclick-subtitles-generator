@@ -3,9 +3,9 @@ import { isAbsolute, relative, resolve } from 'node:path';
 
 export const FROZEN_INDEX_CSS_PATH = 'src/styles/index.css';
 export const FROZEN_INDEX_CSS_SOURCE_SHA256 =
-  '6a44224dbe1b93be272a1369a55fffe2faab833f711a3a9c2f02a5abb3e31767';
+  '9547d12033b9b88c1c51b0175a92bf618cd3443f756d23bf3deed1fbbb15249f';
 export const FROZEN_INDEX_CSS_TRANSFORMED_SHA256 =
-  '79bc935010d7bf61b197898cc4b93c219c536cdd7664e5fd668f3abe0dbea28c';
+  '487bd917f9793ae3d44749fbd6fe34bc26685572dbfaf30518cc90014d94ea0d';
 export const FROZEN_EARLY_IMPORT = Object.freeze({
   line: 2,
   statement:

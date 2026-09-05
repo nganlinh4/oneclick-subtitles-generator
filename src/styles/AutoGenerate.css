@@ -3,7 +3,7 @@
   /* Simple animated gradient base */
   background: linear-gradient(90deg, #2979FF, #F50057, #7B1FA2, #2979FF);
   background-size: 200% 100%;
-  animation: gradient-shift 15s ease infinite, subtle-pulse-glow 4s ease-in-out infinite;
+  animation: gradient-shift 15s ease infinite;
   color: #FFFFFF;
   border: none;
   position: relative;
@@ -55,36 +55,8 @@
   /* Processing state - medium speed animation */
   background: linear-gradient(90deg, #2979FF, #F50057, #7B1FA2, #2979FF);
   background-size: 200% 100%;
-  animation: gradient-shift 8s ease infinite, auto-processing 1s ease-in-out infinite;
+  animation: gradient-shift 8s ease infinite;
   color: #FFFFFF;
-}
-
-/* Subtle pulse glow to match other button styling */
-@keyframes subtle-pulse-glow {
-  0%, 100% {
-    box-shadow: var(--md-elevation-level2);
-  }
-  50% {
-    box-shadow: var(--md-elevation-level3);
-  }
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5);
-  }
-}
-
-@keyframes auto-processing {
-  0%, 100% {
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 1;
-  }
 }
 
 /* Semi-automatic button adjustments - ensure consistency */
@@ -195,7 +167,7 @@
   /* Clean gradient for dark mode */
   background: linear-gradient(90deg, #82B1FF, #FF80AB, #AB47BC, #82B1FF);
   background-size: 200% 100%;
-  animation: gradient-shift 15s ease infinite, subtle-pulse-glow 4s ease-in-out infinite;
+  animation: gradient-shift 15s ease infinite;
   color: #1A1A1A;
   position: relative;
   overflow: hidden;

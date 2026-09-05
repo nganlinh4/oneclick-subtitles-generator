@@ -2,11 +2,14 @@ import { useEffect } from 'react';
 import { initGeminiButtonEffects, resetAllGeminiButtonEffects, disableGeminiButtonEffects } from '../../utils/geminiEffects';
 import initTabPillAnimation from '../../utils/tabPillAnimation';
 import { getThemeWithFallback } from '../../utils/systemDetection';
+import { useModalScrollLock } from './useModalScrollLock';
 
 /**
  * Hook for managing application side effects
  */
 export const useAppEffects = (props) => {
+  useModalScrollLock();
+
   const {
     setSegmentsStatus,
     setVideoSegments,

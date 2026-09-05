@@ -312,9 +312,8 @@ export const createParticles = (buttonElement, container, limit) => {
 
   // Create a unique set of particles for this button
   const particleTypes = [
-    { type: 'normal', chance: 0.6 },
-    { type: 'trail', chance: 0.2 },
-    { type: 'pulse', chance: 0.2 }
+    { type: 'normal', chance: 0.75 },
+    { type: 'trail', chance: 0.25 },
   ];
 
   // Pre-calculate particle sizes for proper spacing
