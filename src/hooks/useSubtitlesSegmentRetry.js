@@ -588,6 +588,17 @@ export const useSubtitlesSegmentRetry = ({
             let revision = null;
             let committed = false;
             try {
+                // Freeze request controls before preparation/backoff. A settings edit
+                // must not change the media modality or model halfway through a retry.
+                const requestOptions = Object.freeze({
+                    fps: getVideoProcessingFps(),
+                    audioOnly: localStorage.getItem('video_processing_audio_only') === 'true',
+                    mediaResolution: getMediaResolution(),
+                    model: normalizeMediaModelId(
+                        localStorage.getItem('gemini_model'),
+                        DEFAULT_TRANSCRIPTION_MODEL_ID
+                    ),
+                });
                 context = await captureSubtitleOperationContext({
                     runId: record.runId,
                     segment,
@@ -644,13 +655,7 @@ export const useSubtitlesSegmentRetry = ({
                             controller,
                             sourceFile,
                             options: {
-                                fps: getVideoProcessingFps(),
-                                audioOnly: localStorage.getItem('video_processing_audio_only') === 'true',
-                                mediaResolution: getMediaResolution(),
-                                model: normalizeMediaModelId(
-                                    localStorage.getItem('gemini_model'),
-                                    DEFAULT_TRANSCRIPTION_MODEL_ID
-                                ),
+                                ...requestOptions,
                                 userProvidedSubtitles: null,
                                 forceInline: usePrimaryFilesApi ? false : !isLargeClip,
                                 noOffsets: usePrimaryFilesApi ? false : isLargeClip,

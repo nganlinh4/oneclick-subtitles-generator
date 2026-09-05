@@ -72,10 +72,7 @@ const VideoProcessingModalGeminiPanel = ({
                     </label>
                     <HelpIcon title={t('processing.audioOnlyHelp', 'Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.')} />
                 </div>
-            </div>
-            {/* Normal (Gemini) UI */}
-            {/* Frame Rate and Media Resolution Combined - Disabled for audio files */}
-            <div className="option-group">
+                {/* Audio-only belongs to the existing media controls, not another grid row. */}
                 <div className="combined-options-row">
                     {/* Frame Rate Slider */}
                     <div className="combined-option-half">
@@ -84,7 +81,7 @@ const VideoProcessingModalGeminiPanel = ({
                                 {t('processing.frameRate', 'Frame Rate')}
                                 <span className="label-subtitle">({getFpsInterval(fps, t)})</span>
                             </label>
-                            {videoFile?.type?.startsWith('audio/') &&
+                            {audioInput &&
                                 <HelpIcon title={t('processing.audioFpsDisabled', 'FPS settings are not applicable for audio files')} />}
                         </div>
                         <div>
@@ -111,9 +108,9 @@ const VideoProcessingModalGeminiPanel = ({
                     <div className="combined-option-half">
                         <div className="label-with-help">
                             <label>{t('processing.mediaResolution', 'Media Resolution')}</label>
-                            <HelpIcon title={videoFile?.type?.startsWith('audio/')
+                            <HelpIcon title={audioInput
                                 ? t('processing.audioResolutionDisabled', 'Resolution settings are not applicable for audio files')
-                                : t('processing.mediaResolutionHelp', "64 or 256 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")
+                                : t('processing.mediaResolutionHelp', "66 or 258 tokens cannot be mapped to an exact resolution; this reflects Gemini's proprietary video information extraction method.")
                             } />
                         </div>
                         <CustomDropdown

@@ -26,9 +26,17 @@ describe('real UI media transcription benchmark', () => {
     await clickControl('[data-transcription-method="new"]');
     await clickControl('#generation-model');
     await clickControl(`[role="option"][data-value="${config.model}"]`);
+    await browser.waitUntil(async () =>
+      await $('#generation-model').getAttribute('data-value') === config.model
+      && await $('#generation-model').getAttribute('aria-expanded') === 'false',
+    { timeout: 5000, interval: 50, timeoutMsg: 'Model selection did not commit after the menu closed' });
     assert.equal(await $('#generation-model').getAttribute('data-value'), config.model);
     await clickControl('#generation-prompt-preset');
     await clickControl('[role="option"][data-value="general"]');
+    await browser.waitUntil(async () =>
+      await $('#generation-prompt-preset').getAttribute('data-value') === 'general'
+      && await $('#generation-prompt-preset').getAttribute('aria-expanded') === 'false',
+    { timeout: 5000, interval: 50, timeoutMsg: 'Prompt selection did not commit after the menu closed' });
     const audioOnly = config.mode === 'audio';
     const selected = () => browser.execute(() => document.querySelector('#generation-audio-only').selected);
     if (await selected() !== audioOnly) await clickControl('#generation-audio-only');

@@ -687,6 +687,13 @@ test('Stop cancels a cached retry backoff without starting another native attemp
 });
 
 test('cached retry checkpoints first, commits exactly once, and emits success only after its receipt', async () => {
+  localStorage.setItem('video_processing_audio_only', 'true');
+  localStorage.setItem('gemini_model', 'gemini-3.1-flash-lite');
+  checkpointBeforeUpdate.mockImplementation(async () => {
+    // A settings edit while preparation is suspended must not rewrite this request.
+    localStorage.setItem('video_processing_audio_only', 'false');
+    localStorage.setItem('gemini_model', 'gemini-3.8-flash');
+  });
   processGeminiSegment.mockResolvedValue([{ start: 5, end: 7, text: 'replacement' }]);
   let releaseSave;
   commitDurableSubtitleSegmentCheckpoint.mockImplementation(({ context, replacement, validateOwnership }) => (
@@ -718,6 +725,10 @@ test('cached retry checkpoints first, commits exactly once, and emits success on
   await waitFor(() => expect(commitDurableSubtitleSegmentCheckpoint).toHaveBeenCalledTimes(1));
   expect(checkpointBeforeUpdate).toHaveBeenCalledTimes(1);
   expect(checkpointBeforeUpdate).toHaveBeenCalledBefore(processGeminiSegment);
+  expect(processGeminiSegment.mock.calls[0][2]).toMatchObject({
+    audioOnly: true,
+    model: 'gemini-3.1-flash-lite',
+  });
   expect(completions).toEqual([]);
 
   await act(async () => releaseSave());
