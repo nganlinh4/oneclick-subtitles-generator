@@ -1,89 +1,29 @@
 import { formatSecondsToTimecode } from '../timecode';
 
-/**
- * Convert time string in format MMmSSsNNNms or HH:MM:SS.mmm to seconds
- * @param {string} timeString - Time string in format MMmSSsNNNms or HH:MM:SS.mmm
- * @returns {number} - Time in seconds
- */
-export const convertTimeStringToSeconds = (timeString) => {
-
-
-    // Handle empty or invalid time strings
-    if (!timeString || typeof timeString !== 'string') {
-        console.warn('Empty or invalid time string:', timeString);
-        return 0;
+/** Parse explicit units only; invalid input must not silently move to frame zero. */
+export const convertTimeStringToSeconds = (value) => {
+  if (typeof value !== 'string') throw new Error('Subtitle timestamp must be a string.');
+  const text = value.trim();
+  const units = text.match(/^(\d+)m(\d{1,2})s(?:(\d{1,3})ms)?$/);
+  if (units) {
+    const [, minutes, seconds, millis = '0'] = units;
+    if (Number(seconds) >= 60) throw new Error('Subtitle seconds are outside their minute.');
+    const result = Number(minutes) * 60 + Number(seconds) + Number(millis) / 1000;
+    if (!Number.isFinite(result)) throw new Error('Subtitle timestamp is not finite.');
+    return result;
+  }
+  const colon = text.match(/^(?:(\d+):)?(\d+):(\d{1,2})(?:[.,](\d{1,9}))?$/);
+  if (colon) {
+    const [, hours, minutes, seconds, fraction = '0'] = colon;
+    if (Number(seconds) >= 60 || (hours !== undefined && Number(minutes) >= 60)) {
+      throw new Error('Subtitle timestamp has an out-of-range component.');
     }
-
-    // Handle 00m00s000ms as a special case (start of video)
-    if (timeString === '00m00s000ms') {
-        return 0;
-    }
-
-    // First, try to match the exact format MMmSSsNNNms (e.g., 00m30s500ms)
-    const exactFormatMatch = timeString.match(/^(\d+)m(\d+)s(\d+)ms$/);
-    if (exactFormatMatch && exactFormatMatch[1] !== undefined && exactFormatMatch[2] !== undefined && exactFormatMatch[3] !== undefined) {
-        const minutes = parseInt(exactFormatMatch[1]);
-        const seconds = parseInt(exactFormatMatch[2]);
-        const milliseconds = parseInt(exactFormatMatch[3]) / 1000;
-
-        const result = minutes * 60 + seconds + milliseconds;
-
-        return result;
-    }
-
-    // Try a more flexible pattern if the exact format doesn't match
-    const flexibleFormatMatch = timeString.match(/(\d+)m(\d+)s(\d+)ms/);
-    if (flexibleFormatMatch) {
-        const minutes = parseInt(flexibleFormatMatch[1]);
-        const seconds = parseInt(flexibleFormatMatch[2]);
-        const milliseconds = parseInt(flexibleFormatMatch[3]) / 1000;
-
-        const result = minutes * 60 + seconds + milliseconds;
-
-        return result;
-    }
-
-    // Try an even more flexible pattern that extracts any numbers
-    const looseFormatMatch = timeString.match(/(\d+)[^\d]+(\d+)[^\d]+(\d+)/);
-    if (looseFormatMatch) {
-        // Assume the format is minutes, seconds, milliseconds in that order
-        const minutes = parseInt(looseFormatMatch[1]);
-        const seconds = parseInt(looseFormatMatch[2]);
-        const milliseconds = parseInt(looseFormatMatch[3]) / 1000;
-
-        const result = minutes * 60 + seconds + milliseconds;
-
-        return result;
-    }
-
-    // Try to match HH:MM:SS.mmm format
-    const timeMatch = timeString.match(/(\d+):(\d+):(\d+)(?:\.(\d+))?/);
-    if (timeMatch) {
-        const hours = parseInt(timeMatch[1]);
-        const minutes = parseInt(timeMatch[2]);
-        const seconds = parseInt(timeMatch[3]);
-        const milliseconds = timeMatch[4] ? parseInt(timeMatch[4]) / 1000 : 0;
-
-        return hours * 3600 + minutes * 60 + seconds + milliseconds;
-    }
-
-    // Try to match MM:SS.mmm format
-    const shortTimeMatch = timeString.match(/(\d+):(\d+)(?:\.(\d+))?/);
-    if (shortTimeMatch) {
-        const minutes = parseInt(shortTimeMatch[1]);
-        const seconds = parseInt(shortTimeMatch[2]);
-        const milliseconds = shortTimeMatch[3] ? parseInt(shortTimeMatch[3]) / 1000 : 0;
-
-        return minutes * 60 + seconds + milliseconds;
-    }
-
-    console.warn('Could not parse time string:', timeString);
-    return 0;
+    const result = Number(hours ?? 0) * 3600 + Number(minutes) * 60
+      + Number(seconds) + Number('0.' + fraction);
+    if (!Number.isFinite(result)) throw new Error('Subtitle timestamp is not finite.');
+    return result;
+  }
+  throw new Error('Subtitle timestamp has no supported explicit format.');
 };
 
-/**
- * Format seconds to SRT time format (HH:MM:SS,mmm)
- * @param {number} seconds - Time in seconds
- * @returns {string} - Formatted time string
- */
 export const formatSecondsToSRTTime = (seconds) => formatSecondsToTimecode(seconds, ',');
