@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "07c519debe969448dc113317d9b9fd5018afa1dc",
+  "baselineRevision": "c0be9e13934246cc62346d8d6f981c85570a3859",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -251,7 +251,7 @@
       ]
     },
     "src/i18n/locales/en/backgroundGenerator.json": {
-      "hash": "f9670157e9a8ca90c260abaaa0b15f88bccd10adf8c9333f4131f19a24534000",
+      "hash": "8888f71956c7e7c6e767d50fc9cfd9f940d30245c2055b6b7ad3b7754e2ac9a6",
       "keys": [
         "albumArt",
         "clearImages",
@@ -265,12 +265,16 @@
         "error.cors",
         "error.forbidden",
         "error.generic",
+        "error.modelUnavailable",
         "error.network",
         "error.noImageReturned",
         "error.noPromptReturned",
         "error.payloadTooLarge",
+        "error.projectChanged",
         "error.quotaExceeded",
         "error.rateLimited",
+        "error.referenceImage",
+        "error.requestRejected",
         "error.serverError",
         "error.unauthorized",
         "error.unsupportedMediaType",
@@ -1499,7 +1503,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "2f3c7d938e7f0072aa0adc00c8f78f5cacd325cc08fc21195421770662226520",
+      "hash": "20dcfa59b4110b2b0b03af2a1f85f7bd8687efa4b5c7152e4889e5ec3bd4edf1",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1545,6 +1549,7 @@
         "clearCache",
         "clearCacheCategory",
         "clearingCache",
+        "clearSavedCredential",
         "clickAddUsers",
         "clickSave",
         "clientId",
@@ -1563,6 +1568,8 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentials.clearFailed",
+        "credentials.confirmClear",
         "currentVersion",
         "customGeminiModels.description",
         "customGeminiModels.title",
@@ -2528,7 +2535,7 @@
       ]
     },
     "src/i18n/locales/ko/backgroundGenerator.json": {
-      "hash": "728ebaec7d8900603e05fda16f471d8ced9f1f731db5618e499b10e6b2d6714b",
+      "hash": "12a3f1f95079b903b1ac39378f8614bc4ae86626f3ceebc52021ac46be01b346",
       "keys": [
         "albumArt",
         "clearImages",
@@ -2542,12 +2549,16 @@
         "error.cors",
         "error.forbidden",
         "error.generic",
+        "error.modelUnavailable",
         "error.network",
         "error.noImageReturned",
         "error.noPromptReturned",
         "error.payloadTooLarge",
+        "error.projectChanged",
         "error.quotaExceeded",
         "error.rateLimited",
+        "error.referenceImage",
+        "error.requestRejected",
         "error.serverError",
         "error.unauthorized",
         "error.unsupportedMediaType",
@@ -3940,7 +3951,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "52cf3e324d5d7ff6053acb07747fdc85d70992c9a927cd3c261e4d66a74e745e",
+      "hash": "60079467fe704a55e2a35b8aaca0ccd325d3fdce64120c772f4618452d98feb7",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -3992,6 +4003,7 @@
         "clearNarrationReference",
         "clearOutput",
         "clearRules",
+        "clearSavedCredential",
         "clearSubtitles",
         "clearUploads",
         "clearUserSubtitles",
@@ -4021,6 +4033,8 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentials.clearFailed",
+        "credentials.confirmClear",
         "currentVersion",
         "customGeminiModels.description",
         "customGeminiModels.title",
@@ -5105,7 +5119,7 @@
       ]
     },
     "src/i18n/locales/vi/backgroundGenerator.json": {
-      "hash": "dd53bb4f825a609e818217fae454a569be3f70ebb141d5f8120ef93f3c9dbc60",
+      "hash": "fefb3effb4e57a6bf116d5978cc22c23831c4302de441814f8859772962c97f6",
       "keys": [
         "albumArt",
         "clearImages",
@@ -5119,12 +5133,16 @@
         "error.cors",
         "error.forbidden",
         "error.generic",
+        "error.modelUnavailable",
         "error.network",
         "error.noImageReturned",
         "error.noPromptReturned",
         "error.payloadTooLarge",
+        "error.projectChanged",
         "error.quotaExceeded",
         "error.rateLimited",
+        "error.referenceImage",
+        "error.requestRejected",
         "error.serverError",
         "error.unauthorized",
         "error.unsupportedMediaType",
@@ -6552,7 +6570,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "42a4e6ddaac200be34a84edbc005a82e9cbdda4ab195c69b02832255bf7d1289",
+      "hash": "9c008a12a35e42aab6847e317d36231c60cab89bd9d2431b839addad56abfbd9",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6604,6 +6622,7 @@
         "clearNarrationReference",
         "clearOutput",
         "clearRules",
+        "clearSavedCredential",
         "clearSubtitles",
         "clearUploads",
         "clearUserSubtitles",
@@ -6633,6 +6652,8 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentials.clearFailed",
+        "credentials.confirmClear",
         "currentVersion",
         "customGeminiModels.description",
         "customGeminiModels.title",

@@ -1,4 +1,4 @@
-/* global $, browser, describe, document, it */
+/* global $, browser, describe, document, it, window, PerformanceObserver */
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 import { scoreSubtitleTiming } from '../support/subtitleTimingQuality.js';
+import { actuateNativeRange } from '../support/nativeRange.js';
 
 const workflow = 'gemini-media-benchmark';
 describe('real UI media transcription benchmark', () => {
@@ -32,6 +33,8 @@ describe('real UI media transcription benchmark', () => {
     const selected = () => browser.execute(() => document.querySelector('#generation-audio-only').selected);
     if (await selected() !== audioOnly) await clickControl('#generation-audio-only');
     assert.equal(await selected(), audioOnly);
+    await actuateNativeRange({ driver: browser, selector: '#max-duration-slider',
+      value: config.requestMinutes, label: 'Maximum duration of each Gemini request' });
     await captureWorkflowStep({ workflow, step: '01-generation-controls',
       description: 'Actual generation modal, before any provider request.',
       details: { fixture: config.fixture, model: config.model, mode: config.mode } });
@@ -40,10 +43,25 @@ describe('real UI media transcription benchmark', () => {
     const observations = [];
     let partialCaptured = false;
     let finalState;
+    await browser.execute(() => {
+      const state = { supported: typeof PerformanceObserver !== 'undefined', count: 0, totalMs: 0, maxMs: 0 };
+      window.__OSG_MEDIA_BENCH_PERF__ = state;
+      if (state.supported) {
+        const observer = new PerformanceObserver(list => {
+          for (const entry of list.getEntries()) {
+            state.count++; state.totalMs += entry.duration; state.maxMs = Math.max(state.maxMs, entry.duration);
+          }
+        });
+        try { observer.observe({ type: 'longtask' }); state.observer = observer; }
+        catch { state.supported = false; }
+      }
+    });
     await clickControl('[data-osg-action="process-subtitles"]');
     await browser.waitUntil(async () => {
       const state = durableState(root);
       const jobs = state.jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe');
+      assert.ok(jobs.length <= Math.ceil(config.durationSeconds / (config.requestMinutes * 60)),
+        'The modal request limit produced unexpected duplicate jobs');
       const surface = await browser.execute(() => ({
         cues: document.querySelectorAll('.lyric-text').length,
         processing: document.querySelector('[data-osg-action="generate-subtitles"]')?.classList.contains('processing') === true,
@@ -66,6 +84,12 @@ describe('real UI media transcription benchmark', () => {
         && !surface.processing && state.counts.cues > 0;
     }, { timeout: 20 * 60_000, interval: 1000, timeoutMsg: 'Real media generation did not settle successfully' });
     const report = { fixture: config.fixture, model: config.model, mode: config.mode,
+      requestMinutes: config.requestMinutes,
+      mainThread: await browser.execute(() => {
+        const { observer, ...state } = window.__OSG_MEDIA_BENCH_PERF__;
+        observer?.disconnect();
+        return state;
+      }),
       sourceSha256: config.sourceSha256, elapsedMs: Date.now() - started,
       preparedMedia: finalState.media.map(({ kind, extension, size_bytes: sizeBytes }) => ({ kind, extension, sizeBytes })),
       partialCuesObserved: partialCaptured, observations, cues: finalState.cues,

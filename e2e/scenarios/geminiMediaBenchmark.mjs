@@ -12,7 +12,9 @@ import { WORKFLOW_EVIDENCE_ROOT } from '../support/workflowEvidence.js';
 const fixtureRoot = resolve('target/subtitle-benchmark/real-video');
 const manifest = JSON.parse(readFileSync(join(fixtureRoot, 'manifest.json'), 'utf8'));
 const catalog = JSON.parse(readFileSync('src/config/geminiModelCatalog.json', 'utf8'));
-const [caseFilter = 'all', modelFilter = 'all', modeFilter = 'all'] = process.argv.slice(2);
+const [caseFilter = 'all', modelFilter = 'all', modeFilter = 'all', minutes = '10'] = process.argv.slice(2);
+const requestMinutes = Number(minutes);
+assert.ok(Number.isInteger(requestMinutes) && requestMinutes >= 1 && requestMinutes <= 30);
 const fixtures = manifest.cases.filter(item => caseFilter === 'all' || item.id === caseFilter);
 const models = catalog.models.filter(item => modelFilter === 'all' || item.id === modelFilter);
 const modes = ['video', 'audio'].filter(mode => modeFilter === 'all' || mode === modeFilter);
@@ -40,7 +42,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
           const stagedMediaSelection = join(root, 'input', fixture.file);
           copyFileSync(source, stagedMediaSelection);
           writeFileSync(join(root, 'input', 'benchmark.json'), JSON.stringify({
-            fixture: fixture.id, model: model.id, mode, reference,
+            fixture: fixture.id, model: model.id, mode, reference, requestMinutes,
             durationSeconds: fixture.durationSeconds, sourceSha256: fixture.sha256,
           }));
           return runScenarioProcesses({ label, root, phases: ['seed'], spec,
