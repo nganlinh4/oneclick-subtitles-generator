@@ -52,6 +52,9 @@ describe('real UI media transcription benchmark', () => {
     let partialCaptured = false;
     let finalState;
     let emptyTerminalSince = null;
+    let lastMilestone = 0;
+    let preparationCaptured = false;
+    process.stdout.write('[media-benchmark] controls-ready\n');
     await browser.execute(() => {
       const state = { supported: typeof PerformanceObserver !== 'undefined', count: 0, totalMs: 0, maxMs: 0 };
       window.__OSG_MEDIA_BENCH_PERF__ = state;
@@ -66,6 +69,7 @@ describe('real UI media transcription benchmark', () => {
       }
     });
     await clickControl('[data-osg-action="process-subtitles"]');
+    process.stdout.write('[media-benchmark] generation-clicked\n');
     await browser.waitUntil(async () => {
       const state = durableState(root);
       const jobs = state.jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe');
@@ -79,6 +83,17 @@ describe('real UI media transcription benchmark', () => {
       const sample = { elapsedMs: Date.now() - started, ...surface,
         durableCues: state.counts.cues, jobs: jobs.map(job => job.state) };
       observations.push(sample);
+      if (sample.elapsedMs - lastMilestone >= 15_000) {
+        lastMilestone = sample.elapsedMs;
+        process.stdout.write(`[media-benchmark] ${JSON.stringify(sample)}\n`);
+        const observationPath = join(root, 'benchmark-observations.json');
+        writeFileSync(observationPath, JSON.stringify(observations, null, 2));
+      }
+      if (!preparationCaptured && !jobs.length && sample.elapsedMs >= 30_000) {
+        preparationCaptured = true;
+        await captureWorkflowStep({ workflow, step: '02-preparation-wait',
+          description: 'Actual application while preparation has not admitted a provider job.', details: sample });
+      }
       if (observations.length > 1200) throw new Error('Benchmark observation bound exceeded');
       if (surface.cues && surface.processing && !partialCaptured) {
         partialCaptured = true;
