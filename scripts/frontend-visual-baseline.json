@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "693e71aad4a06a0221fceaf71b7b0986f74beb48",
+  "baselineRevision": "86a5da5a113a6dafa0f51e5ac5ea9d4f26baa97a",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -64,11 +64,11 @@
     "src/components/common/LoadingIndicator.css": "d98e5054e73f09a7421af975192829a102aa108ed0888bb7538da27faf50e3b8",
     "src/components/common/ToastPanel.css": "35f570d67f0c145881dd96063282bb24c0a91cbbcbc5c5c133379b500469ab54",
     "src/components/engines/engines.css": "aab31a7dae93dbfb8058cae1c1833ee96c6c7628f5bbd579627b3c4b643d8d5f",
-    "src/styles/AddSubtitlesButton.css": "c13f5f1e1972dee08c559cc9e523f92c5466ce07120700e5aa1f7a4e14fcd78a",
+    "src/styles/AddSubtitlesButton.css": "3518de80f716ced7052cb9fa4466c6ba37b66e3fca9b5f83cafb4d046ba5c79e",
     "src/styles/album-art-fix.css": "906cd4878a311edca2a680c1fc27fc2ca5d19834dadab62ee77301faca184530",
     "src/styles/App.css": "19d14f96764309f43a7b8294bbef78a376c287e63b16401ec57031baa883773c",
     "src/styles/audio-player-dark-theme.css": "a2f4911c14fb2676c71c272e1140ada3fecbfa038cb8a012ff447e6272561641",
-    "src/styles/AutoGenerate.css": "5e8c8d2e8ef06959fbfc6957ce4452c5f9a992216ec99c11f8a9efa1bf9cafe4",
+    "src/styles/AutoGenerate.css": "54f1f0557431f1d8cc3ecec12260cf416ca20cc82276fa4d96f6fe97fd036543",
     "src/styles/background-generator/album-art.css": "ee5a18f9f6d1b3bcfc0e3b4fb58deaad05d14eec1f07ca329ba2d800720e7083",
     "src/styles/background-generator/animations.css": "2b048b29d587d7aca64414a47727215e6f37ce4846e65fbd98a9a877f60ad557",
     "src/styles/background-generator/buttons.css": "eddfc333d76612333b365457829e4636c83dd57430c8369e562fc1bdc33638e9",
@@ -108,10 +108,10 @@
     "src/styles/FileUploadInput.css": "d42b41de661b3a58bd7e8e4d66788e817f351fafa6420e474d52275504092e4b",
     "src/styles/floating-scrollbar.css": "8d712dd7a6ba9d0a6bc351f74fdab97ed86d5905d097c7fdea11c8f428b4b9dc",
     "src/styles/font-overrides.css": "64a9279148c8a5699e89a275ef962820723609981ae524f502f01fe2c4347e3f",
-    "src/styles/GeminiButtonAnimations.css": "a391a033b0d94460826484c3aac50cf3d53de9ef47546bed98bcd43947947f02",
+    "src/styles/GeminiButtonAnimations.css": "e9d1a790ff7e2de3cdc4546e69ebc2a6242ecc88491180b58de22624681e30a3",
     "src/styles/GeminiHeaderAnimation.css": "a12aa6db9e1d99067b3daa9636302c6d06dc873ccd1daf12d82e29e8437457d7",
     "src/styles/Header.css": "2460723353cd92d4dc4f12a5658c7218844155d7c3d613bb20df6d329f8e9ab1",
-    "src/styles/index.css": "6a44224dbe1b93be272a1369a55fffe2faab833f711a3a9c2f02a5abb3e31767",
+    "src/styles/index.css": "9547d12033b9b88c1c51b0175a92bf618cd3443f756d23bf3deed1fbbb15249f",
     "src/styles/InputMethods.css": "1de24ed124fb9c34e80a2e93e78cf103793a00ecb4a7ee1499cda8e5ecd88370",
     "src/styles/InputMethodsBase.css": "6d9bf67a81f3bc943331a90facfe69c677ac45c660efcb3c43b7504004f27ec9",
     "src/styles/LanguageSelector.css": "5607a96e593d2061bee65af3c4abc4d9ae782b275c934a975811ee5eaf947c3b",
@@ -194,7 +194,7 @@
     "src/styles/settings/video-processing-redesign.css": "ae4da8c87999934ba3b47793d964c540909b4d0e30a1ccf91637c4697b894a3b",
     "src/styles/settings/video-processing.css": "8c24b2a4de4f728a7ac4f7146fc59b4f56beb3600ddd54969e93cac5b2f9ecbe",
     "src/styles/SettingsModal.css": "1b607d87b36a78ebe52b234298db0bf1a7e7d79b926e291b0553b94460e044fc",
-    "src/styles/SrtUploadButton.css": "d2d243a978799fc939cba292b485371ff8b527970bd9f0e5aa0757b477615c09",
+    "src/styles/SrtUploadButton.css": "17553cfed2250db2294a26931832be6183a80bd50cd99ffd2c620f892ff6bea0",
     "src/styles/subtitle-customization/FontDropdown.css": "6f910680287c0c299d3365be26af64a0668da19fa41a315b9e797373ad4ce247",
     "src/styles/subtitle-customization/FontSelectionModal.css": "71c7e69040c134f85112b395a832d1623698b3c7946e964483e3221f41143ccf",
     "src/styles/subtitle-settings/base.css": "2fa2246c17f1dca53c7bc788ef3bbfd594a9370a4111da5cac9b3d0c82ffa7bc",
@@ -7767,10 +7767,10 @@
       ]
     },
     "src/components/background/ImageGenerationSection.js": {
-      "hash": "577861799c92cc7a3bf10db6fb66abf5ebd71f5e2d805551a5bd07553e62943e",
+      "hash": "441fbe34eee0ecd92c5596d053213fc0e2b8683e36cec420d2d614d87a6cb9b3",
       "rootCount": 1,
       "roots": [
-        "b9826385a7cf07eb8ff1312d1f0a7aba8fd1ae753db1e6c2e0acf0a3498fdacc"
+        "146b42ba6556a98ac64142d41e7fdb388ffe500b2272252610cd0315b836b074"
       ]
     },
     "src/components/background/PromptAndAlbumArtSection.js": {
@@ -7790,10 +7790,10 @@
       ]
     },
     "src/components/BackgroundMusicSection.jsx": {
-      "hash": "a472383bd9e77363ec6ce4256bf8aa44234448e2a98a4c1c4d9d9ddf8a9502a8",
+      "hash": "2a09d6c460c99e717ab31de1964606b131780b319b1fa14d82e7c786e52464fc",
       "rootCount": 1,
       "roots": [
-        "c15854023b9c6242c82bf78462973328f96ae71099aae58ccd618fc43ddb8450"
+        "e46c551e9f19bb391ad705c45d0b21bf9d6f8dac8f3e193ee4ae3e3b5136605f"
       ]
     },
     "src/components/CanvasSettingsPill.js": {
@@ -8713,10 +8713,10 @@
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "c434dfcab088ec262cb309d6fc24e83407f6256e5f1dfc72a1f4acaba374210d",
+      "hash": "5bd3f1b7ba4b81fbaee48a94f56813bad4dcd1e494e13d7f152ddc5ff3d3979e",
       "rootCount": 1,
       "roots": [
-        "fdd86ec3aefb5c46f8b25ae5949b8a0a2396c7b27123fb4b1a0fd438d74f3d36"
+        "03399d8cc4bb1ff1202807d65efd124202f4259834ba7445e3bcc6ea46ff9efe"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {
@@ -8762,10 +8762,10 @@
       ]
     },
     "src/components/settings/tabs/YoutubeAuthSection.js": {
-      "hash": "4f5ebb3333c65ff371507a2876679f5034388f519e8c8decd0996cf9d167b257",
+      "hash": "455aa4da354c39042ebeb612a409251b07172275acf0d00c6c2e0d64b1cdcad7",
       "rootCount": 1,
       "roots": [
-        "2edfb43b1373fd50992b25021c1064b620713d2019313b5ebf0208379b04c365"
+        "95eb1bc892b00ea536a036bb00a9dfcd52e5d7d984d702977c6723deb9131673"
       ]
     },
     "src/components/settings/utils/themeUtils.js": {
