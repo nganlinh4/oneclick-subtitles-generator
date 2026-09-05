@@ -17,6 +17,9 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!("sql/0011_project_render_scenes.sql")),
         M::up(include_str!("sql/0012_project_create_receipts.sql")),
         M::up(include_str!("sql/0013_legacy_default_subtitle_scale.sql")),
+        M::up(include_str!(
+            "sql/0014_sparse_legacy_default_subtitle_scale.sql"
+        )),
     ])
 }
 
@@ -504,7 +507,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
         let claim_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM media_artifact_job_claims
@@ -517,8 +520,8 @@ mod tests {
     }
 
     #[test]
-    fn every_prior_schema_version_upgrades_to_v13_idempotently() {
-        for prior_version in 1..=12 {
+    fn every_prior_schema_version_upgrades_to_v14_idempotently() {
+        for prior_version in 1..=13 {
             let database_file = NamedTempFile::new().expect("database file");
             let database_path = database_file.path();
             {
@@ -543,7 +546,7 @@ mod tests {
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version");
-            assert_eq!(version, 13, "failed to upgrade schema v{prior_version}");
+            assert_eq!(version, 14, "failed to upgrade schema v{prior_version}");
         }
     }
 
@@ -599,9 +602,31 @@ mod tests {
             value["customization"]["fontSize"] = json!(48);
             value
         };
+        let sparse_legacy_default = {
+            let mut value = legacy_default.clone();
+            value["customization"]
+                .as_object_mut()
+                .expect("customization object")
+                .remove("backgroundPaddingX");
+            value["customization"]
+                .as_object_mut()
+                .expect("customization object")
+                .remove("backgroundPaddingY");
+            value
+        };
 
-        let fixtures = [legacy_default, customized, current_default];
-        let project_ids = [Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()];
+        let fixtures = [
+            legacy_default,
+            customized,
+            current_default,
+            sparse_legacy_default,
+        ];
+        let project_ids = [
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+        ];
         for (index, (project_id, scene)) in project_ids.iter().zip(fixtures).enumerate() {
             connection
                 .execute(
@@ -639,6 +664,7 @@ mod tests {
             assert_eq!(read_scene(project_ids[0]), (2, 48));
             assert_eq!(read_scene(project_ids[1]), (1, 28));
             assert_eq!(read_scene(project_ids[2]), (1, 48));
+            assert_eq!(read_scene(project_ids[3]), (2, 48));
         }
 
         migrations()
@@ -1186,7 +1212,7 @@ mod tests {
             assert_eq!(unrelated_after, unrelated_metadata);
         }
 
-        let mut connection = Connection::open(&database_path).expect("reopen v13 database");
+        let mut connection = Connection::open(&database_path).expect("reopen v14 database");
         migrations()
             .to_latest(&mut connection)
             .expect("repeat latest after reopen");
@@ -1196,7 +1222,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
         for (media_id, artifact_id) in valid_pairs {
             let claim_count: i64 = connection
                 .query_row(

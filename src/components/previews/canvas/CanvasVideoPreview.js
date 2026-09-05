@@ -1116,6 +1116,11 @@ const CanvasVideoPreview = ({
         inset: 0,
         width: '100%',
         height: '100%',
+        // Fullscreen changes the element box to the monitor's aspect ratio. Stretching the bitmap
+        // to that box distorts both the decoded frame and the subtitle geometry. Keep the authored
+        // composition intact; the black element background owns any unavoidable letterbox area.
+        objectFit: 'contain',
+        backgroundColor: '#000',
         display: 'block',
         pointerEvents: 'none',
         zIndex: 2,

@@ -85,6 +85,22 @@ afterEach(() => {
 });
 
 describe('canvas preview geometry boundary', () => {
+  it('preserves the authored composition aspect ratio when its element box changes', () => {
+    const { container } = render(
+      <CanvasVideoPreview
+        active={false}
+        videoRef={{ current: null }}
+        sourceKey="fixture"
+        customization={defaultCustomization}
+        subtitles={[]}
+        resolution={{ width: 1920, height: 1080 }}
+      />,
+    );
+    const canvas = container.querySelector('canvas');
+    expect(canvas.style.objectFit).toBe('contain');
+    expect(canvas.style.backgroundColor).toBe('rgb(0, 0, 0)');
+  });
+
   it('classifies only recoverable browser resource failures as retryable', () => {
     expect(canvasPreviewFailure(Object.assign(new Error(), {
       code: 'glyphAtlasFaceLoading',
