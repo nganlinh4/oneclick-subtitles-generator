@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "86a5da5a113a6dafa0f51e5ac5ea9d4f26baa97a",
+  "baselineRevision": "a82a509cf881bf6d16f153213506a81c7855c347",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8510,10 +8510,10 @@
       ]
     },
     "src/components/previews/canvas/CanvasVideoPreview.js": {
-      "hash": "6d741298243d1834924eb0a7e861ab9942193be99090d8d342409419c65813f6",
+      "hash": "afa6a75ce14e0020c2535c11479ade41f5a929a72dce49a33a71a7a0fe00684b",
       "rootCount": 1,
       "roots": [
-        "103b0f2fbcf4e79e825bdaffc2033d4a1e486a2ff5aaad5e366f4cd186e58e89"
+        "995a10748d4a53d831a24aa5248f9857fab4bc9f60a47771d9610cc900fb3d67"
       ]
     },
     "src/components/previews/controls/ActionButtons.js": {
