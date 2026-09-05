@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { createRunRoot, removeRunRoot, runRootAuthorization } from '../support/environment.js';
 import { runScenarioAttemptWithEvidence, runScenarioProcesses, withScenarioLeases } from '../support/twoProcessScenario.js';
+import { WORKFLOW_EVIDENCE_ROOT } from '../support/workflowEvidence.js';
 
 // Explicit opt-in command: runs billed customer workflows, never part of the default suite.
 // References stay in the Node test process; they are never supplied to the app or provider.
@@ -16,6 +17,8 @@ const fixtures = manifest.cases.filter(item => caseFilter === 'all' || item.id =
 const models = catalog.models.filter(item => modelFilter === 'all' || item.id === modelFilter);
 const modes = ['video', 'audio'].filter(mode => modeFilter === 'all' || mode === modeFilter);
 assert.ok(fixtures.length && models.length && modes.length, 'Unknown benchmark case, model, or mode');
+const archiveRoot = resolve('target/subtitle-benchmark/ui-runs', new Date().toISOString().replace(/[:.]/g, '-'));
+mkdirSync(archiveRoot, { recursive: true });
 const checked = (name, digest) => {
   assert.equal(name, name.split(/[\\/]/).at(-1), 'Fixture must be a direct child');
   const path = join(fixtureRoot, name);
@@ -44,6 +47,12 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
             stagedMediaSelection, inheritedApplication, managedPaths, publication });
         },
       });
+      // The general harness retains only three recent attempts per workflow. Preserve
+      // every matrix cell here before the next attempt can age it out, including failures.
+      const attemptId = process.env.OSG_E2E_EVIDENCE_ATTEMPT;
+      assert.match(attemptId, /^\d{17}-\d{1,10}-[0-9a-f]{8}$/u);
+      cpSync(join(WORKFLOW_EVIDENCE_ROOT, 'gemini-media-benchmark', 'attempts', attemptId),
+        join(archiveRoot, `${fixture.id}-${model.id}-${mode}`), { recursive: true, errorOnExist: true, force: false });
       if (!succeeded) process.exitCode = 1;
     } finally {
       removeRunRoot(root, authorization);

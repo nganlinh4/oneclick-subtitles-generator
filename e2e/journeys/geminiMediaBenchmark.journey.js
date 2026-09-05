@@ -66,6 +66,7 @@ describe('real UI media transcription benchmark', () => {
     }, { timeout: 20 * 60_000, interval: 1000, timeoutMsg: 'Real media generation did not settle successfully' });
     const report = { fixture: config.fixture, model: config.model, mode: config.mode,
       sourceSha256: config.sourceSha256, elapsedMs: Date.now() - started,
+      preparedMedia: finalState.media.map(({ kind, extension, size_bytes: sizeBytes }) => ({ kind, extension, sizeBytes })),
       partialCuesObserved: partialCaptured, observations, cues: finalState.cues,
       quality: scoreSubtitleTiming(config.reference, finalState.cues) };
     const resultPath = join(root, 'benchmark-result.json');
