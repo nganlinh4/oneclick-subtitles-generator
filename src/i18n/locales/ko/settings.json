@@ -1,4 +1,11 @@
 {
+  "presetGeneralDescription": "원래 언어로 음성을 받아씁니다.",
+  "presetTextDescription": "화면에 표시된 텍스트와 표시 시간을 추출합니다.",
+  "presetLyricsDescription": "대화를 제외하고 노래 가사만 받아씁니다.",
+  "presetVisualDescription": "주요 시각적 행동과 변화를 설명합니다.",
+  "presetTranslationDescription": "음성을 선택한 언어로 번역합니다.",
+  "presetChapterDescription": "챕터 제목과 간단한 요약을 만듭니다.",
+  "presetSpeakerDescription": "일관된 화자 표기로 음성을 받아씁니다.",
   "clearSavedCredential": "저장된 인증 정보 삭제",
   "credentials": {
     "confirmClear": "이 기기에서 저장된 {{label}} 인증 정보를 삭제할까요?",

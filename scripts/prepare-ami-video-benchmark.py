@@ -26,6 +26,13 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def validate_reuse(receipt, expected):
+    """Never relabel an existing clip with provenance from different inputs."""
+    if receipt is None or any(receipt.get(key) != value for key, value in expected.items()):
+        raise ValueError('Existing benchmark clip has missing or changed provenance; '
+                         'use a new output location or explicitly remove the stale clip.')
+
+
 def timecode(seconds):
     millis = round(seconds * 1000)
     minutes, millis = divmod(millis, 60000)
@@ -73,6 +80,9 @@ def reference(meeting, start, end):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    manifest_path = OUTPUT / 'manifest.json'
+    previous = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+    receipts = {case['id']: case for case in previous.get('cases', [])}
     manifest = {'protocol': 'ami-video-v1', 'license': 'CC-BY-4.0',
                 'source': 'https://groups.inf.ed.ac.uk/ami/download/',
                 'annotationArchiveSha256': digest(SOURCE / 'ami_public_manual_1.6.2.zip'),
@@ -84,7 +94,15 @@ def main():
         video = SOURCE / f'{meeting}.{camera}.avi'
         audio = SOURCE / f'{meeting}-{start}-{end}.flac'
         output = OUTPUT / f'{meeting}-{start}-{end}.mp4'
-        if not output.exists():
+        video_hash, audio_hash = digest(video), digest(audio)
+        if output.exists():
+            validate_reuse(receipts.get(meeting), {
+                'id': meeting, 'file': output.name, 'sha256': digest(output),
+                'sourceRange': [start, end], 'camera': camera,
+                'durationSeconds': end - start,
+                'videoSourceSha256': video_hash, 'audioExcerptSha256': audio_hash,
+            })
+        else:
             subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin',
                             '-ss', str(start), '-i', str(video), '-i', str(audio),
                             '-t', str(end - start), '-map', '0:v:0', '-map', '1:a:0',
@@ -101,8 +119,8 @@ def main():
         manifest['cases'].append({'id': meeting, 'file': output.name,
                                   'sha256': digest(output), 'durationSeconds': end - start,
                                   'sourceRange': [start, end], 'camera': camera,
-                                  'videoSourceSha256': digest(video),
-                                  'audioExcerptSha256': digest(audio),
+                                  'videoSourceSha256': video_hash,
+                                  'audioExcerptSha256': audio_hash,
                                   'reference': reference_path.name,
                                   'referenceSha256': digest(reference_path),
                                   'annotations': annotation_hashes,

@@ -2,6 +2,7 @@ import { projectClipSubtitles } from './segmentTimestamps';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { bindGeminiTranscriptionDeliveries } from '../../services/gemini/transcriptionDelivery';
+import { shouldSplitGeneratedSubtitles } from '../../services/gemini/promptManagement';
 
 /**
  * Legacy processing utilities for video/audio processing
@@ -175,7 +176,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
        // Create realtime processor with auto-split options from the modal
        // Convert to boolean properly - the value comes as a boolean from the modal
        const processor = createRealtimeProcessor({
-         autoSplitEnabled: Boolean(autoSplitSubtitles),
+         autoSplitEnabled: shouldSplitGeneratedSubtitles(options),
          maxWordsPerSubtitle: parseInt(maxWordsPerSubtitle) || 8,
          t, // Pass translation function for i18n support
          onSubtitleUpdate: (data) => {
@@ -260,7 +261,6 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
         ...(options && options.runId ? { runId: options.runId } : {})
       };
       
-      console.log('[ProcessSegmentWithStreaming] Built API options with segmentProcessingDelay:', baseApiOptionsBase.segmentProcessingDelay, 's');
 
       // All-in on Files API by default; only use INLINE when explicitly forced
       const useInline = options.forceInline === true;

@@ -17,8 +17,7 @@ const VideoAnalysisCard = ({
       const m = getModelById(id);
       return {
         id: m.id,
-        name: m.freeRPD === null ? t(m.nameKey, m.nameDefault)
-          : `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`
+        name: t(m.nameKey, m.nameDefault)
       };
     });
 

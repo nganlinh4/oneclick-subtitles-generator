@@ -6,86 +6,51 @@
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
 import { normalizeTranscriptionPrompt } from './transcriptionPromptInvariant';
 
-// Default transcription prompts
+// Task instructions stay separate from the transport schema and clip-local timestamp contract.
+// Descriptions are UI copy, never truncated fragments of the request prompt.
 export const PROMPT_PRESETS = [
-{
-id: 'general',
-title: 'General purpose',
-prompt: `Transcribe all spoken content in this ${'{contentType}'}. Include the exact start and end times for each segment of speech.`
-},
-{
-id: 'extract-text',
-title: 'Extract text',
-prompt: `Extract only visible text and hardcoded subtitles from this ${'{contentType}'}. Ignore all audio. Include the exact start and end times for each text appearance.`
-},
-{
-id: 'focus-lyrics',
-title: 'Focus on Lyrics',
-prompt: `Extract only sung lyrics from this ${'{contentType}'}. Ignore spoken words, dialogue, narration, and instrumental music. Include the exact start and end times for each lyrical segment.`
-},
-{
-id: 'describe-video',
-title: 'Describe video',
-prompt: `Describe significant visual events and scene changes in this ${'{contentType}'}. Focus only on what is visually happening. Include the exact start and end times for each visual event.`
-},
-{
-id: 'translate-directly',
-title: 'Translate directly',
-prompt: `Transcribe all spoken content in this ${'{contentType}'} and translate each segment directly into TARGET_LANGUAGE. For each segment:
-1. Identify when speech occurs (start and end times)
-2. Transcribe what is being said
-3. Return ONLY the translation in TARGET_LANGUAGE (not the original language)
-
-IMPORTANT: The 'text' field in your response must contain the TRANSLATED text in TARGET_LANGUAGE, not the original language.`
-},
-{
-id: 'chaptering',
-title: 'Chaptering',
-prompt: `Analyze this ${'{contentType}'} and identify distinct chapters or thematic segments based on major topic shifts or significant changes in activity/scene. For each chapter, provide the exact start and end times, and format the text as "Chapter Title :: Brief description". Chapter titles should be 5-7 words max, descriptions should be 1-2 sentences. Focus on major segmentation points only.`
-},
-{
-id: 'diarize-speakers',
-title: 'Identify Speakers',
-prompt: `Transcribe all speech in this ${'{contentType}'} and identify different speakers.
-
-IMPORTANT INSTRUCTIONS:
-1. Label each speaker consistently as "Speaker 1", "Speaker 2", "Speaker 3", etc.
-2. The SAME person must ALWAYS have the SAME speaker number throughout the entire ${'{contentType}'}
-3. Format EVERY subtitle with the speaker label: "Speaker X: [actual spoken text]"
-4. Include exact start and end times for each segment
-5. Create a new subtitle entry whenever the speaker changes
-6. Each subtitle should contain one continuous speech segment from one speaker
-7. Even if the same speaker continues talking, break long speeches into reasonable subtitle lengths
-
-Output format - EVERY subtitle must follow this structure:
-{
-  "startTime": "00m00s500ms",
-  "endTime": "00m03s200ms",
-  "text": "Speaker 1: Hello, how are you today?"
-}
-{
-  "startTime": "00m03s500ms",
-  "endTime": "00m06s800ms",
-  "text": "Speaker 2: I'm doing great, thanks for asking."
-}
-{
-  "startTime": "00m07s000ms",
-  "endTime": "00m10s500ms",
-  "text": "Speaker 1: That's wonderful to hear. Let me tell you about our plans."
-}
-{
-  "startTime": "00m10s800ms",
-  "endTime": "00m15s200ms",
-  "text": "Speaker 3: May I join the conversation? I have something to add."
-}
-
-CRITICAL RULES:
-- EVERY subtitle MUST start with "Speaker X: " (where X is a number)
-- NEVER omit the speaker label
-- Keep the same speaker number for the same voice throughout
-- If unsure about speaker identity, still use "Speaker X: " format
-- Do not use actual names unless provided in transcription rules`
-}
+  {
+    id: 'general', title: 'General purpose',
+    descriptionKey: 'settings.presetGeneralDescription',
+    description: 'Transcribe speech in its original language.',
+    prompt: `Transcribe all audible speech in this {contentType} in its original language, including language changes. Preserve the spoken meaning and wording; do not summarize or add dialogue. Cover the entire supplied media, including speech near the end. Place each cue at the actual onset and end of its speech, preserving pauses. Do not infer speech from visible text or background music. Return no cues when there is no intelligible speech.`,
+  },
+  {
+    id: 'extract-text', title: 'Extract text',
+    descriptionKey: 'settings.presetTextDescription',
+    description: 'Capture visible text with its on-screen timing.',
+    prompt: `Extract readable on-screen text, including hardcoded subtitles, from this {contentType}. Ignore audio. Preserve the visible wording and language without guessing obscured text. Use each text appearance's visible start and end; keep unchanged text in one continuous cue and create a new cue when it changes or reappears. Return no cues when no text is readable.`,
+  },
+  {
+    id: 'focus-lyrics', title: 'Focus on Lyrics',
+    descriptionKey: 'settings.presetLyricsDescription',
+    description: 'Transcribe sung lyrics, without spoken dialogue.',
+    prompt: `Transcribe only audible sung lyrics in this {contentType}, preserving their original language and repeated sung lines. Ignore spoken dialogue, narration and instrumental passages. Follow the actual vocal timing and pauses, not an assumed musical beat. Cover the entire supplied media. Do not reconstruct missing words from familiarity with a song; return no cues when no lyrics are intelligible.`,
+  },
+  {
+    id: 'describe-video', title: 'Describe video',
+    descriptionKey: 'settings.presetVisualDescription',
+    description: 'Describe significant visible actions and changes.',
+    prompt: `Describe significant visible events and scene changes in this {contentType} with concise, factual captions. Use only visual evidence, not audio or inferred motives, identities or off-screen events. Time each description to the event it describes. Avoid repeatedly describing an unchanged scene; return no cues when no meaningful visual event is discernible.`,
+  },
+  {
+    id: 'translate-directly', title: 'Translate directly',
+    descriptionKey: 'settings.presetTranslationDescription',
+    description: 'Translate speech into your chosen language.',
+    prompt: `Translate all intelligible speech in this {contentType} into TARGET_LANGUAGE. Return only the translation in each cue's text, preserving meaning, tone, names and speaker changes without adding commentary. Cover the entire supplied media. Time each translated cue to the corresponding original speech, not to its translated word count. Preserve pauses and return no cues when there is no intelligible speech.`,
+  },
+  {
+    id: 'chaptering', title: 'Chaptering',
+    descriptionKey: 'settings.presetChapterDescription',
+    description: 'Create chapter titles and brief summaries.',
+    prompt: `Identify major topic or activity changes in this {contentType} using only the supplied evidence. For audio, use audible topics and events without assuming visuals. Give each chapter a short title and a brief summary as "Title :: Summary". Use the actual chapter boundaries, not equal time intervals; retain a single chapter when there is no meaningful transition. Do not invent events to fill gaps or subdivide chapters into subtitle-sized speech cues.`,
+  },
+  {
+    id: 'diarize-speakers', title: 'Identify Speakers',
+    descriptionKey: 'settings.presetSpeakerDescription',
+    description: 'Transcribe speech with consistent speaker labels.',
+    prompt: `Transcribe all intelligible speech in this {contentType} in its original language. Prefix each cue with "Speaker 1:", "Speaker 2:", and so on, assigned by first audible appearance in the supplied media. Keep labels consistent for the same voice within this media; start a new cue when the speaker changes. Use a supplied speaker name only when the evidence supports the match, and "Unknown speaker:" when the voice cannot be distinguished reliably. Do not invent identities. Preserve pauses and time each cue to its actual speech. Cover the entire supplied media; return no cues when there is no intelligible speech.`,
+  },
 ];
 
 // Default transcription prompt that will be used if no custom prompt is set
@@ -155,9 +120,10 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
                 const customLanguage = promptContext
                     ? promptContext.customLanguage
                     : localStorage.getItem('video_processing_custom_language');
-                if (customLanguage && customLanguage.trim()) {
-                    basePrompt = basePrompt.replace(/TARGET_LANGUAGE/g, customLanguage.trim());
+                if (typeof customLanguage !== 'string' || !customLanguage.trim()) {
+                    throw new Error('Please enter a target language');
                 }
+                basePrompt = basePrompt.replace(/TARGET_LANGUAGE/g, () => customLanguage.trim());
             }
         } else {
             // Preset not found, fall back to default
@@ -315,7 +281,7 @@ Numbered subtitle list (all ${subtitleCount} must be timed):\n${numberedSubtitle
                     rulesText += `  * When you identify ${speaker.speakerId}, label them as "${speaker.speakerId}: " in the subtitle\n`;
                     rulesText += `    Description: ${speaker.description}\n`;
                 });
-                rulesText += '  * For any unidentified speakers not listed above, use "Speaker X: " format\n';
+                rulesText += '  * Use a generic numbered label for other distinguishable voices, or "Unknown speaker:" when uncertain.\n';
             } else {
                 rulesText += '\n- Speaker Identification:\n';
                 transcriptionRules.speakerIdentification.forEach(speaker => {
@@ -521,12 +487,20 @@ Text: ${subtitleText}`;
 // Export all functions at the module level
 export const getUserPromptPresets = getUserPromptPresetsImpl;
 export const saveUserPromptPresets = saveUserPromptPresetsImpl;
+export const shouldSplitGeneratedSubtitles = (options = {}) => {
+    const presetId = options.promptContext
+        ? options.promptContext.presetId
+        : localStorage.getItem('video_processing_prompt_preset');
+    return options.autoSplitSubtitles === true
+        && !options.userProvidedSubtitles?.trim()
+        && presetId !== 'chaptering';
+};
 export const getTranscriptionPrompt = (contentType, userProvidedSubtitles = null, options = {}) => {
     const prompt = getTranscriptionPromptImpl(contentType, userProvidedSubtitles, options);
     const maximum = Number(options.maxWordsPerSubtitle);
     // The user's presentation limit must reach the model before local auto-splitting.
     // Timing supplied text is a separate exact-index contract; do not subdivide its rows.
-    if (options.autoSplitSubtitles !== true || userProvidedSubtitles?.trim()
+    if (!shouldSplitGeneratedSubtitles({ ...options, userProvidedSubtitles })
         || !Number.isSafeInteger(maximum) || maximum < 1 || maximum > 1000) return prompt;
     return `${prompt}\n\nSubtitle cue length: aim for at most ${maximum} words per cue. Break at natural speech or content boundaries and time each cue independently from the supplied media. Preserve pauses and speaker changes; do not assign timestamps by evenly dividing a long segment or assuming a constant speaking rate. Preserve all requested content.`;
 };

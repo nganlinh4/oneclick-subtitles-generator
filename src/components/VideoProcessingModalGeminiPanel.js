@@ -463,7 +463,8 @@ const VideoProcessingModalGeminiPanel = ({
                         <div className="material-switch-container">
                             <MaterialSwitch
                                 id="auto-split-subtitles"
-                                checked={autoSplitSubtitles}
+                                checked={autoSplitSubtitles && selectedPromptPreset !== 'chaptering'}
+                                disabled={selectedPromptPreset === 'chaptering'}
                                 onChange={(e) => handleAutoSplitToggle(e.target.checked)}
                                 ariaLabel={t('processing.autoSplitSubtitles', 'Auto-split subtitles')}
                                 icons={true}
@@ -489,11 +490,11 @@ const VideoProcessingModalGeminiPanel = ({
                                 step={1}
                                 orientation="Horizontal"
                                 size="XSmall"
-                                state={autoSplitSubtitles ? 'Enabled' : 'Disabled'}
+                                state={autoSplitSubtitles && selectedPromptPreset !== 'chaptering' ? 'Enabled' : 'Disabled'}
                                 className="max-words-slider"
                                 id="max-words-slider"
                                 ariaLabel={t('processing.maxWordsPerSubtitle', 'Maximum words per subtitle')}
-                                disabled={!autoSplitSubtitles}
+                                disabled={!autoSplitSubtitles || selectedPromptPreset === 'chaptering'}
                                 showValueBadge={true}
                                 valueBadgeFormatter={(v) => Math.round(Number(v))}
                                 defaultValue={12}

@@ -231,12 +231,12 @@ const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
                     </div>
                     {targetLanguage.trim() && (
                       <p className="preset-preview">
-                        {preset.prompt.replace(/TARGET_LANGUAGE/g, targetLanguage).substring(0, 60)}...
+                        {t(preset.descriptionKey, preset.description)}
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="preset-preview">{preset.prompt.substring(0, 60)}...</p>
+                  <p className="preset-preview">{t(preset.descriptionKey, preset.description)}</p>
                 )}
               </div>
               <div className="preset-card-actions">

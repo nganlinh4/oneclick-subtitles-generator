@@ -1,4 +1,11 @@
 {
+  "presetGeneralDescription": "Chép lời nói bằng ngôn ngữ gốc.",
+  "presetTextDescription": "Trích xuất văn bản cùng thời gian xuất hiện trên màn hình.",
+  "presetLyricsDescription": "Chép lời bài hát, không gồm hội thoại.",
+  "presetVisualDescription": "Mô tả hành động và thay đổi đáng chú ý trong hình ảnh.",
+  "presetTranslationDescription": "Dịch lời nói sang ngôn ngữ bạn chọn.",
+  "presetChapterDescription": "Tạo tiêu đề chương và tóm tắt ngắn.",
+  "presetSpeakerDescription": "Chép lời nói với nhãn người nói nhất quán.",
   "clearSavedCredential": "Xóa thông tin xác thực đã lưu",
   "credentials": {
     "confirmClear": "Xóa thông tin xác thực {{label}} đã lưu khỏi thiết bị này?",

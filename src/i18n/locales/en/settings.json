@@ -1,4 +1,11 @@
 {
+  "presetGeneralDescription": "Transcribe speech in its original language.",
+  "presetTextDescription": "Capture visible text with its on-screen timing.",
+  "presetLyricsDescription": "Transcribe sung lyrics, without spoken dialogue.",
+  "presetVisualDescription": "Describe significant visible actions and changes.",
+  "presetTranslationDescription": "Translate speech into your chosen language.",
+  "presetChapterDescription": "Create chapter titles and brief summaries.",
+  "presetSpeakerDescription": "Transcribe speech with consistent speaker labels.",
   "clearSavedCredential": "Clear saved credential",
   "credentials": {
     "confirmClear": "Remove the saved {{label}} credential from this device?",

@@ -21,8 +21,7 @@ export const buildModelOptions = (t) => (
     [
         ...TRANSCRIPTION_MODELS.map(m => ({
             value: m.id,
-            label: m.freeRPD === null ? t(m.nameKey, m.nameDefault)
-                : `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`,
+            label: t(m.nameKey, m.nameDefault),
             maxTokens: m.maxTokens
         }))
     ]
@@ -73,7 +72,7 @@ export const buildPromptPresetOptions = (t, hasUserProvidedSubtitles) => {
             return {
                 id: preset.id,
                 title,
-                description: preset.prompt.substring(0, 80) + '...',
+                description: t(preset.descriptionKey, preset.description),
                 needsLanguage: preset.id === 'translate-directly'
             };
         }),

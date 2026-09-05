@@ -127,6 +127,8 @@ const VideoProcessingOptionsModal = ({
     const incompatibleAudioPreset = descriptor.capabilities.tokenCounting
         && (audioOnly || videoFile?.type?.startsWith('audio/'))
         && ['extract-text', 'describe-video'].includes(selectedPromptPreset);
+    const missingTranslationLanguage = descriptor.capabilities.tokenCounting
+        && selectedPromptPreset === 'translate-directly' && !customLanguage.trim();
 
     return ReactDOM.createPortal(
         <>
@@ -279,8 +281,8 @@ const VideoProcessingOptionsModal = ({
                                         className="process-btn"
                                         data-osg-action="process-subtitles"
                                         onClick={handleProcess}
-                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled || incompatibleAudioPreset}
-                                        title={incompatibleAudioPreset ? t('processing.audioOnlyHelp') : undefined}
+                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled || incompatibleAudioPreset || missingTranslationLanguage}
+                                        title={missingTranslationLanguage ? t('translation.languageRequired') : incompatibleAudioPreset ? t('processing.audioOnlyHelp') : undefined}
                                     >
                                         {isUploading
                                             ? t('processing.waitingForUpload', 'Waiting for upload...')

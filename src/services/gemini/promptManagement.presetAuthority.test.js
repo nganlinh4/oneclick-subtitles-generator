@@ -1,4 +1,4 @@
-import { getTranscriptionPrompt } from './promptManagement';
+import { DEFAULT_TRANSCRIPTION_PROMPT, getTranscriptionPrompt } from './promptManagement';
 
 const context = (overrides = {}) => ({
   presetId: 'settings',
@@ -16,7 +16,7 @@ it.each(['undefined', 'null', '']) (
     expect(getTranscriptionPrompt('video', null, {
       promptContext: context({ settingsPrompt }),
     })).toBe(
-      'Transcribe all spoken content in this video. Include the exact start and end times for each segment of speech.',
+      DEFAULT_TRANSCRIPTION_PROMPT.replace('{contentType}', 'video'),
     );
   },
 );

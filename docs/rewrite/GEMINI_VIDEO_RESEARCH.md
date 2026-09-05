@@ -69,7 +69,8 @@ Timestamp projection previously guessed the origin again as streaming rows grew;
 the fixed contract is clip-local timestamps projected once into the project.
 Streaming previously reparsed accumulated JSON and could publish a stale pending
 update after completion/error. It now scans newly appended records and cancels
-pending updates at terminal states. These changes still require real UI proof.
+pending updates at terminal states. The September 6 matrix below now supplies
+real UI proof for the tested clips, not an hour-long speech guarantee.
 
 The opt-in `e2e/scenarios/geminiMediaBenchmark.mjs` drives the actual modal and
 records saved cues, text-aligned timing scores, partial-cue observations and
@@ -77,6 +78,52 @@ screenshots. Arguments select case/model/mode (or `all`). Human references remai
 in the Node scoring process and are never passed to the app/provider.
 
 ## Remaining acceptance (not claimed complete)
+
+### September 6 real-app baseline and preset audit
+
+The unchanged `d0c8c888` binary completed 36/36 customer workflows: three AMI
+clips, six models, video and audio-only. Every cell observed partial cues before
+completion, saved real results and captured native preview screenshots. Evidence:
+`target/subtitle-benchmark/ui-runs/2026-09-05T20-15-15-371Z`.
+This is **workflow success, not transcription quality success**. Human references
+were withheld from requests. All clips are English meetings, with overlapping
+speech and different sites/speakers; they do not represent every media genre.
+
+Observed reference-word coverage ranged from 15.5% to 89.3%. In particular,
+3.8 video on IS1009a produced only 58 words against 309 reference words (15.5%
+matched coverage), whereas its audio-only run covered about 87%. The cause of
+this individual omission is not yet established from the saved-cue evidence.
+3.5 audio on ES2004a had median absolute start/end errors of 5250/5360 ms.
+Small timing errors on the matched subset must never compensate for missing
+speech. No benchmark-specific offsets, transcripts or tuned pass thresholds
+were fed back into prompts. The default model remains unchanged.
+
+A second run forced the 150-second IS1009a clip into three balanced windows,
+using 3.1 Flash Lite in both modes. Exactly three jobs succeeded, with partial
+cues observed while work remained. Video coverage was 84.5%, median absolute
+start/end error 295/295 ms; audio coverage was 86.4%, error 214/267 ms.
+Evidence: `target/subtitle-benchmark/ui-runs/2026-09-05T20-48-29-958Z`.
+These are single-run observations, not statistically established model rankings.
+The provider baseline explicitly rotated all 20 configured slots; the UI matrix
+enrolled them but did not measure which slots were selected, so it does not
+establish additional per-slot coverage.
+
+The subsequent preset revision is intentionally outside that baseline: concise
+task-specific instructions, independent translated descriptions, no sample
+dialogue, no invented speaker identities, whole-media coverage and actual media
+timing rather than word-count-derived timing. Chapters retain their boundaries
+instead of being auto-split into captions. Translation requires a target
+language. Saved custom prompts are not rewritten. Preset quality improvement
+still needs a post-change live comparison, not merely prompt-string tests.
+
+Fixed daily request-count suffixes were removed from model selectors: current
+[Google rate-limit documentation](https://ai.google.dev/gemini-api/docs/rate-limits)
+states that limits depend on project/tier, not individual API keys. Twenty keys
+must not be treated as twenty independent quota pools.
+
+Fixture preparation now refuses reuse when an existing clip's hash, source
+hashes, range or camera disagree with its receipt. It cannot silently assign
+fresh provenance to stale video bytes.
 
 Additional audit: the legacy timestamp parser matched arbitrary three-number
 strings before HH:MM:SS, and read decimal fractions as integer milliseconds.
