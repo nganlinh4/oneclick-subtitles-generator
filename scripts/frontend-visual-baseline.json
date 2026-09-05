@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "c0be9e13934246cc62346d8d6f981c85570a3859",
+  "baselineRevision": "37c93fea1f9168b01c0b805f1e075e9fc26c050e",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -9143,10 +9143,10 @@
       ]
     },
     "src/components/VideoProcessingModalGeminiPanel.js": {
-      "hash": "75ba75df56b265b9737847d369852b83698ae83803d7060235175dbf02f2437a",
+      "hash": "4646cbaaa8a308d746e16e571806bb8b4525c6706f220f611e965fb38af4706e",
       "rootCount": 1,
       "roots": [
-        "18ec1df80b8c95dcc8b3f2bfb02237e0a09bcf64972e977b6e02f1100576d349"
+        "3ee5209f95430b1e651ff25c8d6de4dafcb950a6126e502d8fcc215e5ce848f6"
       ]
     },
     "src/components/VideoProcessingModalMethodSelector.js": {
