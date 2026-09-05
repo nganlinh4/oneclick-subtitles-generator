@@ -521,7 +521,15 @@ Text: ${subtitleText}`;
 // Export all functions at the module level
 export const getUserPromptPresets = getUserPromptPresetsImpl;
 export const saveUserPromptPresets = saveUserPromptPresetsImpl;
-export const getTranscriptionPrompt = getTranscriptionPromptImpl;
+export const getTranscriptionPrompt = (contentType, userProvidedSubtitles = null, options = {}) => {
+    const prompt = getTranscriptionPromptImpl(contentType, userProvidedSubtitles, options);
+    const maximum = Number(options.maxWordsPerSubtitle);
+    // The user's presentation limit must reach the model before local auto-splitting.
+    // Timing supplied text is a separate exact-index contract; do not subdivide its rows.
+    if (options.autoSplitSubtitles !== true || userProvidedSubtitles?.trim()
+        || !Number.isSafeInteger(maximum) || maximum < 1 || maximum > 1000) return prompt;
+    return `${prompt}\n\nSubtitle cue length: aim for at most ${maximum} words per cue. Break at natural speech or content boundaries and time each cue independently from the supplied media. Preserve pauses and speaker changes; do not assign timestamps by evenly dividing a long segment or assuming a constant speaking rate. Preserve all requested content.`;
+};
 export const getEmptySpeechPolicy = getEmptySpeechPolicyImpl;
 export const getDefaultTranslationPrompt = getDefaultTranslationPromptImpl;
 export const getSimpleTranslationPrompt = getSimpleTranslationPromptImpl;

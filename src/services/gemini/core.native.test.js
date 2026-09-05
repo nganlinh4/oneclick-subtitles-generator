@@ -217,6 +217,12 @@ it('clips a native segment first and sends only the derived asset to Gemini', as
 });
 
 it('sends a whole-source segment directly without a redundant media re-encode', async () => {
+  let toolsReady = false;
+  ensureNativeMediaToolsReady.mockImplementation(async () => { toolsReady = true; });
+  inspectMediaPipelineAsset.mockImplementation(async () => {
+    if (!toolsReady) throw new Error('mediaToolsUnavailable');
+    return { durationUs: 60_000_000 };
+  });
   const media = Object.freeze({
     assetId: '0198a8d7-dbf7-7ee0-a949-f13427fdd78a',
     name: 'clip.mp4',
@@ -228,7 +234,7 @@ it('sends a whole-source segment directly without a redundant media re-encode', 
   })).resolves.toHaveLength(1);
 
   expect(inspectMediaPipelineAsset).toHaveBeenCalledWith(media.assetId);
-  expect(ensureNativeMediaToolsReady).not.toHaveBeenCalled();
+  expect(ensureNativeMediaToolsReady).toHaveBeenCalledBefore(inspectMediaPipelineAsset);
   expect(runMediaPipeline).not.toHaveBeenCalled();
   expect(runNativeGeminiTranscription).toHaveBeenCalledWith(expect.objectContaining({
     assetId: media.assetId,

@@ -103,6 +103,8 @@ describe('real UI media transcription benchmark', () => {
       }
       assert.equal(surface.errors.length, 0, JSON.stringify(sample));
       assert.ok(!jobs.some(job => ['failed', 'cancelled', 'interrupted'].includes(job.state)), JSON.stringify(sample));
+      assert.ok(jobs.length > 0 || surface.processing || sample.elapsedMs < 10_000,
+        `Generation stopped before admitting a provider job: ${JSON.stringify(sample)}`);
       const emptyTerminal = jobs.length > 0 && jobs.every(job => job.state === 'succeeded')
         && !surface.processing && state.counts.cues === 0;
       emptyTerminalSince = emptyTerminal ? (emptyTerminalSince ?? Date.now()) : null;

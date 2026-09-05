@@ -118,11 +118,17 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
           duration: segmentRange.end - segmentRange.start, isSegment: true,
         } : {},
         promptContext: options.promptContext,
+        autoSplitSubtitles: options.autoSplitSubtitles,
+        maxWordsPerSubtitle: options.maxWordsPerSubtitle,
       }
     );
-    if (options.audioOnly === true) {
+    // Even a whole-range video needs inspection before deciding whether to clip.
+    // Inspection itself requires the managed tools on a clean installation.
+    if (options.audioOnly === true || segmentRange !== null) {
       await ensureNativeMediaToolsReady({ signal });
       if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+    }
+    if (options.audioOnly === true) {
       const audio = await runMediaPipeline({
         operation: 'extractAudio',
         assetId: input.assetId,
@@ -139,8 +145,6 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
       // have the reviewed media toolchain yet; install and activate it here instead of turning the
       // customer's public split setting into an opaque mediaPipeline failure. Concurrent windows
       // share one preflight promise, so four ranges never start four downloads.
-      await ensureNativeMediaToolsReady({ signal });
-      if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
       const clip = await runMediaPipeline({
         operation: 'analysisClip',
         assetId: input.assetId,
