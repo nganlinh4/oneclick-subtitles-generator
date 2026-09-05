@@ -4,7 +4,9 @@ import { formatSecondsToTimecode } from '../timecode';
 export const convertTimeStringToSeconds = (value) => {
   if (typeof value !== 'string') throw new Error('Subtitle timestamp must be a string.');
   const text = value.trim();
-  const units = text.match(/^(\d+)m(\d{1,2})s(?:(\d{1,3})ms)?$/);
+  // The seconds suffix makes MM:SSsMMMms just as explicit as MMmSSsMMMms.
+  // Do not generalize this to arbitrary digit groups: hours and fractions differ.
+  const units = text.match(/^(\d+)(?:m|:)(\d{1,2})s(?:(\d{1,3})ms)?$/);
   if (units) {
     const [, minutes, seconds, millis = '0'] = units;
     if (Number(seconds) >= 60) throw new Error('Subtitle seconds are outside their minute.');

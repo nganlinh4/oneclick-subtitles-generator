@@ -3,6 +3,18 @@ import { RealtimeSubtitleProcessor } from './realtimeProcessor';
 const row = (text, start = '00m01s000ms') => ({ startTime: start, endTime: '00m03s000ms', text });
 afterEach(() => vi.useRealTimers());
 
+it('streams and completes explicit mixed-separator timestamps observed in live Gemini output', () => {
+  const updates = [], completed = [];
+  const processor = new RealtimeSubtitleProcessor({
+    onSubtitleUpdate: update => updates.push(update), onComplete: rows => completed.push(rows),
+  });
+  const text = JSON.stringify([{ startTime: '00:03s060ms', endTime: '00:06s700ms', text: 'Yeah, yeah.' }]);
+  processor.processChunk({ accumulatedText: text.slice(0, -1) });
+  expect(updates.at(-1).subtitles[0]).toMatchObject({ start: 3.06, end: 6.7 });
+  processor.complete(text);
+  expect(completed[0][0]).toMatchObject({ start: 3.06, end: 6.7 });
+});
+
 it('publishes a complete cue before the response finishes and never re-emits stale rows after completion', () => {
   vi.useFakeTimers();
   const updates = [];

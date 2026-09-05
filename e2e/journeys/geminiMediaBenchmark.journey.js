@@ -51,6 +51,7 @@ describe('real UI media transcription benchmark', () => {
     const observations = [];
     let partialCaptured = false;
     let finalState;
+    let emptyTerminalSince = null;
     await browser.execute(() => {
       const state = { supported: typeof PerformanceObserver !== 'undefined', count: 0, totalMs: 0, maxMs: 0 };
       window.__OSG_MEDIA_BENCH_PERF__ = state;
@@ -87,6 +88,11 @@ describe('real UI media transcription benchmark', () => {
       }
       assert.equal(surface.errors.length, 0, JSON.stringify(sample));
       assert.ok(!jobs.some(job => ['failed', 'cancelled', 'interrupted'].includes(job.state)), JSON.stringify(sample));
+      const emptyTerminal = jobs.length > 0 && jobs.every(job => job.state === 'succeeded')
+        && !surface.processing && state.counts.cues === 0;
+      emptyTerminalSince = emptyTerminal ? (emptyTerminalSince ?? Date.now()) : null;
+      assert.ok(emptyTerminalSince === null || Date.now() - emptyTerminalSince < 10_000,
+        `Provider succeeded but no subtitle track was saved: ${JSON.stringify(sample)}`);
       finalState = state;
       return jobs.length > 0 && jobs.every(job => job.state === 'succeeded')
         && !surface.processing && state.counts.cues > 0;
