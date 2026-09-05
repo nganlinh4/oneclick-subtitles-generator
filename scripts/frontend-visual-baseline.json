@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "37c93fea1f9168b01c0b805f1e075e9fc26c050e",
+  "baselineRevision": "bef78d5a942f881419e97946bd1676145fd9a6fe",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -1503,7 +1503,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "20dcfa59b4110b2b0b03af2a1f85f7bd8687efa4b5c7152e4889e5ec3bd4edf1",
+      "hash": "3db204f7165a62bfb2b3682eef73579eb43acfe694d9514cf83e5618243127ef",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1719,15 +1719,22 @@
         "output",
         "outputCount",
         "pasteAndAuthenticate",
+        "presetChapterDescription",
         "presetChaptering",
         "presetDescribeVideo",
         "presetExtractText",
         "presetFocusLyrics",
         "presetFocusSpokenWords",
+        "presetGeneralDescription",
         "presetGeneralPurpose",
         "presetIdentifySpeakers",
+        "presetLyricsDescription",
+        "presetSpeakerDescription",
+        "presetTextDescription",
         "presetTitlePlaceholder",
         "presetTranslateDirectly",
+        "presetTranslationDescription",
+        "presetVisualDescription",
         "processingSettings",
         "projectionWarning",
         "promptFromSettings",
@@ -3951,7 +3958,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "60079467fe704a55e2a35b8aaca0ccd325d3fdce64120c772f4618452d98feb7",
+      "hash": "58e58f71b58dfb7ee12c5b2c62a3e8ad81cf374ed891235b49cd2969f02f26bb",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4192,15 +4199,22 @@
         "output",
         "outputCount",
         "pasteAndAuthenticate",
+        "presetChapterDescription",
         "presetChaptering",
         "presetDescribeVideo",
         "presetExtractText",
         "presetFocusLyrics",
         "presetFocusSpokenWords",
+        "presetGeneralDescription",
         "presetGeneralPurpose",
         "presetIdentifySpeakers",
+        "presetLyricsDescription",
+        "presetSpeakerDescription",
+        "presetTextDescription",
         "presetTitlePlaceholder",
         "presetTranslateDirectly",
+        "presetTranslationDescription",
+        "presetVisualDescription",
         "pressEscToClose",
         "processingSettings",
         "projectionWarning",
@@ -6570,7 +6584,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "9c008a12a35e42aab6847e317d36231c60cab89bd9d2431b839addad56abfbd9",
+      "hash": "904b36228cfa20a64017a6ae0dd26e48a57d68a0ecea8634f01318e3f5fac1d3",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -6811,15 +6825,22 @@
         "output",
         "outputCount",
         "pasteAndAuthenticate",
+        "presetChapterDescription",
         "presetChaptering",
         "presetDescribeVideo",
         "presetExtractText",
         "presetFocusLyrics",
         "presetFocusSpokenWords",
+        "presetGeneralDescription",
         "presetGeneralPurpose",
         "presetIdentifySpeakers",
+        "presetLyricsDescription",
+        "presetSpeakerDescription",
+        "presetTextDescription",
         "presetTitlePlaceholder",
         "presetTranslateDirectly",
+        "presetTranslationDescription",
+        "presetVisualDescription",
         "pressEscToClose",
         "processingSettings",
         "projectionWarning",
@@ -8761,10 +8782,10 @@
       ]
     },
     "src/components/settings/tabs/PromptsTab.js": {
-      "hash": "781493093c10dfde8568ef07ebe676ac3f48c76a6d4090a6cef2ea79bada727c",
+      "hash": "e7742cc155bb15e1093f971afda62d8ca2370b1ccd52469bd6070eaa7b6723e7",
       "rootCount": 1,
       "roots": [
-        "013433876e3d9e40ce8f9547ca12840f054d0ae547e82152038a3ade6e2a5b84"
+        "19133fe95043870bcf808e8949c46479ead7b2a412ed7341b63fe102cef10654"
       ]
     },
     "src/components/settings/tabs/ThinkingBudgetCard.js": {
@@ -9143,10 +9164,10 @@
       ]
     },
     "src/components/VideoProcessingModalGeminiPanel.js": {
-      "hash": "4646cbaaa8a308d746e16e571806bb8b4525c6706f220f611e965fb38af4706e",
+      "hash": "d81ec28e4d5226657d6ec6525a29103a8e10d18cae407c63c98c51de341a95a2",
       "rootCount": 1,
       "roots": [
-        "3ee5209f95430b1e651ff25c8d6de4dafcb950a6126e502d8fcc215e5ce848f6"
+        "1bce7081b8fb5045fc40cc58878e97680e9aca4a650500761a00777b7e3cbcfd"
       ]
     },
     "src/components/VideoProcessingModalMethodSelector.js": {
@@ -9161,10 +9182,10 @@
       ]
     },
     "src/components/VideoProcessingOptionsModal.js": {
-      "hash": "994b5fb0d878d6bda34577ce0dce07c6fe88b4f364c28f45c4e1ad700b56f1fe",
+      "hash": "34c21a7084383ea414a10043558b194558602339d81fe21848766c8b711c3395",
       "rootCount": 1,
       "roots": [
-        "b51d4bcbb53669282bffc156c7609087349bed817099699a22d2fa8f0ed80fdb"
+        "0adf232ce83a4e8469277cb401b330e8fa2d7e2442ee1681956186bcc707568b"
       ]
     },
     "src/components/VideoQualityModal.js": {

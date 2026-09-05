@@ -31,12 +31,25 @@ describe('real UI media transcription benchmark', () => {
       && await $('#generation-model').getAttribute('aria-expanded') === 'false',
     { timeout: 5000, interval: 50, timeoutMsg: 'Model selection did not commit after the menu closed' });
     assert.equal(await $('#generation-model').getAttribute('data-value'), config.model);
-    await clickControl('#generation-prompt-preset');
-    await clickControl('[role="option"][data-value="general"]');
-    await browser.waitUntil(async () =>
-      await $('#generation-prompt-preset').getAttribute('data-value') === 'general'
-      && await $('#generation-prompt-preset').getAttribute('aria-expanded') === 'false',
-    { timeout: 5000, interval: 50, timeoutMsg: 'Prompt selection did not commit after the menu closed' });
+    const choosePreset = async preset => {
+      await clickControl('#generation-prompt-preset');
+      await clickControl(`[role="option"][data-value="${preset}"]`);
+      await browser.waitUntil(async () =>
+        await $('#generation-prompt-preset').getAttribute('data-value') === preset
+        && await $('#generation-prompt-preset').getAttribute('aria-expanded') === 'false',
+      { timeout: 5000, interval: 50, timeoutMsg: 'Prompt selection did not commit after the menu closed' });
+    };
+    await choosePreset('translate-directly');
+    assert.equal(await $('[data-osg-action="process-subtitles"]').isEnabled(), false,
+      'Translation must require a target language on a fresh profile');
+    await captureWorkflowStep({ workflow, step: '00-translation-preset',
+      description: 'Concise preset description and required target language before any request.' });
+    await choosePreset('chaptering');
+    assert.equal(await browser.execute(() => document.querySelector('#auto-split-subtitles').disabled), true,
+      'Chapter boundaries must not be subdivided by the caption splitter');
+    await captureWorkflowStep({ workflow, step: '00-chapter-preset',
+      description: 'Chapter task visibly disables caption splitting without changing the saved preference.' });
+    await choosePreset('general');
     const audioOnly = config.mode === 'audio';
     const selected = () => browser.execute(() => document.querySelector('#generation-audio-only').selected);
     if (await selected() !== audioOnly) await clickControl('#generation-audio-only');
