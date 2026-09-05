@@ -44,3 +44,15 @@ it('accepts a valid empty final track', () => {
   expect(complete).toHaveBeenCalledWith([]);
   expect(error).not.toHaveBeenCalled();
 });
+
+it('keeps split cue IDs unique and identical between incremental and final parsing', () => {
+  const processor = new RealtimeSubtitleProcessor({ autoSplitEnabled: true, maxWordsPerSubtitle: 2 });
+  const first = JSON.stringify(row('one two three four'));
+  const second = JSON.stringify(row('five six seven eight', '00m02s000ms'));
+  processor.processChunk({ accumulatedText: `[${first},` });
+  processor.processChunk({ accumulatedText: `[${first},${second}` });
+  const streamed = processor.currentSubtitles.map(cue => ({ id: cue.id, text: cue.text }));
+  expect(new Set(streamed.map(cue => cue.id)).size).toBe(streamed.length);
+  processor.complete(`[${first},${second}]`);
+  expect(processor.currentSubtitles.map(cue => ({ id: cue.id, text: cue.text }))).toEqual(streamed);
+});

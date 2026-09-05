@@ -146,6 +146,9 @@ export class RealtimeSubtitleProcessor {
           const stableRow = value.index === undefined ? { ...row, id: index + 1 } : row;
           const processed = this.autoSplitEnabled && this.maxWordsPerSubtitle > 0
             ? autoSplitSubtitles([stableRow], this.maxWordsPerSubtitle) : [stableRow];
+          if (this.autoSplitEnabled && this.maxWordsPerSubtitle > 0) {
+            processed.forEach((cue, offset) => { cue.id = this.rawRows.length + offset + 1; });
+          }
           this.rawRows.push(...processed);
         }
       }
