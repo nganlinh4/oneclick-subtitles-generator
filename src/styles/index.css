@@ -148,6 +148,13 @@ code {
   font-family: var(--font-code);
 }
 
+/* WebView's native rectangular focus chrome does not belong to the product surface. Using :where
+   keeps this at zero specificity, so components with an intentional branded :focus-visible style
+   retain it while unstyled controls never flash a browser-default box after pointer interaction. */
+:where(a, button, input, select, textarea, summary, [role], [tabindex]):focus {
+  outline: none;
+}
+
 * {
   box-sizing: border-box;
 }

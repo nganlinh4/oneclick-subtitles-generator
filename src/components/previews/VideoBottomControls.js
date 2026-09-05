@@ -248,7 +248,8 @@ const VideoBottomControls = ({
             position: 'relative',
             height: '20px',
             display: 'flex',
-            alignItems: 'center'
+            alignItems: 'center',
+            outline: 'none'
           }}
           onFocus={() => setControlsVisible(true)}
           onKeyDown={handleTimelineKeyDown}
