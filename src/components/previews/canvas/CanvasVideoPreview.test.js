@@ -9,6 +9,7 @@ import {
 import { MANAGED_FONT_PACKAGE } from '../../../services/fontIdentity';
 import { defaultCustomization } from '../../subtitleCustomization/defaultCustomization';
 import CanvasVideoPreview, {
+  canvasBackingSize,
   canvasCompositionSize,
   canvasPreviewFailure,
   previewSceneTime,
@@ -85,6 +86,17 @@ afterEach(() => {
 });
 
 describe('canvas preview geometry boundary', () => {
+  it('caps an ultrawide fullscreen backing store without changing its aspect ratio', () => {
+    expect(canvasBackingSize({ width: 2048, height: 864 }, 1.5)).toEqual({
+      width: 1600,
+      height: 675,
+    });
+    expect(canvasBackingSize({ width: 800, height: 450 }, 1.5)).toEqual({
+      width: 1200,
+      height: 675,
+    });
+  });
+
   it('preserves the authored composition aspect ratio when its element box changes', () => {
     const { container } = render(
       <CanvasVideoPreview

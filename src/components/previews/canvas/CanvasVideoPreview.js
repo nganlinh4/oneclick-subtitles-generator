@@ -36,6 +36,21 @@ export const canvasCompositionSize = (input) => {
   return size === null ? null : Object.freeze({ width: size.widthPx, height: size.heightPx });
 };
 
+/** Size the backing store with one scale so its aspect ratio always matches its CSS box. */
+export const canvasBackingSize = ({ width, height }, devicePixelRatio = 1) => {
+  if (!(width > 0) || !(height > 0)) return Object.freeze({ width: 1, height: 1 });
+  const scale = Math.min(
+    Math.max(1, Number(devicePixelRatio) || 1),
+    MAX_DEVICE_PIXEL_RATIO,
+    MAX_CANVAS_WIDTH / width,
+    MAX_CANVAS_HEIGHT / height,
+  );
+  return Object.freeze({
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  });
+};
+
 const platformName = () => {
   const agent = navigator.userAgent.toLowerCase();
   if (agent.includes('windows')) return 'windows';
@@ -281,9 +296,7 @@ const CanvasVideoPreview = ({
     }
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
-      const ratio = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
-      const width = Math.max(1, Math.min(MAX_CANVAS_WIDTH, Math.round(bounds.width * ratio)));
-      const height = Math.max(1, Math.min(MAX_CANVAS_HEIGHT, Math.round(bounds.height * ratio)));
+      const { width, height } = canvasBackingSize(bounds, window.devicePixelRatio);
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
@@ -1116,9 +1129,8 @@ const CanvasVideoPreview = ({
         inset: 0,
         width: '100%',
         height: '100%',
-        // Fullscreen changes the element box to the monitor's aspect ratio. Stretching the bitmap
-        // to that box distorts both the decoded frame and the subtitle geometry. Keep the authored
-        // composition intact; the black element background owns any unavoidable letterbox area.
+        // The backing store has this same ratio; contain is therefore a no-op except while a resize
+        // is settling, when it prevents one transient distorted frame.
         objectFit: 'contain',
         backgroundColor: '#000',
         display: 'block',
