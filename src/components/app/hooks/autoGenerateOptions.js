@@ -97,6 +97,7 @@ export const buildAutoGenerateOptions = ({
   return {
     segment: { start: 0, end: duration },
     generationScope: 'full-media',
+    audioOnly: readStorage(storage, 'video_processing_audio_only') === 'true',
     fps,
     mediaResolution,
     model,

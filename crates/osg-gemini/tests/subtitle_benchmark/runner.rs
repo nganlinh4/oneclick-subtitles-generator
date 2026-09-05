@@ -353,6 +353,7 @@ async fn generate(
                     .toolbox_thinking,
             ),
             media_resolution: None,
+            video_fps: None,
             response_json_schema: Some(schema),
         },
     };

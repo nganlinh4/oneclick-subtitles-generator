@@ -4,6 +4,7 @@ import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 import HelpIcon from './common/HelpIcon';
 import { getFpsValue, getFpsInterval } from '../utils/fpsFormat';
+import { isNativeMediaDescriptor } from '../platform/mediaService';
 
 /**
  * The full Gemini options UI for the video processing modal.
@@ -15,6 +16,8 @@ import { getFpsValue, getFpsInterval } from '../utils/fpsFormat';
  */
 const VideoProcessingModalGeminiPanel = ({
     videoFile,
+    audioOnly = false,
+    setAudioOnly,
     selectedModel,
     setSelectedModel,
     fps,
@@ -50,9 +53,26 @@ const VideoProcessingModalGeminiPanel = ({
     setMaxWordsPerSubtitle,
 }) => {
     const { t } = useTranslation();
+    const audioInput = audioOnly || videoFile?.type?.startsWith('audio/');
 
     return (
         <>
+            <div className="option-group">
+                <div className="material-switch-container">
+                    <MaterialSwitch
+                        id="generation-audio-only"
+                        checked={Boolean(audioInput)}
+                        disabled={videoFile?.type?.startsWith('audio/')}
+                        onChange={(event) => setAudioOnly(event.target.checked)}
+                        ariaLabel={t('processing.audioOnly', 'Send audio only')}
+                        icons={true}
+                    />
+                    <label htmlFor="generation-audio-only" className="material-switch-label">
+                        {t('processing.audioOnly', 'Send audio only')}
+                    </label>
+                    <HelpIcon title={t('processing.audioOnlyHelp', 'Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.')} />
+                </div>
+            </div>
             {/* Normal (Gemini) UI */}
             {/* Frame Rate and Media Resolution Combined - Disabled for audio files */}
             <div className="option-group">
@@ -76,13 +96,13 @@ const VideoProcessingModalGeminiPanel = ({
                                 step={0.25}
                                 orientation="Horizontal"
                                 size="XSmall"
-                                state={videoFile?.type?.startsWith('audio/') ? 'Disabled' : 'Enabled'}
+                                state={audioInput ? 'Disabled' : 'Enabled'}
                                 className="fps-slider"
                                 id="fps-slider"
                                 ariaLabel={t('processing.frameRate', 'Frame Rate')}
                                 defaultValue={0.25}
                                 formatValue={(v) => getFpsValue(v)}
-                                disabled={videoFile?.type?.startsWith('audio/')}
+                                disabled={audioInput}
                             />
                         </div>
                     </div>
@@ -104,7 +124,7 @@ const VideoProcessingModalGeminiPanel = ({
                                 label: option.label
                             }))}
                             placeholder={t('processing.selectResolution', 'Select Resolution')}
-                            disabled={videoFile?.type?.startsWith('audio/')}
+                            disabled={audioInput}
                             style={{ maxWidth: '250px' }}
                         />
                     </div>
@@ -122,6 +142,7 @@ const VideoProcessingModalGeminiPanel = ({
                         </div>
                         <CustomDropdown
                             value={selectedModel}
+                            id="generation-model"
                             onChange={(value) => setSelectedModel(value)}
                             options={modelOptions.map(option => ({
                                 value: option.value,
@@ -138,7 +159,7 @@ const VideoProcessingModalGeminiPanel = ({
                         <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
                             <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
                             <HelpIcon title={(() => {
-                                if (videoFile?.type?.startsWith('audio/')) {
+                                if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/')) {
                                     if (isVercelMode) {
                                         return t('processing.maxDurationAudioVercel', 'Parallel processing is not available for audio files in Vercel version. Audio files must be processed as a single request.');
                                     } else if (!inlineExtraction) {
@@ -159,7 +180,7 @@ const VideoProcessingModalGeminiPanel = ({
                                 size="XSmall"
                                 state={(() => {
                                     if (retryLock) return 'Disabled';
-                                    if (videoFile?.type?.startsWith('audio/')) {
+                                    if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/')) {
                                         // In Vercel mode, disable slider for all audio
                                         if (isVercelMode) return 'Disabled';
                                         // In non-Vercel mode, disable slider for audio with new method
@@ -196,6 +217,7 @@ const VideoProcessingModalGeminiPanel = ({
                         <label>{t('processing.promptPreset', 'Prompt Preset')}</label>
                         <CustomDropdown
                             value={selectedPromptPreset}
+                            id="generation-prompt-preset"
                             onChange={(value) => setSelectedPromptPreset(value)}
                             options={getPromptPresetOptions().map(option => {
                                 // Create SVG icon based on preset type

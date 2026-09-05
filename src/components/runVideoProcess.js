@@ -48,6 +48,7 @@ const runVideoProcess = async ({
     useOutsideResultsContext,
     outsideContext,
     fps,
+    audioOnly = false,
     mediaResolution,
     selectedModel,
     displayTokens,
@@ -74,7 +75,7 @@ const runVideoProcess = async ({
     let currentSegment = selectedSegment;
 
     // Check for audio + Gemini New method condition and adjust segment
-    if (videoFile?.type?.startsWith('audio/') && !inlineExtraction) {
+    if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/') && !inlineExtraction) {
         const duration = await readVideoDuration(videoFile);
         if (duration > 0) {
             currentSegment = { start: 0, end: duration };
@@ -104,6 +105,7 @@ const runVideoProcess = async ({
     // Determine if parallel processing should be disabled (infinite duration)
     const shouldDisableParallelProcessing = (() => {
         if (retryLock) return true;
+        if (isNativeMediaDescriptor(videoFile)) return false;
         if (videoFile?.type?.startsWith('audio/')) {
             // In Vercel mode, disable parallel processing for all audio
             if (isVercelMode) return true;
@@ -114,6 +116,7 @@ const runVideoProcess = async ({
     })();
 
     const options = {
+        audioOnly,
         fps,
         mediaResolution,
         model: selectedModel,

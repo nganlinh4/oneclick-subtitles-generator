@@ -35,23 +35,23 @@ it('adds, persists, displays, and selects a future Gemini model as custom text',
 
   fireEvent.click(screen.getByRole('button', { name: /Add Custom Model/ }));
   fireEvent.change(screen.getByLabelText('Model ID *'), {
-    target: { value: '  gemini-3.8-flash  ' },
+    target: { value: '  gemini-custom-test  ' },
   });
   fireEvent.change(screen.getByLabelText('Display Name'), {
-    target: { value: 'Gemini 3.8 Flash' },
+    target: { value: 'Custom test model' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Add Model' }));
 
   expect(JSON.parse(localStorage.getItem('custom_gemini_models'))).toEqual([{
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
+    id: 'gemini-custom-test',
+    name: 'Custom test model',
     isCustom: true,
   }]);
 
   fireEvent.click(screen.getByTitle('Select model'));
-  fireEvent.click(screen.getByRole('menuitem', { name: /Gemini 3\.8 Flash \(Custom\)/ }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /Custom test model \(Custom\)/ }));
   expect(onModelSelect).toHaveBeenCalledOnce();
-  expect(onModelSelect).toHaveBeenCalledWith('gemini-3.8-flash');
+  expect(onModelSelect).toHaveBeenCalledWith('gemini-custom-test');
 });
 
 it('rejects a provider path instead of persisting it as a model ID', () => {
@@ -59,7 +59,7 @@ it('rejects a provider path instead of persisting it as a model ID', () => {
 
   fireEvent.click(screen.getByRole('button', { name: /Add Custom Model/ }));
   fireEvent.change(screen.getByLabelText('Model ID *'), {
-    target: { value: 'models/gemini-3.8-flash' },
+    target: { value: 'models/gemini-custom-test' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Add Model' }));
 
@@ -84,17 +84,17 @@ it('confirms deletion without blocking and cannot erase a model added while conf
 
   fireEvent.click(screen.getByRole('button', { name: /Add Custom Model/ }));
   fireEvent.change(screen.getByLabelText('Model ID *'), {
-    target: { value: 'gemini-3.8-flash' },
+    target: { value: 'gemini-custom-test' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Add Model' }));
 
   await act(async () => { await confirmation.onClick(); });
 
   expect(screen.queryByText('Gemini 3.7 Flash')).not.toBeInTheDocument();
-  expect(screen.getAllByText('gemini-3.8-flash')).toHaveLength(2);
+  expect(screen.getAllByText('gemini-custom-test')).toHaveLength(2);
   expect(JSON.parse(localStorage.getItem('custom_gemini_models'))).toEqual([{
-    id: 'gemini-3.8-flash',
-    name: 'gemini-3.8-flash',
+    id: 'gemini-custom-test',
+    name: 'gemini-custom-test',
     isCustom: true,
   }]);
 });

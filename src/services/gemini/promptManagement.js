@@ -123,6 +123,9 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
     const selectedPresetId = promptContext
         ? promptContext.presetId
         : localStorage.getItem('video_processing_prompt_preset');
+    if (contentType === 'audio' && ['extract-text', 'describe-video'].includes(selectedPresetId)) {
+        throw new Error('This preset requires video frames. Disable audio-only or choose a speech preset.');
+    }
     
     // Get the transcription rules if available and enabled (using sync version)
     const useTranscriptionRules = promptContext

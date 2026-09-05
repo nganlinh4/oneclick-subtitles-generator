@@ -12,8 +12,8 @@ import { formatTime } from '../utils/timeFormatter';
 
 /** Resolution choices with their per-frame token costs. */
 export const buildResolutionOptions = (t) => ([
-    { value: 'low', label: t('processing.lowRes', 'Low (64 tokens/frame)'), tokens: 64 },
-    { value: 'medium', label: t('processing.mediumRes', 'Medium (256 tokens/frame)'), tokens: 256 },
+    { value: 'low', label: t('processing.lowRes', 'Low (66 tokens/frame)'), tokens: 66 },
+    { value: 'medium', label: t('processing.mediumRes', 'Medium (258 tokens/frame)'), tokens: 258 },
 ]);
 
 /** Catalog-verified Gemini models that accept audio or video input. */
@@ -21,7 +21,8 @@ export const buildModelOptions = (t) => (
     [
         ...TRANSCRIPTION_MODELS.map(m => ({
             value: m.id,
-            label: `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`,
+            label: m.freeRPD === null ? t(m.nameKey, m.nameDefault)
+                : `${t(m.nameKey, m.nameDefault)} (${t('models.dailyQuota', '{{count}} requests/day', { count: m.freeRPD })})`,
             maxTokens: m.maxTokens
         }))
     ]

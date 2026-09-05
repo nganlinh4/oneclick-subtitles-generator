@@ -10,6 +10,8 @@ import { supportsTokenCounting } from '../services/engines/transcriptionEngineRe
 const useTokenCounting = ({
   selectedSegment,
   fps,
+  audioOnly = false,
+  videoFile,
   mediaResolution,
   method,
   maxDurationPerRequest,
@@ -28,16 +30,16 @@ const useTokenCounting = ({
 
   const segmentDuration = selectedSegment.end - selectedSegment.start;
   const resolution = resolutionOptions.find((candidate) => candidate.value === mediaResolution);
-  const frameTokens = resolution ? resolution.tokens : 256;
+  const frameTokens = resolution ? resolution.tokens : 258;
   const audioTokensPerSecond = 32;
-  const totalSegmentTokens = Math.round(
-    segmentDuration * (fps * frameTokens + audioTokensPerSecond)
+  // The context limit applies to the largest request, not the mean of a full
+  // window and its shorter final tail. Prompt/metadata tokens remain additional.
+  const windowSeconds = Number(maxDurationPerRequest) * 60;
+  const longestRequest = Number.isFinite(windowSeconds) && windowSeconds > 0
+    ? Math.min(segmentDuration, windowSeconds) : segmentDuration;
+  const estimatedTokens = Math.round(
+    longestRequest * ((audioOnly || videoFile?.type?.startsWith('audio/') ? 0 : fps * frameTokens) + audioTokensPerSecond)
   );
-  const requestCount = Math.max(
-    1,
-    Math.ceil(segmentDuration / (maxDurationPerRequest * 60))
-  );
-  const estimatedTokens = Math.round(totalSegmentTokens / requestCount);
 
   return {
     realTokenCount: null,

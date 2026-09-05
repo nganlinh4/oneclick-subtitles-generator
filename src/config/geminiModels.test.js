@@ -20,7 +20,8 @@ const EXPECTED_MODELS = [
   'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
-  'gemini-3.1-flash-lite'
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash'
 ];
 
 describe('Gemini model catalog contract', () => {
@@ -33,7 +34,7 @@ describe('Gemini model catalog contract', () => {
   test('keeps provider-default sampling and valid quotas on every model', () => {
     GEMINI_MODELS.forEach((model) => {
       expect(model.request.sampling).toBe('provider-default');
-      expect(model.quota.requestsPerDay).toBeGreaterThan(0);
+      if (model.quota.requestsPerDay !== null) expect(model.quota.requestsPerDay).toBeGreaterThan(0);
       expect(model.dailyUse).toBeTruthy();
     });
     expect(Object.fromEntries(GEMINI_MODELS.map((model) => [model.id, model.freeRPD]))).toEqual({
@@ -41,10 +42,11 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.7-flash': 20,
       'gemini-3.6-flash': 20,
       'gemini-3.5-flash': 20,
-      'gemini-3.1-flash-lite': 500
+      'gemini-3.1-flash-lite': 500,
+      'gemini-3.8-flash': null
     });
     expect(GEMINI_MODELS.map((model) => model.profileLabels.en)).toEqual([
-      'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast'
+      'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast', 'GG New'
     ]);
   });
 
@@ -62,7 +64,8 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.7-flash': 'low',
       'gemini-3.6-flash': 'minimal',
       'gemini-3.5-flash': 'minimal',
-      'gemini-3.1-flash-lite': 'minimal'
+      'gemini-3.1-flash-lite': 'minimal',
+      'gemini-3.8-flash': 'low'
     });
   });
 
@@ -75,18 +78,18 @@ describe('Gemini model catalog contract', () => {
   });
 
   test('accepts bounded provider model IDs as text-only custom models', () => {
-    expect(normalizeCustomGeminiModelId('  gemini-3.8-flash  ')).toBe('gemini-3.8-flash');
-    expect(isCustomGeminiModelId('gemini-3.8-flash')).toBe(true);
+    expect(normalizeCustomGeminiModelId('  gemini-custom-test  ')).toBe('gemini-custom-test');
+    expect(isCustomGeminiModelId('gemini-custom-test')).toBe(true);
     expect(isCustomGeminiModelId('gemini-3.7-flash')).toBe(false);
     expect(isCustomGeminiModelId('gemini-3.5-flash-lite')).toBe(false);
-    expect(normalizeCustomGeminiModelId('models/gemini-3.8-flash')).toBeNull();
-    expect(normalizeCustomGeminiModelId('gemini-3.8-flash:generateContent')).toBeNull();
+    expect(normalizeCustomGeminiModelId('models/gemini-custom-test')).toBeNull();
+    expect(normalizeCustomGeminiModelId('gemini-custom-test:generateContent')).toBeNull();
     expect(normalizeCustomGeminiModelId('Gemini-3.8-Flash')).toBeNull();
     expect(normalizeCustomGeminiModels([
       { id: 'gemini-3.7-flash', name: 'Promoted duplicate', isCustom: true },
-      { id: ' gemini-3.8-flash ', name: ' Future model ' },
-      { id: 'gemini-3.8-flash', name: 'Duplicate' }
-    ])).toEqual([{ id: 'gemini-3.8-flash', name: 'Future model', isCustom: true }]);
+      { id: ' gemini-custom-test ', name: ' Future model ' },
+      { id: 'gemini-custom-test', name: 'Duplicate' }
+    ])).toEqual([{ id: 'gemini-custom-test', name: 'Future model', isCustom: true }]);
   });
 
   test('migrates every persisted model selection through one function', () => {
@@ -97,7 +100,7 @@ describe('Gemini model catalog contract', () => {
       ['video_processing_model', 'unverified-custom-model'],
       ['custom_gemini_models', JSON.stringify([
         { id: 'gemini-3.7-flash', name: 'Old custom entry', isCustom: true },
-        { id: 'gemini-3.8-flash', name: 'Future model', isCustom: true }
+        { id: 'gemini-custom-test', name: 'Future model', isCustom: true }
       ])],
       ['thinking_budgets', JSON.stringify({
         'gemini-3.1-flash-lite-preview': 'high',
@@ -112,7 +115,7 @@ describe('Gemini model catalog contract', () => {
 
     expect(migrateStoredGeminiModels(storage)).toEqual({
       custom_gemini_models: [{
-        id: 'gemini-3.8-flash',
+        id: 'gemini-custom-test',
         name: 'Future model',
         isCustom: true
       }],
@@ -122,7 +125,7 @@ describe('Gemini model catalog contract', () => {
     });
     expect(values.get('translation_model')).toBe('custom-model');
     expect(JSON.parse(values.get('custom_gemini_models'))).toEqual([{
-      id: 'gemini-3.8-flash',
+      id: 'gemini-custom-test',
       name: 'Future model',
       isCustom: true
     }]);

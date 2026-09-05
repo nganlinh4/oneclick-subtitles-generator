@@ -470,6 +470,7 @@ const CustomDropdown = ({
                     className={`dropdown-option ${isSelected ? 'selected morphing-item' : ''} ${isDisabled ? 'disabled' : ''}`}
                     disabled={isDisabled}
                     role="option"
+                    data-value={String(option.value)}
                     aria-selected={isSelected}
                     onMouseDown={(e) => {
                       e.preventDefault(); e.stopPropagation();

@@ -119,30 +119,30 @@ it('allows catalog models for media and validated custom models only for text', 
 
   const customText = normalizeGeminiStartRequest(nativeRequest({
     task: 'translate',
-    model: 'gemini-3.8-flash',
+    model: 'gemini-custom-test',
     mediaAssetId: null,
     prompt: 'Translate this text.',
     maxOutputTokens: 65_536,
   }));
-  expect(customText.model).toBe('gemini-3.8-flash');
+  expect(customText.model).toBe('gemini-custom-test');
 
   expect(() => normalizeGeminiStartRequest(nativeRequest({
-    model: 'gemini-3.8-flash',
+    model: 'gemini-custom-test',
   }))).toThrow(GeminiServiceError);
   expect(() => normalizeGeminiStartRequest(nativeRequest({
     task: 'translate',
-    model: 'gemini-3.8-flash',
+    model: 'gemini-custom-test',
     mediaAssetId: uuidv7(),
   }))).toThrow(GeminiServiceError);
   expect(() => normalizeGeminiStartRequest(nativeRequest({
     task: 'analyzeSubtitles',
-    model: 'gemini-3.8-flash',
+    model: 'gemini-custom-test',
     mediaAssetId: null,
     mediaResolution: 'medium',
   }))).toThrow(GeminiServiceError);
   expect(() => normalizeGeminiStartRequest(nativeRequest({
     task: 'translate',
-    model: 'gemini-3.8-flash',
+    model: 'gemini-custom-test',
     mediaAssetId: null,
     thinkingLevel: 'low',
   }))).toThrow(GeminiServiceError);

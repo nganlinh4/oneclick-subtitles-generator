@@ -566,6 +566,7 @@ export const useSubtitles = (t) => {
                     segment,
                     await withGeminiProjectAdmission({
                         fps,
+                        audioOnly: options.audioOnly === true,
                         mediaResolution,
                         model,
                         userProvidedSubtitles,
@@ -627,6 +628,7 @@ export const useSubtitles = (t) => {
                             segment,
                             await withGeminiProjectAdmission({
                                 fps,
+                                audioOnly: options.audioOnly === true,
                                 mediaResolution,
                                 model,
                                 userProvidedSubtitles,
@@ -657,6 +659,7 @@ export const useSubtitles = (t) => {
                             fullSegment,
                             await withGeminiProjectAdmission({
                                 fps,
+                                audioOnly: options.audioOnly === true,
                                 mediaResolution,
                                 model,
                                 userProvidedSubtitles,
@@ -734,6 +737,7 @@ export const useSubtitles = (t) => {
                             fullSegment,
                             await withGeminiProjectAdmission({
                                 fps,
+                                audioOnly: options.audioOnly === true,
                                 mediaResolution,
                                 model,
                                 userProvidedSubtitles,

@@ -3,6 +3,7 @@
  * Handles incremental parsing and timeline updates
  */
 
+import { JsonArrayStream } from './jsonArrayStream';
 import { parseGeminiResponse } from './index';
 import { autoSplitSubtitles } from './splitUtils';
 
@@ -19,6 +20,9 @@ export class RealtimeSubtitleProcessor {
     this.t = options.t || null; // Translation function for i18n
     
     // Processing state
+    this.arrayStream = new JsonArrayStream();
+    this.rawRows = [];
+    this._settled = false;
     this.accumulatedText = '';
     this.currentSubtitles = [];
     this.lastValidSubtitles = [];
@@ -31,8 +35,6 @@ export class RealtimeSubtitleProcessor {
   this._pendingPayload = null;
     
     // Parsing options
-    this.parseAttemptInterval = 3; // Try to parse every 3 chunks
-    this.minTextLength = 100; // Minimum text length before attempting parse
     
     // Auto-split options
     this.autoSplitEnabled = options.autoSplitEnabled || false;
@@ -56,6 +58,7 @@ export class RealtimeSubtitleProcessor {
     const now = Date.now();
     const since = now - this._lastEmitTs;
     if (since >= this.throttleMs) {
+      this._clearPendingUpdate();
       this._lastEmitTs = now;
       this.onSubtitleUpdate(payload);
     } else {
@@ -77,6 +80,7 @@ export class RealtimeSubtitleProcessor {
    * @param {Object} chunk - Chunk data from streaming service
    */
   processChunk(chunk) {
+    if (this._settled) return;
     if (!this.isProcessing) {
       this.isProcessing = true;
       this.onStatusUpdate({
@@ -118,14 +122,7 @@ export class RealtimeSubtitleProcessor {
 
 
 
-      // Try to parse subtitles periodically or if we have enough text
-      const shouldAttemptParse = 
-      this.chunkCount % this.parseAttemptInterval === 0 || 
-      this.accumulatedText.length >= this.minTextLength;
-
-      if (shouldAttemptParse) {
       this.attemptSubtitleParsing();
-      }
 
       // Update status with progress
       this.onStatusUpdate({
@@ -139,47 +136,34 @@ export class RealtimeSubtitleProcessor {
    */
   attemptSubtitleParsing() {
     try {
-
-      // Create a mock response object for the parser
-      const mockResponse = {
-        candidates: [{
-          content: {
-            parts: [{
-              text: this.accumulatedText
-            }]
-          }
-        }]
-      };
-
-      // Try to parse the accumulated text
-      const parsedSubtitles = parseGeminiResponse(mockResponse);
-
-      if (parsedSubtitles && parsedSubtitles.length > 0) {
-      // Check if we have new subtitles
-      if (parsedSubtitles.length > 0) {
-
-        // Apply auto-split if enabled
-        let processedSubtitles = parsedSubtitles;
-        if (this.autoSplitEnabled && this.maxWordsPerSubtitle > 0) {
-          processedSubtitles = autoSplitSubtitles(parsedSubtitles, this.maxWordsPerSubtitle);
-        }
-
-        this.currentSubtitles = processedSubtitles;
-        this.lastValidSubtitles = [...processedSubtitles]; // Keep a backup
-
-        // Notify about subtitle updates (throttled)
-        this._maybeEmitUpdate({
-          subtitles: processedSubtitles,
-          isStreaming: true,
-          chunkCount: this.chunkCount,
-          textLength: this.accumulatedText.length
+      const records = this.arrayStream.append(this.accumulatedText);
+      if (!records.length) return;
+      for (const { index, value } of records) {
+        const rows = parseGeminiResponse({
+          candidates: [{ content: { parts: [{ structuredJson: [value] }] } }],
         });
+        for (const row of rows) {
+          const stableRow = value.index === undefined ? { ...row, id: index + 1 } : row;
+          const processed = this.autoSplitEnabled && this.maxWordsPerSubtitle > 0
+            ? autoSplitSubtitles([stableRow], this.maxWordsPerSubtitle) : [stableRow];
+          this.rawRows.push(...processed);
+        }
       }
-      }
+      this.currentSubtitles = this.rawRows.slice();
+      this.lastValidSubtitles = this.currentSubtitles;
+      this._maybeEmitUpdate({
+        subtitles: this.currentSubtitles, isStreaming: true,
+        chunkCount: this.chunkCount, textLength: this.accumulatedText.length,
+      });
     } catch (error) {
-      // console.debug('[RealtimeProcessor] Parsing attempt failed:', error.message);
-      // Don't throw - parsing failures are expected during streaming
+      this.error(error);
     }
+  }
+
+  _clearPendingUpdate() {
+    if (this._emitTimer) clearTimeout(this._emitTimer);
+    this._emitTimer = null;
+    this._pendingPayload = null;
   }
 
   /**
@@ -187,10 +171,14 @@ export class RealtimeSubtitleProcessor {
    * @param {string|Array} finalText - Final accumulated text or pre-filtered subtitles array (for early stopping)
    */
   complete(finalText) {
+    if (this._settled) return;
+    this._settled = true;
+    this._clearPendingUpdate();
     this.isProcessing = false;
     
     // Check if we received pre-filtered subtitles (early stop scenario)
     let finalSubtitles = null;
+    if (typeof finalText === 'string' && finalText.trim() === '[]') finalSubtitles = [];
     // Handle structured segment result object from parallel coordinator
     if (finalText && typeof finalText === 'object' && !Array.isArray(finalText)) {
       // Shape: { subtitles: Array, isSegmentResult: true, segment: {...}, text?: string }
@@ -250,7 +238,7 @@ export class RealtimeSubtitleProcessor {
     }
 
     // Process the final subtitles (either from early stop or parsed)
-    if (finalSubtitles && finalSubtitles.length > 0) {
+    if (Array.isArray(finalSubtitles)) {
       // Apply auto-split if enabled
       let processedSubtitles = finalSubtitles;
       if (this.autoSplitEnabled && this.maxWordsPerSubtitle > 0) {
@@ -258,16 +246,11 @@ export class RealtimeSubtitleProcessor {
       }
       
       this.currentSubtitles = processedSubtitles;
-
+      this._maybeEmitUpdate({ subtitles: processedSubtitles, isStreaming: false }, true);
       this.onComplete(processedSubtitles);
       } else {
       // No valid subtitles found
-      // Fall back to last valid subtitles if available
-      if (this.lastValidSubtitles.length > 0) {
-        this.onComplete(this.lastValidSubtitles);
-      } else {
-        this.onError(new Error('No valid subtitles found in final response'));
-      }
+      this.onError(new Error('No valid subtitles found in final response'));
     }
   }
 
@@ -276,20 +259,21 @@ export class RealtimeSubtitleProcessor {
    * @param {Error} error - The error that occurred
    */
   error(error) {
-     this.isProcessing = false;
-     
-     // Try to salvage any subtitles we've parsed so far
-     if (this.lastValidSubtitles.length > 0) {
-       this.onComplete(this.lastValidSubtitles);
-     } else {
-       this.onError(error);
-     }
-   }
+    if (this._settled) return;
+    this._settled = true;
+    this.isProcessing = false;
+    this._clearPendingUpdate();
+    this.onError(error);
+  }
 
   /**
    * Reset the processor state
    */
   reset() {
+    this._clearPendingUpdate();
+    this.arrayStream = new JsonArrayStream();
+    this.rawRows = [];
+    this._settled = false;
     this.accumulatedText = '';
     this.currentSubtitles = [];
     this.lastValidSubtitles = [];

@@ -111,6 +111,10 @@ const useVideoProcessingState = ({
     }, [isVercelMode, method]);
 
     // Processing options state with localStorage persistence
+    const [audioOnly, setAudioOnly] = useState(() => localStorage.getItem('video_processing_audio_only') === 'true');
+    useEffect(() => {
+        localStorage.setItem('video_processing_audio_only', String(audioOnly));
+    }, [audioOnly]);
     const [fps, setFps] = useState(() => {
         const saved = localStorage.getItem('video_processing_fps');
         return saved ? parseFloat(saved) : 0.25; // Default to 0.25 FPS for efficiency
@@ -387,13 +391,18 @@ const useVideoProcessingState = ({
     }, [isUploading, t]);
 
     // Prompt-preset options (closes over t + subtitles availability for the panel)
-    const getPromptPresetOptions = () => buildPromptPresetOptions(t, hasUserProvidedSubtitles);
+    const getPromptPresetOptions = () => buildPromptPresetOptions(t, hasUserProvidedSubtitles).map(option => ({
+        ...option,
+        disabled: option.disabled || ((audioOnly || videoFile?.type?.startsWith('audio/'))
+            && ['extract-text', 'describe-video'].includes(option.id)),
+    }));
 
     // Outside-range context text, shared by token counting + submit
     const getOutsideContextText = () => buildOutsideContextText(useOutsideResultsContext, outsideContext);
 
     // Real + estimated token counting (Gemini countTokens API with estimation fallback)
     const { realTokenCount, displayTokens, isCountingTokens } = useTokenCounting({
+        audioOnly,
         isOpen,
         videoFile,
         selectedSegment,
@@ -415,6 +424,7 @@ const useVideoProcessingState = ({
 
     // Handle form submission — delegates to the runVideoProcess builder/dispatcher
     const handleProcess = () => runVideoProcess({
+        audioOnly,
         selectedSegment,
         isUploading,
         videoFile,
@@ -497,6 +507,8 @@ const useVideoProcessingState = ({
         setFps,
         mediaResolution,
         setMediaResolution,
+        audioOnly,
+        setAudioOnly,
         selectedModel,
         setSelectedModel,
         selectedPromptPreset,

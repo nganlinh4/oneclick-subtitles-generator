@@ -70,6 +70,7 @@ const requestKeys = new Set([
   'maxOutputTokens',
   'thinkingLevel',
   'mediaResolution',
+  'videoFps',
   'responseJsonSchema',
   'mediaAssetId',
   'emptySpeechPolicy',
@@ -318,6 +319,11 @@ export const normalizeGeminiStartRequest = (request) => {
     const wireValue = mediaResolutionWireValue[request.mediaResolution];
     if (wireValue === undefined) throw invalidRequest();
     normalized.mediaResolution = wireValue;
+  }
+  if (request.videoFps !== undefined) {
+    if (!model || normalized.mediaAssetId === null || !Number.isFinite(request.videoFps)
+        || request.videoFps <= 0 || request.videoFps > 24) throw invalidRequest();
+    normalized.videoFps = request.videoFps;
   }
   if (request.emptySpeechPolicy !== undefined) {
     if (request.task !== 'transcribe'

@@ -457,6 +457,7 @@ export const useSubtitlesSegmentRetry = ({
                 sourceFile: source.sourceFile,
                 options: {
                     fps: options.fps ?? getVideoProcessingFps(),
+                    audioOnly: options.audioOnly === true,
                     mediaResolution: options.mediaResolution ?? getMediaResolution(),
                     model: normalizeMediaModelId(
                         modelId ?? localStorage.getItem('gemini_model'),
@@ -644,6 +645,7 @@ export const useSubtitlesSegmentRetry = ({
                             sourceFile,
                             options: {
                                 fps: getVideoProcessingFps(),
+                                audioOnly: localStorage.getItem('video_processing_audio_only') === 'true',
                                 mediaResolution: getMediaResolution(),
                                 model: normalizeMediaModelId(
                                     localStorage.getItem('gemini_model'),

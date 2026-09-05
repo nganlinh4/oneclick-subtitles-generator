@@ -10,7 +10,7 @@ vi.mock('../platform/mediaPipelineService', () => ({
 }));
 vi.mock('../utils/toastUtils', () => ({ showInfoToast: vi.fn() }));
 
-it('uses native inspection for audio duration without creating a blob URL', async () => {
+it('preserves the selected native audio range and request limit without creating a blob URL', async () => {
   const videoFile = Object.freeze({
     __nativeMedia: true,
     assetId: '019ffbce-1d1a-7341-b053-f70b9af1b4f1',
@@ -55,11 +55,12 @@ it('uses native inspection for audio duration without creating a blob URL', asyn
     onProcess,
   });
 
-  expect(inspectMediaPipelineAsset).toHaveBeenCalledWith(videoFile.assetId);
+  expect(inspectMediaPipelineAsset).not.toHaveBeenCalled();
   expect(createObjectUrl).not.toHaveBeenCalled();
-  expect(onSelectedSegmentChange).toHaveBeenCalledWith({ start: 0, end: 11.141905 });
+  expect(onSelectedSegmentChange).not.toHaveBeenCalled();
   expect(onProcess).toHaveBeenCalledWith(expect.objectContaining({
-    segment: { start: 0, end: 11.141905 },
+    segment: { start: 2, end: 4 },
+    maxDurationPerRequest: 600,
     videoFile,
   }));
   createObjectUrl.mockRestore();

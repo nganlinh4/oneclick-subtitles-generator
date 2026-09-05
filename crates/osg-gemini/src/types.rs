@@ -92,6 +92,8 @@ pub enum MediaResolution {
 /// are intentionally absent for the current Gemini 3.x endpoints.
 #[derive(Clone, Default)]
 pub struct GenerationConfig {
+    /// Sampling rate on video parts, never on audio parts or generationConfig.
+    pub video_fps: Option<f64>,
     pub max_output_tokens: Option<u32>,
     pub thinking_level: Option<ThinkingLevel>,
     pub media_resolution: Option<MediaResolution>,
@@ -102,6 +104,7 @@ impl fmt::Debug for GenerationConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("GenerationConfig")
+            .field("video_fps", &self.video_fps)
             .field("max_output_tokens", &self.max_output_tokens)
             .field("thinking_level", &self.thinking_level)
             .field("media_resolution", &self.media_resolution)
@@ -127,6 +130,14 @@ impl GenerationConfig {
     }
 
     pub(crate) fn validate(&self, model: Model) -> Result<()> {
+        if self
+            .video_fps
+            .is_some_and(|fps| !fps.is_finite() || fps <= 0.0 || fps > 24.0)
+        {
+            return Err(Error::InvalidRequest(
+                "video FPS must be within (0, 24]".to_owned(),
+            ));
+        }
         if self
             .max_output_tokens
             .is_some_and(|limit| limit == 0 || limit > model.output_token_limit())

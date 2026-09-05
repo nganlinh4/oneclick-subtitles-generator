@@ -73,6 +73,8 @@ const VideoProcessingOptionsModal = ({
         setFps,
         mediaResolution,
         setMediaResolution,
+        audioOnly,
+        setAudioOnly,
         selectedModel,
         setSelectedModel,
         selectedPromptPreset,
@@ -191,6 +193,8 @@ const VideoProcessingOptionsModal = ({
                                     />
                                 ) : (
                                     <VideoProcessingModalGeminiPanel
+                                        audioOnly={audioOnly}
+                                        setAudioOnly={setAudioOnly}
                                         videoFile={videoFile}
                                         selectedModel={selectedModel}
                                         setSelectedModel={setSelectedModel}

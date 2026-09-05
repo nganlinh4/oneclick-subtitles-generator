@@ -1,0 +1,93 @@
+# Gemini media refresh — 2026-09-06
+
+This work is independent of legacy-main parity. Checkpoint before changes:
+`9eecdbee` (worktree was clean).
+
+## Verified sources and decisions
+
+- [Gemini 3.8 model contract](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash):
+  stable `gemini-3.8-flash`, audio/video input, structured text output, 1,048,576
+  input and 65,536 output tokens. Thinking supports low/medium/high, not minimal.
+  SGT's `catalog/model_catalog.json` already includes this endpoint, verified
+  September 3. Add as opt-in; do not infer subtitle quality from coding benchmarks.
+- [Agentic video announcement](https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-agentic-video-in-gemini/)
+  and [current API guide](https://ai.google.dev/gemini-api/docs/video-understanding):
+  agentic processing is an Interactions video-content setting, not an extra
+  generationConfig field for the current generateContent transport. Current
+  guide includes 3.8 in addition to the announcement's 3.7/3.6/3.5 Lite.
+  Verify processing_call/result evidence, cancellation, stream events, schema,
+  uploaded-file cleanup and token accounting before claiming agentic execution.
+  Selective retrieval benefits do not prove complete transcription coverage.
+- [Audio guide](https://ai.google.dev/gemini-api/docs/audio): audio-only must
+  actually send audio media, not video plus an instruction to ignore the image.
+
+## App and harness audit
+
+The existing Rust benchmark shares upload/stream transports, but copies prompts
+and schemas and bypasses desktop clip preparation, project admission, streaming
+parse, timestamp restoration and persistence. Keep it as a provider baseline;
+do not call it a product-workflow benchmark.
+
+SGT's useful rule: benchmark the production entry point, not a separately rebuilt
+HTTP payload. Record failed attempts and full-result latency, rotate configured
+credentials without treating shared-project keys as independent quota, and never
+compare results with different request/scorer fingerprints.
+
+Existing speech-envelope references use silencedetect. Those are not human cue
+boundaries or sufficient ground truth for word-aligned timestamp accuracy.
+
+## Dataset review
+
+- [AMI](https://groups.inf.ed.ac.uk/ami/download/) supplies real video and manual
+  word annotations under CC BY 4.0. Suitable for timed dialogue/overlap fixtures.
+- [How2](https://github.com/srvk/how2-dataset) supplies instructional video and
+  aligned text, but maintainers report many original videos removed. Do not base
+  deterministic acceptance on a downloader that silently substitutes sources.
+- TED-derived data needs a separate usage review; do not assume transcripts or
+  original videos inherit a dataset website's code license.
+
+Prepared three AMI excerpts: ES2004a (60 seconds), ES2002a (90 seconds),
+IS1009a (150 seconds), with 94/161/291 manually timed words. Source media,
+annotation archive, generated clips and references are hashed in
+`target/subtitle-benchmark/real-video/manifest.json`; preparation is reproducible
+through `scripts/prepare-ami-video-benchmark.py` after obtaining the sources.
+The first contact sheet was visually inspected. These vary meeting/site/speakers
+but remain English meeting speech: not a multilingual or music quality claim.
+
+## Measured provider baseline and root fixes
+
+The initial live baseline used all 20 configured credential slots across 72
+cells and six models: 65 valid outputs, six HTTP 429 failures, one timestamp
+parse failure. Its successful test-process exit is NOT an all-green result.
+Results: `target/subtitle-benchmark/runs/2026-09-06-provider-baseline`.
+The silence case also exposed hallucinations outside the app's silence policy.
+These are provider-level observations, not proof of production workflow quality.
+
+Request audit found the native path did not transmit the FPS control. FPS is now
+validated and serialized on video parts only, including the old generation path.
+Timestamp projection previously guessed the origin again as streaming rows grew;
+the fixed contract is clip-local timestamps projected once into the project.
+Streaming previously reparsed accumulated JSON and could publish a stale pending
+update after completion/error. It now scans newly appended records and cancels
+pending updates at terminal states. These changes still require real UI proof.
+
+The opt-in `e2e/scenarios/geminiMediaBenchmark.mjs` drives the actual modal and
+records saved cues, text-aligned timing scores, partial-cue observations and
+screenshots. Arguments select case/model/mode (or `all`). Human references remain
+in the Node scoring process and are never passed to the app/provider.
+
+## Remaining acceptance (not claimed complete)
+
+- Exercise audio-only in the hidden real app, including full/partial range,
+  multiple windows, cancellation, no-audio refusal and retry. Confirm uploaded
+  MIME and artifact stream inventory without logging bytes/keys.
+- Complete preset/settings/localization and token-estimation review. Preserve
+  explicit mode through every retry and automatic-generation path.
+- Use three reviewed videos through the production operation and compare both
+  modes across every available media model. Record credential-slot coverage.
+- Score text-aligned timing: signed start/end bias, median and p95 absolute
+  error, missing/extra speech, text accuracy and drift versus time. Do not pair
+  reference and output cues merely by array index or hide mismatches.
+- Evaluate agentic Interactions separately before promoting it to production.
+- Build and inspect the updated UI in the hidden real app; existing executable
+  does not yet contain these changes.

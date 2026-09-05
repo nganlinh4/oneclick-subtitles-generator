@@ -1,3 +1,4 @@
+import { projectClipSubtitles } from './segmentTimestamps';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { bindGeminiTranscriptionDeliveries } from '../../services/gemini/transcriptionDelivery';
@@ -160,9 +161,6 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
   return new Promise((resolve, reject) => {
     const { fps, mediaResolution, model, userProvidedSubtitles, autoSplitSubtitles, maxWordsPerSubtitle } = options;
 
-    // Track if we've stopped early due to subtitles going past segment
-    let hasStoppedEarly = false;
-    let earlyStopController = null;
     let providerResult = null;
     let providerSettled = false;
     let processedResult = null;
@@ -181,73 +179,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
          maxWordsPerSubtitle: parseInt(maxWordsPerSubtitle) || 8,
          t, // Pass translation function for i18n support
          onSubtitleUpdate: (data) => {
-            // Stop once a model emits subtitles well beyond the requested segment.
-          if (data.subtitles && data.subtitles.length > 0 && !hasStoppedEarly) {
-            const segmentStart = segment.start;
-            const segmentEnd = segment.end;
-
-            // Check if we have subtitles that are significantly past the segment end
-            // We add a small buffer (5 seconds) to avoid stopping too early
-            const bufferTime = 5;
-            const lastSubtitle = data.subtitles[data.subtitles.length - 1];
-
-            if (lastSubtitle && lastSubtitle.start > (segmentEnd + bufferTime)) {
-              dbgw(`[ProcessingUtils] Early stopping: Last subtitle at ${lastSubtitle.start}s exceeds segment end ${segmentEnd}s by more than ${bufferTime}s`);
-              hasStoppedEarly = true;
-
-              // Trigger early completion with filtered subtitles
-              const filteredForCompletion = data.subtitles.filter(sub => {
-                return sub.start < segmentEnd && sub.end > segmentStart;
-              }).map(sub => {
-                return {
-                  ...sub,
-                  start: Math.max(sub.start, segmentStart),
-                  end: Math.min(sub.end, segmentEnd)
-                };
-              });
-
-              dbg(`[ProcessingUtils] Early stop: Completing with ${filteredForCompletion.length} subtitles (from ${data.subtitles.length} total)`);
-
-              // Cancel the streaming if we have a controller
-              if (earlyStopController && typeof earlyStopController.abort === 'function') {
-                earlyStopController.abort();
-              }
-
-              // Manually trigger completion
-              processor.complete(JSON.stringify(filteredForCompletion));
-              return; // Stop processing further updates
-            }
-          }
-
-          // Normalize potential relative times to absolute BEFORE filtering/clipping
-          let filteredSubtitles = data.subtitles;
-          if (data.subtitles && data.subtitles.length > 0) {
-            const segmentStart = segment.start;
-            const segmentEnd = segment.end;
-            const segDuration = segmentEnd - segmentStart;
-
-            // Detect segment-relative timestamps from the model and offset first
-            const maxEndRaw = Math.max(...data.subtitles.map(s => s.end || 0));
-            const looksRelative = maxEndRaw <= (segDuration + 1);
-            let normalized = looksRelative
-              ? data.subtitles.map(sub => ({
-                  ...sub,
-                  start: (sub.start || 0) + segmentStart,
-                  end: (sub.end || 0) + segmentStart
-                }))
-              : data.subtitles;
-
-            // Then filter and clip
-            filteredSubtitles = normalized.filter(sub => (sub.start < segmentEnd && sub.end > segmentStart))
-              .map(sub => ({
-                ...sub,
-                start: Math.max(sub.start, segmentStart),
-                end: Math.min(sub.end, segmentEnd)
-              }));
-
-            dbg(`[ProcessingUtils] Filtered ${data.subtitles.length} subtitles to ${filteredSubtitles.length} for segment ${segmentStart}-${segmentEnd}`);
-          }
-
+          const filteredSubtitles = projectClipSubtitles(data.subtitles, segment);
 
           // Dispatch streaming-update event for timeline animations
           if (data.isStreaming) {
@@ -286,33 +218,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
 
           dbg('[ProcessingUtils] Streaming complete:', finalSubtitles.length, 'subtitles');
 
-          // Normalize potential relative times to absolute BEFORE final filtering/clipping
-          let filteredFinal = finalSubtitles;
-          if (finalSubtitles && finalSubtitles.length > 0) {
-            const segmentStart = segment.start;
-            const segmentEnd = segment.end;
-            const segDuration = segmentEnd - segmentStart;
-
-            const maxEndRaw = Math.max(...finalSubtitles.map(s => s.end || 0));
-            const looksRelative = maxEndRaw <= (segDuration + 1);
-            const normalized = looksRelative
-              ? finalSubtitles.map(sub => ({
-                  ...sub,
-                  start: (sub.start || 0) + segmentStart,
-                  end: (sub.end || 0) + segmentStart
-                }))
-              : finalSubtitles;
-
-            filteredFinal = normalized.filter(sub => (sub.start < segmentEnd && sub.end > segmentStart))
-              .map(sub => ({
-                ...sub,
-                start: Math.max(sub.start, segmentStart),
-                end: Math.min(sub.end, segmentEnd)
-              }));
-
-            dbg(`[ProcessingUtils] Final filter: ${finalSubtitles.length} subtitles to ${filteredFinal.length} for segment ${segmentStart}-${segmentEnd}`);
-            }
-
+          const filteredFinal = projectClipSubtitles(finalSubtitles, segment);
             processedResult = filteredFinal;
             processorSettled = true;
             resolveWhenAuthoritative();
@@ -337,6 +243,8 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
 
       // Base options common to both API paths
       const baseApiOptionsBase = {
+        audioOnly: options.audioOnly === true,
+        videoFps: fps,
         userProvidedSubtitles,
         modelId: model,
         mediaResolution: mappedMediaResolution,

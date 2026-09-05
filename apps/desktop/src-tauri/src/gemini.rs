@@ -77,6 +77,7 @@ pub(crate) struct GeminiStartRequest {
     max_output_tokens: Option<u32>,
     thinking_level: Option<ThinkingLevel>,
     media_resolution: Option<MediaResolution>,
+    video_fps: Option<f64>,
     response_json_schema: Option<Value>,
     media_asset_id: Option<AssetId>,
     empty_speech_policy: Option<EmptySpeechPolicy>,
@@ -93,6 +94,15 @@ struct GeminiProjectAuthority {
 
 impl GeminiStartRequest {
     fn validate(&self) -> CommandResult<()> {
+        if self
+            .video_fps
+            .is_some_and(|fps| !fps.is_finite() || fps <= 0.0 || fps > 24.0)
+            || (self.video_fps.is_some() && self.media_asset_id.is_none())
+        {
+            return Err(CommandError::invalid_input(
+                "Video FPS requires media and must be within (0, 24].",
+            ));
+        }
         let prompt_chars = self.prompt.chars().count();
         if self.prompt.trim().is_empty() || prompt_chars > MAX_PROMPT_CHARS {
             return Err(CommandError::invalid_input(
@@ -142,6 +152,7 @@ impl GeminiStartRequest {
         if self.model.is_custom()
             && (matches!(self.task, GeminiTask::Transcribe)
                 || self.media_asset_id.is_some()
+                || self.video_fps.is_some()
                 || self.media_resolution.is_some())
         {
             return Err(CommandError::invalid_input(
@@ -197,6 +208,7 @@ impl GeminiStartRequest {
                 .into_iter()
                 .collect::<Vec<_>>(),
             generation: GenerationConfig {
+                video_fps: self.video_fps,
                 max_output_tokens: self.max_output_tokens,
                 thinking_level: self.thinking_level,
                 media_resolution: self.media_resolution,

@@ -3,7 +3,7 @@
   "source": {
     "repository": "oneclick-subtitles-generator",
     "catalog": "src/config/geminiModelCatalog.json",
-    "syncedAt": "2026-08-14"
+    "syncedAt": "2026-09-06"
   },
   "defaults": {
     "ordinary": "gemini-3.1-flash-lite",
@@ -121,6 +121,23 @@
       "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
       "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
       "thinking": { "type": "level", "options": ["minimal", "low", "medium", "high"], "default": "minimal", "configurable": true }
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "displayName": "Gemini 3.8 Flash",
+      "lifecycle": "stable",
+      "verifiedAt": "2026-09-06",
+      "profileLabels": { "en": "GG New", "vi": "GG Mới", "ko": "GG 신규" },
+      "dailyUse": "Opt-in multimodal model; subtitle benchmark pending",
+      "quota": { "requestsPerDay": null },
+      "intelligenceTier": 7,
+      "supportsSearch": true,
+      "searchEnabledByDefault": false,
+      "modalities": ["video", "audio", "image", "text"],
+      "features": ["transcription", "translation", "analysis", "document", "backgroundPrompt"],
+      "limits": { "inputTokens": 1048576, "outputTokens": 65536 },
+      "request": { "sampling": "provider-default", "structuredOutput": "strict-json-schema", "mediaResolution": true },
+      "thinking": { "type": "level", "options": ["low", "medium", "high"], "default": "low", "configurable": true }
     }
   ],
   "imageGenerationModels": [

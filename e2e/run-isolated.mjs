@@ -24,6 +24,7 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 // (own script: test:long-media-resource-bounds). longMediaOperationRecovery is a two-process
 // PHASE-gated scenario like renderInterruptRecovery, needing scenarios/longMediaOperationRecovery.mjs.
 const NON_DEFAULT_JOURNEYS = new Set([
+  'geminiMediaBenchmark.journey.js',
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
   'geminiBackgroundImageSuccess.journey.js',

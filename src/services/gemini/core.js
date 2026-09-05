@@ -69,7 +69,7 @@ const assertSingleNativeRange = (range, maximumSeconds) => {
 };
 
 const coversWholeAsset = async (assetId, range) => {
-  if (range.start > FULL_RANGE_TOLERANCE_SECONDS) return false;
+  if (range.start !== 0) return false;
   const inspection = await inspectMediaPipelineAsset(assetId);
   if (!Number.isSafeInteger(inspection.durationUs) || inspection.durationUs <= 0) return false;
   const durationSeconds = inspection.durationUs / 1_000_000;
@@ -107,7 +107,34 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     assertSingleNativeRange(segmentRange, options.maxDurationPerRequest);
     let mediaAssetId = input.assetId;
     let mediaKind = input.type?.startsWith('audio/') ? 'audio' : 'video';
-    if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
+    // Validate the task before installing tools or extracting media. A visual-only preset
+    // must never silently become speech transcription when the user selects audio-only.
+    const prompt = getTranscriptionPrompt(
+      options.audioOnly === true ? 'audio' : mediaKind,
+      options.userProvidedSubtitles,
+      {
+        segmentInfo: segmentRange ? {
+          start: 0, end: segmentRange.end - segmentRange.start,
+          duration: segmentRange.end - segmentRange.start, isSegment: true,
+        } : {},
+        promptContext: options.promptContext,
+      }
+    );
+    if (options.audioOnly === true) {
+      await ensureNativeMediaToolsReady({ signal });
+      if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
+      const audio = await runMediaPipeline({
+        operation: 'extractAudio',
+        assetId: input.assetId,
+        format: 'flac',
+        ...(segmentRange ? { range: segmentRange } : {}),
+      }, { signal });
+      if (audio.media.asset.kind !== 'audio') {
+        throw new Error('Audio-only preparation did not produce an audio asset.');
+      }
+      mediaAssetId = audio.media.asset.id;
+      mediaKind = 'audio';
+    } else if (segmentRange !== null && !(await coversWholeAsset(input.assetId, segmentRange))) {
       // A bounded Gemini request must materialize an exact native clip. A clean install may not
       // have the reviewed media toolchain yet; install and activate it here instead of turning the
       // customer's public split setting into an opaque mediaPipeline failure. Concurrent windows
@@ -123,14 +150,6 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
       mediaKind = clip.media.asset.kind;
     }
 
-    const prompt = getTranscriptionPrompt(
-      mediaKind,
-      options.userProvidedSubtitles,
-      {
-        segmentInfo: options.segmentInfo ?? {},
-        promptContext: options.promptContext,
-      }
-    );
     const emptySpeechPolicy = getEmptySpeechPolicy(
       mediaKind,
       options.userProvidedSubtitles,
@@ -152,12 +171,13 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
     const result = await runNativeGeminiTranscription({
       assetId: mediaAssetId,
+      videoFps: mediaKind === 'video' ? (options.videoFps ?? options.videoMetadata?.fps) : undefined,
       model,
-      prompt,
+      prompt: `${prompt}\n\nTimestamp contract: all timestamps are relative to the supplied media, beginning at 00:00. Do not add any original-video or project timeline offset.`,
       ...(emptySpeechPolicy ? { emptySpeechPolicy } : {}),
       responseJsonSchema: createSubtitleSchema(Boolean(options.userProvidedSubtitles?.trim())),
       thinkingLevel: getThinkingBudget(model),
-      mediaResolution: normalizeMediaResolution(options.mediaResolution),
+      mediaResolution: mediaKind === 'video' ? normalizeMediaResolution(options.mediaResolution) : undefined,
       ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
       ...(options.expectedProjectStateVersion !== undefined
         ? { expectedProjectStateVersion: options.expectedProjectStateVersion }

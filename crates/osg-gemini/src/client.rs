@@ -442,10 +442,14 @@ enum WirePart {
         text: String,
     },
     InlineData {
+        #[serde(rename = "videoMetadata", skip_serializing_if = "Option::is_none")]
+        video_metadata: Option<WireVideoMetadata>,
         #[serde(rename = "inlineData")]
         inline_data: WireInlineData,
     },
     FileData {
+        #[serde(rename = "videoMetadata", skip_serializing_if = "Option::is_none")]
+        video_metadata: Option<WireVideoMetadata>,
         #[serde(rename = "fileData")]
         file_data: WireFileData,
     },
@@ -486,17 +490,29 @@ struct WireThinkingConfig {
     thinking_level: crate::ThinkingLevel,
 }
 
+#[derive(Serialize)]
+struct WireVideoMetadata {
+    fps: f64,
+}
+
+fn video_metadata(mime_type: &str, fps: Option<f64>) -> Option<WireVideoMetadata> {
+    fps.filter(|_| mime_type.starts_with("video/"))
+        .map(|fps| WireVideoMetadata { fps })
+}
+
 fn build_generate_payload(request: &GenerateRequest) -> WireGenerateRequest {
     let mut parts = Vec::with_capacity(request.media.len().saturating_add(1));
     for media in &request.media {
         match media {
             MediaInput::Inline(media) => parts.push(WirePart::InlineData {
+                video_metadata: video_metadata(media.mime_type(), request.generation.video_fps),
                 inline_data: WireInlineData {
                     mime_type: media.mime_type().to_owned(),
                     data: BASE64_STANDARD.encode(media.bytes()),
                 },
             }),
             MediaInput::Uploaded(media) => parts.push(WirePart::FileData {
+                video_metadata: video_metadata(media.mime_type(), request.generation.video_fps),
                 file_data: WireFileData {
                     mime_type: media.mime_type().to_owned(),
                     file_uri: media.uri().as_str().to_owned(),
@@ -701,6 +717,31 @@ mod tests {
     }
 
     #[test]
+    fn video_fps_is_serialized_on_video_parts_only() {
+        for (mime, expected) in [("video/mp4", true), ("audio/flac", false)] {
+            let request = GenerateRequest {
+                model: Model::Gemini38Flash,
+                prompt: "Transcribe".to_owned(),
+                system_instruction: None,
+                media: vec![MediaInput::Inline(
+                    crate::InlineMedia::new(mime, vec![1, 2, 3]).unwrap(),
+                )],
+                generation: crate::GenerationConfig {
+                    video_fps: Some(0.25),
+                    ..crate::GenerationConfig::default()
+                },
+            };
+            let value = serde_json::to_value(build_generate_payload(&request)).unwrap();
+            let metadata = &value["contents"][0]["parts"][0]["videoMetadata"];
+            assert_eq!(metadata.is_object(), expected);
+            if expected {
+                assert_eq!(metadata["fps"], 0.25);
+            }
+            assert!(value.get("generationConfig").is_none());
+        }
+    }
+
+    #[test]
     fn endpoint_rejects_plaintext_remote_origins() {
         let key = ApiKey::new("secret").unwrap();
         let remote = Url::parse("http://example.com/").unwrap();
@@ -709,7 +750,7 @@ mod tests {
 
     #[test]
     fn custom_models_are_accepted_for_text_and_rejected_for_media() {
-        let model = Model::from_api_id("gemini-3.8-flash").expect("valid custom model");
+        let model = Model::from_api_id("gemini-custom-test").expect("valid custom model");
         let text = GenerateRequest {
             model,
             prompt: "translate".to_owned(),

@@ -7,6 +7,7 @@ const CUSTOM_MODEL_OUTPUT_TOKEN_LIMIT: u32 = 65_536;
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum ModelKind {
+    Gemini38Flash,
     Gemini35FlashLite,
     Gemini37Flash,
     Gemini36Flash,
@@ -34,6 +35,7 @@ impl fmt::Debug for Model {
 
 #[allow(non_upper_case_globals, reason = "preserve the public enum-like API")]
 impl Model {
+    pub const Gemini38Flash: Self = Self(ModelKind::Gemini38Flash);
     pub const Gemini35FlashLite: Self = Self(ModelKind::Gemini35FlashLite);
     pub const Gemini37Flash: Self = Self(ModelKind::Gemini37Flash);
     pub const Gemini36Flash: Self = Self(ModelKind::Gemini36Flash);
@@ -44,6 +46,7 @@ impl Model {
     #[must_use]
     pub fn from_api_id(value: &str) -> Option<Self> {
         let built_in = match value {
+            "gemini-3.8-flash" => Some(Self::Gemini38Flash),
             "gemini-3.5-flash-lite" => Some(Self::Gemini35FlashLite),
             "gemini-3.7-flash" => Some(Self::Gemini37Flash),
             "gemini-3.6-flash" => Some(Self::Gemini36Flash),
@@ -69,6 +72,7 @@ impl Model {
     #[must_use]
     pub fn api_id(&self) -> &str {
         match &self.0 {
+            ModelKind::Gemini38Flash => "gemini-3.8-flash",
             ModelKind::Gemini35FlashLite => "gemini-3.5-flash-lite",
             ModelKind::Gemini37Flash => "gemini-3.7-flash",
             ModelKind::Gemini36Flash => "gemini-3.6-flash",
@@ -300,7 +304,25 @@ const MODELS: &[ModelSpec] = &[
         verified_at: "2026-08-12",
         evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
     },
+    GEMINI_38,
 ];
+
+const GEMINI_38: ModelSpec = ModelSpec {
+    model: Model::Gemini38Flash,
+    api_id: "gemini-3.8-flash",
+    lifecycle: Lifecycle::Stable,
+    input_modalities: MEDIA_INPUTS,
+    output_text: true,
+    structured_output: true,
+    thinking: true,
+    thinking_levels: GEMINI_37_THINKING_LEVELS,
+    input_token_limit: 1_048_576,
+    output_token_limit: 65_536,
+    toolbox_thinking: ThinkingLevel::Low,
+    toolbox_role: "opt-in multimodal candidate; subtitle quality requires benchmarking",
+    verified_at: "2026-09-06",
+    evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
+};
 
 pub const DEFAULT_MODEL: Model = Model::Gemini31FlashLite;
 pub const ACCURATE_MODEL: Model = Model::Gemini36Flash;
@@ -357,6 +379,7 @@ pub const fn supported_models() -> &'static [ModelSpec] {
 #[must_use]
 pub const fn model_spec(model: Model) -> Option<&'static ModelSpec> {
     match model.0 {
+        ModelKind::Gemini38Flash => Some(&GEMINI_38),
         ModelKind::Gemini35FlashLite => Some(&MODELS[0]),
         ModelKind::Gemini37Flash => Some(&MODELS[1]),
         ModelKind::Gemini36Flash => Some(&MODELS[2]),
@@ -413,17 +436,17 @@ mod tests {
 
     #[test]
     fn custom_models_are_bounded_text_only_wire_values() {
-        let model = Model::from_api_id("gemini-3.8-flash").expect("valid custom model");
-        assert_eq!(model.api_id(), "gemini-3.8-flash");
+        let model = Model::from_api_id("gemini-custom-test").expect("valid custom model");
+        assert_eq!(model.api_id(), "gemini-custom-test");
         assert!(model.is_custom());
         assert!(!model.accepts_media());
         assert_eq!(model.output_token_limit(), 65_536);
         assert_eq!(
             serde_json::to_string(&model).unwrap(),
-            "\"gemini-3.8-flash\""
+            "\"gemini-custom-test\""
         );
         assert_eq!(
-            serde_json::from_str::<Model>("\"gemini-3.8-flash\"").unwrap(),
+            serde_json::from_str::<Model>("\"gemini-custom-test\"").unwrap(),
             model
         );
 

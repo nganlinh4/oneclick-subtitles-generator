@@ -60,6 +60,7 @@ it('routes native segment processing through the clipping-aware core and restore
   );
 
   expect(streamGeminiApiWithFilesApi).toHaveBeenCalledWith(media, {
+    audioOnly: false,
     userProvidedSubtitles: undefined,
     modelId: 'gemini-3.5-flash-lite',
     mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',

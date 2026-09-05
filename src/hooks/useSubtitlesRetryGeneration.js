@@ -202,6 +202,7 @@ export const useSubtitlesRetryGeneration = ({
                             fullSegment,
                             await withProjectAdmission({
                                 fps,
+                                audioOnly: options.audioOnly === true,
                                 mediaResolution,
                                 model,
                                 userProvidedSubtitles,
@@ -277,6 +278,7 @@ export const useSubtitlesRetryGeneration = ({
                             fullSegment,
                             await withProjectAdmission({
                                 fps,
+                                audioOnly: options.audioOnly === true,
                                 mediaResolution,
                                 model,
                                 userProvidedSubtitles,
