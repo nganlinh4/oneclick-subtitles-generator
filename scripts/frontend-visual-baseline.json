@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "37c9aaf636f188b7f0ed759c0676e92020096b9d",
+  "baselineRevision": "07c519debe969448dc113317d9b9fd5018afa1dc",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -9140,10 +9140,10 @@
       ]
     },
     "src/components/VideoProcessingOptionsModal.js": {
-      "hash": "e8f3bd4f2f95cb711c48c52e3eb7bcc6c6223e535acbc6f133b64e31249a0883",
+      "hash": "994b5fb0d878d6bda34577ce0dce07c6fe88b4f364c28f45c4e1ad700b56f1fe",
       "rootCount": 1,
       "roots": [
-        "4ce0962420e3f479d8cd61670cd922a2b49dda22e32f8a7f3719e021d7297784"
+        "b51d4bcbb53669282bffc156c7609087349bed817099699a22d2fa8f0ed80fdb"
       ]
     },
     "src/components/VideoQualityModal.js": {
