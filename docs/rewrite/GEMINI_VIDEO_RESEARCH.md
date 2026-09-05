@@ -78,6 +78,20 @@ in the Node scoring process and are never passed to the app/provider.
 
 ## Remaining acceptance (not claimed complete)
 
+Additional audit: the legacy timestamp parser matched arbitrary three-number
+strings before HH:MM:SS, and read decimal fractions as integer milliseconds.
+It now parses only explicit unit/colon forms, preserves hours/fraction precision,
+and rejects invalid input rather than returning zero. Streaming auto-split IDs
+are sequential across appended records and checked against the final parse.
+
+Live Interactions probes (public synthetic text, store=false): v1beta with a
+schema object returned HTTP 200; v1beta2 from the migration guide returned an
+HTML HTTP 404. v1beta unstructured streaming returned actual step.start/delta/stop
+and interaction.completed events; structured streaming returned HTTP 500 twice.
+Do not turn this into a silent non-streaming fallback or claim agentic support.
+The guide and migration examples are inconsistent; preserve these observations
+and verify the exact transport before changing the production API.
+
 - Exercise audio-only in the hidden real app, including full/partial range,
   multiple windows, cancellation, no-audio refusal and retry. Confirm uploaded
   MIME and artifact stream inventory without logging bytes/keys.

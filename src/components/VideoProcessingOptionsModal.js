@@ -124,6 +124,9 @@ const VideoProcessingOptionsModal = ({
     // For local ASR methods, engine availability gates the options panel and the Start button.
     const isAsrPanel = descriptor.optionsPanel === 'asr';
     const asrPanelDisabled = isAsrPanel && !engineAvailable;
+    const incompatibleAudioPreset = descriptor.capabilities.tokenCounting
+        && (audioOnly || videoFile?.type?.startsWith('audio/'))
+        && ['extract-text', 'describe-video'].includes(selectedPromptPreset);
 
     return ReactDOM.createPortal(
         <>
@@ -276,7 +279,8 @@ const VideoProcessingOptionsModal = ({
                                         className="process-btn"
                                         data-osg-action="process-subtitles"
                                         onClick={handleProcess}
-                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled}
+                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled || incompatibleAudioPreset}
+                                        title={incompatibleAudioPreset ? t('processing.audioOnlyHelp') : undefined}
                                     >
                                         {isUploading
                                             ? t('processing.waitingForUpload', 'Waiting for upload...')
