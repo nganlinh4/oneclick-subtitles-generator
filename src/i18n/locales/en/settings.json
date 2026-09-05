@@ -1,4 +1,9 @@
 {
+  "clearSavedCredential": "Clear saved credential",
+  "credentials": {
+    "confirmClear": "Remove the saved {{label}} credential from this device?",
+    "clearFailed": "The saved credential could not be removed. Please try again."
+  },
   "title": "Settings",
   "appearance": "Appearance",
   "apiKeys": "API Keys",

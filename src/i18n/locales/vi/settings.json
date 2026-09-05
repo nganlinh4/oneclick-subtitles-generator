@@ -1,4 +1,9 @@
 {
+  "clearSavedCredential": "Xóa thông tin xác thực đã lưu",
+  "credentials": {
+    "confirmClear": "Xóa thông tin xác thực {{label}} đã lưu khỏi thiết bị này?",
+    "clearFailed": "Không thể xóa thông tin xác thực đã lưu. Vui lòng thử lại."
+  },
   "default": "Mặc định",
   "title": "Cài đặt",
   "appearance": "Giao diện",

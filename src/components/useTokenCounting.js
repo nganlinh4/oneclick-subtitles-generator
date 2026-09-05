@@ -32,11 +32,12 @@ const useTokenCounting = ({
   const resolution = resolutionOptions.find((candidate) => candidate.value === mediaResolution);
   const frameTokens = resolution ? resolution.tokens : 258;
   const audioTokensPerSecond = 32;
-  // The context limit applies to the largest request, not the mean of a full
-  // window and its shorter final tail. Prompt/metadata tokens remain additional.
+  // The production planner balances its windows evenly under this maximum.
+  // Estimate that actual window duration, not the configured maximum itself.
+  // Prompt/metadata tokens remain additional to this media-only estimate.
   const windowSeconds = Number(maxDurationPerRequest) * 60;
   const longestRequest = Number.isFinite(windowSeconds) && windowSeconds > 0
-    ? Math.min(segmentDuration, windowSeconds) : segmentDuration;
+    ? segmentDuration / Math.max(1, Math.ceil(segmentDuration / windowSeconds)) : segmentDuration;
   const estimatedTokens = Math.round(
     longestRequest * ((audioOnly || videoFile?.type?.startsWith('audio/') ? 0 : fps * frameTokens) + audioTokensPerSecond)
   );

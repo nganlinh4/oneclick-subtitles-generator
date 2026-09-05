@@ -56,7 +56,8 @@ describe('real UI media transcription benchmark', () => {
       if (surface.cues && surface.processing && !partialCaptured) {
         partialCaptured = true;
         await captureWorkflowStep({ workflow, step: '02-streaming-cues',
-          description: 'Visible cues while the actual generation remains in progress.', details: sample });
+          description: 'Visible cues while the actual generation remains in progress.', details: sample,
+          focusSelector: '.lyric-text' });
       }
       assert.equal(surface.errors.length, 0, JSON.stringify(sample));
       assert.ok(!jobs.some(job => ['failed', 'cancelled', 'interrupted'].includes(job.state)), JSON.stringify(sample));
@@ -69,6 +70,9 @@ describe('real UI media transcription benchmark', () => {
       preparedMedia: finalState.media.map(({ kind, extension, size_bytes: sizeBytes }) => ({ kind, extension, sizeBytes })),
       partialCuesObserved: partialCaptured, observations, cues: finalState.cues,
       quality: scoreSubtitleTiming(config.reference, finalState.cues) };
+    assert.ok(report.preparedMedia.some(media => media.kind === 'video'), 'Audio-only must preserve the original video');
+    if (audioOnly) assert.ok(report.preparedMedia.some(media => media.kind === 'audio' && media.extension === 'flac'),
+      'Audio-only did not materialize the selected audio as a native FLAC asset');
     const resultPath = join(root, 'benchmark-result.json');
     writeFileSync(resultPath, JSON.stringify(report, null, 2));
     copyWorkflowArtifact({ workflow, name: 'quality-and-streaming', source: resultPath,

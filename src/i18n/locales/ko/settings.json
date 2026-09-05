@@ -1,4 +1,9 @@
 {
+  "clearSavedCredential": "저장된 인증 정보 삭제",
+  "credentials": {
+    "confirmClear": "이 기기에서 저장된 {{label}} 인증 정보를 삭제할까요?",
+    "clearFailed": "저장된 인증 정보를 삭제하지 못했습니다. 다시 시도해 주세요."
+  },
   "default": "기본값",
   "title": "설정",
   "appearance": "모양",

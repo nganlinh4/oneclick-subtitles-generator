@@ -34,6 +34,10 @@
   "helperMessage": "Bạn có thể sử dụng lời bài hát và ảnh bìa album tùy chỉnh ở đây hoặc nhấn \"Thêm phụ đề\" và lấy từ Genius",
   "upcomingFeatures": "Hiện tại Google đã xoá hoàn toàn 2 mô hình native image khỏi free tier!",
   "error": {
+    "referenceImage": "Không thể chuẩn bị ảnh bìa. Chọn ảnh PNG, JPEG hoặc WebP rồi thử lại.",
+    "projectChanged": "Dự án đang mở đã thay đổi. Mở lại dự án rồi thử lại.",
+    "modelUnavailable": "Mô hình tạo ảnh đã chọn không khả dụng. Chọn mô hình khác rồi thử lại.",
+    "requestRejected": "Gemini từ chối mô hình tạo ảnh hoặc yêu cầu. Kiểm tra quyền truy cập mô hình rồi thử lại.",
     "quotaExceeded": "Đã vượt hạn mức. Kiểm tra gói và thanh toán của bạn.",
     "rateLimited": "Vượt quá giới hạn. Vui lòng chờ và thử lại.",
     "unauthorized": "Không được phép: API key không hợp lệ hoặc thiếu.",

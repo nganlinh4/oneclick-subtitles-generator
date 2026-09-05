@@ -10,8 +10,8 @@ it('counts no frame tokens for audio-only input regardless of frame controls', (
   expect(useTokenCounting(options).displayTokens).toBe(79320);
 });
 
-it('estimates the longest window rather than averaging it with the short tail', () => {
+it('matches the evenly balanced production windows for a range just over the maximum', () => {
   expect(useTokenCounting({ selectedSegment: { start: 0, end: 601 }, method: 'new',
     maxDurationPerRequest: 10, audioOnly: true, resolutionOptions: [], fps: 1,
-  }).displayTokens).toBe(600 * 32);
+  }).displayTokens).toBe(300.5 * 32);
 });

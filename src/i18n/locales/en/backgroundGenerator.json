@@ -34,6 +34,10 @@
   "helperMessage": "You can use your own lyrics and album art here, or press \"Add Subtitles\" to fetch from Genius",
   "upcomingFeatures": "Image model availability depends on your Gemini account and current quota.",
   "error": {
+    "referenceImage": "The album art could not be prepared. Choose a PNG, JPEG, or WebP image and try again.",
+    "projectChanged": "The active project changed. Reopen the project and try again.",
+    "modelUnavailable": "The selected image model is unavailable. Choose another image model and try again.",
+    "requestRejected": "Gemini rejected the image model or request. Check model access and try again.",
     "quotaExceeded": "Quota exceeded. Check your plan and billing.",
     "rateLimited": "Rate limit exceeded. Please wait and try again.",
     "unauthorized": "Unauthorized: API key invalid or missing.",
