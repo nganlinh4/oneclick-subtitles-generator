@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "5ee83a603142fb335232277269405271ba67db10",
+  "baselineRevision": "37c9aaf636f188b7f0ed759c0676e92020096b9d",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -1259,13 +1259,15 @@
       ]
     },
     "src/i18n/locales/en/processing.json": {
-      "hash": "ae72842aec69133f101ba7701d7a730e01b044a04feff744cd6d4f01b2daf163",
+      "hash": "472ef945f5c42b3b9b08a45fad288d9a81f20e7d6d1d052fcb8ed0caf6ff7baf",
       "keys": [
         "actualNote",
         "actualTokens",
         "adjustedNote",
         "analysisRules",
         "audioFpsDisabled",
+        "audioOnly",
+        "audioOnlyHelp",
         "audioRangeAdjusted",
         "audioResolutionDisabled",
         "autoSplitHelp",
@@ -3680,7 +3682,7 @@
       ]
     },
     "src/i18n/locales/ko/processing.json": {
-      "hash": "2a19e382a474ab1c4a68758ab9b0d12c7ac935110625a8cb551c0a863a874afa",
+      "hash": "764c6c59b3a36d6af311a0a6cc99e382a3f7c7f9e23695b0cf2d8d86a784022d",
       "keys": [
         "actualNote",
         "actualTokens",
@@ -3689,6 +3691,8 @@
         "asrLanguage",
         "asrLanguageHelp",
         "audioFpsDisabled",
+        "audioOnly",
+        "audioOnlyHelp",
         "audioRangeAdjusted",
         "audioResolutionDisabled",
         "autoSplitHelp",
@@ -6290,7 +6294,7 @@
       ]
     },
     "src/i18n/locales/vi/processing.json": {
-      "hash": "4260d97684566262caa502e8ebb1b7bf0f0015e8c5889ca0303ed4c0d5bcb5ba",
+      "hash": "0a06ec558bde0a1c2b7b247620d1dc00ae1caf402a25a2ef74e8aea77fd08da0",
       "keys": [
         "actualNote",
         "actualTokens",
@@ -6299,6 +6303,8 @@
         "asrLanguage",
         "asrLanguageHelp",
         "audioFpsDisabled",
+        "audioOnly",
+        "audioOnlyHelp",
         "audioRangeAdjusted",
         "audioResolutionDisabled",
         "autoSplitHelp",
@@ -7818,10 +7824,10 @@
       ]
     },
     "src/components/common/CustomDropdown.js": {
-      "hash": "99e2d887876884a9b7c5850a2b374babfd7671413405c80b30c94d3391ffc5c5",
+      "hash": "7f22fa8569894cd10efa440f98c8bb831afd15b138af28b3beec99cb5da8e52a",
       "rootCount": 4,
       "roots": [
-        "4a2d8e18d608199a65a1b5b5399a3d6dfef5b0963cb1586a3a1f7d9105495d7a",
+        "28036eb30a26ebe1f01cad2e270359d1fb4cca6af4a73d02a269b7ca2a90a742",
         "1e409cac4a5122a75e8d22caafdd7a54b4a625f132b4542d1988f5dbed229972",
         "975b3a278a98e430f1247edcfe7e3dd646574f24894d33f52d6a9961f1558d64",
         "1fb3c2379bef5cf6d7b842fc4a81a16be3b38c769c82662549916ff78d89be9c"
@@ -9116,10 +9122,10 @@
       ]
     },
     "src/components/VideoProcessingModalGeminiPanel.js": {
-      "hash": "761005debf17dd49b00cee8cdbf1d64bcde7ff5b9549a12c98f55cfdd15eb7b7",
+      "hash": "75ba75df56b265b9737847d369852b83698ae83803d7060235175dbf02f2437a",
       "rootCount": 1,
       "roots": [
-        "55ac053c3016cdce2720774eefc1d44862e156003d9f630a244370f37f65b7cc"
+        "18ec1df80b8c95dcc8b3f2bfb02237e0a09bcf64972e977b6e02f1100576d349"
       ]
     },
     "src/components/VideoProcessingModalMethodSelector.js": {
@@ -9134,10 +9140,10 @@
       ]
     },
     "src/components/VideoProcessingOptionsModal.js": {
-      "hash": "f4485da2366421890c1ee54ebdb4358f62e5ed3ad2e6d31cbeb63d56c4c95362",
+      "hash": "e8f3bd4f2f95cb711c48c52e3eb7bcc6c6223e535acbc6f133b64e31249a0883",
       "rootCount": 1,
       "roots": [
-        "c08d9ce42e850bbc9ec5833bd6951a33a4e3d1ea3525c215e7fc0f747b24445a"
+        "4ce0962420e3f479d8cd61670cd922a2b49dda22e32f8a7f3719e021d7297784"
       ]
     },
     "src/components/VideoQualityModal.js": {
