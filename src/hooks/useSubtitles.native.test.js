@@ -125,3 +125,17 @@ test('does not hide a native streaming failure behind a second Gemini request', 
     type: 'error',
   });
 });
+
+test('a stopped native generation settles without replacing the stop notice with an error', async () => {
+  processGeminiSegment.mockRejectedValueOnce(new DOMException('The Gemini request was cancelled', 'AbortError'));
+  const { result } = renderHook(() => useSubtitles((_key, fallback) => fallback ?? _key));
+  let succeeded;
+  await act(async () => {
+    succeeded = await result.current.generateSubtitles(media, 'file-upload', { gemini: true },
+      { method: 'new', model: 'gemini-3.1-flash-lite', fps: 1 });
+  });
+  expect(succeeded).toBe(false);
+  expect(result.current.isGenerating).toBe(false);
+  expect(result.current.status.type).not.toBe('error');
+  expect(callGeminiApi).not.toHaveBeenCalled();
+});

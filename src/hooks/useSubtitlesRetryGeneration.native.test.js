@@ -130,6 +130,24 @@ test('streams a full native retry and preserves the exact inspected duration', a
   expect(currentSourceFileRef.current).toBe(media);
 });
 
+test('stopping a retry does not report an error or save an unfinished track', async () => {
+  processGeminiSegment.mockRejectedValueOnce(new DOMException('The Gemini request was cancelled', 'AbortError'));
+  const setStatus = vi.fn();
+  const setIsGenerating = vi.fn();
+  const { result } = renderHook(() => useSubtitlesRetryGeneration({
+    t: (_key, fallback) => fallback, setStatus, setIsGenerating,
+    setSubtitlesData: vi.fn(), currentSourceFileRef: { current: null },
+  }));
+  let succeeded;
+  await act(async () => {
+    succeeded = await result.current.retryGeneration(media, 'file-upload', { gemini: true });
+  });
+  expect(succeeded).toBe(false);
+  expect(setIsGenerating).toHaveBeenLastCalledWith(false);
+  expect(setStatus.mock.calls.some(([status]) => status.type === 'error')).toBe(false);
+  expect(saveSubtitlesToCache).not.toHaveBeenCalled();
+});
+
 test('does not hide a failed native duration behind a nonstreaming fallback', async () => {
   getVideoDuration.mockRejectedValue(new Error('duration unavailable'));
   const setStatus = vi.fn();

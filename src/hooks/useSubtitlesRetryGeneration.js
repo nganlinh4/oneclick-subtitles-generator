@@ -36,6 +36,7 @@ import {
     resolveActiveNativeMedia,
 } from '../platform/activeNativeMedia';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
+import { isSubtitleOperationCancellation } from '../utils/subtitleOperationOwnership';
 
 /**
  * retryGeneration extracted from useSubtitles.
@@ -344,6 +345,7 @@ export const useSubtitlesRetryGeneration = ({
             return true;
         } catch (error) {
             streamingHandler?.rollback?.();
+            if (isSubtitleOperationCancellation(error)) return false;
 
             // Check for specific Gemini API errors
             if (error?.code === 'subtitleCacheSaveFailed') {

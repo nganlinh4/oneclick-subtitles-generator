@@ -14,6 +14,7 @@ import {
     saveSubtitlesToCache
 } from '../services/subtitleCache';
 import { reportKnownGeminiSubtitleError } from '../utils/geminiSubtitleErrors';
+import { isSubtitleOperationCancellation } from '../utils/subtitleOperationOwnership';
 import {
     resolveCacheIdForGeneration,
     loadCachedSubtitlesIfAvailable
@@ -887,6 +888,9 @@ export const useSubtitles = (t) => {
             return true;
         } catch (error) {
             fullMediaStreamingHandler?.rollback?.();
+            // The stop event already publishes the intentional cancellation notice.
+            // Preserve it while finally releases this run's presentation ownership.
+            if (isSubtitleOperationCancellation(error)) return false;
             if (error?.code === 'subtitleCacheSaveFailed') {
                 setGenerationStatus({
                     message: t(

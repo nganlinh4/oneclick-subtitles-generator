@@ -5,6 +5,30 @@ This work is independent of legacy-main parity. Checkpoint before changes:
 
 ## September 6 follow-up: measured completion and transcription controls
 
+Latest real-app evidence (all isolated profiles; no reference transcript sent):
+
+- All seven built-in presets generated and displayed native subtitles. Diarization
+  passed at `ui-runs/2026-09-06T08-25-41-454Z` after normal menu scrolling was fixed.
+- Missing-audio refusal passed at `ui-runs/2026-09-06T08-58-11-278Z`: exact actionable
+  toast, zero transcription jobs and zero cues. The initial rerun failed only because
+  WebDriver's `getText` joined adjacent toast nodes differently from the screenshot
+  oracle; the journey now uses that same oracle, not a broad error allowance.
+- One-hour audio-only stress passed at `ui-runs/2026-09-06T09-00-15-503Z`: 554 durable
+  cues, seven successful windows (source duration 3600.096 seconds), first visible
+  cues at 15.587 seconds, final checkpoint at 101.609 seconds, at most two observed
+  running jobs. PerformanceObserver reported zero long tasks. Repeated meeting media
+  tests duration/streaming mechanics, not the quality diversity of an original hour.
+- Cancellation stopped native jobs but exposed an erroneous red toast at
+  `ui-runs/2026-09-06T08-59-06-995Z`. The generation and retry owners lacked the
+  cancellation classification already used by segment retries. Two regression tests
+  failed before reusing that classifier, then 46 related tests passed. Real-app
+  cancellation/restart verification of this repair is still pending.
+
+Paths above are relative to `target/subtitle-benchmark/`. The complete dedicated
+Transcribe provider run at `transcribe-runs/2026-09-06T08-21-05-458Z` completed
+60/60 requests across 20 configured credential slots and three fixtures. This is
+provider evidence, not a claim that Transcribe has been integrated into the app.
+
 The 1-FPS IS1009a/3.8 real-app run at
 `target/subtitle-benchmark/ui-runs/2026-09-06T08-06-01-710Z` completed with STOP,
 305 generated words, 85.76% aligned reference coverage and median absolute
