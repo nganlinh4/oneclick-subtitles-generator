@@ -1014,7 +1014,7 @@ mod tests {
         let custom_text = serde_json::from_value::<GeminiStartRequest>(json!({
             "credentialId": credential_id,
             "task": "translate",
-            "model": "gemini-3.8-flash",
+            "model": "gemini-custom-contract-test",
             "prompt": "translate"
         }))
         .expect("a bounded custom model ID has a valid wire shape");
@@ -1024,7 +1024,7 @@ mod tests {
         let custom_media = serde_json::from_value::<GeminiStartRequest>(json!({
             "credentialId": credential_id,
             "task": "transcribe",
-            "model": "gemini-3.8-flash",
+            "model": "gemini-custom-contract-test",
             "prompt": "transcribe",
             "mediaAssetId": osg_domain::AssetId::new()
         }))
