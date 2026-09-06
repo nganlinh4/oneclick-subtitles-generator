@@ -7,7 +7,7 @@ import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
-import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
+import { captureWorkflowStep, collectVisibleStateFromPage, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 import { scoreSubtitleTiming } from '../support/subtitleTimingQuality.js';
 import { actuateNativeRange } from '../support/nativeRange.js';
 
@@ -99,8 +99,10 @@ describe('real UI media transcription benchmark', () => {
         'Missing audio must not send a video request as a silent fallback');
       assert.equal(durableState(root).counts.cues, 0);
       const expected = 'close Error Error: This media has no audio track to transcribe. Choose a file with audio or turn off audio-only input.';
-      const toast = await $('.toast-error').getText();
-      assert.equal(toast.replace(/\s+/gu, ' ').trim(), expected);
+      // Use the screenshot oracle's text semantics. WebDriver getText joins
+      // adjacent icon/title/message nodes differently from DOM innerText.
+      const surface = await browser.execute(collectVisibleStateFromPage);
+      assert.deepEqual(surface.errorToasts, [expected]);
       await captureWorkflowStep({ workflow, step: '02-missing-audio-refused',
         description: 'Audio-only refuses a video without audio, with no provider job or invented subtitles.',
         allowVisibleProblems: { errorToasts: [{ text: expected,
