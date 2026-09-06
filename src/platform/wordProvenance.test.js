@@ -75,6 +75,27 @@ describe('wordProvenance', () => {
     expect(merged.endMs).toBe(2000);
     expect(merged.speakerId).toBe('spk1');
   });
+
+  it('handles float seconds inputs and synchronizes start/end properties', () => {
+    const floatWord = { id: 'w1', text: 'float', start: 1.5, end: 2.5 };
+    const corrected = applyWordCorrection(floatWord, 'Float');
+    expect(corrected.startMs).toBe(1500);
+    expect(corrected.endMs).toBe(2500);
+    expect(corrected.start).toBe(1.5);
+    expect(corrected.end).toBe(2.5);
+
+    const [left, right] = splitWordProportionally(floatWord, 2);
+    expect(left.start).toBe(1.5);
+    expect(right.end).toBe(2.5);
+    expect(left.startMs).toBe(1500);
+    expect(right.endMs).toBe(2500);
+
+    const nudged = nudgeWordTiming(floatWord, 100, 200);
+    expect(nudged.startMs).toBe(1600);
+    expect(nudged.endMs).toBe(2700);
+    expect(nudged.start).toBe(1.6);
+    expect(nudged.end).toBe(2.7);
+  });
 });
 
 describe('localCaptionRegrouping', () => {

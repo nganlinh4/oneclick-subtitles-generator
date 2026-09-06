@@ -22,7 +22,8 @@ export function joinWordsPreservingSpacing(words) {
   let result = '';
   for (let i = 0; i < words.length; i++) {
     const text = words[i]?.text ?? '';
-    if (i === 0) {
+    if (!text) continue;
+    if (result.length === 0) {
       result = text;
       continue;
     }
@@ -30,6 +31,8 @@ export function joinWordsPreservingSpacing(words) {
     if (/^[.,!?:;'\u2019\u201d\u3001\u3002\uff0c\uff01\uff1f]/.test(text)) {
       result += text;
     } else if (/[\u4e00-\u9fa5\u3040-\u30ff\u3000-\u303f\uff00-\uffef]/.test(prev.slice(-1)) && /[\u4e00-\u9fa5\u3040-\u30ff]/.test(text.slice(0, 1))) {
+      result += text;
+    } else if (result.endsWith(' ') || text.startsWith(' ')) {
       result += text;
     } else {
       result += ' ' + text;
@@ -39,13 +42,11 @@ export function joinWordsPreservingSpacing(words) {
 }
 
 function buildCue(cueIdx, currentWords) {
-  const first = currentWords[0];
-  const last = currentWords[currentWords.length - 1];
-  const startMs = first.startMs;
-  const endMs = last.endMs;
+  const startMs = Math.min(...currentWords.map((cw) => cw.startMs));
+  const endMs = Math.max(...currentWords.map((cw) => cw.endMs));
   const rawWords = currentWords.map((cw) => cw.raw);
-  const wordIds = rawWords.map((w) => w.id);
-  const speakerId = first.speakerId || null;
+  const wordIds = rawWords.map((w, idx) => w.id || `w_${cueIdx}_${idx + 1}`);
+  const speakerId = currentWords[0]?.speakerId || null;
   return {
     id: `cue_${cueIdx}`,
     ordinal: cueIdx,
@@ -75,21 +76,23 @@ function buildCue(cueIdx, currentWords) {
 export function regroupWordsOffline(words, policy = 'Natural', customOptions = {}) {
   if (!Array.isArray(words) || words.length === 0) return [];
 
-  const normalizedWords = words.map((w) => {
-    const startMs = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
-    const endMs = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
-    const speakerId = w.speakerId || w.speaker_id || null;
-    const isUnaligned = Boolean(w.is_unaligned) || w.alignmentStatus === 'Unaligned' || w.alignment_status === 'Unaligned';
-    return {
-      raw: w,
-      id: w.id,
-      text: w.text || '',
-      startMs,
-      endMs,
-      speakerId,
-      isUnaligned,
-    };
-  });
+  const normalizedWords = words
+    .map((w) => {
+      const startMs = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
+      const endMs = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
+      const speakerId = w.speakerId || w.speaker_id || null;
+      const isUnaligned = Boolean(w.is_unaligned) || w.alignmentStatus === 'Unaligned' || w.alignment_status === 'Unaligned';
+      return {
+        raw: w,
+        id: w.id,
+        text: w.text || '',
+        startMs,
+        endMs,
+        speakerId,
+        isUnaligned,
+      };
+    })
+    .sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs));
 
   if (policy === 'One word') {
     return normalizedWords.map((w, idx) => ({
@@ -273,10 +276,19 @@ export function regroupPreservingEdits(words, currentCues = [], policy = 'Natura
   }
 
   // Slice unclaimed words into contiguous segments
+  const sortedWords = [...words].sort((a, b) => {
+    const aStart = a.startMs ?? a.start_ms ?? Math.round((a.start || 0) * 1000);
+    const bStart = b.startMs ?? b.start_ms ?? Math.round((b.start || 0) * 1000);
+    if (aStart !== bStart) return aStart - bStart;
+    const aEnd = a.endMs ?? a.end_ms ?? Math.round((a.end || 0) * 1000);
+    const bEnd = b.endMs ?? b.end_ms ?? Math.round((b.end || 0) * 1000);
+    return aEnd - bEnd;
+  });
+
   const unclaimedSlices = [];
   let currentSlice = [];
 
-  for (const word of words) {
+  for (const word of sortedWords) {
     if (claimedWordIds.has(word.id)) {
       if (currentSlice.length > 0) {
         unclaimedSlices.push(currentSlice);

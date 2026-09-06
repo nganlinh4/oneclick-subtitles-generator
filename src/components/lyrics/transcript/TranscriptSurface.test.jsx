@@ -107,4 +107,45 @@ describe('TranscriptSurface', () => {
     fireEvent.click(w1);
     expect(onWordClick).toHaveBeenCalledWith(1.2);
   });
+
+  it('sorts out-of-order words when deriving turns automatically', () => {
+    const outOfOrderWords = [
+      { id: 'w2', text: 'Second', startMs: 2000, endMs: 2500, speakerId: 'spk-2' },
+      { id: 'w1', text: 'First', startMs: 1000, endMs: 1500, speakerId: 'spk-1' },
+    ];
+    render(
+      <TranscriptSurface
+        words={outOfOrderWords}
+        currentTime={1.2}
+      />
+    );
+
+    // The first turn rendered should be First (1000ms), not Second (2000ms)
+    const turnElements = screen.getAllByTestId(/^speaker-turn-/);
+    expect(turnElements).toHaveLength(2);
+    expect(turnElements[0]).toHaveTextContent('First');
+    expect(turnElements[1]).toHaveTextContent('Second');
+  });
+
+  it('supports words with float seconds timestamps for active highlighting and seeking', () => {
+    const floatWords = [
+      { id: 'fw-1', text: 'FloatStart', start: 1.0, end: 2.0, speakerId: 'host' },
+      { id: 'fw-2', text: 'FloatEnd', start: 2.5, end: 3.5, speakerId: 'host' },
+    ];
+    const onWordClick = vi.fn();
+
+    render(
+      <TranscriptSurface
+        words={floatWords}
+        currentTime={1.5}
+        onWordClick={onWordClick}
+      />
+    );
+
+    const token1 = screen.getByTestId('word-token-fw-1');
+    expect(token1).toHaveClass('active');
+
+    fireEvent.click(token1);
+    expect(onWordClick).toHaveBeenCalledWith(1.0);
+  });
 });

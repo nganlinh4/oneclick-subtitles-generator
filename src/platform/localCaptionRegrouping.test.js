@@ -176,5 +176,53 @@ describe('localCaptionRegrouping', () => {
       expect(edited.start).toBe(0.1);
       expect(edited.end).toBe(1.4);
     });
+
+    it('robustly sorts and groups out-of-order words chronologically', () => {
+      const outOfOrderWords = [
+        { id: 'w3', text: 'third.', startMs: 1600, endMs: 2200 },
+        { id: 'w1', text: 'First', startMs: 500, endMs: 900 },
+        { id: 'w2', text: 'second', startMs: 1000, endMs: 1500 },
+      ];
+      const cues = regroupWordsOffline(outOfOrderWords, REGROUPING_POLICIES.NATURAL);
+      expect(cues).toHaveLength(1);
+      expect(cues[0].text).toBe('First second third.');
+      expect(cues[0].startMs).toBe(500);
+      expect(cues[0].endMs).toBe(2200);
+      expect(cues[0].wordIds).toEqual(['w1', 'w2', 'w3']);
+    });
+
+    it('handles overlapping word boundaries using min start and max end', () => {
+      const overlapping = [
+        { id: 'w1', text: 'Overlapping', startMs: 1000, endMs: 2200 },
+        { id: 'w2', text: 'speech', startMs: 1500, endMs: 2000 },
+      ];
+      const cues = regroupWordsOffline(overlapping, REGROUPING_POLICIES.NATURAL);
+      expect(cues).toHaveLength(1);
+      expect(cues[0].startMs).toBe(1000);
+      expect(cues[0].endMs).toBe(2200);
+      expect(cues[0].start).toBe(1.0);
+      expect(cues[0].end).toBe(2.2);
+    });
+
+    it('preserves spacing without doubling spaces for empty words or pre-spaced tokens', () => {
+      const tokens = [
+        { id: 'w1', text: 'Hello', startMs: 1000, endMs: 1500 },
+        { id: 'w2', text: '', startMs: 1500, endMs: 1550 },
+        { id: 'w3', text: ' world', startMs: 1600, endMs: 2000 },
+        { id: 'w4', text: '!', startMs: 2000, endMs: 2200 },
+      ];
+      const cues = regroupWordsOffline(tokens, REGROUPING_POLICIES.NATURAL);
+      expect(cues[0].text).toBe('Hello world!');
+    });
+
+    it('correctly formats Korean text with word spaces and attached punctuation', () => {
+      const koreanWords = [
+        { id: 'k1', text: '안녕하세요', startMs: 1000, endMs: 1800 },
+        { id: 'k2', text: '여러분', startMs: 1900, endMs: 2500 },
+        { id: 'k3', text: '!', startMs: 2500, endMs: 2700 },
+      ];
+      const cues = regroupWordsOffline(koreanWords, REGROUPING_POLICIES.NATURAL);
+      expect(cues[0].text).toBe('안녕하세요 여러분!');
+    });
   });
 });

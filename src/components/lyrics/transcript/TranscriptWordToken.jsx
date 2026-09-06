@@ -21,8 +21,8 @@ export const TranscriptWordToken = ({
 }) => {
   const { t } = useTranslation();
 
-  const startMs = word.startMs ?? word.start_ms;
-  const endMs = word.endMs ?? word.end_ms;
+  const startMs = word.startMs ?? word.start_ms ?? (Number.isFinite(word.start) ? Math.round(word.start * 1000) : undefined);
+  const endMs = word.endMs ?? word.end_ms ?? (Number.isFinite(word.end) ? Math.round(word.end * 1000) : undefined);
   const speakerId = word.speakerId || word.speaker_id;
   const isModified = word.provenance === 'Manual' || word.alignmentStatus === 'Modified' || word.alignment_status === 'Modified';
   const isUnaligned = Boolean(word.is_unaligned) || word.alignmentStatus === 'Unaligned' || word.alignment_status === 'Unaligned';

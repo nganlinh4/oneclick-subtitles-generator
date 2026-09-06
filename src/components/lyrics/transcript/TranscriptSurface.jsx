@@ -7,10 +7,15 @@ import SpeakerTurnItem from './SpeakerTurnItem';
  */
 function deriveTurnsFromWords(words) {
   if (!Array.isArray(words) || words.length === 0) return [];
+  const sortedWords = [...words].sort((a, b) => {
+    const startA = a.startMs ?? a.start_ms ?? Math.round((a.start || 0) * 1000);
+    const startB = b.startMs ?? b.start_ms ?? Math.round((b.start || 0) * 1000);
+    return startA - startB;
+  });
   const turns = [];
   let currentTurn = null;
 
-  for (const w of words) {
+  for (const w of sortedWords) {
     const speakerId = w.speakerId || w.speaker_id || 'speaker_0';
     const startMs = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
     const endMs = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
@@ -82,8 +87,8 @@ export const TranscriptSurface = ({
   // Locate active turn index
   const activeTurnIndex = useMemo(() => {
     return displayTurns.findIndex((turn) => {
-      const start = turn.startMs ?? turn.start_ms ?? 0;
-      const end = turn.endMs ?? turn.end_ms ?? 0;
+      const start = turn.startMs ?? turn.start_ms ?? (Number.isFinite(turn.start) ? Math.round(turn.start * 1000) : 0);
+      const end = turn.endMs ?? turn.end_ms ?? (Number.isFinite(turn.end) ? Math.round(turn.end * 1000) : 0);
       return currentTimeMs >= start && currentTimeMs <= end;
     });
   }, [displayTurns, currentTimeMs]);
@@ -139,8 +144,8 @@ export const TranscriptSurface = ({
       <div className="transcript-turns-container" ref={containerRef}>
         {displayTurns.map((turn, index) => {
           const isActive = index === activeTurnIndex;
-          const turnStart = turn.startMs ?? turn.start_ms ?? 0;
-          const turnEnd = turn.endMs ?? turn.end_ms ?? 0;
+          const turnStart = turn.startMs ?? turn.start_ms ?? (Number.isFinite(turn.start) ? Math.round(turn.start * 1000) : 0);
+          const turnEnd = turn.endMs ?? turn.end_ms ?? (Number.isFinite(turn.end) ? Math.round(turn.end * 1000) : 0);
           const turnWordIds = turn.wordIds || turn.word_ids;
           const turnWords = Array.isArray(turnWordIds)
             ? turnWordIds.map((id) => wordsById.get(id)).filter(Boolean)

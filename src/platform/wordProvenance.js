@@ -22,8 +22,8 @@ export const AlignmentStatus = Object.freeze({
 export function applyWordCorrection(word, newText) {
   if (!word) throw new TypeError('word is required');
   const trimmed = String(newText || '').trim();
-  const startMs = word.startMs ?? word.start_ms ?? 0;
-  const endMs = word.endMs ?? word.end_ms ?? 0;
+  const startMs = word.startMs ?? word.start_ms ?? (Number.isFinite(word.start) ? Math.round(word.start * 1000) : 0);
+  const endMs = word.endMs ?? word.end_ms ?? (Number.isFinite(word.end) ? Math.round(word.end * 1000) : 0);
   return {
     ...word,
     text: trimmed,
@@ -31,6 +31,8 @@ export function applyWordCorrection(word, newText) {
     end_ms: endMs,
     startMs,
     endMs,
+    start: startMs / 1000,
+    end: endMs / 1000,
     raw_spelling: word.raw_spelling || word.rawSpelling || word.text,
     rawSpelling: word.rawSpelling || word.raw_spelling || word.text,
     provenance: WordProvenance.MANUAL,
@@ -54,8 +56,8 @@ export function splitWordProportionally(word, splitCharIndex) {
   const leftText = text.slice(0, idx).trim();
   const rightText = text.slice(idx).trim();
 
-  const wStart = word.startMs ?? word.start_ms ?? 0;
-  const wEnd = word.endMs ?? word.end_ms ?? 0;
+  const wStart = word.startMs ?? word.start_ms ?? (Number.isFinite(word.start) ? Math.round(word.start * 1000) : 0);
+  const wEnd = word.endMs ?? word.end_ms ?? (Number.isFinite(word.end) ? Math.round(word.end * 1000) : 0);
   const totalDuration = Math.max(1, wEnd - wStart);
   const ratio = idx / text.length;
   let splitMs = wStart + Math.round(totalDuration * ratio);
@@ -69,6 +71,8 @@ export function splitWordProportionally(word, splitCharIndex) {
     end_ms: splitMs,
     startMs: wStart,
     endMs: splitMs,
+    start: wStart / 1000,
+    end: splitMs / 1000,
     provenance: WordProvenance.INTERPOLATED,
     alignment_status: AlignmentStatus.MODIFIED,
     alignmentStatus: AlignmentStatus.MODIFIED,
@@ -85,6 +89,8 @@ export function splitWordProportionally(word, splitCharIndex) {
     end_ms: wEnd,
     startMs: splitMs,
     endMs: wEnd,
+    start: splitMs / 1000,
+    end: wEnd / 1000,
     provenance: WordProvenance.INTERPOLATED,
     alignment_status: AlignmentStatus.MODIFIED,
     alignmentStatus: AlignmentStatus.MODIFIED,
@@ -101,10 +107,10 @@ export function splitWordProportionally(word, splitCharIndex) {
  */
 export function mergeAdjacentWords(w1, w2) {
   if (!w1 || !w2) throw new TypeError('w1 and w2 are required');
-  const w1Start = w1.startMs ?? w1.start_ms ?? 0;
-  const w1End = w1.endMs ?? w1.end_ms ?? 0;
-  const w2Start = w2.startMs ?? w2.start_ms ?? 0;
-  const w2End = w2.endMs ?? w2.end_ms ?? 0;
+  const w1Start = w1.startMs ?? w1.start_ms ?? (Number.isFinite(w1.start) ? Math.round(w1.start * 1000) : 0);
+  const w1End = w1.endMs ?? w1.end_ms ?? (Number.isFinite(w1.end) ? Math.round(w1.end * 1000) : 0);
+  const w2Start = w2.startMs ?? w2.start_ms ?? (Number.isFinite(w2.start) ? Math.round(w2.start * 1000) : 0);
+  const w2End = w2.endMs ?? w2.end_ms ?? (Number.isFinite(w2.end) ? Math.round(w2.end * 1000) : 0);
 
   const mergedStart = Math.min(w1Start, w2Start);
   const mergedEnd = Math.max(w1End, w2End);
@@ -123,6 +129,8 @@ export function mergeAdjacentWords(w1, w2) {
     end_ms: mergedEnd,
     startMs: mergedStart,
     endMs: mergedEnd,
+    start: mergedStart / 1000,
+    end: mergedEnd / 1000,
     speaker_id: speakerId,
     speakerId,
     provenance: WordProvenance.INTERPOLATED,
@@ -139,8 +147,8 @@ export function mergeAdjacentWords(w1, w2) {
  */
 export function nudgeWordTiming(word, deltaStartMs = 0, deltaEndMs = 0) {
   if (!word) throw new TypeError('word is required');
-  const wStart = word.startMs ?? word.start_ms ?? 0;
-  const wEnd = word.endMs ?? word.end_ms ?? 0;
+  const wStart = word.startMs ?? word.start_ms ?? (Number.isFinite(word.start) ? Math.round(word.start * 1000) : 0);
+  const wEnd = word.endMs ?? word.end_ms ?? (Number.isFinite(word.end) ? Math.round(word.end * 1000) : 0);
   const newStart = Math.max(0, wStart + deltaStartMs);
   const newEnd = Math.max(newStart, wEnd + deltaEndMs);
 
@@ -150,6 +158,8 @@ export function nudgeWordTiming(word, deltaStartMs = 0, deltaEndMs = 0) {
     end_ms: newEnd,
     startMs: newStart,
     endMs: newEnd,
+    start: newStart / 1000,
+    end: newEnd / 1000,
     provenance: WordProvenance.MANUAL,
     alignment_status: AlignmentStatus.UNALIGNED,
     alignmentStatus: AlignmentStatus.UNALIGNED,

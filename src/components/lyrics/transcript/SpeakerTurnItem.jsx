@@ -33,8 +33,8 @@ export const SpeakerTurnItem = ({
   const palette = getSpeakerPalette(speakerId);
   const monogram = getSpeakerMonogram(displayName);
 
-  const turnStartMs = turn.startMs ?? turn.start_ms ?? (words[0]?.startMs ?? words[0]?.start_ms ?? 0);
-  const turnEndMs = turn.endMs ?? turn.end_ms ?? (words[words.length - 1]?.endMs ?? words[words.length - 1]?.end_ms ?? 0);
+  const turnStartMs = turn.startMs ?? turn.start_ms ?? (Number.isFinite(turn.start) ? Math.round(turn.start * 1000) : (words[0]?.startMs ?? words[0]?.start_ms ?? (Number.isFinite(words[0]?.start) ? Math.round(words[0].start * 1000) : 0)));
+  const turnEndMs = turn.endMs ?? turn.end_ms ?? (Number.isFinite(turn.end) ? Math.round(turn.end * 1000) : (words[words.length - 1]?.endMs ?? words[words.length - 1]?.end_ms ?? (Number.isFinite(words[words.length - 1]?.end) ? Math.round(words[words.length - 1].end * 1000) : 0)));
   const isTurnActive = currentTimeMs >= turnStartMs && currentTimeMs <= turnEndMs;
 
   const handlePlayTurn = (e) => {
@@ -90,8 +90,8 @@ export const SpeakerTurnItem = ({
 
       <div className="speaker-turn-words">
         {words.map((word) => {
-          const wStart = word.startMs ?? word.start_ms ?? 0;
-          const wEnd = word.endMs ?? word.end_ms ?? 0;
+          const wStart = word.startMs ?? word.start_ms ?? (Number.isFinite(word.start) ? Math.round(word.start * 1000) : 0);
+          const wEnd = word.endMs ?? word.end_ms ?? (Number.isFinite(word.end) ? Math.round(word.end * 1000) : 0);
           const isActive =
             currentTimeMs >= wStart && currentTimeMs < wEnd;
           return (
