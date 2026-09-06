@@ -566,6 +566,7 @@ fn classify_error(error: &GeminiError) -> &'static str {
         GeminiError::UploadProtocol(_) | GeminiError::UploadOutcomeUnknown => "upload-protocol",
         GeminiError::FileProcessingFailed { .. } => "file-processing",
         GeminiError::NoTextOutput => "no-text-output",
+        GeminiError::IncompleteTextOutput { .. } => "incomplete-text-output",
         GeminiError::NoImageOutput
         | GeminiError::InvalidImageOutput
         | GeminiError::ImageOutputBlocked => "unexpected-image-output",

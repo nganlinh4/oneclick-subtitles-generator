@@ -1,4 +1,5 @@
 {
+  "geminiIncompleteOutput": "Gemini stopped before completing the response. Retry or use shorter request windows.",
   "apiKeyRequired": "Please set your API key in the settings first.",
   "geminiApiKeyRequired": "Gemini API key not found",
   "invalidInput": "Please provide a valid input (YouTube URL, search result, or file upload).",

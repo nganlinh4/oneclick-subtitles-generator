@@ -5,6 +5,13 @@ const reference = { words: [
   { text: 'hello', start: 1, end: 1.4 }, { text: 'world', start: 1.5, end: 2 },
   { text: 'next', start: 4, end: 5 },
 ] };
+test('utterance references measure words without inventing timing accuracy', () => {
+  const score = scoreSubtitleTiming({ wordTimingVerified: false, words: [{ text: '안녕 세상' }] },
+    [{ text: '안녕 세상', start: 1, end: 2 }]);
+  assert.equal(score.wordErrorRate, 0);
+  assert.equal(score.timedCues, 0);
+  assert.equal(score.start.medianAbsoluteMs, null);
+});
 test('measures signed shift independently of perfect text', () => {
   const score = scoreSubtitleTiming(reference, [
     { text: 'hello world', start: 1.5, end: 2.5 }, { text: 'next', start: 4.5, end: 5.5 },

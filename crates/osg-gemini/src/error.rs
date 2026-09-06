@@ -85,6 +85,9 @@ pub enum Error {
     #[error("Gemini returned no non-thinking text output")]
     NoTextOutput,
 
+    #[error("Gemini text generation did not complete: {reason}")]
+    IncompleteTextOutput { reason: &'static str },
+
     #[error("Gemini returned no image output")]
     NoImageOutput,
 

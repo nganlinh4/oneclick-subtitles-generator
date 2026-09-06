@@ -1,4 +1,5 @@
 {
+  "geminiIncompleteOutput": "Gemini đã dừng trước khi hoàn tất phản hồi. Hãy thử lại hoặc giảm thời lượng mỗi yêu cầu.",
   "noMediaSelected": "Vui lòng chọn tệp video hoặc âm thanh trước",
   "apiKeyRequired": "Vui lòng cài đặt khóa API trong phần cài đặt trước.",
   "geminiApiKeyRequired": "Không tìm thấy khóa API Gemini",

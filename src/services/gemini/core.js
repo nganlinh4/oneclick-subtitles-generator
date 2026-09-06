@@ -193,6 +193,13 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
     const subtitles = parseGeminiResponse(asLegacyGeminiResponse(result));
     return bindNativeGeminiTranscriptionDelivery(subtitles, result);
+  } catch (error) {
+    if (error?.code === 'geminiIncompleteOutput') {
+      error.message = typeof options.t === 'function'
+        ? options.t('errors.geminiIncompleteOutput', 'Gemini stopped before completing the response. Retry or use shorter request windows.')
+        : 'Gemini stopped before completing the response. Retry or use shorter request windows.';
+    }
+    throw error;
   } finally {
     removeRequestController(requestId);
   }

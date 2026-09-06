@@ -45,6 +45,7 @@ fn failure_class(error: &Error) -> String {
         Error::UploadOutcomeUnknown => "upload-outcome-unknown".to_owned(),
         Error::ResponseTooLarge { .. } => "response-too-large".to_owned(),
         Error::NoTextOutput => "no-text".to_owned(),
+        Error::IncompleteTextOutput { .. } => "incomplete-text".to_owned(),
         Error::NoImageOutput => "no-image".to_owned(),
         Error::InvalidImageOutput => "invalid-image".to_owned(),
         Error::ImageOutputBlocked => "image-blocked".to_owned(),

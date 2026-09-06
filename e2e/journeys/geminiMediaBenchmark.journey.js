@@ -1,6 +1,6 @@
 /* global $, browser, describe, document, it, window, PerformanceObserver */
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { durableState } from '../support/database.js';
@@ -49,16 +49,22 @@ describe('real UI media transcription benchmark', () => {
       'Chapter boundaries must not be subdivided by the caption splitter');
     await captureWorkflowStep({ workflow, step: '00-chapter-preset',
       description: 'Chapter task visibly disables caption splitting without changing the saved preference.' });
-    await choosePreset('general');
+    await choosePreset(config.preset ?? 'general');
+    if (config.preset === 'translate-directly') {
+      await $('.language-input').setValue('Vietnamese');
+    }
     const audioOnly = config.mode === 'audio';
     const selected = () => browser.execute(() => document.querySelector('#generation-audio-only').selected);
     if (await selected() !== audioOnly) await clickControl('#generation-audio-only');
     assert.equal(await selected(), audioOnly);
+    if (!audioOnly) await actuateNativeRange({ driver: browser, selector: '#fps-slider',
+      value: config.fps ?? 0.25, label: 'Video frame rate' });
     await actuateNativeRange({ driver: browser, selector: '#max-duration-slider',
       value: config.requestMinutes, label: 'Maximum duration of each Gemini request' });
     await captureWorkflowStep({ workflow, step: '01-generation-controls',
       description: 'Actual generation modal, before any provider request.',
-      details: { fixture: config.fixture, model: config.model, mode: config.mode } });
+      details: { fixture: config.fixture, model: config.model, mode: config.mode,
+        preset: config.preset, fps: config.fps } });
     const prior = new Set(durableState(root).jobs.map(job => job.id));
     const started = Date.now();
     const observations = [];
@@ -83,6 +89,39 @@ describe('real UI media transcription benchmark', () => {
     });
     await clickControl('[data-osg-action="process-subtitles"]');
     process.stdout.write('[media-benchmark] generation-clicked\n');
+    if (config.exercise === 'missing-audio') {
+      await browser.waitUntil(async () => browser.execute(() => {
+        const history = JSON.parse(localStorage.getItem('toast_history_v1') || '[]');
+        return document.querySelector('[data-osg-action="generate-subtitles"]')?.classList.contains('processing') !== true
+          && (document.querySelector('.toast-error') !== null || history.some(item => item.type === 'error'));
+      }), { timeout: 120_000, interval: 250, timeoutMsg: 'Missing audio did not settle with an error toast' });
+      assert.equal(durableState(root).jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe').length, 0,
+        'Missing audio must not send a video request as a silent fallback');
+      assert.equal(durableState(root).counts.cues, 0);
+      await captureWorkflowStep({ workflow, step: '02-missing-audio-refused',
+        description: 'Audio-only refuses a video without audio, with no provider job or invented subtitles.' });
+      return;
+    }
+    if (config.exercise === 'cancel-retry') {
+      await browser.waitUntil(() => durableState(root).jobs.some(job => !prior.has(job.id)
+        && job.kind === 'transcribe' && job.state === 'running'),
+      { timeout: 120_000, interval: 100, timeoutMsg: 'No active provider job available to cancel' });
+      await clickControl('.force-stop-btn');
+      await browser.waitUntil(async () => {
+        const jobs = durableState(root).jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe');
+        return jobs.some(job => job.state === 'cancelled')
+          && jobs.every(job => ['cancelled', 'succeeded'].includes(job.state))
+          && await browser.execute(() => !document.querySelector('[data-osg-action="generate-subtitles"]')?.classList.contains('processing'));
+      }, { timeout: 30_000, interval: 100, timeoutMsg: 'Cancellation did not settle native jobs and UI' });
+      await captureWorkflowStep({ workflow, step: '02-cancelled', description: 'Real force-stop cancels the native request before retry.' });
+      for (const job of durableState(root).jobs) prior.add(job.id);
+      await clickControl('[data-osg-action="generate-subtitles"]');
+      await timeline.click();
+      await browser.keys(['\uE009', 'a', '\uE000']);
+      await clickControl('[data-transcription-method="new"]');
+      assert.equal(await selected(), audioOnly, 'Retry changed the chosen input mode');
+      await clickControl('[data-osg-action="process-subtitles"]');
+    }
     await browser.waitUntil(async () => {
       const state = durableState(root);
       const jobs = state.jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe');
@@ -128,6 +167,10 @@ describe('real UI media transcription benchmark', () => {
         && !surface.processing && state.counts.cues > 0;
     }, { timeout: 20 * 60_000, interval: 1000, timeoutMsg: 'Real media generation did not settle successfully' });
     const report = { fixture: config.fixture, model: config.model, mode: config.mode,
+      preset: config.preset ?? 'general', fps: config.fps ?? 0.25,
+      providerDiagnostics: existsSync(join(root, 'logs', 'osg.log'))
+        ? readFileSync(join(root, 'logs', 'osg.log'), 'utf8').split(/\r?\n/u)
+          .filter(line => /gemini\.(completed|termination)/u.test(line)) : [],
       requestMinutes: config.requestMinutes,
       mainThread: await browser.execute(() => {
         const { observer, ...state } = window.__OSG_MEDIA_BENCH_PERF__;
@@ -137,7 +180,10 @@ describe('real UI media transcription benchmark', () => {
       sourceSha256: config.sourceSha256, elapsedMs: Date.now() - started,
       preparedMedia: finalState.media.map(({ kind, extension, size_bytes: sizeBytes }) => ({ kind, extension, sizeBytes })),
       partialCuesObserved: partialCaptured, observations, cues: finalState.cues,
-      quality: scoreSubtitleTiming(config.reference, finalState.cues) };
+      quality: config.reference.scoreable !== false && (!config.preset || ['general', 'focus-lyrics'].includes(config.preset))
+        ? scoreSubtitleTiming(config.reference, finalState.cues) : null };
+    assert.ok(finalState.cues.length >= (config.reference.minimumCues ?? 1),
+      'The duration stress run completed without a substantial subtitle result');
     assert.ok(report.preparedMedia.some(media => media.kind === 'video'), 'Audio-only must preserve the original video');
     if (audioOnly) assert.ok(report.preparedMedia.some(media => media.kind === 'audio' && media.extension === 'flac'),
       'Audio-only did not materialize the selected audio as a native FLAC asset');

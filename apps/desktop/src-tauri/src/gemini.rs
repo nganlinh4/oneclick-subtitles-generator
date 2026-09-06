@@ -673,8 +673,16 @@ async fn run_gemini(
         let mut chunk_count = 0_usize;
         let mut next_progress_bytes = 512 * 1024;
         let mut channel_open = true;
+        let mut completion = osg_gemini::TextStreamCompletion::default();
         while let Some(response) = stream.next().await {
             let response = response?;
+            if let Err(error) = completion.observe(&response) {
+                diagnostics::record(
+                    "gemini.termination",
+                    &[("job", job_id.to_string()), ("reason", error.to_string())],
+                );
+                return Err(error.into());
+            }
             if let Some(next_usage) = &response.usage_metadata {
                 usage = Some(next_usage.into());
             }
@@ -705,6 +713,17 @@ async fn run_gemini(
             }
             send_chunk_advisory(channel, &mut channel_open, job_id, chunk);
         }
+        if let Err(error) = completion.finish() {
+            diagnostics::record(
+                "gemini.termination",
+                &[("job", job_id.to_string()), ("reason", error.to_string())],
+            );
+            return Err(error.into());
+        }
+        diagnostics::record(
+            "gemini.termination",
+            &[("job", job_id.to_string()), ("reason", "STOP".to_owned())],
+        );
         if text.is_empty() {
             return Err(osg_gemini::Error::NoTextOutput.into());
         }

@@ -9,10 +9,17 @@ import { WORKFLOW_EVIDENCE_ROOT } from '../support/workflowEvidence.js';
 
 // Explicit opt-in command: runs billed customer workflows, never part of the default suite.
 // References stay in the Node test process; they are never supplied to the app or provider.
-const fixtureRoot = resolve('target/subtitle-benchmark/real-video');
-const manifest = JSON.parse(readFileSync(join(fixtureRoot, 'manifest.json'), 'utf8'));
 const catalog = JSON.parse(readFileSync('src/config/geminiModelCatalog.json', 'utf8'));
-const [caseFilter = 'all', modelFilter = 'all', modeFilter = 'all', minutes = '10'] = process.argv.slice(2);
+const [caseFilter = 'all', modelFilter = 'all', modeFilter = 'all', minutes = '10',
+  preset = 'general', frameRate = '0.25', fixtureSet = 'real-video', exercise = 'success'] = process.argv.slice(2);
+assert.ok(['success', 'cancel-retry', 'missing-audio'].includes(exercise), 'Unknown recovery exercise');
+assert.ok(['real-video', 'additional-media'].includes(fixtureSet), 'Unknown fixture set');
+const fixtureRoot = resolve('target/subtitle-benchmark', fixtureSet);
+const manifest = JSON.parse(readFileSync(join(fixtureRoot, 'manifest.json'), 'utf8'));
+assert.ok(['general', 'extract-text', 'focus-lyrics', 'describe-video', 'translate-directly',
+  'chaptering', 'diarize-speakers'].includes(preset), 'Unknown preset');
+const fps = Number(frameRate);
+assert.ok(Number.isFinite(fps) && fps >= 0.25 && fps <= 5 && Number.isInteger(fps * 4), 'Unsupported UI frame rate');
 const requestMinutes = Number(minutes);
 assert.ok(Number.isInteger(requestMinutes) && requestMinutes >= 1 && requestMinutes <= 30);
 const fixtures = manifest.cases.filter(item => caseFilter === 'all' || item.id === caseFilter);
@@ -42,7 +49,7 @@ withScenarioLeases(({ inheritedApplication, managedPaths, publication, stagingLe
           const stagedMediaSelection = join(root, 'input', fixture.file);
           copyFileSync(source, stagedMediaSelection);
           writeFileSync(join(root, 'input', 'benchmark.json'), JSON.stringify({
-            fixture: fixture.id, model: model.id, mode, reference, requestMinutes,
+            fixture: fixture.id, model: model.id, mode, reference, requestMinutes, preset, fps, exercise,
             durationSeconds: fixture.durationSeconds, sourceSha256: fixture.sha256,
           }));
           return runScenarioProcesses({ label, root, phases: ['seed'], spec,

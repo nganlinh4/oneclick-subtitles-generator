@@ -43,6 +43,8 @@ export const scoreSubtitleTiming = (reference, cues) => {
   }
   const samples = [];
   for (const [index, words] of byCue) {
+    // Utterance-only references can establish text accuracy, never invented word timing.
+    if (reference.wordTimingVerified === false) continue;
     const cue = cues[index];
     const count = tokens(cue.text).length;
     // Low-overlap cues remain quality failures, not deceptively precise timing samples.

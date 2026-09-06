@@ -5,6 +5,7 @@
 //! Rust; neither type implements `Serialize`.
 
 mod client;
+mod completion;
 mod error;
 mod image;
 mod model;
@@ -14,6 +15,7 @@ mod types;
 mod upload;
 
 pub use client::{GeminiClient, GeminiClientBuilder};
+pub use completion::TextStreamCompletion;
 pub use error::{Error, ProviderError, Result, TransportKind};
 pub use image::{
     GeneratedImage, ImageAspectRatio, ImageGenerateRequest, ImageModel, ImageSize,

@@ -1011,6 +1011,10 @@ impl From<osg_gemini::Error> for CommandError {
                 "The Gemini response exceeded the safe application limit.",
             ),
             Error::NoTextOutput => ("geminiNoText", "Gemini returned no usable text output."),
+            Error::IncompleteTextOutput { .. } => (
+                "geminiIncompleteOutput",
+                "Gemini stopped before completing the response. Retry or use shorter request windows.",
+            ),
             Error::NoImageOutput => (
                 "geminiNoImage",
                 "Gemini returned no usable generated image.",
