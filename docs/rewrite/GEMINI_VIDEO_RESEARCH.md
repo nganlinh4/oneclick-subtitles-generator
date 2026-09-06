@@ -18,16 +18,38 @@ Latest real-app evidence (all isolated profiles; no reference transcript sent):
   cues at 15.587 seconds, final checkpoint at 101.609 seconds, at most two observed
   running jobs. PerformanceObserver reported zero long tasks. Repeated meeting media
   tests duration/streaming mechanics, not the quality diversity of an original hour.
+  Visual/data review found substantial omissions despite STOP: the first ten-minute
+  window had a gap from 59.946 to 515.872 seconds. Other windows ended early or began
+  late. This is NOT a long-form accuracy pass, and missing speech is not filled in
+  from the repeated reference or disguised by stretching adjacent cues.
 - Cancellation stopped native jobs but exposed an erroneous red toast at
   `ui-runs/2026-09-06T08-59-06-995Z`. The generation and retry owners lacked the
   cancellation classification already used by segment retries. Two regression tests
-  failed before reusing that classifier, then 46 related tests passed. Real-app
-  cancellation/restart verification of this repair is still pending.
+  failed before reusing that classifier, then 46 related tests passed. The repaired
+  real-app stop/restart passed at `ui-runs/2026-09-06T09-21-53-580Z`: informative
+  cancellation toast, retained audio-only/model/window settings, three successful
+  restarted requests and 40 durable cues. Restart reselects the range and skips only
+  the first-run method overlay. Two additional failed harness attempts are retained;
+  neither is counted as a product pass.
+- The independent four-window video journey and the two-hour seek/zoom/waveform/
+  resource-bounds journey passed on `6928390c`. Their screenshot evidence is in the
+  managed evidence folder under `gemini-multi-window-transcription` (attempt
+  `20260906091056411-43976-aee2cf87`) and `long-media-resource-bounds` (attempt
+  `20260906091229629-47220-1994d1a5`).
 
 Paths above are relative to `target/subtitle-benchmark/`. The complete dedicated
 Transcribe provider run at `transcribe-runs/2026-09-06T08-21-05-458Z` completed
 60/60 requests across 20 configured credential slots and three fixtures. This is
 provider evidence, not a claim that Transcribe has been integrated into the app.
+
+A separate five-minute repetition diagnostic (`transcribe-five-minute.json`) used
+audio only and native word timestamps, with no prompt or reference supplied. It
+returned 410 words, 82 in each minute, in 8.465 seconds with STOP. Its two SSE events
+contained one large word batch and termination: do not advertise token-by-token
+streaming based on that result. The longest inter-word gap was 20.5 seconds (the
+repeated source's initial quiet interval), not the multi-minute omission seen above.
+The final annotation extended to 300.1 seconds on a 300-second extraction; native
+integration must explicitly handle media bounds rather than assume perfect offsets.
 
 The 1-FPS IS1009a/3.8 real-app run at
 `target/subtitle-benchmark/ui-runs/2026-09-06T08-06-01-710Z` completed with STOP,

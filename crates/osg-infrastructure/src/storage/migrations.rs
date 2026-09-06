@@ -550,14 +550,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn legacy_default_subtitle_scale_migrates_once_without_overwriting_custom_styles() {
-        let mut connection = Connection::open_in_memory().expect("open database");
-        migrations()
-            .to_version(&mut connection, 12)
-            .expect("prepare v12 database");
-
-        let legacy_default = json!({
+    fn legacy_default_subtitle_scene() -> serde_json::Value {
+        json!({
             "customization": {
                 "fontSize": 28,
                 "fontFamily": "'Google Sans', sans-serif",
@@ -591,7 +585,16 @@ mod tests {
                 "maxLines": 3,
                 "preset": "default"
             }
-        });
+        })
+    }
+
+    #[test]
+    fn legacy_default_subtitle_scale_migrates_once_without_overwriting_custom_styles() {
+        let mut connection = Connection::open_in_memory().expect("open database");
+        migrations()
+            .to_version(&mut connection, 12)
+            .expect("prepare v12 database");
+        let legacy_default = legacy_default_subtitle_scene();
         let customized = {
             let mut value = legacy_default.clone();
             value["customization"]["textColor"] = json!("#ff00ff");
