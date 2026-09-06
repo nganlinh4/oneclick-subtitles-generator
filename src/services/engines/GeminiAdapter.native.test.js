@@ -56,7 +56,7 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     const result = await processGeminiSegment(
       media,
       { start: 0, end: 60 },
-      { maxDurationPerRequest: 60 },
+      { model: 'gemini-3.5-transcribe', maxDurationPerRequest: 60 },
       { onStatus, onStreamingUpdate },
     );
 
@@ -95,7 +95,7 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     const pending = processGeminiSegment(
       media,
       { start: 0, end: 120 },
-      { signal: abortController.signal },
+      { model: 'gemini-3.5-transcribe', signal: abortController.signal },
       {},
     );
 

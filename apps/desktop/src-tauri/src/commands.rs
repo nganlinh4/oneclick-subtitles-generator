@@ -315,6 +315,79 @@ pub(crate) async fn project_load(
     run_database_task("load project", move || database.load_project(id)).await
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectTranscriptSnapshot {
+    pub(crate) revision_id: osg_domain::TranscriptRevisionId,
+    pub(crate) project_id: ProjectId,
+    pub(crate) words: Vec<crate::transcription::events::TimedWordDto>,
+    pub(crate) turns: Vec<crate::transcription::events::TranscriptTurnDto>,
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn project_load_transcript(
+    state: State<'_, DesktopState>,
+    id: ProjectId,
+) -> CommandResult<Option<ProjectTranscriptSnapshot>> {
+    let database = state.database.clone();
+    run_database_task("load project transcript", move || {
+        let revisions = database.transcript_list_revisions(id)?;
+        let latest = revisions.into_iter().rev().find(|r| {
+            r.state == "completed" || r.state == "partial" || r.state == "in_progress"
+        });
+
+        let Some(rev) = latest else {
+            return Ok(None);
+        };
+
+        let words = database.transcript_query_words_in_range(rev.id, 0, i64::MAX)?;
+        let turns = database.transcript_query_turns_in_range(rev.id, 0, i64::MAX)?;
+
+        let word_dtos = words
+            .into_iter()
+            .map(|w| crate::transcription::events::TimedWordDto {
+                id: w.id,
+                revision_id: w.revision_id,
+                ordinal: w.ordinal,
+                text: w.text,
+                start_ms: w.start_ms,
+                end_ms: w.end_ms,
+                speaker_id: w.speaker_id,
+                confidence: w.confidence,
+                provenance: w.provenance,
+                alignment_status: w.alignment_status,
+            })
+            .collect();
+
+        let turn_dtos = turns
+            .into_iter()
+            .map(|t| crate::transcription::events::TranscriptTurnDto {
+                id: t.id,
+                revision_id: t.revision_id,
+                ordinal: t.ordinal,
+                speaker_id: t.speaker_id,
+                start_ms: t.start_ms,
+                end_ms: t.end_ms,
+                text: t.text,
+                start_word_ordinal: t.start_word_ordinal,
+                end_word_ordinal: t.end_word_ordinal,
+            })
+            .collect();
+
+        Ok(Some(ProjectTranscriptSnapshot {
+            revision_id: rev.id,
+            project_id: id,
+            words: word_dtos,
+            turns: turn_dtos,
+        }))
+    })
+    .await
+}
+
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,

@@ -6,6 +6,7 @@ import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import { useLyricsEditorHelpers } from './useLyricsEditorHelpers';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 import { regroupWordsOffline, regroupPreservingEdits } from '../platform/localCaptionRegrouping';
+import { getActiveTranscript } from '../platform/transcriptStore';
 
 /**
  * Lyrics editor hook. Orchestrates the editor's core state and composes the
@@ -405,7 +406,12 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     const current = lyricsRef.current;
     if (!current || current.length === 0) return;
 
-    const words = options.words || current.words || deriveWordsFromCues(current);
+    const words = options.words || current.words || getActiveTranscript()?.words;
+    if (!Array.isArray(words) || words.length === 0) {
+      // Cue-only captions remain cue-only. Do not fabricate or interpolate Provider words.
+      return;
+    }
+
     const customOpts = {
       max_words: options.maxWords ?? options.max_words,
       max_duration_ms: (options.maxDuration ?? options.max_duration ?? 5.0) * 1000,
@@ -460,36 +466,3 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     applyTimings
   };
 };
-
-function deriveWordsFromCues(cues) {
-  if (Array.isArray(cues.words) && cues.words.length > 0) {
-    return cues.words;
-  }
-  const words = [];
-  for (const cue of cues) {
-    if (Array.isArray(cue.words) && cue.words.length > 0) {
-      words.push(...cue.words);
-      continue;
-    }
-    const cueStartMs = cue.start_ms ?? Math.round((cue.start || 0) * 1000);
-    const cueEndMs = cue.end_ms ?? Math.round((cue.end || 0) * 1000);
-    const cueDuration = Math.max(10, cueEndMs - cueStartMs);
-    const tokens = (cue.text || '').trim().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) continue;
-    const tokenDuration = Math.round(cueDuration / tokens.length);
-    for (let i = 0; i < tokens.length; i++) {
-      const startMs = cueStartMs + i * tokenDuration;
-      const endMs = i === tokens.length - 1 ? cueEndMs : startMs + tokenDuration;
-      words.push({
-        id: cue.word_ids?.[i] || `${cue.id || 'cue'}_w${i + 1}`,
-        text: tokens[i],
-        start_ms: startMs,
-        end_ms: endMs,
-        speaker_id: cue.speaker || cue.speaker_id || null,
-        provenance: 'Provider',
-        alignment_status: 'Aligned',
-      });
-    }
-  }
-  return words;
-}

@@ -113,11 +113,6 @@ export const CreateSubtitlesModal = ({
   const bridge = useCreationDialogBridge({
     onCompleted: (event) => {
       onCompleted?.(event);
-      onProcess?.({
-        task: 'Speech',
-        engine: speechState.engine,
-        completedEvent: event,
-      });
       onClose?.();
     },
     onCancelled: () => {
@@ -243,6 +238,24 @@ export const CreateSubtitlesModal = ({
 
       if (currentTask === 'Speech') {
         if (speechState.engine === 'gemini-3.5-transcribe') {
+          if (onProcess) {
+            onProcess({
+              task: 'Speech',
+              engine: 'gemini-3.5-transcribe',
+              model: 'gemini-3.5-transcribe',
+              generationScope: isWhole ? 'full-media' : 'segment',
+              segment: isWhole ? undefined : selectedSegment,
+              audioOnly: true,
+              videoFile,
+              windowDurationSecs: speechState.windowDurationSecs,
+              languageHints: speechState.languageHints,
+              diarization: Boolean(speechState.identifySpeakers || speechState.diarization),
+              captionLayout: speechState.captionLayout,
+            });
+            onClose?.();
+            return;
+          }
+
           const request = {
             mediaAssetId: videoFile?.assetId,
             filePath: videoFile?.path || videoFile?.filePath,

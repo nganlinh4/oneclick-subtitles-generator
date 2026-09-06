@@ -15,6 +15,7 @@ import {
   removeLegacySubtitleTrack,
   replaceLegacySubtitleTrack,
 } from './projectSnapshotAdapter';
+import { loadProjectTranscript } from './transcriptStore';
 
 export const SUBTITLE_PROJECT_INDEX_KEY = 'project.subtitleCacheIndex.v1';
 export const SUBTITLE_CACHE_TRACK_LABEL = 'Cached subtitles';
@@ -245,6 +246,13 @@ export const createSubtitleProjectStore = ({
   const loadSubtitles = async (cacheId) => {
     const resolved = await resolve(cacheId);
     if (resolved === null || resolved.snapshot === null) return null;
+    if (resolved.projectId) {
+      try {
+        await loadProjectTranscript(resolved.projectId);
+      } catch {
+        // Hydration failure should not block subtitle loading
+      }
+    }
     return readLegacySubtitleTrack(resolved.snapshot, { label: SUBTITLE_CACHE_TRACK_LABEL });
   };
 
@@ -282,6 +290,11 @@ export const createSubtitleProjectStore = ({
           'projectScopeMismatch',
           'The subtitle project changed before its subtitles could be loaded'
         );
+      }
+      try {
+        await loadProjectTranscript(expectedProjectId);
+      } catch {
+        // Hydration failure should not block subtitle loading
       }
       return readLegacySubtitleTrack(snapshot, { label: SUBTITLE_CACHE_TRACK_LABEL });
     });

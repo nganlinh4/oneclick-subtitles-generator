@@ -14,6 +14,31 @@ export const REGROUPING_POLICIES = Object.freeze({
 const DEFAULT_SENTENCE_PUNCTUATION_REGEX = /[.?!。！？]$/u;
 
 /**
+ * Joins word tokens preserving script-aware spacing.
+ * Does not insert extra spaces before punctuation or between adjacent CJK characters.
+ */
+export function joinWordsPreservingSpacing(words) {
+  if (!Array.isArray(words) || words.length === 0) return '';
+  let result = '';
+  for (let i = 0; i < words.length; i++) {
+    const text = words[i]?.text ?? '';
+    if (i === 0) {
+      result = text;
+      continue;
+    }
+    const prev = words[i - 1]?.text ?? '';
+    if (/^[.,!?:;'\u2019\u201d\u3001\u3002\uff0c\uff01\uff1f]/.test(text)) {
+      result += text;
+    } else if (/[\u4e00-\u9fa5\u3040-\u30ff]/.test(prev.slice(-1)) && /[\u4e00-\u9fa5\u3040-\u30ff]/.test(text.slice(0, 1))) {
+      result += text;
+    } else {
+      result += ' ' + text;
+    }
+  }
+  return result;
+}
+
+/**
  * Regroups words into cues according to the specified policy.
  *
  * @param {Array<{id: string, text: string, start_ms: number, end_ms: number, speaker_id?: string, is_unaligned?: boolean}>} words
@@ -29,7 +54,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
       id: `cue_${idx + 1}`,
       ordinal: idx + 1,
       start_ms: w.start_ms,
-      end_ms: Math.max(w.end_ms, w.start_ms + 50),
+      end_ms: w.end_ms,
       text: w.text,
       word_ids: [w.id],
       speaker_id: w.speaker_id || null,
@@ -56,7 +81,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
             ordinal: cues.length + 1,
             start_ms: currentWords[0].start_ms,
             end_ms: currentWords[currentWords.length - 1].end_ms,
-            text: currentWords.map((w) => w.text).join(' '),
+            text: joinWordsPreservingSpacing(currentWords),
             word_ids: currentWords.map((w) => w.id),
             speaker_id: currentWords[0].speaker_id || null,
             manual_state: 'clean',
@@ -72,7 +97,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
         ordinal: cues.length + 1,
         start_ms: currentWords[0].start_ms,
         end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: currentWords.map((w) => w.text).join(' '),
+        text: joinWordsPreservingSpacing(currentWords),
         word_ids: currentWords.map((w) => w.id),
         speaker_id: currentWords[0].speaker_id || null,
         manual_state: 'clean',
@@ -112,7 +137,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
           ordinal: cues.length + 1,
           start_ms: currentWords[0].start_ms,
           end_ms: currentWords[currentWords.length - 1].end_ms,
-          text: currentWords.map((w) => w.text).join(' '),
+          text: joinWordsPreservingSpacing(currentWords),
           word_ids: currentWords.map((w) => w.id),
           speaker_id: currentWords[0].speaker_id || null,
           manual_state: 'clean',
@@ -136,7 +161,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
           ordinal: cues.length + 1,
           start_ms: currentWords[0].start_ms,
           end_ms: currentWords[currentWords.length - 1].end_ms,
-          text: currentWords.map((w) => w.text).join(' '),
+          text: joinWordsPreservingSpacing(currentWords),
           word_ids: currentWords.map((w) => w.id),
           speaker_id: currentWords[0].speaker_id || null,
           manual_state: 'clean',
@@ -151,7 +176,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
         ordinal: cues.length + 1,
         start_ms: currentWords[0].start_ms,
         end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: currentWords.map((w) => w.text).join(' '),
+        text: joinWordsPreservingSpacing(currentWords),
         word_ids: currentWords.map((w) => w.id),
         speaker_id: currentWords[0].speaker_id || null,
         manual_state: 'clean',
@@ -186,7 +211,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
         ordinal: cues.length + 1,
         start_ms: currentWords[0].start_ms,
         end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: currentWords.map((w) => w.text).join(' '),
+        text: joinWordsPreservingSpacing(currentWords),
         word_ids: currentWords.map((w) => w.id),
         speaker_id: currentWords[0].speaker_id || null,
         manual_state: 'clean',
@@ -209,7 +234,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
         ordinal: cues.length + 1,
         start_ms: currentWords[0].start_ms,
         end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: currentWords.map((w) => w.text).join(' '),
+        text: joinWordsPreservingSpacing(currentWords),
         word_ids: currentWords.map((w) => w.id),
         speaker_id: currentWords[0].speaker_id || null,
         manual_state: 'clean',
@@ -224,7 +249,7 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
       ordinal: cues.length + 1,
       start_ms: currentWords[0].start_ms,
       end_ms: currentWords[currentWords.length - 1].end_ms,
-      text: currentWords.map((w) => w.text).join(' '),
+      text: joinWordsPreservingSpacing(currentWords),
       word_ids: currentWords.map((w) => w.id),
       speaker_id: currentWords[0].speaker_id || null,
       manual_state: 'clean',

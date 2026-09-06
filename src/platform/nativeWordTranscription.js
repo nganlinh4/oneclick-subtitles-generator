@@ -1,12 +1,11 @@
 import { Channel } from '@tauri-apps/api/core';
-import { v7 as uuidv7 } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 
 /**
  * Starts native word-native transcription via Tauri command.
  *
  * @param {Object} request
- * @param {string} [request.projectId]
+ * @param {string} request.projectId
  * @param {number} [request.expectedProjectStateVersion]
  * @param {string} [request.mediaAssetId]
  * @param {string} [request.filePath]
@@ -30,8 +29,12 @@ import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
  * @returns {Promise<Object>} JobSnapshot
  */
 export const startWordNativeTranscription = async (request = {}, handlers = {}) => {
+  if (!request.projectId || typeof request.projectId !== 'string') {
+    throw new Error('Native word transcription requires an established active project ID');
+  }
+
   const normalizedRequest = {
-    projectId: request.projectId || uuidv7(),
+    projectId: request.projectId,
     ...(request.expectedProjectStateVersion !== undefined
       ? { expectedProjectStateVersion: request.expectedProjectStateVersion }
       : {}),

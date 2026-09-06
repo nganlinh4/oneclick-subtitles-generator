@@ -25,6 +25,7 @@ import ViewportSwitcher from './lyrics/ViewportSwitcher';
 import TranscriptSurface from './lyrics/transcript/TranscriptSurface';
 import CaptionGroupingToolbar from './lyrics/CaptionGroupingToolbar';
 import { REGROUPING_POLICIES } from '../platform/localCaptionRegrouping';
+import { getActiveTranscript, subscribeActiveTranscript } from '../platform/transcriptStore';
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -236,16 +237,25 @@ const LyricsDisplay = ({
     splitOnPunctuation: true,
   });
 
+  const [activeTranscript, setActiveTranscript] = useState(getActiveTranscript());
+  useEffect(() => {
+    return subscribeActiveTranscript(setActiveTranscript);
+  }, []);
+
   const handleSpeakerRename = (speakerId, newName) => {
     setSpeakerNames((prev) => ({ ...prev, [speakerId]: newName }));
   };
 
-  const transcriptWords = (Array.isArray(matchedLyrics?.words) && matchedLyrics.words.length > 0)
+  const transcriptWords = (Array.isArray(activeTranscript?.words) && activeTranscript.words.length > 0)
+    ? activeTranscript.words
+    : (Array.isArray(matchedLyrics?.words) && matchedLyrics.words.length > 0)
     ? matchedLyrics.words
     : (Array.isArray(lyrics.words) && lyrics.words.length > 0)
     ? lyrics.words
     : [];
-  const transcriptTurns = (Array.isArray(matchedLyrics?.turns) && matchedLyrics.turns.length > 0)
+  const transcriptTurns = (Array.isArray(activeTranscript?.turns) && activeTranscript.turns.length > 0)
+    ? activeTranscript.turns
+    : (Array.isArray(matchedLyrics?.turns) && matchedLyrics.turns.length > 0)
     ? matchedLyrics.turns
     : (Array.isArray(lyrics.turns) && lyrics.turns.length > 0)
     ? lyrics.turns

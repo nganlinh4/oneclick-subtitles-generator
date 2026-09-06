@@ -78,6 +78,7 @@ description = "Allows the main editor window to create, load, and navigate path-
 commands.allow = [
   "project_create",
   "project_load",
+  "project_load_transcript",
   "project_history_status",
   "project_track_history_status",
   "project_commit",

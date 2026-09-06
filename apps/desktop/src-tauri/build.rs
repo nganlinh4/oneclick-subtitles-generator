@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "discard_media_candidate",
     "project_create",
     "project_load",
+    "project_load_transcript",
     "project_history_status",
     "project_track_history_status",
     "project_commit",

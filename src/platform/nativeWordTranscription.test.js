@@ -130,4 +130,10 @@ describe('nativeWordTranscription', () => {
       jobId: taskId,
     });
   });
+
+  it('rejects immediately when projectId is missing without invoking desktop', async () => {
+    await expect(startWordNativeTranscription({ mediaAssetId: 'media-1' }))
+      .rejects.toThrow(/established active project ID/i);
+    expect(invokeDesktop).not.toHaveBeenCalled();
+  });
 });

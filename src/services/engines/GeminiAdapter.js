@@ -1,9 +1,10 @@
 import { bindGeminiTranscriptionDeliveries } from '../gemini/transcriptionDelivery';
 import {
-  startWordNativeTranscription,
   cancelWordNativeTranscription,
   isNativeWordTranscriptionSupported,
+  startWordNativeTranscription,
 } from '../../platform/nativeWordTranscription';
+import { setActiveTranscript } from '../../platform/transcriptStore';
 
 // The native media pipeline admits two clip operations. Matching that capacity prevents windows
 // three and four from being rejected before they reach Gemini on a clean split-media run.
@@ -94,13 +95,14 @@ const namespaceWindowRows = (rows, windowIndex) => rows.map((row) => {
 export const processGeminiSegment = async (file, segment, options, hooks = {}) => {
   const { onStatus, onStreamingUpdate, t } = hooks;
 
-  const isSpeechTask = (!options?.task || options?.task === 'transcribe')
-    && !options?.prompt
-    && !options?.customPrompt
-    && !options?.userProvidedSubtitles
-    && !options?.forceLegacy;
+  const isExplicitTranscribe = (
+    options?.model === 'gemini-3.5-transcribe'
+    || options?.engine === 'gemini-3.5-transcribe'
+    || options?.engine === 'gemini-transcribe'
+    || options?.task === 'native-transcribe'
+  ) && !options?.forceLegacy;
 
-  if (isNativeWordTranscriptionSupported() && isSpeechTask) {
+  if (isNativeWordTranscriptionSupported() && isExplicitTranscribe) {
     return new Promise((resolve, reject) => {
       let taskId = null;
       let finished = false;
