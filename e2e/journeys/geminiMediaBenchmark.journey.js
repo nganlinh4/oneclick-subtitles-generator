@@ -123,8 +123,10 @@ describe('real UI media transcription benchmark', () => {
       await captureWorkflowStep({ workflow, step: '02-cancelled', description: 'Real force-stop cancels the native request before retry.' });
       for (const job of durableState(root).jobs) prior.add(job.id);
       await clickControl('[data-osg-action="generate-subtitles"]');
-      // The first-run method overlay is intentionally not shown again. Reopening
-      // generation restores the range/options directly; do not Ctrl+A the modal.
+      // Generation enables range selection; Ctrl+A opens the options. Only the
+      // first-run method overlay is skipped on subsequent attempts.
+      await timeline.click();
+      await browser.keys(['\uE009', 'a', '\uE000']);
       await $('#generation-model').waitForDisplayed({ timeout: 5000 });
       assert.equal(await $('#generation-model').getAttribute('data-value'), config.model);
       assert.equal(Number(await $('#max-duration-slider').getValue()), config.requestMinutes);
