@@ -179,10 +179,10 @@ it('extracts only the requested audio range and uploads no source video in audio
 });
 
 it('never falls back to uploading video when audio extraction fails', async () => {
-  runMediaPipeline.mockRejectedValueOnce(new Error('mediaMissingAudio'));
+  runMediaPipeline.mockRejectedValueOnce(Object.assign(new Error('generic transport message'), { code: 'mediaMissingAudio' }));
   await expect(callGeminiApi({ assetId: 'silent-video', type: 'video/mp4' }, 'file-upload', {
     audioOnly: true,
-  })).rejects.toThrow('mediaMissingAudio');
+  })).rejects.toThrow('This media has no audio track to transcribe.');
   expect(runNativeGeminiTranscription).not.toHaveBeenCalled();
 });
 

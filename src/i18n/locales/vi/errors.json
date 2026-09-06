@@ -1,4 +1,5 @@
 {
+  "mediaMissingAudio": "Tệp này không có âm thanh để tạo phụ đề. Hãy chọn tệp có âm thanh hoặc tắt chế độ chỉ gửi âm thanh.",
   "geminiIncompleteOutput": "Gemini đã dừng trước khi hoàn tất phản hồi. Hãy thử lại hoặc giảm thời lượng mỗi yêu cầu.",
   "noMediaSelected": "Vui lòng chọn tệp video hoặc âm thanh trước",
   "apiKeyRequired": "Vui lòng cài đặt khóa API trong phần cài đặt trước.",

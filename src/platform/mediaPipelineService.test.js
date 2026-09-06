@@ -334,6 +334,12 @@ describe('mediaPipelineService', () => {
 
   test('collapses unknown failure codes and rejects impossible progress states', () => {
     expect(normalizeMediaPipelineEvent({
+      event: 'failed', operation: 'extractAudio', job: job('failed', 100),
+      error: { code: 'mediaMissingAudio', message: 'private provider details must not be forwarded' },
+    }, { operation: 'extractAudio', assetId: SOURCE_ID })).toMatchObject({
+      error: { code: 'mediaMissingAudio', message: 'The selected media does not contain an audio stream.' },
+    });
+    expect(normalizeMediaPipelineEvent({
       event: 'failed',
       operation: 'analysisClip',
       job: job('failed', 100),

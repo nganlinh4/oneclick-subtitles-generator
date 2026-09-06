@@ -98,8 +98,13 @@ describe('real UI media transcription benchmark', () => {
       assert.equal(durableState(root).jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe').length, 0,
         'Missing audio must not send a video request as a silent fallback');
       assert.equal(durableState(root).counts.cues, 0);
+      const expected = 'close Error Error: This media has no audio track to transcribe. Choose a file with audio or turn off audio-only input.';
+      const toast = await $('.toast-error').getText();
+      assert.equal(toast.replace(/\s+/gu, ' ').trim(), expected);
       await captureWorkflowStep({ workflow, step: '02-missing-audio-refused',
-        description: 'Audio-only refuses a video without audio, with no provider job or invented subtitles.' });
+        description: 'Audio-only refuses a video without audio, with no provider job or invented subtitles.',
+        allowVisibleProblems: { errorToasts: [{ text: expected,
+          reason: 'The specific no-audio refusal is the intended outcome of this negative workflow.' }] } });
       return;
     }
     if (config.exercise === 'cancel-retry') {

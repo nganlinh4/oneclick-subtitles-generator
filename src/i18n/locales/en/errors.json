@@ -1,4 +1,5 @@
 {
+  "mediaMissingAudio": "This media has no audio track to transcribe. Choose a file with audio or turn off audio-only input.",
   "geminiIncompleteOutput": "Gemini stopped before completing the response. Retry or use shorter request windows.",
   "apiKeyRequired": "Please set your API key in the settings first.",
   "geminiApiKeyRequired": "Gemini API key not found",

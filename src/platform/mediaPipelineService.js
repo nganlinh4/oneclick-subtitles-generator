@@ -199,6 +199,10 @@ const cancelledOperation = () => {
   return error;
 };
 
+const mediaFailureMessage = code => code === 'mediaMissingAudio'
+  ? 'The selected media does not contain an audio stream.'
+  : 'The native media operation could not be completed';
+
 const normalizeFailure = (error) => {
   let code = 'mediaPipelineFailed';
   try {
@@ -209,7 +213,7 @@ const normalizeFailure = (error) => {
   } catch {
     // A hostile transport accessor is not authoritative error metadata.
   }
-  return new MediaPipelineServiceError(code, 'The native media operation could not be completed');
+  return new MediaPipelineServiceError(code, mediaFailureMessage(code));
 };
 
 const requireAssetId = (value) => {
@@ -534,7 +538,7 @@ const normalizeError = (value) => {
   }
   return Object.freeze({
     code: mediaPipelineCommandCodes.has(code) ? code : 'mediaPipelineFailed',
-    message: 'The native media operation could not be completed',
+    message: mediaFailureMessage(code),
   });
 };
 

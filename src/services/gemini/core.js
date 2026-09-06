@@ -194,6 +194,11 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
     const subtitles = parseGeminiResponse(asLegacyGeminiResponse(result));
     return bindNativeGeminiTranscriptionDelivery(subtitles, result);
   } catch (error) {
+    if (error?.code === 'mediaMissingAudio') {
+      const fallback = 'This media has no audio track to transcribe. Choose a file with audio or turn off audio-only input.';
+      error.message = typeof options.t === 'function'
+        ? options.t('errors.mediaMissingAudio', fallback) : fallback;
+    }
     if (error?.code === 'geminiIncompleteOutput') {
       error.message = typeof options.t === 'function'
         ? options.t('errors.geminiIncompleteOutput', 'Gemini stopped before completing the response. Retry or use shorter request windows.')
