@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "6243c3356fb4bdce25be005ee2ee4d4c762d4234",
+  "baselineRevision": "ac2030bc103842c83b62f1aaa083c33cff63ae2c",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -516,7 +516,7 @@
       ]
     },
     "src/i18n/locales/en/errors.json": {
-      "hash": "cd2a4e3eb3063ecc52732442ad4eb5d2215a64fc8d0711d0cb06e99f250acc0f",
+      "hash": "f5f5d5a23b336592ecdcb460d5e422bded169d6c309a1800beaa17dbac7ff382",
       "keys": [
         "allRequestsAborted",
         "apiKeyRequired",
@@ -538,6 +538,7 @@
         "invalidSegmentSelection",
         "invalidSrtFile",
         "invalidSubtitleFile",
+        "mediaMissingAudio",
         "noMediaSelected",
         "noNarrationResults",
         "paidTierRequired",
@@ -2836,7 +2837,7 @@
       ]
     },
     "src/i18n/locales/ko/errors.json": {
-      "hash": "9bb99d35a1196b537f2a9b60fe0485567a88e4eaaca5a02923cfec2329134834",
+      "hash": "09c1658c84e7c8ca088283917e0516ea7fa06c1e7ac4113ad0dd42790be82d2b",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -2862,6 +2863,7 @@
         "invalidSrtFile",
         "invalidSrtFormat",
         "invalidSubtitleFile",
+        "mediaMissingAudio",
         "noMediaSelected",
         "noNarrationResults",
         "noValidInput",
@@ -5417,7 +5419,7 @@
       ]
     },
     "src/i18n/locales/vi/errors.json": {
-      "hash": "60bab3c358fa8959c492d1a77b58fbe3e8a5a15a89fb83224fe69d2a233f6024",
+      "hash": "7b9c2faaceafbe3e110f55b83ea6c23e17cbb4212a82cb404ec9e026372b935f",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -5443,6 +5445,7 @@
         "invalidSrtFile",
         "invalidSrtFormat",
         "invalidSubtitleFile",
+        "mediaMissingAudio",
         "noMediaSelected",
         "noNarrationResults",
         "noValidInput",
