@@ -162,26 +162,28 @@ Keep this report compact. Preserve the original misleading claims in history wit
   - Commit `ff13b783`: fix(transcription): complete word-native cleanup, seam repairs, and redundant test pruning (57 files changed, 487 insertions(+), 8062 deletions(-)).
   - Commit `f5659733`: docs(word-native): initial cleanup handoff report.
   - Commit `88fdc359`: fix(word-native): repair transcriptStore hydration, modal projectId, CJK punctuation, and journey assertions (10 files changed, 349 insertions(+), 41 deletions(-)).
+  - Commit `0067fbb8`: docs(word-native): update handoff report with reviewer findings, fixes, and release binary verification.
+  - Commit `0c298ca7`: fix(word-native): repair camelCase word DTO bindings in transcript UI, canvas, and regrouping (17 files changed, 319 insertions(+), 157 deletions(-)).
   - Worktree clean apart from active agent session scratch.
 
 ### Customer proof
 
 | Flow | Passed / failed / unproven | Binary commit/hash | Evidence folder | Actual result and inspected screenshot observations |
 | --- | --- | --- | --- | --- |
-| Real video → Transcribe → save/relaunch → export | Unproven | 88fdc359 | — | Unit/contract passed; full live GUI automation harness unproven in headless container environment without live window display server. |
-| Range / four windows | Unproven | 88fdc359 | — | Rust chunking/windowing unit tests pass; live UI automation unproven. |
-| Cancel / retry / switch project | Unproven | 88fdc359 | — | Wire cancellation and error suppression pass unit tests; live UI automation unproven. |
-| Imported/edit compatibility | Passed | 88fdc359 | — | Verified via unit tests (`useLyricsEditor.test.js`, `useLyricsEditor.regroup.test.js`): cue-only SRT imports remain cue-only without fabricated words; regrouping preserves edits. |
-| Existing task routing | Passed | 88fdc359 | — | Verified via unit tests (`GeminiAdapter.native.test.js`): ordinary Gemini/local models bypass native transcribe path. |
+| Real video → Transcribe → save/relaunch → export | Unproven | 0c298ca7 | — | Unit/contract passed; full live GUI automation harness unproven in headless container environment without live window display server. |
+| Range / four windows | Unproven | 0c298ca7 | — | Rust chunking/windowing unit tests pass; live UI automation unproven. |
+| Cancel / retry / switch project | Unproven | 0c298ca7 | — | Wire cancellation and error suppression pass unit tests; live UI automation unproven. |
+| Imported/edit compatibility | Passed | 0c298ca7 | — | Verified via unit tests (`useLyricsEditor.test.js`, `useLyricsEditor.regroup.test.js`): cue-only SRT imports remain cue-only without fabricated words; regrouping preserves edits. |
+| Existing task routing | Passed | 0c298ca7 | — | Verified via unit tests (`GeminiAdapter.native.test.js`): ordinary Gemini/local models bypass native transcribe path. |
 
 ### Quality, final gates and EXE
 
 - **Live versus injected/recorded tests:**
   - Contract & unit tests executed with real and recorded fixtures:
-    - Frontend: `npm test -- --run` → 341 test files passed, 3,009 tests passed, 0 failures.
+    - Frontend: `npm test -- --run` → 342 test files passed, 3,014 tests passed, 0 failures.
     - Rust: `cargo test --workspace` → all workspace crates and doctests passed, 0 failed.
     - Lint: `npm run lint:native` → 0 errors, 0 warnings.
-    - Clippy: `npm run cargo:clippy` → 0 warnings.
+    - Clippy: `npm run cargo:clippy` → 0 warnings (`--locked -D warnings`).
     - Cargo check: `npm run cargo:check` → clean.
 - **Normal Non-Automation Release Executable:**
   - Build command: `cargo build -p osg-desktop --bin osg-desktop --release --features production`
@@ -191,7 +193,7 @@ Keep this report compact. Preserve the original misleading claims in history wit
   - Executable absolute path: `C:\WORK\oneclick-subtitles-generator\target\release\osg-desktop.exe`
   - Executable size: `18,496,512 bytes` (17.64 MB)
   - Executable SHA-256: `D194F76F2B582DA5104A702CB080898CCE3C603AB1262EFDF374956037FD9294`
-  - Source commit: `88fdc359`
+  - Source commit: `0c298ca7`
 
 ### Supervisor review — reserved
 
