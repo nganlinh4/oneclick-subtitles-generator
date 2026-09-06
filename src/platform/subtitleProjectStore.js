@@ -15,7 +15,7 @@ import {
   removeLegacySubtitleTrack,
   replaceLegacySubtitleTrack,
 } from './projectSnapshotAdapter';
-import { loadProjectTranscript } from './transcriptStore';
+import { clearActiveTranscript, loadProjectTranscript } from './transcriptStore';
 
 export const SUBTITLE_PROJECT_INDEX_KEY = 'project.subtitleCacheIndex.v1';
 export const SUBTITLE_CACHE_TRACK_LABEL = 'Cached subtitles';
@@ -808,6 +808,7 @@ export const createSubtitleProjectStore = ({
       }),
       { retryOnConflict: true }
     );
+    clearActiveTranscript();
     return true;
   };
 

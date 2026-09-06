@@ -7,6 +7,7 @@ import {
   readLegacySubtitleTrack,
   replaceLegacySubtitleTrack,
 } from './projectSnapshotAdapter';
+import { getActiveTranscript, setActiveTranscript } from './transcriptStore';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
@@ -206,7 +207,9 @@ it('clears only the cached subtitle track through an optimistic project revision
   };
   const store = createTestStore({ invokeCommand, projects, now: () => 200 });
 
+  setActiveTranscript({ projectId: PROJECT_ID, revisionId: 'rev-1', words: [{ text: 'hi' }], turns: [] });
   await expect(store.clearSubtitles('cache-id')).resolves.toBe(true);
+  expect(getActiveTranscript()).toBeNull();
   expect(projects.mutateProject).toHaveBeenCalledTimes(1);
   expect(projects.createProject).not.toHaveBeenCalled();
 });

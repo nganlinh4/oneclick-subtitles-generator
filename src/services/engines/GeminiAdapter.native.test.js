@@ -5,6 +5,7 @@ import {
   cancelWordNativeTranscription,
   isNativeWordTranscriptionSupported,
 } from '../../platform/nativeWordTranscription';
+import { getActiveTranscript } from '../../platform/transcriptStore';
 
 vi.mock('../../platform/nativeWordTranscription', () => ({
   startWordNativeTranscription: vi.fn(),
@@ -27,7 +28,15 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     vi.clearAllMocks();
   });
 
-  it('routes speech transcription directly to native word-native transcription engine', async () => {
+  it('routes speech transcription directly to native word-native transcription engine and populates transcriptStore', async () => {
+    const mockWords = [
+      { id: 'w-1', text: 'Hello', startMs: 1000, endMs: 1600 },
+      { id: 'w-2', text: 'world', startMs: 1700, endMs: 2500 },
+    ];
+    const mockTurns = [
+      { id: 't-1', speakerId: 'w0:1', text: 'Hello world', startMs: 1000, endMs: 2500 },
+    ];
+
     startWordNativeTranscription.mockImplementation(async (request, handlers) => {
       // Simulate asynchronous events
       setTimeout(() => {
@@ -35,15 +44,19 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
         handlers.onWindowPromoted?.({
           windowIndex: 0,
           totalWindows: 1,
+          revisionId: 'rev-xyz',
+          words: mockWords,
+          turns: mockTurns,
           projectedCues: [
-            { id: 'cue-1', startMs: 1000, endMs: 2500, text: 'Hello world', speakerId: 'w0:1' },
+            { id: 'cue-1', startMs: 1000, endMs: 2500, text: 'Hello world', speakerId: 'w0:1', wordIds: ['w-1', 'w-2'] },
           ],
         });
         handlers.onCompleted?.({
+          revisionId: 'rev-xyz',
           totalWindows: 1,
           totalWords: 2,
           projectedCues: [
-            { id: 'cue-1', startMs: 1000, endMs: 2500, text: 'Hello world', speakerId: 'w0:1' },
+            { id: 'cue-1', startMs: 1000, endMs: 2500, text: 'Hello world', speakerId: 'w0:1', wordIds: ['w-1', 'w-2'] },
           ],
         });
       }, 10);
@@ -56,13 +69,14 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     const result = await processGeminiSegment(
       media,
       { start: 0, end: 60 },
-      { model: 'gemini-3.5-transcribe', maxDurationPerRequest: 60 },
+      { model: 'gemini-3.5-transcribe', projectId: 'proj-abc', maxDurationPerRequest: 60 },
       { onStatus, onStreamingUpdate },
     );
 
     expect(startWordNativeTranscription).toHaveBeenCalledTimes(1);
     expect(startWordNativeTranscription).toHaveBeenCalledWith(
       expect.objectContaining({
+        projectId: 'proj-abc',
         mediaAssetId: media.assetId,
         rangeStartMs: 0,
         rangeEndMs: 60000,
@@ -83,6 +97,14 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
       text: 'Hello world',
       speaker: 'w0:1',
     });
+    expect(result.words).toEqual(mockWords);
+    expect(result.turns).toEqual(mockTurns);
+
+    const active = getActiveTranscript();
+    expect(active).not.toBeNull();
+    expect(active.projectId).toBe('proj-abc');
+    expect(active.revisionId).toBe('rev-xyz');
+    expect(active.words).toHaveLength(2);
   });
 
   it('handles cancellation and calls cancelWordNativeTranscription', async () => {

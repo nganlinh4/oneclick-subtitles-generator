@@ -34,6 +34,7 @@ export const CreateSubtitlesModal = ({
   subtitlesData = [],
   userProvidedSubtitles = '',
   initialTask = 'Speech',
+  projectId = null,
 }) => {
   const { t, i18n } = useTranslation();
   const modalRef = useRef(null);
@@ -238,6 +239,7 @@ export const CreateSubtitlesModal = ({
 
       if (currentTask === 'Speech') {
         if (speechState.engine === 'gemini-3.5-transcribe') {
+          const resolvedProjectId = projectId || videoFile?.projectId;
           if (onProcess) {
             onProcess({
               task: 'Speech',
@@ -247,6 +249,7 @@ export const CreateSubtitlesModal = ({
               segment: isWhole ? undefined : selectedSegment,
               audioOnly: true,
               videoFile,
+              projectId: resolvedProjectId,
               windowDurationSecs: speechState.windowDurationSecs,
               languageHints: speechState.languageHints,
               diarization: Boolean(speechState.identifySpeakers || speechState.diarization),
@@ -257,6 +260,7 @@ export const CreateSubtitlesModal = ({
           }
 
           const request = {
+            projectId: resolvedProjectId,
             mediaAssetId: videoFile?.assetId,
             filePath: videoFile?.path || videoFile?.filePath,
             rangeStartMs,

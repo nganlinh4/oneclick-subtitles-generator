@@ -107,6 +107,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       let taskId = null;
       let finished = false;
       let currentCues = [];
+      let allWords = [];
+      let allTurns = [];
+      let latestRevisionId = null;
 
       const finish = (result) => {
         if (finished) return;
@@ -156,6 +159,10 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
           onStatus?.({ message: event.message, type: 'loading' });
         },
         onWindowPromoted: (event) => {
+          if (event.revisionId) latestRevisionId = event.revisionId;
+          if (Array.isArray(event.words)) allWords.push(...event.words);
+          if (Array.isArray(event.turns)) allTurns.push(...event.turns);
+
           const newlyProjected = (event.projectedCues || []).map((cue) => ({
             id: cue.id,
             originalId: cue.id,
@@ -171,12 +178,13 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
             segmentIndex: event.windowIndex,
             totalSegments: event.totalWindows,
             segmentComplete: true,
-            words: event.words,
-            turns: event.turns,
-            revisionId: event.revisionId,
+            words: allWords,
+            turns: allTurns,
+            revisionId: event.revisionId || latestRevisionId,
           });
         },
         onCompleted: (event) => {
+          const finalRevisionId = event.revisionId || latestRevisionId;
           if (Array.isArray(event.projectedCues) && event.projectedCues.length > 0) {
             currentCues = event.projectedCues.map((cue) => ({
               id: cue.id,
@@ -188,15 +196,30 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
               wordIds: cue.wordIds,
             }));
           }
+          if (Array.isArray(event.words)) {
+            allWords = event.words;
+          }
+          if (Array.isArray(event.turns)) {
+            allTurns = event.turns;
+          }
+
+          // Durably hydrate transcript store so word highlights and Transcript view are immediately populated
+          setActiveTranscript({
+            projectId: options?.projectId,
+            revisionId: finalRevisionId,
+            words: allWords,
+            turns: allTurns,
+          });
+
           onStreamingUpdate?.(currentCues, false, {
             segmentComplete: true,
-            words: event.words,
-            turns: event.turns,
-            revisionId: event.revisionId,
+            words: allWords,
+            turns: allTurns,
+            revisionId: finalRevisionId,
           });
-          if (event.words) currentCues.words = event.words;
-          if (event.turns) currentCues.turns = event.turns;
-          if (event.revisionId) currentCues.revisionId = event.revisionId;
+          currentCues.words = allWords;
+          currentCues.turns = allTurns;
+          if (finalRevisionId) currentCues.revisionId = finalRevisionId;
           finish(currentCues);
         },
         onCancelled: () => {

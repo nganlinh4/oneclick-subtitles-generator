@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+import {
+  joinWordsPreservingSpacing,
+  regroupWordsOffline,
+  regroupPreservingEdits,
+  REGROUPING_POLICIES,
+} from './localCaptionRegrouping';
+
+describe('localCaptionRegrouping', () => {
+  describe('joinWordsPreservingSpacing', () => {
+    it('returns empty string for empty or invalid input', () => {
+      expect(joinWordsPreservingSpacing([])).toBe('');
+      expect(joinWordsPreservingSpacing(null)).toBe('');
+      expect(joinWordsPreservingSpacing(undefined)).toBe('');
+    });
+
+    it('joins standard Latin words with single spaces', () => {
+      const words = [
+        { text: 'The' },
+        { text: 'quick' },
+        { text: 'brown' },
+        { text: 'fox' },
+      ];
+      expect(joinWordsPreservingSpacing(words)).toBe('The quick brown fox');
+    });
+
+    it('attaches standard punctuation without prepending a space', () => {
+      const words = [
+        { text: 'Hello' },
+        { text: ',' },
+        { text: 'world' },
+        { text: '!' },
+      ];
+      expect(joinWordsPreservingSpacing(words)).toBe('Hello, world!');
+    });
+
+    it('attaches apostrophes and closing quotes without prepending a space', () => {
+      const words = [
+        { text: 'don' },
+        { text: "'t" },
+        { text: 'worry' },
+      ];
+      expect(joinWordsPreservingSpacing(words)).toBe("don't worry");
+    });
+
+    it('preserves CJK character adjacency without inserting spaces', () => {
+      const cjkWords = [
+        { text: '中' },
+        { text: '文' },
+        { text: '字' },
+        { text: '幕' },
+      ];
+      expect(joinWordsPreservingSpacing(cjkWords)).toBe('中文字幕');
+
+      const jpWords = [
+        { text: 'す' },
+        { text: 'し' },
+      ];
+      expect(joinWordsPreservingSpacing(jpWords)).toBe('すし');
+    });
+
+    it('preserves spacing between Latin words and CJK tokens', () => {
+      const words = [
+        { text: 'OneClick' },
+        { text: '字幕' },
+      ];
+      expect(joinWordsPreservingSpacing(words)).toBe('OneClick 字幕');
+    });
+
+    it('attaches CJK fullwidth punctuation without inserting spaces', () => {
+      const words = [
+        { text: '你好' },
+        { text: '，' },
+        { text: '世界' },
+        { text: '！' },
+      ];
+      expect(joinWordsPreservingSpacing(words)).toBe('你好，世界！');
+    });
+  });
+
+  describe('regroupWordsOffline', () => {
+    const sampleWords = [
+      { id: 'w1', text: 'First', start_ms: 100, end_ms: 500, speaker_id: 'spk0' },
+      { id: 'w2', text: 'second', start_ms: 550, end_ms: 900, speaker_id: 'spk0' },
+      { id: 'w3', text: 'third.', start_ms: 950, end_ms: 1400, speaker_id: 'spk0' },
+      { id: 'w4', text: 'Fourth', start_ms: 2200, end_ms: 2800, speaker_id: 'spk1' },
+    ];
+
+    it('regroups in One word policy with exact word boundaries and no padding', () => {
+      const cues = regroupWordsOffline(sampleWords, REGROUPING_POLICIES.ONE_WORD);
+      expect(cues).toHaveLength(4);
+      expect(cues[0]).toEqual({
+        id: 'cue_1',
+        ordinal: 1,
+        start_ms: 100,
+        end_ms: 500,
+        text: 'First',
+        word_ids: ['w1'],
+        speaker_id: 'spk0',
+        is_unaligned: false,
+        manual_state: 'clean',
+      });
+      expect(cues[0].end_ms - cues[0].start_ms).toBe(400); // exactly matches source word duration without arbitrary padding
+    });
+
+    it('regroups in Short policy respecting maximum word count and duration', () => {
+      const cues = regroupWordsOffline(sampleWords, REGROUPING_POLICIES.SHORT);
+      expect(cues.length).toBeGreaterThan(0);
+      cues.forEach((cue) => {
+        expect(cue.end_ms - cue.start_ms).toBeLessThanOrEqual(2500);
+        expect(cue.word_ids.length).toBeLessThanOrEqual(5);
+      });
+    });
+
+    it('regroups in Natural policy breaking on punctuation and pause threshold', () => {
+      const cues = regroupWordsOffline(sampleWords, REGROUPING_POLICIES.NATURAL);
+      // w1-w3 end with '.' and have pause > 300ms before w4 (2200 - 1400 = 800ms)
+      expect(cues).toHaveLength(2);
+      expect(cues[0].text).toBe('First second third.');
+      expect(cues[0].word_ids).toEqual(['w1', 'w2', 'w3']);
+      expect(cues[1].text).toBe('Fourth');
+      expect(cues[1].word_ids).toEqual(['w4']);
+    });
+
+    it('preserves manual edits when using regroupPreservingEdits', () => {
+      const existingCues = [
+        {
+          id: 'cue_1',
+          start: 0.1,
+          end: 1.4,
+          text: 'User custom text',
+          manual_state: 'edited_text',
+          userEdited: true,
+          word_ids: ['w1', 'w2', 'w3'],
+        },
+        {
+          id: 'cue_2',
+          start: 2.2,
+          end: 2.8,
+          text: 'Fourth',
+          manual_state: 'clean',
+          word_ids: ['w4'],
+        },
+      ];
+
+      const regroupped = regroupPreservingEdits(sampleWords, existingCues, REGROUPING_POLICIES.ONE_WORD);
+      // The manually edited cue should be preserved
+      const edited = regroupped.find((c) => c.text === 'User custom text');
+      expect(edited).toBeDefined();
+      expect(edited.manual_state).toBe('edited_text');
+    });
+  });
+});

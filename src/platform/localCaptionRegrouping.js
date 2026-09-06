@@ -29,7 +29,7 @@ export function joinWordsPreservingSpacing(words) {
     const prev = words[i - 1]?.text ?? '';
     if (/^[.,!?:;'\u2019\u201d\u3001\u3002\uff0c\uff01\uff1f]/.test(text)) {
       result += text;
-    } else if (/[\u4e00-\u9fa5\u3040-\u30ff]/.test(prev.slice(-1)) && /[\u4e00-\u9fa5\u3040-\u30ff]/.test(text.slice(0, 1))) {
+    } else if (/[\u4e00-\u9fa5\u3040-\u30ff\u3000-\u303f\uff00-\uffef]/.test(prev.slice(-1)) && /[\u4e00-\u9fa5\u3040-\u30ff]/.test(text.slice(0, 1))) {
       result += text;
     } else {
       result += ' ' + text;

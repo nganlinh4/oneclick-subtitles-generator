@@ -44,9 +44,8 @@ describe('Customer Journey 1: Fresh video -> Speech -> captions arrival and word
 
     // 2. Select Speech task with Natural layout
     const speechTab = await $('[data-task-tab="speech"]');
-    if (await speechTab.isDisplayed()) {
-      await speechTab.click();
-    }
+    await speechTab.waitForDisplayed({ timeout: 10_000 });
+    await speechTab.click();
     await captureWorkflowStep(WORKFLOW, '02_creation_dialog_speech');
 
     // 3. Process subtitles
@@ -66,23 +65,22 @@ describe('Customer Journey 1: Fresh video -> Speech -> captions arrival and word
 
     // 5. Switch to Transcript view
     const transcriptToggle = await $('[data-editor-view="transcript"]');
-    if (await transcriptToggle.isDisplayed()) {
-      await transcriptToggle.click();
-      await browser.pause(500);
-      await captureWorkflowStep(WORKFLOW, '04_transcript_view_active');
+    await transcriptToggle.waitForDisplayed({ timeout: 10_000 });
+    await transcriptToggle.click();
+    await browser.pause(500);
+    await captureWorkflowStep(WORKFLOW, '04_transcript_view_active');
 
-      // 6. Click on a recognized word and assert video seeks
-      const firstWordEl = await $('.transcript-word');
-      if (await firstWordEl.isDisplayed()) {
-        const expectedStartMs = Number(await firstWordEl.getAttribute('data-word-start') || 0);
-        await firstWordEl.click();
-        await browser.pause(500);
+    // 6. Click on a recognized word and assert video seeks
+    const firstWordEl = await $('.transcript-word');
+    await firstWordEl.waitForDisplayed({ timeout: 10_000 });
+    const expectedStartMs = Number(await firstWordEl.getAttribute('data-word-start') || 0);
+    assert.ok(expectedStartMs > 0, `Expected nonzero word start, got ${expectedStartMs}`);
+    await firstWordEl.click();
+    await browser.pause(500);
 
-        const updatedSurface = await surfaceState();
-        assert.ok(Math.abs(updatedSurface.currentTimeMs - expectedStartMs) <= 500,
-          `Player time ${updatedSurface.currentTimeMs} must seek close to word start ${expectedStartMs}`);
-      }
-    }
+    const updatedSurface = await surfaceState();
+    assert.ok(Math.abs(updatedSurface.currentTimeMs - expectedStartMs) <= 300,
+      `Player time ${updatedSurface.currentTimeMs} must seek close to word start ${expectedStartMs}`);
     await captureWorkflowStep(WORKFLOW, '05_word_seek_verified');
   });
 });
