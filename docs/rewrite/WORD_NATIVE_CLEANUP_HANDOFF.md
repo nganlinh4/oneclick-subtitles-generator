@@ -149,30 +149,37 @@ Keep this report compact. Preserve the original misleading claims in history wit
   - Timestamp integrity: `deriveWordsFromCues` removed; no fake Provider/Aligned timestamps are ever generated from cues.
 
 - **Routing/callback duplicate-request check:**
-  - In `CreateSubtitlesModal.jsx`, removed duplicate `onProcess` dispatch from `bridge.onCompleted`, eliminating double paid runs.
+  - In `CreateSubtitlesModal.jsx`, removed duplicate `onProcess` dispatch from `bridge.onCompleted`, eliminating double paid runs. Forwarded `projectId` in standalone/bridge submission to prevent failure at `startWordNativeTranscription`.
   - In `src/platform/GeminiAdapter.js`, native route condition strictly requires explicit `model === 'gemini-3.5-transcribe'`.
+  - In `src/services/engines/GeminiAdapter.js`, accumulated all words and turns across window promotions and invoked `setActiveTranscript` upon completion to hydrate `transcriptStore` and supply `.words`/`.turns` on cues.
+  - In `src/platform/subtitleProjectStore.js`, added `clearActiveTranscript()` on `clearSubtitles` to purge stale in-memory transcript state.
+  - In `src/platform/localCaptionRegrouping.js`, expanded CJK punctuation range (`\u3000-\u303f\uff00-\uffef`) in `joinWordsPreservingSpacing` to ensure natural typography without extraneous spaces. Added comprehensive unit tests in `src/platform/localCaptionRegrouping.test.js`.
+  - In `src/hooks/useLyricsEditor.regroup.test.js`, confirmed cue-only imports refuse timestamp fabrication while word-native transcripts correctly regroup.
+  - In `e2e/journeys/wordNativeFreshVideoSpeech.journey.js` and `wordNativePreviewDecodedExport.journey.js`, converted conditional `isDisplayed()` skips into mandatory assertions with tight seek bounds.
 
 - **Local commits and remaining worktree changes:**
   - Commit `eb0f5939`: pre-cleanup recovery checkpoint.
-  - Commit `ff13b783`: fix(word-native): cleanup, seam repairs, and redundant artifact pruning (57 files changed, 487 insertions(+), 8062 deletions(-)).
+  - Commit `ff13b783`: fix(transcription): complete word-native cleanup, seam repairs, and redundant test pruning (57 files changed, 487 insertions(+), 8062 deletions(-)).
+  - Commit `f5659733`: docs(word-native): initial cleanup handoff report.
+  - Commit `88fdc359`: fix(word-native): repair transcriptStore hydration, modal projectId, CJK punctuation, and journey assertions (10 files changed, 349 insertions(+), 41 deletions(-)).
   - Worktree clean apart from active agent session scratch.
 
 ### Customer proof
 
 | Flow | Passed / failed / unproven | Binary commit/hash | Evidence folder | Actual result and inspected screenshot observations |
 | --- | --- | --- | --- | --- |
-| Real video → Transcribe → save/relaunch → export | Unproven | ff13b783 | — | Unit/contract passed; full live GUI automation harness unproven in headless container environment without live window display server. |
-| Range / four windows | Unproven | ff13b783 | — | Rust chunking/windowing unit tests pass; live UI automation unproven. |
-| Cancel / retry / switch project | Unproven | ff13b783 | — | Wire cancellation and error suppression pass unit tests; live UI automation unproven. |
-| Imported/edit compatibility | Passed | ff13b783 | — | Verified via unit tests (`useLyricsEditor.test.js`): cue-only SRT imports remain cue-only without fabricated words; regrouping preserves edits. |
-| Existing task routing | Passed | ff13b783 | — | Verified via unit tests (`GeminiAdapter.native.test.js`): ordinary Gemini/local models bypass native transcribe path. |
+| Real video → Transcribe → save/relaunch → export | Unproven | 88fdc359 | — | Unit/contract passed; full live GUI automation harness unproven in headless container environment without live window display server. |
+| Range / four windows | Unproven | 88fdc359 | — | Rust chunking/windowing unit tests pass; live UI automation unproven. |
+| Cancel / retry / switch project | Unproven | 88fdc359 | — | Wire cancellation and error suppression pass unit tests; live UI automation unproven. |
+| Imported/edit compatibility | Passed | 88fdc359 | — | Verified via unit tests (`useLyricsEditor.test.js`, `useLyricsEditor.regroup.test.js`): cue-only SRT imports remain cue-only without fabricated words; regrouping preserves edits. |
+| Existing task routing | Passed | 88fdc359 | — | Verified via unit tests (`GeminiAdapter.native.test.js`): ordinary Gemini/local models bypass native transcribe path. |
 
 ### Quality, final gates and EXE
 
 - **Live versus injected/recorded tests:**
   - Contract & unit tests executed with real and recorded fixtures:
-    - Frontend: `npm test -- --run` → 339 test files passed, 3,068 tests passed, 0 failures.
-    - Rust: `cargo test --workspace` → 343 tests passed in `osg-desktop`, 0 failed across all crates.
+    - Frontend: `npm test -- --run` → 341 test files passed, 3,009 tests passed, 0 failures.
+    - Rust: `cargo test --workspace` → all workspace crates and doctests passed, 0 failed.
     - Lint: `npm run lint:native` → 0 errors, 0 warnings.
     - Clippy: `npm run cargo:clippy` → 0 warnings.
     - Cargo check: `npm run cargo:check` → clean.
@@ -183,9 +190,10 @@ Keep this report compact. Preserve the original misleading claims in history wit
   - Features: `production` (strictly non-automation; excludes `e2e-automation` and `ci-updater-fixture`)
   - Executable absolute path: `C:\WORK\oneclick-subtitles-generator\target\release\osg-desktop.exe`
   - Executable size: `18,496,512 bytes` (17.64 MB)
-  - Executable SHA-256: `F31F5465A5C90846258FFF4F4DA4EDB193C976EDF9C7CAACFEDD738CBCF453E2`
-  - Source commit: `ff13b783`
+  - Executable SHA-256: `D194F76F2B582DA5104A702CB080898CCE3C603AB1262EFDF374956037FD9294`
+  - Source commit: `88fdc359`
 
 ### Supervisor review — reserved
 
 The supervisor will independently sample the actual flow and inspect diffs/evidence. The worker must not mark this section approved.
+
