@@ -22,14 +22,23 @@ export const AlignmentStatus = Object.freeze({
 export function applyWordCorrection(word, newText) {
   if (!word) throw new TypeError('word is required');
   const trimmed = String(newText || '').trim();
+  const startMs = word.startMs ?? word.start_ms ?? 0;
+  const endMs = word.endMs ?? word.end_ms ?? 0;
   return {
     ...word,
     text: trimmed,
-    raw_spelling: word.raw_spelling || word.text,
+    start_ms: startMs,
+    end_ms: endMs,
+    startMs,
+    endMs,
+    raw_spelling: word.raw_spelling || word.rawSpelling || word.text,
+    rawSpelling: word.rawSpelling || word.raw_spelling || word.text,
     provenance: WordProvenance.MANUAL,
     alignment_status: AlignmentStatus.MODIFIED,
+    alignmentStatus: AlignmentStatus.MODIFIED,
     is_unaligned: false,
     edited_at: Date.now(),
+    editedAt: Date.now(),
   };
 }
 
@@ -45,20 +54,26 @@ export function splitWordProportionally(word, splitCharIndex) {
   const leftText = text.slice(0, idx).trim();
   const rightText = text.slice(idx).trim();
 
-  const totalDuration = Math.max(1, word.end_ms - word.start_ms);
+  const wStart = word.startMs ?? word.start_ms ?? 0;
+  const wEnd = word.endMs ?? word.end_ms ?? 0;
+  const totalDuration = Math.max(1, wEnd - wStart);
   const ratio = idx / text.length;
-  let splitMs = word.start_ms + Math.round(totalDuration * ratio);
-  splitMs = Math.min(word.end_ms, Math.max(word.start_ms, splitMs));
+  let splitMs = wStart + Math.round(totalDuration * ratio);
+  splitMs = Math.min(wEnd, Math.max(wStart, splitMs));
 
   const word1 = {
     ...word,
     id: `${word.id}_1`,
     text: leftText,
-    start_ms: word.start_ms,
+    start_ms: wStart,
     end_ms: splitMs,
+    startMs: wStart,
+    endMs: splitMs,
     provenance: WordProvenance.INTERPOLATED,
     alignment_status: AlignmentStatus.MODIFIED,
+    alignmentStatus: AlignmentStatus.MODIFIED,
     source_word_id: word.id,
+    sourceWordId: word.id,
     is_unaligned: false,
   };
 
@@ -67,10 +82,14 @@ export function splitWordProportionally(word, splitCharIndex) {
     id: `${word.id}_2`,
     text: rightText,
     start_ms: splitMs,
-    end_ms: word.end_ms,
+    end_ms: wEnd,
+    startMs: splitMs,
+    endMs: wEnd,
     provenance: WordProvenance.INTERPOLATED,
     alignment_status: AlignmentStatus.MODIFIED,
+    alignmentStatus: AlignmentStatus.MODIFIED,
     source_word_id: word.id,
+    sourceWordId: word.id,
     is_unaligned: false,
   };
 
@@ -82,13 +101,19 @@ export function splitWordProportionally(word, splitCharIndex) {
  */
 export function mergeAdjacentWords(w1, w2) {
   if (!w1 || !w2) throw new TypeError('w1 and w2 are required');
-  const mergedStart = Math.min(w1.start_ms, w2.start_ms);
-  const mergedEnd = Math.max(w1.end_ms, w2.end_ms);
+  const w1Start = w1.startMs ?? w1.start_ms ?? 0;
+  const w1End = w1.endMs ?? w1.end_ms ?? 0;
+  const w2Start = w2.startMs ?? w2.start_ms ?? 0;
+  const w2End = w2.endMs ?? w2.end_ms ?? 0;
+
+  const mergedStart = Math.min(w1Start, w2Start);
+  const mergedEnd = Math.max(w1End, w2End);
   const mergedText = `${w1.text} ${w2.text}`;
+  const speakerId = w1.speakerId || w1.speaker_id || w2.speakerId || w2.speaker_id || null;
 
   const source_word_ids = [
-    ...(w1.source_word_ids || [w1.id]),
-    ...(w2.source_word_ids || [w2.id]),
+    ...(w1.source_word_ids || w1.sourceWordIds || [w1.id]),
+    ...(w2.source_word_ids || w2.sourceWordIds || [w2.id]),
   ];
 
   return {
@@ -96,10 +121,15 @@ export function mergeAdjacentWords(w1, w2) {
     text: mergedText,
     start_ms: mergedStart,
     end_ms: mergedEnd,
-    speaker_id: w1.speaker_id || w2.speaker_id || null,
+    startMs: mergedStart,
+    endMs: mergedEnd,
+    speaker_id: speakerId,
+    speakerId,
     provenance: WordProvenance.INTERPOLATED,
     alignment_status: AlignmentStatus.MODIFIED,
+    alignmentStatus: AlignmentStatus.MODIFIED,
     source_word_ids,
+    sourceWordIds: source_word_ids,
     is_unaligned: false,
   };
 }
@@ -109,15 +139,20 @@ export function mergeAdjacentWords(w1, w2) {
  */
 export function nudgeWordTiming(word, deltaStartMs = 0, deltaEndMs = 0) {
   if (!word) throw new TypeError('word is required');
-  const newStart = Math.max(0, word.start_ms + deltaStartMs);
-  const newEnd = Math.max(newStart, word.end_ms + deltaEndMs);
+  const wStart = word.startMs ?? word.start_ms ?? 0;
+  const wEnd = word.endMs ?? word.end_ms ?? 0;
+  const newStart = Math.max(0, wStart + deltaStartMs);
+  const newEnd = Math.max(newStart, wEnd + deltaEndMs);
 
   return {
     ...word,
     start_ms: newStart,
     end_ms: newEnd,
+    startMs: newStart,
+    endMs: newEnd,
     provenance: WordProvenance.MANUAL,
     alignment_status: AlignmentStatus.UNALIGNED,
+    alignmentStatus: AlignmentStatus.UNALIGNED,
     is_unaligned: true,
   };
 }

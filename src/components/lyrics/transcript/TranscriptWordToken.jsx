@@ -21,13 +21,16 @@ export const TranscriptWordToken = ({
 }) => {
   const { t } = useTranslation();
 
-  const isModified = word.provenance === 'Manual' || word.alignment_status === 'Modified';
-  const isUnaligned = Boolean(word.is_unaligned) || word.alignment_status === 'Unaligned';
+  const startMs = word.startMs ?? word.start_ms;
+  const endMs = word.endMs ?? word.end_ms;
+  const speakerId = word.speakerId || word.speaker_id;
+  const isModified = word.provenance === 'Manual' || word.alignmentStatus === 'Modified' || word.alignment_status === 'Modified';
+  const isUnaligned = Boolean(word.is_unaligned) || word.alignmentStatus === 'Unaligned' || word.alignment_status === 'Unaligned';
 
   const handleClick = (e) => {
     e.stopPropagation();
-    if (onWordClick && Number.isFinite(word.start_ms)) {
-      onWordClick(word.start_ms / 1000);
+    if (onWordClick && Number.isFinite(startMs)) {
+      onWordClick(startMs / 1000);
     }
   };
 
@@ -36,21 +39,22 @@ export const TranscriptWordToken = ({
     onWordEdit?.(word);
   };
 
-  const tooltipText = `${formatTimestamp(word.start_ms)} – ${formatTimestamp(word.end_ms)} (${Math.max(0, word.end_ms - word.start_ms)}ms)${
-    word.speaker_id ? ` • ${word.speaker_id}` : ''
+  const tooltipText = `${formatTimestamp(startMs)} – ${formatTimestamp(endMs)} (${Math.max(0, (endMs ?? 0) - (startMs ?? 0))}ms)${
+    speakerId ? ` • ${speakerId}` : ''
   }${isUnaligned ? ' • ⚠ Unaligned' : isModified ? ' • Modified' : ''}`;
 
   return (
     <span
-      className={`transcript-word-token ${isActive ? 'active' : ''} ${
+      className={`transcript-word-token transcript-word ${isActive ? 'active' : ''} ${
         isModified ? 'provenance-modified' : ''
       } ${isUnaligned ? 'provenance-unaligned' : ''}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       title={tooltipText}
       data-word-id={word.id}
-      data-start-ms={word.start_ms}
-      data-end-ms={word.end_ms}
+      data-start-ms={startMs}
+      data-end-ms={endMs}
+      data-word-start={startMs}
       data-testid={`word-token-${word.id}`}
       role="button"
       tabIndex={0}

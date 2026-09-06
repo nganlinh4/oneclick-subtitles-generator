@@ -403,6 +403,28 @@ it('renders word-reveal and word-highlight animation passes without errors', () 
       cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
     });
     expect(resHighlight.overlayRebuilt).toBe(true);
+
+    // Test with camelCase TimedWordDto words (startMs, endMs)
+    const camelCue = {
+      id: 'c2',
+      start: 1.0,
+      end: 3.0,
+      text: 'Hello world',
+      words: [
+        { id: 'w1', text: 'Hello', startMs: 1000, endMs: 1800 },
+        { id: 'w2', text: 'world', startMs: 1900, endMs: 2800 },
+      ],
+    };
+    const resCamel = renderer.draw({
+      video: { videoWidth: 640, videoHeight: 360, readyState: 4 },
+      composition: { width: 640, height: 360 },
+      crop: { x: 0, y: 0, width: 100, height: 100 },
+      atlasEntry,
+      customization: { ...defaultCustomization, animationType: 'word-highlight', highlightColor: '#B4B5FF' },
+      active: { cue: camelCue, instant: 1.5, phase: 'holding', progress: 1, eased: 1 },
+      cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
+    });
+    expect(resCamel.overlayRebuilt).toBe(true);
   } finally {
     HTMLCanvasElement.prototype.getContext = original;
   }

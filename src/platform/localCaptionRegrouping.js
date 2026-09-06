@@ -38,6 +38,32 @@ export function joinWordsPreservingSpacing(words) {
   return result;
 }
 
+function buildCue(cueIdx, currentWords) {
+  const first = currentWords[0];
+  const last = currentWords[currentWords.length - 1];
+  const startMs = first.startMs;
+  const endMs = last.endMs;
+  const rawWords = currentWords.map((cw) => cw.raw);
+  const wordIds = rawWords.map((w) => w.id);
+  const speakerId = first.speakerId || null;
+  return {
+    id: `cue_${cueIdx}`,
+    ordinal: cueIdx,
+    start_ms: startMs,
+    end_ms: endMs,
+    startMs,
+    endMs,
+    start: startMs / 1000,
+    end: endMs / 1000,
+    text: joinWordsPreservingSpacing(rawWords),
+    word_ids: wordIds,
+    wordIds,
+    speaker_id: speakerId,
+    speakerId,
+    manual_state: 'clean',
+  };
+}
+
 /**
  * Regroups words into cues according to the specified policy.
  *
@@ -49,16 +75,38 @@ export function joinWordsPreservingSpacing(words) {
 export function regroupWordsOffline(words, policy = 'Natural', customOptions = {}) {
   if (!Array.isArray(words) || words.length === 0) return [];
 
+  const normalizedWords = words.map((w) => {
+    const startMs = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
+    const endMs = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
+    const speakerId = w.speakerId || w.speaker_id || null;
+    const isUnaligned = Boolean(w.is_unaligned) || w.alignmentStatus === 'Unaligned' || w.alignment_status === 'Unaligned';
+    return {
+      raw: w,
+      id: w.id,
+      text: w.text || '',
+      startMs,
+      endMs,
+      speakerId,
+      isUnaligned,
+    };
+  });
+
   if (policy === 'One word') {
-    return words.map((w, idx) => ({
+    return normalizedWords.map((w, idx) => ({
       id: `cue_${idx + 1}`,
       ordinal: idx + 1,
-      start_ms: w.start_ms,
-      end_ms: w.end_ms,
+      start_ms: w.startMs,
+      end_ms: w.endMs,
+      startMs: w.startMs,
+      endMs: w.endMs,
+      start: w.startMs / 1000,
+      end: w.endMs / 1000,
       text: w.text,
       word_ids: [w.id],
-      speaker_id: w.speaker_id || null,
-      is_unaligned: Boolean(w.is_unaligned),
+      wordIds: [w.id],
+      speaker_id: w.speakerId,
+      speakerId: w.speakerId,
+      is_unaligned: w.isUnaligned,
       manual_state: 'clean',
     }));
   }
@@ -69,39 +117,21 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
     const cues = [];
     let currentWords = [];
 
-    for (const word of words) {
+    for (const word of normalizedWords) {
       const currentDuration = currentWords.length > 0
-        ? word.end_ms - currentWords[0].start_ms
-        : word.end_ms - word.start_ms;
+        ? word.endMs - currentWords[0].startMs
+        : word.endMs - word.startMs;
 
       if (currentWords.length >= maxWords || currentDuration > maxDurationMs) {
         if (currentWords.length > 0) {
-          cues.push({
-            id: `cue_${cues.length + 1}`,
-            ordinal: cues.length + 1,
-            start_ms: currentWords[0].start_ms,
-            end_ms: currentWords[currentWords.length - 1].end_ms,
-            text: joinWordsPreservingSpacing(currentWords),
-            word_ids: currentWords.map((w) => w.id),
-            speaker_id: currentWords[0].speaker_id || null,
-            manual_state: 'clean',
-          });
+          cues.push(buildCue(cues.length + 1, currentWords));
           currentWords = [];
         }
       }
       currentWords.push(word);
     }
     if (currentWords.length > 0) {
-      cues.push({
-        id: `cue_${cues.length + 1}`,
-        ordinal: cues.length + 1,
-        start_ms: currentWords[0].start_ms,
-        end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: joinWordsPreservingSpacing(currentWords),
-        word_ids: currentWords.map((w) => w.id),
-        speaker_id: currentWords[0].speaker_id || null,
-        manual_state: 'clean',
-      });
+      cues.push(buildCue(cues.length + 1, currentWords));
     }
     return cues;
   }
@@ -119,36 +149,27 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
     const cues = [];
     let currentWords = [];
 
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
+    for (let i = 0; i < normalizedWords.length; i++) {
+      const word = normalizedWords[i];
       const prevWord = currentWords[currentWords.length - 1];
 
       let shouldBreakBefore = false;
       if (prevWord) {
-        const pause = word.start_ms - prevWord.end_ms;
+        const pause = word.startMs - prevWord.endMs;
         if (pause > pauseThresholdMs) {
           shouldBreakBefore = true;
         }
       }
 
       if (shouldBreakBefore && currentWords.length > 0) {
-        cues.push({
-          id: `cue_${cues.length + 1}`,
-          ordinal: cues.length + 1,
-          start_ms: currentWords[0].start_ms,
-          end_ms: currentWords[currentWords.length - 1].end_ms,
-          text: joinWordsPreservingSpacing(currentWords),
-          word_ids: currentWords.map((w) => w.id),
-          speaker_id: currentWords[0].speaker_id || null,
-          manual_state: 'clean',
-        });
+        cues.push(buildCue(cues.length + 1, currentWords));
         currentWords = [];
       }
 
       currentWords.push(word);
 
       let shouldBreakAfter = false;
-      const currentDuration = word.end_ms - currentWords[0].start_ms;
+      const currentDuration = word.endMs - currentWords[0].startMs;
       if (currentWords.length >= maxWords || currentDuration > maxDurationMs) {
         shouldBreakAfter = true;
       } else if (splitOnPunctuation && DEFAULT_SENTENCE_PUNCTUATION_REGEX.test(word.text.trim())) {
@@ -156,31 +177,13 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
       }
 
       if (shouldBreakAfter && currentWords.length > 0) {
-        cues.push({
-          id: `cue_${cues.length + 1}`,
-          ordinal: cues.length + 1,
-          start_ms: currentWords[0].start_ms,
-          end_ms: currentWords[currentWords.length - 1].end_ms,
-          text: joinWordsPreservingSpacing(currentWords),
-          word_ids: currentWords.map((w) => w.id),
-          speaker_id: currentWords[0].speaker_id || null,
-          manual_state: 'clean',
-        });
+        cues.push(buildCue(cues.length + 1, currentWords));
         currentWords = [];
       }
     }
 
     if (currentWords.length > 0) {
-      cues.push({
-        id: `cue_${cues.length + 1}`,
-        ordinal: cues.length + 1,
-        start_ms: currentWords[0].start_ms,
-        end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: joinWordsPreservingSpacing(currentWords),
-        word_ids: currentWords.map((w) => w.id),
-        speaker_id: currentWords[0].speaker_id || null,
-        manual_state: 'clean',
-      });
+      cues.push(buildCue(cues.length + 1, currentWords));
     }
     return cues;
   }
@@ -193,29 +196,20 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
   const cues = [];
   let currentWords = [];
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
+  for (let i = 0; i < normalizedWords.length; i++) {
+    const word = normalizedWords[i];
     const prevWord = currentWords[currentWords.length - 1];
 
     let shouldBreakBefore = false;
     if (prevWord) {
-      const pause = word.start_ms - prevWord.end_ms;
+      const pause = word.startMs - prevWord.endMs;
       if (pause > pauseThresholdMs) {
         shouldBreakBefore = true;
       }
     }
 
     if (shouldBreakBefore && currentWords.length > 0) {
-      cues.push({
-        id: `cue_${cues.length + 1}`,
-        ordinal: cues.length + 1,
-        start_ms: currentWords[0].start_ms,
-        end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: joinWordsPreservingSpacing(currentWords),
-        word_ids: currentWords.map((w) => w.id),
-        speaker_id: currentWords[0].speaker_id || null,
-        manual_state: 'clean',
-      });
+      cues.push(buildCue(cues.length + 1, currentWords));
       currentWords = [];
     }
 
@@ -229,31 +223,13 @@ export function regroupWordsOffline(words, policy = 'Natural', customOptions = {
     }
 
     if (shouldBreakAfter && currentWords.length > 0) {
-      cues.push({
-        id: `cue_${cues.length + 1}`,
-        ordinal: cues.length + 1,
-        start_ms: currentWords[0].start_ms,
-        end_ms: currentWords[currentWords.length - 1].end_ms,
-        text: joinWordsPreservingSpacing(currentWords),
-        word_ids: currentWords.map((w) => w.id),
-        speaker_id: currentWords[0].speaker_id || null,
-        manual_state: 'clean',
-      });
+      cues.push(buildCue(cues.length + 1, currentWords));
       currentWords = [];
     }
   }
 
   if (currentWords.length > 0) {
-    cues.push({
-      id: `cue_${cues.length + 1}`,
-      ordinal: cues.length + 1,
-      start_ms: currentWords[0].start_ms,
-      end_ms: currentWords[currentWords.length - 1].end_ms,
-      text: joinWordsPreservingSpacing(currentWords),
-      word_ids: currentWords.map((w) => w.id),
-      speaker_id: currentWords[0].speaker_id || null,
-      manual_state: 'clean',
-    });
+    cues.push(buildCue(cues.length + 1, currentWords));
   }
 
   return cues;
@@ -323,22 +299,34 @@ export function regroupPreservingEdits(words, currentCues = [], policy = 'Natura
 
   // Merge preserved cues and new cues, sorted chronologically
   const allCues = [...preservedCues, ...newlyProjectedCues].sort((a, b) => {
-    const startA = a.start_ms ?? Math.round((a.start || 0) * 1000);
-    const startB = b.start_ms ?? Math.round((b.start || 0) * 1000);
+    const startA = a.startMs ?? a.start_ms ?? Math.round((a.start || 0) * 1000);
+    const startB = b.startMs ?? b.start_ms ?? Math.round((b.start || 0) * 1000);
     if (startA !== startB) return startA - startB;
-    const endA = a.end_ms ?? Math.round((a.end || 0) * 1000);
-    const endB = b.end_ms ?? Math.round((b.end || 0) * 1000);
+    const endA = a.endMs ?? a.end_ms ?? Math.round((a.end || 0) * 1000);
+    const endB = b.endMs ?? b.end_ms ?? Math.round((b.end || 0) * 1000);
     return endA - endB;
   });
 
   // Renumber ordinals and ensure consistent formatting
-  return allCues.map((cue, idx) => ({
-    ...cue,
-    id: cue.id || `cue_${idx + 1}`,
-    ordinal: idx + 1,
-    start_ms: cue.start_ms ?? Math.round((cue.start || 0) * 1000),
-    end_ms: cue.end_ms ?? Math.round((cue.end || 0) * 1000),
-    start: (cue.start_ms ?? Math.round((cue.start || 0) * 1000)) / 1000,
-    end: (cue.end_ms ?? Math.round((cue.end || 0) * 1000)) / 1000,
-  }));
+  return allCues.map((cue, idx) => {
+    const startMs = cue.startMs ?? cue.start_ms ?? Math.round((cue.start || 0) * 1000);
+    const endMs = cue.endMs ?? cue.end_ms ?? Math.round((cue.end || 0) * 1000);
+    const wordIds = cue.wordIds || cue.word_ids || [];
+    const speakerId = cue.speakerId || cue.speaker_id || null;
+    return {
+      ...cue,
+      id: cue.id || `cue_${idx + 1}`,
+      ordinal: idx + 1,
+      start_ms: startMs,
+      end_ms: endMs,
+      startMs,
+      endMs,
+      start: startMs / 1000,
+      end: endMs / 1000,
+      word_ids: wordIds,
+      wordIds,
+      speaker_id: speakerId,
+      speakerId,
+    };
+  });
 }

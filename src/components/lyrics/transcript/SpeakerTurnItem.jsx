@@ -28,13 +28,13 @@ export const SpeakerTurnItem = ({
   speakerNames = {},
 }) => {
   const { t } = useTranslation();
-  const speakerId = turn.speaker_id || 'unknown';
+  const speakerId = turn.speakerId || turn.speaker_id || 'unknown';
   const displayName = speakerNames[speakerId] || speakerId;
   const palette = getSpeakerPalette(speakerId);
   const monogram = getSpeakerMonogram(displayName);
 
-  const turnStartMs = turn.start_ms ?? (words[0]?.start_ms || 0);
-  const turnEndMs = turn.end_ms ?? (words[words.length - 1]?.end_ms || 0);
+  const turnStartMs = turn.startMs ?? turn.start_ms ?? (words[0]?.startMs ?? words[0]?.start_ms ?? 0);
+  const turnEndMs = turn.endMs ?? turn.end_ms ?? (words[words.length - 1]?.endMs ?? words[words.length - 1]?.end_ms ?? 0);
   const isTurnActive = currentTimeMs >= turnStartMs && currentTimeMs <= turnEndMs;
 
   const handlePlayTurn = (e) => {
@@ -51,7 +51,7 @@ export const SpeakerTurnItem = ({
         '--turn-speaker-color': palette.bg,
         '--turn-speaker-container': palette.container,
       }}
-      data-testid={`speaker-turn-${turn.turn_id || turn.speaker_id || 'item'}`}
+      data-testid={`speaker-turn-${turn.id || turn.turn_id || speakerId || 'item'}`}
     >
       <div className="speaker-turn-header">
         <div
@@ -90,8 +90,10 @@ export const SpeakerTurnItem = ({
 
       <div className="speaker-turn-words">
         {words.map((word) => {
+          const wStart = word.startMs ?? word.start_ms ?? 0;
+          const wEnd = word.endMs ?? word.end_ms ?? 0;
           const isActive =
-            currentTimeMs >= word.start_ms && currentTimeMs < word.end_ms;
+            currentTimeMs >= wStart && currentTimeMs < wEnd;
           return (
             <TranscriptWordToken
               key={word.id}

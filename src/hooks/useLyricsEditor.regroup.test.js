@@ -82,8 +82,8 @@ describe('useLyricsEditor regrouping', () => {
       projectId: 'proj-1',
       revisionId: 'rev-1',
       words: [
-        { id: 'w1', text: 'Hello', start_ms: 1000, end_ms: 1800 },
-        { id: 'w2', text: 'world', start_ms: 1900, end_ms: 3000 },
+        { id: 'w1', text: 'Hello', startMs: 1000, endMs: 1800 },
+        { id: 'w2', text: 'world', startMs: 1900, endMs: 3000 },
       ],
       turns: [],
     });
@@ -97,8 +97,8 @@ describe('useLyricsEditor regrouping', () => {
     expect(commitLyricsMutation).toHaveBeenCalledTimes(1);
     expect(commitLyricsMutation).toHaveBeenCalledWith(
       expect.arrayContaining([
-        expect.objectContaining({ text: 'Hello' }),
-        expect.objectContaining({ text: 'world' }),
+        expect.objectContaining({ text: 'Hello', start: 1.0, end: 1.8 }),
+        expect.objectContaining({ text: 'world', start: 1.9, end: 3.0 }),
       ]),
       LYRICS_EDITOR_ACTIONS.REGROUP,
     );

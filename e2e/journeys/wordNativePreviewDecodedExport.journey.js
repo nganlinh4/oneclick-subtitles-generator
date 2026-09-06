@@ -24,7 +24,15 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     // 1. Enable Word Reveal / Word Highlight style in subtitle customization
     const styleDropdown = await $('[data-osg-action="select-subtitle-animation"]');
     await styleDropdown.waitForDisplayed({ timeout: 10_000 });
-    await styleDropdown.selectByVisibleText('Word Reveal');
+    const tag = await styleDropdown.getTagName();
+    if (tag.toLowerCase() === 'select') {
+      await styleDropdown.selectByVisibleText('Word Reveal');
+    } else {
+      await styleDropdown.click();
+      const option = await $(`//button[contains(@class, 'dropdown-option') and (contains(., 'Word Reveal') or @data-value='word-reveal')]`);
+      await option.waitForDisplayed({ timeout: 5_000 });
+      await option.click();
+    }
     await captureWorkflowStep(WORKFLOW, '02_word_reveal_selected');
 
     // 2. Wait for canvas subtitle frame
@@ -32,7 +40,7 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     await captureWorkflowStep(WORKFLOW, '03_canvas_frame_rendered');
 
     // 3. Open Export Dialog
-    const exportBtn = await $('[data-osg-action="export-video"]');
+    const exportBtn = await $('[data-osg-action="export-video"], [data-osg-action="render-video"]');
     await exportBtn.waitForDisplayed({ timeout: 10_000 });
     await exportBtn.click();
     await captureWorkflowStep(WORKFLOW, '04_export_dialog_opened');

@@ -75,4 +75,36 @@ describe('TranscriptSurface', () => {
     fireEvent.click(resumeBtn);
     expect(screen.queryByTestId('resume-follow-btn')).not.toBeInTheDocument();
   });
+
+  it('renders and supports click-to-seek and highlighting with camelCase Rust DTOs', () => {
+    const camelWords = [
+      { id: 'cw-1', text: 'Good', startMs: 1200, endMs: 1600, speakerId: 'spk-a' },
+      { id: 'cw-2', text: 'morning', startMs: 1650, endMs: 2200, speakerId: 'spk-a' },
+    ];
+    const camelTurns = [
+      { id: 'turn-1', speakerId: 'spk-a', startMs: 1200, endMs: 2200, text: 'Good morning' },
+    ];
+    const onWordClick = vi.fn();
+
+    render(
+      <TranscriptSurface
+        turns={camelTurns}
+        words={camelWords}
+        currentTime={1.8}
+        onWordClick={onWordClick}
+      />
+    );
+
+    expect(screen.getByText('Good')).toBeInTheDocument();
+    expect(screen.getByText('morning')).toBeInTheDocument();
+
+    // At 1.8s (1800ms), cw-2 [1650, 2200] is active
+    const w2 = screen.getByTestId('word-token-cw-2');
+    expect(w2).toHaveClass('active');
+
+    // Click cw-1 (1200ms) seeks to 1.2s
+    const w1 = screen.getByTestId('word-token-cw-1');
+    fireEvent.click(w1);
+    expect(onWordClick).toHaveBeenCalledWith(1.2);
+  });
 });

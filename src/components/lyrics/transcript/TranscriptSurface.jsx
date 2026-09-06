@@ -11,19 +11,28 @@ function deriveTurnsFromWords(words) {
   let currentTurn = null;
 
   for (const w of words) {
-    const speakerId = w.speaker_id || 'speaker_0';
-    if (!currentTurn || currentTurn.speaker_id !== speakerId) {
+    const speakerId = w.speakerId || w.speaker_id || 'speaker_0';
+    const startMs = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
+    const endMs = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
+    if (!currentTurn || (currentTurn.speakerId || currentTurn.speaker_id) !== speakerId) {
       currentTurn = {
+        id: `turn_${turns.length + 1}`,
         turn_id: `turn_${turns.length + 1}`,
+        speakerId,
         speaker_id: speakerId,
-        start_ms: w.start_ms,
-        end_ms: w.end_ms,
+        startMs,
+        start_ms: startMs,
+        endMs,
+        end_ms: endMs,
         word_ids: [w.id],
+        wordIds: [w.id],
       };
       turns.push(currentTurn);
     } else {
       currentTurn.word_ids.push(w.id);
-      currentTurn.end_ms = Math.max(currentTurn.end_ms, w.end_ms);
+      currentTurn.wordIds.push(w.id);
+      currentTurn.endMs = Math.max(currentTurn.endMs, endMs);
+      currentTurn.end_ms = currentTurn.endMs;
     }
   }
   return turns;
@@ -72,9 +81,11 @@ export const TranscriptSurface = ({
 
   // Locate active turn index
   const activeTurnIndex = useMemo(() => {
-    return displayTurns.findIndex(
-      (turn) => currentTimeMs >= turn.start_ms && currentTimeMs <= turn.end_ms
-    );
+    return displayTurns.findIndex((turn) => {
+      const start = turn.startMs ?? turn.start_ms ?? 0;
+      const end = turn.endMs ?? turn.end_ms ?? 0;
+      return currentTimeMs >= start && currentTimeMs <= end;
+    });
   }, [displayTurns, currentTimeMs]);
 
   // Smooth scroll to active turn when followPlayback is enabled and not suspended
@@ -128,15 +139,22 @@ export const TranscriptSurface = ({
       <div className="transcript-turns-container" ref={containerRef}>
         {displayTurns.map((turn, index) => {
           const isActive = index === activeTurnIndex;
-          const turnWords = Array.isArray(turn.word_ids)
-            ? turn.word_ids.map((id) => wordsById.get(id)).filter(Boolean)
+          const turnStart = turn.startMs ?? turn.start_ms ?? 0;
+          const turnEnd = turn.endMs ?? turn.end_ms ?? 0;
+          const turnWordIds = turn.wordIds || turn.word_ids;
+          const turnWords = Array.isArray(turnWordIds)
+            ? turnWordIds.map((id) => wordsById.get(id)).filter(Boolean)
             : Array.isArray(turn.words)
             ? turn.words
-            : words.filter((w) => w.start_ms >= turn.start_ms && w.end_ms <= turn.end_ms);
+            : words.filter((w) => {
+                const wStart = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
+                const wEnd = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
+                return wStart >= turnStart && wEnd <= turnEnd;
+              });
 
           return (
             <div
-              key={turn.turn_id || index}
+              key={turn.id || turn.turn_id || index}
               ref={isActive ? activeItemRef : null}
               className="speaker-turn-row-wrapper"
             >

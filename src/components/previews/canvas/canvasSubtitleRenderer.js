@@ -195,7 +195,7 @@ export const wordRevealCount = (atlas, words, instantMs) => {
   let anyStarted = false;
 
   for (const word of words) {
-    const wordStart = word.start_ms ?? Math.round((word.start || 0) * 1000);
+    const wordStart = word.startMs ?? word.start_ms ?? Math.round((word.start || 0) * 1000);
     const text = word.text || '';
     if (text.length === 0) continue;
     const foundIdx = fullGlyphText.indexOf(text, cursor);
@@ -516,8 +516,8 @@ const paintSubtitle = ({
 
   if (customization.animationType === 'word-highlight' && Array.isArray(active?.cue?.words) && active.cue.words.length > 0) {
     const activeWord = active.cue.words.find((w) => {
-      const start = w.start_ms ?? Math.round((w.start || 0) * 1000);
-      const end = w.end_ms ?? Math.round((w.end || 0) * 1000);
+      const start = w.startMs ?? w.start_ms ?? Math.round((w.start || 0) * 1000);
+      const end = w.endMs ?? w.end_ms ?? Math.round((w.end || 0) * 1000);
       return start <= instantMs && instantMs < end;
     });
     if (activeWord) {

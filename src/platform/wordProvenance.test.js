@@ -56,6 +56,25 @@ describe('wordProvenance', () => {
     expect(nudged.alignment_status).toBe(AlignmentStatus.UNALIGNED);
     expect(nudged.is_unaligned).toBe(true);
   });
+
+  it('handles camelCase properties seamlessly across provenance operations', () => {
+    const orig = { id: 'w1', text: 'sample', startMs: 1200, endMs: 2000, speakerId: 'spk1' };
+    const corrected = applyWordCorrection(orig, 'Sample');
+    expect(corrected.startMs).toBe(1200);
+    expect(corrected.endMs).toBe(2000);
+    expect(corrected.start_ms).toBe(1200);
+    expect(corrected.end_ms).toBe(2000);
+    expect(corrected.alignmentStatus).toBe(AlignmentStatus.MODIFIED);
+
+    const [left, right] = splitWordProportionally(orig, 3);
+    expect(left.startMs).toBe(1200);
+    expect(right.endMs).toBe(2000);
+
+    const merged = mergeAdjacentWords(left, right);
+    expect(merged.startMs).toBe(1200);
+    expect(merged.endMs).toBe(2000);
+    expect(merged.speakerId).toBe('spk1');
+  });
 });
 
 describe('localCaptionRegrouping', () => {

@@ -349,6 +349,7 @@ export const CreateSubtitlesModal = ({
     translateState,
     visualState,
     videoFile,
+    projectId,
     isAudioOnly,
     bridge,
     onProcess,

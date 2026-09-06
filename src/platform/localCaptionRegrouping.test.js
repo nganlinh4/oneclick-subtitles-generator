@@ -89,11 +89,13 @@ describe('localCaptionRegrouping', () => {
     it('regroups in One word policy with exact word boundaries and no padding', () => {
       const cues = regroupWordsOffline(sampleWords, REGROUPING_POLICIES.ONE_WORD);
       expect(cues).toHaveLength(4);
-      expect(cues[0]).toEqual({
+      expect(cues[0]).toMatchObject({
         id: 'cue_1',
         ordinal: 1,
         start_ms: 100,
         end_ms: 500,
+        start: 0.1,
+        end: 0.5,
         text: 'First',
         word_ids: ['w1'],
         speaker_id: 'spk0',
@@ -101,6 +103,8 @@ describe('localCaptionRegrouping', () => {
         manual_state: 'clean',
       });
       expect(cues[0].end_ms - cues[0].start_ms).toBe(400); // exactly matches source word duration without arbitrary padding
+      expect(cues[0].start).toBe(0.1);
+      expect(cues[0].end).toBe(0.5);
     });
 
     it('regroups in Short policy respecting maximum word count and duration', () => {
@@ -109,6 +113,8 @@ describe('localCaptionRegrouping', () => {
       cues.forEach((cue) => {
         expect(cue.end_ms - cue.start_ms).toBeLessThanOrEqual(2500);
         expect(cue.word_ids.length).toBeLessThanOrEqual(5);
+        expect(cue.start).toBe(cue.start_ms / 1000);
+        expect(cue.end).toBe(cue.end_ms / 1000);
       });
     });
 
@@ -118,8 +124,27 @@ describe('localCaptionRegrouping', () => {
       expect(cues).toHaveLength(2);
       expect(cues[0].text).toBe('First second third.');
       expect(cues[0].word_ids).toEqual(['w1', 'w2', 'w3']);
+      expect(cues[0].start).toBe(0.1);
+      expect(cues[0].end).toBe(1.4);
       expect(cues[1].text).toBe('Fourth');
       expect(cues[1].word_ids).toEqual(['w4']);
+      expect(cues[1].start).toBe(2.2);
+      expect(cues[1].end).toBe(2.8);
+    });
+
+    it('regroups camelCase word inputs directly from transcriptStore / Rust TimedWordDto', () => {
+      const camelWords = [
+        { id: 'w1', text: 'Hello', startMs: 1000, endMs: 1500, speakerId: 'spk_1' },
+        { id: 'w2', text: 'world.', startMs: 1600, endMs: 2200, speakerId: 'spk_1' },
+      ];
+      const cues = regroupWordsOffline(camelWords, REGROUPING_POLICIES.NATURAL);
+      expect(cues).toHaveLength(1);
+      expect(cues[0].text).toBe('Hello world.');
+      expect(cues[0].start).toBe(1.0);
+      expect(cues[0].end).toBe(2.2);
+      expect(cues[0].startMs).toBe(1000);
+      expect(cues[0].endMs).toBe(2200);
+      expect(cues[0].wordIds).toEqual(['w1', 'w2']);
     });
 
     it('preserves manual edits when using regroupPreservingEdits', () => {
@@ -148,6 +173,8 @@ describe('localCaptionRegrouping', () => {
       const edited = regroupped.find((c) => c.text === 'User custom text');
       expect(edited).toBeDefined();
       expect(edited.manual_state).toBe('edited_text');
+      expect(edited.start).toBe(0.1);
+      expect(edited.end).toBe(1.4);
     });
   });
 });

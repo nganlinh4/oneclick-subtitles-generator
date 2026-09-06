@@ -34,6 +34,7 @@ const AnimationControls = ({ customization, onChange }) => {
               label: type.label
             }))}
             dataSetting="animation-type"
+            data-osg-action="select-subtitle-animation"
             placeholder={t('videoRendering.selectAnimation', 'Select Animation')}
           />
         </div>

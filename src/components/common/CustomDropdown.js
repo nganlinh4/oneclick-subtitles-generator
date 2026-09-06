@@ -16,6 +16,7 @@ const CustomDropdown = ({
   ariaLabel = undefined,
   ariaLabelledBy = undefined,
   dataSetting = undefined,
+  ...rest
 }) => {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t('common.selectOption', 'Select option...');
@@ -418,6 +419,7 @@ const CustomDropdown = ({
       className={`custom-dropdown ${className} ${isEffectivelyDisabled ? 'disabled' : ''} ${isOpen ? 'open' : ''}`}
       ref={dropdownRef}
       style={style}
+      data-osg-action={rest['data-osg-action'] || rest.dataOsgAction}
     >
       <button
         id={id}
@@ -431,6 +433,7 @@ const CustomDropdown = ({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         data-osg-setting={dataSetting}
+        data-osg-action={rest['data-osg-action'] || rest.dataOsgAction}
         data-value={String(value ?? '')}
         style={isOpen ? { boxShadow: 'none', borderColor: 'transparent' } : undefined}
       >

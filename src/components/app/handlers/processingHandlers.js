@@ -104,6 +104,7 @@ export const createProcessingHandlers = ({
         mediaResolution: options.mediaResolution,
         model: options.model,
         engine: options.engine,
+        projectId: options.projectId || fileToProcess?.projectId,
         windowDurationSecs: options.windowDurationSecs,
         languageHints: options.languageHints,
         diarization: options.diarization,
