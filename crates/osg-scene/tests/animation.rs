@@ -26,6 +26,8 @@ fn holding_is_always_the_identity_transform() {
         AnimationType::Flip,
         AnimationType::Rotate,
         AnimationType::Typewriter,
+        AnimationType::WordReveal,
+        AnimationType::WordHighlight,
     ] {
         assert_eq!(
             transform(animation, CuePhase::Holding, 1.0),
@@ -162,6 +164,8 @@ fn animation_names_round_trip_and_unknown_names_are_refused() {
         ("flip", AnimationType::Flip),
         ("rotate", AnimationType::Rotate),
         ("typewriter", AnimationType::Typewriter),
+        ("word-reveal", AnimationType::WordReveal),
+        ("word-highlight", AnimationType::WordHighlight),
     ] {
         assert_eq!(AnimationType::from_wire(wire), Some(expected));
     }

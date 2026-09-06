@@ -2,7 +2,7 @@ use std::io;
 
 use thiserror::Error;
 
-use osg_domain::{AssetId, JobId, ProjectId, RevisionId};
+use osg_domain::{AssetId, CueId, JobId, ProjectId, RevisionId, TranscriptRevisionId};
 
 use super::ArtifactId;
 use crate::secrets::CredentialPurpose;
@@ -212,4 +212,12 @@ pub enum DatabaseError {
     },
     #[error("project {0} has corrupt revision-navigation state")]
     CorruptRevisionNavigation(ProjectId),
+    #[error("transcript revision {0} does not exist")]
+    TranscriptRevisionNotFound(TranscriptRevisionId),
+    #[error("the transcript word sequence for revision {0} is invalid: {1}")]
+    InvalidTranscriptWordSequence(TranscriptRevisionId, &'static str),
+    #[error("the transcript turn sequence for revision {0} is invalid: {1}")]
+    InvalidTranscriptTurnSequence(TranscriptRevisionId, &'static str),
+    #[error("the caption projection for cue {0} is invalid: {1}")]
+    InvalidCueWordMapping(CueId, &'static str),
 }

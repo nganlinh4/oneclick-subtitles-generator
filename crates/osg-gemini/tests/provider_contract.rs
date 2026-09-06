@@ -9,9 +9,10 @@ use std::{
 use bytes::Bytes;
 use futures_util::StreamExt;
 use osg_gemini::{
-    ApiKey, CancellationToken, Error, FileState, GeminiClient, GenerateRequest, GenerationConfig,
-    ImageAspectRatio, ImageGenerateRequest, ImageModel, ImageSize, InlineMedia, MediaInput, Model,
-    ReferenceImage, RetryPolicy, ThinkingLevel, UploadRequest,
+    ApiKey, AudioTranscriptionConfig, CancellationToken, Error, FileState, GeminiClient,
+    GenerateRequest, GenerationConfig, ImageAspectRatio, ImageGenerateRequest, ImageModel,
+    ImageSize, InlineMedia, MediaInput, Model, ReferenceImage, RetryPolicy, ThinkingLevel,
+    TranscribeRequest, TranscriptionStreamCompletion, UploadRequest,
 };
 use serde_json::{Value, json};
 use tempfile::NamedTempFile;
@@ -476,3 +477,174 @@ async fn local_size_limits_reject_before_network_io() {
     assert!(matches!(upload_error, Error::UploadTooLarge { .. }));
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn transcribe_wire_shape_strict_separation() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(header("x-goog-api-key", "contract-test-secret"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "candidates": [{
+                "content": {
+                    "role": "model",
+                    "parts": [{
+                        "text": "Hello world",
+                        "audioTranscription": {
+                            "text": "Hello world",
+                            "words": [
+                                {
+                                    "word": "Hello",
+                                    "startOffset": "0.120s",
+                                    "endOffset": "0.450s",
+                                    "speakerLabel": "1"
+                                },
+                                {
+                                    "word": "world",
+                                    "startOffset": "0.500s",
+                                    "endOffset": "0.900s",
+                                    "speakerLabel": "1"
+                                }
+                            ]
+                        }
+                    }]
+                },
+                "finishReason": "STOP",
+                "index": 0
+            }],
+            "usageMetadata": {"promptTokenCount": 50, "totalTokenCount": 50},
+            "modelVersion": "gemini-3.5-transcribe"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let media = MediaInput::Inline(
+        InlineMedia::new("audio/wav", Bytes::from_static(b"RIFF....WAVEfmt ")).unwrap(),
+    );
+    let req = TranscribeRequest::new(media)
+        .with_config(
+            AudioTranscriptionConfig::new()
+                .with_diarization(true)
+                .with_language_hints(["en", "vi"]),
+        );
+
+    let client = client(&server);
+    let response = client.transcribe(req, &CancellationToken::new()).await.unwrap();
+
+    let words = response.transcription_words();
+    assert_eq!(words.len(), 2);
+    assert_eq!(words[0].word, "Hello");
+    assert_eq!(words[0].start_offset, "0.120s");
+    assert_eq!(words[0].end_offset, "0.450s");
+    assert_eq!(words[0].speaker_label, Some("1".to_owned()));
+    assert_eq!(words[1].word, "world");
+    assert_eq!(words[1].start_offset, "0.500s");
+    assert_eq!(words[1].end_offset, "0.900s");
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body: Value = requests[0].body_json().unwrap();
+
+    // Verify wire shape & strict provider separation
+    let parts = body["contents"][0]["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0]["inlineData"]["mimeType"], "audio/wav");
+    assert!(parts[0]["text"].is_null());
+
+    let gen_config = &body["generationConfig"];
+    let asr_config = &gen_config["audioTranscriptionConfig"];
+    assert_eq!(asr_config["wordTimestamp"], true);
+    assert_eq!(asr_config["diarization"], true);
+    assert_eq!(asr_config["languageHints"], json!(["en", "vi"]));
+
+    // Strict separation: forbidden text generation fields
+    assert!(gen_config["thinkingConfig"].is_null());
+    assert!(gen_config["responseJsonSchema"].is_null());
+    assert!(gen_config["responseMimeType"].is_null());
+    assert!(gen_config["mediaResolution"].is_null());
+    assert!(body["systemInstruction"].is_null());
+}
+
+#[tokio::test]
+async fn transcribe_streaming_sse_words_deserialization() {
+    let server = MockServer::start().await;
+    let sse_body = concat!(
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"audioTranscription\":{\"words\":[{\"word\":\"Hello\",\"startOffset\":\"0.100s\",\"endOffset\":\"0.400s\",\"speakerLabel\":\"0\"}]}}]}}]}\n\n",
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"audioTranscription\":{\"words\":[{\"word\":\"world\",\"startOffset\":\"0.450s\",\"endOffset\":\"0.800s\",\"speakerLabel\":\"0\"}]}}]},\"finishReason\":\"STOP\"}]}\n\n",
+    );
+
+    Mock::given(method("POST"))
+        .and(path("/v1beta/models/gemini-3.5-transcribe:streamGenerateContent"))
+        .and(query_param("alt", "sse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(sse_body, "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let media = MediaInput::Inline(
+        InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap(),
+    );
+    let req = TranscribeRequest::new(media);
+    let client = client(&server);
+
+    let mut stream = client
+        .transcribe_stream(req, &CancellationToken::new())
+        .await
+        .unwrap();
+
+    let mut completion = TranscriptionStreamCompletion::default();
+    let mut all_words = Vec::new();
+
+    while let Some(chunk) = stream.next().await {
+        let resp = chunk.unwrap();
+        completion.observe(&resp).unwrap();
+        all_words.extend(resp.transcription_words());
+    }
+
+    let total = completion.finish().unwrap();
+    assert_eq!(total, 2);
+    assert_eq!(all_words.len(), 2);
+    assert_eq!(all_words[0].word, "Hello");
+    assert_eq!(all_words[1].word, "world");
+}
+
+#[tokio::test]
+async fn transcribe_quota_429_fail_fast_cooldown() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "120")
+                .set_body_json(json!({
+                    "error": {
+                        "code": 429,
+                        "message": "Resource exhausted",
+                        "status": "RESOURCE_EXHAUSTED"
+                    }
+                })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client(&server);
+    let media = MediaInput::Inline(
+        InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap(),
+    );
+    let req = TranscribeRequest::new(media);
+
+    let err1 = client.transcribe(req.clone(), &CancellationToken::new()).await.unwrap_err();
+    assert!(matches!(err1, Error::Provider(_)));
+
+    // Second call fails fast with CooldownActive without hitting server
+    let err2 = client.transcribe(req, &CancellationToken::new()).await.unwrap_err();
+    assert!(matches!(err2, Error::CooldownActive { .. }));
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+

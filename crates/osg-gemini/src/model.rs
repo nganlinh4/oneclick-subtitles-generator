@@ -5,14 +5,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 const MAX_CUSTOM_MODEL_ID_BYTES: usize = 128;
 const CUSTOM_MODEL_OUTPUT_TOKEN_LIMIT: u32 = 65_536;
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-enum ModelKind {
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ModelKind {
     Gemini38Flash,
     Gemini35FlashLite,
     Gemini37Flash,
     Gemini36Flash,
     Gemini35Flash,
     Gemini31FlashLite,
+    Gemini35Transcribe,
     Custom {
         bytes: [u8; MAX_CUSTOM_MODEL_ID_BYTES],
         len: u8,
@@ -41,6 +42,12 @@ impl Model {
     pub const Gemini36Flash: Self = Self(ModelKind::Gemini36Flash);
     pub const Gemini35Flash: Self = Self(ModelKind::Gemini35Flash);
     pub const Gemini31FlashLite: Self = Self(ModelKind::Gemini31FlashLite);
+    pub const Gemini35Transcribe: Self = Self(ModelKind::Gemini35Transcribe);
+
+    #[must_use]
+    pub const fn kind(&self) -> ModelKind {
+        self.0
+    }
 
     /// Parse either one catalog ID or a bounded official-style custom Gemini ID.
     #[must_use]
@@ -52,6 +59,7 @@ impl Model {
             "gemini-3.6-flash" => Some(Self::Gemini36Flash),
             "gemini-3.5-flash" => Some(Self::Gemini35Flash),
             "gemini-3.1-flash-lite" => Some(Self::Gemini31FlashLite),
+            "gemini-3.5-transcribe" => Some(Self::Gemini35Transcribe),
             _ => None,
         };
         if built_in.is_some() {
@@ -78,6 +86,7 @@ impl Model {
             ModelKind::Gemini36Flash => "gemini-3.6-flash",
             ModelKind::Gemini35Flash => "gemini-3.5-flash",
             ModelKind::Gemini31FlashLite => "gemini-3.1-flash-lite",
+            ModelKind::Gemini35Transcribe => "gemini-3.5-transcribe",
             ModelKind::Custom { bytes, len } => str::from_utf8(&bytes[..usize::from(*len)])
                 .expect("custom model IDs are constructed from validated ASCII"),
         }
@@ -371,9 +380,35 @@ impl DailyUse {
     }
 }
 
+const AUDIO_ONLY_INPUT: &[InputModality] = &[InputModality::Audio];
+
+pub const GEMINI_35_TRANSCRIBE: ModelSpec = ModelSpec {
+    model: Model::Gemini35Transcribe,
+    api_id: "gemini-3.5-transcribe",
+    lifecycle: Lifecycle::Stable,
+    input_modalities: AUDIO_ONLY_INPUT,
+    output_text: false,
+    structured_output: false,
+    thinking: false,
+    thinking_levels: &[],
+    input_token_limit: 98_304,
+    output_token_limit: 32_768,
+    toolbox_thinking: ThinkingLevel::Minimal,
+    toolbox_role: "dedicated speech transcription with native word timestamps and optional diarization",
+    verified_at: "2026-09-06",
+    evidence_url: "https://ai.google.dev/gemini-api/docs/generate-content/transcribe",
+};
+
+pub const TRANSCRIPTION_MODELS: &[ModelSpec] = &[GEMINI_35_TRANSCRIBE];
+
 #[must_use]
 pub const fn supported_models() -> &'static [ModelSpec] {
     MODELS
+}
+
+#[must_use]
+pub const fn supported_transcription_models() -> &'static [ModelSpec] {
+    TRANSCRIPTION_MODELS
 }
 
 #[must_use]
@@ -385,6 +420,7 @@ pub const fn model_spec(model: Model) -> Option<&'static ModelSpec> {
         ModelKind::Gemini36Flash => Some(&MODELS[2]),
         ModelKind::Gemini35Flash => Some(&MODELS[3]),
         ModelKind::Gemini31FlashLite => Some(&MODELS[4]),
+        ModelKind::Gemini35Transcribe => Some(&GEMINI_35_TRANSCRIBE),
         ModelKind::Custom { .. } => None,
     }
 }

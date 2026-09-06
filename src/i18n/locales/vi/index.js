@@ -42,6 +42,9 @@ import autoFlow from './autoFlow.json';
 import engines from './engines.json';
 import streaming from './streaming.json';
 import presetButtons from './presetButtons.json';
+import grouping from './grouping.json';
+import transcript from './transcript.json';
+import editor from './editor.json';
 
 const vi = {
   common,
@@ -87,7 +90,10 @@ const vi = {
   autoFlow,
   engines,
   streaming,
-  presetButtons
+  presetButtons,
+  grouping,
+  transcript,
+  editor
 };
 
 export default vi;

@@ -1,0 +1,15 @@
+{
+  "layoutPolicy": "Bố cục phụ đề",
+  "natural": "Tự nhiên",
+  "short": "Ngắn",
+  "oneWord": "Từng từ",
+  "custom": "Tùy chỉnh",
+  "hideAdjust": "Ẩn",
+  "adjust": "Điều chỉnh…",
+  "preserveEdits": "Giữ chỉnh sửa thủ công",
+  "cuesCount": "{{count}} phụ đề",
+  "maxWords": "Số từ tối đa mỗi phụ đề",
+  "maxDuration": "Thời lượng tối đa mỗi phụ đề",
+  "pauseThreshold": "Ngưỡng tạm dừng",
+  "splitOnPunctuation": "Ngắt theo dấu câu (. ? !)"
+}

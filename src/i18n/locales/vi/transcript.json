@@ -1,0 +1,11 @@
+{
+  "unalignedTiming": "Thời gian chưa căn chỉnh",
+  "modifiedText": "Văn bản đã chỉnh sửa",
+  "renameSpeaker": "Đổi tên người nói",
+  "clickToRenameSpeaker": "Nhấp để đổi tên người nói cho toàn bộ lượt thoại",
+  "defaultSpeaker": "Người nói",
+  "playTurn": "Phát từ đầu lượt thoại",
+  "noSpokenWords": "Chưa có bản ghi lời thoại",
+  "transcribePrompt": "Phiên âm lời nói để xem các lượt thoại, người nói và các từ có mốc thời gian.",
+  "resumeFollow": "Đang phát ở {{time}} • Tiếp tục theo dõi"
+}

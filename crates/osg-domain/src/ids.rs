@@ -178,6 +178,10 @@ domain_id!(TrackId, "track");
 domain_id!(CueId, "cue");
 domain_id!(RevisionId, "revision");
 domain_id!(JobId, "job");
+domain_id!(TranscriptRevisionId, "transcript revision");
+domain_id!(WordId, "word");
+domain_id!(TurnId, "turn");
+domain_id!(ProjectionId, "projection");
 
 #[cfg(test)]
 mod tests {
@@ -186,9 +190,9 @@ mod tests {
     use uuid::{Uuid, Variant, Version};
 
     use super::{
-        AssetId, CueId, IdError, JobId, ProjectId, RevisionId, TrackId, UUID_V7_RAND_A_MASK,
-        UUID_V7_RAND_B_MASK, UUID_V7_TIMESTAMP_MASK, ensure_uuid_v7_after, next_uuid_v7,
-        uuid_v7_from_parts,
+        AssetId, CueId, IdError, JobId, ProjectId, ProjectionId, RevisionId, TrackId,
+        TranscriptRevisionId, TurnId, UUID_V7_RAND_A_MASK, UUID_V7_RAND_B_MASK,
+        UUID_V7_TIMESTAMP_MASK, WordId, ensure_uuid_v7_after, next_uuid_v7, uuid_v7_from_parts,
     };
 
     #[test]
@@ -200,6 +204,10 @@ mod tests {
             CueId::new().into_uuid(),
             RevisionId::new().into_uuid(),
             JobId::new().into_uuid(),
+            TranscriptRevisionId::new().into_uuid(),
+            WordId::new().into_uuid(),
+            TurnId::new().into_uuid(),
+            ProjectionId::new().into_uuid(),
         ];
 
         for value in values {

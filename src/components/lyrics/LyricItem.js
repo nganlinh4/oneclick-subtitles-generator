@@ -474,6 +474,25 @@ const LyricItem = ({
               >
                 {formatTime(lyric.end, timeFormat === 'seconds' ? 'seconds' : 'hms_ms')}
               </span>
+
+              {(lyric.is_unaligned || lyric.alignment_status === 'Unaligned') && (
+                <span
+                  className="unaligned-cue-chip"
+                  title={t('transcript.unalignedTiming', 'Unaligned timing')}
+                  style={{ fontSize: '11px', color: '#B00020', marginLeft: '4px', cursor: 'help' }}
+                >
+                  ⚠
+                </span>
+              )}
+              {(lyric.userEdited || lyric.manual_state === 'edited_text') && (
+                <span
+                  className="modified-cue-chip"
+                  title={t('transcript.modifiedText', 'Modified text')}
+                  style={{ fontSize: '11px', color: '#E65100', marginLeft: '4px', cursor: 'help' }}
+                >
+                  ~
+                </span>
+              )}
             </div>
           )}
         </div>

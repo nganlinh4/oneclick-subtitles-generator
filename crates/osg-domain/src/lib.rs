@@ -6,8 +6,12 @@ pub mod jobs;
 pub mod media;
 pub mod projects;
 pub mod subtitles;
+pub mod transcripts;
 
-pub use ids::{AssetId, CueId, IdError, JobId, ProjectId, RevisionId, TrackId};
+pub use ids::{
+    AssetId, CueId, IdError, JobId, ProjectId, ProjectionId, RevisionId, TrackId,
+    TranscriptRevisionId, TurnId, WordId,
+};
 pub use jobs::{
     JOB_PROGRESS_COMPLETE, JobError, JobKind, JobMutation, JobProgress, JobProgressError,
     JobSnapshot, JobState, JobUpdate,
@@ -23,4 +27,9 @@ pub use projects::{
 pub use subtitles::{
     MAX_CUE_TEXT_CHARS, MAX_TRACK_LABEL_CHARS, SubtitleCue, SubtitleError, SubtitleTrack,
     TrackOrigin,
+};
+pub use transcripts::{
+    AlignmentState, AlignmentStatus, CaptionProjection, CompletionState, CustomGroupingConfig,
+    GroupingPolicy, ManualEditState, ProjectedCue, ScriptSpacing, SourceWordSpan, TimedWord,
+    TranscriptError, TranscriptRevision, TranscriptTurn, WordProvenance,
 };

@@ -37,17 +37,17 @@ export const activeCueAtFrom = (cues, instant, fadeInValue, fadeOutValue, startI
     // first-window-wins rule let an outgoing cue at zero opacity swallow the next live cue, which
     // is the visible one-frame (and sometimes multi-frame) blink users reported during playback.
     if (instant >= cue.start && instant <= cue.end) {
-      return { cue, index, phase: 'holding', progress: 1 };
+      return { cue, index, phase: 'holding', progress: 1, instant };
     }
 
     let candidate = null;
     if (fadeIn > 0 && instant >= cue.start - fadeIn && instant < cue.start) {
       candidate = {
-        cue, index, phase: 'fadingIn', progress: (instant - (cue.start - fadeIn)) / fadeIn,
+        cue, index, phase: 'fadingIn', progress: (instant - (cue.start - fadeIn)) / fadeIn, instant,
       };
     } else if (fadeOut > 0 && instant > cue.end && instant <= cue.end + fadeOut) {
       candidate = {
-        cue, index, phase: 'fadingOut', progress: 1 - ((instant - cue.end) / fadeOut),
+        cue, index, phase: 'fadingOut', progress: 1 - ((instant - cue.end) / fadeOut), instant,
       };
     }
     // Only one raster can be shown. In a real gap, choose the more opaque fade instead of the
@@ -76,6 +76,7 @@ export const cueTransformAt = (animationValue, phase, progress, easing) => {
   const entering = phase === 'fadingIn';
   const leaving = phase === 'fadingOut';
   const transform = { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 };
+  if (animation === 'word-reveal' || animation === 'word-highlight') return transform;
   if (animation === 'slide-up') transform.y = slide(entering, leaving, remaining, 50, -50);
   else if (animation === 'slide-down') transform.y = slide(entering, leaving, remaining, -50, 50);
   else if (animation === 'slide-left') transform.x = slide(entering, leaving, remaining, 100, -100);

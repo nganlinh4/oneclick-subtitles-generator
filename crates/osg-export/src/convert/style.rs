@@ -139,6 +139,8 @@ pub(crate) const fn animation_name(animation: AnimationType) -> &'static str {
         AnimationType::Flip => "flip",
         AnimationType::Rotate => "rotate",
         AnimationType::Typewriter => "typewriter",
+        AnimationType::WordReveal => "word-reveal",
+        AnimationType::WordHighlight => "word-highlight",
     }
 }
 
@@ -166,7 +168,7 @@ mod tests {
     use super::{align_name, animation_name, easing_name, position_name};
 
     /// Every contract variant, so a variant added to the contract fails to compile here.
-    const ANIMATIONS: [AnimationType; 10] = [
+    const ANIMATIONS: [AnimationType; 12] = [
         AnimationType::Fade,
         AnimationType::SlideUp,
         AnimationType::SlideDown,
@@ -177,6 +179,8 @@ mod tests {
         AnimationType::Flip,
         AnimationType::Rotate,
         AnimationType::Typewriter,
+        AnimationType::WordReveal,
+        AnimationType::WordHighlight,
     ];
 
     const EASINGS: [AnimationEasing; 7] = [

@@ -78,6 +78,8 @@ const COMMANDS: &[&str] = &[
     "subtitle_archive_export",
     "generated_file_export",
     "gemini_start",
+    "start_word_native_transcription",
+    "cancel_transcription",
     "image_blob_import_playback",
     "image_blob_release",
     "image_reference_select",

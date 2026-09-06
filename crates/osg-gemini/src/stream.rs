@@ -9,8 +9,11 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
-    Error, GeminiClient, GenerateRequest, GenerateResponse, Model, Result,
-    client::{cancellable_sleep, encode_generate_request, read_bounded, validate_generate_request},
+    Error, GeminiClient, GenerateRequest, GenerateResponse, Model, Result, TranscribeRequest,
+    client::{
+        cancellable_sleep, encode_generate_request, encode_transcribe_request, read_bounded,
+        validate_generate_request,
+    },
     retry::{parse_provider_error, retry_delay, transport_kind},
 };
 
@@ -68,6 +71,74 @@ impl GeminiClient {
                     () = cancel.cancelled() => Err(Error::Cancelled),
                     () = &mut deadline => Err(Error::Timeout {
                         operation: "stream generation",
+                        timeout,
+                    }),
+                    next = body.next() => Ok(next),
+                }?;
+                let Some(chunk) = chunk else {
+                    for event in decoder.finish()? {
+                        match event {
+                            DecodedEvent::Response(response) => yield *response,
+                            DecodedEvent::Done => return,
+                        }
+                    }
+                    return;
+                };
+                let chunk = chunk.map_err(|error| Error::Transport(transport_kind(&error)))?;
+                for event in decoder.push(&chunk)? {
+                    match event {
+                        DecodedEvent::Response(response) => yield *response,
+                        DecodedEvent::Done => return,
+                    }
+                }
+            }
+        };
+        Ok(Box::pin(output))
+    }
+
+    /// Opens `streamGenerateContent` with `AudioTranscriptionConfig` and yields each SSE response exactly once.
+    pub async fn transcribe_stream(
+        &self,
+        request: TranscribeRequest,
+        cancel: &CancellationToken,
+    ) -> Result<GenerateStream> {
+        request.validate()?;
+        self.wait_for_cooldown(request.model, cancel).await?;
+        let permit = self.acquire(cancel).await?;
+        let payload = Arc::new(encode_transcribe_request(&request)?);
+        if payload.len() > self.inner.options.max_inline_request_bytes {
+            return Err(Error::InlineRequestTooLarge {
+                actual_bytes: payload.len(),
+                limit_bytes: self.inner.options.max_inline_request_bytes,
+            });
+        }
+
+        let mut endpoint = self.endpoint(&format!(
+            "v1beta/models/{}:streamGenerateContent",
+            request.model.api_id()
+        ))?;
+        endpoint.query_pairs_mut().append_pair("alt", "sse");
+        let response = self
+            .open_stream_with_retry(&endpoint, &payload, request.model, cancel)
+            .await?;
+        validate_event_stream_content_type(&response)?;
+        self.inner.cooldowns.lock().await.remove(&request.model);
+
+        let timeout = self.inner.options.request_timeout;
+        let event_limit = self.inner.options.max_response_bytes;
+        let cancel = cancel.clone();
+        let output = try_stream! {
+            let _permit = permit;
+            let mut body = response.bytes_stream();
+            let mut decoder = SseDecoder::new(event_limit);
+            let deadline = sleep_until(Instant::now() + timeout);
+            tokio::pin!(deadline);
+
+            loop {
+                let chunk = tokio::select! {
+                    () = cancel.cancelled() => Err(Error::Cancelled),
+                    () = &mut deadline => Err(Error::Timeout {
+                        operation: "stream transcription",
                         timeout,
                     }),
                     next = body.next() => Ok(next),

@@ -1,4 +1,4 @@
-import { scaleStyleValue, lineLeft, resolveSubtitleGeometry } from './canvasSubtitleMath';
+import { scaleStyleValue, lineLeft, resolveSubtitleGeometry } from './canvasSubtitleMath.js';
 
 const STROKE_TAPS = 24;
 const BACKFILL_ZOOM = 1.06;
@@ -183,7 +183,106 @@ const revealCount = (atlas, progress) => {
   return count;
 };
 
-const drawGlyphMask = ({ context, atlasCanvas, atlas, geometry, viewport, cueTransform, revealed }) => {
+export const wordRevealCount = (atlas, words, instantMs) => {
+  if (!atlas?.layout?.lines || !Array.isArray(words) || words.length === 0) return null;
+  const cells = atlas.layout.lines.flatMap((line) => line.glyphs);
+  if (cells.length === 0) return 0;
+
+  const fullGlyphText = cells.map((cellIndex) => atlas.glyphs[cellIndex]?.cluster ?? '').join('');
+
+  let cursor = 0;
+  let maxRevealedChar = 0;
+  let anyStarted = false;
+
+  for (const word of words) {
+    const wordStart = word.start_ms ?? Math.round((word.start || 0) * 1000);
+    const text = word.text || '';
+    if (text.length === 0) continue;
+    const foundIdx = fullGlyphText.indexOf(text, cursor);
+    const startChar = foundIdx !== -1 ? foundIdx : cursor;
+    const endChar = startChar + text.length;
+    cursor = endChar;
+
+    if (wordStart <= instantMs) {
+      anyStarted = true;
+      maxRevealedChar = Math.max(maxRevealedChar, endChar);
+    }
+  }
+
+  if (!anyStarted || maxRevealedChar === 0) return 0;
+
+  let currentChars = 0;
+  let cellCount = 0;
+  for (const cellIndex of cells) {
+    if (currentChars >= maxRevealedChar) break;
+    const glyph = atlas.glyphs[cellIndex];
+    const clusterLen = (glyph?.cluster ?? '').length || 1;
+    currentChars += clusterLen;
+    cellCount += 1;
+  }
+  return cellCount;
+};
+
+export const findWordCellRange = (atlas, words, targetWord) => {
+  if (!atlas?.layout?.lines || !Array.isArray(words) || !targetWord) {
+    return { startCell: null, endCell: null };
+  }
+  const cells = atlas.layout.lines.flatMap((line) => line.glyphs);
+  if (cells.length === 0) return { startCell: null, endCell: null };
+
+  const fullGlyphText = cells.map((cellIndex) => atlas.glyphs[cellIndex]?.cluster ?? '').join('');
+
+  let cursor = 0;
+  let targetStartChar = null;
+  let targetEndChar = null;
+
+  for (const w of words) {
+    const text = w.text || '';
+    if (text.length === 0) continue;
+    const foundIdx = fullGlyphText.indexOf(text, cursor);
+    const startChar = foundIdx !== -1 ? foundIdx : cursor;
+    const endChar = startChar + text.length;
+    cursor = endChar;
+
+    if (w === targetWord || w.id === targetWord.id) {
+      targetStartChar = startChar;
+      targetEndChar = endChar;
+      break;
+    }
+  }
+
+  if (targetStartChar === null || targetEndChar === null) {
+    return { startCell: null, endCell: null };
+  }
+
+  let currentChars = 0;
+  let startCell = null;
+  let endCell = null;
+
+  for (let i = 0; i < cells.length; i++) {
+    const glyph = atlas.glyphs[cells[i]];
+    const clusterLen = (glyph?.cluster ?? '').length || 1;
+    if (startCell === null && currentChars + clusterLen > targetStartChar) {
+      startCell = i;
+    }
+    if (currentChars < targetEndChar) {
+      endCell = i + 1;
+    }
+    currentChars += clusterLen;
+  }
+  return { startCell, endCell };
+};
+
+const drawGlyphMask = ({
+  context,
+  atlasCanvas,
+  atlas,
+  geometry,
+  viewport,
+  cueTransform,
+  revealed,
+  startCell = 0,
+}) => {
   context.save();
   context.clearRect(0, 0, context.canvas.width, context.canvas.height);
   setCompositionTransform(context, viewport, geometry, cueTransform);
@@ -196,7 +295,10 @@ const drawGlyphMask = ({ context, atlasCanvas, atlas, geometry, viewport, cueTra
         context.restore();
         return;
       }
+      const shouldDraw = placed >= startCell;
       placed += 1;
+      if (!shouldDraw) continue;
+
       const glyph = atlas.glyphs[index];
       if (!glyph || glyph.widthPx <= 0 || glyph.heightPx <= 0) continue;
       const pen = left + line.penXPx[position] * geometry.glyphScale;
@@ -287,9 +389,13 @@ const paintSubtitle = ({
   // The persisted vocabulary has no flat cue-opacity control. Export uses 1.0, then the fade.
   const alpha = eased;
   if (alpha <= 0) return;
-  const revealed = customization.animationType === 'typewriter' && active.phase === 'fadingIn'
-    ? revealCount(atlas, active.progress)
-    : null;
+  const instantMs = (active?.instant != null ? active.instant : (active?.cue?.start || 0)) * 1000;
+  let revealed = null;
+  if (customization.animationType === 'typewriter' && active.phase === 'fadingIn') {
+    revealed = revealCount(atlas, active.progress);
+  } else if (customization.animationType === 'word-reveal') {
+    revealed = wordRevealCount(atlas, active.cue?.words, instantMs);
+  }
   drawGlyphMask({
     context: maskContext,
     atlasCanvas,
@@ -407,6 +513,31 @@ const paintSubtitle = ({
     ? gradientPaint(context, customization, viewport, geometry, cueTransform)
     : rgba(customization.textColor);
   tintMask(context, scratchContext, maskContext.canvas, fill, alpha);
+
+  if (customization.animationType === 'word-highlight' && Array.isArray(active?.cue?.words) && active.cue.words.length > 0) {
+    const activeWord = active.cue.words.find((w) => {
+      const start = w.start_ms ?? Math.round((w.start || 0) * 1000);
+      const end = w.end_ms ?? Math.round((w.end || 0) * 1000);
+      return start <= instantMs && instantMs < end;
+    });
+    if (activeWord) {
+      const { startCell, endCell } = findWordCellRange(atlas, active.cue.words, activeWord);
+      if (startCell !== null && endCell !== null) {
+        drawGlyphMask({
+          context: maskContext,
+          atlasCanvas,
+          atlas,
+          geometry,
+          viewport,
+          cueTransform,
+          startCell,
+          revealed: endCell,
+        });
+        const highlightColor = rgba(customization.highlightColor || '#B4B5FF');
+        tintMask(context, scratchContext, maskContext.canvas, highlightColor, alpha);
+      }
+    }
+  }
 };
 
 const resizeWorkCanvas = (canvas, width, height) => {

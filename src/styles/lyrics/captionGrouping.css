@@ -1,0 +1,188 @@
+/* Material Design 3 Styling for Caption Grouping Toolbar */
+
+.caption-grouping-toolbar-container {
+  background: var(--md-surface-container, #F3EDF7);
+  border: 1px solid var(--md-outline-variant, #CAC4D0);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: none;
+}
+
+[data-theme="dark"] .caption-grouping-toolbar-container {
+  background: var(--md-surface-container, #2B2930);
+  border-color: var(--md-outline-variant, #49454F);
+}
+
+.caption-grouping-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.caption-grouping-policy-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.policy-pill-button {
+  background: transparent;
+  border: 1px solid var(--md-outline-variant, #CAC4D0);
+  border-radius: var(--md-shape-pill, 9999px);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-on-surface, #1C1B1F);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+[data-theme="dark"] .policy-pill-button {
+  border-color: var(--md-outline-variant, #49454F);
+  color: var(--md-on-surface, #E6E1E5);
+}
+
+.policy-pill-button:hover:not(.active) {
+  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
+}
+
+.policy-pill-button.active {
+  background: var(--md-secondary-container, #E8DEF8);
+  color: var(--md-on-secondary-container, #1D192B);
+  border-color: var(--md-secondary-container, #E8DEF8);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .policy-pill-button.active {
+  background: var(--md-secondary-container, #4A4458);
+  color: var(--md-on-secondary-container, #E8DEF8);
+  border-color: var(--md-secondary-container, #4A4458);
+}
+
+.adjust-drawer-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--md-primary, #5D5FEF);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .adjust-drawer-toggle-btn {
+  color: var(--md-primary, #B4B5FF);
+}
+
+.adjust-drawer-toggle-btn:hover {
+  background: color-mix(in srgb, var(--md-primary) 10%, transparent);
+}
+
+.caption-grouping-options-lane {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preserve-edits-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--md-on-surface-variant, #49454E);
+  cursor: pointer;
+}
+
+[data-theme="dark"] .preserve-edits-label {
+  color: var(--md-on-surface-variant, #CAC4D0);
+}
+
+.preserve-edits-checkbox {
+  accent-color: var(--md-primary, #5D5FEF);
+  cursor: pointer;
+}
+
+.cue-count-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--md-shape-pill, 9999px);
+  background: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
+  color: var(--md-on-surface-variant, #49454E);
+}
+
+[data-theme="dark"] .cue-count-pill {
+  color: var(--md-on-surface-variant, #CAC4D0);
+}
+
+/* Collapsible Custom Sliders Drawer */
+.custom-sliders-drawer {
+  background: var(--md-surface-container-high, #ECE6F0);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  border: 1px solid var(--md-outline-variant, #CAC4D0);
+}
+
+[data-theme="dark"] .custom-sliders-drawer {
+  background: var(--md-surface-container-high, #2B2930);
+  border-color: var(--md-outline-variant, #49454F);
+}
+
+.slider-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slider-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant, #49454E);
+}
+
+[data-theme="dark"] .slider-label-row {
+  color: var(--md-on-surface-variant, #CAC4D0);
+}
+
+.slider-value-badge {
+  font-weight: 600;
+  color: var(--md-primary, #5D5FEF);
+}
+
+[data-theme="dark"] .slider-value-badge {
+  color: var(--md-primary, #B4B5FF);
+}
+
+.grouping-slider-input {
+  width: 100%;
+  accent-color: var(--md-primary, #5D5FEF);
+  cursor: pointer;
+}
+
+.checkbox-control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--md-on-surface-variant, #49454E);
+  cursor: pointer;
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+[data-theme="dark"] .checkbox-control-group {
+  color: var(--md-on-surface-variant, #CAC4D0);
+}

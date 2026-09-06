@@ -1,6 +1,8 @@
+mod ass;
 mod legacy_json;
 mod srt;
 
+pub use ass::{format_ass_timestamp, write_ass};
 pub use legacy_json::{parse_legacy_json, write_legacy_json};
 pub use srt::{parse_srt, write_srt, write_text};
 

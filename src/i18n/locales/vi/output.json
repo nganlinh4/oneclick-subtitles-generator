@@ -129,5 +129,6 @@
   "videoAnalysisAborted": "Đã hủy phân tích video",
   "asrTranscriptionComplete": "Đã phiên âm xong bằng {{engine}}",
   "emptyGenerationResult": "Không nhận được kết quả cho yêu cầu đã chọn. Hãy thử lại hoặc chọn mô hình khác.",
-  "subtitlesDeliveryPending": "Phụ đề đã được lưu. Việc hoàn tất kết quả gốc sẽ tự động thử lại."
+  "subtitlesDeliveryPending": "Phụ đề đã được lưu. Việc hoàn tất kết quả gốc sẽ tự động thử lại.",
+  "createSubtitles": "Tạo phụ đề"
 }

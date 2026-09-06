@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
-    ApiKey, Error, GenerateRequest, GenerateResponse, MediaInput, Model, Result, RetryPolicy,
+    ApiKey, AudioTranscriptionConfig, Error, GenerateRequest, GenerateResponse, MediaInput, Model,
+    Result, RetryPolicy, TranscribeRequest,
     retry::{parse_provider_error, retry_delay, transport_kind},
     types::is_loopback_host,
 };
@@ -240,6 +241,51 @@ impl GeminiClient {
         let body = self
             .send_with_retry(
                 "generation",
+                self.inner.options.request_timeout,
+                self.inner.options.max_response_bytes,
+                Some(request.model),
+                cancel,
+                || {
+                    self.authenticated(self.inner.http.post(endpoint.clone()))
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                        .body(Arc::clone(&payload).as_ref().clone())
+                },
+            )
+            .await?
+            .body;
+        self.inner.cooldowns.lock().await.remove(&request.model);
+        serde_json::from_slice(&body).map_err(|_| Error::Transport(crate::TransportKind::Decode))
+    }
+
+    /// Sends one bounded `generateContent` transcription request with `AudioTranscriptionConfig`.
+    pub async fn transcribe(
+        &self,
+        request: TranscribeRequest,
+        cancel: &CancellationToken,
+    ) -> Result<GenerateResponse> {
+        request.validate()?;
+        self.wait_for_cooldown(request.model, cancel).await?;
+        let _permit = self.acquire(cancel).await?;
+
+        let payload = build_transcribe_payload(&request);
+        let payload =
+            Arc::new(serde_json::to_vec(&payload).map_err(|_| {
+                Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
+            })?);
+        if payload.len() > self.inner.options.max_inline_request_bytes {
+            return Err(Error::InlineRequestTooLarge {
+                actual_bytes: payload.len(),
+                limit_bytes: self.inner.options.max_inline_request_bytes,
+            });
+        }
+
+        let endpoint = self.endpoint(&format!(
+            "v1beta/models/{}:generateContent",
+            request.model.api_id()
+        ))?;
+        let body = self
+            .send_with_retry(
+                "transcription",
                 self.inner.options.request_timeout,
                 self.inner.options.max_response_bytes,
                 Some(request.model),
@@ -559,6 +605,53 @@ fn build_generate_payload(request: &GenerateRequest) -> WireGenerateRequest {
 pub(crate) fn encode_generate_request(request: &GenerateRequest) -> Result<Vec<u8>> {
     serde_json::to_vec(&build_generate_payload(request))
         .map_err(|_| Error::InvalidRequest("failed to encode Gemini request".to_owned()))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WireTranscribeRequest {
+    contents: Vec<WireContent>,
+    generation_config: WireTranscribeGenerationConfig,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WireTranscribeGenerationConfig {
+    audio_transcription_config: AudioTranscriptionConfig,
+}
+
+pub(crate) fn build_transcribe_payload(request: &TranscribeRequest) -> WireTranscribeRequest {
+    let part = match &request.media {
+        MediaInput::Inline(media) => WirePart::InlineData {
+            video_metadata: None,
+            inline_data: WireInlineData {
+                mime_type: media.mime_type().to_owned(),
+                data: BASE64_STANDARD.encode(media.bytes()),
+            },
+        },
+        MediaInput::Uploaded(media) => WirePart::FileData {
+            video_metadata: None,
+            file_data: WireFileData {
+                mime_type: media.mime_type().to_owned(),
+                file_uri: media.uri().as_str().to_owned(),
+            },
+        },
+    };
+
+    WireTranscribeRequest {
+        contents: vec![WireContent {
+            role: None,
+            parts: vec![part],
+        }],
+        generation_config: WireTranscribeGenerationConfig {
+            audio_transcription_config: request.config.clone(),
+        },
+    }
+}
+
+pub(crate) fn encode_transcribe_request(request: &TranscribeRequest) -> Result<Vec<u8>> {
+    serde_json::to_vec(&build_transcribe_payload(request))
+        .map_err(|_| Error::InvalidRequest("failed to encode Gemini transcription request".to_owned()))
 }
 
 pub(crate) fn validate_generate_request(request: &GenerateRequest) -> Result<()> {

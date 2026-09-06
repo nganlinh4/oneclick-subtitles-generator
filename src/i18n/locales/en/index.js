@@ -44,6 +44,9 @@ import engines from './engines.json';
 import streaming from './streaming.json';
 import presetButtons from './presetButtons.json';
 import videoPreview from './videoPreview.json';
+import grouping from './grouping.json';
+import transcript from './transcript.json';
+import editor from './editor.json';
 
 // Combine all translations
 const enTranslations = {
@@ -90,7 +93,10 @@ const enTranslations = {
   engines,
   streaming,
   presetButtons,
-  videoPreview
+  videoPreview,
+  grouping,
+  transcript,
+  editor
 };
 
 export default enTranslations;

@@ -48,6 +48,7 @@ mod ui_fonts;
 mod updater;
 mod voice_samples;
 mod waveform_cache;
+pub(crate) mod transcription;
 
 use std::collections::BTreeMap;
 use std::{
@@ -86,6 +87,7 @@ use external_links::open_external_link;
 use font_readiness::FontReadiness;
 use font_repair::font_readiness_retry;
 use gemini::gemini_start;
+use transcription::{cancel_transcription, start_word_native_transcription};
 use gemini_image::{
     GeneratedImageRuntime, gemini_image_complete, gemini_image_start, generated_image_clear,
     generated_image_delete, generated_image_export, generated_image_list,
@@ -327,6 +329,8 @@ pub fn run() {
             subtitle_archive_export,
             generated_file_export,
             gemini_start,
+            start_word_native_transcription,
+            cancel_transcription,
             image_blob_import_playback,
             image_blob_release,
             image_reference_select,

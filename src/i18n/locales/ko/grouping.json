@@ -1,0 +1,15 @@
+{
+  "layoutPolicy": "자막 레이아웃",
+  "natural": "자연스러움",
+  "short": "짧게",
+  "oneWord": "한 단어",
+  "custom": "사용자 정의",
+  "hideAdjust": "숨기기",
+  "adjust": "조정…",
+  "preserveEdits": "수동 편집 내용 유지",
+  "cuesCount": "{{count}}개 자막",
+  "maxWords": "자막당 최대 단어 수",
+  "maxDuration": "최대 자막 재생 시간",
+  "pauseThreshold": "일시 정지 임계값",
+  "splitOnPunctuation": "문장 부호 기준 분할 (. ? !)"
+}

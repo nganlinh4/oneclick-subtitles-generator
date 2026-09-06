@@ -45,6 +45,10 @@ pub enum AnimationType {
     Rotate,
     /// Reveals the text progressively; carries no transform.
     Typewriter,
+    /// Reveals words sequentially; carries no transform.
+    WordReveal,
+    /// Highlights the active word; carries no transform.
+    WordHighlight,
 }
 
 impl AnimationType {
@@ -63,6 +67,8 @@ impl AnimationType {
             "flip" => Self::Flip,
             "rotate" => Self::Rotate,
             "typewriter" => Self::Typewriter,
+            "word-reveal" => Self::WordReveal,
+            "word-highlight" => Self::WordHighlight,
             _ => return None,
         })
     }
@@ -147,10 +153,12 @@ pub fn cue_transform(
             rotate_degrees: slide(entering, leaving, remaining, 180.0, -180.0),
             ..CueTransform::IDENTITY
         },
-        // Every remaining case holds still: the two animations with no transform at all, and the
-        // two whose guarded arms above did not apply in this phase.
+        // Every remaining case holds still: animations with no transform at all, and
+        // those whose guarded arms above did not apply in this phase.
         AnimationType::None
         | AnimationType::Typewriter
+        | AnimationType::WordReveal
+        | AnimationType::WordHighlight
         | AnimationType::Scale
         | AnimationType::Bounce => CueTransform::IDENTITY,
     }

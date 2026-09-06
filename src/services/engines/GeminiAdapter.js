@@ -1,4 +1,9 @@
 import { bindGeminiTranscriptionDeliveries } from '../gemini/transcriptionDelivery';
+import {
+  startWordNativeTranscription,
+  cancelWordNativeTranscription,
+  isNativeWordTranscriptionSupported,
+} from '../../platform/nativeWordTranscription';
 
 // The native media pipeline admits two clip operations. Matching that capacity prevents windows
 // three and four from being rejected before they reach Gemini on a clean split-media run.
@@ -88,6 +93,132 @@ const namespaceWindowRows = (rows, windowIndex) => rows.map((row) => {
  */
 export const processGeminiSegment = async (file, segment, options, hooks = {}) => {
   const { onStatus, onStreamingUpdate, t } = hooks;
+
+  const isSpeechTask = (!options?.task || options?.task === 'transcribe')
+    && !options?.prompt
+    && !options?.customPrompt
+    && !options?.userProvidedSubtitles
+    && !options?.forceLegacy;
+
+  if (isNativeWordTranscriptionSupported() && isSpeechTask) {
+    return new Promise((resolve, reject) => {
+      let taskId = null;
+      let finished = false;
+      let currentCues = [];
+
+      const finish = (result) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve(result);
+      };
+
+      const fail = (err) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(err);
+      };
+
+      const onAbort = () => {
+        if (taskId) {
+          Promise.resolve().then(() => cancelWordNativeTranscription(taskId)).catch(() => {});
+        }
+        fail(aborted(options?.signal));
+      };
+
+      const cleanup = () => {
+        options?.signal?.removeEventListener?.('abort', onAbort);
+      };
+
+      if (options?.signal?.aborted) {
+        fail(aborted(options.signal));
+        return;
+      }
+      options?.signal?.addEventListener?.('abort', onAbort, { once: true });
+
+      startWordNativeTranscription({
+        projectId: options?.projectId,
+        expectedProjectStateVersion: options?.expectedProjectStateVersion,
+        mediaAssetId: file?.assetId || options?.mediaAssetId || options?.assetId,
+        filePath: file?.path || file?.filePath || options?.filePath,
+        rangeStartMs: segment?.start != null ? Math.round(segment.start * 1000) : undefined,
+        rangeEndMs: segment?.end != null ? Math.round(segment.end * 1000) : undefined,
+        windowDurationMs: options?.maxDurationPerRequest != null ? Math.round(options.maxDurationPerRequest * 1000) : undefined,
+        windowDurationSecs: options?.windowDurationSecs,
+        languageHints: options?.languageHints || (options?.language ? [options.language] : undefined),
+        diarization: options?.diarization,
+        credentialId: options?.credentialId,
+      }, {
+        onStageChanged: (event) => {
+          onStatus?.({ message: event.message, type: 'loading' });
+        },
+        onWindowPromoted: (event) => {
+          const newlyProjected = (event.projectedCues || []).map((cue) => ({
+            id: cue.id,
+            originalId: cue.id,
+            start: cue.startMs / 1000,
+            end: cue.endMs / 1000,
+            text: cue.text,
+            speaker: cue.speakerId,
+            wordIds: cue.wordIds,
+          }));
+          currentCues.push(...newlyProjected);
+          const isStreaming = event.windowIndex + 1 < event.totalWindows;
+          onStreamingUpdate?.(currentCues, isStreaming, {
+            segmentIndex: event.windowIndex,
+            totalSegments: event.totalWindows,
+            segmentComplete: true,
+            words: event.words,
+            turns: event.turns,
+            revisionId: event.revisionId,
+          });
+        },
+        onCompleted: (event) => {
+          if (Array.isArray(event.projectedCues) && event.projectedCues.length > 0) {
+            currentCues = event.projectedCues.map((cue) => ({
+              id: cue.id,
+              originalId: cue.id,
+              start: cue.startMs / 1000,
+              end: cue.endMs / 1000,
+              text: cue.text,
+              speaker: cue.speakerId,
+              wordIds: cue.wordIds,
+            }));
+          }
+          onStreamingUpdate?.(currentCues, false, {
+            segmentComplete: true,
+            words: event.words,
+            turns: event.turns,
+            revisionId: event.revisionId,
+          });
+          if (event.words) currentCues.words = event.words;
+          if (event.turns) currentCues.turns = event.turns;
+          if (event.revisionId) currentCues.revisionId = event.revisionId;
+          finish(currentCues);
+        },
+        onCancelled: () => {
+          fail(aborted(options?.signal));
+        },
+        onFailed: (event) => {
+          const err = new Error(event.error?.message || 'Native transcription failed');
+          if (event.error?.code) err.code = event.error.code;
+          fail(err);
+        },
+        onError: (err) => {
+          fail(err);
+        },
+      })
+      .then((snapshot) => {
+        taskId = snapshot?.id;
+        if (options?.signal?.aborted) {
+          onAbort();
+        }
+      })
+      .catch(fail);
+    });
+  }
+
   const [processing, parallel] = await Promise.all([
     import('../../utils/videoProcessing/processingUtils'),
     import('../../utils/parallelProcessingUtils'),

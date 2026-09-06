@@ -1,0 +1,11 @@
+{
+  "unalignedTiming": "정렬되지 않은 타이밍",
+  "modifiedText": "수정된 텍스트",
+  "renameSpeaker": "화자 이름 바꾸기",
+  "clickToRenameSpeaker": "모든 발화 구간의 화자 이름 바꾸기",
+  "defaultSpeaker": "화자",
+  "playTurn": "발화 시작부터 재생",
+  "noSpokenWords": "사용 가능한 음성 텍스트가 없습니다",
+  "transcribePrompt": "음성을 전사하여 발화, 화자 및 단어별 타이밍을 확인하세요.",
+  "resumeFollow": "{{time}}에서 재생 중 • 자동 스크롤 재개"
+}

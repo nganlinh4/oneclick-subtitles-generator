@@ -76,7 +76,12 @@
     "verify:inventory:installed": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs --require-installed",
     "verify:inventory:release": "node --test scripts/verify-inventory.test.mjs && node scripts/verify-inventory.mjs --require-current --require-installed",
     "test:provider-boundaries": "node --test support/providerBoundariesJourney.contract.test.mjs && node run-isolated.mjs journeys/providerBoundaries.journey.js",
-    "test:about-updater": "node --test support/aboutAndUpdaterLifecycleJourney.contract.test.mjs && node run-isolated.mjs journeys/aboutAndUpdaterLifecycle.journey.js"
+    "test:about-updater": "node --test support/aboutAndUpdaterLifecycleJourney.contract.test.mjs && node run-isolated.mjs journeys/aboutAndUpdaterLifecycle.journey.js",
+    "test:word-native": "node --test ../tests/e2e/**/*.test.mjs support/wordNativeJourneys.contract.test.mjs",
+    "test:word-native-tier1": "node --test ../tests/e2e/tier1_features/*.test.mjs",
+    "test:word-native-tier2": "node --test ../tests/e2e/tier2_boundaries/*.test.mjs",
+    "test:word-native-tier3": "node --test ../tests/e2e/tier3_pairwise/*.test.mjs",
+    "test:word-native-tier4": "node --test ../tests/e2e/tier4_journeys/*.test.mjs"
   },
   "devDependencies": {
     "@wdio/cli": "9.20.0",

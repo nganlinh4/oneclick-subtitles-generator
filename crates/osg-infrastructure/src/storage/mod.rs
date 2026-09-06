@@ -10,7 +10,12 @@ mod migrations;
 mod project_render_scenes;
 mod project_speech_references;
 mod projects;
+pub mod transcripts;
 mod track_history;
+
+pub use transcripts::{
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+};
 
 pub use active_workspace::{
     ActiveWorkspace, ActiveWorkspacePointer, ActiveWorkspaceState, ProjectAliasEntry,

@@ -1926,7 +1926,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 14);
+        assert_eq!(schema_version, 15);
         for revision in detached {
             let exists: bool = connection
                 .query_row(
@@ -1937,6 +1937,67 @@ mod tests {
                 .expect("check detached revision");
             assert!(!exists);
         }
+    }
+
+    #[test]
+    fn v15_upgrade_leaves_legacy_tracks_without_synthetic_words() {
+        let directory = TempDir::new().expect("temporary v14 directory");
+        let path = directory.path().join("db/osg.sqlite3");
+        std::fs::create_dir_all(path.parent().expect("database parent"))
+            .expect("create database parent");
+
+        let mut connection = Connection::open(&path).expect("open v14 fixture");
+        migrations()
+            .to_version(&mut connection, 14)
+            .expect("apply migrations up to 14");
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .expect("enable foreign keys");
+
+        let metadata = ProjectMetadata::new("Legacy v14 Subtitle Project").expect("valid project");
+        let transaction = connection
+            .transaction()
+            .expect("start v14 fixture transaction");
+        let created = create_project_in_transaction(&transaction, &metadata)
+            .expect("create v14 project");
+        transaction.commit().expect("commit v14 project");
+        drop(connection);
+
+        // Open database with v15 runtime, upgrading schema to v15
+        let upgraded = Database::open(&path).expect("migrate to v15");
+        let loaded = upgraded
+            .load_project(metadata.id())
+            .expect("load upgraded project")
+            .expect("project exists");
+        assert_eq!(loaded, created);
+        drop(upgraded);
+
+        let connection = Connection::open(&path).expect("inspect v15 database");
+        let schema_version: u32 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read schema version");
+        assert_eq!(schema_version, 15);
+
+        // Verify zero rows in transcript tables
+        let rev_count: i64 = connection
+            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| r.get(0))
+            .expect("count transcript revisions");
+        assert_eq!(rev_count, 0, "legacy projects must have zero transcript revisions");
+
+        let turn_count: i64 = connection
+            .query_row("SELECT count(*) FROM transcript_turns", [], |r| r.get(0))
+            .expect("count transcript turns");
+        assert_eq!(turn_count, 0, "legacy projects must have zero transcript turns");
+
+        let word_count: i64 = connection
+            .query_row("SELECT count(*) FROM transcript_words", [], |r| r.get(0))
+            .expect("count transcript words");
+        assert_eq!(word_count, 0, "legacy projects must not synthesize word timings");
+
+        let mapping_count: i64 = connection
+            .query_row("SELECT count(*) FROM cue_word_mappings", [], |r| r.get(0))
+            .expect("count cue word mappings");
+        assert_eq!(mapping_count, 0, "legacy projects must have zero cue word mappings");
     }
 
     #[test]

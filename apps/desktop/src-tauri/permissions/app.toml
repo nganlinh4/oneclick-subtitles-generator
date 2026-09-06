@@ -135,7 +135,11 @@ commands.allow = ["legacy_import_select", "legacy_import_status"]
 [[permission]]
 identifier = "run-gemini"
 description = "Allows the main editor window to start bounded native Gemini media jobs using opaque credential references."
-commands.allow = ["gemini_start"]
+commands.allow = [
+  "gemini_start",
+  "start_word_native_transcription",
+  "cancel_transcription",
+]
 
 [[permission]]
 identifier = "generate-images"

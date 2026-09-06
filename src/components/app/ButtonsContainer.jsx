@@ -11,6 +11,7 @@ import Tooltip from '../common/Tooltip';
 import { publishProcessingRanges } from '../../events/bus';
 import useAutoGenerateFlow from './hooks/useAutoGenerateFlow';
 import { useSrtUploadState } from './utils/srtUploadState';
+import CreateSubtitlesModal from '../CreateSubtitlesModal';
 
 
 /**
@@ -102,6 +103,14 @@ const ButtonsContainer = ({
   // Detect current theme from data-theme attribute (light/dark)
   const isDarkTheme = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const rawHandleGenerateSubtitles = handleGenerateSubtitles;
+  handleGenerateSubtitles = (e) => {
+    setShowCreateModal(true);
+    if (typeof rawHandleGenerateSubtitles === 'function') {
+      return rawHandleGenerateSubtitles(e);
+    }
+  };
 
   return (
     <div className="buttons-container">
@@ -184,7 +193,7 @@ const ButtonsContainer = ({
               ) : isSrtOnlyMode ? t('output.srtOnlyMode', 'Working with SRT only') :
                 hasUrlAndSrtOnly ? t('output.downloadAndViewWithSrt', 'Download + View with Uploaded SRT') :
                 selectedVideo && !uploadedFile ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
-                t('output.semiAutoGenerate', 'Semi-auto')}
+                t('output.createSubtitles', 'Create subtitles')}
             </button>
           </Tooltip>
 
@@ -317,6 +326,19 @@ const ButtonsContainer = ({
           </span>
           {t('output.forceStop', 'Force Stop')}
         </button>
+      )}
+
+      {showCreateModal && (
+        <CreateSubtitlesModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onProcess={handleProcessWithOptions}
+          videoFile={uploadedFileData || uploadedFile || selectedVideo}
+          videoDuration={uploadedFile?.duration || selectedVideo?.duration || 0}
+          selectedSegment={null}
+          subtitlesData={subtitlesData}
+          userProvidedSubtitles={userProvidedSubtitles}
+        />
       )}
     </div>
   );

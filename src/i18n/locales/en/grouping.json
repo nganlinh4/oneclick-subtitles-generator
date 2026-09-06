@@ -1,0 +1,15 @@
+{
+  "layoutPolicy": "Caption layout",
+  "natural": "Natural",
+  "short": "Short",
+  "oneWord": "One word",
+  "custom": "Custom",
+  "hideAdjust": "Hide",
+  "adjust": "Adjust…",
+  "preserveEdits": "Preserve manual edits",
+  "cuesCount": "{{count}} cues",
+  "maxWords": "Max words per cue",
+  "maxDuration": "Max cue duration",
+  "pauseThreshold": "Pause threshold",
+  "splitOnPunctuation": "Split on sentence punctuation (. ? !)"
+}

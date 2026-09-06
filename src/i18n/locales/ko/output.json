@@ -129,5 +129,6 @@
   "videoAnalysisAborted": "비디오 분석을 중단했습니다",
   "asrTranscriptionComplete": "{{engine}} 전사 완료",
   "emptyGenerationResult": "선택한 요청에 대한 결과가 없습니다. 다시 시도하거나 다른 모델을 선택하세요.",
-  "subtitlesDeliveryPending": "자막이 저장되었습니다. 네이티브 결과 정리는 자동으로 다시 시도됩니다."
+  "subtitlesDeliveryPending": "자막이 저장되었습니다. 네이티브 결과 정리는 자동으로 다시 시도됩니다.",
+  "createSubtitles": "자막 생성"
 }

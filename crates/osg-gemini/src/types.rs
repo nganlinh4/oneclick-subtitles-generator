@@ -345,6 +345,123 @@ impl fmt::Debug for GenerateRequest {
     }
 }
 
+/// Configuration for Gemini native audio transcription.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioTranscriptionConfig {
+    #[serde(default)]
+    pub word_timestamp: bool,
+    #[serde(default)]
+    pub diarization: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub language_hints: Vec<String>,
+}
+
+impl AudioTranscriptionConfig {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            word_timestamp: true,
+            diarization: false,
+            language_hints: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_diarization(mut self, enabled: bool) -> Self {
+        self.diarization = enabled;
+        self
+    }
+
+    #[must_use]
+    pub fn with_language_hints<I, S>(mut self, hints: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.language_hints = hints.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        for hint in &self.language_hints {
+            let trimmed = hint.trim();
+            if trimmed.is_empty()
+                || trimmed.len() > 16
+                || !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            {
+                return Err(Error::InvalidRequest(format!(
+                    "invalid language hint: '{hint}'"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Specialized request for native speech transcription.
+/// Enforces F07 Strict Provider Separation at the type system level.
+#[derive(Clone)]
+pub struct TranscribeRequest {
+    pub model: Model,
+    pub media: MediaInput,
+    pub config: AudioTranscriptionConfig,
+}
+
+impl TranscribeRequest {
+    #[must_use]
+    pub fn new(media: MediaInput) -> Self {
+        Self {
+            model: Model::Gemini35Transcribe,
+            media,
+            config: AudioTranscriptionConfig::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_model(mut self, model: Model) -> Self {
+        self.model = model;
+        self
+    }
+
+    #[must_use]
+    pub fn with_config(mut self, config: AudioTranscriptionConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        let mime = match &self.media {
+            MediaInput::Inline(inline) => inline.mime_type(),
+            MediaInput::Uploaded(file) => file.mime_type(),
+        };
+        if !mime.starts_with("audio/") {
+            return Err(Error::InvalidRequest(format!(
+                "transcription requires audio input, got '{mime}'"
+            )));
+        }
+        if let MediaInput::Uploaded(file) = &self.media
+            && file.state() != crate::FileState::Active
+        {
+            return Err(Error::InvalidRequest(
+                "uploaded audio file is not ACTIVE".to_owned(),
+            ));
+        }
+        self.config.validate()
+    }
+}
+
+impl fmt::Debug for TranscribeRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TranscribeRequest")
+            .field("model", &self.model)
+            .field("media", &self.media)
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
 /// Backend upload request. The local path is always redacted from debug output.
 #[derive(Clone)]
 pub struct UploadRequest {
@@ -388,16 +505,41 @@ impl fmt::Debug for UploadRequest {
     }
 }
 
+/// A single recognized word with provider timing offsets and optional speaker label.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptionWord {
+    pub word: String,
+    #[serde(alias = "start_offset")]
+    pub start_offset: String,
+    #[serde(alias = "end_offset")]
+    pub end_offset: String,
+    #[serde(default, alias = "speaker_label", skip_serializing_if = "Option::is_none")]
+    pub speaker_label: Option<String>,
+}
+
+/// Transcription container within a response content part.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioTranscription {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub words: Vec<TranscriptionWord>,
+}
+
 /// A response content part. Unknown provider fields are ignored for forward
 /// compatibility; thought text remains identifiable and is excluded by
 /// `GenerateResponse::text`.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Part {
     pub text: Option<String>,
     #[serde(default)]
     pub thought: bool,
     pub thought_signature: Option<String>,
+    #[serde(default, alias = "audio_transcription", skip_serializing_if = "Option::is_none")]
+    pub audio_transcription: Option<AudioTranscription>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -470,6 +612,36 @@ impl GenerateResponse {
             .filter_map(|part| part.text.as_deref())
             .collect::<String>();
         (!text.is_empty()).then_some(text)
+    }
+
+    /// Extract all transcribed words from the first candidate in this response chunk.
+    #[must_use]
+    pub fn transcription_words(&self) -> Vec<TranscriptionWord> {
+        self.candidates
+            .first()
+            .and_then(|c| c.content.as_ref())
+            .map(|c| {
+                c.parts
+                    .iter()
+                    .filter_map(|p| p.audio_transcription.as_ref())
+                    .flat_map(|at| at.words.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Extract full transcribed text if provided by the model.
+    #[must_use]
+    pub fn transcription_text(&self) -> Option<String> {
+        self.candidates
+            .first()
+            .and_then(|c| c.content.as_ref())
+            .and_then(|c| {
+                c.parts
+                    .iter()
+                    .filter_map(|p| p.audio_transcription.as_ref())
+                    .find_map(|at| at.text.clone())
+            })
     }
 
     pub fn required_text(&self) -> Result<String> {

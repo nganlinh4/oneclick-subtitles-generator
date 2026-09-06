@@ -12,3 +12,5 @@
 @import './lyrics/download-help.css';
 @import './lyrics/save-message.css';
 @import './lyrics/volume-visualizer.css';
+@import './lyrics/transcript.css';
+@import './lyrics/captionGrouping.css';

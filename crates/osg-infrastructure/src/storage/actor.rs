@@ -19,7 +19,10 @@ use osg_application::{
 };
 use osg_domain::{
     AssetId, JobId, JobSnapshot, MediaAsset, ProjectId, ProjectMetadata, RevisionReason,
-    SubtitleTrack,
+    SubtitleTrack, TranscriptRevisionId,
+};
+use super::transcripts::{
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
 };
 
 use super::error::DatabaseError;
@@ -43,7 +46,7 @@ const MAX_SETTINGS_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_SETTINGS_BATCH_ENTRIES: usize = 4_096;
 const MAX_SETTING_DELETE_KEYS: usize = 256;
 const APPLICATION_ID: i64 = 0x4f53_4732;
-const SCHEMA_VERSION: u32 = 14;
+const SCHEMA_VERSION: u32 = 15;
 const MINIMUM_SQLITE_VERSION: &str = "3.51.3";
 const MAX_MEDIA_RESOLUTION_BATCHES: usize = 64;
 const MAX_ARTIFACT_LIST_ITEMS: usize = 4_096;
@@ -471,6 +474,54 @@ enum Request {
     ListLegacyImports {
         reply: SyncSender<Result<Vec<LegacyImportSummary>, DatabaseError>>,
     },
+    TranscriptInsertRevision {
+        revision: TranscriptRevisionRecord,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    TranscriptGetRevision {
+        id: TranscriptRevisionId,
+        reply: SyncSender<Result<Option<TranscriptRevisionRecord>, DatabaseError>>,
+    },
+    TranscriptListRevisions {
+        project_id: ProjectId,
+        reply: SyncSender<Result<Vec<TranscriptRevisionRecord>, DatabaseError>>,
+    },
+    TranscriptUpdateRevisionState {
+        revision_id: TranscriptRevisionId,
+        state: String,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    TranscriptPromoteWindow {
+        revision_id: TranscriptRevisionId,
+        turns: Vec<TranscriptTurnRecord>,
+        words: Vec<TranscriptWordRecord>,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    TranscriptSaveCueMappings {
+        mappings: Vec<CueWordMappingRecord>,
+        reply: SyncSender<Result<(), DatabaseError>>,
+    },
+    TranscriptLoadCueMappings {
+        project_id: ProjectId,
+        reply: SyncSender<Result<Vec<CueWordMappingRecord>, DatabaseError>>,
+    },
+    TranscriptQueryActiveWord {
+        revision_id: TranscriptRevisionId,
+        time_ms: i64,
+        reply: SyncSender<Result<Option<TranscriptWordRecord>, DatabaseError>>,
+    },
+    TranscriptQueryWordsInRange {
+        revision_id: TranscriptRevisionId,
+        start_ms: i64,
+        end_ms: i64,
+        reply: SyncSender<Result<Vec<TranscriptWordRecord>, DatabaseError>>,
+    },
+    TranscriptQueryTurnsInRange {
+        revision_id: TranscriptRevisionId,
+        start_ms: i64,
+        end_ms: i64,
+        reply: SyncSender<Result<Vec<TranscriptTurnRecord>, DatabaseError>>,
+    },
     Backup {
         destination: PathBuf,
         reply: SyncSender<Result<(), DatabaseError>>,
@@ -559,6 +610,16 @@ impl std::fmt::Debug for Request {
             Self::RecordLegacyImportItem { .. } => "RecordLegacyImportItem",
             Self::FinishLegacyImport { .. } => "FinishLegacyImport",
             Self::ListLegacyImports { .. } => "ListLegacyImports",
+            Self::TranscriptInsertRevision { .. } => "TranscriptInsertRevision",
+            Self::TranscriptGetRevision { .. } => "TranscriptGetRevision",
+            Self::TranscriptListRevisions { .. } => "TranscriptListRevisions",
+            Self::TranscriptUpdateRevisionState { .. } => "TranscriptUpdateRevisionState",
+            Self::TranscriptPromoteWindow { .. } => "TranscriptPromoteWindow",
+            Self::TranscriptSaveCueMappings { .. } => "TranscriptSaveCueMappings",
+            Self::TranscriptLoadCueMappings { .. } => "TranscriptLoadCueMappings",
+            Self::TranscriptQueryActiveWord { .. } => "TranscriptQueryActiveWord",
+            Self::TranscriptQueryWordsInRange { .. } => "TranscriptQueryWordsInRange",
+            Self::TranscriptQueryTurnsInRange { .. } => "TranscriptQueryTurnsInRange",
             Self::Backup { .. } => "Backup",
             Self::Shutdown => "Shutdown",
         })
@@ -1511,6 +1572,114 @@ impl Database {
         })
     }
 
+    pub fn transcript_insert_revision(
+        &self,
+        revision: &TranscriptRevisionRecord,
+    ) -> Result<(), DatabaseError> {
+        self.request(|reply| Request::TranscriptInsertRevision {
+            revision: revision.clone(),
+            reply,
+        })
+    }
+
+    pub fn transcript_get_revision(
+        &self,
+        id: TranscriptRevisionId,
+    ) -> Result<Option<TranscriptRevisionRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptGetRevision { id, reply })
+    }
+
+    pub fn transcript_list_revisions(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<TranscriptRevisionRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptListRevisions { project_id, reply })
+    }
+
+    pub fn transcript_update_revision_state(
+        &self,
+        revision_id: TranscriptRevisionId,
+        state: &str,
+    ) -> Result<(), DatabaseError> {
+        let state = state.to_owned();
+        self.request(|reply| Request::TranscriptUpdateRevisionState {
+            revision_id,
+            state,
+            reply,
+        })
+    }
+
+    pub fn transcript_promote_window(
+        &self,
+        revision_id: TranscriptRevisionId,
+        turns: &[TranscriptTurnRecord],
+        words: &[TranscriptWordRecord],
+    ) -> Result<(), DatabaseError> {
+        self.request(|reply| Request::TranscriptPromoteWindow {
+            revision_id,
+            turns: turns.to_vec(),
+            words: words.to_vec(),
+            reply,
+        })
+    }
+
+    pub fn transcript_save_cue_mappings(
+        &self,
+        mappings: &[CueWordMappingRecord],
+    ) -> Result<(), DatabaseError> {
+        self.request(|reply| Request::TranscriptSaveCueMappings {
+            mappings: mappings.to_vec(),
+            reply,
+        })
+    }
+
+    pub fn transcript_load_cue_mappings(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<CueWordMappingRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptLoadCueMappings { project_id, reply })
+    }
+
+    pub fn transcript_query_active_word(
+        &self,
+        revision_id: TranscriptRevisionId,
+        time_ms: i64,
+    ) -> Result<Option<TranscriptWordRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptQueryActiveWord {
+            revision_id,
+            time_ms,
+            reply,
+        })
+    }
+
+    pub fn transcript_query_words_in_range(
+        &self,
+        revision_id: TranscriptRevisionId,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<Vec<TranscriptWordRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptQueryWordsInRange {
+            revision_id,
+            start_ms,
+            end_ms,
+            reply,
+        })
+    }
+
+    pub fn transcript_query_turns_in_range(
+        &self,
+        revision_id: TranscriptRevisionId,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<Vec<TranscriptTurnRecord>, DatabaseError> {
+        self.request(|reply| Request::TranscriptQueryTurnsInRange {
+            revision_id,
+            start_ms,
+            end_ms,
+            reply,
+        })
+    }
+
     pub fn prepare_legacy_import(
         &self,
         source_kind: LegacyImportSourceKind,
@@ -2245,6 +2414,104 @@ fn run_actor(
             }
             Request::ListLegacyImports { reply } => {
                 let _ = reply.send(super::legacy::list(&connection));
+            }
+            Request::TranscriptInsertRevision { revision, reply } => {
+                let res = (|| -> Result<(), DatabaseError> {
+                    let tx = connection
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                    super::transcripts::insert_transcript_revision(&tx, &revision)?;
+                    tx.commit()?;
+                    Ok(())
+                })();
+                let _ = reply.send(res);
+            }
+            Request::TranscriptGetRevision { id, reply } => {
+                let _ = reply.send(super::transcripts::get_transcript_revision(&connection, id));
+            }
+            Request::TranscriptListRevisions { project_id, reply } => {
+                let _ = reply.send(super::transcripts::list_transcript_revisions_for_project(
+                    &connection,
+                    project_id,
+                ));
+            }
+            Request::TranscriptUpdateRevisionState {
+                revision_id,
+                state,
+                reply,
+            } => {
+                let _ = reply.send(super::transcripts::update_transcript_revision_state(
+                    &connection,
+                    revision_id,
+                    &state,
+                ));
+            }
+            Request::TranscriptPromoteWindow {
+                revision_id,
+                turns,
+                words,
+                reply,
+            } => {
+                let res = (|| -> Result<(), DatabaseError> {
+                    let tx = connection
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                    super::transcripts::promote_window_results(&tx, revision_id, &turns, &words)?;
+                    tx.commit()?;
+                    Ok(())
+                })();
+                let _ = reply.send(res);
+            }
+            Request::TranscriptSaveCueMappings { mappings, reply } => {
+                let res = (|| -> Result<(), DatabaseError> {
+                    let tx = connection
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                    super::transcripts::save_cue_word_mappings(&tx, &mappings)?;
+                    tx.commit()?;
+                    Ok(())
+                })();
+                let _ = reply.send(res);
+            }
+            Request::TranscriptLoadCueMappings { project_id, reply } => {
+                let _ = reply.send(super::transcripts::load_cue_word_mappings_for_project(
+                    &connection,
+                    project_id,
+                ));
+            }
+            Request::TranscriptQueryActiveWord {
+                revision_id,
+                time_ms,
+                reply,
+            } => {
+                let _ = reply.send(super::transcripts::query_active_word(
+                    &connection,
+                    revision_id,
+                    time_ms,
+                ));
+            }
+            Request::TranscriptQueryWordsInRange {
+                revision_id,
+                start_ms,
+                end_ms,
+                reply,
+            } => {
+                let _ = reply.send(super::transcripts::query_words_in_range(
+                    &connection,
+                    revision_id,
+                    start_ms,
+                    end_ms,
+                ));
+            }
+            Request::TranscriptQueryTurnsInRange {
+                revision_id,
+                start_ms,
+                end_ms,
+                reply,
+            } => {
+                let _ = reply.send(super::transcripts::query_turns_in_range(
+                    &connection,
+                    revision_id,
+                    start_ms,
+                    end_ms,
+                ));
             }
             Request::Backup { destination, reply } => {
                 let _ = reply.send(backup_database(&connection, &destination));

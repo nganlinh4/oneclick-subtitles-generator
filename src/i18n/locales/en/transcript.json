@@ -1,0 +1,11 @@
+{
+  "unalignedTiming": "Unaligned timing",
+  "modifiedText": "Modified text",
+  "renameSpeaker": "Rename speaker",
+  "clickToRenameSpeaker": "Click to rename speaker across all turns",
+  "defaultSpeaker": "Speaker",
+  "playTurn": "Play from start of turn",
+  "noSpokenWords": "No spoken transcript available",
+  "transcribePrompt": "Transcribe speech to view turns, speakers, and timed words.",
+  "resumeFollow": "Playback at {{time}} • Resume follow"
+}

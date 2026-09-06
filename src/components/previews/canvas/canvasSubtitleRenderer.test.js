@@ -334,3 +334,76 @@ it('rebuilds a double border as two rings instead of replaying the solid-border 
     HTMLCanvasElement.prototype.getContext = original;
   }
 });
+
+it('renders word-reveal and word-highlight animation passes without errors', () => {
+  const contexts = new Map();
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = vi.fn(function getContext() {
+    if (!contexts.has(this)) contexts.set(this, contextFor(this));
+    return contexts.get(this);
+  });
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = 540;
+    const renderer = createCanvasSubtitleRenderer(canvas);
+    const atlasCanvas = document.createElement('canvas');
+    const atlasEntry = {
+      canvas: atlasCanvas,
+      atlas: {
+        face: { fontSizePx: 48 },
+        metrics: { lineHeightPx: 58 },
+        layout: {
+          textAlign: 'center',
+          lines: [{
+            advanceWidthPx: 60,
+            baselineYPx: 40,
+            glyphs: [0, 1],
+            penXPx: [0, 30],
+          }],
+        },
+        glyphs: [
+          { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10, originXPx: 0, originYPx: 10 },
+          { xPx: 10, yPx: 0, widthPx: 10, heightPx: 10, originXPx: 0, originYPx: 10 },
+        ],
+      },
+    };
+    const cue = {
+      id: 'c1',
+      start: 1.0,
+      end: 3.0,
+      text: 'Hello world',
+      words: [
+        { id: 'w1', text: 'Hello', start_ms: 1000, end_ms: 1800 },
+        { id: 'w2', text: 'world', start_ms: 1900, end_ms: 2800 },
+      ],
+    };
+
+    // Test word-reveal
+    const resReveal = renderer.draw({
+      video: { videoWidth: 640, videoHeight: 360, readyState: 4 },
+      composition: { width: 640, height: 360 },
+      crop: { x: 0, y: 0, width: 100, height: 100 },
+      atlasEntry,
+      customization: { ...defaultCustomization, animationType: 'word-reveal' },
+      active: { cue, instant: 1.5, phase: 'holding', progress: 1, eased: 1 },
+      cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
+    });
+    expect(resReveal.overlayRebuilt).toBe(true);
+
+    // Test word-highlight
+    const resHighlight = renderer.draw({
+      video: { videoWidth: 640, videoHeight: 360, readyState: 4 },
+      composition: { width: 640, height: 360 },
+      crop: { x: 0, y: 0, width: 100, height: 100 },
+      atlasEntry,
+      customization: { ...defaultCustomization, animationType: 'word-highlight', highlightColor: '#B4B5FF' },
+      active: { cue, instant: 1.5, phase: 'holding', progress: 1, eased: 1 },
+      cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
+    });
+    expect(resHighlight.overlayRebuilt).toBe(true);
+  } finally {
+    HTMLCanvasElement.prototype.getContext = original;
+  }
+});

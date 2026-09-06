@@ -332,6 +332,8 @@ pub enum AnimationType {
     Flip,
     Rotate,
     Typewriter,
+    WordReveal,
+    WordHighlight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

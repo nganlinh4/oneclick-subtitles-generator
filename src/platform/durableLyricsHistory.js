@@ -41,6 +41,7 @@ export const LYRICS_EDITOR_ACTIONS = Object.freeze({
   CHECKPOINT: 'checkpoint',
   APPLY_TIMINGS: 'apply timings',
   EXTERNAL_MERGE: 'external merge',
+  REGROUP: 'regroup',
 });
 
 const ACTIONS = new Set(Object.values(LYRICS_EDITOR_ACTIONS));
