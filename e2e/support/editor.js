@@ -130,8 +130,23 @@ export const whatIsAt = async (selector) => browser.execute((target) => {
   const centreX = rect.left + rect.width / 2;
   const centreY = rect.top + rect.height / 2;
   const centre = document.elementFromPoint(centreX, centreY);
+  let clippedByScrollContainer = false;
+  for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+    const style = window.getComputedStyle(parent);
+    const box = parent.getBoundingClientRect();
+    const left = box.left + parent.clientLeft;
+    const top = box.top + parent.clientTop;
+    if ((/auto|scroll/u.test(style.overflowY) && parent.scrollHeight > parent.clientHeight
+        && (centreY < top || centreY >= top + parent.clientHeight))
+      || (/auto|scroll/u.test(style.overflowX) && parent.scrollWidth > parent.clientWidth
+        && (centreX < left || centreX >= left + parent.clientWidth))) {
+      clippedByScrollContainer = true;
+      break;
+    }
+  }
   return {
     present: true,
+    clippedByScrollContainer,
     rect: {
       x: Math.round(rect.x), y: Math.round(rect.y),
       w: Math.round(rect.width), h: Math.round(rect.height),
@@ -166,7 +181,7 @@ export const clickControl = async (selector, { timeout = 30_000 } = {}) => {
   const control = await $(selector);
   await control.waitForExist({ timeout, timeoutMsg: `${selector} never appeared` });
   const initialState = await whatIsAt(selector);
-  if (!initialState.inViewport) {
+  if (!initialState.inViewport || initialState.clippedByScrollContainer) {
     const scrolled = await browser.execute((target) => {
       const node = document.querySelector(target);
       if (node === null) return false;
@@ -178,7 +193,7 @@ export const clickControl = async (selector, { timeout = 30_000 } = {}) => {
     try {
       await browser.waitUntil(async () => {
         scrolledState = await whatIsAt(selector);
-        return scrolledState.inViewport;
+        return scrolledState.inViewport && !scrolledState.clippedByScrollContainer;
       }, {
         timeout,
         interval: 50,

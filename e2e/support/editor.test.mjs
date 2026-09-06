@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { clickControl, waitForAutomationWindowIsolation } from './editor.js';
 
-const withControlHarness = async ({ inViewport }, exercise) => {
+const withControlHarness = async ({ inViewport, clippedByScrollContainer = false }, exercise) => {
   const priorBrowser = globalThis.browser;
   const priorDollar = globalThis.$;
   const calls = { clicks: 0, scrolls: [] };
@@ -23,6 +23,7 @@ const withControlHarness = async ({ inViewport }, exercise) => {
       return {
         present: true,
         inViewport: inViewport || scrolled,
+        clippedByScrollContainer: clippedByScrollContainer && !scrolled,
         disabled: false,
         intercepting: null,
       };
@@ -52,6 +53,14 @@ test('clickControl scrolls an off-screen control only as far as needed', async (
   await withControlHarness({ inViewport: false }, async (calls) => {
     await clickControl('.below-the-fold-button');
     assert.deepEqual(calls.scrolls, [{ behavior: 'instant', block: 'nearest', inline: 'nearest' }]);
+    assert.equal(calls.clicks, 1);
+  });
+});
+
+test('clickControl scrolls an option clipped by its menu even inside the page viewport', async () => {
+  await withControlHarness({ inViewport: true, clippedByScrollContainer: true }, async (calls) => {
+    await clickControl('[role="option"]');
+    assert.equal(calls.scrolls.length, 1);
     assert.equal(calls.clicks, 1);
   });
 });

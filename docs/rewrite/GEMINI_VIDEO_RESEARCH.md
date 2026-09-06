@@ -3,6 +3,57 @@
 This work is independent of legacy-main parity. Checkpoint before changes:
 `9eecdbee` (worktree was clean).
 
+## September 6 follow-up: measured completion and transcription controls
+
+The 1-FPS IS1009a/3.8 real-app run at
+`target/subtitle-benchmark/ui-runs/2026-09-06T08-06-01-710Z` completed with STOP,
+305 generated words, 85.76% aligned reference coverage and median absolute
+caption start/end differences of 545/860 ms. Earlier requests ended mid-JSON
+without STOP, including an independent request outside the app parser.
+Do not call increased FPS a proven universal fix or accept a truncated response
+merely because some complete cue objects arrived. Completion and quality are
+separate measurements.
+
+Real-app follow-up runs exercised Korean transcription, Korean-to-Vietnamese
+translation, lyrics, OCR, scene descriptions and chaptering. Evidence is under
+the `2026-09-06T08-*` UI-run directories. The diarization attempt exposed a
+harness visibility error: the option centre was inside the browser viewport
+but outside its scrollable menu. The fix scrolls that ancestor normally; it
+does not force-click through overlays or change the production dropdown.
+
+### Newly discovered dedicated transcription model
+
+[The transcription guide](https://ai.google.dev/gemini-api/docs/transcribe) and
+[its generateContent counterpart](https://ai.google.dev/gemini-api/docs/generate-content/transcribe)
+document `gemini-3.5-transcribe`. It produces word annotations rather than
+prompt-generated caption timestamps. `wordTimestamp: true` and `diarization`
+belong under `generationConfig.audioTranscriptionConfig` on generateContent;
+Interactions uses a different transcription-config shape. Smart cleanup and
+custom vocabulary cannot be combined with the timestamp path. Do not copy
+those controls into ordinary Flash requests.
+
+Live model metadata reports 98,304 input tokens and 32,768 output tokens, not
+the general Flash catalog's 1M/65K limits. Both generateContent and its SSE
+endpoint returned word annotations; the stream ended with STOP. The measured
+60-second meeting result had 86.73% reference coverage and matched-word median
+absolute start/end errors of 60/60 ms. The music result had 87.76% coverage and
+47/58 ms. These word-level statistics are not directly equivalent to existing
+caption-level statistics. Korean has reference text only, so no timing score
+is claimed; misrecognized words remain in the result rather than being fixed
+from the answer key.
+
+Reproduce with `node scripts/benchmark-gemini-transcribe.mjs 1` (or 20 configured
+slots). This is an explicitly billed provider-only benchmark, not a shipping
+app journey. References never enter provider requests. There is no retry or
+key rotation on quota failure. It preserves per-request evidence and fails
+when termination or annotations are absent. Application integration, native
+word-to-caption grouping, preset compatibility, cancellation and long-duration
+coverage are still required before this model belongs in the shipping picker.
+
+The agentic/static control is independent of media resolution. Agentic
+processing must be confirmed by actual processing steps, not inferred from
+request acceptance. No agentic production adapter is claimed here.
+
 ## Verified sources and decisions
 
 - [Gemini 3.8 model contract](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash):
