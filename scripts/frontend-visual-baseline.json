@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "bef78d5a942f881419e97946bd1676145fd9a6fe",
+  "baselineRevision": "6243c3356fb4bdce25be005ee2ee4d4c762d4234",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -516,7 +516,7 @@
       ]
     },
     "src/i18n/locales/en/errors.json": {
-      "hash": "f4628a28bf5b30aed6b0ba3aebad79e2914da72b08610308509b0d795578c483",
+      "hash": "cd2a4e3eb3063ecc52732442ad4eb5d2215a64fc8d0711d0cb06e99f250acc0f",
       "keys": [
         "allRequestsAborted",
         "apiKeyRequired",
@@ -525,6 +525,7 @@
         "contentBlocked",
         "fileSizeTooLarge",
         "geminiApiKeyRequired",
+        "geminiIncompleteOutput",
         "geminiOverloaded",
         "geminiQuotaExceeded",
         "geminiQuotaExceededWithRetry",
@@ -2835,7 +2836,7 @@
       ]
     },
     "src/i18n/locales/ko/errors.json": {
-      "hash": "6c2db6b6a0ecf179cfe58ef4f74a6834b6ac4ef76d0502d0b6fbf678ca6b5c78",
+      "hash": "9bb99d35a1196b537f2a9b60fe0485567a88e4eaaca5a02923cfec2329134834",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -2846,6 +2847,7 @@
         "contentBlocked",
         "fileSizeTooLarge",
         "geminiApiKeyRequired",
+        "geminiIncompleteOutput",
         "geminiOverloaded",
         "geminiQuotaExceeded",
         "geminiQuotaExceededWithRetry",
@@ -5415,7 +5417,7 @@
       ]
     },
     "src/i18n/locales/vi/errors.json": {
-      "hash": "1b717328299821eb99e5de7517fe60d95a6caab09d71d166e9eaf75cfbe70b88",
+      "hash": "60bab3c358fa8959c492d1a77b58fbe3e8a5a15a89fb83224fe69d2a233f6024",
       "keys": [
         "activeProjectChanged",
         "allRequestsAborted",
@@ -5426,6 +5428,7 @@
         "contentBlocked",
         "fileSizeTooLarge",
         "geminiApiKeyRequired",
+        "geminiIncompleteOutput",
         "geminiOverloaded",
         "geminiQuotaExceeded",
         "geminiQuotaExceededWithRetry",
