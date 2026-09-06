@@ -122,7 +122,9 @@ describe('real UI media transcription benchmark', () => {
       assert.equal(await selected(), audioOnly, 'Retry changed the chosen input mode');
       await clickControl('[data-osg-action="process-subtitles"]');
     }
+    let terminalError = null;
     await browser.waitUntil(async () => {
+      try {
       const state = durableState(root);
       const jobs = state.jobs.filter(job => !prior.has(job.id) && job.kind === 'transcribe');
       assert.ok(jobs.length <= Math.ceil(config.durationSeconds / (config.requestMinutes * 60)),
@@ -165,7 +167,14 @@ describe('real UI media transcription benchmark', () => {
       finalState = state;
       return jobs.length > 0 && jobs.every(job => job.state === 'succeeded')
         && !surface.processing && state.counts.cues > 0;
+      } catch (error) {
+        // WebDriver retries thrown condition errors until timeout. Settle first,
+        // then throw outside waitUntil so an already-failed job ends promptly.
+        terminalError = error;
+        return true;
+      }
     }, { timeout: 20 * 60_000, interval: 1000, timeoutMsg: 'Real media generation did not settle successfully' });
+    if (terminalError) throw terminalError;
     const report = { fixture: config.fixture, model: config.model, mode: config.mode,
       preset: config.preset ?? 'general', fps: config.fps ?? 0.25,
       providerDiagnostics: existsSync(join(root, 'logs', 'osg.log'))

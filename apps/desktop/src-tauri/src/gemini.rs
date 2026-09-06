@@ -674,13 +674,20 @@ async fn run_gemini(
         let mut next_progress_bytes = 512 * 1024;
         let mut channel_open = true;
         let mut completion = osg_gemini::TextStreamCompletion::default();
+        let record_completion_failure = |error: &osg_gemini::Error| {
+            let reason = match error {
+                osg_gemini::Error::IncompleteTextOutput { reason } => *reason,
+                _ => "unexpected",
+            };
+            diagnostics::record(
+                "gemini.termination",
+                &[("job", job_id.to_string()), ("reason", reason.to_owned())],
+            );
+        };
         while let Some(response) = stream.next().await {
             let response = response?;
             if let Err(error) = completion.observe(&response) {
-                diagnostics::record(
-                    "gemini.termination",
-                    &[("job", job_id.to_string()), ("reason", error.to_string())],
-                );
+                record_completion_failure(&error);
                 return Err(error.into());
             }
             if let Some(next_usage) = &response.usage_metadata {
@@ -714,10 +721,7 @@ async fn run_gemini(
             send_chunk_advisory(channel, &mut channel_open, job_id, chunk);
         }
         if let Err(error) = completion.finish() {
-            diagnostics::record(
-                "gemini.termination",
-                &[("job", job_id.to_string()), ("reason", error.to_string())],
-            );
+            record_completion_failure(&error);
             return Err(error.into());
         }
         diagnostics::record(
