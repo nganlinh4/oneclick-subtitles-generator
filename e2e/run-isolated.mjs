@@ -47,6 +47,17 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'transcriptionRulesAndAnalysis.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',
+  'wordNativeAudioRangeProjection.journey.js',
+  'wordNativeCancelRetrySwitch.journey.js',
+  'wordNativeEditReflowOffline.journey.js',
+  'wordNativeFreshVideoSpeech.journey.js',
+  'wordNativeMultilingualSpeakers.journey.js',
+  'wordNativeParallelLongRecording.journey.js',
+  'wordNativePreviewDecodedExport.journey.js',
+  'wordNativeRefusalsRecovery.journey.js',
+  'wordNativeSaveRelaunchMigration.journey.js',
+  'wordNativeTranslationVisualCustom.journey.js',
+  'wordNativeVerticalSlice.journey.js',
 ]);
 
 const fail = (message) => {

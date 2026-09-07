@@ -34,6 +34,7 @@ test('every journey has exactly the media classification its shipping actions re
   );
   assert.deepEqual(classified.custom, [
     'geminiBackgroundImageSuccess.journey.js',
+    'geminiMediaBenchmark.journey.js',
     'geminiMultiWindowTranscription.journey.js',
     'longMediaOperationRecovery.journey.js',
     'longMediaResourceBounds.journey.js',

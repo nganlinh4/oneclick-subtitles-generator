@@ -46,11 +46,22 @@ const GENERIC_REAL_MEDIA = new Set([
   'translatedDocumentExports.journey.js',
   'translationPersistence.journey.js',
   'unicodeCues.journey.js',
+  'wordNativeAudioRangeProjection.journey.js',
+  'wordNativeCancelRetrySwitch.journey.js',
+  'wordNativeEditReflowOffline.journey.js',
+  'wordNativeFreshVideoSpeech.journey.js',
+  'wordNativeMultilingualSpeakers.journey.js',
+  'wordNativeParallelLongRecording.journey.js',
+  'wordNativePreviewDecodedExport.journey.js',
+  'wordNativeRefusalsRecovery.journey.js',
+  'wordNativeSaveRelaunchMigration.journey.js',
+  'wordNativeTranslationVisualCustom.journey.js',
+  'wordNativeVerticalSlice.journey.js',
 ]);
 
 const CUSTOM_STAGED_MEDIA = new Set([
-  'geminiMediaBenchmark.journey.js',
   'geminiBackgroundImageSuccess.journey.js',
+  'geminiMediaBenchmark.journey.js',
   'geminiMultiWindowTranscription.journey.js',
   'longMediaOperationRecovery.journey.js',
   'longMediaResourceBounds.journey.js',

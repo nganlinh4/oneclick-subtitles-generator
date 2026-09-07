@@ -33,14 +33,14 @@ describe('Customer Journey 8: Translation and preserved visual/custom tasks', ()
     }
 
     // 3. Select Visual/Custom task
-    const visualTab = await $('[data-task-tab="visual-custom"]');
+    const visualTab = await $('[data-task-tab="visual"]');
     if (await visualTab.isDisplayed()) {
       await visualTab.click();
       await captureWorkflowStep(WORKFLOW, '03_visual_custom_tab_active');
     }
 
     // Close modal
-    const closeBtn = await $('[data-osg-action="close-modal"]');
+    const closeBtn = await $('.create-subtitles-modal .creation-btn-secondary, .create-subtitles-modal .close-button');
     if (await closeBtn.isDisplayed()) {
       await closeBtn.click();
     }
