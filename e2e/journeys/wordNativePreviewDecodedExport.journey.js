@@ -39,7 +39,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     await openProjectWithMedia();
     await importSubtitles(SUBTITLE_FIXTURE);
 
-    await captureWorkflowStep(WORKFLOW, '01_preview_with_cues');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-preview-with-cues',
+      description: 'Project loaded with subtitles fixture and video.',
+    });
 
     // 1. Move player into cue position and wait for canvas subtitle frame
     await seekPreviewTo(COMPARE_AT_SECONDS);
@@ -49,13 +53,21 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       previewPath,
       '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
     );
-    await captureWorkflowStep(WORKFLOW, '02_canvas_frame_rendered');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-canvas-frame-rendered',
+      description: 'Canvas-atlas subtitle frame rendered at 1s instant.',
+    });
 
     // 2. Open Render section
     await clickControl('.render-video-toggle');
     const controls = await $('.video-rendering-section.expanded .native-render-controls');
     await controls.waitForDisplayed({ timeout: 60_000 });
-    await captureWorkflowStep(WORKFLOW, '03_export_controls_expanded');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-export-controls-expanded',
+      description: 'Export controls expanded with native preview and preset options.',
+    });
 
     // 3. Submit render
     const renderSelector = '.video-rendering-section.expanded button[data-osg-action="render-video"]';
@@ -63,7 +75,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     await renderButton.waitForDisplayed({ timeout: 30_000 });
     assert.equal(await renderButton.isEnabled(), true, 'Render must be enabled');
     await clickControl(renderSelector);
-    await captureWorkflowStep(WORKFLOW, '04_render_submitted');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-render-submitted',
+      description: 'Render job submitted into queue.',
+    });
 
     // 4. Wait for terminal completion
     const terminal = await $('.video-rendering-section .queue-item.completed, .video-rendering-section .queue-item.failed');
@@ -73,7 +89,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     });
     const terminalClass = await terminal.getAttribute('class');
     assert.match(terminalClass, /(?:^|\s)completed(?:\s|$)/, 'Render job did not complete successfully');
-    await captureWorkflowStep(WORKFLOW, '05_render_completed');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '05-render-completed',
+      description: 'Render job reached terminal completion.',
+    });
 
     // 5. Download exported MP4
     const beforeFiles = listMediaFiles(destination);
@@ -84,7 +104,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       return exported !== null;
     }, { timeout: 120_000, interval: 1_000 });
     assert.ok(exported, 'Exported MP4 was not saved to destination');
-    await captureWorkflowStep(WORKFLOW, '06_exported_file_saved');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '06-exported-file-saved',
+      description: 'Exported MP4 saved to staged destination.',
+    });
 
     // 6. Independently probe exported video
     const probe = probeMedia(exported);
@@ -100,6 +124,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
     const ssim = compareFrames(previewPath, exportFramePath);
     assert.ok(ssim >= 0.85, `SSIM ${ssim} between preview and decoded export frame is below threshold`);
-    await captureWorkflowStep(WORKFLOW, '07_decoded_frame_verified');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '07-decoded-frame-verified',
+      description: 'Exported frame extracted via ffmpeg and verified matching preview.',
+      details: { ssim, bytes: Number(probe.format.size) },
+    });
   });
 });

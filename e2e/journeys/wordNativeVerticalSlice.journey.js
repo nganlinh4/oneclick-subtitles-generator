@@ -68,7 +68,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       // === PHASE 1: Import, Transcribe, Word-Seek, Save ===
       await openProjectWithMedia();
       await enrollGeminiCredentials({ limit: 1 });
-      await captureWorkflowStep(WORKFLOW, '01_fresh_video_opened');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '01-fresh-video-opened',
+        description: 'Fresh real video opened in editor with Gemini credentials enrolled.',
+      });
 
       // Open Create Subtitles modal
       await clickControl('[data-osg-action="generate-subtitles"]');
@@ -83,7 +87,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       const engineSelect = await $('#speech-engine-select');
       await engineSelect.waitForDisplayed({ timeout: 10_000 });
       await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
-      await captureWorkflowStep(WORKFLOW, '02_transcribe_engine_selected');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '02-transcribe-engine-selected',
+        description: 'Speech task and Gemini Transcribe word-native engine explicitly selected.',
+      });
 
       // Submit transcription request
       await clickControl('[data-osg-action="process-subtitles"]');
@@ -101,7 +109,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
         timeoutMsg: 'Gemini transcription did not deliver captions within timeout',
       });
 
-      await captureWorkflowStep(WORKFLOW, '03_captions_arrived');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '03-captions-arrived',
+        description: 'Captions arrived with native words reconciled to database persistence.',
+      });
       assert.ok(surface.cues.length > 0, 'Captions must be visible in editing area');
       assert.ok(durable.counts.cues > 0, 'Cues must be persisted in database');
 
@@ -110,7 +122,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       await transcriptToggle.waitForDisplayed({ timeout: 10_000 });
       await transcriptToggle.click();
       await browser.pause(500);
-      await captureWorkflowStep(WORKFLOW, '04_transcript_view_active');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '04-transcript-view-active',
+        description: 'Switched to transcript view showing native recognized words.',
+      });
 
       const wordEls = await $$('.transcript-word');
       assert.ok(wordEls.length > 0, 'Transcript words must be rendered');
@@ -140,7 +156,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
         Math.abs(updatedSurface.currentTimeMs - expectedStartMs) <= 500,
         `Player time ${updatedSurface.currentTimeMs}ms must seek close to word start ${expectedStartMs}ms`,
       );
-      await captureWorkflowStep(WORKFLOW, '05_word_seek_verified');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '05-word-seek-verified',
+        description: 'Clicked recognized word and verified video player seeks to word timestamp.',
+      });
 
       // Explicitly save project
       await clickControl('[data-osg-action="save-project"]');
@@ -148,7 +168,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       const savedDurable = durableState(root);
       assert.equal(savedDurable.counts.projects, 1, 'Exactly one project must be persisted');
       assert.ok(savedDurable.counts.cues > 0, 'Cues must be persisted in database');
-      await captureWorkflowStep(WORKFLOW, '06_project_saved');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '06-project-saved',
+        description: 'Project explicitly saved with native words and cues in SQLite.',
+      });
       return;
     }
 
@@ -172,7 +196,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       timeoutMsg: 'The project did not restore in a new process',
     });
 
-    await captureWorkflowStep(WORKFLOW, '07_relaunched_project_restored');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '07-relaunched-project-restored',
+      description: 'Second desktop process restored identical project, media, and captions without re-generation.',
+    });
 
     // Verify project identity, media duration, and cue count without another paid generation
     const restored = durableState(root);
@@ -192,7 +220,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       previewPath,
       '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
     );
-    await captureWorkflowStep(WORKFLOW, '08_preview_canvas_rendered');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '08-preview-canvas-rendered',
+      description: 'Canvas-atlas preview frame rendered at 1s instant.',
+    });
 
     // Open native render / export section
     await clickControl('.render-video-toggle');
@@ -201,7 +233,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       timeout: 60_000,
       timeoutMsg: 'Render section never published its controls',
     });
-    await captureWorkflowStep(WORKFLOW, '09_export_controls_expanded');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '09-export-controls-expanded',
+      description: 'Export controls expanded with native player and presets visible.',
+    });
 
     // Submit render job
     const renderSelector = '.video-rendering-section.expanded button[data-osg-action="render-video"]';
@@ -209,7 +245,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     await renderButton.waitForDisplayed({ timeout: 30_000 });
     assert.equal(await renderButton.isEnabled(), true, 'Render button must be enabled');
     await clickControl(renderSelector);
-    await captureWorkflowStep(WORKFLOW, '10_export_submitted');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '10-export-submitted',
+      description: 'Render job admitted into native queue.',
+    });
 
     // Wait for render terminal completion
     const terminal = await $('.video-rendering-section .queue-item.completed, .video-rendering-section .queue-item.failed');
@@ -219,7 +259,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     });
     const terminalClass = await terminal.getAttribute('class');
     assert.match(terminalClass, /(?:^|\s)completed(?:\s|$)/, 'Export job failed or did not complete');
-    await captureWorkflowStep(WORKFLOW, '11_export_completed');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '11-export-completed',
+      description: 'Export job reached visible terminal completion in queue.',
+    });
 
     // Download exported MP4 into staged destination
     assert.ok(destination, 'OSG_E2E_MEDIA_DESTINATION must be configured');
@@ -235,7 +279,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       timeoutMsg: 'Exported MP4 was not saved to staged destination',
     });
     assert.ok(exported, 'Exported MP4 file missing');
-    await captureWorkflowStep(WORKFLOW, '12_exported_file_saved');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '12-exported-file-saved',
+      description: 'Exported MP4 saved to staged destination.',
+    });
 
     // Independently probe exported video
     const probe = probeMedia(exported);
@@ -256,6 +304,11 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
     const ssim = compareFrames(previewPath, exportFramePath);
     assert.ok(ssim >= 0.85, `SSIM ${ssim} between preview and decoded export frame is below threshold`);
-    await captureWorkflowStep(WORKFLOW, '13_decoded_frame_verified');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '13-decoded-frame-verified',
+      description: 'Exported frame extracted via ffmpeg and verified matching preview subtitle rendering.',
+      details: { ssim, durationSeconds: duration, bytes: Number(probe.format.size) },
+    });
   });
 });
