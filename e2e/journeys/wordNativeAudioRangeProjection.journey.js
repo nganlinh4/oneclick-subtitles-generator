@@ -70,21 +70,25 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       await sliderTrack.click();
       await browser.keys(['Home']);
 
+      // Ensure React controlled state receives 30 via keyboard event dispatch on the slider track
+      // and change event on the underlying range input
+      await browser.execute((trackSel, inputSel) => {
+        const track = document.querySelector(trackSel);
+        if (track) {
+          track.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+        }
+        const input = document.querySelector(inputSel);
+        if (input) {
+          const tracker = input._valueTracker;
+          if (tracker) tracker.setValue('120');
+          input.value = '30';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }, '[data-osg-range-id="speech-window-duration-slider"]', '[data-osg-action="speech-window-duration-slider"]');
+
       const sliderInput = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
       let val = await sliderInput.getValue();
-      if (String(val) !== '30') {
-        await browser.execute((sel) => {
-          const el = document.querySelector(sel);
-          if (el) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-            if (nativeSetter) nativeSetter.call(el, '30');
-            else el.value = '30';
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        }, '[data-osg-action="speech-window-duration-slider"]');
-      }
-
       await browser.waitUntil(async () => {
         val = await sliderInput.getValue();
         return String(val) === '30';
@@ -290,8 +294,24 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     const engineSelectFinal = await $('#speech-engine-select');
     await engineSelectFinal.waitForDisplayed({ timeout: 10_000 });
     await engineSelectFinal.selectByAttribute('value', 'gemini-3.5-transcribe');
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.value = 'gemini-3.5-transcribe';
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, '#speech-engine-select');
 
     await configureWindowDuration30s();
+
+    // Verify modal summary explicitly confirms Gemini Transcribe and range before clicking create
+    const summaryEl = await $('.creation-summary-text');
+    await summaryEl.waitForDisplayed({ timeout: 5_000 });
+    const summaryText = await summaryEl.getText();
+    assert.ok(
+      summaryText.includes('Gemini Transcribe'),
+      `Modal summary must confirm Gemini Transcribe: "${summaryText}"`,
+    );
 
     await clickControl('[data-osg-action="process-subtitles"]');
 
