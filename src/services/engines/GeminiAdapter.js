@@ -1,5 +1,9 @@
 import { bindGeminiTranscriptionDeliveries } from '../gemini/transcriptionDelivery';
 import {
+  createRequestController,
+  removeRequestController,
+} from '../gemini/requestManagement';
+import {
   cancelWordNativeTranscription,
   isNativeWordTranscriptionSupported,
   startWordNativeTranscription,
@@ -104,12 +108,18 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
 
   if (isNativeWordTranscriptionSupported() && isExplicitTranscribe) {
     return new Promise((resolve, reject) => {
+      const requestCtrl = createRequestController(options?.signal);
       let taskId = null;
       let finished = false;
       let currentCues = [];
       let allWords = [];
       let allTurns = [];
       let latestRevisionId = null;
+
+      const cleanup = () => {
+        removeRequestController(requestCtrl.requestId);
+        requestCtrl.signal.removeEventListener('abort', onAbort);
+      };
 
       const finish = (result) => {
         if (finished) return;
@@ -129,18 +139,14 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         if (taskId) {
           Promise.resolve().then(() => cancelWordNativeTranscription(taskId)).catch(() => {});
         }
-        fail(aborted(options?.signal));
+        fail(aborted(requestCtrl.signal));
       };
 
-      const cleanup = () => {
-        options?.signal?.removeEventListener?.('abort', onAbort);
-      };
-
-      if (options?.signal?.aborted) {
-        fail(aborted(options.signal));
+      if (requestCtrl.signal.aborted) {
+        onAbort();
         return;
       }
-      options?.signal?.addEventListener?.('abort', onAbort, { once: true });
+      requestCtrl.signal.addEventListener('abort', onAbort, { once: true });
 
       startWordNativeTranscription({
         projectId: options?.projectId,
