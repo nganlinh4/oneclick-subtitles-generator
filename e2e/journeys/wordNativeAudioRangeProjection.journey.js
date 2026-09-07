@@ -21,18 +21,26 @@ describe('Customer Journey 2: Audio source and selected nonzero range with exact
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 1 });
 
-    await captureWorkflowStep(WORKFLOW, '01_media_loaded');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-media-loaded',
+      description: 'Media loaded into editor',
+    });
 
     // 1. Open Create Subtitles dialog
     await clickControl('[data-osg-action="generate-subtitles"]');
 
-    // 2. Select Range scope (e.g. 10s to 30s)
-    const scopeDropdown = await $('[data-osg-action="select-transcription-scope"]');
-    if (await scopeDropdown.isDisplayed()) {
-      await scopeDropdown.selectByVisibleText('Selected range');
+    // 2. Select Range scope if available
+    const scopeBtn = await $('[data-osg-action="scope-selected-range"]');
+    if (await scopeBtn.isDisplayed()) {
+      await scopeBtn.click();
     }
 
-    await captureWorkflowStep(WORKFLOW, '02_scope_range_selected');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-scope-range-selected',
+      description: 'Transcription scope selected',
+    });
     await clickControl('[data-osg-action="process-subtitles"]');
 
     // 3. Wait for captions to settle
@@ -41,7 +49,11 @@ describe('Customer Journey 2: Audio source and selected nonzero range with exact
       return durable.counts.cues > 0;
     }, { timeout: 180_000, interval: 1_000 });
 
-    await captureWorkflowStep(WORKFLOW, '03_cues_derived_within_range');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-cues-derived-within-range',
+      description: 'Cues arrived and verified within range',
+    });
 
     const state = durableState(root);
     assert.ok(state.cues.length > 0);

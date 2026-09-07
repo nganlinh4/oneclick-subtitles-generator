@@ -21,7 +21,11 @@ describe('Customer Journey 6: Cancel, retry, and project switching', () => {
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 2 });
 
-    await captureWorkflowStep(WORKFLOW, '01_project_started');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-project-started',
+      description: 'Project started with media loaded and credentials enrolled',
+    });
 
     // 1. Start generation
     await clickControl('[data-osg-action="generate-subtitles"]');
@@ -32,7 +36,11 @@ describe('Customer Journey 6: Cancel, retry, and project switching', () => {
     await cancelBtn.waitForClickable({ timeout: 15_000 });
     await cancelBtn.click();
 
-    await captureWorkflowStep(WORKFLOW, '02_cancelled_cleanly');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-cancelled-cleanly',
+      description: 'Transcription cancelled cleanly without error toasts',
+    });
 
     // Assert: No red error banner displayed
     const errorToasts = await $$('.toast-error');
@@ -42,7 +50,11 @@ describe('Customer Journey 6: Cancel, retry, and project switching', () => {
     const retryBtn = await $('[data-osg-action="retry-transcription"]');
     if (await retryBtn.isDisplayed()) {
       await retryBtn.click();
-      await captureWorkflowStep(WORKFLOW, '03_retry_triggered');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '03-retry-triggered',
+        description: 'Retry triggered cleanly',
+      });
     }
   });
 });

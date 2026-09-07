@@ -20,7 +20,11 @@ describe('Customer Journey 8: Translation and preserved visual/custom tasks', ()
     await openProjectWithMedia();
     await importSubtitles(SUBTITLE_FIXTURE);
 
-    await captureWorkflowStep(WORKFLOW, '01_source_track_ready');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-source-track-ready',
+      description: 'Source track ready with imported subtitles',
+    });
 
     // 1. Open Creation Dialog
     await clickControl('[data-osg-action="generate-subtitles"]');
@@ -29,14 +33,22 @@ describe('Customer Journey 8: Translation and preserved visual/custom tasks', ()
     const translateTab = await $('[data-task-tab="translate"]');
     if (await translateTab.isDisplayed()) {
       await translateTab.click();
-      await captureWorkflowStep(WORKFLOW, '02_translate_tab_active');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '02-translate-tab-active',
+        description: 'Translate task tab selected',
+      });
     }
 
     // 3. Select Visual/Custom task
     const visualTab = await $('[data-task-tab="visual"]');
     if (await visualTab.isDisplayed()) {
       await visualTab.click();
-      await captureWorkflowStep(WORKFLOW, '03_visual_custom_tab_active');
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '03-visual-custom-tab-active',
+        description: 'Visual and custom task tab selected',
+      });
     }
 
     // Close modal
@@ -44,6 +56,10 @@ describe('Customer Journey 8: Translation and preserved visual/custom tasks', ()
     if (await closeBtn.isDisplayed()) {
       await closeBtn.click();
     }
-    await captureWorkflowStep(WORKFLOW, '04_capabilities_verified');
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-capabilities-verified',
+      description: 'Modal closed and existing tasks preserved',
+    });
   });
 });

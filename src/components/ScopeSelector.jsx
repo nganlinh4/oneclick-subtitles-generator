@@ -110,6 +110,7 @@ export const ScopeSelector = ({
             type="button"
             className={`scope-button ${isWhole ? 'active' : ''}`}
             data-testid="scope-whole-video"
+            data-osg-action="scope-whole-video"
             onClick={() => onScopeChange?.('Whole video')}
           >
             {t('processing.scopeWholeVideo', 'Whole video')}
@@ -118,6 +119,7 @@ export const ScopeSelector = ({
             type="button"
             className={`scope-button ${!isWhole ? 'active' : ''}`}
             data-testid="scope-selected-range"
+            data-osg-action="scope-selected-range"
             onClick={() => onScopeChange?.('Selected range')}
           >
             {t('processing.scopeSelectedRange', 'Selected range')}

@@ -540,6 +540,7 @@ export const CreateSubtitlesModal = ({
               <button
                 type="button"
                 className="creation-btn creation-btn-danger"
+                data-osg-action="cancel-generation"
                 onClick={bridge.cancelTranscription}
                 disabled={bridge.isCancelling}
               >
