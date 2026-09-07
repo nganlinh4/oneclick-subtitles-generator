@@ -26,7 +26,7 @@ import {
 } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
-const COMPARE_AT_SECONDS = 1.0;
+const COMPARE_AT_SECONDS = 2.0;
 const PHASE = process.env.OSG_E2E_PERSISTENCE_PHASE;
 const WORKFLOW = 'word-native-vertical-slice';
 
@@ -224,7 +224,7 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     // Seek player to nonzero comparison time and capture preview canvas frame
     await seekPreviewTo(COMPARE_AT_SECONDS);
     await waitForCanvasSubtitleFrame(120_000);
-    const previewPath = join(root, 'evidence', 'preview-at-1s.png');
+    const previewPath = join(root, 'evidence', 'preview-at-2s.png');
     await savePreviewElementFrame(
       previewPath,
       '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
@@ -232,7 +232,7 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '08-preview-canvas-rendered',
-      description: 'Canvas-atlas preview frame rendered at 1s instant.',
+      description: 'Canvas-atlas preview frame rendered at 2s instant.',
     });
 
     // Open native render / export section
@@ -309,7 +309,7 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     );
 
     // Independently decode frame with ffmpeg and compare visible subtitles
-    const exportFramePath = join(root, 'evidence', 'export-at-1s.png');
+    const exportFramePath = join(root, 'evidence', 'export-at-2s.png');
     extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
     const ssim = compareFrames(previewPath, exportFramePath);
     assert.ok(ssim >= 0.85, `SSIM ${ssim} between preview and decoded export frame is below threshold`);
