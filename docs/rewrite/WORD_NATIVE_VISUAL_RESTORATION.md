@@ -1,5 +1,94 @@
 # Restore OSG's established Material 3 Expressive UI
 
+> September 8 supervisor correction, reviewed HEAD `9dfaac4f`: visual acceptance
+> remains pending. Execute the four concrete repairs immediately below. Earlier
+> COMPLETED claims are historical worker claims, not supervisor approval.
+
+## September 8: four concrete repairs, no redesign
+
+### Duplicate slider — confirmed root cause
+
+The inspected final English screenshot displays BOTH the custom Material slider
+and a browser-native white track/blue thumb for maximum window duration.
+In `src/components/common/StandardSlider.js`, the input computes a merged
+`className` and then spreads `{...inputProps}` afterward. `SpeechTaskTab.jsx`
+supplies `inputProps.className = 'speech-window-duration-slider'`, overwriting
+`standard-slider-input`. The input loses its existing hiding/layout treatment.
+
+Separate custom className from forwarded attributes and retain the required
+class. Make production-owned range invariants (type, min/max/step, value, handler,
+disabled and visibility/accessibility behavior) explicit and non-overridable by
+incidental test attributes. Preserve intentional supported props; audit all
+callers before changing the shared component contract. Do not hide this symptom
+with another page-specific CSS override.
+
+Add a focused regression test using the actual shared component and this caller's
+inputProps. Assert both class tokens survive and changing the value still updates
+the controlled value. Then visually verify exactly one intended slider is painted
+in the real app, and test a normal drag plus keyboard interaction through the
+component's intended accessible control. Check other shared-slider consumers for
+regression. Tests that merely set the hidden input do not prove user interaction.
+
+### Complete the displayed localization
+
+Actual VI/KO screenshots retain English descriptions such as "Punctuation & pauses
+aware", "Max 5 words, fast reading", "Single word karaoke reveal", "Adjust words &
+duration", and "Cancel". Trace missing/wrong translation keys and hardcoded strings
+in the new controls and operation summary. Localize these through the existing
+i18n system; preserve product/model names where appropriate. Do not suppress
+missing-key gates or rename screenshot evidence as localized while text remains
+English. Inspect the resulting VI and KO screenshots yourself.
+
+### Test actual viewport size and actual expanded controls
+
+The current journey sets `document.documentElement.style.width/height` and emits
+a resize event. That does NOT resize the native window or WebView viewport. Its
+reported minimum-size screenshot is still 1400x900. Remove that false substitute.
+
+Use the existing supported WebDriver/native-window automation mechanism against
+the isolated test app to resize the real window. Record actual `innerWidth`,
+`innerHeight`, devicePixelRatio, window geometry and screenshot dimensions; allow
+for window chrome/DPI when interpreting the supported 1200x800 minimum. Assert
+the observed geometry, not a requested value. If real resize is unsupported,
+report the exact failed mechanism and do not label the check passed.
+
+The screenshot named `04-min-size-dark-vi-expanded.png` has Advanced options
+collapsed. Actually expand the control, assert its contents are visible, scroll
+to the bottom and verify the primary action remains reachable. Open and inspect
+an actual dropdown as well. Use a small representative evidence set; no new
+framework or exhaustive screenshot matrix is needed.
+
+### Remove production-only-for-testing i18n exposure
+
+Remove the unconditional `window.__i18n = i18n` added in `src/i18n/i18n.js` solely
+for these tests. Drive locale/theme through the real Settings controls where
+possible, which also verifies persistence. If an existing isolated automation
+mechanism is essential, reuse it with its established compile/build-time
+exclusion; do not add another unrestricted production global. Update the journey
+accordingly. Do not classify this as a demonstrated security exploit; it is an
+unnecessary production testing surface.
+
+### Finish this bounded patch
+
+Preserve the improved header/colors and all transcription behavior. Fix these
+four items only, plus directly caused regressions. No design reinterpretation,
+reviewer swarm, test framework, new handoff or unrelated backend work.
+
+Capture the actual final repaired build: English expanded Speech showing a single
+Material slider; real minimum-size VI with Advanced expanded and dropdown state;
+light KO with translated descriptions/actions. Verify slider interaction, modal
+scroll/background lock and a real generation smoke. Record actual observed
+geometry and personally inspected pixels. Replace inaccurate previous report
+claims with an explicit correction note; keep failed attempts in evidence.
+
+Run focused shared-control/i18n tests and lint. Rebuild frontend and native through
+the existing managed command after the final product edit. State the final normal
+EXE path/hash/source commit. Preserve user data and do not interrupt the normal
+app, open OS file dialogs, install/uninstall or push. Update this same file with
+results and remaining genuine limits; do not ask routine approval questions.
+
+September 8 follow-up status: NOT STARTED. Supervisor acceptance: PENDING.
+
 > Latest supervisor review of `a05f6e05`: PARTIALLY RESTORED, NOT VISUALLY
 > ACCEPTED. Execute the bounded correction below and update this same file.
 > Do not create another handoff or redesign the UI again.
