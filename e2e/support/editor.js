@@ -132,6 +132,7 @@ export const whatIsAt = async (selector) => browser.execute((target) => {
   const centre = document.elementFromPoint(centreX, centreY);
   let clippedByScrollContainer = false;
   for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+    if (parent === document.body || parent === document.documentElement) continue;
     const style = window.getComputedStyle(parent);
     const box = parent.getBoundingClientRect();
     const left = box.left + parent.clientLeft;
