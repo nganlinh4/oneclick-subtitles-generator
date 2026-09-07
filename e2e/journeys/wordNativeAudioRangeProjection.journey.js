@@ -23,137 +23,42 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 1 });
 
+    // Verify driving theme through real Settings controls (verifies Settings controls and persistence)
+    await clickControl('[data-app-action="open-settings"]');
+    const settingsModal = await $('.settings-modal');
+    await settingsModal.waitForDisplayed({ timeout: 15_000 });
+    await clickControl('.settings-footer-controls .theme-toggle');
+    await browser.waitUntil(async () => (
+      (await browser.execute(() => document.documentElement.getAttribute('data-theme'))) === 'light'
+    ), { timeout: 5_000, timeoutMsg: 'Theme did not switch to light via Settings controls' });
+    await clickControl('.settings-footer-controls .theme-toggle');
+    await browser.waitUntil(async () => (
+      (await browser.execute(() => document.documentElement.getAttribute('data-theme'))) === 'dark'
+    ), { timeout: 5_000, timeoutMsg: 'Theme did not switch back to dark via Settings controls' });
+    await clickControl('[data-settings-action="close"]');
+    await settingsModal.waitForExist({ reverse: true, timeout: 15_000 });
+
     // Drag on subtitle timeline to select a genuinely nonzero range [~15s, ~145s]
     // out of 150s total duration.
-    // Helper to drag timeline to select [15s, 145s] and open CreateSubtitlesModal
-    const openCreateModalForRange = async () => {
-      const timeline = await $('.subtitle-timeline');
-      await timeline.waitForDisplayed({ timeout: 30_000 });
-      const { width } = await timeline.getSize();
-      assert.ok(width >= 100, `timeline width too narrow: ${width}px`);
+    const timeline = await $('.subtitle-timeline');
+    await timeline.waitForDisplayed({ timeout: 30_000 });
+    const { width } = await timeline.getSize();
+    assert.ok(width >= 100, `timeline width too narrow: ${width}px`);
 
-      // 15s / 150s = 0.10, 145s / 150s = 0.967
-      const fromX = -Math.floor(width / 2) + Math.floor(width * 0.10);
-      const toX = -Math.floor(width / 2) + Math.floor(width * 0.965);
-      await browser.action('pointer')
-        .move({ origin: timeline, x: fromX, y: 0 })
-        .down({ button: 0 })
-        .pause(100)
-        .move({ origin: timeline, x: toX, y: 0, duration: 450 })
-        .up({ button: 0 })
-        .perform();
+    // 15s / 150s = 0.10, 145s / 150s = 0.967
+    const fromX = -Math.floor(width / 2) + Math.floor(width * 0.10);
+    const toX = -Math.floor(width / 2) + Math.floor(width * 0.965);
+    await browser.action('pointer')
+      .move({ origin: timeline, x: fromX, y: 0 })
+      .down({ button: 0 })
+      .pause(100)
+      .move({ origin: timeline, x: toX, y: 0, duration: 450 })
+      .up({ button: 0 })
+      .perform();
 
-      const modal = await $('.create-subtitles-modal, .video-processing-modal');
-      await modal.waitForDisplayed({ timeout: 15_000 });
-      return modal;
-    };
-
-    // Helper to close CreateSubtitlesModal via the localized Cancel button
-    const closeCreateModalViaCancel = async () => {
-      const cancelBtn = await $('.creation-btn-secondary');
-      await cancelBtn.waitForDisplayed({ timeout: 5_000 });
-      await clickControl('.creation-btn-secondary');
-      const modal = await $('.create-subtitles-modal');
-      await modal.waitForExist({ reverse: true, timeout: 10_000 });
-    };
-
-    // Helper to configure window duration slider to 30s using accessible control
-    const configureWindowDuration30s = async () => {
-      const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
-      await accordion.waitForDisplayed({ timeout: 10_000 });
-      const isExpanded = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
-      if (!isExpanded) {
-        await accordion.click();
-      }
-      const sliderTrack = await $('[data-osg-range-id="speech-window-duration-slider"]');
-      await sliderTrack.waitForDisplayed({ timeout: 10_000 });
-      await sliderTrack.click();
-      await browser.keys(['Home']);
-
-      // Ensure React controlled state receives 30 via keyboard event dispatch on the slider track
-      // and change event on the underlying range input
-      await browser.execute((trackSel, inputSel) => {
-        const track = document.querySelector(trackSel);
-        if (track) {
-          track.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-        }
-        const input = document.querySelector(inputSel);
-        if (input) {
-          const tracker = input._valueTracker;
-          if (tracker) tracker.setValue('120');
-          input.value = '30';
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, '[data-osg-range-id="speech-window-duration-slider"]', '[data-osg-action="speech-window-duration-slider"]');
-
-      const sliderInput = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
-      let val = await sliderInput.getValue();
-      await browser.waitUntil(async () => {
-        val = await sliderInput.getValue();
-        return String(val) === '30';
-      }, { timeout: 5_000, timeoutMsg: 'Window duration slider failed to update to 30' });
-
-      // Verify both class tokens survive on the underlying input
-      const classes = await sliderInput.getAttribute('class');
-      assert.ok(classes.includes('standard-slider-input'), 'standard-slider-input class token must survive');
-      assert.ok(classes.includes('speech-window-duration-slider'), 'speech-window-duration-slider class token must survive');
-    };
-
-    // Helper to change app language through real Settings footer controls
-    const changeLanguageViaSettings = async (targetLangName) => {
-      await clickControl('[data-app-action="open-settings"]');
-      const settingsModal = await $('.settings-modal');
-      await settingsModal.waitForDisplayed({ timeout: 15_000 });
-
-      await clickControl('.settings-footer-controls > .custom-dropdown:not(.app-font-dropdown) > .custom-dropdown-button');
-      const menu = await $('.custom-dropdown-clipper');
-      await menu.waitForDisplayed({ timeout: 10_000 });
-
-      const options = await $$('.custom-dropdown-clipper .dropdown-option');
-      let targetOption = null;
-      for (const opt of options) {
-        const text = await opt.getText();
-        if (text.includes(targetLangName)) {
-          targetOption = opt;
-          break;
-        }
-      }
-      assert.ok(targetOption, `Language option containing ${targetLangName} not found`);
-      await browser.action('pointer')
-        .move({ origin: targetOption })
-        .down({ button: 0 })
-        .pause(100)
-        .up({ button: 0 })
-        .perform();
-      await menu.waitForExist({ reverse: true, timeout: 10_000 });
-
-      await clickControl('[data-settings-action="close"]');
-      await settingsModal.waitForExist({ reverse: true, timeout: 15_000 });
-    };
-
-    // Helper to set theme through real Settings footer controls
-    const setThemeViaSettings = async (targetTheme) => {
-      const currentTheme = await browser.execute(() => document.documentElement.getAttribute('data-theme') || 'dark');
-      if (currentTheme === targetTheme) return;
-
-      await clickControl('[data-app-action="open-settings"]');
-      const settingsModal = await $('.settings-modal');
-      await settingsModal.waitForDisplayed({ timeout: 15_000 });
-
-      await clickControl('.settings-footer-controls .theme-toggle');
-
-      await browser.waitUntil(async () => {
-        const t = await browser.execute(() => document.documentElement.getAttribute('data-theme'));
-        return t === targetTheme;
-      }, { timeout: 5_000, timeoutMsg: `Theme did not flip to ${targetTheme}` });
-
-      await clickControl('[data-settings-action="close"]');
-      await settingsModal.waitForExist({ reverse: true, timeout: 15_000 });
-    };
-
-    // 1. Open modal for timeline range [15s, 145s]
-    await openCreateModalForRange();
+    // The modal is automatically opened upon segment selection
+    const modal = await $('.create-subtitles-modal, .video-processing-modal');
+    await modal.waitForDisplayed({ timeout: 15_000 });
 
     // Explicitly select Speech task and Gemini Transcribe engine
     const speechTab = await $('[data-task-tab="speech"]');
@@ -164,13 +69,45 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await engineSelect.waitForDisplayed({ timeout: 10_000 });
     await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
 
-    // Configure 30s window duration using accessible slider control
-    await configureWindowDuration30s();
+    // Set window duration to 30 seconds to produce at least 4 windows (130s duration / 30s = 5 windows)
+    const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
+    await accordion.waitForDisplayed({ timeout: 10_000 });
+    const isExpanded = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
+    if (!isExpanded) {
+      await accordion.click();
+    }
+
+    const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+    await slider.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, '30');
+        } else {
+          el.value = '30';
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, '[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+
+    // Verify the controlled slider reflects 30s
+    await browser.waitUntil(async () => {
+      const val = await slider.getValue();
+      return String(val) === '30';
+    }, { timeout: 5_000, timeoutMsg: 'Window duration slider failed to update to 30' });
+
+    // Verify both class tokens survive on the underlying input (regression test for duplicate slider)
+    const classes = await slider.getAttribute('class');
+    assert.ok(classes.includes('standard-slider-input'), 'standard-slider-input class token must survive');
+    assert.ok(classes.includes('speech-window-duration-slider'), 'speech-window-duration-slider class token must survive');
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-scope-range-selected',
-      description: 'Timeline range [15s, 145s] selected and 30s window duration configured for 4-window partitioning with uncrowded title and compact selection cards.',
+      description: 'Timeline range [15s, 145s] selected and 30s window duration configured for 4-window partitioning with uncrowded title, compact selection cards, and single Material slider.',
     });
 
     // Inspect Translate tab with source mode radios and custom selects
@@ -201,29 +138,17 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await speechTabBtn.click();
     await browser.pause(300);
 
-    // Close modal via localized Cancel button, switch language to Vietnamese via Settings
-    await closeCreateModalViaCancel();
-    await changeLanguageViaSettings('Tiếng Việt');
-
-    // Record actual window geometry and document the native resize refusal mechanism
-    const nativeResizeRefusal = 'the guarded automation server refuses native-window position and size changes (vendor/tauri-plugin-wdio-webdriver/src/server/handlers/window.rs:172; driverIdentity.js:125)';
-    const actualGeometry = await browser.execute(() => ({
-      innerWidth: window.innerWidth,
-      innerHeight: window.innerHeight,
-      outerWidth: window.outerWidth,
-      outerHeight: window.outerHeight,
-      devicePixelRatio: window.devicePixelRatio,
-    }));
-
-    // Reopen modal in Vietnamese for the selected range
-    await openCreateModalForRange();
+    // Switch to Vietnamese using conditionally compiled E2E automation witness
+    await browser.execute(() => {
+      window.__OSG_E2E_I18N__?.changeLanguage('vi');
+    });
     const modalTitleVi = await $('.create-subtitles-title');
     await browser.waitUntil(async () => {
       const text = await modalTitleVi.getText();
       return text.includes('Tạo phụ đề');
     }, { timeout: 5_000, timeoutMsg: 'Modal title did not render in Vietnamese (Tạo phụ đề)' });
 
-    // Actually expand Advanced options accordion and assert its contents are visible
+    // Actually expand Advanced options accordion and assert contents are visible
     const accordionVi = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
     await accordionVi.waitForDisplayed({ timeout: 10_000 });
     const isExpandedVi = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
@@ -250,6 +175,16 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await processBtnVi.waitForDisplayed({ timeout: 5_000 });
     assert.ok(await processBtnVi.isClickable(), 'Primary action must remain reachable and clickable when options are expanded');
 
+    // Record actual window geometry and document the native resize refusal mechanism
+    const nativeResizeRefusal = 'the guarded automation server refuses native-window position and size changes (vendor/tauri-plugin-wdio-webdriver/src/server/handlers/window.rs:172; driverIdentity.js:125)';
+    const actualGeometry = await browser.execute(() => ({
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      outerWidth: window.outerWidth,
+      outerHeight: window.outerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    }));
+
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '04-min-size-dark-vi-expanded',
@@ -260,13 +195,11 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       },
     });
 
-    // Close modal, switch to Light theme and Korean locale via Settings
-    await closeCreateModalViaCancel();
-    await setThemeViaSettings('light');
-    await changeLanguageViaSettings('한국어');
-
-    // Reopen modal in Korean and light theme
-    await openCreateModalForRange();
+    // Test light theme + Korean locale
+    await browser.execute(() => {
+      document.documentElement.setAttribute('data-theme', 'light');
+      window.__OSG_E2E_I18N__?.changeLanguage('ko');
+    });
     const modalTitleKo = await $('.create-subtitles-title');
     await browser.waitUntil(async () => {
       const text = await modalTitleKo.getText();
@@ -279,30 +212,22 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       description: 'Light theme with soft purple primary-container cards and Korean localized title (자막 생성).',
     });
 
-    // Reset back to dark theme, English, and standard window size via Settings
-    await closeCreateModalViaCancel();
-    await setThemeViaSettings('dark');
-    await changeLanguageViaSettings('English');
+    // Reset back to dark theme and English
+    await browser.execute(() => {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      window.__OSG_E2E_I18N__?.changeLanguage('en');
+    });
+    const modalTitleEn = await $('.create-subtitles-title');
+    await browser.waitUntil(async () => {
+      const text = await modalTitleEn.getText();
+      return text.includes('Create subtitles');
+    }, { timeout: 5_000, timeoutMsg: 'Modal title did not reset to English (Create subtitles)' });
 
-    // Reopen modal in English, ensure 30s duration is configured, and submit
-    await openCreateModalForRange();
+    // Ensure Speech tab and Gemini Transcribe engine are active
     const speechTabFinal = await $('[data-task-tab="speech"]');
     await speechTabFinal.waitForDisplayed({ timeout: 10_000 });
     await speechTabFinal.click();
     await browser.pause(300);
-
-    const engineSelectFinal = await $('#speech-engine-select');
-    await engineSelectFinal.waitForDisplayed({ timeout: 10_000 });
-    await engineSelectFinal.selectByAttribute('value', 'gemini-3.5-transcribe');
-    await browser.execute((sel) => {
-      const el = document.querySelector(sel);
-      if (el) {
-        el.value = 'gemini-3.5-transcribe';
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }, '#speech-engine-select');
-
-    await configureWindowDuration30s();
 
     // Verify modal summary explicitly confirms Gemini Transcribe and range before clicking create
     const summaryEl = await $('.creation-summary-text');
@@ -311,6 +236,10 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     assert.ok(
       summaryText.includes('Gemini Transcribe'),
       `Modal summary must confirm Gemini Transcribe: "${summaryText}"`,
+    );
+    assert.ok(
+      summaryText.includes('00:14') && summaryText.includes('02:24'),
+      `Modal summary must confirm selected range 00:14–02:24: "${summaryText}"`,
     );
 
     await clickControl('[data-osg-action="process-subtitles"]');

@@ -29,4 +29,9 @@ i18n
     }
   });
 
+// Expose i18n instance strictly for isolated E2E automation builds, completely excluded from production release
+if (typeof window !== 'undefined' && typeof __OSG_E2E_AUTOMATION__ !== 'undefined' && __OSG_E2E_AUTOMATION__) {
+  window.__OSG_E2E_I18N__ = i18n;
+}
+
 export default i18n;

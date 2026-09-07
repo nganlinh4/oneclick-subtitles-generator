@@ -293,6 +293,7 @@ export default defineConfig(({ mode }) => {
   },
   define: {
     'process.env': JSON.stringify(publicFrontendEnvironment(mode)),
+    __OSG_E2E_AUTOMATION__: JSON.stringify(process.env.OSG_E2E_FRONTEND_BUILD === '1'),
   },
   esbuild: {
     jsx: 'automatic',

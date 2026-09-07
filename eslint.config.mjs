@@ -28,6 +28,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        __OSG_E2E_AUTOMATION__: 'readonly',
       },
     },
     rules: {
