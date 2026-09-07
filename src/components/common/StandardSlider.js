@@ -82,6 +82,27 @@ const StandardSlider = ({
     ...figmaProps
   };
   const isDisabled = String(state || resolvedProps.state || '').toLowerCase() === 'disabled';
+  const {
+    className: forwardedInputClassName,
+    style: forwardedInputStyle,
+    type: _forwardedType,
+    min: _forwardedMin,
+    max: _forwardedMax,
+    step: _forwardedStep,
+    value: _forwardedValue,
+    onChange: _forwardedOnChange,
+    disabled: _forwardedDisabled,
+    tabIndex: _forwardedTabIndex,
+    'aria-hidden': _forwardedAriaHidden,
+    id: _forwardedId,
+    ...safeForwardedInputProps
+  } = (inputProps || {});
+
+  const mergedInputClassName = `standard-slider-input ${forwardedInputClassName || ''}`.trim();
+  const mergedInputStyle = {
+    ...forwardedInputStyle,
+    pointerEvents: 'none',
+  };
 
   const getCurrentValue = (thumb) => {
     if (isDragging && activeThumb === thumb && dragValue !== null) {
@@ -407,7 +428,21 @@ const StandardSlider = ({
               <div className="track"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>
-            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={handleChange} className={`standard-slider-input ${inputProps.className || ''}`.trim()} id={id} aria-hidden="true" disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} {...inputProps} />
+            <input
+              {...safeForwardedInputProps}
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={valueEnd}
+              onChange={handleChange}
+              className={mergedInputClassName}
+              id={id}
+              aria-hidden="true"
+              disabled={isDisabled}
+              tabIndex={-1}
+              style={mergedInputStyle}
+            />
           </>
         ) : (
           <>
@@ -437,8 +472,36 @@ const StandardSlider = ({
               <div className="track end"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>
-            <input type="range" min={min} max={max} step={step} value={valueStart} onChange={(e) => handleChange(e, 'start')} className="standard-slider-input" aria-label={ariaLabel ? `${ariaLabel} start` : t('common.sliderStart', 'Slider start')} disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} />
-            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={(e) => handleChange(e, 'end')} className="standard-slider-input" aria-label={ariaLabel ? `${ariaLabel} end` : t('common.sliderEnd', 'Slider end')} disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} />
+            <input
+              {...safeForwardedInputProps}
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={valueStart}
+              onChange={(e) => handleChange(e, 'start')}
+              className={mergedInputClassName}
+              aria-label={ariaLabel ? `${ariaLabel} start` : t('common.sliderStart', 'Slider start')}
+              aria-hidden="true"
+              disabled={isDisabled}
+              tabIndex={-1}
+              style={mergedInputStyle}
+            />
+            <input
+              {...safeForwardedInputProps}
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={valueEnd}
+              onChange={(e) => handleChange(e, 'end')}
+              className={mergedInputClassName}
+              aria-label={ariaLabel ? `${ariaLabel} end` : t('common.sliderEnd', 'Slider end')}
+              aria-hidden="true"
+              disabled={isDisabled}
+              tabIndex={-1}
+              style={mergedInputStyle}
+            />
           </>
         )}
       </div>

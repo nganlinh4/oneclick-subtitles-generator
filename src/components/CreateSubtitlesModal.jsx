@@ -216,10 +216,20 @@ export const CreateSubtitlesModal = ({
 
     if (currentTask === 'Speech') {
       const engName = speechState.engine === 'gemini-3.5-transcribe' ? 'Gemini Transcribe' : speechState.engine;
-      return `${t('processing.taskSpeech', 'Speech')} · ${engName} · ${speechState.captionLayout} · ${durStr}`;
+      let layoutLabel = speechState.captionLayout;
+      if (speechState.captionLayout === 'Natural') {
+        layoutLabel = t('processing.captionLayoutNaturalTitle', 'Natural');
+      } else if (speechState.captionLayout === 'Short') {
+        layoutLabel = t('processing.captionLayoutShortTitle', 'Short');
+      } else if (speechState.captionLayout === 'One word') {
+        layoutLabel = t('processing.captionLayoutOneWordTitle', 'One word');
+      } else if (speechState.captionLayout === 'Custom') {
+        layoutLabel = t('processing.captionLayoutCustomTitle', 'Custom');
+      }
+      return `${t('processing.taskSpeech', 'Speech')} · ${engName} · ${layoutLabel} · ${durStr}`;
     }
     if (currentTask === 'Translate') {
-      return `${t('processing.taskTranslate', 'Translate')} · ${translateState.targetLanguage || 'Target language'} · ${durStr}`;
+      return `${t('processing.taskTranslate', 'Translate')} · ${translateState.targetLanguage || t('processing.targetLanguage', 'Target language')} · ${durStr}`;
     }
     return `${t('processing.taskVisualCustom', 'Visual')} · ${visualState.subtask} · ${durStr}`;
   }, [currentTask, speechState, translateState, visualState, isWhole, videoDuration, selectedSegment, durationSec, t]);
@@ -560,7 +570,7 @@ export const CreateSubtitlesModal = ({
                     className="creation-btn-secondary"
                     onClick={onClose}
                   >
-                    Cancel
+                    {t('common.cancel', 'Cancel')}
                   </button>
                   <button
                     type="button"

@@ -73,7 +73,7 @@ export const TranslateTaskTab = ({
               />
               <span>
                 {t('processing.translateSourceExisting', 'Use existing transcript')}{' '}
-                {hasExistingTranscript ? `(${transcriptCuesCount} cues)` : '(none available)'}
+                {hasExistingTranscript ? `(${transcriptCuesCount} cues)` : `(${t('processing.noneAvailable', 'none available')})`}
               </span>
             </label>
 
@@ -121,7 +121,7 @@ export const TranslateTaskTab = ({
               onChange={(e) => handleFieldChange('targetLanguage', e.target.value)}
               required
             >
-              <option value="">-- Select destination language --</option>
+              <option value="">{t('processing.selectDestinationLanguage', '-- Select destination language --')}</option>
               {COMMON_TARGET_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>
                   {lang.name}
@@ -132,7 +132,7 @@ export const TranslateTaskTab = ({
           </div>
           {!targetLanguage && (
             <span className="creation-field-helper" style={{ color: 'var(--md-error, #B3261E)' }}>
-              Target language is required for translation.
+              {t('processing.targetLanguageRequired', 'Target language is required for translation.')}
             </span>
           )}
         </div>

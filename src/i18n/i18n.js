@@ -29,8 +29,4 @@ i18n
     }
   });
 
-if (typeof window !== 'undefined') {
-  window.__i18n = i18n;
-}
-
 export default i18n;

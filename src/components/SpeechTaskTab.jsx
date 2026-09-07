@@ -176,10 +176,10 @@ export const SpeechTaskTab = ({
               tabIndex={0}
             >
               <span className="caption-layout-title">
-                {t('processing.captionLayoutNatural', 'Natural')}
+                {t('processing.captionLayoutNaturalTitle', 'Natural')}
               </span>
               <span className="caption-layout-desc">
-                Punctuation & pauses aware
+                {t('processing.captionLayoutNaturalDesc', 'Punctuation & pauses aware')}
               </span>
             </div>
 
@@ -191,10 +191,10 @@ export const SpeechTaskTab = ({
               tabIndex={0}
             >
               <span className="caption-layout-title">
-                {t('processing.captionLayoutShort', 'Short')}
+                {t('processing.captionLayoutShortTitle', 'Short')}
               </span>
               <span className="caption-layout-desc">
-                Max 5 words, fast reading
+                {t('processing.captionLayoutShortDesc', 'Max 5 words, fast reading')}
               </span>
             </div>
 
@@ -206,10 +206,10 @@ export const SpeechTaskTab = ({
               tabIndex={0}
             >
               <span className="caption-layout-title">
-                {t('processing.captionLayoutOneWord', 'One word')}
+                {t('processing.captionLayoutOneWordTitle', 'One word')}
               </span>
               <span className="caption-layout-desc">
-                Single word karaoke reveal
+                {t('processing.captionLayoutOneWordDesc', 'Single word karaoke reveal')}
               </span>
             </div>
 
@@ -224,10 +224,10 @@ export const SpeechTaskTab = ({
               tabIndex={0}
             >
               <span className="caption-layout-title">
-                {t('processing.captionLayoutCustom', 'Custom')}
+                {t('processing.captionLayoutCustomTitle', 'Custom')}
               </span>
               <span className="caption-layout-desc">
-                Adjust words & duration
+                {t('processing.captionLayoutCustomDesc', 'Adjust words & duration')}
               </span>
             </div>
           </div>
@@ -309,7 +309,7 @@ export const SpeechTaskTab = ({
                   onBlur={(e) => handleLanguageHintsChange(e.target.value)}
                 />
                 <span className="creation-field-helper">
-                  Comma-separated BCP-47 codes to guide speech recognition
+                  {t('processing.languageHintsHelper', 'Comma-separated BCP-47 codes to guide speech recognition')}
                 </span>
               </div>
 
@@ -358,7 +358,7 @@ export const SpeechTaskTab = ({
                   max={60}
                   step={5}
                   defaultValue={0}
-                  formatValue={(v) => (segmentDelaySecs === 0 ? '0s (Simultaneous)' : `${v}s`)}
+                  formatValue={(v) => (segmentDelaySecs === 0 ? `0s (${t('processing.simultaneousProcessing', 'Simultaneous')})` : `${v}s`)}
                 />
               </div>
             </div>
