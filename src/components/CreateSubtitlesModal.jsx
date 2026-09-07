@@ -285,6 +285,7 @@ export const CreateSubtitlesModal = ({
         onProcess?.({
           task: 'Speech',
           engine: speechState.engine,
+          model: speechState.engine === 'gemini-general' ? (speechState.model || 'gemini-3.1-flash-lite') : undefined,
           method: speechState.engine === 'local-asr' ? 'nvidia-parakeet' : 'new',
           generationScope: isWhole ? 'full-media' : 'segment',
           segment: isWhole ? undefined : selectedSegment,

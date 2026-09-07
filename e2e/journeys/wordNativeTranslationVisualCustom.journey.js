@@ -31,6 +31,21 @@ describe('Customer Journey 8: Executing ordinary Gemini model and video-dependen
 
     const engineSelect = await $('#speech-engine-select');
     await engineSelect.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((val) => {
+      const select = document.querySelector('#speech-engine-select');
+      if (select) {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype,
+          'value'
+        )?.set;
+        if (setter) {
+          setter.call(select, val);
+        } else {
+          select.value = val;
+        }
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, 'gemini-general');
     await engineSelect.selectByAttribute('value', 'gemini-general');
 
     await clickControl('[data-osg-action="process-subtitles"]');
