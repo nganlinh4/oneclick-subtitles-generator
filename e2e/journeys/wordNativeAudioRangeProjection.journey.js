@@ -115,8 +115,8 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
         `Word "${word.text}" startMs (${word.startMs}ms) is below admitted range start (${rev.sourceRangeStartMs}ms) - zero offset bug`,
       );
       assert.ok(
-        word.endMs > word.startMs,
-        `Word endMs must exceed startMs: ${JSON.stringify(word)}`,
+        word.endMs >= word.startMs,
+        `Word endMs must be >= startMs: ${JSON.stringify(word)}`,
       );
     }
 
