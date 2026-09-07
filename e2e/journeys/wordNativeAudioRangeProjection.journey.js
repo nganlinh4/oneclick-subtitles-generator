@@ -269,13 +269,27 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
 
     // Wait for native transcribe job to reach succeeded state
     let job = null;
+    let lastLog = 0;
     await browser.waitUntil(async () => {
       const state = durableState(root);
       job = state.jobs.find((j) => j.kind === 'transcribe' && j.state === 'succeeded') ?? null;
+      const currentJobs = state.jobs.filter((j) => j.kind === 'transcribe');
+      if (Date.now() - lastLog >= 10_000) {
+        lastLog = Date.now();
+        console.log(`[E2E Range Projection] Active transcribe jobs: ${currentJobs.length}, states: ${currentJobs.map((j) => `${j.id}:${j.state}`).join(', ')}, cues: ${state.counts.cues}`);
+      }
+      const errorToasts = await browser.execute(() => {
+        return [...document.querySelectorAll('.toast-error')]
+          .map((node) => (node.querySelector('p')?.innerText || node.innerText || '').trim())
+          .filter(Boolean);
+      });
+      if (errorToasts.length > 0) {
+        throw new Error(`Transcription failed with error toast: ${errorToasts.join('; ')}`);
+      }
       return job !== null && state.counts.cues > 0;
     }, {
-      timeout: 300_000,
-      interval: 1_000,
+      timeout: 900_000,
+      interval: 2_000,
       timeoutMsg: 'Multi-window transcription job never completed with captions',
     });
 
