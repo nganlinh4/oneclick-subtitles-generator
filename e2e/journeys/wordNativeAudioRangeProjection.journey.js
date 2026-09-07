@@ -77,8 +77,10 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       await accordion.click();
     }
 
+    const sliderTrack = await $('[data-osg-range-id="speech-window-duration-slider"], .standard-slider-track-container');
+    await sliderTrack.waitForDisplayed({ timeout: 10_000 });
     const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
-    await slider.waitForDisplayed({ timeout: 10_000 });
+    await slider.waitForExist({ timeout: 10_000 });
     await browser.execute((sel) => {
       const el = document.querySelector(sel);
       if (el) {
