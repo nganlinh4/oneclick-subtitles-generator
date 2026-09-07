@@ -64,6 +64,9 @@
   line-height: var(--md-title-large-height, 28px);
   font-weight: var(--md-title-large-weight, 500);
   color: var(--md-on-surface, #1C1B1F);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 [data-theme="dark"] .create-subtitles-title {
