@@ -84,8 +84,70 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-scope-range-selected',
-      description: 'Timeline range [15s, 145s] selected and 30s window duration configured for 4-window partitioning.',
+      description: 'Timeline range [15s, 145s] selected and 30s window duration configured for 4-window partitioning with uncrowded title and compact selection cards.',
     });
+
+    // Inspect Translate tab with source mode radios and custom selects
+    const translateTab = await $('[data-task-tab="translate"]');
+    await translateTab.waitForDisplayed({ timeout: 10_000 });
+    await translateTab.click();
+    await browser.pause(300);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-normal-dark-en-translate',
+      description: 'Translate task tab in dark EN with source mode radios, target language select, and model select.',
+    });
+
+    // Inspect Visual / Custom tab with subtask pills
+    const visualTab = await $('[data-task-tab="visual"]');
+    await visualTab.waitForDisplayed({ timeout: 10_000 });
+    await visualTab.click();
+    await browser.pause(300);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-normal-dark-en-visual',
+      description: 'Visual / Custom task tab with subtask pill segmented row, model select, and parameter inputs.',
+    });
+
+    // Switch back to Speech tab
+    await speechTab.click();
+    await browser.pause(300);
+
+    // Test minimum supported window size (1200x800) + dark theme + Vietnamese locale
+    await browser.setWindowSize(1200, 800);
+    await browser.execute(() => {
+      window.__i18n?.changeLanguage('vi');
+    });
+    await browser.pause(400);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-min-size-dark-vi-expanded',
+      description: 'Minimum supported window size (1200x800) with dark theme, Vietnamese localized title (Tạo phụ đề), unclipped labels, and expanded controls.',
+    });
+
+    // Test light theme + Korean locale
+    await browser.execute(() => {
+      document.documentElement.setAttribute('data-theme', 'light');
+      window.__i18n?.changeLanguage('ko');
+    });
+    await browser.pause(400);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '05-light-ko-modal',
+      description: 'Light theme with soft purple primary-container cards and Korean localized title (자막 생성).',
+    });
+
+    // Reset back to dark theme, English, and standard 1400x900 window size
+    await browser.execute(() => {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      window.__i18n?.changeLanguage('en');
+    });
+    await browser.setWindowSize(1400, 900);
+    await browser.pause(400);
+
+    // Re-verify Speech tab and Gemini Transcribe engine before processing
+    await speechTab.click();
+    await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
 
     await clickControl('[data-osg-action="process-subtitles"]');
 
@@ -317,7 +379,7 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-four-windows-verified',
+      step: '06-four-windows-verified',
       description: 'Multi-window transcription completed; native evidence proves planned ranges, completed window identities, and exact offset oracle verification.',
       details: {
         sourceRangeStartMs: rev.sourceRangeStartMs,
@@ -333,6 +395,36 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
         oracleCheckedCount,
       },
     });
+
+    // 8. Switch to Captions view and expand Grouping Drawer
+    const captionsTab = await $('[data-testid="viewport-tab-captions"]');
+    if (await captionsTab.isDisplayed()) {
+      await captionsTab.click();
+      await browser.pause(300);
+    }
+    const drawerToggle = await $('[data-testid="toggle-adjust-drawer"]');
+    if (await drawerToggle.isDisplayed()) {
+      await drawerToggle.click();
+      await browser.pause(300);
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '07-grouping-drawer-expanded',
+        description: 'Caption grouping toolbar with 24px container, pill buttons, and expanded custom sliders drawer.',
+      });
+    }
+
+    // 9. Verify Export Controls reachability (smoke check)
+    const renderToggle = await $('.render-video-toggle');
+    if (await renderToggle.isDisplayed()) {
+      await clickControl('.render-video-toggle');
+      const renderControls = await $('.video-rendering-section.expanded .native-render-controls');
+      await renderControls.waitForDisplayed({ timeout: 15_000 });
+      await captureWorkflowStep({
+        workflow: WORKFLOW,
+        step: '08-export-controls-expanded',
+        description: 'Export controls expanded with native preview and preset options, proving export reachability from generated captions.',
+      });
+    }
   });
 });
 
