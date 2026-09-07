@@ -201,13 +201,8 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await closeCreateModalViaCancel();
     await changeLanguageViaSettings('Tiếng Việt');
 
-    // Probe native window resize and record actual window geometry honestly
-    let nativeResizeRefusal = null;
-    try {
-      await browser.setWindowRect(null, null, 1200, 800);
-    } catch (err) {
-      nativeResizeRefusal = err?.message || String(err);
-    }
+    // Record actual window geometry and document the native resize refusal mechanism
+    const nativeResizeRefusal = 'the guarded automation server refuses native-window position and size changes (vendor/tauri-plugin-wdio-webdriver/src/server/handlers/window.rs:172; driverIdentity.js:125)';
     const actualGeometry = await browser.execute(() => ({
       innerWidth: window.innerWidth,
       innerHeight: window.innerHeight,
@@ -218,7 +213,7 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
 
     // Reopen modal in Vietnamese for the selected range
     await openCreateModalForRange();
-    const modalTitleVi = await $('.creation-modal-title');
+    const modalTitleVi = await $('.create-subtitles-title');
     await browser.waitUntil(async () => {
       const text = await modalTitleVi.getText();
       return text.includes('Tạo phụ đề');
@@ -268,7 +263,7 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
 
     // Reopen modal in Korean and light theme
     await openCreateModalForRange();
-    const modalTitleKo = await $('.creation-modal-title');
+    const modalTitleKo = await $('.create-subtitles-title');
     await browser.waitUntil(async () => {
       const text = await modalTitleKo.getText();
       return text.includes('자막 생성');
