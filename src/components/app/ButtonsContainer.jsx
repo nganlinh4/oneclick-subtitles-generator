@@ -105,11 +105,13 @@ const ButtonsContainer = ({
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const rawHandleGenerateSubtitles = handleGenerateSubtitles;
-  handleGenerateSubtitles = (e) => {
-    setShowCreateModal(true);
-    if (typeof rawHandleGenerateSubtitles === 'function') {
-      return rawHandleGenerateSubtitles(e);
+  handleGenerateSubtitles = (arg) => {
+    if (arg && typeof arg === 'object' && arg.runId) {
+      if (typeof rawHandleGenerateSubtitles === 'function') {
+        return rawHandleGenerateSubtitles(arg);
+      }
     }
+    setShowCreateModal(true);
   };
 
   return (

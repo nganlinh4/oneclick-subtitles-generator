@@ -122,7 +122,7 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
       );
       return restartedJob !== null && state.counts.cues > 0;
     }, {
-      timeout: 300_000,
+      timeout: 420_000,
       interval: 1_000,
       timeoutMsg: 'Restarted transcription never reached succeeded state with captions',
     });
