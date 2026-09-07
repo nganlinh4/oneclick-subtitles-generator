@@ -110,7 +110,9 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     });
 
     // Switch back to Speech tab
-    await speechTab.click();
+    const speechTabBtn = await $('[data-task-tab="speech"]');
+    await speechTabBtn.waitForDisplayed({ timeout: 10_000 });
+    await speechTabBtn.click();
     await browser.pause(300);
 
     // Test minimum supported window size (1200x800) + dark theme + Vietnamese locale
@@ -150,8 +152,13 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await browser.pause(400);
 
     // Re-verify Speech tab and Gemini Transcribe engine before processing
-    await speechTab.click();
-    await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
+    const speechTabFinal = await $('[data-task-tab="speech"]');
+    await speechTabFinal.waitForDisplayed({ timeout: 10_000 });
+    await speechTabFinal.click();
+    await browser.pause(300);
+    const engineSelectFinal = await $('#speech-engine-select');
+    await engineSelectFinal.waitForDisplayed({ timeout: 10_000 });
+    await engineSelectFinal.selectByAttribute('value', 'gemini-3.5-transcribe');
 
     await clickControl('[data-osg-action="process-subtitles"]');
 
