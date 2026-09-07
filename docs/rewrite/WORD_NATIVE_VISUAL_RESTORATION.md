@@ -1,5 +1,79 @@
 # Restore OSG's established Material 3 Expressive UI
 
+> Latest supervisor review of `a05f6e05`: PARTIALLY RESTORED, NOT VISUALLY
+> ACCEPTED. Execute the bounded correction below and update this same file.
+> Do not create another handoff or redesign the UI again.
+
+## Supervisor correction: prove restoration, finish the visible mismatches
+
+Shared sliders/switches, modal width and rounded surfaces genuinely improved.
+The reported normal EXE hash was verified as
+`10B099907B104623F6B925CF4E422C4429109598B7F4D4F7A6234FF79179C1A7`.
+Preserve those useful changes and the working transcription pipeline.
+
+The inspected `01-scope-range-selected.png` still shows a crowded title/time
+(`Create subtitles00:14...`), large saturated-blue caption-layout cards, and an
+arrangement not demonstrated against the old UI. The title-gap fix in `ef9a00d3`
+postdates that screenshot: source changes are not final-state visual evidence.
+The cards/color are not automatically incorrect, but must follow an actual OSG
+reference rather than an invented Material interpretation.
+
+### Do only this restoration pass
+
+1. Capture the current final state at a fixed viewport/theme/locale and compare
+   it with the pre-word-native `24b5a440` UI or genuine saved reference screenshots.
+   For new controls without a historical counterpart, identify an existing OSG
+   control serving the same purpose and reuse its appearance/behavior. If you
+   cannot safely execute the reference, explicitly identify the historical
+   component/style references and mark the missing screenshot comparison honestly.
+2. Fix the title/time spacing and hierarchy in the actual running build. Avoid
+   redundant range labels competing with the heading. Verify long localized
+   headings rather than adding another compensating CSS override.
+3. Replace invented selection-card styling with the established compact OSG
+   selection pattern where appropriate. Match active-state palette, shape,
+   typography and spacing to real existing controls. Preserve caption-policy
+   functionality; do not remove options or change backend behavior for appearance.
+4. Inspect expanded dropdowns, switches, sliders, the grouping drawer, transcript
+   toolbar and speaker rows—not just closed controls. Verify that native select
+   popups or raw text ligatures have not reintroduced the unfamiliar styling.
+   Fix global CSS leakage or token/theme mismatches at their origin if found.
+5. Verify actual screenshots for dark and light themes, EN/VI/KO labels, and the
+   app's supported minimum window size as well as its normal desktop size. Use a
+   compact representative set rather than every combination: normal dark EN;
+   minimum-size dark VI with expanded controls; light KO; and any additional state
+   needed to reproduce a discovered defect. Inspect all task tabs at least once.
+   Require readable unclipped labels, reachable actions, correct modal scrolling,
+   locked background scroll, and consistent established styling. Shared CSS alone
+   does not prove these outcomes.
+
+Keep the existing Material 3 Expressive identity. No new colors/fonts/frameworks,
+onboarding, decorative cards, information architecture or broad CSS rewrite.
+Prune replaced duplicate selectors rather than accumulating override layers.
+Do not change functioning transcription, timing, storage, ownership or rendering
+logic. Do not claim visual parity from larger corner radii alone.
+
+### Evidence and handback
+
+Create one small comparison folder: reference where available, pre-fix, final,
+plus expanded-control/locale/minimum-size screenshots. Label the actual binary
+source commit and conditions. Personally inspect the image files, and describe
+the concrete mismatch each edit removed. The final screenshots must include the
+last styling fix, not an earlier build with a note saying it was fixed afterward.
+
+Run focused UI tests/lint and a real Transcribe submit → captions → export-control
+smoke after shared-control changes. Check changed selectors against existing
+harness consumers. Rebuild frontend and native together after final product edits.
+Report exact normal EXE path/hash/source provenance. Do not rerun unrelated full
+provider matrices or use reviewer swarms. Do not interrupt the user's live app,
+clear user data, open OS dialogs, install/uninstall, push or publish.
+
+Correct the earlier blanket statements that all tabs/locales are restored and the
+pipeline is "100% functional." List what was actually inspected/executed and any
+remaining limits. Continue through this bounded pass without routine approval
+questions. Update the report below, not a new document.
+
+Follow-up status: NOT STARTED. Supervisor visual acceptance: PENDING.
+
 User reports that the launched app looks broken and unfamiliar after the word-native rewrite. This is a visual regression repair, NOT permission for another redesign. The previous functional acceptance does not certify visual fidelity. Restore the actual OSG appearance while keeping the working native transcription behavior.
 
 ## Reference and scope
@@ -127,4 +201,3 @@ Status: COMPLETED. Supervisor visual acceptance: NOT REVIEWED.
 ### Supervisor review section — reserved
 
 The supervisor will check this visual restoration report, matched screenshots, and characterized binary against the pre-rewrite reference. The worker must not self-approve this section.
-
