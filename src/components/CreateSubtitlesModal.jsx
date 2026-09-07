@@ -386,12 +386,7 @@ export const CreateSubtitlesModal = ({
         <div className="modal-header create-subtitles-header">
           <div className="create-subtitles-title-row">
             <h2 id="create-subtitles-dialog-title" className="create-subtitles-title">
-              <span>{t('processing.createSubtitlesTitle', 'Create subtitles')}</span>
-              {selectedSegment && (
-                <span className="segment-time">
-                  {formatTimeHms(selectedSegment.start)} – {formatTimeHms(selectedSegment.end)} ({Math.round((selectedSegment.end || 0) - (selectedSegment.start || 0))}s)
-                </span>
-              )}
+              {t('processing.createSubtitlesTitle', 'Create subtitles')}
             </h2>
             <CloseButton
               variant="modal"

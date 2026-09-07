@@ -128,7 +128,7 @@ export const ScopeSelector = ({
       </div>
 
       <div className="scope-duration-badge" data-testid="scope-duration-badge">
-        <span>⏱</span>
+        <span className="material-symbols-rounded" style={{ fontSize: '16px', display: 'inline-block', verticalAlign: 'middle' }}>schedule</span>
         <span>{rangeInfo.formatted}</span>
       </div>
 

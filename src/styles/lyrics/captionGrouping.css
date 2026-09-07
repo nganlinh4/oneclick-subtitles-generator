@@ -170,8 +170,33 @@
 
 .grouping-slider-input {
   width: 100%;
-  accent-color: var(--md-primary, #5D5FEF);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--md-surface-container, #E6E0E9);
+  outline: none;
   cursor: pointer;
+  accent-color: var(--md-primary, #5D5FEF);
+  margin: 6px 0;
+}
+
+[data-theme="dark"] .grouping-slider-input {
+  background: var(--md-surface-container-highest, #36343B);
+  accent-color: var(--md-primary, #B4B5FF);
+}
+
+.preserve-edits-checkbox,
+.checkbox-control-group input[type="checkbox"] {
+  accent-color: var(--md-primary, #5D5FEF);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+  vertical-align: middle;
+}
+
+[data-theme="dark"] .preserve-edits-checkbox,
+[data-theme="dark"] .checkbox-control-group input[type="checkbox"] {
+  accent-color: var(--md-primary, #B4B5FF);
 }
 
 .checkbox-control-group {
