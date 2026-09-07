@@ -187,7 +187,7 @@ export const durableTranscriptRevisions = (root) => withDatabase(root, (database
 /** Project-owned native transcript words, decoded independently. */
 export const durableTranscriptWords = (root) => withDatabase(root, (database) => (
   database.prepare(
-    'SELECT hex(revision_id) AS revision_id, word_index, text, start_ms, end_ms, speaker_id, alignment_status FROM transcript_words ORDER BY revision_id, word_index',
+    'SELECT hex(revision_id) AS revision_id, ordinal AS word_index, text, start_ms, end_ms, speaker_id, alignment_status FROM transcript_words ORDER BY revision_id, ordinal',
   ).all().map((row) => ({
     revisionId: String(row.revision_id).toLowerCase(),
     wordIndex: Number(row.word_index),

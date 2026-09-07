@@ -19,7 +19,7 @@ import {
   seekPreviewTo,
   waitForCanvasSubtitleFrame,
 } from '../support/workflow.js';
-import { captureWorkflowStep } from '../support/workflowEvidence.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const SAMPLE_TIMESTAMPS = [
   { time: 1.0, kind: 'active', cueText: 'First cue for the preview' },
@@ -159,6 +159,32 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
         subSsim,
       });
 
+      const timeSlug = String(sample.time).replace('.', 'p');
+      copyWorkflowArtifact({
+        workflow: WORKFLOW,
+        name: `preview-at-${timeSlug}s`,
+        source: previewPaths[sample.time],
+        description: `Preview frame captured at ${sample.time}s (${sample.kind})`,
+      });
+      copyWorkflowArtifact({
+        workflow: WORKFLOW,
+        name: `export-at-${timeSlug}s`,
+        source: exportFramePath,
+        description: `Decoded export frame at ${sample.time}s (${sample.kind})`,
+      });
+      copyWorkflowArtifact({
+        workflow: WORKFLOW,
+        name: `preview-sub-at-${timeSlug}s`,
+        source: previewCropPath,
+        description: `Cropped subtitle region of preview at ${sample.time}s`,
+      });
+      copyWorkflowArtifact({
+        workflow: WORKFLOW,
+        name: `export-sub-at-${timeSlug}s`,
+        source: exportCropPath,
+        description: `Cropped subtitle region of export at ${sample.time}s`,
+      });
+
       if (sample.kind === 'active') {
         assert.ok(fullSsim >= 0.85, `Full-frame SSIM ${fullSsim} at ${sample.time}s below 0.85`);
         assert.ok(subSsim >= 0.78, `Subtitle-region SSIM ${subSsim} at ${sample.time}s below 0.78`);
@@ -180,6 +206,13 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       negativeSilentSsim < 0.65,
       `Negative silent-frame SSIM ${negativeSilentSsim} is too high (expected < 0.65)`,
     );
+
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'exported-video',
+      source: exported,
+      description: `Exported MP4 video file (${Number(probe.format.size)} bytes, ${Number(probe.format.duration).toFixed(2)}s)`,
+    });
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
