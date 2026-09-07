@@ -21,25 +21,36 @@ describe('Customer Journey 2: Audio source and selected nonzero range with exact
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 1 });
 
+    // Drag on subtitle timeline to select a valid nonzero range
+    const timeline = await $('.subtitle-timeline');
+    await timeline.waitForDisplayed({ timeout: 30_000 });
+    const { width } = await timeline.getSize();
+    assert.ok(width >= 100, `timeline width too narrow: ${width}px`);
+    const left = -Math.floor(width / 2) + 4;
+    const end = -Math.floor(width / 2) + Math.floor(width * 0.48);
+    await browser.action('pointer')
+      .move({ origin: timeline, x: left, y: 0 })
+      .down({ button: 0 })
+      .pause(100)
+      .move({ origin: timeline, x: end, y: 0, duration: 450 })
+      .up({ button: 0 })
+      .perform();
+
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '01-media-loaded',
-      description: 'Media loaded into editor',
+      step: '01-media-and-range-selected',
+      description: 'Media loaded into editor and timeline range selected via pointer drag',
     });
 
     // 1. Open Create Subtitles dialog
     await clickControl('[data-osg-action="generate-subtitles"]');
-
-    // 2. Select Range scope if available
-    const scopeBtn = await $('[data-osg-action="scope-selected-range"]');
-    if (await scopeBtn.isDisplayed()) {
-      await scopeBtn.click();
-    }
+    const modal = await $('.create-subtitles-modal, .video-processing-modal');
+    await modal.waitForDisplayed({ timeout: 10_000 });
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-scope-range-selected',
-      description: 'Transcription scope selected',
+      description: 'Create subtitles modal open with range scope active and valid',
     });
     await clickControl('[data-osg-action="process-subtitles"]');
 
