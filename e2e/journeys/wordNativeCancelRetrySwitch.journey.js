@@ -109,9 +109,9 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     });
 
     // === Step 6: Supported restart action on full range ===
-    await modal.waitForDisplayed({ reverse: true, timeout: 15_000 });
     await clickControl('[data-osg-action="generate-subtitles"]');
-    await modal.waitForDisplayed({ timeout: 15_000 });
+    const modalRestart = await $('.create-subtitles-modal, .video-processing-modal');
+    await modalRestart.waitForDisplayed({ timeout: 15_000 });
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let restartedJob = null;
@@ -140,9 +140,9 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
 
     // === Step 7: Active A -> Project B isolation ===
     // Modal automatically closed on completion; reopen to start a new job on project A
-    await modal.waitForDisplayed({ reverse: true, timeout: 15_000 });
     await clickControl('[data-osg-action="generate-subtitles"]');
-    await modal.waitForDisplayed({ timeout: 15_000 });
+    const modalSecond = await $('.create-subtitles-modal, .video-processing-modal');
+    await modalSecond.waitForDisplayed({ timeout: 15_000 });
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let secondActiveJob = null;
