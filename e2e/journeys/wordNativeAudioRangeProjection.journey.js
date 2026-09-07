@@ -52,7 +52,7 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     const closeCreateModalViaCancel = async () => {
       const cancelBtn = await $('.creation-btn-secondary');
       await cancelBtn.waitForDisplayed({ timeout: 5_000 });
-      await clickControl(cancelBtn);
+      await clickControl('.creation-btn-secondary');
       const modal = await $('.create-subtitles-modal');
       await modal.waitForExist({ reverse: true, timeout: 10_000 });
     };
@@ -102,15 +102,22 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       const settingsModal = await $('.settings-modal');
       await settingsModal.waitForDisplayed({ timeout: 15_000 });
 
-      const langBtn = await $('.settings-footer-controls > .custom-dropdown:not(.app-font-dropdown) > .custom-dropdown-button');
-      await clickControl(langBtn);
+      await clickControl('.settings-footer-controls > .custom-dropdown:not(.app-font-dropdown) > .custom-dropdown-button');
       const menu = await $('.custom-dropdown-clipper');
       await menu.waitForDisplayed({ timeout: 10_000 });
 
-      const option = await $(`//div[contains(@class, "dropdown-option") and contains(., "${targetLangName}")]`);
-      await option.waitForDisplayed({ timeout: 5_000 });
+      const options = await $$('.custom-dropdown-clipper .dropdown-option');
+      let targetOption = null;
+      for (const opt of options) {
+        const text = await opt.getText();
+        if (text.includes(targetLangName)) {
+          targetOption = opt;
+          break;
+        }
+      }
+      assert.ok(targetOption, `Language option containing ${targetLangName} not found`);
       await browser.action('pointer')
-        .move({ origin: option })
+        .move({ origin: targetOption })
         .down({ button: 0 })
         .pause(100)
         .up({ button: 0 })
@@ -130,8 +137,7 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       const settingsModal = await $('.settings-modal');
       await settingsModal.waitForDisplayed({ timeout: 15_000 });
 
-      const themeToggle = await $('.settings-footer-controls .theme-toggle');
-      await clickControl(themeToggle);
+      await clickControl('.settings-footer-controls .theme-toggle');
 
       await browser.waitUntil(async () => {
         const t = await browser.execute(() => document.documentElement.getAttribute('data-theme'));
