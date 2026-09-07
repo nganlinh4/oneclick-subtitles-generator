@@ -556,7 +556,8 @@ async fn transcribe_wire_shape_strict_separation() {
     let asr_config = &gen_config["audioTranscriptionConfig"];
     assert_eq!(asr_config["wordTimestamp"], true);
     assert_eq!(asr_config["diarization"], true);
-    assert_eq!(asr_config["languageHints"], json!(["en", "vi"]));
+    assert_eq!(asr_config["languageCodes"], json!(["en", "vi"]));
+    assert!(asr_config["languageHints"].is_null(), "obsolete languageHints must not be emitted");
 
     // Strict separation: forbidden text generation fields
     assert!(gen_config["thinkingConfig"].is_null());

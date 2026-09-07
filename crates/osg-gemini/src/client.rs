@@ -864,4 +864,27 @@ mod tests {
             Some(crate::MediaResolution::MediaResolutionMedium);
         assert!(validate_generate_request(&resolution).is_err());
     }
+
+    #[test]
+    fn transcribe_payload_emits_language_codes_and_rejects_language_hints() {
+        let media = MediaInput::Inline(
+            crate::InlineMedia::new("audio/wav", Bytes::from_static(b"RIFF....WAVEfmt ")).unwrap(),
+        );
+        let req = TranscribeRequest::new(media).with_config(
+            AudioTranscriptionConfig::new()
+                .with_diarization(true)
+                .with_language_hints(["en", "ko"]),
+        );
+        let payload = build_transcribe_payload(&req);
+        let json = serde_json::to_value(&payload).unwrap();
+        let asr_config = &json["generationConfig"]["audioTranscriptionConfig"];
+
+        assert_eq!(asr_config["wordTimestamp"], true);
+        assert_eq!(asr_config["diarization"], true);
+        assert_eq!(asr_config["languageCodes"], serde_json::json!(["en", "ko"]));
+        assert!(
+            asr_config.get("languageHints").is_none(),
+            "payload must never serialize obsolete languageHints"
+        );
+    }
 }

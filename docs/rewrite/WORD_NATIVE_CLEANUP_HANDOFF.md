@@ -1,5 +1,10 @@
 # Word-native cleanup and delivery — supervisor directive
 
+> Latest supervisor review: NOT ACCEPTED. Read
+> [WORD_NATIVE_FINAL_INTEGRATION.md](WORD_NATIVE_FINAL_INTEGRATION.md) first.
+> It supersedes the worker's COMPLETED status below and defines the immediate
+> provider/build/real-journey corrections. Preserve the report as history.
+
 2026-09-07. Status: worker implementation NOT ACCEPTED. Review method: read-only source and report inspection, not a fresh build or live test. Baseline remains `24b5a440`; the reviewed implementation is uncommitted. Recheck the current tree before acting.
 
 This directive supersedes the execution scope and completion claims in `WORD_NATIVE_TRANSCRIPTION_HANDOFF.md`. Preserve that document as the design/evidence history; its worker certifications are not accepted customer-flow proof. The original invariants about real timing, data safety, ownership, existing features and WYSIWYG still apply.
@@ -200,4 +205,3 @@ Keep this report compact. Preserve the original misleading claims in history wit
 ### Supervisor review — reserved
 
 The supervisor will independently sample the actual flow and inspect diffs/evidence. The worker must not mark this section approved.
-

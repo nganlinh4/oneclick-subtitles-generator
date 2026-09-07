@@ -353,7 +353,13 @@ pub struct AudioTranscriptionConfig {
     pub word_timestamp: bool,
     #[serde(default)]
     pub diarization: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "languageCodes",
+        alias = "language_codes",
+        alias = "languageHints",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub language_hints: Vec<String>,
 }
 
