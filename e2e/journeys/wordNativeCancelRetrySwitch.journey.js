@@ -112,11 +112,26 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     await clickControl('[data-osg-action="generate-subtitles"]');
     const modalRestart = await $('.create-subtitles-modal, .video-processing-modal');
     await modalRestart.waitForDisplayed({ timeout: 15_000 });
+
+    const speechTabRestart = await $('[data-task-tab="speech"]');
+    if (await speechTabRestart.isDisplayed()) await speechTabRestart.click();
+
+    const engineSelectRestart = await $('#speech-engine-select');
+    await engineSelectRestart.waitForDisplayed({ timeout: 10_000 });
+    await engineSelectRestart.selectByAttribute('value', 'gemini-3.5-transcribe');
+
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let restartedJob = null;
+    let pollCount = 0;
     await browser.waitUntil(async () => {
       const state = durableState(root);
+      pollCount += 1;
+      if (pollCount % 10 === 1) {
+        process.stdout.write(
+          `\n[STEP 6 POLL ${pollCount}] cues: ${state.counts.cues}, jobs: ${JSON.stringify(state.jobs.map((j) => ({ id: j.id, kind: j.kind, state: j.state })))}\n`,
+        );
+      }
       restartedJob = state.jobs.find(
         (j) => j.kind === 'transcribe' && j.id !== activeJob.id && j.state === 'succeeded',
       );
@@ -124,7 +139,10 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     }, {
       timeout: 420_000,
       interval: 1_000,
-      timeoutMsg: 'Restarted transcription never reached succeeded state with captions',
+      timeoutMsg: () => {
+        const state = durableState(root);
+        return `Restarted transcription never reached succeeded state with captions. Jobs: ${JSON.stringify(state.jobs)}`;
+      },
     });
 
     const restartedDurable = durableState(root);
@@ -143,6 +161,14 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     await clickControl('[data-osg-action="generate-subtitles"]');
     const modalSecond = await $('.create-subtitles-modal, .video-processing-modal');
     await modalSecond.waitForDisplayed({ timeout: 15_000 });
+
+    const speechTabSecond = await $('[data-task-tab="speech"]');
+    if (await speechTabSecond.isDisplayed()) await speechTabSecond.click();
+
+    const engineSelectSecond = await $('#speech-engine-select');
+    await engineSelectSecond.waitForDisplayed({ timeout: 10_000 });
+    await engineSelectSecond.selectByAttribute('value', 'gemini-3.5-transcribe');
+
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let secondActiveJob = null;
@@ -155,7 +181,10 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     }, {
       timeout: 30_000,
       interval: 250,
-      timeoutMsg: 'Second transcription on project A never entered running state',
+      timeoutMsg: () => {
+        const state = durableState(root);
+        return `Second transcription on project A never entered running state. Jobs: ${JSON.stringify(state.jobs)}`;
+      },
     });
 
     // While operation on Project A is active, switch to media/project B through normal controls
