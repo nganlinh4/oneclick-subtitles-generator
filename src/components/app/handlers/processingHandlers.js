@@ -96,6 +96,7 @@ export const createProcessingHandlers = ({
 
       // Prepare options for subtitle generation
       const subtitleOptions = {
+        bypassCache: true,
         audioOnly: options.audioOnly === true,
         segment: options.generationScope === 'full-media' ? undefined : options.segment,
         requestedSegment: options.segment,

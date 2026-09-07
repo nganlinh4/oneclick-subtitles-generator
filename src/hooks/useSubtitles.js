@@ -460,24 +460,26 @@ export const useSubtitles = (t) => {
             // This ensures the timeline shows cached subtitles right when output container appears
             let cacheHit = false;
             let cachedSubtitles = null;
-            if (autoRunContext && !segment) {
-                await assertAutoGenerationContextDurable(autoRunContext);
-                const candidate = getAutoGenerationCacheCandidate(autoRunContext);
-                cacheHit = candidate.cacheHit;
-                cachedSubtitles = candidate.subtitles;
-                if (!cacheHit) setGenerationSubtitlesData(null);
-            } else {
-                await validateDeliveryOwnership(deliveryContext);
-                ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
-                    cacheId,
-                    segment,
-                    currentVideoUrl,
-                }));
-                await validateDeliveryOwnership(deliveryContext);
-                if (cacheHit) {
-                    setGenerationSubtitlesData(cachedSubtitles);
-                } else if (!segment) {
-                    setGenerationSubtitlesData(null);
+            if (options.bypassCache !== true && options.engine !== 'gemini-3.5-transcribe') {
+                if (autoRunContext && !segment) {
+                    await assertAutoGenerationContextDurable(autoRunContext);
+                    const candidate = getAutoGenerationCacheCandidate(autoRunContext);
+                    cacheHit = candidate.cacheHit;
+                    cachedSubtitles = candidate.subtitles;
+                    if (!cacheHit) setGenerationSubtitlesData(null);
+                } else {
+                    await validateDeliveryOwnership(deliveryContext);
+                    ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
+                        cacheId,
+                        segment,
+                        currentVideoUrl,
+                    }));
+                    await validateDeliveryOwnership(deliveryContext);
+                    if (cacheHit) {
+                        setGenerationSubtitlesData(cachedSubtitles);
+                    } else if (!segment) {
+                        setGenerationSubtitlesData(null);
+                    }
                 }
             }
             if (cacheHit) {
