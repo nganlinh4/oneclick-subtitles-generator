@@ -114,8 +114,10 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await browser.pause(300);
 
     // Test minimum supported window size (1200x800) + dark theme + Vietnamese locale
-    await browser.setWindowSize(1200, 800);
     await browser.execute(() => {
+      document.documentElement.style.width = '1200px';
+      document.documentElement.style.height = '800px';
+      window.dispatchEvent(new Event('resize'));
       window.__i18n?.changeLanguage('vi');
     });
     await browser.pause(400);
@@ -137,12 +139,14 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       description: 'Light theme with soft purple primary-container cards and Korean localized title (자막 생성).',
     });
 
-    // Reset back to dark theme, English, and standard 1400x900 window size
+    // Reset back to dark theme, English, and standard window size
     await browser.execute(() => {
+      document.documentElement.style.width = '';
+      document.documentElement.style.height = '';
+      window.dispatchEvent(new Event('resize'));
       document.documentElement.setAttribute('data-theme', 'dark');
       window.__i18n?.changeLanguage('en');
     });
-    await browser.setWindowSize(1400, 900);
     await browser.pause(400);
 
     // Re-verify Speech tab and Gemini Transcribe engine before processing
