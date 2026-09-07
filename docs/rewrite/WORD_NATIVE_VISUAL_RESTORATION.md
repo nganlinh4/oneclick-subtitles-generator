@@ -72,7 +72,7 @@ pipeline is "100% functional." List what was actually inspected/executed and any
 remaining limits. Continue through this bounded pass without routine approval
 questions. Update the report below, not a new document.
 
-Follow-up status: NOT STARTED. Supervisor visual acceptance: PENDING.
+Follow-up status: COMPLETED. Supervisor visual acceptance: PENDING.
 
 User reports that the launched app looks broken and unfamiliar after the word-native rewrite. This is a visual regression repair, NOT permission for another redesign. The previous functional acceptance does not certify visual fidelity. Restore the actual OSG appearance while keeping the working native transcription behavior.
 
@@ -170,33 +170,106 @@ Status: COMPLETED. Supervisor visual acceptance: NOT REVIEWED.
   - `02-video-dependent-task-executed.png` (Visual/Custom Scene Description Execution):
     - *Personally Inspected*: Clean pill segmented row for Visual/Custom subtasks (Describe scenes, Identify speakers, Extract text, Custom prompt), 2-column grid, preserved Gemini Vision execution with 7 scene cues persisted and rendered.
 
-### Focused gate and real-flow results, including failed attempts
+### Supervisor correction visual restoration evidence (attempt `20260907144630483-27068-e6c2b49d`)
 
-- **ESLint (`npm run lint`)**: Passed with 0 warnings and 0 errors across entire workspace.
+#### Concrete mismatches removed in supervisor correction pass
+
+1. **Modal header & scope uncrowding**:
+   - *Problem identified*: The header in `01-scope-range-selected.png` showed a crowded title/time (`Create subtitles00:14...`), redundant range labels competing with the heading, and raw text layout.
+   - *Fix applied*: In `src/components/CreateSubtitlesModal.jsx`, extracted the inline segment time badge from inside the `<h2>` heading so the title cleanly and solely contains `{t('processing.createSubtitlesTitle', 'Create subtitles')}`. Moved the scope selector, schedule icon, and timestamp badge (`00:14 – 02:24 (129.9s)`) to a dedicated subtitle row below the heading.
+   - *Icon restoration*: In `src/components/ScopeSelector.jsx`, replaced the raw Unicode emoji `⏱` with Material Symbols rounded ligature `<span className="material-symbols-rounded">schedule</span>`.
+2. **Compact selection card pattern restored**:
+   - *Problem identified*: The caption layout cards used an invented large style with harsh, highly saturated blue active backgrounds (`#0D5DB3`), sharp corners, and arbitrary padding that clashed with OSG's established theme.
+   - *Fix applied*: In `src/styles/CreateSubtitlesModal.css`, restored `.caption-layout-grid` to a compact 4-column desktop layout and `.caption-layout-card` to OSG's authentic compact selection pattern: 12px rounded corners, 8px padding, `--md-primary-container` (#2D2E6D in dark theme, #E8E7FF in light theme) active background, and `--md-on-primary-container` typography with crisp accent borders.
+3. **Dropdown option & radio styling**:
+   - *Problem identified*: Unstyled native select popups and generic unstyled radio controls.
+   - *Fix applied*: In `src/styles/CreateSubtitlesModal.css`, added `.custom-select-wrapper .setting-select option` with explicit surface container background tokens for dark and light modes; added `.create-subtitles-modal input[type="radio"]` with `--md-primary` accent tokens.
+4. **Grouping controls & checkbox tokens**:
+   - *Problem identified*: Grouping sliders and the "Preserve manual edits" checkbox lacked Material 3 track/accent styling.
+   - *Fix applied*: In `src/styles/lyrics/captionGrouping.css`, added tokenized track styling for `.grouping-slider-input` and `--md-primary` accent styling for `.preserve-edits-checkbox`.
+5. **Localization switching support**:
+   - *Fix applied*: In `src/i18n/i18n.js`, exposed `window.__i18n = i18n;` to enable deterministic client-side locale switching for visual verification without interfering with normal persistence.
+
+#### Personally inspected screenshot evidence index
+
+Evidence Directory: `C:\Users\user\AppData\Local\OSG-Development\cache\evidence\word-native-audio-range-projection\attempts\20260907144630483-27068-e6c2b49d`
+
+1. **`01-scope-range-selected.png` (Normal Desktop 1400x900, Dark Theme, English)**:
+   - *Header & Scope*: Cleanly centered `Create subtitles` title with close button; scope pill buttons `[Whole video]` / `[Selected range]`, followed by the Material Symbols `schedule` round clock icon and clean timestamp badge `00:14 – 02:24 (129.9s)`. No crowded text or competing title labels.
+   - *Caption Layout*: 4-column compact grid showing "Natural (Punctuation & pauses)", "Short (Max 5 words)", "One word per caption", and "Custom grouping...". Active "Natural" card has soft purple `--md-primary-container` (#2D2E6D) background, subtle border, and sharp typography.
+   - *Controls*: Two-column grid with custom dark select dropdowns, custom floating chevron indicators, `MaterialSwitch` for "Identify speakers", expanded Advanced options accordion, and 30s window duration slider.
+2. **`02-normal-dark-en-translate.png` (Translate Task Tab, Dark Theme, English)**:
+   - *Navigation*: Active "Translate" tab highlighted as blue pill.
+   - *Source Mode Radios*: "Use existing transcript (none available)" (disabled), "Transcribe then translate" (active radio with accent dot), "Direct media generation".
+   - *Target Language Select*: Custom dropdown displaying `-- Select destination language --` with validation helper text "Target language is required for translation."
+   - *Translation Model Select*: Custom dropdown showing "Gemini 3.5 Flash Lite (Fast & accurate)".
+   - *Action Button*: "Create subtitles" button disabled with appropriate opacity until a target language is selected.
+3. **`03-normal-dark-en-visual.png` (Visual / Custom Task Tab, Dark Theme, English)**:
+   - *Navigation*: Active "Visual / Custom" tab highlighted as blue pill.
+   - *Subtask Pills*: Material pill row displaying "On-screen text (OCR)" (active), "Scene descriptions", "Chapters", "Custom prompt".
+   - *Model & Resolution Selects*: "Gemini 3.1 Flash Lite (Fast visual)" and "Low (66 tokens/frame)".
+   - *Frame Rate Slider*: M3 `SliderWithValue` displaying `0.25 FPS (1 frame / 4.0s)`.
+4. **`04-min-size-dark-vi-expanded.png` (Minimum Supported Size 1200x800, Dark Theme, Vietnamese)**:
+   - *Heading*: Unclipped centered title `Tạo phụ đề` with close button.
+   - *Scope*: `Phạm vi: [Toàn bộ video] [Phân đoạn đã chọn]`, schedule icon, `00:14 – 02:24 (129.9s)`.
+   - *Tabs*: `Lời nói`, `Dịch`, `Hình ảnh / Tùy chỉnh`.
+   - *Layout & Controls*: `Công cụ: Gemini Transcribe (Từ gốc)`, `Ngôn ngữ: Tự động phát hiện`, `Bố cục phụ đề` with active card `Tự nhiên (Dấu câu & quãng nghỉ)`, `Tùy chọn nâng cao` accordion, and primary button `Bắt đầu tạo phụ đề`.
+   - *Geometry & Overflow*: Verified zero horizontal scrollbar overflow (`horizontalOverflow: false`, `horizontalOverflowPx: 0`) and zero clipped labels at the app's supported minimum 1200x800 dimension.
+5. **`05-light-ko-modal.png` (Light Theme, Korean)**:
+   - *Heading*: Unclipped centered title `자막 생성` with close button.
+   - *Scope*: `범위: [전체 비디오] [선택된 구간]`, schedule icon, `00:14 – 02:24 (129.9s)`.
+   - *Tabs*: `음성`, `번역`, `시각 / 사용자 지정`.
+   - *Theme Integration*: Clean light background (`--md-surface-1`), dark readable text, custom select dropdowns.
+   - *Selection Cards*: Active card `자연스러움 (구두점 및 일시정지)` styled with soft light-purple `--md-primary-container` (#E8E7FF) background and violet border, perfectly harmonious with light theme.
+   - *Action Button*: Primary `자막 생성 시작` button with pill radius.
+6. **`06-four-windows-verified.png` (Real Transcribe Execution & Timeline View)**:
+   - *Execution*: Transcribe job completed across 5 windows (129.9s / 30s) producing 225 native provider words and 48 cues across the nonzero interval [15s, 145s].
+   - *Pill Switcher*: Material 3 pill segmented button displaying `Transcript 5` and `Captions 48`.
+   - *Surfaces*: Success toast `Subtitles generated successfully!`, video preview, and timeline populated with colored subtitle cue blocks across the designated range.
+7. **`07-grouping-drawer-expanded.png` (Caption Grouping Drawer & Toolbar)**:
+   - *Toolbar*: 24px rounded expressive toolbar container with pill buttons `Natural`, `Short`, `One word`, `Custom`, `Hide ^`.
+   - *Preserve Edits*: Material 3 styled checkbox `Preserve manual edits` with purple accent.
+   - *Indicators*: Total cue count badge `48 cues`.
+8. **`08-export-controls-expanded.png` (Export Controls Reachability Smoke)**:
+   - *Reachability*: Video Rendering section expanded directly from generated captions.
+   - *Sources*: Video input `ami-IS1009a-60-210.mp4`, Subtitle Source `Original Subtitles (48 items)`.
+   - *Controls*: Audio volume sliders, preset style buttons (Default, Modern, Classic, Neon, etc.), Font Family `Google Sans VN`, and Font Size slider at 48px.
+
+### Focused gate and real-flow results
+
+- **ESLint (`npm run lint`)**: Passed with 0 warnings and 0 errors across the entire codebase.
 - **Vitest (`npm run test`)**: 342 test files passed, 3,022 tests passed, 0 failures.
-- **Cargo test (`cargo test --workspace`)**: All Rust workspace crates, unit tests, integration tests, and parity tests passed cleanly.
-- **Customer Journeys**:
-  - `wordNativeAudioRangeProjection.journey.js`: Passed (19.4s, attempt `20260907100254634-44060-21daa125`). Verified nonzero timeline range projection, 4 windows + tail, monotonic word offsets, and restored modal/editor appearance.
-  - `wordNativeTranslationVisualCustom.journey.js`: Passed (1m 35s, attempt `20260907100513507-30500-2e5b3568`). Verified ordinary Gemini and video-dependent scene description tasks execute cleanly with restored UI.
-- **Build attempts**:
-  - Initial `npm run tauri:build` failed at bundle signing stage because `TAURI_SIGNING_PRIVATE_KEY` was not set in development environment.
-  - Resolved via `npm run tauri:build -- --no-bundle`, which successfully completed all Vite frontend bundling, Rust release profile optimization/compilation, and produced the final binary in 3m 27s.
+- **Customer Journey (`node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js`)**:
+  - Duration: 2m 23.6s (exit code 0).
+  - Attempt ID: `20260907144630483-27068-e6c2b49d`.
+  - Verified nonzero range selection [15s, 145s], 5 planned windows, monotonic word offset mapping, uncrowded modal heading, compact selection cards, expanded controls, dark/light themes, EN/VI/KO localization, and export reachability.
 
-### Final frontend/native build command, normal EXE path/hash/source commit
+### Production release executable characterization
 
-- **Build command**: `npm run tauri:build -- --no-bundle` (package lane)
+- **Build command**: `npm run tauri:build -- --no-bundle` (release profile, package lane)
 - **Binary path**: `C:\Users\user\AppData\Local\OSG-Development\cache\cargo\package\release\osg-desktop.exe`
-- **File size**: 19,938,304 bytes (~19.0 MB)
-- **SHA-256 hash**: `10B099907B104623F6B925CF4E422C4429109598B7F4D4F7A6234FF79179C1A7`
-- **Source commit**: `ef9a00d36ac52d1bd1e2373412ae987e79079f0b`
-- **Features**: Rust release profile with `production` feature (`tauri/custom-protocol`).
-- **Automation exclusion**: Asserted absence of automation driver (`tauri-plugin-wdio` string search returned `False`; `e2e-automation` feature is excluded from release build).
+- **File size**: 20,610,048 bytes (~19.65 MB)
+- **LastWriteTime**: `2026-09-07 23:57:32 +09:00`
+- **SHA-256 hash**: `16009711ACC6A5988251AFC563EF4A77905B787154F0086DED27C3AB0A935544`
+- **Source commit**: `6ad6c9f9583e302fa4e82619b369bd839f86ed32`
+- **Automation driver exclusion**: Asserted absence of automation driver (`Select-String -Pattern "tauri-plugin-wdio"` returned `False`; `e2e-automation` feature is excluded from release build).
 
-### Remaining deviations or unverified surfaces
+### Executed scopes and known limits (corrected from earlier blanket claims)
 
-- All modal tabs (Speech, Translate, Visual/Custom), grouping drawer, transcript container, speaker turns, and viewport switchers have been restored to authentic OSG Material 3 Expressive UI.
-- Non-English locales (VI/KO) use identical responsive layout grids and tokenized spacing.
-- Word-native transcription, multi-window range planning, timeline projection, offline reflow, and export pipeline remain 100% functional.
+- **Specifically verified and inspected**:
+  - Modal container geometry (1100px width, 32px corners, 2-column desktop grid).
+  - Uncrowded modal heading (`Create subtitles`, `Tạo phụ đề`, `자막 생성`) separated cleanly from scope buttons, `schedule` icon, and timestamp badge.
+  - Compact 4-column selection cards (`.caption-layout-card`) with `--md-primary-container` active states in dark (#2D2E6D) and light (#E8E7FF) modes.
+  - All three modal task tabs (Speech, Translate, Visual / Custom) with their respective radios, dropdown `<option>`s, subtask pills, and sliders.
+  - Minimum supported window dimensions (1200x800) under Vietnamese locale with expanded controls, asserting zero horizontal overflow and zero clipped text.
+  - Light theme under Korean locale, verifying color contrast, typography, and card container styling.
+  - Real Transcribe execution on nonzero range [15s, 145s] across 5 windows (225 words, 48 cues), verified through native evidence.
+  - Grouping drawer toolbar with 24px container, pill buttons, and M3 styled checkbox.
+  - Video Rendering export controls expanded and verified reachable from freshly generated subtitles.
+- **Known boundaries and limits**:
+  - Only supported locales (EN, VI, KO, JA, ES, FR, DE, ZH) present in the translation dictionary are localized; unsupported locales fallback gracefully to English.
+  - Minimum window width remains 1200px as specified in `tauri.conf.json`; viewports narrower than 1200px are constrained by native window minimum bounds.
+  - No new external design frameworks or extra web fonts were introduced; all typography and glyphs rely on bundled Google Sans and Material Symbols.
 
 ### Supervisor review section — reserved
 
