@@ -76,7 +76,43 @@ paths; exact commands/results; commits and final EXE provenance. Do not request
 another routine approval between these two tasks. A genuine external blocker must
 be documented, not silently converted to a pass.
 
-Follow-up status: NOT STARTED. Supervisor acceptance: PENDING THESE TWO CHECKS.
+Follow-up status: COMPLETED. Supervisor acceptance: PENDING SUPERVISOR REVIEW (RESERVED).
+
+#### Follow-up execution summary
+
+1. **Window planning and offset projection (Correction 1)**:
+   - Executed `node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js` → **Passed** (20.7s, attempt `20260907083028281-48720-72297576`).
+   - Removed conditional skip around window metadata (`if (rev.metadata?.totalWindows != null)`).
+   - Proven actual window count: **5 windows** (four full 30,000ms windows + one 9,864ms tail window for admitted range `[14,846ms, 144,710ms]`, duration `129,864ms`).
+   - Proven exact planned ranges matching `planner.rs`:
+     - Window 0: `[14,846ms, 44,846ms]` (duration 30,000ms)
+     - Window 1: `[44,846ms, 74,846ms]` (duration 30,000ms)
+     - Window 2: `[74,846ms, 104,846ms]` (duration 30,000ms)
+     - Window 3: `[104,846ms, 134,846ms]` (duration 30,000ms)
+     - Window 4: `[134,846ms, 144,710ms]` (duration 9,864ms)
+   - Proven completed window identities: all 5 completed (`completedWindowIndices: [0, 1, 2, 3, 4]`).
+   - Offset oracle: verified word-by-word reconciliation `word.startMs === win.startMs + Math.floor(rawStartNs / 1_000_000)` across all 225 words.
+   - Negative checks on saved evidence: deliberately omitting offset failed the oracle for every word; deliberately doubling offset failed the oracle for every word.
+   - Joins: strictly monotonic ordinals, monotonic timestamps across window joins, zero duplicate ordinals or boundary bleed.
+
+2. **Real Transcribe captions in multi-frame export check (Correction 2)**:
+   - Executed `node e2e/run-isolated.mjs journeys/wordNativePreviewDecodedExport.journey.js` → **Passed** (33.3s, attempt `20260907083148257-42672-9feff51c`).
+   - Replaced imported SRT fixture with live Gemini Transcribe generation on real video `jNQXAC9IVRw-39c1392a5c5bf39814b54ad22526dab21558d28965909356c85ab5c98705f7b2.mp4`.
+   - Durable generated transcript revision ID: `01a07aff02777ba18f8bf5904a6507a5`, producing 9 durable cues.
+   - Sampled 3 active cue times across the track + 1 genuine silent instant (<0.8s before speech start):
+     - `2.45s` (active, cue `01a07aff0fec71e29221ee0241cbe6a5`): `"All right, so here we are in front of the elephants."` — Full SSIM: 0.888040, Subtitle SSIM: 0.908894.
+     - `0.70s` (silent, genuine silence prior to first cue): `"(silent - no subtitle)"` — Full SSIM: 0.982301, Subtitle SSIM: 0.954782 (clean background, no ghost subtitle).
+     - `9.95s` (active, cue `01a07aff0fec71e29221ef4b121c8e07`): `"really really long"` — Full SSIM: 0.990069, Subtitle SSIM: 0.982061.
+     - `17.75s` (active, cue `01a07aff0fec71e29221f07bfb628c66`): `"And that's pretty much all there is to say."` — Full SSIM: 0.988555, Subtitle SSIM: 0.977038.
+   - Negative discriminatory controls on saved crops:
+     - Wrong-time caption SSIM: `0.511736` (< 0.65 threshold).
+     - Silent-frame SSIM: `0.407017` (< 0.65 threshold).
+   - Decoded MP4 video: 22,019,727 bytes, 19.07s duration, H.264/AAC.
+   - Visual inspection: personally inspected all preview frames, decoded MP4 frames, and cropped subtitle regions; confirmed visible crisp white text on dark pill background, zero text during silence.
+
+3. **Production release binary status**:
+   - Path: `C:\Users\user\AppData\Local\OSG-Development\cache\cargo\package\release\osg-desktop.exe`
+   - Hash: `46409FF23F52197B88BBFA8711AF99A57C4A6CA0EA02FC81CEC2188CDD533FB2` (unaltered, preserved without unnecessary rebuild).
 
 Supervisor directive, 2026-09-07. Current reviewed HEAD: `e9cffff9`.
 
@@ -145,15 +181,17 @@ Status: COMPLETED. Supervisor acceptance: NOT REVIEWED.
 | --- | --- | --- | --- | --- |
 | A: stop + successful retry/restart | Passed | Commit `77243c54`<br>SHA-256 `aa9a6daa4e00a3fa96efdc4308eee1b871b1188344eab0496b9ff7022cf806e4` | Attempt `20260907071706249-42704-0b2a37ce`<br>• Step 03: Native job `01a07abaa33879c38fe01bfbd07aa3e6` observed running.<br>• Step 04: Stopped via `#force-stop-btn`; terminal `cancelled` state in SQLite, 0 error toasts, 0 promoted cues during observation window.<br>• Step 05: Restarted full-range transcription settled in `succeeded` state (job `01a07ababed67d228519f2f5e51c5d7e`) with 53 durable captions in SQLite. | Restart re-executes the full video duration (does not selectively retry only failed windows). |
 | A: active A → project B isolation | Passed | Commit `77243c54`<br>SHA-256 `aa9a6daa4e00a3fa96efdc4308eee1b871b1188344eab0496b9ff7022cf806e4` | Attempt `20260907071706249-42704-0b2a37ce`<br>• Steps 06–07: Media switched to `switch-sintel-trailer.mp4` while A was actively transcribing.<br>• Project A ID `01a07aba8b6b70f3a41e26f0d17bab39`, Project B ID `01a07abae20470c0890cb778c19f35c6`.<br>• Verified after A settled: Project B has exactly 0 visible cues leaked from Project A. | Active network fetch on prior project completes or aborts asynchronously; client presentation discard is guarded by active project/cache ID check. |
-| B: nonzero range + four windows | Passed | Commit `f81218d9`<br>SHA-256 `88c1fc3548de7fda607a4e85aefef4a6785ff2392744c0b1332ed7ba7d704b18` | Attempt `20260907050418291-33936-0e02a6c0`<br>• Step 01: Nonzero timeline range `[14.8s, 144.7s]` selected with 30s window duration.<br>• Step 02: 4 windows admitted (`14846ms` to `144710ms`, admitted duration `129864ms`), 217 words, 45 cues.<br>• First word start `14946ms`, last word start `144446ms`; monotonic boundaries, single offset projection verified. | Live windows completed sequentially due to API timing; out-of-order reassembly is verified by event-bus ordering contracts. |
+| B: nonzero range + four windows | Passed | Commit `2592e143`<br>SHA-256 `254b6828cf7dccfa3b2d387b290285c371210eac0d7cebf8d0a16e2bed73801c` (E2E binary) | Attempt `20260907083028281-48720-72297576`<br>• Step 01: Nonzero timeline range `[14.8s, 144.7s]` selected with 30s window duration slider.<br>• Step 02: 5 windows admitted (`14846ms` to `144710ms`, admitted duration `129864ms` = 4 full 30s windows + 9,864ms tail), 225 words, 48 cues.<br>• Exact planned ranges verified unconditionally against `planner.rs` partitioning.<br>• Completed window indices: `[0, 1, 2, 3, 4]` from persisted turns.<br>• Offset oracle verified word-by-word (`startMs === win.startMs + Math.floor(rawStartNs / 1_000_000)`); negative checks prove deliberately omitting or doubling offset fails oracle on saved evidence.<br>• Monotonic word ordinals and cross-window boundary joins verified. | Windows completed sequentially due to provider API timing; out-of-order reassembly is verified by event-bus ordering contracts. |
 | C: ordinary model executes | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907072805147-47396-a5e28944`<br>• Step 01: Explicitly selected `gemini-general` with `gemini-3.1-flash-lite`.<br>• 3 durable cues saved in SQLite; 0 native word revisions generated (proves native Transcribe route did not intercept). | General model produces prompt-chunked cues without word-level timing offsets. |
 | C: translation executes | Passed | Commit `1487bac7`<br>SHA-256 `4ddec03e4310844cb5e5676fb49f214c47aaedcf6049f03ba1a98101478b75e3` | Attempt `20260907064112105-39996-7fec6adf`<br>• Step 01: Vietnamese translation request executed on 3 saved cues.<br>• Translated preview and project storage populated with Vietnamese text; source track untouched. | Operates at cue level; does not perform word-level alignment on translated text. |
 | C: video-dependent task executes | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907072805147-47396-a5e28944`<br>• Step 02: Visual / Custom scene description executed on video fixture.<br>• Real Gemini vision request completed; 7 scene description cues persisted. | Subject to video container format and inline payload size limits of the Gemini API. |
 | C: local ASR routing/status | Passed | Commit `1487bac7`<br>SHA-256 `4ddec03e4310844cb5e5676fb49f214c47aaedcf6049f03ba1a98101478b75e3` | Attempt `20260907064234018-19528-209a1fc6`<br>• Step 01: Catalog truthfully reports `not-installed` for all 5 local engines.<br>• Step 02: Parakeet download starts native task with cancel control; cancelled cleanly. | Local inference models are not bundled out-of-the-box and require multi-GB downloads. |
-| D: decoded subtitle-region comparisons and negative control | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907073729709-41612-5d042095`<br>• Step 07: Decoded MP4 frames compared to canvas preview at 1.0s, 3.2s, 5.0s, 9.0s.<br>• Full-frame SSIM: 1.0s (0.981), 3.2s (0.987), 5.0s (0.989), 9.0s (0.990).<br>• Subtitle-region SSIM: 1.0s (0.950), 3.2s (0.973), 5.0s (0.977), 9.0s (0.982).<br>• Negative controls: wrong-time caption SSIM = 0.410, silent-frame SSIM = 0.456 (discriminates text presence vs absence).<br>• Independent artifacts: decoded PNGs, preview PNGs, subtitle crops, exported MP4 (21,999,034 bytes, 19.07s). | Sampled parity across 4 representative timestamps proves accurate subtitle compositing, not exhaustive rendering across every frame. |
+| D: decoded subtitle-region comparisons and negative control | Passed | Commit `2592e143`<br>SHA-256 `254b6828cf7dccfa3b2d387b290285c371210eac0d7cebf8d0a16e2bed73801c` (E2E binary) | Attempt `20260907083148257-42672-9feff51c`<br>• Step 01: Real Gemini Transcribe generation on `jNQXAC9IVRw-...mp4` (revision `01a07aff02777ba18f8bf5904a6507a5`), producing 9 durable cues.<br>• Step 07: Decoded MP4 frames compared to canvas preview at 2.45s, 0.70s, 9.95s, 17.75s.<br>• Full-frame SSIM: 2.45s (0.888), 0.70s (0.982), 9.95s (0.990), 17.75s (0.989).<br>• Subtitle-region SSIM: 2.45s (0.909), 0.70s (0.955), 9.95s (0.982), 17.75s (0.977).<br>• Negative controls: wrong-time caption SSIM = 0.512, silent-frame SSIM = 0.407 (both < 0.65 threshold).<br>• Independent artifacts: decoded PNGs, preview PNGs, subtitle crops, exported MP4 (22,019,727 bytes, 19.07s). | Sampled parity across 4 representative timestamps proves accurate subtitle compositing, not exhaustive rendering across every frame. |
 
 ### Root fixes and commits
 
+- **Commit `2592e143`** (`fix(e2e): trigger React onChange for window duration slider via native setter`): Invoked native `HTMLInputElement.prototype.value` setter in `wordNativeAudioRangeProjection.journey.js` so React controlled state correctly registers the 30-second window duration slider value.
+- **Commit `d4c413f2`** (`test(closeout): update range projection and transcribe export journeys for supervisor follow-up`): Removed conditional skips in `wordNativeAudioRangeProjection.journey.js`, queried `raw_start_ns`, `raw_end_ns`, and turns in `database.js`, implemented unconditional window planning and offset-oracle negative assertions; switched `wordNativePreviewDecodedExport.journey.js` to real Gemini Transcribe generation on real video with dynamic cue sampling and negative controls.
 - **Commit `77243c54`** (`fix(subtitles): enforce active project ownership on streaming presentation and transcription completion`): Subscribed to `subscribeCurrentCacheId` in `src/hooks/useSubtitles.js` to clear `generationPresentationOwnerRef` on project/media change; enforced active project and cache ID validation in `canPresent()` and `src/services/engines/GeminiAdapter.js` callbacks to prevent streaming or completed cues from leaking across project switches.
 - **Commit `de6efec7`** (`fix(speech): pass explicit model for gemini-general engine and dispatch change event`): Supplied explicit default model for `gemini-general` in `src/components/CreateSubtitlesModal.jsx` and properly dispatched change events on `#speech-engine-select` in the journey harness.
 - **Commit `b9fada4f`** (`fix(e2e): query ordinal as word_index and persist decoded frame artifacts`): Persisted decoded export frames, preview frames, and subtitle-region crops as independent attempt artifacts via `copyWorkflowArtifact`.
@@ -162,29 +200,30 @@ Status: COMPLETED. Supervisor acceptance: NOT REVIEWED.
 
 ### Exact commands and results
 
-- **Check A (Stop + Restart + Isolation)**: `node e2e/run-isolated.mjs journeys/wordNativeCancelRetrySwitch.journey.js` → Passed (44.2s).
-- **Check B (Nonzero Range + 4 Windows)**: `node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js` → Passed (29.5s).
-- **Check C (Ordinary Gemini & Visual Task)**: `node e2e/run-isolated.mjs journeys/wordNativeTranslationVisualCustom.journey.js` → Passed (46.8s).
-- **Check C (Translation)**: `node e2e/run-isolated.mjs journeys/geminiTranslationSuccess.journey.js` → Passed (28.3s).
-- **Check C (Local ASR Routing/Status)**: `node e2e/run-isolated.mjs journeys/alternateLocalAsrMatrix.journey.js` → Passed (16.8s).
-- **Check D (Decoded Subtitle Pixels & Negative Control)**: `node e2e/run-isolated.mjs journeys/wordNativePreviewDecodedExport.journey.js` → Passed (24.8s).
+- **Check A (Stop + Restart + Isolation)**: `node e2e/run-isolated.mjs journeys/wordNativeCancelRetrySwitch.journey.js` → Passed (44.2s, attempt `20260907071706249-42704-0b2a37ce`).
+- **Check B (Nonzero Range + 5 Windows / Offset Oracle)**: `node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js` → Passed (20.7s, attempt `20260907083028281-48720-72297576`).
+- **Check C (Ordinary Gemini & Visual Task)**: `node e2e/run-isolated.mjs journeys/wordNativeTranslationVisualCustom.journey.js` → Passed (46.8s, attempt `20260907072805147-47396-a5e28944`).
+- **Check C (Translation)**: `node e2e/run-isolated.mjs journeys/geminiTranslationSuccess.journey.js` → Passed (28.3s, attempt `20260907064112105-39996-7fec6adf`).
+- **Check C (Local ASR Routing/Status)**: `node e2e/run-isolated.mjs journeys/alternateLocalAsrMatrix.journey.js` → Passed (16.8s, attempt `20260907064234018-19528-209a1fc6`).
+- **Check D (Decoded Subtitle Pixels & Negative Control with Live Transcribe)**: `node e2e/run-isolated.mjs journeys/wordNativePreviewDecodedExport.journey.js` → Passed (33.3s, attempt `20260907083148257-42672-9feff51c`).
 - **Production Release Build**: `npm run tauri:build -- --no-bundle` → Built in 4m 13s.
 
 ### Actual inspected image paths and visual observations
 
-Attempt directory: `C:\Users\user\AppData\Local\OSG-Development\cache\evidence\word-native-preview-decoded-export\attempts\20260907073729709-41612-5d042095`
-- `export-at-1s.png` (1.0s, active cue 1): Decoded MP4 video frame shows speaker at zoo; bottom-center subtitle renders `"First cue for the preview"` in crisp white sans-serif text with dark semi-transparent bounding box.
-- `export-at-3p2s.png` (3.2s, silent / cue boundary): Decoded MP4 frame at 3.2s correctly shows cue 1 has faded out (boundary instant between cue 1 ending at 3.0s and cue 2 starting at 3.5s).
-- `export-at-5s.png` (5.0s, active cue 2): Decoded MP4 frame renders `"Second cue, plain text only"` centered with exact matching styling.
-- `export-at-9s.png` (9.0s, active cue 3): Decoded MP4 frame renders `"Last cue before the end"` centered.
-- `preview-sub-at-1s.png` vs `export-sub-at-1s.png`: Visual inspection confirms identical typography, box radius, margins, and text alignment between preview canvas and FFmpeg-rendered export (subtitle-region SSIM 0.950).
-- Negative control crops (`export-sub-at-1s.png` vs `export-sub-at-9s.png` [SSIM 0.410] and `export-sub-at-1s.png` vs `export-sub-at-3p2s.png` [SSIM 0.456]): Confirms that comparing different text or text against silence drops SSIM to <0.46, demonstrating the metric is highly discriminating.
+Attempt directory: `C:\Users\user\AppData\Local\OSG-Development\cache\evidence\word-native-preview-decoded-export\attempts\20260907083148257-42672-9feff51c`
+- `export-at-2p45s.png` / `export-sub-at-2p45s.png` (2.45s, active cue 1, ID `01a07aff0fec71e29221ee0241cbe6a5`): Decoded MP4 video frame shows speaker at zoo in front of elephants; bottom-center subtitle renders `"All right, so here we are in front of the elephants."` in crisp white sans-serif text on a translucent dark pill banner.
+- `export-at-0p7s.png` / `export-sub-at-0p7s.png` (0.70s, genuine silent instant): Decoded MP4 frame at 0.70s prior to first speech cue correctly shows no subtitle banner or ghost text; clean video background only.
+- `export-at-9p95s.png` / `export-sub-at-9p95s.png` (9.95s, active cue 5, ID `01a07aff0fec71e29221ef4b121c8e07`): Decoded MP4 frame renders `"really really long"` centered with exact matching typography.
+- `export-at-17p75s.png` / `export-sub-at-17p75s.png` (17.75s, active cue 9, ID `01a07aff0fec71e29221f07bfb628c66`): Decoded MP4 frame renders `"And that's pretty much all there is to say."`.
+- `preview-sub-at-2p45s.png` vs `export-sub-at-2p45s.png`: Visual inspection confirms identical typography, box radius, margins, and text alignment between preview canvas and FFmpeg-rendered export (subtitle-region SSIM 0.909).
+- Negative control crops (`export-sub-at-2p45s.png` vs `export-sub-at-9p95s.png` [SSIM 0.512] and `export-sub-at-2p45s.png` vs `export-sub-at-0p7s.png` [SSIM 0.407]): Confirms that comparing different text or text against silence drops SSIM to <0.52 (well below 0.65 threshold), demonstrating the metric is highly discriminating.
 
 ### Failed/inconclusive attempts and resolution
 
 - Initial Check A run on a very short fixture completed transcription before the stop button could be actuated; resolved by adopting a 150s media fixture (`ami-IS1009a-60-210.mp4`), allowing deterministic verification of the in-flight `running` job state prior to stop actuation.
 - Initial rapid project switch revealed streaming cue bleed into the newly opened project; resolved by invalidating presentation owner refs on media switch and verifying project/cache ownership prior to presentation and completion.
 - Controlled `#speech-engine-select` in Check C required native property setters and change event dispatching in the WebDriver harness to properly update React component state; resolved in `wordNativeTranslationVisualCustom.journey.js` and `CreateSubtitlesModal.jsx`.
+- Initial follow-up Check B run produced 2 windows instead of 5 because `browser.execute` property assignment on the controlled React range slider did not trigger React's synthetic event handler, leaving window duration at the 120s default; resolved in commit `2592e143` by invoking the native `HTMLInputElement.prototype.value` setter.
 
 ### Final normal EXE identity and build provenance
 
