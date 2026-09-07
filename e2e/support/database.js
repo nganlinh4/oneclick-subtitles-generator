@@ -165,3 +165,36 @@ export const durableRenderScenes = (root) => withDatabase(root, (database) => (
     scene: JSON.parse(row.scene_json),
   }))
 ));
+
+/** Project-owned native transcript revisions, decoded independently. */
+export const durableTranscriptRevisions = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    'SELECT hex(id) AS id, hex(project_id) AS project_id, provider, model, source_range_start_ms, source_range_end_ms, state, word_count, created_at_ms, updated_at_ms FROM transcript_revisions ORDER BY created_at_ms',
+  ).all().map((row) => ({
+    id: String(row.id).toLowerCase(),
+    projectId: String(row.project_id).toLowerCase(),
+    provider: row.provider,
+    model: row.model,
+    sourceRangeStartMs: Number(row.source_range_start_ms),
+    sourceRangeEndMs: Number(row.source_range_end_ms),
+    state: row.state,
+    wordCount: Number(row.word_count),
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+  }))
+));
+
+/** Project-owned native transcript words, decoded independently. */
+export const durableTranscriptWords = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    'SELECT hex(revision_id) AS revision_id, word_index, text, start_ms, end_ms, speaker_id, alignment_status FROM transcript_words ORDER BY revision_id, word_index',
+  ).all().map((row) => ({
+    revisionId: String(row.revision_id).toLowerCase(),
+    wordIndex: Number(row.word_index),
+    text: row.text,
+    startMs: Number(row.start_ms),
+    endMs: Number(row.end_ms),
+    speakerId: row.speaker_id,
+    alignmentStatus: row.alignment_status,
+  }))
+));

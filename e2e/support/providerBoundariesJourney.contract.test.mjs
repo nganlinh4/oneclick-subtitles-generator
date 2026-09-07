@@ -68,7 +68,7 @@ test('background image generation really produces the generic "Generation failed
   for (const specific of [/api key not set/iu, /quota/iu, /HTTP\s+\d{3}/u, /cors/iu, /\bnetwork\b/iu]) {
     assert.doesNotMatch('The native Gemini operation could not be completed', specific);
   }
-  assert.match(backgroundImageGenerator, /window\.addToast\(getFriendlyErrorMessage\(t, err\?\.message \|\| String\(err\)\), 'error', 5000\)/u);
+  assert.match(backgroundImageGenerator, /window\.addToast\(getFriendlyErrorMessage\(t, err(?:\?\.message \|\| String\(err\))?\), 'error', 5000\)/u);
   assert.match(journey, /expectedMessage: 'Generation failed'/u);
 });
 

@@ -1,4 +1,4 @@
-import { copyFileSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -273,6 +273,7 @@ export const run = async ({ repeat, journeys }) => {
                     'downloadQualityCancellationIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
                     'mainPreviewControlsAndFullscreen.journey.js',
+                    'wordNativeCancelRetrySwitch.journey.js',
                   ]).has(journeyName);
                   const preparedSourceSwitch = needsSourceSwitch
                     ? ensureSourceSwitchVideo({ applicationLease })
@@ -302,12 +303,26 @@ export const run = async ({ repeat, journeys }) => {
                     if (preparedRealMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedRealMedia);
                     }
-                    if (journeyName === 'mainPreviewControlsAndFullscreen.journey.js') {
+                    if (journeyName === 'mainPreviewControlsAndFullscreen.journey.js'
+                        || journeyName === 'wordNativeCancelRetrySwitch.journey.js') {
+                      const repoRoot = join(E2E_ROOT, '..');
+                      const amiLongVideo = join(repoRoot, 'target', 'subtitle-benchmark', 'real-video', 'IS1009a-60-210.mp4');
+                      const primaryMedia = (journeyName === 'wordNativeCancelRetrySwitch.journey.js' && existsSync(amiLongVideo))
+                        ? stageMedia(amiLongVideo, 'ami-')
+                        : environment.OSG_E2E_MEDIA_SELECTION;
+                      environment.OSG_E2E_MEDIA_SELECTION = primaryMedia;
                       const stagedSwitch = stageMedia(preparedSourceSwitch, 'switch-');
                       environment.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
-                        environment.OSG_E2E_MEDIA_SELECTION,
+                        primaryMedia,
                         stagedSwitch,
                       ]);
+                    }
+                    if (journeyName === 'wordNativeAudioRangeProjection.journey.js') {
+                      const repoRoot = join(E2E_ROOT, '..');
+                      const amiLongVideo = join(repoRoot, 'target', 'subtitle-benchmark', 'real-video', 'IS1009a-60-210.mp4');
+                      if (existsSync(amiLongVideo)) {
+                        environment.OSG_E2E_MEDIA_SELECTION = stageMedia(amiLongVideo, 'ami-');
+                      }
                     }
                     if (journeyName === 'longMediaResourceBounds.journey.js') {
                       const stagedLong = stageMedia(preparedLongMedia);

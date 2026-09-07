@@ -1,5 +1,9 @@
 # Word-native: final integration correction
 
+> Latest review: substantive central-flow progress verified, full acceptance pending.
+> Execute [WORD_NATIVE_ACCEPTANCE_CLOSEOUT.md](WORD_NATIVE_ACCEPTANCE_CLOSEOUT.md).
+> It defines the final bounded checks; the COMPLETED label below is not supervisor approval.
+
 2026-09-07. Supervisor verdict: **NOT ACCEPTED — integration and executable freshness unproven.**
 
 Read this first. It supersedes completion status and immediate work ordering in `WORD_NATIVE_CLEANUP_HANDOFF.md`. Keep that document's safety, compatibility and truthful-evidence rules. Do not restart the redesign or create another test framework. Preserve the useful cleanup already committed.

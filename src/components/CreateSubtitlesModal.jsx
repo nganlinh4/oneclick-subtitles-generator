@@ -368,7 +368,7 @@ export const CreateSubtitlesModal = ({
     <div
       className="create-subtitles-modal-overlay modal-overlay"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !bridge.isExecuting) {
+        if (e.target === e.currentTarget && !bridge.isCancelling) {
           onClose?.();
         }
       }}
@@ -390,7 +390,7 @@ export const CreateSubtitlesModal = ({
             <CloseButton
               variant="modal"
               onClick={onClose}
-              disabled={bridge.isExecuting}
+              disabled={bridge.isCancelling}
               ariaLabel="Close creation dialog"
             />
           </div>

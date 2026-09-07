@@ -1,6 +1,3 @@
-// Real-binary customer journey 9: Native preview -> exported file with frame-by-frame decoding and word-highlighting checks
-// Driven through WebDriverIO and the actual application WebView.
-
 import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -8,13 +5,13 @@ import process from 'node:process';
 import { clickControl } from '../support/editor.js';
 import {
   compareFrames,
+  cropSubtitleRegion,
   extractFrame,
   listMediaFiles,
   newestMediaFile,
   probeMedia,
   savePreviewElementFrame,
 } from '../support/nativeMediaOracle.js';
-import { REAL_VIDEO } from '../support/realMedia.js';
 import {
   openProjectWithMedia,
   SUBTITLE_FIXTURE,
@@ -24,7 +21,12 @@ import {
 } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
-const COMPARE_AT_SECONDS = 1;
+const SAMPLE_TIMESTAMPS = [
+  { time: 1.0, kind: 'active', cueText: 'First cue for the preview' },
+  { time: 3.2, kind: 'silent', cueText: '(none - cue boundary)' },
+  { time: 5.0, kind: 'active', cueText: 'Second cue, plain text only' },
+  { time: 9.0, kind: 'active', cueText: 'Last cue before the end' },
+];
 const WORKFLOW = 'word-native-preview-decoded-export';
 
 /* global $, browser, describe, document, it */
@@ -45,18 +47,28 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       description: 'Project loaded with subtitles fixture and video.',
     });
 
-    // 1. Move player into cue position and wait for canvas subtitle frame
-    await seekPreviewTo(COMPARE_AT_SECONDS);
-    await waitForCanvasSubtitleFrame(120_000);
-    const previewPath = join(root, 'evidence', 'preview-at-1s.png');
-    await savePreviewElementFrame(
-      previewPath,
-      '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
-    );
+    // 1. Move player into each sampled timestamp and capture preview frames
+    const previewPaths = {};
+    for (const sample of SAMPLE_TIMESTAMPS) {
+      await seekPreviewTo(sample.time);
+      if (sample.kind === 'active') {
+        await waitForCanvasSubtitleFrame(120_000);
+      } else {
+        await browser.pause(500);
+      }
+      const previewPath = join(root, 'evidence', `preview-at-${sample.time}s.png`);
+      await savePreviewElementFrame(
+        previewPath,
+        '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
+      );
+      previewPaths[sample.time] = previewPath;
+    }
+
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-canvas-frame-rendered',
-      description: 'Canvas-atlas subtitle frame rendered at 1s instant.',
+      step: '02-canvas-frames-rendered',
+      description: 'Canvas-atlas subtitle frames rendered at 4 sampled instants across clip.',
+      details: { timestamps: SAMPLE_TIMESTAMPS.map((s) => s.time) },
     });
 
     // 2. Open Render section
@@ -119,16 +131,68 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     assert.ok(videoStream.width > 0 && videoStream.height > 0, 'Invalid video dimensions');
     assert.ok(Number(probe.format.size) > 100_000, 'Exported file is implausibly small');
 
-    // 7. Independently decode frame and compare visible subtitles
-    const exportFramePath = join(root, 'evidence', 'export-at-1s.png');
-    extractFrame(exported, COMPARE_AT_SECONDS, exportFramePath);
-    const ssim = compareFrames(previewPath, exportFramePath);
-    assert.ok(ssim >= 0.85, `SSIM ${ssim} between preview and decoded export frame is below threshold`);
+    // 7. Independently decode frames, crop subtitle regions, and compare
+    const comparisons = [];
+    const exportPaths = {};
+    const exportCrops = {};
+    const previewCrops = {};
+
+    for (const sample of SAMPLE_TIMESTAMPS) {
+      const exportFramePath = join(root, 'evidence', `export-at-${sample.time}s.png`);
+      extractFrame(exported, sample.time, exportFramePath);
+      exportPaths[sample.time] = exportFramePath;
+
+      const previewCropPath = join(root, 'evidence', `preview-sub-at-${sample.time}s.png`);
+      const exportCropPath = join(root, 'evidence', `export-sub-at-${sample.time}s.png`);
+      cropSubtitleRegion(previewPaths[sample.time], previewCropPath);
+      cropSubtitleRegion(exportFramePath, exportCropPath);
+      previewCrops[sample.time] = previewCropPath;
+      exportCrops[sample.time] = exportCropPath;
+
+      const fullSsim = compareFrames(previewPaths[sample.time], exportFramePath);
+      const subSsim = compareFrames(previewCropPath, exportCropPath);
+      comparisons.push({
+        time: sample.time,
+        kind: sample.kind,
+        cueText: sample.cueText,
+        fullSsim,
+        subSsim,
+      });
+
+      if (sample.kind === 'active') {
+        assert.ok(fullSsim >= 0.85, `Full-frame SSIM ${fullSsim} at ${sample.time}s below 0.85`);
+        assert.ok(subSsim >= 0.78, `Subtitle-region SSIM ${subSsim} at ${sample.time}s below 0.78`);
+      } else {
+        assert.ok(fullSsim >= 0.85, `Silent full-frame SSIM ${fullSsim} at ${sample.time}s below 0.85`);
+      }
+    }
+
+    // Negative discriminating check:
+    // Compare 1.0s cue subtitle crop with 9.0s cue subtitle crop (different text)
+    // and with 3.2s silent subtitle crop (no text)
+    const negativeWrongTimeSsim = compareFrames(exportCrops[1.0], exportCrops[9.0]);
+    const negativeSilentSsim = compareFrames(exportCrops[1.0], exportCrops[3.2]);
+    assert.ok(
+      negativeWrongTimeSsim < 0.65,
+      `Negative wrong-time SSIM ${negativeWrongTimeSsim} is too high (expected < 0.65)`,
+    );
+    assert.ok(
+      negativeSilentSsim < 0.65,
+      `Negative silent-frame SSIM ${negativeSilentSsim} is too high (expected < 0.65)`,
+    );
+
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '07-decoded-frame-verified',
-      description: 'Exported frame extracted via ffmpeg and verified matching preview.',
-      details: { ssim, bytes: Number(probe.format.size) },
+      step: '07-decoded-frames-verified',
+      description: 'Exported frames decoded across 3 active cues and 1 silent instant, verified with full-frame and subtitle-region SSIM plus negative control.',
+      details: {
+        comparisons,
+        negativeWrongTimeSsim,
+        negativeSilentSsim,
+        bytes: Number(probe.format.size),
+        duration: Number(probe.format.duration),
+      },
     });
   });
 });
+

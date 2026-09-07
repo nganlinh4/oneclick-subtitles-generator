@@ -1,68 +1,225 @@
-// Real-binary customer journey 6: Cancel, retry, and project switching without leaks or wrong attachments
-// Driven through WebDriverIO and the actual application WebView.
-
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
-import { openProjectWithMedia } from '../support/workflow.js';
+import { openProjectWithMedia, selectStagedMediaFile } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'word-native-cancel-retry-switch';
 
-/* global $, browser, describe, document, it */
+/* global $, $$, browser, describe, document, it */
 
-describe('Customer Journey 6: Cancel, retry, and project switching', () => {
-  it('cancels mid-transcription cleanly, retries target window, and switches projects without leaks', async () => {
+describe('Customer Journey 6: Cancel, restart, and project switching without leaks', () => {
+  it('cancels mid-transcription cleanly, restarts full range, and switches projects without leaks', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'requires an isolated data root');
+
+    // === Step 1: Open project A with long real media (150s) and enroll credentials ===
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 2 });
+
+    const initialDurable = durableState(root);
+    assert.equal(initialDurable.counts.projects, 1, 'Project A must exist');
+    const projectAId = initialDurable.projects[0].id;
+    const mediaAId = initialDurable.media[0].id;
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-project-started',
-      description: 'Project started with media loaded and credentials enrolled',
+      description: 'Project A started with long media loaded and credentials enrolled.',
+      details: { projectId: projectAId, mediaId: mediaAId },
     });
 
-    // 1. Start generation
+    // === Step 2: Explicitly select Speech task and Gemini Transcribe engine ===
     await clickControl('[data-osg-action="generate-subtitles"]');
     const modal = await $('.create-subtitles-modal, .video-processing-modal');
-    await modal.waitForDisplayed({ timeout: 10_000 });
+    await modal.waitForDisplayed({ timeout: 30_000 });
+
+    const speechTab = await $('[data-task-tab="speech"]');
+    if (await speechTab.isDisplayed()) await speechTab.click();
+
+    const engineSelect = await $('#speech-engine-select');
+    await engineSelect.waitForDisplayed({ timeout: 10_000 });
+    await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
+
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '02-transcribe-selected',
+      description: 'Speech task and Gemini Transcribe word-native engine explicitly selected.',
+    });
+
+    // === Step 3: Start transcription and observe active native job ===
     await clickControl('[data-osg-action="process-subtitles"]');
 
-    // 2. Wait for processing state, then cancel if active
+    let activeJob = null;
+    await browser.waitUntil(async () => {
+      const state = durableState(root);
+      activeJob = state.jobs.find((j) => j.kind === 'transcribe' && j.state === 'running') ?? null;
+      return activeJob !== null;
+    }, {
+      timeout: 30_000,
+      interval: 250,
+      timeoutMsg: 'Native transcription job never entered running state',
+    });
+    assert.ok(activeJob?.id, 'Active native job must have an identity');
+
+    // Wait for the stop/cancel button to be clickable
     const cancelBtn = await $('[data-osg-action="cancel-generation"]');
-    if (await cancelBtn.isDisplayed()) {
-      await cancelBtn.click();
-      await captureWorkflowStep({
-        workflow: WORKFLOW,
-        step: '02-cancelled-cleanly',
-        description: 'Transcription cancelled cleanly without error toasts',
-      });
-    } else {
-      await captureWorkflowStep({
-        workflow: WORKFLOW,
-        step: '02-processed-cleanly',
-        description: 'Transcription processed cleanly without error toasts',
-      });
-    }
+    await cancelBtn.waitForClickable({ timeout: 10_000 });
 
-    // Assert: No red error banner displayed
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '03-active-job-observed',
+      description: 'Active native job observed running with identity before cancellation.',
+      details: { jobId: activeJob.id, jobState: activeJob.state },
+    });
+
+    // === Step 4: Click the actual Stop control ===
+    await clickControl('[data-osg-action="cancel-generation"]');
+
+    // === Step 5: Require terminal cancelled state and no red error toast ===
+    let cancelledJob = null;
+    await browser.waitUntil(async () => {
+      const state = durableState(root);
+      cancelledJob = state.jobs.find((j) => j.id === activeJob.id);
+      return cancelledJob?.state === 'cancelled';
+    }, {
+      timeout: 30_000,
+      interval: 250,
+      timeoutMsg: `Job ${activeJob.id} did not reach terminal cancelled state`,
+    });
+    assert.equal(cancelledJob.state, 'cancelled', 'Job must settle in cancelled state');
+
+    // Assert: No red error toast
     const errorToasts = await $$('.toast-error');
-    assert.equal(errorToasts.length, 0, 'Clean execution/cancellation must not display red error toast');
+    assert.equal(errorToasts.length, 0, 'Clean cancellation must not display red error toast');
 
-    // 3. Retry action
-    const retryBtn = await $('[data-osg-action="retry-transcription"]');
-    if (await retryBtn.isDisplayed()) {
-      await retryBtn.click();
-      await captureWorkflowStep({
-        workflow: WORKFLOW,
-        step: '03-retry-triggered',
-        description: 'Retry triggered cleanly',
-      });
+    // Bounded observation period: assert no cues promoted from cancelled operation
+    await browser.pause(3_000);
+    const postCancelDurable = durableState(root);
+    assert.equal(postCancelDurable.counts.cues, 0, 'No cues should be promoted from cancelled operation');
+
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-cancelled-cleanly',
+      description: 'Transcription cancelled cleanly to terminal state without error toasts or leaked cues.',
+      details: { jobId: cancelledJob.id, jobState: cancelledJob.state, cuesCount: postCancelDurable.counts.cues },
+    });
+
+    // === Step 6: Supported restart action on full range ===
+    const processBtn = await $('[data-osg-action="process-subtitles"]');
+    if (!await processBtn.isDisplayed()) {
+      await clickControl('[data-osg-action="generate-subtitles"]');
+      await modal.waitForDisplayed({ timeout: 15_000 });
     }
+    await clickControl('[data-osg-action="process-subtitles"]');
+
+    let restartedJob = null;
+    await browser.waitUntil(async () => {
+      const state = durableState(root);
+      restartedJob = state.jobs.find(
+        (j) => j.kind === 'transcribe' && j.id !== activeJob.id && j.state === 'succeeded',
+      );
+      return restartedJob !== null && state.counts.cues > 0;
+    }, {
+      timeout: 300_000,
+      interval: 1_000,
+      timeoutMsg: 'Restarted transcription never reached succeeded state with captions',
+    });
+
+    const restartedDurable = durableState(root);
+    assert.ok(restartedDurable.counts.cues > 0, 'Restarted transcription must persist captions');
+    assert.equal(restartedJob.state, 'succeeded');
+
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '05-restart-completed',
+      description: 'Restarted full-range transcription completed with durable captions persisted.',
+      details: { jobId: restartedJob.id, cuesCount: restartedDurable.counts.cues },
+    });
+
+    // === Step 7: Active A -> Project B isolation ===
+    // Start another transcription on project A
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await modal.waitForDisplayed({ timeout: 15_000 });
+    if (await speechTab.isDisplayed()) await speechTab.click();
+    await clickControl('[data-osg-action="process-subtitles"]');
+
+    let secondActiveJob = null;
+    await browser.waitUntil(async () => {
+      const state = durableState(root);
+      secondActiveJob = state.jobs.find(
+        (j) => j.kind === 'transcribe' && j.id !== activeJob.id && j.id !== restartedJob.id && j.state === 'running',
+      ) ?? null;
+      return secondActiveJob !== null;
+    }, {
+      timeout: 30_000,
+      interval: 250,
+      timeoutMsg: 'Second transcription on project A never entered running state',
+    });
+
+    // Close modal while transcription is running in background
+    const closeBtn = await $('.create-subtitles-modal .close-button');
+    if (await closeBtn.isDisplayed()) {
+      await clickControl('.create-subtitles-modal .close-button');
+      await modal.waitForDisplayed({ reverse: true, timeout: 10_000 });
+    }
+
+    // While operation on Project A is active, switch to media/project B through normal controls
+    await selectStagedMediaFile();
+
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '06-project-b-switched',
+      description: 'Switched to distinct media/project B via normal upload controls while A was active.',
+    });
+
+    // Wait until in-flight work from Project A settles (no running transcribe jobs)
+    await browser.waitUntil(async () => {
+      const state = durableState(root);
+      const runningTranscribe = state.jobs.filter((j) => j.kind === 'transcribe' && j.state === 'running');
+      return runningTranscribe.length === 0;
+    }, {
+      timeout: 60_000,
+      interval: 1_000,
+      timeoutMsg: 'Project A operations did not settle after switching to project B',
+    });
+
+    // Verify Project B isolation
+    const settledDurable = durableState(root);
+    assert.ok(settledDurable.counts.projects >= 2, 'Project B must be created in SQLite');
+    const projectB = settledDurable.projects.at(-1);
+    assert.notEqual(projectB.id, projectAId, 'Project B must have distinct project identity from A');
+
+    // Verify Project B's media is distinct from Media A
+    const mediaB = settledDurable.media.at(-1);
+    assert.notEqual(mediaB.id, mediaAId, 'Project B must own distinct media asset');
+
+    // Check UI for Project B: cues in Project B are empty (zero leaked from A)
+    const visibleCuesProjectB = await browser.execute(() => (
+      [...document.querySelectorAll('.lyric-text')]
+        .map((n) => (n.innerText || '').trim()).filter(Boolean)
+    ));
+    assert.equal(
+      visibleCuesProjectB.length,
+      0,
+      `Project B must not have any leaked cues from Project A: ${JSON.stringify(visibleCuesProjectB)}`,
+    );
+
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '07-project-b-isolated',
+      description: 'Project B retains its own media identity and has zero leaked cues from Project A.',
+      details: {
+        projectAId,
+        projectBId: projectB.id,
+        mediaAId,
+        mediaBId: mediaB.id,
+        projectBVisibleCues: visibleCuesProjectB.length,
+      },
+    });
   });
 });
+

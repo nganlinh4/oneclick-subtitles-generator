@@ -1068,3 +1068,14 @@ export const compareFrames = (referencePath, candidatePath) => {
   }
   return Number(match[1]);
 };
+
+export const cropSubtitleRegion = (inputPath, outputPath, { bottomRatio = 0.28 } = {}) => {
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const topRatio = 1.0 - bottomRatio;
+  execFileSync(ffmpeg(), [
+    '-v', 'error', '-y', '-i', inputPath,
+    '-vf', `crop=in_w:in_h*${bottomRatio}:0:in_h*${topRatio}`,
+    '-frames:v', '1', outputPath,
+  ], { stdio: 'pipe', timeout: 60_000, windowsHide: true });
+};
+
