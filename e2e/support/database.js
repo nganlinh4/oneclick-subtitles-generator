@@ -188,14 +188,33 @@ export const durableTranscriptRevisions = (root) => withDatabase(root, (database
 /** Project-owned native transcript words, decoded independently. */
 export const durableTranscriptWords = (root) => withDatabase(root, (database) => (
   database.prepare(
-    'SELECT hex(revision_id) AS revision_id, ordinal AS word_index, text, start_ms, end_ms, speaker_id, alignment_status FROM transcript_words ORDER BY revision_id, ordinal',
+    'SELECT hex(revision_id) AS revision_id, ordinal AS word_index, text, raw_start_ns, raw_end_ns, start_ms, end_ms, speaker_id, alignment_status FROM transcript_words ORDER BY revision_id, ordinal',
   ).all().map((row) => ({
     revisionId: String(row.revision_id).toLowerCase(),
     wordIndex: Number(row.word_index),
     text: row.text,
+    rawStartNs: Number(row.raw_start_ns),
+    rawEndNs: Number(row.raw_end_ns),
     startMs: Number(row.start_ms),
     endMs: Number(row.end_ms),
     speakerId: row.speaker_id,
     alignmentStatus: row.alignment_status,
+  }))
+));
+
+/** Project-owned native transcript turns, decoded independently. */
+export const durableTranscriptTurns = (root) => withDatabase(root, (database) => (
+  database.prepare(
+    'SELECT hex(id) AS id, hex(revision_id) AS revision_id, ordinal, speaker_id, start_ms, end_ms, text, start_word_ordinal, end_word_ordinal FROM transcript_turns ORDER BY revision_id, ordinal',
+  ).all().map((row) => ({
+    id: String(row.id).toLowerCase(),
+    revisionId: String(row.revision_id).toLowerCase(),
+    ordinal: Number(row.ordinal),
+    speakerId: row.speaker_id,
+    startMs: Number(row.start_ms),
+    endMs: Number(row.end_ms),
+    text: row.text,
+    startWordOrdinal: Number(row.start_word_ordinal),
+    endWordOrdinal: Number(row.end_word_ordinal),
   }))
 ));

@@ -4,6 +4,7 @@ import process from 'node:process';
 import {
   durableState,
   durableTranscriptRevisions,
+  durableTranscriptTurns,
   durableTranscriptWords,
 } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
@@ -46,17 +47,18 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
 
     // Explicitly select Speech task and Gemini Transcribe engine
     const speechTab = await $('[data-task-tab="speech"]');
-    if (await speechTab.isDisplayed()) await speechTab.click();
+    await speechTab.waitForDisplayed({ timeout: 10_000 });
+    await speechTab.click();
 
     const engineSelect = await $('#speech-engine-select');
     await engineSelect.waitForDisplayed({ timeout: 10_000 });
     await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
 
-    // Set window duration to 30 seconds to produce at least 4 windows (130s duration / 30s = 4 windows)
+    // Set window duration to 30 seconds to produce at least 4 windows (130s duration / 30s = 5 windows)
     const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
-    if (await accordion.isDisplayed()) {
-      await accordion.click();
-    }
+    await accordion.waitForDisplayed({ timeout: 10_000 });
+    await accordion.click();
+
     const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
     await slider.waitForDisplayed({ timeout: 10_000 });
     await browser.execute((sel) => {
@@ -85,10 +87,10 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     }, {
       timeout: 300_000,
       interval: 1_000,
-      timeoutMsg: 'Four-window transcription job never completed with captions',
+      timeoutMsg: 'Multi-window transcription job never completed with captions',
     });
 
-    // Verify native evidence in SQLite
+    // 1. Verify native evidence in SQLite: revisions and planned windows
     const revisions = durableTranscriptRevisions(root);
     assert.ok(revisions.length >= 1, 'At least one transcript revision must be recorded');
     const rev = revisions.at(-1);
@@ -109,47 +111,185 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       `Admitted range duration ${admittedDurationMs}ms must be >= 100,000ms to produce >= 4 windows of 30s`,
     );
 
-    // Native evidence check: planned window count and ranges in SQLite metadata
-    if (rev.metadata?.totalWindows != null) {
-      assert.ok(
-        rev.metadata.totalWindows >= 4,
-        `Planned window count (${rev.metadata.totalWindows}) must be >= 4`,
-      );
-      assert.ok(
-        Array.isArray(rev.metadata.plannedWindows) && rev.metadata.plannedWindows.length >= 4,
-        `Planned windows list (${rev.metadata.plannedWindows?.length}) must contain >= 4 windows`,
-      );
+    // 2. Unconditional assertion of window planning metadata
+    assert.ok(rev.metadata, 'Revision metadata must be present');
+    assert.equal(typeof rev.metadata.totalWindows, 'number', 'Metadata totalWindows must be a number');
+    assert.ok(
+      rev.metadata.totalWindows >= 4,
+      `Planned window count (${rev.metadata.totalWindows}) must be >= 4`,
+    );
+    assert.equal(
+      rev.metadata.windowDurationMs,
+      30_000,
+      `Window duration must be 30,000ms (was ${rev.metadata.windowDurationMs}ms)`,
+    );
+    assert.ok(
+      Array.isArray(rev.metadata.plannedWindows),
+      'Planned windows list must be an array',
+    );
+    assert.equal(
+      rev.metadata.plannedWindows.length,
+      rev.metadata.totalWindows,
+      'Planned windows list length must match totalWindows',
+    );
+
+    // 3. Exact planned range verification
+    for (let i = 0; i < rev.metadata.plannedWindows.length; i += 1) {
+      const win = rev.metadata.plannedWindows[i];
+      assert.equal(win.index, i, `Window ${i} index must match ordinal`);
+      if (i === 0) {
+        assert.equal(
+          win.startMs,
+          rev.sourceRangeStartMs,
+          `Window 0 startMs (${win.startMs}ms) must equal sourceRangeStartMs (${rev.sourceRangeStartMs}ms)`,
+        );
+      } else {
+        assert.equal(
+          win.startMs,
+          rev.metadata.plannedWindows[i - 1].endMs,
+          `Window ${i} startMs (${win.startMs}ms) must equal Window ${i - 1} endMs (${rev.metadata.plannedWindows[i - 1].endMs}ms)`,
+        );
+      }
+      if (i < rev.metadata.plannedWindows.length - 1) {
+        assert.equal(
+          win.endMs - win.startMs,
+          30_000,
+          `Full window ${i} duration (${win.endMs - win.startMs}ms) must be exactly 30,000ms`,
+        );
+      } else {
+        assert.equal(
+          win.endMs,
+          rev.sourceRangeEndMs,
+          `Final window ${i} endMs (${win.endMs}ms) must equal sourceRangeEndMs (${rev.sourceRangeEndMs}ms)`,
+        );
+      }
     }
 
-    // Timing Invariant 1: No zero offset bug - all words start >= sourceRangeStartMs
+    // 4. Completed window identities from persisted turns
+    const turns = durableTranscriptTurns(root);
+    assert.ok(turns.length > 0, 'Recognized transcript turns must be persisted');
+    const completedWindowIndices = new Set(
+      turns.map((t) => {
+        const match = t.speakerId?.match(/^w(\d+):/);
+        return match ? Number(match[1]) : null;
+      }).filter((idx) => idx !== null),
+    );
+    assert.ok(
+      completedWindowIndices.size >= 4,
+      `Completed window count (${completedWindowIndices.size}) must be >= 4`,
+    );
+
+    // 5. Word-by-word local-to-source offset oracle
     const words = durableTranscriptWords(root);
     assert.ok(words.length > 0, 'Recognized transcript words must be persisted');
+
+    const testOffsetOracle = (candidateStartMs, rawStartNs, windowStartMs) => {
+      const localMs = Math.floor(rawStartNs / 1_000_000);
+      return candidateStartMs === windowStartMs + localMs;
+    };
+
+    let oracleCheckedCount = 0;
     for (const word of words) {
       assert.ok(
-        word.startMs >= rev.sourceRangeStartMs,
-        `Word "${word.text}" startMs (${word.startMs}ms) is below admitted range start (${rev.sourceRangeStartMs}ms) - zero offset bug`,
+        Number.isSafeInteger(word.rawStartNs) && word.rawStartNs >= 0,
+        `Word "${word.text}" must contain valid rawStartNs (${word.rawStartNs})`,
+      );
+      // Find the planned window containing this word's projected start time
+      const win = rev.metadata.plannedWindows.find(
+        (w, idx) => (
+          idx === rev.metadata.plannedWindows.length - 1
+            ? word.startMs >= w.startMs && word.startMs <= w.endMs
+            : word.startMs >= w.startMs && word.startMs < w.endMs
+        ),
       );
       assert.ok(
-        word.endMs >= word.startMs,
-        `Word endMs must be >= startMs: ${JSON.stringify(word)}`,
+        win,
+        `Word "${word.text}" startMs (${word.startMs}ms) must fall within a planned window range`,
+      );
+
+      // Reconcile provider-local time to stored project time
+      const localMs = Math.floor(word.rawStartNs / 1_000_000);
+      const expectedStartMs = win.startMs + localMs;
+      assert.equal(
+        word.startMs,
+        expectedStartMs,
+        `Word "${word.text}" startMs (${word.startMs}ms) must equal window.startMs (${win.startMs}ms) + localStartMs (${localMs}ms)`,
+      );
+      assert.ok(
+        testOffsetOracle(word.startMs, word.rawStartNs, win.startMs),
+        `Word "${word.text}" must satisfy offset oracle`,
+      );
+      oracleCheckedCount += 1;
+    }
+    assert.ok(oracleCheckedCount > 0, 'At least one word verified by offset oracle');
+
+    // Oracle negative check 1: Deliberately omitting offset fails oracle on saved evidence
+    for (const word of words) {
+      const win = rev.metadata.plannedWindows.find(
+        (w, idx) => (
+          idx === rev.metadata.plannedWindows.length - 1
+            ? word.startMs >= w.startMs && word.startMs <= w.endMs
+            : word.startMs >= w.startMs && word.startMs < w.endMs
+        ),
+      );
+      const zeroOffsetCandidate = Math.floor(word.rawStartNs / 1_000_000);
+      if (win.startMs > 0) {
+        assert.equal(
+          testOffsetOracle(zeroOffsetCandidate, word.rawStartNs, win.startMs),
+          false,
+          `Oracle must reject zero-offset candidate (${zeroOffsetCandidate}ms vs ${word.startMs}ms)`,
+        );
+      }
+    }
+
+    // Oracle negative check 2: Deliberately doubling offset fails oracle on saved evidence
+    for (const word of words) {
+      const win = rev.metadata.plannedWindows.find(
+        (w, idx) => (
+          idx === rev.metadata.plannedWindows.length - 1
+            ? word.startMs >= w.startMs && word.startMs <= w.endMs
+            : word.startMs >= w.startMs && word.startMs < w.endMs
+        ),
+      );
+      const doubleOffsetCandidate = 2 * win.startMs + Math.floor(word.rawStartNs / 1_000_000);
+      if (win.startMs > 0) {
+        assert.equal(
+          testOffsetOracle(doubleOffsetCandidate, word.rawStartNs, win.startMs),
+          false,
+          `Oracle must reject double-offset candidate (${doubleOffsetCandidate}ms vs ${word.startMs}ms)`,
+        );
+      }
+    }
+
+    // 6. Check joins and ordering across windows
+    for (let i = 0; i < words.length - 1; i += 1) {
+      assert.ok(
+        words[i].wordIndex < words[i + 1].wordIndex,
+        `Word ordinals must be strictly increasing: ${words[i].wordIndex} >= ${words[i + 1].wordIndex}`,
+      );
+      assert.ok(
+        words[i].startMs <= words[i + 1].startMs,
+        `Word startMs must be monotonically non-decreasing: ${words[i].startMs} > ${words[i + 1].startMs}`,
       );
     }
 
-    // Timing Invariant 2: No double offset bug - window 0 words start near sourceRangeStartMs
-    const firstWord = words[0];
-    assert.ok(
-      firstWord.startMs < rev.sourceRangeStartMs + 30_000,
-      `First word startMs (${firstWord.startMs}ms) exceeds window 0 boundary (${rev.sourceRangeStartMs + 30_000}ms) - double offset bug`,
-    );
+    for (let i = 0; i < rev.metadata.plannedWindows.length - 1; i += 1) {
+      const currentWin = rev.metadata.plannedWindows[i];
+      const nextWin = rev.metadata.plannedWindows[i + 1];
+      const currentWords = words.filter((w) => w.startMs >= currentWin.startMs && w.startMs < currentWin.endMs);
+      const nextWords = words.filter((w) => w.startMs >= nextWin.startMs && w.startMs < nextWin.endMs);
 
-    // Timing Invariant 3: Words span into later windows (> 60s past start)
-    const lastWord = words.at(-1);
-    assert.ok(
-      lastWord.startMs >= rev.sourceRangeStartMs + 60_000,
-      `Last word startMs (${lastWord.startMs}ms) does not reach later windows`,
-    );
+      if (currentWords.length > 0 && nextWords.length > 0) {
+        const lastCurrent = currentWords.at(-1);
+        const firstNext = nextWords[0];
+        assert.ok(
+          lastCurrent.startMs < firstNext.startMs,
+          `Join between window ${i} and ${i + 1}: last word (${lastCurrent.startMs}ms) must precede next window's first word (${firstNext.startMs}ms)`,
+        );
+      }
+    }
 
-    // Timing Invariant 4: All cues are within range
+    // 7. Check all durable cues within range
     const state = durableState(root);
     assert.ok(state.cues.length > 0, 'Durable cues must exist');
     for (const cue of state.cues) {
@@ -157,21 +297,29 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
         cue.start_ms >= rev.sourceRangeStartMs,
         `Cue start_ms (${cue.start_ms}ms) precedes admitted range start (${rev.sourceRangeStartMs}ms)`,
       );
+      assert.ok(
+        cue.end_ms <= rev.sourceRangeEndMs + 500,
+        `Cue end_ms (${cue.end_ms}ms) exceeds admitted range end (${rev.sourceRangeEndMs}ms)`,
+      );
       assert.ok(cue.end_ms > cue.start_ms);
     }
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-four-windows-verified',
-      description: 'Four-window transcription completed; native evidence proves nonzero start and exact single offset projection.',
+      description: 'Multi-window transcription completed; native evidence proves planned ranges, completed window identities, and exact offset oracle verification.',
       details: {
         sourceRangeStartMs: rev.sourceRangeStartMs,
         sourceRangeEndMs: rev.sourceRangeEndMs,
         admittedDurationMs,
+        plannedWindowCount: rev.metadata.totalWindows,
+        plannedWindows: rev.metadata.plannedWindows,
+        completedWindowIndices: [...completedWindowIndices].sort((a, b) => a - b),
         wordCount: words.length,
-        firstWordStartMs: firstWord.startMs,
-        lastWordStartMs: lastWord.startMs,
+        firstWordStartMs: words[0].startMs,
+        lastWordStartMs: words.at(-1).startMs,
         cueCount: state.cues.length,
+        oracleCheckedCount,
       },
     });
   });

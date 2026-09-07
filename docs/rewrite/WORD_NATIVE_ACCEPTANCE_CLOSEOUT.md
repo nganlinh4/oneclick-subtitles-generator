@@ -1,5 +1,83 @@
 # Final bounded acceptance closeout
 
+> Latest supervisor review: substantial integration progress verified at `8edb7b4b`;
+> two evidence gaps remain. Execute the correction below. Do not restart A/C,
+> redesign the feature, or create another handoff file.
+
+## Final two corrections — supervisor follow-up
+
+The cancellation/restart/project-switch work and executed general/visual routes
+are substantive progress. Preserve them. The current production EXE hash was
+independently checked as `46409FF23F52197B88BBFA8711AF99A57C4A6CA0EA02FC81CEC2188CDD533FB2`.
+The supervisor inspected actual preview/export subtitle crops. This is not a
+request to repeat the whole development effort.
+
+### 1. Prove actual window planning and offset projection
+
+In `wordNativeAudioRangeProjection.journey.js`, remove the conditional skip around
+window metadata. The test must fail when the evidence it needs is absent. Use
+persisted window identities/ranges or captured actual native events if metadata
+does not contain the plan; do not synthesize a plan in the test and claim it ran.
+
+The reported admitted range has duration 129,864 ms. At 30,000 ms per window the
+current `planner.rs` produces **five** windows: four full windows plus a 9,864 ms
+tail. Its tail merge applies only below 5,000 ms. Correct the report; do not change
+production planning to make the old claim true. Acceptance requires at least four
+actual windows, not exactly four.
+
+Assert actual requested/admitted window size, exact planned ranges, and completed
+window identities. Reconcile provider-local times to stored project times for
+each window, using the real production observations/timebase. The existing
+`firstWord < rangeStart + 30s` assertion is insufficient: a double offset of about
+15 seconds can still pass. Require the explicit local-to-source relation with
+only the documented precision/rounding tolerance. Test that deliberately omitting
+or doubling the offset fails this oracle using saved evidence, not modified
+production output. Check duplicates/loss at joins against provider observations,
+not an assumption that the model recognized every spoken word.
+
+If required local timestamps/window identities are currently unavailable, add
+minimal bounded test evidence through the existing diagnostics mechanism. Do not
+log private transcripts, prompts or credentials, and do not build a new telemetry
+system. Run this real nonzero-range case once successfully after repairs and link
+its evidence. Keep failed/inconclusive attempts labeled accurately.
+
+### 2. Use actual Transcribe captions for the multi-frame export check
+
+`wordNativePreviewDecodedExport.journey.js` currently imports `SUBTITLE_FIXTURE`.
+Keep that as valid deterministic renderer coverage, but it cannot satisfy this
+specific native-transcription-to-export check.
+
+Reuse the real Transcribe generation/relaunch scenario and its durable generated
+captions. Connect the existing multi-frame capture/region comparison helpers to
+that result. No SRT replacement, fabricated cues or direct database seeding.
+Select three nonzero active-cue times spread across the actual generated track
+and one genuine silent/boundary instant from its timings. If no silent gap exists,
+report that honestly and use a clearly justified boundary test; do not invent one.
+
+Require an actual completed export; decode corresponding frames, compare preview
+and subtitle regions, and preserve the negative control that distinguishes wrong
+text or absent subtitles. Use actual generated cue text as the visual expectation,
+not the old hardcoded fixture phrases. Save preview/decoded crops together and
+personally inspect them. Record generated revision identity, selected cue IDs and
+times so the report proves which transcript was exported.
+
+### Finish and report in this file
+
+No reviewer swarms, extra feature work or repeated full benchmark matrix. Fix only
+defects these checks expose. Preserve existing safety/isolation rules. If only
+tests/docs change, do not rebuild the normal EXE unnecessarily; state its actual
+product-source provenance. If product code changes, rerun relevant gates and
+rebuild through the existing frontend-plus-native scripts.
+
+Update the B/D rows and the overall completion status below with the corrected
+claims. Add a concise result here containing: actual window count/ranges and
+offset-oracle negative check; generated transcript identity and inspected frame
+paths; exact commands/results; commits and final EXE provenance. Do not request
+another routine approval between these two tasks. A genuine external blocker must
+be documented, not silently converted to a pass.
+
+Follow-up status: NOT STARTED. Supervisor acceptance: PENDING THESE TWO CHECKS.
+
 Supervisor directive, 2026-09-07. Current reviewed HEAD: `e9cffff9`.
 
 Read this first. It supersedes immediate execution ordering in the prior word-native handoffs. This is the last defined acceptance batch, not another redesign. Preserve their data-safety and truthful-evidence rules. The central real-app generation/relaunch/export implementation has made substantive progress; do not rebuild it from scratch.

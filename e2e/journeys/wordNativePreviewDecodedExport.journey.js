@@ -2,7 +2,12 @@ import { strict as assert } from 'node:assert';
 import { join } from 'node:path';
 import process from 'node:process';
 
+import {
+  durableState,
+  durableTranscriptRevisions,
+} from '../support/database.js';
 import { clickControl } from '../support/editor.js';
+import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import {
   compareFrames,
   cropSubtitleRegion,
@@ -14,49 +19,116 @@ import {
 } from '../support/nativeMediaOracle.js';
 import {
   openProjectWithMedia,
-  SUBTITLE_FIXTURE,
-  importSubtitles,
   seekPreviewTo,
   waitForCanvasSubtitleFrame,
 } from '../support/workflow.js';
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
-const SAMPLE_TIMESTAMPS = [
-  { time: 1.0, kind: 'active', cueText: 'First cue for the preview' },
-  { time: 3.2, kind: 'silent', cueText: '(none - cue boundary)' },
-  { time: 5.0, kind: 'active', cueText: 'Second cue, plain text only' },
-  { time: 9.0, kind: 'active', cueText: 'Last cue before the end' },
-];
 const WORKFLOW = 'word-native-preview-decoded-export';
 
-/* global $, browser, describe, document, it */
+/* global $, browser, describe, it */
 
 describe('Customer Journey 9: Native preview -> exported file with frame-by-frame decoding', () => {
-  it('enables word highlighting, inspects preview canvas at boundaries, and triggers export', async () => {
+  it('transcribes real video, inspects preview canvas at boundaries, and verifies decoded export frames', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     const destination = process.env.OSG_E2E_MEDIA_DESTINATION;
     assert.ok(root, 'requires an isolated data root');
     assert.ok(destination, 'requires staged media destination');
 
     await openProjectWithMedia();
-    await importSubtitles(SUBTITLE_FIXTURE);
+    await enrollGeminiCredentials({ limit: 1 });
+
+    // Open Create Subtitles modal
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    const modal = await $('.create-subtitles-modal, .video-processing-modal');
+    await modal.waitForDisplayed({ timeout: 30_000 });
+
+    // Explicitly select Speech task and Gemini Transcribe word-native engine
+    const speechTab = await $('[data-task-tab="speech"]');
+    await speechTab.waitForDisplayed({ timeout: 10_000 });
+    await speechTab.click();
+
+    const engineSelect = await $('#speech-engine-select');
+    await engineSelect.waitForDisplayed({ timeout: 10_000 });
+    await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
+
+    // Submit transcription request
+    await clickControl('[data-osg-action="process-subtitles"]');
+
+    // Wait for provider completion & durable captions in SQLite
+    let durable = null;
+    await browser.waitUntil(async () => {
+      durable = durableState(root);
+      const job = durable.jobs.find((j) => j.kind === 'transcribe' && j.state === 'succeeded');
+      return job !== null && durable.counts.cues > 0;
+    }, {
+      timeout: 180_000,
+      interval: 1_000,
+      timeoutMsg: 'Gemini transcription did not deliver captions within timeout',
+    });
+
+    const revisions = durableTranscriptRevisions(root);
+    assert.ok(revisions.length >= 1, 'At least one transcript revision must be recorded');
+    const rev = revisions.at(-1);
+    assert.equal(rev.provider, 'gemini');
+    assert.equal(rev.model, 'gemini-3.5-transcribe');
+
+    const cues = durable.cues;
+    assert.ok(cues.length >= 3, `Expected at least 3 generated cues, got ${cues.length}`);
+
+    // Dynamically select 3 active cues spread across the generated track and 1 silent instant
+    const cue1 = cues[0];
+    const cue2 = cues[Math.floor((cues.length - 1) / 2)];
+    const cue3 = cues[cues.length - 1];
+
+    const time1 = Number(((cue1.start_ms + cue1.end_ms) / 2000).toFixed(2));
+    const time2 = Number(((cue2.start_ms + cue2.end_ms) / 2000).toFixed(2));
+    const time3 = Number(((cue3.start_ms + cue3.end_ms) / 2000).toFixed(2));
+
+    // Select genuine silent instant: before cue 1 if gap >= 800ms, or between consecutive cues
+    let silentTime = null;
+    if (cue1.start_ms >= 800) {
+      silentTime = Number((cue1.start_ms / 2000).toFixed(2));
+    } else {
+      for (let i = 0; i < cues.length - 1; i += 1) {
+        if (cues[i + 1].start_ms - cues[i].end_ms >= 400) {
+          silentTime = Number(((cues[i].end_ms + cues[i + 1].start_ms) / 2000).toFixed(2));
+          break;
+        }
+      }
+    }
+    if (silentTime === null) {
+      silentTime = Number(((cue3.end_ms + 400) / 1000).toFixed(2));
+    }
+
+    const sampleTimestamps = [
+      { time: time1, kind: 'active', cueId: cue1.id, cueText: cue1.text },
+      { time: silentTime, kind: 'silent', cueId: null, cueText: '(silent - no subtitle)' },
+      { time: time2, kind: 'active', cueId: cue2.id, cueText: cue2.text },
+      { time: time3, kind: 'active', cueId: cue3.id, cueText: cue3.text },
+    ];
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-preview-with-cues',
-      description: 'Project loaded with subtitles fixture and video.',
+      description: 'Project loaded and transcribed with real Gemini Transcribe captions persisted.',
+      details: {
+        revisionId: rev.id,
+        cueCount: cues.length,
+        selectedSamples: sampleTimestamps,
+      },
     });
 
     // 1. Move player into each sampled timestamp and capture preview frames
     const previewPaths = {};
-    for (const sample of SAMPLE_TIMESTAMPS) {
+    for (const sample of sampleTimestamps) {
       await seekPreviewTo(sample.time);
       if (sample.kind === 'active') {
         await waitForCanvasSubtitleFrame(120_000);
       } else {
         await browser.pause(500);
       }
-      const previewPath = join(root, 'evidence', `preview-at-${sample.time}s.png`);
+      const previewPath = join(root, 'evidence', `preview-at-${String(sample.time).replace('.', 'p')}s.png`);
       await savePreviewElementFrame(
         previewPath,
         '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
@@ -68,7 +140,7 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       workflow: WORKFLOW,
       step: '02-canvas-frames-rendered',
       description: 'Canvas-atlas subtitle frames rendered at 4 sampled instants across clip.',
-      details: { timestamps: SAMPLE_TIMESTAMPS.map((s) => s.time) },
+      details: { timestamps: sampleTimestamps.map((s) => s.time) },
     });
 
     // 2. Open Render section
@@ -137,13 +209,14 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     const exportCrops = {};
     const previewCrops = {};
 
-    for (const sample of SAMPLE_TIMESTAMPS) {
-      const exportFramePath = join(root, 'evidence', `export-at-${sample.time}s.png`);
+    for (const sample of sampleTimestamps) {
+      const timeSlug = String(sample.time).replace('.', 'p');
+      const exportFramePath = join(root, 'evidence', `export-at-${timeSlug}s.png`);
       extractFrame(exported, sample.time, exportFramePath);
       exportPaths[sample.time] = exportFramePath;
 
-      const previewCropPath = join(root, 'evidence', `preview-sub-at-${sample.time}s.png`);
-      const exportCropPath = join(root, 'evidence', `export-sub-at-${sample.time}s.png`);
+      const previewCropPath = join(root, 'evidence', `preview-sub-at-${timeSlug}s.png`);
+      const exportCropPath = join(root, 'evidence', `export-sub-at-${timeSlug}s.png`);
       cropSubtitleRegion(previewPaths[sample.time], previewCropPath);
       cropSubtitleRegion(exportFramePath, exportCropPath);
       previewCrops[sample.time] = previewCropPath;
@@ -159,18 +232,17 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
         subSsim,
       });
 
-      const timeSlug = String(sample.time).replace('.', 'p');
       copyWorkflowArtifact({
         workflow: WORKFLOW,
         name: `preview-at-${timeSlug}s`,
         source: previewPaths[sample.time],
-        description: `Preview frame captured at ${sample.time}s (${sample.kind})`,
+        description: `Preview frame captured at ${sample.time}s (${sample.kind}): "${sample.cueText}"`,
       });
       copyWorkflowArtifact({
         workflow: WORKFLOW,
         name: `export-at-${timeSlug}s`,
         source: exportFramePath,
-        description: `Decoded export frame at ${sample.time}s (${sample.kind})`,
+        description: `Decoded export frame at ${sample.time}s (${sample.kind}): "${sample.cueText}"`,
       });
       copyWorkflowArtifact({
         workflow: WORKFLOW,
@@ -193,11 +265,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
       }
     }
 
-    // Negative discriminating check:
-    // Compare 1.0s cue subtitle crop with 9.0s cue subtitle crop (different text)
-    // and with 3.2s silent subtitle crop (no text)
-    const negativeWrongTimeSsim = compareFrames(exportCrops[1.0], exportCrops[9.0]);
-    const negativeSilentSsim = compareFrames(exportCrops[1.0], exportCrops[3.2]);
+    // Negative discriminating checks:
+    // Compare active cue 1 subtitle crop with active cue 2 subtitle crop (different generated text)
+    // and with silent subtitle crop (generated text vs no text)
+    const negativeWrongTimeSsim = compareFrames(exportCrops[time1], exportCrops[time2]);
+    const negativeSilentSsim = compareFrames(exportCrops[time1], exportCrops[silentTime]);
     assert.ok(
       negativeWrongTimeSsim < 0.65,
       `Negative wrong-time SSIM ${negativeWrongTimeSsim} is too high (expected < 0.65)`,
@@ -217,8 +289,11 @@ describe('Customer Journey 9: Native preview -> exported file with frame-by-fram
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '07-decoded-frames-verified',
-      description: 'Exported frames decoded across 3 active cues and 1 silent instant, verified with full-frame and subtitle-region SSIM plus negative control.',
+      description: 'Exported frames decoded across 3 active cues and 1 silent instant from real Transcribe generation, verified with full-frame and subtitle-region SSIM plus negative control.',
       details: {
+        revisionId: rev.id,
+        cuesCount: cues.length,
+        selectedSamples: sampleTimestamps,
         comparisons,
         negativeWrongTimeSsim,
         negativeSilentSsim,
