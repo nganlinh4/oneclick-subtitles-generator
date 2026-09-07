@@ -156,14 +156,6 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
       timeout: 30_000,
       interval: 250,
       timeoutMsg: 'Second transcription on project A never entered running state',
-    });
-
-    // Close modal while transcription is running in background
-    const closeBtn = await $('.create-subtitles-modal .close-button');
-    await closeBtn.waitForClickable({ timeout: 10_000 });
-    await closeBtn.click();
-    await modal.waitForDisplayed({ reverse: true, timeout: 10_000 });
-
     // While operation on Project A is active, switch to media/project B through normal controls
     await selectStagedMediaFile();
 

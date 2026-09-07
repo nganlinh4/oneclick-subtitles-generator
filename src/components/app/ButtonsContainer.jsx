@@ -317,6 +317,8 @@ const ButtonsContainer = ({
 
             // The state will be updated by the event listener in useSubtitles hook
           }}
+          data-osg-action="cancel-generation"
+          data-testid="force-stop-btn"
           title={t('output.forceStopTooltip', 'Force stop all Gemini requests')}
         >
           {/* Dynamic Gemini effects container - populated by particle system */}
