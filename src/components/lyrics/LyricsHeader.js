@@ -182,6 +182,7 @@ const LyricsHeader = ({
 
             <button
               className="lyrics-save-btn"
+              data-osg-action="save-project"
               onClick={onSave}
               disabled={isAtSavedState}
               title={isAtSavedState ? t('common.saveDisabled', 'No changes to save') : t('common.saveWithShortcut', 'Save (Ctrl+S)')}

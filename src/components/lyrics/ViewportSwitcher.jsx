@@ -55,6 +55,7 @@ export const ViewportSwitcher = ({
         className={`viewport-tab-button ${activeViewport === 'transcript' ? 'active' : ''}`}
         onClick={() => onViewportChange?.('transcript')}
         data-testid="viewport-tab-transcript"
+        data-editor-view="transcript"
       >
         <span className="material-symbols-rounded" aria-hidden="true" style={{ fontSize: '18px' }}>
           record_voice_over
@@ -77,6 +78,7 @@ export const ViewportSwitcher = ({
         className={`viewport-tab-button ${activeViewport === 'captions' ? 'active' : ''}`}
         onClick={() => onViewportChange?.('captions')}
         data-testid="viewport-tab-captions"
+        data-editor-view="captions"
       >
         <span className="material-symbols-rounded" aria-hidden="true" style={{ fontSize: '18px' }}>
           subtitles

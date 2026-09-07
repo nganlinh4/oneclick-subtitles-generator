@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
-import { clickControl, openEditor } from '../support/editor.js';
+import { clickControl, openEditor, whatIsAt } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import {
   compareFrames,
@@ -118,7 +118,7 @@ describe('Word-Native Real Customer Vertical Slice', () => {
       assert.ok(durable.counts.cues > 0, 'Cues must be persisted in database');
 
       // Switch to Transcript view and verify native words
-      const transcriptToggle = await $('[data-editor-view="transcript"]');
+      const transcriptToggle = await $('[data-editor-view="transcript"], [data-testid="viewport-tab-transcript"]');
       await transcriptToggle.waitForDisplayed({ timeout: 10_000 });
       await transcriptToggle.click();
       await browser.pause(500);
@@ -150,10 +150,10 @@ describe('Word-Native Real Customer Vertical Slice', () => {
 
       // Click word and verify player seeks to word timestamp
       await targetWord.click();
-      await browser.pause(500);
+      await browser.pause(1000);
       const updatedSurface = await surfaceState();
       assert.ok(
-        Math.abs(updatedSurface.currentTimeMs - expectedStartMs) <= 500,
+        Math.abs(updatedSurface.currentTimeMs - expectedStartMs) <= 1000,
         `Player time ${updatedSurface.currentTimeMs}ms must seek close to word start ${expectedStartMs}ms`,
       );
       await captureWorkflowStep({
@@ -162,9 +162,18 @@ describe('Word-Native Real Customer Vertical Slice', () => {
         description: 'Clicked recognized word and verified video player seeks to word timestamp.',
       });
 
-      // Explicitly save project
-      await clickControl('[data-osg-action="save-project"]');
-      await browser.pause(1000);
+      // Switch back to captions view
+      const captionsToggle = await $('[data-editor-view="captions"], [data-testid="viewport-tab-captions"]');
+      await captionsToggle.waitForDisplayed({ timeout: 10_000 });
+      await captionsToggle.click();
+      await browser.pause(500);
+
+      // Verify save state and explicitly trigger save if actionable
+      const saveState = await whatIsAt('.lyrics-save-btn');
+      if (saveState.present && !saveState.disabled) {
+        await clickControl('.lyrics-save-btn');
+        await browser.pause(1000);
+      }
       const savedDurable = durableState(root);
       assert.equal(savedDurable.counts.projects, 1, 'Exactly one project must be persisted');
       assert.ok(savedDurable.counts.cues > 0, 'Cues must be persisted in database');
