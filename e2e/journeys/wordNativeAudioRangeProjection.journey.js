@@ -36,21 +36,14 @@ describe('Customer Journey 2: Audio source and selected nonzero range with exact
       .up({ button: 0 })
       .perform();
 
-    await captureWorkflowStep({
-      workflow: WORKFLOW,
-      step: '01-media-and-range-selected',
-      description: 'Media loaded into editor and timeline range selected via pointer drag',
-    });
-
-    // 1. Open Create Subtitles dialog
-    await clickControl('[data-osg-action="generate-subtitles"]');
+    // The modal is automatically opened upon segment selection
     const modal = await $('.create-subtitles-modal, .video-processing-modal');
-    await modal.waitForDisplayed({ timeout: 10_000 });
+    await modal.waitForDisplayed({ timeout: 15_000 });
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '02-scope-range-selected',
-      description: 'Create subtitles modal open with range scope active and valid',
+      step: '01-scope-range-selected',
+      description: 'Timeline range selected and Create Subtitles modal opened with range scope active and valid',
     });
     await clickControl('[data-osg-action="process-subtitles"]');
 
