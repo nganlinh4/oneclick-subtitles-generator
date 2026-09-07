@@ -72,28 +72,49 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     // Set window duration to 30 seconds to produce at least 4 windows (130s duration / 30s = 5 windows)
     const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
     await accordion.waitForDisplayed({ timeout: 10_000 });
-    const isExpanded = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
+    let isExpanded = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
     if (!isExpanded) {
       await accordion.click();
+      await browser.pause(200);
+      isExpanded = await browser.execute(() => !!document.querySelector('.creation-accordion-content'));
+      if (!isExpanded) {
+        await browser.execute(() => {
+          const btn = document.querySelector('[data-osg-action="speech-advanced-options-toggle"]');
+          if (btn) btn.click();
+        });
+      }
     }
+    await $('.creation-accordion-content').waitForExist({ timeout: 5_000 });
 
-    const sliderTrack = await $('[data-osg-range-id="speech-window-duration-slider"], .standard-slider-track-container');
+    // Scroll slider track into view and verify it is displayed
+    await browser.execute(() => {
+      const el = document.querySelector('[data-osg-range-id="speech-window-duration-slider"]');
+      if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    });
+    const sliderTrack = await $('[data-osg-range-id="speech-window-duration-slider"]');
     await sliderTrack.waitForDisplayed({ timeout: 10_000 });
+    await sliderTrack.click();
+    await browser.keys(['Home']);
+
+    // Ensure React controlled state receives 30 via keyboard event dispatch on the slider track
+    // and change event on the underlying range input
+    await browser.execute((trackSel, inputSel) => {
+      const track = document.querySelector(trackSel);
+      if (track) {
+        track.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      }
+      const input = document.querySelector(inputSel);
+      if (input) {
+        const tracker = input._valueTracker;
+        if (tracker) tracker.setValue('120');
+        input.value = '30';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, '[data-osg-range-id="speech-window-duration-slider"]', '[data-osg-action="speech-window-duration-slider"]');
+
     const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
     await slider.waitForExist({ timeout: 10_000 });
-    await browser.execute((sel) => {
-      const el = document.querySelector(sel);
-      if (el) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-        if (nativeSetter) {
-          nativeSetter.call(el, '30');
-        } else {
-          el.value = '30';
-        }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }, '[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
 
     // Verify the controlled slider reflects 30s
     await browser.waitUntil(async () => {
