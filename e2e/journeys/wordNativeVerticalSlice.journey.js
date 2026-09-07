@@ -253,6 +253,10 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     const renderButton = await $(renderSelector);
     await renderButton.waitForDisplayed({ timeout: 30_000 });
     assert.equal(await renderButton.isEnabled(), true, 'Render button must be enabled');
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    }, renderSelector);
     await clickControl(renderSelector);
     await captureWorkflowStep({
       workflow: WORKFLOW,
@@ -277,7 +281,12 @@ describe('Word-Native Real Customer Vertical Slice', () => {
     // Download exported MP4 into staged destination
     assert.ok(destination, 'OSG_E2E_MEDIA_DESTINATION must be configured');
     const beforeFiles = listMediaFiles(destination);
-    await clickControl('.video-rendering-section .queue-item.completed .download-btn-success');
+    const downloadSelector = '.video-rendering-section .queue-item.completed .download-btn-success';
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    }, downloadSelector);
+    await clickControl(downloadSelector);
     let exported = null;
     await browser.waitUntil(() => {
       exported = newestMediaFile(destination, beforeFiles);
