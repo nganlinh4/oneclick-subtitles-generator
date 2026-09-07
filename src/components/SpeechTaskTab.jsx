@@ -246,6 +246,7 @@ export const SpeechTaskTab = ({
         <button
           type="button"
           className="creation-accordion-trigger"
+          data-osg-action="speech-advanced-options-toggle"
           onClick={() => setShowAdvanced((prev) => !prev)}
           aria-expanded={showAdvanced}
         >
@@ -290,6 +291,7 @@ export const SpeechTaskTab = ({
                 step="10"
                 value={windowDurationSecs}
                 className="creation-range speech-window-duration-slider"
+                data-osg-action="speech-window-duration-slider"
                 onChange={(e) => handleFieldChange('windowDurationSecs', parseInt(e.target.value, 10))}
               />
               <span className="creation-field-helper">

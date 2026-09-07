@@ -169,7 +169,7 @@ export const durableRenderScenes = (root) => withDatabase(root, (database) => (
 /** Project-owned native transcript revisions, decoded independently. */
 export const durableTranscriptRevisions = (root) => withDatabase(root, (database) => (
   database.prepare(
-    'SELECT hex(id) AS id, hex(project_id) AS project_id, provider, model, source_range_start_ms, source_range_end_ms, state, word_count, created_at_ms, updated_at_ms FROM transcript_revisions ORDER BY created_at_ms',
+    'SELECT hex(id) AS id, hex(project_id) AS project_id, provider, model, source_range_start_ms, source_range_end_ms, state, word_count, metadata_json, created_at_ms, updated_at_ms FROM transcript_revisions ORDER BY created_at_ms',
   ).all().map((row) => ({
     id: String(row.id).toLowerCase(),
     projectId: String(row.project_id).toLowerCase(),
@@ -179,6 +179,7 @@ export const durableTranscriptRevisions = (root) => withDatabase(root, (database
     sourceRangeEndMs: Number(row.source_range_end_ms),
     state: row.state,
     wordCount: Number(row.word_count),
+    metadata: row.metadata_json ? JSON.parse(row.metadata_json) : {},
     createdAtMs: Number(row.created_at_ms),
     updatedAtMs: Number(row.updated_at_ms),
   }))

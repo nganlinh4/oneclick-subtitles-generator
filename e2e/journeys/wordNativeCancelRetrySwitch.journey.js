@@ -44,6 +44,22 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     await engineSelect.waitForDisplayed({ timeout: 10_000 });
     await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
 
+    // Configure 30s window duration to avoid 120s inline audio timeouts
+    const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
+    if (await accordion.isDisplayed()) {
+      await accordion.click();
+    }
+    const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+    await slider.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((val) => {
+      const el = document.querySelector('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+      if (el) {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, 30);
+
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-transcribe-selected',
@@ -120,6 +136,21 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     await engineSelectRestart.waitForDisplayed({ timeout: 10_000 });
     await engineSelectRestart.selectByAttribute('value', 'gemini-3.5-transcribe');
 
+    const accordionRestart = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
+    if (await accordionRestart.isDisplayed()) {
+      await accordionRestart.click();
+    }
+    const sliderRestart = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+    await sliderRestart.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((val) => {
+      const el = document.querySelector('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+      if (el) {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, 30);
+
     await clickControl('[data-osg-action="process-subtitles"]');
 
     let restartedJob = null;
@@ -168,6 +199,21 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     const engineSelectSecond = await $('#speech-engine-select');
     await engineSelectSecond.waitForDisplayed({ timeout: 10_000 });
     await engineSelectSecond.selectByAttribute('value', 'gemini-3.5-transcribe');
+
+    const accordionSecond = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
+    if (await accordionSecond.isDisplayed()) {
+      await accordionSecond.click();
+    }
+    const sliderSecond = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+    await sliderSecond.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((val) => {
+      const el = document.querySelector('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+      if (el) {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, 30);
 
     await clickControl('[data-osg-action="process-subtitles"]');
 

@@ -209,6 +209,17 @@ pub(crate) async fn start_transcription_engine(
     )
     .unwrap_or(0);
 
+    let planned_windows_json = serde_json::to_string(&serde_json::json!({
+        "plannedWindows": windows.iter().map(|w| serde_json::json!({
+            "index": w.index,
+            "startMs": w.start_ms,
+            "endMs": w.end_ms,
+        })).collect::<Vec<_>>(),
+        "totalWindows": total_windows,
+        "windowDurationMs": request.window_duration_ms(),
+    }))
+    .unwrap_or_else(|_| "{}".to_owned());
+
     let initial_revision = TranscriptRevisionRecord {
         id: revision_id,
         project_id: request.project_id,
@@ -220,7 +231,7 @@ pub(crate) async fn start_transcription_engine(
         state: "in_progress".to_owned(),
         fingerprint: format!("{}_{}_{}", request.project_id, range_start_ms, range_end_ms),
         word_count: 0,
-        metadata_json: "{}".to_owned(),
+        metadata_json: planned_windows_json,
         created_at_ms: now_ms,
         updated_at_ms: now_ms,
     };

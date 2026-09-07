@@ -53,17 +53,20 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await engineSelect.selectByAttribute('value', 'gemini-3.5-transcribe');
 
     // Set window duration to 30 seconds to produce at least 4 windows (130s duration / 30s = 4 windows)
-    const slider = await $('.speech-window-duration-slider');
-    if (await slider.isDisplayed()) {
-      await browser.execute((sel) => {
-        const el = document.querySelector(sel);
-        if (el) {
-          el.value = 30;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, '.speech-window-duration-slider');
+    const accordion = await $('[data-osg-action="speech-advanced-options-toggle"], .creation-accordion-trigger');
+    if (await accordion.isDisplayed()) {
+      await accordion.click();
     }
+    const slider = await $('[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+    await slider.waitForDisplayed({ timeout: 10_000 });
+    await browser.execute((sel) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.value = 30;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, '[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
@@ -105,6 +108,18 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
       admittedDurationMs >= 100_000,
       `Admitted range duration ${admittedDurationMs}ms must be >= 100,000ms to produce >= 4 windows of 30s`,
     );
+
+    // Native evidence check: planned window count and ranges in SQLite metadata
+    if (rev.metadata?.totalWindows != null) {
+      assert.ok(
+        rev.metadata.totalWindows >= 4,
+        `Planned window count (${rev.metadata.totalWindows}) must be >= 4`,
+      );
+      assert.ok(
+        Array.isArray(rev.metadata.plannedWindows) && rev.metadata.plannedWindows.length >= 4,
+        `Planned windows list (${rev.metadata.plannedWindows?.length}) must contain >= 4 windows`,
+      );
+    }
 
     // Timing Invariant 1: No zero offset bug - all words start >= sourceRangeStartMs
     const words = durableTranscriptWords(root);
