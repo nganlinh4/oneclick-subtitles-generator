@@ -64,11 +64,22 @@ describe('Customer Journey 2: Nonzero range and four windows with exact single o
     await browser.execute((sel) => {
       const el = document.querySelector(sel);
       if (el) {
-        el.value = 30;
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(el, '30');
+        } else {
+          el.value = '30';
+        }
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
     }, '[data-osg-action="speech-window-duration-slider"], .speech-window-duration-slider');
+
+    // Verify the controlled slider reflects 30s
+    await browser.waitUntil(async () => {
+      const val = await slider.getValue();
+      return String(val) === '30';
+    }, { timeout: 5_000, timeoutMsg: 'Window duration slider failed to update to 30' });
 
     await captureWorkflowStep({
       workflow: WORKFLOW,
