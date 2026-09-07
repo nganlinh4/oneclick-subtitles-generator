@@ -56,6 +56,7 @@ const StandardSlider = ({
   onDragStart,
   onDragEnd,
   figmaProps = {},
+  inputProps = {},
   ...props
 }) => {
   const { t } = useTranslation();
@@ -406,7 +407,7 @@ const StandardSlider = ({
               <div className="track"></div>
               <div className={`standard-slider-end-stop ${shouldHideEndStop ? 'hidden' : ''}`}></div>
             </div>
-            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={handleChange} className="standard-slider-input" id={id} aria-hidden="true" disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} />
+            <input type="range" min={min} max={max} step={step} value={valueEnd} onChange={handleChange} className={`standard-slider-input ${inputProps.className || ''}`.trim()} id={id} aria-hidden="true" disabled={isDisabled} tabIndex={-1} style={{ pointerEvents: 'none' }} {...inputProps} />
           </>
         ) : (
           <>

@@ -3,7 +3,6 @@ import { processGeminiSegment } from './GeminiAdapter';
 import {
   startWordNativeTranscription,
   cancelWordNativeTranscription,
-  isNativeWordTranscriptionSupported,
 } from '../../platform/nativeWordTranscription';
 import { getActiveTranscript } from '../../platform/transcriptStore';
 

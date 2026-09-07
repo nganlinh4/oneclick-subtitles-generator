@@ -3,8 +3,8 @@
 .caption-grouping-toolbar-container {
   background: var(--md-surface-container, #F3EDF7);
   border: 1px solid var(--md-outline-variant, #CAC4D0);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: var(--md-shape-large, 24px);
+  padding: 10px 16px;
   margin-bottom: 8px;
   display: flex;
   flex-direction: column;
@@ -35,7 +35,7 @@
   background: transparent;
   border: 1px solid var(--md-outline-variant, #CAC4D0);
   border-radius: var(--md-shape-pill, 9999px);
-  padding: 4px 12px;
+  padding: 5px 14px;
   font-size: 12px;
   font-weight: 500;
   color: var(--md-on-surface, #1C1B1F);
@@ -68,14 +68,16 @@
 .adjust-drawer-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   background: transparent;
   border: none;
   font-size: 12px;
+  font-weight: 500;
   color: var(--md-primary, #5D5FEF);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 5px 10px;
+  border-radius: var(--md-shape-pill, 9999px);
+  transition: background-color 0.15s ease;
 }
 
 [data-theme="dark"] .adjust-drawer-toggle-btn {
@@ -125,8 +127,8 @@
 /* Collapsible Custom Sliders Drawer */
 .custom-sliders-drawer {
   background: var(--md-surface-container-high, #ECE6F0);
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-radius: 16px;
+  padding: 12px 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;

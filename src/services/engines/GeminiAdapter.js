@@ -8,7 +8,6 @@ import {
   isNativeWordTranscriptionSupported,
   startWordNativeTranscription,
 } from '../../platform/nativeWordTranscription';
-import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { getActiveProjectSnapshot } from '../../platform/projectService';
 import { setActiveTranscript } from '../../platform/transcriptStore';
 

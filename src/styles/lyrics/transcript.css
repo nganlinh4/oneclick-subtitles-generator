@@ -64,8 +64,8 @@
   height: 300px;
   overflow-y: auto;
   background: var(--md-surface, #FEF7FF);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 16px;
+  padding: 10px 14px;
   box-sizing: border-box;
 }
 
@@ -83,8 +83,8 @@
 .speaker-turn-item {
   background: var(--md-surface-container-low, #F7F2FA);
   border: 1px solid var(--md-outline-variant, #E7E0EC);
-  border-radius: 8px;
-  padding: 10px 14px;
+  border-radius: 16px;
+  padding: 12px 16px;
   transition: border-color 0.2s ease, background-color 0.2s ease;
   border-left: 4px solid var(--turn-speaker-color, var(--md-primary));
 }

@@ -368,7 +368,7 @@ const LyricItem = ({
                   className="merge-lyrics-button"
                   title={t('lyrics.mergeTooltip', 'Merge lyrics')}
                 >
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>stack_group</span>
+                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>call_merge</span>
                 </div>
                 {showMergeArrows && (
                   <div className="arrow-buttons">

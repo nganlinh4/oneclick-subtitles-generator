@@ -30,9 +30,9 @@ export const CreateSubtitlesModal = ({
   videoFile = null,
   videoDuration = 0,
   selectedSegment = null,
-  onSelectedSegmentChange,
+  onSelectedSegmentChange: _onSelectedSegmentChange,
   subtitlesData = [],
-  userProvidedSubtitles = '',
+  userProvidedSubtitles: _userProvidedSubtitles = '',
   initialTask = 'Speech',
   projectId = null,
 }) => {
@@ -131,7 +131,7 @@ export const CreateSubtitlesModal = ({
       return;
     }
     onClose?.();
-  }, [bridge.isExecuting, bridge.isCancelling, bridge.cancelTranscription, onClose]);
+  }, [bridge, onClose]);
 
   // Focus trap & Escape dismissal
   useFocusTrap(modalRef, isOpen, handleEscape);
@@ -209,10 +209,10 @@ export const CreateSubtitlesModal = ({
   // Operation Summary string
   const operationSummary = useMemo(() => {
     const durStr = isWhole
-      ? `00:00–${formatTimeHms(videoDuration)}`
+      ? `00:00–${formatTimeHms(videoDuration)} (${Math.round(durationSec)}s)`
       : selectedSegment
-      ? `${formatTimeHms(selectedSegment.start)}–${formatTimeHms(selectedSegment.end)}`
-      : '00:00';
+      ? `${formatTimeHms(selectedSegment.start)}–${formatTimeHms(selectedSegment.end)} (${Math.round(durationSec)}s)`
+      : `00:00 (${Math.round(durationSec)}s)`;
 
     if (currentTask === 'Speech') {
       const engName = speechState.engine === 'gemini-3.5-transcribe' ? 'Gemini Transcribe' : speechState.engine;
@@ -222,7 +222,7 @@ export const CreateSubtitlesModal = ({
       return `${t('processing.taskTranslate', 'Translate')} · ${translateState.targetLanguage || 'Target language'} · ${durStr}`;
     }
     return `${t('processing.taskVisualCustom', 'Visual')} · ${visualState.subtask} · ${durStr}`;
-  }, [currentTask, speechState, translateState, visualState, isWhole, videoDuration, selectedSegment, t]);
+  }, [currentTask, speechState, translateState, visualState, isWhole, videoDuration, selectedSegment, durationSec, t]);
 
   // Submission Handler
   const isSubmittingRef = useRef(false);
@@ -383,13 +383,19 @@ export const CreateSubtitlesModal = ({
         aria-labelledby="create-subtitles-dialog-title"
       >
         {/* Header */}
-        <div className="create-subtitles-header">
+        <div className="modal-header create-subtitles-header">
           <div className="create-subtitles-title-row">
             <h2 id="create-subtitles-dialog-title" className="create-subtitles-title">
-              {t('processing.createSubtitlesTitle', 'Create subtitles')}
+              <span>{t('processing.createSubtitlesTitle', 'Create subtitles')}</span>
+              {selectedSegment && (
+                <span className="segment-time">
+                  {formatTimeHms(selectedSegment.start)} – {formatTimeHms(selectedSegment.end)} ({Math.round((selectedSegment.end || 0) - (selectedSegment.start || 0))}s)
+                </span>
+              )}
             </h2>
             <CloseButton
               variant="modal"
+              size="medium"
               onClick={onClose}
               disabled={bridge.isCancelling}
               ariaLabel="Close creation dialog"
@@ -405,35 +411,37 @@ export const CreateSubtitlesModal = ({
         </div>
 
         {/* Tab List */}
-        <div className="create-subtitles-tablist" role="tablist" aria-label="Creation Tasks">
-          {tabs.map((tab, idx) => {
-            const isActive = currentTask === tab.id;
-            const taskKey = tab.id === 'Speech' ? 'speech' : tab.id === 'Translate' ? 'translate' : 'visual';
-            return (
-              <button
-                key={tab.id}
-                id={`creation-tab-${tab.id}`}
-                data-task-tab={taskKey}
-                type="button"
-                role="tab"
-                className={`create-subtitles-tab ${isActive ? 'active' : ''}`}
-                aria-selected={isActive}
-                aria-controls={`creation-panel-${tab.id}`}
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => handleSelectTab(tab.id)}
-                onKeyDown={(e) => handleTabKeyDown(e, idx)}
-                disabled={bridge.isExecuting}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="create-subtitles-tablist-container">
+          <div className="create-subtitles-tablist" role="tablist" aria-label="Creation Tasks">
+            {tabs.map((tab, idx) => {
+              const isActive = currentTask === tab.id;
+              const taskKey = tab.id === 'Speech' ? 'speech' : tab.id === 'Translate' ? 'translate' : 'visual';
+              return (
+                <button
+                  key={tab.id}
+                  id={`creation-tab-${tab.id}`}
+                  data-task-tab={taskKey}
+                  type="button"
+                  role="tab"
+                  className={`create-subtitles-tab ${isActive ? 'active' : ''}`}
+                  aria-selected={isActive}
+                  aria-controls={`creation-panel-${tab.id}`}
+                  tabIndex={isActive ? 0 : -1}
+                  onClick={() => handleSelectTab(tab.id)}
+                  onKeyDown={(e) => handleTabKeyDown(e, idx)}
+                  disabled={bridge.isExecuting}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Body Content */}
         <div
           id={`creation-panel-${currentTask}`}
-          className="create-subtitles-body"
+          className="modal-content create-subtitles-body"
           role="tabpanel"
           aria-labelledby={`creation-tab-${currentTask}`}
           tabIndex={0}
@@ -531,44 +539,48 @@ export const CreateSubtitlesModal = ({
         </div>
 
         {/* Footer */}
-        <div className="create-subtitles-footer">
-          <div className="creation-summary-text" title={operationSummary}>
-            {operationSummary}
-          </div>
+        <div className="modal-footer create-subtitles-footer">
+          <div className="footer-content">
+            <div className="footer-token-info">
+              <div className="creation-summary-text" title={operationSummary}>
+                {operationSummary}
+              </div>
+            </div>
 
-          <div className="creation-action-buttons">
-            {bridge.isExecuting ? (
-              <button
-                type="button"
-                className="creation-btn creation-btn-danger"
-                data-osg-action="cancel-generation"
-                onClick={bridge.cancelTranscription}
-                disabled={bridge.isCancelling}
-              >
-                {bridge.isCancelling ? 'Cancelling...' : t('processing.cancelTranscription', 'Cancel transcription')}
-              </button>
-            ) : (
-              <>
+            <div className="creation-action-buttons">
+              {bridge.isExecuting ? (
                 <button
                   type="button"
-                  className="creation-btn creation-btn-secondary"
-                  onClick={onClose}
+                  className="creation-btn creation-btn-danger"
+                  data-osg-action="cancel-generation"
+                  onClick={bridge.cancelTranscription}
+                  disabled={bridge.isCancelling}
                 >
-                  Cancel
+                  {bridge.isCancelling ? 'Cancelling...' : t('processing.cancelTranscription', 'Cancel transcription')}
                 </button>
-                <button
-                  type="button"
-                  className="creation-btn creation-btn-primary"
-                  data-osg-action="process-subtitles"
-                  data-action="create-subtitles"
-                  data-testid="create-subtitles-action"
-                  disabled={isSubmitDisabled}
-                  onClick={handleSubmit}
-                >
-                  {t('processing.createSubtitlesAction', 'Create subtitles')}
-                </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="creation-btn-secondary"
+                    onClick={onClose}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="process-btn"
+                    data-osg-action="process-subtitles"
+                    data-action="create-subtitles"
+                    data-testid="create-subtitles-action"
+                    disabled={isSubmitDisabled}
+                    onClick={handleSubmit}
+                  >
+                    {t('processing.createSubtitlesAction', 'Create subtitles')}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
