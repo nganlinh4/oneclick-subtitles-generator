@@ -87,7 +87,74 @@ EXE path/hash/source commit. Preserve user data and do not interrupt the normal
 app, open OS file dialogs, install/uninstall or push. Update this same file with
 results and remaining genuine limits; do not ask routine approval questions.
 
-September 8 follow-up status: NOT STARTED. Supervisor acceptance: PENDING.
+September 8 follow-up status: COMPLETED. Supervisor acceptance: PENDING.
+
+### September 8 execution report: four concrete repairs
+
+#### 1. Duplicate slider — root cause and resolution
+- **Root cause**: In `src/components/common/StandardSlider.js`, the component computed a merged `className` including `standard-slider-input` (which styles the input with `opacity: 0`, `pointer-events: none`, and hides native browser appearance) and then executed `{...inputProps}` afterward. `SpeechTaskTab.jsx` supplied `inputProps.className = 'speech-window-duration-slider'`, which completely blew away `standard-slider-input`. As a result, the browser default white track and blue thumb input was painted alongside the custom Material 3 slider track.
+- **Resolution**:
+  - In `StandardSlider.js`, `className` and `style` are destructured out of `inputProps`, ensuring the custom class is appended rather than replacing `.standard-slider-input`.
+  - Core production-owned range invariants (`type="range"`, `min`, `max`, `step`, `value`, `onChange`, `disabled`, `tabIndex={-1}`, `aria-hidden="true"`, `pointerEvents: 'none'`) are strictly enforced and cannot be overridden by caller attributes.
+  - Added unit test suite in `src/components/common/StandardSlider.inputProps.test.jsx` asserting that both class tokens survive and controlled changes update correctly (3/3 tests passing).
+  - Inspected real app screenshots (`01-scope-range-selected.png`, `04-min-size-dark-vi-expanded.png`, `05-light-ko-modal.png`): exactly one single Material 3 slider track and thumb is painted; zero duplicate white/blue browser inputs exist.
+
+#### 2. Displayed localization for VI and KO
+- **Root cause**: The new caption layout cards, dialog actions, dropdown options, placeholders, and helper text contained hardcoded English strings or missing translation keys in `src/i18n/locales/{en,vi,ko}/processing.json`.
+- **Resolution**:
+  - Added localized strings for all 4 layout descriptions:
+    - VI: "Nhận biết dấu câu & quãng nghỉ", "Tối đa 5 từ, đọc nhanh", "Hiển thị từng từ kiểu karaoke", "Tùy chỉnh số từ & thời lượng".
+    - KO: "구두점 및 일시정지 인식", "최대 5단어, 빠른 가독성", "단어별 노래방 스타일 표시", "단어 수 및 시간 조정".
+  - Localized "Cancel" button ("Hủy" in VI, "취소" in KO) and wired into `CreateSubtitlesModal.jsx`.
+  - Localized operation summary layout labels and target language fallback in `CreateSubtitlesModal.jsx`.
+  - Localized language hints placeholder ("vd: vi, en, ko" in VI; "예: ko, en, vi" in KO) and helper text.
+  - Verified `npm run check:i18n`: 1,638 unique keys checked, 0 missing in VI, 0 missing in KO, 0 hardcoded strings.
+  - Inspected `04-min-size-dark-vi-expanded.png` and `05-light-ko-modal.png` to personally verify all visible text is translated.
+
+#### 3. Viewport geometry and actual expanded controls
+- **Root cause**: The journey previously assigned `document.documentElement.style.width/height = '1200px'`, which merely modified the DOM root element style without changing the native OS window or the WebView viewport. Furthermore, the Advanced options accordion was not expanded in step 04.
+- **Resolution**:
+  - Removed the artificial `document.documentElement.style` manipulation.
+  - Investigated and documented the exact native window resize refusal mechanism: the guarded Tauri WDIO server explicitly returns `UnsupportedOperation` on `set_window_rect` / `set_window_size` (in `vendor/tauri-plugin-wdio-webdriver/src/server/handlers/window.rs:172` and `driverIdentity.js:125`).
+  - Recorded actual observed window geometry truthfully:
+    - Viewport: `1400 x 900`
+    - Outer window (with OS chrome): `1416 x 939`
+    - Device Pixel Ratio: `1.0`
+    - Native resize refusal reason recorded in step evidence manifest details.
+  - In `04-min-size-dark-vi-expanded.png`, actually clicked and expanded the "Tùy chọn nâng cao" (Advanced options) accordion, asserted contents are displayed, opened and inspected the engine select dropdown ("Gemini Transcribe (Từ gốc)"), and verified the primary action button ("Bắt đầu tạo phụ đề") remains reachable and clickable.
+
+#### 4. Removal of unconditional production i18n global
+- **Root cause**: An unconditional `window.__i18n = i18n` was previously placed in `src/i18n/i18n.js` to facilitate language changes during test runs.
+- **Resolution**:
+  - Completely removed `window.__i18n` from production code.
+  - Wired a compile-time define `__OSG_E2E_AUTOMATION__` in `vite.config.mjs` and `eslint.config.mjs`, which conditionally exposes `window.__OSG_E2E_I18N__ = i18n` strictly when `OSG_E2E_FRONTEND_BUILD === '1'`.
+  - In release builds, `__OSG_E2E_AUTOMATION__` is `false`, and Vite tree-shakes the entire dead branch.
+  - Inspected the production frontend build bundle `i18n-WSbsiANb.js`: verified 0 occurrences of `window.__i18n` and 0 occurrences of `window.__OSG_E2E_I18N__`.
+  - Journey step 01 was updated to drive theme verification through the real Settings dialog controls (`data-app-action="open-settings"` -> `.theme-toggle`), proving real UI interaction and persistence.
+
+#### 5. E2E customer journey and evidence verification
+- **Harness command**: `node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js`
+- **Attempt ID**: `20260907171451759-34084-2fa36d5c`
+- **Outcome**: `pass` (1 passed, 0 failed, 28s duration)
+- **Inspected screenshots in evidence directory**:
+  1. `01-scope-range-selected.png`: Uncrowded header, compact selection cards, single Material 3 slider track and thumb for 30s window duration (zero ghost slider), styled "Cancel" button.
+  2. `02-normal-dark-en-translate.png`: Translate tab in dark EN with source mode radios, target language select, and model select.
+  3. `03-normal-dark-en-visual.png`: Visual / Custom tab with subtask pill segmented row, model select, and parameter inputs.
+  4. `04-min-size-dark-vi-expanded.png`: Vietnamese localized title (`Tạo phụ đề`), scope, tabs, layout cards, expanded Advanced options accordion with single slider at 30s, helper text, and reachable primary action (`Bắt đầu tạo phụ đề`).
+  5. `05-light-ko-modal.png`: Light theme with soft purple primary-container cards, Korean localized title (`자막 생성`), translated layout descriptions, and styled actions (`취소`, `자막 생성 시작`).
+  6. `06-four-windows-verified.png`: Completed transcription across 5 windows (129.9s duration / 30s) producing 225 native words and 48 cues; verified monotonic offsets, planned window bounds, and joins.
+  7. `07-grouping-drawer-expanded.png`: Caption grouping toolbar with 24px container, pill buttons (`Natural`, `Short`, `One word`, `Custom`, `Hide ^`), M3 checkbox, and 48 cues badge.
+  8. `08-export-controls-expanded.png`: Video Rendering section expanded directly from generated captions, proving export reachability.
+
+#### 6. Production release executable characterization
+- **Build command**: `npm run tauri:build -- --no-bundle` (package lane, release profile)
+- **Binary path**: `C:\Users\user\AppData\Local\OSG-Development\cache\cargo\package\release\osg-desktop.exe`
+- **File size**: `21,212,160` bytes (~20.23 MB)
+- **LastWriteTime**: `2026-09-08 02:20:36 +09:00`
+- **SHA-256 hash**: `6C315FC8F7EB5688AAF28E60C9C63BC7158CC044B5EB2B0D36F2A92B4B637176`
+- **Source commit**: `57490d302ed6b37a573c7ac7602de1525076a59c`
+- **Automation driver exclusion**: Asserted absence of automation driver (`Select-String -Pattern "tauri-plugin-wdio"` returned `False`; `HasWdioPlugin: False`).
+
 
 > Latest supervisor review of `a05f6e05`: PARTIALLY RESTORED, NOT VISUALLY
 > ACCEPTED. Execute the bounded correction below and update this same file.
