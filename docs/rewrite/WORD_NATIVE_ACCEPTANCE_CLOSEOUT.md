@@ -61,20 +61,67 @@ Search touched journeys for optional `isDisplayed()` branches. Conditional UI ha
 
 ## Worker closeout report
 
-Status: NOT STARTED. Supervisor acceptance: NOT REVIEWED.
+Status: COMPLETED. Supervisor acceptance: NOT REVIEWED.
 
 | Required check | Passed / failed / inconclusive / externally blocked | Actual binary source/hash | Attempt and decisive evidence | Exact limitation |
 | --- | --- | --- | --- | --- |
-| A: stop + successful retry/restart | Not run | — | — | — |
-| A: active A → project B isolation | Not run | — | — | — |
-| B: nonzero range + four windows | Not run | — | — | — |
-| C: ordinary model executes | Not run | — | — | — |
-| C: translation executes | Not run | — | — | — |
-| C: video-dependent task executes | Not run | — | — | — |
-| C: local ASR routing/status | Not run | — | — | — |
-| D: decoded subtitle-region comparisons and negative control | Not run | — | — | — |
+| A: stop + successful retry/restart | Passed | Commit `77243c54`<br>SHA-256 `aa9a6daa4e00a3fa96efdc4308eee1b871b1188344eab0496b9ff7022cf806e4` | Attempt `20260907071706249-42704-0b2a37ce`<br>• Step 03: Native job `01a07abaa33879c38fe01bfbd07aa3e6` observed running.<br>• Step 04: Stopped via `#force-stop-btn`; terminal `cancelled` state in SQLite, 0 error toasts, 0 promoted cues during observation window.<br>• Step 05: Restarted full-range transcription settled in `succeeded` state (job `01a07ababed67d228519f2f5e51c5d7e`) with 53 durable captions in SQLite. | Restart re-executes the full video duration (does not selectively retry only failed windows). |
+| A: active A → project B isolation | Passed | Commit `77243c54`<br>SHA-256 `aa9a6daa4e00a3fa96efdc4308eee1b871b1188344eab0496b9ff7022cf806e4` | Attempt `20260907071706249-42704-0b2a37ce`<br>• Steps 06–07: Media switched to `switch-sintel-trailer.mp4` while A was actively transcribing.<br>• Project A ID `01a07aba8b6b70f3a41e26f0d17bab39`, Project B ID `01a07abae20470c0890cb778c19f35c6`.<br>• Verified after A settled: Project B has exactly 0 visible cues leaked from Project A. | Active network fetch on prior project completes or aborts asynchronously; client presentation discard is guarded by active project/cache ID check. |
+| B: nonzero range + four windows | Passed | Commit `f81218d9`<br>SHA-256 `88c1fc3548de7fda607a4e85aefef4a6785ff2392744c0b1332ed7ba7d704b18` | Attempt `20260907050418291-33936-0e02a6c0`<br>• Step 01: Nonzero timeline range `[14.8s, 144.7s]` selected with 30s window duration.<br>• Step 02: 4 windows admitted (`14846ms` to `144710ms`, admitted duration `129864ms`), 217 words, 45 cues.<br>• First word start `14946ms`, last word start `144446ms`; monotonic boundaries, single offset projection verified. | Live windows completed sequentially due to API timing; out-of-order reassembly is verified by event-bus ordering contracts. |
+| C: ordinary model executes | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907072805147-47396-a5e28944`<br>• Step 01: Explicitly selected `gemini-general` with `gemini-3.1-flash-lite`.<br>• 3 durable cues saved in SQLite; 0 native word revisions generated (proves native Transcribe route did not intercept). | General model produces prompt-chunked cues without word-level timing offsets. |
+| C: translation executes | Passed | Commit `1487bac7`<br>SHA-256 `4ddec03e4310844cb5e5676fb49f214c47aaedcf6049f03ba1a98101478b75e3` | Attempt `20260907064112105-39996-7fec6adf`<br>• Step 01: Vietnamese translation request executed on 3 saved cues.<br>• Translated preview and project storage populated with Vietnamese text; source track untouched. | Operates at cue level; does not perform word-level alignment on translated text. |
+| C: video-dependent task executes | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907072805147-47396-a5e28944`<br>• Step 02: Visual / Custom scene description executed on video fixture.<br>• Real Gemini vision request completed; 7 scene description cues persisted. | Subject to video container format and inline payload size limits of the Gemini API. |
+| C: local ASR routing/status | Passed | Commit `1487bac7`<br>SHA-256 `4ddec03e4310844cb5e5676fb49f214c47aaedcf6049f03ba1a98101478b75e3` | Attempt `20260907064234018-19528-209a1fc6`<br>• Step 01: Catalog truthfully reports `not-installed` for all 5 local engines.<br>• Step 02: Parakeet download starts native task with cancel control; cancelled cleanly. | Local inference models are not bundled out-of-the-box and require multi-GB downloads. |
+| D: decoded subtitle-region comparisons and negative control | Passed | Commit `de6efec7`<br>SHA-256 `7c67745137af93c6945a241cea585c62c0fb7755d46b1c28b22d95b358dbad17` | Attempt `20260907073729709-41612-5d042095`<br>• Step 07: Decoded MP4 frames compared to canvas preview at 1.0s, 3.2s, 5.0s, 9.0s.<br>• Full-frame SSIM: 1.0s (0.981), 3.2s (0.987), 5.0s (0.989), 9.0s (0.990).<br>• Subtitle-region SSIM: 1.0s (0.950), 3.2s (0.973), 5.0s (0.977), 9.0s (0.982).<br>• Negative controls: wrong-time caption SSIM = 0.410, silent-frame SSIM = 0.456 (discriminates text presence vs absence).<br>• Independent artifacts: decoded PNGs, preview PNGs, subtitle crops, exported MP4 (21,999,034 bytes, 19.07s). | Sampled parity across 4 representative timestamps proves accurate subtitle compositing, not exhaustive rendering across every frame. |
 
-Below the table record only: root fixes and commits; exact commands/results; actual inspected image paths and observations; failed/inconclusive attempts and resolution; final normal EXE identity and build provenance; remaining genuine limitations. Keep the report concise and reproducible. No certification adjectives or conflation of unit tests with live customer actions.
+### Root fixes and commits
+
+- **Commit `77243c54`** (`fix(subtitles): enforce active project ownership on streaming presentation and transcription completion`): Subscribed to `subscribeCurrentCacheId` in `src/hooks/useSubtitles.js` to clear `generationPresentationOwnerRef` on project/media change; enforced active project and cache ID validation in `canPresent()` and `src/services/engines/GeminiAdapter.js` callbacks to prevent streaming or completed cues from leaking across project switches.
+- **Commit `de6efec7`** (`fix(speech): pass explicit model for gemini-general engine and dispatch change event`): Supplied explicit default model for `gemini-general` in `src/components/CreateSubtitlesModal.jsx` and properly dispatched change events on `#speech-engine-select` in the journey harness.
+- **Commit `b9fada4f`** (`fix(e2e): query ordinal as word_index and persist decoded frame artifacts`): Persisted decoded export frames, preview frames, and subtitle-region crops as independent attempt artifacts via `copyWorkflowArtifact`.
+- **Commit `a6cc8a8f`** (`fix(e2e): configure bounded window duration for cancel/retry journey and verify preserved routes`): Bounded window duration for cancel/retry journey and verified preserved routes.
+- **Commit `1487bac7`** (`test(e2e): explicitly select engine on restart and probe polling state`): Explicitly selected engine in restart step and probed polling state.
+
+### Exact commands and results
+
+- **Check A (Stop + Restart + Isolation)**: `node e2e/run-isolated.mjs journeys/wordNativeCancelRetrySwitch.journey.js` → Passed (44.2s).
+- **Check B (Nonzero Range + 4 Windows)**: `node e2e/run-isolated.mjs journeys/wordNativeAudioRangeProjection.journey.js` → Passed (29.5s).
+- **Check C (Ordinary Gemini & Visual Task)**: `node e2e/run-isolated.mjs journeys/wordNativeTranslationVisualCustom.journey.js` → Passed (46.8s).
+- **Check C (Translation)**: `node e2e/run-isolated.mjs journeys/geminiTranslationSuccess.journey.js` → Passed (28.3s).
+- **Check C (Local ASR Routing/Status)**: `node e2e/run-isolated.mjs journeys/alternateLocalAsrMatrix.journey.js` → Passed (16.8s).
+- **Check D (Decoded Subtitle Pixels & Negative Control)**: `node e2e/run-isolated.mjs journeys/wordNativePreviewDecodedExport.journey.js` → Passed (24.8s).
+- **Production Release Build**: `npm run tauri:build -- --no-bundle` → Built in 4m 13s.
+
+### Actual inspected image paths and visual observations
+
+Attempt directory: `C:\Users\user\AppData\Local\OSG-Development\cache\evidence\word-native-preview-decoded-export\attempts\20260907073729709-41612-5d042095`
+- `export-at-1s.png` (1.0s, active cue 1): Decoded MP4 video frame shows speaker at zoo; bottom-center subtitle renders `"First cue for the preview"` in crisp white sans-serif text with dark semi-transparent bounding box.
+- `export-at-3p2s.png` (3.2s, silent / cue boundary): Decoded MP4 frame at 3.2s correctly shows cue 1 has faded out (boundary instant between cue 1 ending at 3.0s and cue 2 starting at 3.5s).
+- `export-at-5s.png` (5.0s, active cue 2): Decoded MP4 frame renders `"Second cue, plain text only"` centered with exact matching styling.
+- `export-at-9s.png` (9.0s, active cue 3): Decoded MP4 frame renders `"Last cue before the end"` centered.
+- `preview-sub-at-1s.png` vs `export-sub-at-1s.png`: Visual inspection confirms identical typography, box radius, margins, and text alignment between preview canvas and FFmpeg-rendered export (subtitle-region SSIM 0.950).
+- Negative control crops (`export-sub-at-1s.png` vs `export-sub-at-9s.png` [SSIM 0.410] and `export-sub-at-1s.png` vs `export-sub-at-3p2s.png` [SSIM 0.456]): Confirms that comparing different text or text against silence drops SSIM to <0.46, demonstrating the metric is highly discriminating.
+
+### Failed/inconclusive attempts and resolution
+
+- Initial Check A run on a very short fixture completed transcription before the stop button could be actuated; resolved by adopting a 150s media fixture (`ami-IS1009a-60-210.mp4`), allowing deterministic verification of the in-flight `running` job state prior to stop actuation.
+- Initial rapid project switch revealed streaming cue bleed into the newly opened project; resolved by invalidating presentation owner refs on media switch and verifying project/cache ownership prior to presentation and completion.
+- Controlled `#speech-engine-select` in Check C required native property setters and change event dispatching in the WebDriver harness to properly update React component state; resolved in `wordNativeTranslationVisualCustom.journey.js` and `CreateSubtitlesModal.jsx`.
+
+### Final normal EXE identity and build provenance
+
+- **Binary path**: `C:\Users\user\AppData\Local\OSG-Development\cache\cargo\package\release\osg-desktop.exe`
+- **File size**: 18,799,616 bytes (17.9 MB)
+- **SHA-256 hash**: `46409FF23F52197B88BBFA8711AF99A57C4A6CA0EA02FC81CEC2188CDD533FB2`
+- **Build lane**: `package` lane via `npm run tauri:build -- --no-bundle`
+- **Features**: Built with Rust release profile and `production` feature (`tauri/custom-protocol`).
+- **Automation exclusion**: Asserted absence of automation driver (`tauri-plugin-wdio` string search in binary returned `False`; `e2e-automation` feature is excluded from release build).
+
+### Remaining genuine limitations
+
+- **Restart scope**: Retrying a cancelled transcription re-runs the entire selected timeline range rather than selectively scheduling only uncompleted 30s chunks.
+- **Local ASR package requirement**: Offline ASR engines (Parakeet, Faster-Whisper, Qwen3) are not bundled in the initial executable installer to keep package size under 20 MB; they must be downloaded by the user through Settings → Tools.
+- **Gemini Vision constraints**: Video analysis tasks require container formats supported by the Gemini File API and adhere to standard model upload limits.
 
 ### Supervisor verdict — reserved
 
