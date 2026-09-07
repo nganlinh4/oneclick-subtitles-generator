@@ -8,7 +8,19 @@ import {
   isNativeWordTranscriptionSupported,
   startWordNativeTranscription,
 } from '../../platform/nativeWordTranscription';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
+import { getActiveProjectSnapshot } from '../../platform/projectService';
 import { setActiveTranscript } from '../../platform/transcriptStore';
+
+const isProjectMismatch = (expectedProjectId) => {
+  if (!expectedProjectId) return false;
+  try {
+    const active = getActiveProjectSnapshot?.();
+    return Boolean(active?.metadata?.id && active.metadata.id !== expectedProjectId);
+  } catch {
+    return false;
+  }
+};
 
 // The native media pipeline admits two clip operations. Matching that capacity prevents windows
 // three and four from being rejected before they reach Gemini on a clean split-media run.
@@ -165,6 +177,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
           onStatus?.({ message: event.message, type: 'loading' });
         },
         onWindowPromoted: (event) => {
+          if (isProjectMismatch(options?.projectId)) {
+            return;
+          }
           if (event.revisionId) latestRevisionId = event.revisionId;
           if (Array.isArray(event.words)) allWords.push(...event.words);
           if (Array.isArray(event.turns)) allTurns.push(...event.turns);
@@ -191,6 +206,10 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         },
         onCompleted: (event) => {
           const finalRevisionId = event.revisionId || latestRevisionId;
+          if (isProjectMismatch(options?.projectId)) {
+            finish(currentCues);
+            return;
+          }
           if (Array.isArray(event.projectedCues) && event.projectedCues.length > 0) {
             currentCues = event.projectedCues.map((cue) => ({
               id: cue.id,

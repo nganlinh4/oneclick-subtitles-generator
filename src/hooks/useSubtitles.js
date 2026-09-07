@@ -55,9 +55,10 @@ import {
     loadExactProjectSubtitles,
     resolveProjectForCache,
 } from '../platform/subtitleProjectStore';
-import { loadProject } from '../platform/projectService';
+import { getActiveProjectSnapshot, loadProject } from '../platform/projectService';
 import { getCurrentCacheId as getRulesCacheId } from '../utils/transcriptionRulesStore';
 import { getCurrentCacheId as getSubtitlesCacheId } from '../utils/userSubtitlesStore';
+import * as userSubtitlesStore from '../utils/userSubtitlesStore';
 
 // Cache utilities moved to services/subtitleCache
 
@@ -101,6 +102,22 @@ export const useSubtitles = (t) => {
     const currentRetryFromCacheRef = useRef(null);
 
     useNativeSubtitleHydration({ setSubtitlesData, revisionRef: subtitlesRevisionRef, t });
+
+    useEffect(() => {
+        let subscribe = null;
+        try {
+            subscribe = userSubtitlesStore?.subscribeCurrentCacheId;
+        } catch {
+            subscribe = null;
+        }
+        if (!isDesktopRuntime() || typeof subscribe !== 'function') return undefined;
+        const unsubscribe = subscribe((cacheId, previousCacheId) => {
+            if (previousCacheId && cacheId !== previousCacheId) {
+                generationPresentationOwnerRef.current = null;
+            }
+        });
+        return () => unsubscribe?.();
+    }, []);
 
     // Countdown updater for quota exceeded with retry seconds
     const startQuotaCountdown = useQuotaCountdown({ t, setStatus, isGenerating });
@@ -154,6 +171,7 @@ export const useSubtitles = (t) => {
         const autoRunContext = isAutoGenerationContext(options.autoRunContext)
             ? options.autoRunContext
             : null;
+        let deliveryContext = null;
         const presentationToken = Object.freeze({ runId });
         generationPresentationOwnerRef.current = presentationToken;
         const ownsPresentation = () => (
@@ -161,6 +179,16 @@ export const useSubtitles = (t) => {
         );
         const canPresent = () => {
             if (!ownsPresentation()) return false;
+            if (isDesktopRuntime()) {
+                const currentCache = typeof getSubtitlesCacheId === 'function' ? getSubtitlesCacheId() : null;
+                if (deliveryContext?.cacheId && currentCache && currentCache !== deliveryContext.cacheId) {
+                    return false;
+                }
+                const activeProject = typeof getActiveProjectSnapshot === 'function' ? getActiveProjectSnapshot() : null;
+                if (deliveryContext?.projectId && activeProject?.metadata?.id && activeProject.metadata.id !== deliveryContext.projectId) {
+                    return false;
+                }
+            }
             if (!autoRunContext) return true;
             try {
                 assertAutoGenerationContextCurrent(autoRunContext);
@@ -392,7 +420,7 @@ export const useSubtitles = (t) => {
                         || cacheId !== nativeMediaCapability.cacheId))) {
                 throw new Error('The subtitle project changed before Gemini transcription.');
             }
-            const deliveryContext = autoRunContext ?? Object.freeze({
+            deliveryContext = autoRunContext ?? Object.freeze({
                 runId,
                 cacheId,
                 projectId: resolvedProject.projectId,
@@ -897,6 +925,7 @@ export const useSubtitles = (t) => {
             if (completion) return completion;
             return true;
         } catch (error) {
+            if (!canPresent()) return false;
             fullMediaStreamingHandler?.rollback?.();
             // The stop event already publishes the intentional cancellation notice.
             // Preserve it while finally releases this run's presentation ownership.

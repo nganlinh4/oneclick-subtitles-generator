@@ -129,4 +129,56 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     await expect(pending).rejects.toThrow();
     expect(cancelWordNativeTranscription).toHaveBeenCalledWith('job-cancel-test');
   });
+
+  it('does not emit streaming updates or set active transcript if project is no longer active', async () => {
+    const { activateProjectSnapshot } = await import('../../platform/projectService');
+    // Active project is proj-diff
+    activateProjectSnapshot({
+      metadata: {
+        id: '01890f39-7b62-7c4e-8c9a-000000000202',
+        name: 'proj-diff',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      stateVersion: 1,
+      media: [],
+      tracks: [],
+    });
+
+    startWordNativeTranscription.mockImplementation(async (_request, handlers) => {
+      setTimeout(() => {
+        handlers.onWindowPromoted?.({
+          windowIndex: 0,
+          totalWindows: 2,
+          words: [{ id: 'w-1', text: 'Leaked' }],
+          projectedCues: [{ id: 'c-1', text: 'Leaked', startMs: 0, endMs: 1000 }],
+        });
+        handlers.onCompleted?.({
+          revisionId: 'rev-leaked',
+          totalWindows: 2,
+          totalWords: 1,
+          words: [{ id: 'w-1', text: 'Leaked' }],
+          projectedCues: [{ id: 'c-1', text: 'Leaked', startMs: 0, endMs: 1000 }],
+        });
+      }, 10);
+      return { id: 'job-mismatch' };
+    });
+
+    const onStreamingUpdate = vi.fn();
+    await processGeminiSegment(
+      media,
+      { start: 0, end: 60 },
+      { model: 'gemini-3.5-transcribe', projectId: 'proj-original' },
+      { onStreamingUpdate },
+    );
+
+    // Because proj-diff is active, onStreamingUpdate must NOT be called with cues from proj-original
+    expect(onStreamingUpdate).not.toHaveBeenCalled();
+    const active = getActiveTranscript();
+    expect(active?.revisionId).not.toBe('rev-leaked');
+
+    // Clean up
+    const { deactivateProject } = await import('../../platform/projectService');
+    deactivateProject();
+  });
 });
