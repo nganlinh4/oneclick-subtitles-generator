@@ -15,13 +15,13 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.ok(root, 'requires an isolated data root');
     await openProjectWithMedia();
     await enrollGeminiCredentials({ limit: 1 });
-    await captureWorkflowStep(WORKFLOW, '01_original_editor');
+    await captureWorkflowStep(WORKFLOW, '01-original-editor');
     await clickControl('[data-osg-action="generate-subtitles"]');
     await clickControl('.subtitle-timeline');
     await browser.keys(['\uE009', 'a', '\uE000']);
     await clickControl('[data-transcription-method="new"]');
     await (await $('#generation-model')).waitForDisplayed({ timeout: 30_000 });
-    await captureWorkflowStep(WORKFLOW, '02_original_gemini_options');
+    await captureWorkflowStep(WORKFLOW, '02-original-gemini-options');
 
     await clickControl('.header-switch-group .custom-dropdown-button');
     await clickControl('[role="option"][data-value="gemini-transcribe"]');
@@ -32,7 +32,7 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
       originalModal: !!document.querySelector('.video-processing-modal'),
     }));
     assert.deepEqual(controls, { replacement: false, videoOptions: false, originalModal: true });
-    await captureWorkflowStep(WORKFLOW, '03_transcribe_method_options');
+    await captureWorkflowStep(WORKFLOW, '03-transcribe-method-options');
     await clickControl('[data-osg-action="process-subtitles"]');
     await browser.waitUntil(async () => {
       const state = durableState(root);
@@ -44,6 +44,6 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.ok(words.every((word) => word.endMs >= word.startMs && word.text.trim()), 'invalid persisted words');
     await seekPreviewTo((words[0].startMs + words[0].endMs) / 2000);
     await waitForCanvasSubtitleFrame();
-    await captureWorkflowStep(WORKFLOW, '04_native_captions_in_original_editor');
+    await captureWorkflowStep(WORKFLOW, '04-native-captions-in-original-editor');
   });
 });
