@@ -80,3 +80,20 @@ test('native streaming publishes partial rows and restores the durable baseline 
   handler.rollback();
   expect(setSubtitlesData).toHaveBeenLastCalledWith(baseline);
 });
+
+test('timed window updates reach subtitle state and cannot be obscured by later untimed drafts', () => {
+  const publish = vi.fn();
+  const baseline = [{ start: 0, end: 1, text: 'original' }];
+  const handler = createFullMediaStreamingHandler(publish, vi.fn(), undefined, { rollbackRows: baseline });
+  const draft = { windowIndex: 1, text: 'draft', windowStartMs: 60000, windowEndMs: 120000 };
+  handler([], true, { projectId: 'project', liveDraft: draft });
+  vi.advanceTimersByTime(150);
+  const timed = [{ start: 61, end: 62, text: 'timed' }];
+  handler(timed, true, { timedWindowIndex: 1 });
+  handler(timed, true, { projectId: 'project', liveDraft: draft });
+  vi.advanceTimersByTime(500);
+  expect(publish).toHaveBeenLastCalledWith(timed);
+  expect(getLiveDrafts()).toEqual([]);
+  handler.rollback();
+  expect(publish).toHaveBeenLastCalledWith(baseline);
+});

@@ -88,7 +88,7 @@ export const drawTimeline = (
     const { subtitleBand, narrationBand } = computeTimelineBands(displayHeight, reserveBottom, hasNarration);
 
     // Draw lyric segments with new segment animations
-    drawLyricSegments(
+    const paintedSubtitleCount = drawLyricSegments(
         ctx,
         lyrics,
         visibleStart,
@@ -102,6 +102,8 @@ export const drawTimeline = (
         segmentProcessingStartTimes,
         subtitleBand
     );
+    // Inspectable paint result, not the size of an unrelated draft-text store.
+    canvas.dataset.osgPaintedSubtitleCount = String(paintedSubtitleCount);
 
     // Draw the narration lane beneath the subtitles
     if (narrationBand) {

@@ -10,7 +10,7 @@ import { captureWorkflowStep, recordWorkflowDiagnostic } from '../support/workfl
 const WORKFLOW = 'word-native-parallel-long-recording';
 
 describe('Live transcription uses the ordinary parallel subtitle editor', () => {
-  it('shows changing visible text before completion across a four-window request', async () => {
+  it('paints newly generated timed subtitle segments before a four-window request completes', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     await openProjectWithMedia();
     await importSubtitles();
@@ -62,6 +62,8 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     const started = Date.now();
     const observations = [];
     let nextScreenshot = 0;
+    let previousPaintedCount = 3;
+    let screenshotIndex = 0;
     // Observe painted row TEXT over wall-clock time, not our own revision attributes.
     // Finish the recording even when streaming is absent, so a final burst is preserved as evidence.
     await browser.waitUntil(async () => {
@@ -69,22 +71,23 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
       const visible = await browser.execute(() => {
         const list = document.querySelector('.lyrics-container');
         const bounds = list.getBoundingClientRect();
-        return [...list.querySelectorAll('.lyric-item')].filter((row) => {
+        return { paintedSubtitleCount: Number(document.querySelector('[data-osg-painted-subtitle-count]')?.dataset.osgPaintedSubtitleCount ?? -1), rows: [...list.querySelectorAll('.lyric-item')].filter((row) => {
           const rect = row.getBoundingClientRect();
           return rect.bottom > Math.max(0, bounds.top) && rect.top < Math.min(innerHeight, bounds.bottom);
         }).map((row) => ({
           text: row.querySelector('.lyric-text')?.textContent?.trim() ?? '',
           draft: row.hasAttribute('data-osg-live-draft'),
           window: row.getAttribute('data-osg-live-window'),
-        }));
+        })) };
       });
       const jobs = durableState(root).jobs.filter((job) => job.kind === 'transcribe');
       const running = jobs.some((job) => !['succeeded', 'failed', 'cancelled'].includes(job.state));
-      observations.push({ elapsedMs, running, visible });
-      if (elapsedMs >= nextScreenshot) {
-        await captureWorkflowStep({ workflow: WORKFLOW, step: `stream-at-${Math.floor(elapsedMs / 1000)}s`,
-          description: `Unassisted visible editor at ${elapsedMs}ms; native job running: ${running}.` });
+      observations.push({ elapsedMs, running, visible: visible.rows, paintedSubtitleCount: visible.paintedSubtitleCount });
+      if (elapsedMs >= nextScreenshot || (running && visible.paintedSubtitleCount > previousPaintedCount)) {
+        await captureWorkflowStep({ workflow: WORKFLOW, step: `stream-${screenshotIndex++}-at-${Math.floor(elapsedMs / 1000)}s`,
+          description: `Timeline painted ${visible.paintedSubtitleCount} subtitle segments at ${elapsedMs}ms; native job running: ${running}.` });
         nextScreenshot = elapsedMs + 15000;
+        previousPaintedCount = visible.paintedSubtitleCount;
       }
       return jobs.length > 0 && !running;
     }, { timeout: 180000, interval: 500, timeoutMsg: 'transcription never settled during the observation recording' });
@@ -112,11 +115,10 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
       timeout: 15000, interval: 250, timeoutMsg: 'generated captions never reached the subtitle checkpoint',
     });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions', description: 'Live rows reconciled to final durable timed captions.' });
-    const terminalMs = observations.at(-1).elapsedMs;
-    const earlyTextStates = new Set(observations.filter((sample) => sample.running && sample.elapsedMs < terminalMs - 5000)
-      .map((sample) => sample.visible.filter((row) => row.draft && row.text).map((row) => row.text).join('\n'))
-      .filter(Boolean));
-    assert.ok(earlyTextStates.size >= 3,
-      `No real early streaming: only ${earlyTextStates.size} distinct visible Live text states before the last five seconds. Final captions do not count.`);
+    const timedSamples = observations.filter((sample) => sample.running && sample.paintedSubtitleCount > 3);
+    assert.ok(timedSamples.length > 0,
+      'No timed timeline streaming: the painter never drew more than the three old segments while the job was running. Draft text does not count.');
+    assert.ok(new Set(timedSamples.map((sample) => sample.paintedSubtitleCount)).size >= 2,
+      'Timed subtitles arrived as one burst: expected multiple painted segment-count updates before completion.');
   });
 });

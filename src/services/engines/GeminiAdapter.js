@@ -126,6 +126,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       let finished = false;
       let currentCues = [];
       const nativeRanges = new Map();
+      const windowCues = new Map();
       let allWords = [];
       let allTurns = [];
       let latestRevisionId = null;
@@ -227,6 +228,15 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         credentialId: options?.credentialId,
         ...(options?.livePreview ? { config: { livePreview: true } } : {}),
       }, {
+        onWindowCues: (event) => {
+          if (finished || isProjectMismatch(options?.projectId)) return;
+          windowCues.set(event.windowIndex, (event.projectedCues || []).map((cue) => ({
+            id: cue.id, originalId: cue.id, start: cue.startMs / 1000, end: cue.endMs / 1000,
+            text: cue.text, speaker: projectSpeaker(cue.speakerId), wordIds: cue.wordIds,
+          })));
+          currentCues = [...windowCues.values()].flat().sort((a, b) => a.start - b.start || a.end - b.end);
+          onStreamingUpdate?.(currentCues, true, { timedWindowIndex: event.windowIndex });
+        },
         onWindowProgress: (event) => {
           if (finished || isProjectMismatch(options?.projectId)) return;
           if (nativeRanges.has(event.windowIndex)) return;
@@ -270,9 +280,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
             speaker: projectSpeaker(cue.speakerId),
             wordIds: cue.wordIds,
           }));
-          currentCues.push(...newlyProjected);
-          const isStreaming = event.windowIndex + 1 < event.totalWindows;
-          onStreamingUpdate?.(currentCues, isStreaming, {
+          windowCues.set(event.windowIndex, newlyProjected);
+          currentCues = [...windowCues.values()].flat().sort((a, b) => a.start - b.start || a.end - b.end);
+          onStreamingUpdate?.(currentCues, true, {
             segmentIndex: event.windowIndex,
             totalSegments: event.totalWindows,
             segmentComplete: true,

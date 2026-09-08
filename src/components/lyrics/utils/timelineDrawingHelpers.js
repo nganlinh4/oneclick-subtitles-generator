@@ -359,6 +359,7 @@ export const drawLyricSegments = (
             ctx.restore();
         }
     }
+    return visibleLyrics.length;
 };
 
 /**

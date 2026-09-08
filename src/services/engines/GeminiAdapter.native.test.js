@@ -159,6 +159,27 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     expect(cancelWordNativeTranscription).toHaveBeenCalledWith('job-cancel-test');
   });
 
+  it('publishes timed prefixes out of order and replaces each window without waiting for promotion', async () => {
+    const updates = [];
+    const cue = (id, startMs) => ({ id, text: id, startMs, endMs: startMs + 1000 });
+    startWordNativeTranscription.mockImplementation(async (_request, handlers) => {
+      handlers.onWindowCues({ windowIndex: 1, projectedCues: [cue('later', 61000)] });
+      handlers.onWindowCues({ windowIndex: 0, projectedCues: [cue('early', 1000)] });
+      handlers.onWindowCues({ windowIndex: 1, projectedCues: [cue('later-revised', 61000), cue('next', 63000)] });
+      handlers.onWindowPromoted({ windowIndex: 0, totalWindows: 2, projectedCues: [cue('durable-early', 1000)] });
+      handlers.onCompleted({ revisionId: 'revision', projectedCues: [] });
+      return { id: 'prefix-job' };
+    });
+    await processGeminiSegment(media, { start: 0, end: 120 },
+      { model: 'gemini-3.5-transcribe', projectId: 'project' },
+      { onStreamingUpdate: (rows, streaming) => updates.push({ ids: rows.map((row) => row.id), streaming }) });
+    expect(updates.map((update) => update.ids)).toEqual([
+      ['later'], ['early', 'later'], ['early', 'later-revised', 'next'],
+      ['durable-early', 'later-revised', 'next'], ['durable-early', 'later-revised', 'next'],
+    ]);
+    expect(updates.map((update) => update.streaming)).toEqual([true, true, true, true, false]);
+  });
+
   it('does not emit streaming updates or set active transcript if project is no longer active', async () => {
     const { activateProjectSnapshot } = await import('../../platform/projectService');
     // Active project is proj-diff

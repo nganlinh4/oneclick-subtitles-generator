@@ -53,6 +53,13 @@ pub(crate) struct TranscriptionErrorDto {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub(crate) enum WordNativeTranscriptionEvent {
+    /// Provider-timed prefix for immediate presentation; not a durable promotion.
+    #[serde(rename = "windowCues", rename_all = "camelCase")]
+    WindowCues {
+        job_id: JobId,
+        window_index: usize,
+        projected_cues: Vec<ProjectedCueDto>,
+    },
     #[serde(rename = "liveDraft", rename_all = "camelCase")]
     LiveDraft {
         job_id: JobId,

@@ -372,7 +372,16 @@ async fn run_engine_loop(
                     });
                 }) as super::worker::LiveDraftCallback
             });
-            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback, permit)
+            let timed_channel = event_channel.clone();
+            let timed_callback: super::worker::TimedWindowCallback = Arc::new(move |snapshot| {
+                // Reuse the exact final grouping rules. Prefixes are replaceable presentation,
+                // while canonical SQLite promotion remains ordered and waits for valid STOP.
+                let cues = StagingBuffer::new().prepare_promotion(revision_id, snapshot).projected_cues;
+                let _ = timed_channel.send(WordNativeTranscriptionEvent::WindowCues {
+                    job_id, window_index, projected_cues: cues,
+                });
+            });
+            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback, permit, timed_callback)
                 .await
             {
                 Ok(staged_result) => {

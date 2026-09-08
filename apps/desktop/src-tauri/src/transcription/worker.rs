@@ -1,10 +1,10 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use osg_gemini::{
     AudioTranscriptionConfig, GeminiClient, InlineMedia, MediaInput as GeminiMediaInput,
-    TranscribeRequest,
+    TranscribeRequest, TranscriptionStreamCompletion,
 };
 use osg_media::{
     AudioOutput, AudioSampleRate, CancellationToken as MediaCancellationToken, ChannelCount,
@@ -12,7 +12,7 @@ use osg_media::{
 };
 use osg_media_pipeline::{MediaPipeline, PipelineError};
 use thiserror::Error;
-use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use super::planner::WindowRange;
@@ -95,36 +95,12 @@ impl WorkerPool {
     }
 }
 
-/// Executes audio extraction, Gemini transcription, and coordinate projection for a single window.
 pub(crate) type LiveDraftCallback = Arc<dyn Fn(Result<String, ()>) + Send + Sync>;
 
-const LIVE_DRAFT_HEAD_START: Duration = Duration::from_secs(3);
+pub(crate) type TimedWindowCallback = Arc<dyn Fn(StagedWindowResult) + Send + Sync>;
 
-#[derive(Default)]
-struct FirstLiveDraft {
-    observed: AtomicBool,
-    notify: Notify,
-}
-
-impl FirstLiveDraft {
-    fn signal(&self) {
-        if !self.observed.swap(true, Ordering::AcqRel) {
-            self.notify.notify_one();
-        }
-    }
-
-    async fn wait(&self) {
-        if !self.observed.load(Ordering::Acquire) {
-            self.notify.notified().await;
-        }
-    }
-}
-///
-/// Ensures:
-/// - 16kHz mono WAV extraction.
-/// - RAII cleanup of temporary extracted audio as soon as bytes are read.
-/// - Up to 3 retries with exponential backoff on retryable provider errors.
-/// - Bounded disk space usage (< 3.8 MiB across both workers).
+/// Extracts 16kHz mono WAV, streams provider-timed words, and projects their coordinates.
+/// Temporary audio is removed after reading; transport retries stop once a stream is accepted.
 // The explicit extraction permit ties admission to this worker's audio preparation lifetime.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_transcription_window(
@@ -136,6 +112,7 @@ pub(crate) async fn execute_transcription_window(
     cancellation: &CancellationToken,
     live_draft: Option<LiveDraftCallback>,
     extraction_permit: OwnedSemaphorePermit,
+    on_timed_window: TimedWindowCallback,
 ) -> Result<StagedWindowResult, WorkerError> {
     if cancellation.is_cancelled() {
         return Err(WorkerError::Cancelled);
@@ -183,74 +160,44 @@ pub(crate) async fn execute_transcription_window(
     }
 
     // 4. Formulate inline Gemini TranscribeRequest
-    // Optional early drafts have no timestamps. The existing file response remains authoritative.
-    // The guard cancels the socket on errors and early returns. The success path explicitly joins
-    // it below so the customer sees the complete source-paced stream before timed promotion.
-    let first_live_draft = Arc::new(FirstLiveDraft::default());
-    let live_requested = live_draft.is_some();
+    // Optional early drafts have no timestamps. Timed SSE chunks own timeline updates.
+    // Once the precise response is complete, the guard cancels the now-redundant draft socket.
     let window_index = window.index;
-    let mut live_task = live_draft.map(|callback| {
+    let _live_task = live_draft.map(|callback| {
         let client = client.clone();
         let bytes = wav_bytes.clone();
         let language_hints = config.language_hints.clone();
         let cancel = cancellation.clone();
-        let first_live_draft = Arc::clone(&first_live_draft);
         AbortOnDrop::new(tauri::async_runtime::spawn(stream_live_window(
-            client, bytes, language_hints, cancel, callback, first_live_draft, window_index,
+            client, bytes, language_hints, cancel, callback, window_index,
         )))
     });
-    if live_requested {
-        tokio::select! {
-            () = cancellation.cancelled() => return Err(WorkerError::Cancelled),
-            () = first_live_draft.wait() => {},
-            () = tokio::time::sleep(LIVE_DRAFT_HEAD_START) => {}
-        }
-    }
     let inline_media = InlineMedia::new("audio/wav", wav_bytes)?;
     let request = TranscribeRequest::new(GeminiMediaInput::Inline(inline_media))
         .with_config(config.clone());
 
-    // 5. Targeted retries with exponential backoff (1s, 2s, 4s) on retryable errors
-    let mut attempts = 0_usize;
-    let response = loop {
-        attempts += 1;
-        match client.transcribe(request.clone(), cancellation).await {
-            Ok(resp) => break resp,
-            Err(_err) if cancellation.is_cancelled() => {
-                return Err(WorkerError::Cancelled);
-            }
-            Err(err) if attempts < 3 && err.is_retryable() => {
-                let backoff_ms = 1_000 * (1 << (attempts - 1));
-                tokio::select! {
-                    () = cancellation.cancelled() => return Err(WorkerError::Cancelled),
-                    () = tokio::time::sleep(Duration::from_millis(backoff_ms)) => {}
-                }
-            }
-            Err(err) => return Err(WorkerError::Gemini(err)),
+    // The existing transport retries only before accepting a stream. Never replay a body after
+    // publishing its words. The caller rolls back presentation on failure/cancellation.
+    let mut stream = client.transcribe_stream(request, cancellation).await?;
+    let mut completion = TranscriptionStreamCompletion::default();
+    let mut projected_words = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        completion.observe(&chunk)?;
+        let words = chunk.transcription_words();
+        if words.is_empty() {
+            continue;
         }
-    };
-
-    // A Live request is a source-paced customer-visible stream, not merely a race against the
-    // faster file endpoint. Keep it alive through the complete window before publishing the
-    // authoritative timed result. Dropping this guard here used to abort Live after its first
-    // phrase and made the batch result appear all at once for longer media.
-    if let Some(mut task) = live_task.as_mut().and_then(|task| task.0.take()) {
-        tokio::select! {
-            () = cancellation.cancelled() => {
-                task.abort();
-                return Err(WorkerError::Cancelled);
-            }
-            _ = &mut task => {}
+        for word in &words {
+            projected_words.push(project_window_word(word, window)?);
         }
+        on_timed_window(StagedWindowResult {
+            window_index: window.index,
+            window: *window,
+            words: projected_words.clone(),
+        });
     }
-
-    // 6. Word Projection & Clamp
-    let raw_words = response.transcription_words();
-    let mut projected_words = Vec::with_capacity(raw_words.len());
-    for raw_word in &raw_words {
-        let projected = project_window_word(raw_word, window)?;
-        projected_words.push(projected);
-    }
+    completion.finish()?;
 
     Ok(StagedWindowResult {
         window_index: window.index,
@@ -265,7 +212,6 @@ async fn stream_live_window(
     language_hints: Vec<String>,
     cancel: CancellationToken,
     callback: LiveDraftCallback,
-    first_live_draft: Arc<FirstLiveDraft>,
     window_index: usize,
 ) {
     let started = std::time::Instant::now();
@@ -280,7 +226,6 @@ async fn stream_live_window(
             ]);
         }
         callback(Ok(text));
-        first_live_draft.signal();
     }).await;
     crate::diagnostics::record("transcribe.live.finished", &[
         ("window", window_index.to_string()),
@@ -290,7 +235,6 @@ async fn stream_live_window(
     ]);
     if result.is_err() && !cancel.is_cancelled() {
         callback(Err(()));
-        first_live_draft.signal();
     }
 }
 

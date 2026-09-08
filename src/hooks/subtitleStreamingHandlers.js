@@ -16,6 +16,7 @@ export const createFullMediaStreamingHandler = (
     let timer = null;
     let settled = false;
     let liveDrafts = null;
+    const timedWindows = new Set();
     const THROTTLE_MS = 400;
 
     const cancelPending = () => {
@@ -36,12 +37,17 @@ export const createFullMediaStreamingHandler = (
     const handler = (streamingSubtitles, isStreaming, detail = {}) => {
         if (settled || !Array.isArray(streamingSubtitles)) return;
         if (detail.liveDraft) {
+            if (timedWindows.has(detail.liveDraft.windowIndex)) return;
             liveDrafts ??= beginLiveDrafts(detail.projectId);
             const event = detail.liveDraft;
             if (event.text == null) liveDrafts.finalize(event.windowIndex);
             else liveDrafts.update(event.windowIndex, event.text, event);
             publishStreamingUpdate({ isStreaming: true });
             return;
+        }
+        if (Number.isInteger(detail.timedWindowIndex)) {
+            timedWindows.add(detail.timedWindowIndex);
+            liveDrafts?.finalize(detail.timedWindowIndex);
         }
         if (detail.segmentComplete && Number.isInteger(detail.segmentIndex)) {
             liveDrafts?.finalize(detail.segmentIndex);
