@@ -227,7 +227,9 @@ const LyricsDisplay = ({
   // Live words have no provider timestamps. Merge them only into the existing list presentation;
   // the timed editor, playback, saves and exports continue to consume authoritative cues.
   const displayLyrics = useMemo(() => {
-    const rows = lyrics.map((lyric, sourceIndex) => ({ ...lyric, sourceIndex }));
+    const rows = lyrics.map((lyric, sourceIndex) => ({ ...lyric, sourceIndex }))
+      .filter((lyric) => !liveDrafts.some((draft) =>
+        lyric.start * 1000 < draft.windowEndMs && lyric.end * 1000 > draft.windowStartMs));
     for (const draft of liveDrafts) {
       groupLiveDraftText(draft.text).forEach((text, groupIndex) => rows.push({
         id: `live:${draft.projectId}:${draft.windowIndex}:${groupIndex}`,

@@ -22,11 +22,11 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
 
   const lyric = lyrics[index];
   if (lyric.liveDraft) {
-    return <div style={style}>
+    return <div style={style} className="lyric-item-container">
       <div className="lyric-item" data-osg-live-draft data-osg-live-window={lyric.windowIndex} data-osg-live-update={lyric.revision}>
         <div className="lyric-content">
-          <span className="lyric-number">{index + 1}</span>
-          <span className="lyric-text">{lyric.text}</span>
+          <div className="lyric-number">{index + 1}</div>
+          <div className="lyric-text"><span>{lyric.text}</span></div>
         </div>
       </div>
     </div>;
