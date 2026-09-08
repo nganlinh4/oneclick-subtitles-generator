@@ -162,7 +162,7 @@ impl GeminiClient {
         };
         tokio::select! {
             () = cancellation.cancelled() => Err(Error::Cancelled),
-            result = tokio::time::timeout(Duration::from_secs(150), task) => result.map_err(|_| Error::Transport(TransportKind::Timeout))?,
+            result = tokio::time::timeout(Duration::from_secs((pcm.len() as u64).div_ceil(32_000) + 45), task) => result.map_err(|_| Error::Transport(TransportKind::Timeout))?,
         }
     }
 }

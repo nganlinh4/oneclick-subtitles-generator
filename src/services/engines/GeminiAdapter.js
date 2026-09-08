@@ -11,7 +11,6 @@ import {
 } from '../../platform/nativeWordTranscription';
 import { getActiveProjectSnapshot } from '../../platform/projectService';
 import { setActiveTranscript } from '../../platform/transcriptStore';
-import { beginLiveDrafts } from '../../platform/liveTranscriptionDrafts';
 import { normalizeSpeaker } from '../../utils/subtitleSpeaker';
 
 const isProjectMismatch = (expectedProjectId) => {
@@ -137,11 +136,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         if (!speakerNames.has(id)) speakerNames.set(id, t?.('lyrics.speakerName', { number: speakerNames.size + 1 }) || `Speaker ${speakerNames.size + 1}`);
         return normalizeSpeaker({ id, name: speakerNames.get(id), labelStyle: 'hidden' });
       };
-      const liveDrafts = options?.livePreview ? beginLiveDrafts(options.projectId) : null;
 
       const cleanup = () => {
         if (reconciliationTimer !== null) clearTimeout(reconciliationTimer);
-        liveDrafts?.dispose();
         removeRequestController(requestCtrl.requestId);
         requestCtrl.signal.removeEventListener('abort', onAbort);
       };
@@ -232,20 +229,15 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         onLiveDraft: (event) => {
           if (finished || isProjectMismatch(options?.projectId)) return;
           if (event.text == null) {
-            liveDrafts?.finalize(event.windowIndex);
             onStatus?.({ message: t?.('processing.liveDraftUnavailable') ?? 'Live drafts unavailable; timed transcription continues.', type: 'warning' });
-          } else liveDrafts?.update(event.windowIndex, event.text, event);
-        },
-        onWindowProgress: (event) => {
-          if (finished || isProjectMismatch(options?.projectId)) return;
-          liveDrafts?.open(event.windowIndex, event);
+          }
+          onStreamingUpdate?.(currentCues, true, { projectId: options.projectId, liveDraft: event });
         },
         onStageChanged: (event) => {
           onStatus?.({ message: event.message, type: 'loading' });
         },
         onWindowPromoted: (event) => {
           if (finished) return;
-          liveDrafts?.finalize(event.windowIndex);
           if (isProjectMismatch(options?.projectId)) {
             return;
           }

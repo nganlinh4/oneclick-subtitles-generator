@@ -16,7 +16,7 @@ it.each(['gemini-transcribe', 'gemini-transcribe-live'])('dispatches %s without 
     method, engine: 'gemini-3.5-transcribe', model: 'gemini-3.5-transcribe',
     ...(method === 'gemini-transcribe-live' ? { livePreview: true } : {}),
     segment: selectedSegment, videoFile: { type: 'audio/wav' }, audioOnly: true,
-    inlineExtraction: false, windowDurationSecs: 30, languageHints: ['ko'],
+    inlineExtraction: false, windowDurationSecs: 30, maxDurationPerRequest: 30, languageHints: ['ko'],
     diarization: true, bypassCache: true,
   });
   expect(getEngineDescriptor(request.method).optionsPanel).toBe('transcribe');

@@ -12,7 +12,9 @@ withScenarioLeases(({
   applicationLease, inheritedApplication, managedPaths, publication, stagingLease,
 }) => {
   const label = 'Four-window live Gemini transcription';
-  const spec = './journeys/geminiMultiWindowTranscription.journey.js';
+  const spec = process.argv.includes('--transcribe-live')
+    ? './journeys/wordNativeParallelLongRecording.journey.js'
+    : './journeys/geminiMultiWindowTranscription.journey.js';
   const root = createRunRoot({ stagingLease });
   const authorization = runRootAuthorization(root);
   try {

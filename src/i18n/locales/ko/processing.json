@@ -1,7 +1,6 @@
 {
   "speechEngineTranscribeLive": "Gemini Transcribe Live",
   "liveDraftTiming": "Live 초안 · 타이밍 대기",
-  "liveDraftListening": "듣는 중…",
   "liveDraftUnavailable": "Live 초안을 사용할 수 없습니다. 타임스탬프 자막 생성은 계속됩니다.",
   "audioOnly": "오디오만 전송",
   "audioOnlyHelp": "선택한 구간의 오디오만 추출하며 영상 프레임은 업로드하지 않습니다. 장면 설명과 화면 속 텍스트 인식에는 영상이 필요합니다.",

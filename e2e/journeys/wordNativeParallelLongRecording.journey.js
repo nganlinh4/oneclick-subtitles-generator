@@ -1,56 +1,71 @@
-// Real-binary customer journey 5: Parallel long recording with at least 4 windows, progressive durable output, and seamless boundary joins
-// Driven through WebDriverIO and the actual application WebView.
-
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
-
-import { durableState } from '../support/database.js';
+import { durableState, withDatabase } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
-import { openProjectWithMedia } from '../support/workflow.js';
+import { actuateNativeRange } from '../support/nativeRange.js';
+import { openProjectWithMedia, importSubtitles, seekPreviewTo } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
+/* global $, browser, describe, document, it, window, MutationObserver */
 const WORKFLOW = 'word-native-parallel-long-recording';
 
-/* global $, browser, describe, document, it */
-
-describe('Customer Journey 5: Parallel long recording with at least 4 windows', () => {
-  it('executes 4-window parallel transcription with bounded concurrency and progressive durable output', async () => {
+describe('Live transcription uses the ordinary parallel subtitle editor', () => {
+  it('streams all four windows into the existing list while pre-existing subtitles are loaded', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
-    assert.ok(root, 'requires an isolated data root');
     await openProjectWithMedia();
-    await enrollGeminiCredentials({ limit: 4 });
-
-    await captureWorkflowStep(WORKFLOW, '01_long_media_ready');
-
-    // Trigger multi-window transcription
-    await clickControl('[data-osg-action="generate-subtitles"]');
-    await clickControl('[data-osg-action="process-subtitles"]');
-
-    // Observe progressive output in durable database
-    let priorCueCount = 0;
-    let sawProgressiveIncrease = false;
-
-    await browser.waitUntil(async () => {
-      const state = durableState(root);
-      if (state.counts.cues > priorCueCount) {
-        if (priorCueCount > 0) {
-          sawProgressiveIncrease = true;
+    await importSubtitles();
+    await seekPreviewTo(120);
+    await enrollGeminiCredentials({ limit: 1 });
+    const duration = await browser.execute(() => document.querySelector('video').duration);
+    assert.ok(duration > 180 && duration < 240, 'run with the four-window scenario fixture');
+    await browser.execute(() => {
+      const ledger = { ranges: [], windows: {}, rowsOutsideEditor: false };
+      window.__LIVE_WINDOWS__ = ledger;
+      window.addEventListener('processing-ranges', (event) => {
+        if (event.detail?.ranges?.length) ledger.ranges = event.detail.ranges;
+      });
+      new MutationObserver(() => {
+        for (const row of document.querySelectorAll('[data-osg-live-draft]')) {
+          const index = row.dataset.osgLiveWindow;
+          const revisions = ledger.windows[index] ??= [];
+          const revision = Number(row.dataset.osgLiveUpdate);
+          if (!revisions.includes(revision)) revisions.push(revision);
+          if (!row.closest('.lyrics-container')) ledger.rowsOutsideEditor = true;
         }
-        priorCueCount = state.counts.cues;
-      }
-      return state.counts.cues >= 4;
-    }, { timeout: 300_000, interval: 2_000 });
-
-    await captureWorkflowStep(WORKFLOW, '02_progressive_cues_accumulated');
-    const finalState = durableState(root);
-    assert.ok(finalState.counts.cues >= 4);
-
-    // Verify boundary joins are monotonic
-    const cues = finalState.cues;
-    for (let i = 1; i < cues.length; i++) {
-      assert.ok(cues[i].start_ms >= cues[i - 1].start_ms, 'Subtitles must maintain monotonic timing order');
-    }
-    await captureWorkflowStep(WORKFLOW, '03_boundary_joins_verified');
+      }).observe(document.body, { attributes: true, childList: true, characterData: true, subtree: true });
+    });
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await clickControl('.subtitle-timeline');
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    await clickControl('[data-transcription-method="new"]');
+    await clickControl('.header-switch-group .custom-dropdown-button');
+    await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
+    await actuateNativeRange({ driver: browser, selector: '#transcribe-window', value: 1 });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '01-four-window-controls' });
+    await clickControl('[data-osg-action="process-subtitles"]');
+    await browser.waitUntil(() => browser.execute(() => window.__LIVE_WINDOWS__.ranges.length === 4), {
+      timeout: 15000, timeoutMsg: 'the existing timeline never received four processing ranges',
+    });
+    await browser.waitUntil(() => browser.execute(() => Object.values(window.__LIVE_WINDOWS__.windows)
+      .filter((revisions) => revisions.length >= 3).length === 4), {
+      timeout: 90000, interval: 100, timeoutMsg: 'not every window streamed repeated text revisions into the ordinary editor',
+    });
+    const ledger = await browser.execute(() => window.__LIVE_WINDOWS__);
+    assert.equal(ledger.rowsOutsideEditor, false);
+    assert.equal(await browser.execute(() => !!document.querySelector('.live-transcription-drafts-panel, .live-transcription-window-pending')), false);
+    process.stdout.write(`Live per-window DOM revisions: ${JSON.stringify(ledger)}\n`);
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '02-four-windows-streaming', focusSelector: '.lyrics-container' });
+    await browser.waitUntil(() => {
+      const jobs = durableState(root).jobs.filter((job) => job.kind === 'transcribe');
+      return jobs.length > 0 && jobs.every((job) => job.state === 'succeeded');
+    }, { timeout: 180000, interval: 500, timeoutMsg: 'four-window transcription did not complete' });
+    await browser.waitUntil(() => browser.execute(() => !document.querySelector('[data-osg-live-draft]')), {
+      timeout: 15000, timeoutMsg: 'Live rows did not reconcile into timed captions',
+    });
+    const metadata = withDatabase(root, (db) => JSON.parse(db.prepare('SELECT metadata_json FROM transcript_revisions ORDER BY rowid DESC LIMIT 1').get().metadata_json));
+    assert.equal(metadata.totalWindows, 4);
+    assert.ok(durableState(root).counts.cues > 3);
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions' });
   });
 });

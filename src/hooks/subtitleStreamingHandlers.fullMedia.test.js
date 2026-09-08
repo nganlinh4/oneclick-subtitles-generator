@@ -1,7 +1,28 @@
 import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
+import { getLiveDrafts } from '../platform/liveTranscriptionDrafts';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
+
+test('routes interleaved Live windows through streaming without persisting invented timestamps', () => {
+  const publishRows = vi.fn();
+  const handler = createFullMediaStreamingHandler(publishRows, vi.fn());
+  const draft = (index, text) => handler([], true, {
+    projectId: 'project',
+    liveDraft: { windowIndex: index, windowStartMs: index * 60_000, windowEndMs: (index + 1) * 60_000, totalWindows: 4, text },
+  });
+  draft(3, 'fourth window');
+  draft(0, 'first');
+  draft(0, 'first window growing');
+  vi.advanceTimersByTime(150);
+  expect(getLiveDrafts().map(({ text }) => text)).toEqual(['first window growing', 'fourth window']);
+  expect(publishRows).not.toHaveBeenCalled();
+  handler([{ start: 1, end: 2, text: 'timed' }], true, { segmentComplete: true, segmentIndex: 0 });
+  expect(getLiveDrafts().map(({ windowIndex }) => windowIndex)).toEqual([3]);
+  handler.cancel();
+  vi.advanceTimersByTime(1000);
+  expect(getLiveDrafts()).toEqual([]);
+});
 
 test('a terminal callback cancels an older throttled partial update', () => {
   const setSubtitlesData = vi.fn();

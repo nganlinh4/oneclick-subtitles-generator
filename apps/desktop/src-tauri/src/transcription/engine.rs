@@ -317,7 +317,7 @@ async fn run_engine_loop(
     let (notify_tx, mut notify_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
     let has_failures = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Spawn 2-worker bounded tasks for each window
+    // Each requested window owns a concurrent provider session. Only local extraction is bounded.
     for window in windows {
         let pool = Arc::clone(&worker_pool);
         let buffer = Arc::clone(&staging_buffer);
@@ -372,19 +372,16 @@ async fn run_engine_loop(
                     });
                 }) as super::worker::LiveDraftCallback
             });
-            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback)
+            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback, permit)
                 .await
             {
                 Ok(staged_result) => {
-                    drop(permit);
                     buffer.insert(staged_result);
                     let _ = tx.send(window.index);
                 }
                 Err(_err) if cancel.is_cancelled() => {
-                    drop(permit);
                 }
                 Err(err) => {
-                    drop(permit);
                     failures.store(true, std::sync::atomic::Ordering::Release);
                     let _ = event_channel.send(WordNativeTranscriptionEvent::Failed {
                         job_id,

@@ -47,18 +47,6 @@ export function beginLiveDrafts(projectId) {
   const session = { projectId, windows: new Map(), finalized: new Set(), revision: 0 };
   sessions.set(token, session);
   return {
-    open(index, window = {}) {
-      if (!sessions.has(token) || session.finalized.has(index) || !Number.isSafeInteger(index) || index < 0 || index > 10000) return;
-      if (session.windows.has(index)) return;
-      session.windows.set(index, {
-        text: '',
-        revision: session.revision,
-        totalWindows: Number.isSafeInteger(window.totalWindows) ? window.totalWindows : 1,
-        windowStartMs: Number.isSafeInteger(window.windowStartMs) ? window.windowStartMs : 0,
-        windowEndMs: Number.isSafeInteger(window.windowEndMs) ? window.windowEndMs : 0,
-      });
-      publish();
-    },
     update(index, text, window = {}) {
       if (!sessions.has(token) || session.finalized.has(index) || !Number.isSafeInteger(index) || index < 0 || index > 10000) return;
       if (typeof text !== 'string' || text.length > 262144) return;

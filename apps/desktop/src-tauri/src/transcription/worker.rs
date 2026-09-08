@@ -125,6 +125,8 @@ impl FirstLiveDraft {
 /// - RAII cleanup of temporary extracted audio as soon as bytes are read.
 /// - Up to 3 retries with exponential backoff on retryable provider errors.
 /// - Bounded disk space usage (< 3.8 MiB across both workers).
+// The explicit extraction permit ties admission to this worker's audio preparation lifetime.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_transcription_window(
     client: &GeminiClient,
     pipeline: &MediaPipeline,
@@ -133,6 +135,7 @@ pub(crate) async fn execute_transcription_window(
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
     live_draft: Option<LiveDraftCallback>,
+    extraction_permit: OwnedSemaphorePermit,
 ) -> Result<StagedWindowResult, WorkerError> {
     if cancellation.is_cancelled() {
         return Err(WorkerError::Cancelled);
@@ -159,15 +162,20 @@ pub(crate) async fn execute_transcription_window(
         .map_err(WorkerError::Media)?
         .with_cancellation(media_cancel);
 
-    let prepared = pipeline
-        .extract_audio(input.clone(), format, range, &run_control)
-        .map_err(WorkerError::Pipeline)?;
+    let pipeline = pipeline.clone();
+    let input = input.clone();
+    let prepared = tauri::async_runtime::spawn_blocking(move || {
+        pipeline.extract_audio(input, format, range, &run_control)
+    }).await.map_err(|error| WorkerError::Internal(error.to_string()))??;
 
     // 2. Read bytes into memory
     let wav_bytes = std::fs::read(prepared.path()).map_err(WorkerError::Io)?;
 
     // 3. Explicit RAII cleanup: drop PreparedMedia immediately so temporary WAV is unlinked from disk
     drop(prepared);
+    // Network sessions do not consume a local extraction slot. Otherwise two source-paced Live
+    // sessions hold the slots for minutes and prevent the other requested windows from starting.
+    drop(extraction_permit);
     cancel_bridge_task.abort();
 
     if cancellation.is_cancelled() {
@@ -180,23 +188,16 @@ pub(crate) async fn execute_transcription_window(
     // it below so the customer sees the complete source-paced stream before timed promotion.
     let first_live_draft = Arc::new(FirstLiveDraft::default());
     let live_requested = live_draft.is_some();
+    let window_index = window.index;
     let mut live_task = live_draft.map(|callback| {
         let client = client.clone();
         let bytes = wav_bytes.clone();
         let language_hints = config.language_hints.clone();
         let cancel = cancellation.clone();
         let first_live_draft = Arc::clone(&first_live_draft);
-        AbortOnDrop::new(tauri::async_runtime::spawn(async move {
-            let signal = Arc::clone(&first_live_draft);
-            let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| {
-                callback(Ok(text));
-                signal.signal();
-            }).await;
-            if result.is_err() && !cancel.is_cancelled() {
-                callback(Err(()));
-                first_live_draft.signal();
-            }
-        }))
+        AbortOnDrop::new(tauri::async_runtime::spawn(stream_live_window(
+            client, bytes, language_hints, cancel, callback, first_live_draft, window_index,
+        )))
     });
     if live_requested {
         tokio::select! {
@@ -256,6 +257,41 @@ pub(crate) async fn execute_transcription_window(
         window: *window,
         words: projected_words,
     })
+}
+
+async fn stream_live_window(
+    client: GeminiClient,
+    bytes: Vec<u8>,
+    language_hints: Vec<String>,
+    cancel: CancellationToken,
+    callback: LiveDraftCallback,
+    first_live_draft: Arc<FirstLiveDraft>,
+    window_index: usize,
+) {
+    let started = std::time::Instant::now();
+    let mut updates = 0usize;
+    crate::diagnostics::record("transcribe.live.started", &[("window", window_index.to_string())]);
+    let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| {
+        updates += 1;
+        if updates == 1 {
+            crate::diagnostics::record("transcribe.live.first_text", &[
+                ("window", window_index.to_string()),
+                ("elapsed_ms", started.elapsed().as_millis().to_string()),
+            ]);
+        }
+        callback(Ok(text));
+        first_live_draft.signal();
+    }).await;
+    crate::diagnostics::record("transcribe.live.finished", &[
+        ("window", window_index.to_string()),
+        ("updates", updates.to_string()),
+        ("elapsed_ms", started.elapsed().as_millis().to_string()),
+        ("outcome", if result.is_ok() { "ok" } else { "error" }.to_owned()),
+    ]);
+    if result.is_err() && !cancel.is_cancelled() {
+        callback(Err(()));
+        first_live_draft.signal();
+    }
 }
 
 #[cfg(test)]

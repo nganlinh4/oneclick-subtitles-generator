@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub(crate) const MIN_WINDOW_DURATION_MS: i64 = 30_000;
-pub(crate) const MAX_WINDOW_DURATION_MS: i64 = 120_000;
-pub(crate) const DEFAULT_WINDOW_DURATION_MS: i64 = 60_000;
-pub(crate) const TAIL_MERGE_THRESHOLD_MS: i64 = 5_000;
+pub(crate) const MAX_WINDOW_DURATION_MS: i64 = 600_000;
+pub(crate) const DEFAULT_WINDOW_DURATION_MS: i64 = 600_000;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(crate) enum PlannerError {
@@ -71,11 +70,10 @@ impl WindowRange {
 /// Partitions a time range `[range_start_ms, range_end_ms]` into bounded, non-overlapping windows.
 ///
 /// Constraints:
-/// - Windows are bounded between 30,000ms and 120,000ms.
-/// - Default target window duration is 60,000ms.
+/// - Windows are bounded between 30,000ms and 600,000ms.
+/// - Default target window duration is 600,000ms.
 /// - If the total duration is less than or equal to the target, a single window is returned.
-/// - Smart tail merge: if the remainder after splitting is strictly less than 5,000ms, and the
-///   combined window does not exceed 120,000ms, the remainder is merged into the preceding window.
+/// - The selected maximum is strict; a short final window never expands the preceding request.
 pub(crate) fn plan_windows(
     range_start_ms: i64,
     range_end_ms: i64,
@@ -120,17 +118,6 @@ pub(crate) fn plan_windows(
             break;
         }
 
-        // Tail merge check: if the NEXT remainder would be < 5s and can fit in 120s
-        let next_remainder = remaining - target_w;
-        if next_remainder < TAIL_MERGE_THRESHOLD_MS && (target_w + next_remainder) <= MAX_WINDOW_DURATION_MS {
-            windows.push(WindowRange {
-                index,
-                start_ms: current_start,
-                end_ms: range_end_ms,
-            });
-            break;
-        }
-
         windows.push(WindowRange {
             index,
             start_ms: current_start,
@@ -165,18 +152,19 @@ mod tests {
     }
 
     #[test]
-    fn test_tail_merge_under_5s() {
-        // Total duration 63s (remainder 3s < 5s): merges into single window of 63s (<= 120s)
+    fn test_short_tail_respects_selected_maximum() {
         let windows = plan_windows(0, 63_000, Some(60_000)).unwrap();
-        assert_eq!(windows.len(), 1);
-        assert_eq!(windows[0], WindowRange::new(0, 0, 63_000));
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0], WindowRange::new(0, 0, 60_000));
+        assert_eq!(windows[1], WindowRange::new(1, 60_000, 63_000));
 
         // Total duration 123s: first window 60s, remainder 63s -> next window 60s would leave 3s (< 5s),
         // so second window is 63s (<= 120s)
         let windows2 = plan_windows(0, 123_000, Some(60_000)).unwrap();
-        assert_eq!(windows2.len(), 2);
+        assert_eq!(windows2.len(), 3);
         assert_eq!(windows2[0], WindowRange::new(0, 0, 60_000));
-        assert_eq!(windows2[1], WindowRange::new(1, 60_000, 123_000));
+        assert_eq!(windows2[1], WindowRange::new(1, 60_000, 120_000));
+        assert_eq!(windows2[2], WindowRange::new(2, 120_000, 123_000));
     }
 
     #[test]
@@ -196,11 +184,11 @@ mod tests {
         assert_eq!(windows[0], WindowRange::new(0, 0, 30_000));
         assert_eq!(windows[1], WindowRange::new(1, 30_000, 60_000));
 
-        // Preferred 150s clamped to 120s
-        let windows = plan_windows(0, 240_000, Some(150_000)).unwrap();
+        // Requests up to ten minutes retain the selected limit.
+        let windows = plan_windows(0, 1_200_000, Some(600_000)).unwrap();
         assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0], WindowRange::new(0, 0, 120_000));
-        assert_eq!(windows[1], WindowRange::new(1, 120_000, 240_000));
+        assert_eq!(windows[0], WindowRange::new(0, 0, 600_000));
+        assert_eq!(windows[1], WindowRange::new(1, 600_000, 1_200_000));
     }
 
     #[test]
