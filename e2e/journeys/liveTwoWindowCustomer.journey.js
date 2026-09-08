@@ -45,7 +45,8 @@ describe('Customer video with Gemini Transcribe Live', () => {
     await browser.waitUntil(() => browser.execute(() => window.__CUSTOMER_LIVE_RANGES__.length === 2), {
       timeout: 30000, timeoutMsg: 'the real app did not publish exactly two processing windows',
     });
-    await browser.execute(() => document.querySelector('.lyrics-container').scrollIntoView({ block: 'center' }));
+    // An empty subtitle editor has no lyrics list yet. The timeline exists in both states.
+    await browser.execute(() => document.querySelector('.subtitle-timeline').scrollIntoView({ block: 'center' }));
     const observations = [];
     let nextCapture = 0;
     let lastCount = -1;
