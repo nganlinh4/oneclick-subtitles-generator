@@ -7,7 +7,7 @@ import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from 
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 /* global $, browser, describe, document, it */
-const WORKFLOW = 'restored-editor-transcribe';
+const WORKFLOW = process.env.OSG_E2E_WORKFLOW || 'word-native-fresh-video-speech';
 
 describe('Transcribe in the original generation modal and subtitle editor', () => {
   it('keeps the original controls and displays native transcription as ordinary editable cues', async () => {
