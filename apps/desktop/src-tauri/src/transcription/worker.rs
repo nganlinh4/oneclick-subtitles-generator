@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use osg_media::{
 };
 use osg_media_pipeline::{MediaPipeline, PipelineError};
 use thiserror::Error;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use super::planner::WindowRange;
@@ -96,6 +97,28 @@ impl WorkerPool {
 
 /// Executes audio extraction, Gemini transcription, and coordinate projection for a single window.
 pub(crate) type LiveDraftCallback = Arc<dyn Fn(Result<String, ()>) + Send + Sync>;
+
+const LIVE_DRAFT_HEAD_START: Duration = Duration::from_secs(3);
+
+#[derive(Default)]
+struct FirstLiveDraft {
+    observed: AtomicBool,
+    notify: Notify,
+}
+
+impl FirstLiveDraft {
+    fn signal(&self) {
+        if !self.observed.swap(true, Ordering::AcqRel) {
+            self.notify.notify_one();
+        }
+    }
+
+    async fn wait(&self) {
+        if !self.observed.load(Ordering::Acquire) {
+            self.notify.notified().await;
+        }
+    }
+}
 ///
 /// Ensures:
 /// - 16kHz mono WAV extraction.
@@ -154,16 +177,33 @@ pub(crate) async fn execute_transcription_window(
     // 4. Formulate inline Gemini TranscribeRequest
     // Optional early drafts have no timestamps. The existing file response remains authoritative.
     // Dropping this guard cancels the socket as soon as final timed captions are available.
+    let first_live_draft = Arc::new(FirstLiveDraft::default());
+    let live_requested = live_draft.is_some();
     let _live_task = live_draft.map(|callback| {
         let client = client.clone();
         let bytes = wav_bytes.clone();
         let language_hints = config.language_hints.clone();
         let cancel = cancellation.clone();
+        let first_live_draft = Arc::clone(&first_live_draft);
         AbortOnDrop::new(tauri::async_runtime::spawn(async move {
-            let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| callback(Ok(text))).await;
-            if result.is_err() && !cancel.is_cancelled() { callback(Err(())); }
+            let signal = Arc::clone(&first_live_draft);
+            let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| {
+                callback(Ok(text));
+                signal.signal();
+            }).await;
+            if result.is_err() && !cancel.is_cancelled() {
+                callback(Err(()));
+                first_live_draft.signal();
+            }
         }))
     });
+    if live_requested {
+        tokio::select! {
+            () = cancellation.cancelled() => return Err(WorkerError::Cancelled),
+            () = first_live_draft.wait() => {},
+            () = tokio::time::sleep(LIVE_DRAFT_HEAD_START) => {}
+        }
+    }
     let inline_media = InlineMedia::new("audio/wav", wav_bytes)?;
     let request = TranscribeRequest::new(GeminiMediaInput::Inline(inline_media))
         .with_config(config.clone());
