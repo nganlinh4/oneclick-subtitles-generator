@@ -10,7 +10,7 @@ import { captureWorkflowStep, recordWorkflowDiagnostic } from '../support/workfl
 const WORKFLOW = 'word-native-parallel-long-recording';
 
 describe('Live transcription uses the ordinary parallel subtitle editor', () => {
-  it('streams all four windows into the existing list while pre-existing subtitles are loaded', async () => {
+  it('shows changing visible text before completion across a four-window request', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     await openProjectWithMedia();
     await importSubtitles();
