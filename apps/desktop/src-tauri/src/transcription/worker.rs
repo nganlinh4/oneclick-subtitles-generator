@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use osg_gemini::{
-    AudioTranscriptionConfig, GeminiClient, InlineMedia, MediaInput as GeminiMediaInput,
-    TranscribeRequest, TranscriptionStreamCompletion,
+    AudioTranscriptionConfig, GeminiClient, InlineMedia, LiveTranscriptionKind,
+    MediaInput as GeminiMediaInput, TranscribeRequest, TranscriptionStreamCompletion,
 };
 use osg_media::{
     AudioOutput, AudioSampleRate, CancellationToken as MediaCancellationToken, ChannelCount,
@@ -16,7 +16,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use super::planner::WindowRange;
-use super::projection::{project_window_word, ProjectionError};
+use super::projection::{
+    ProjectedWordResult, ProjectionError, WordProjectionStatus, project_window_word,
+};
 use super::staging::StagedWindowResult;
 
 #[derive(Debug, Error)]
@@ -95,8 +97,6 @@ impl WorkerPool {
     }
 }
 
-pub(crate) type LiveDraftCallback = Arc<dyn Fn(Result<String, ()>) + Send + Sync>;
-
 pub(crate) type TimedWindowCallback = Arc<dyn Fn(StagedWindowResult) + Send + Sync>;
 
 /// Extracts 16kHz mono WAV, streams provider-timed words, and projects their coordinates.
@@ -110,7 +110,7 @@ pub(crate) async fn execute_transcription_window(
     window: &WindowRange,
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
-    live_draft: Option<LiveDraftCallback>,
+    live_mode: bool,
     extraction_permit: OwnedSemaphorePermit,
     on_timed_window: TimedWindowCallback,
 ) -> Result<StagedWindowResult, WorkerError> {
@@ -143,7 +143,9 @@ pub(crate) async fn execute_transcription_window(
     let input = input.clone();
     let prepared = tauri::async_runtime::spawn_blocking(move || {
         pipeline.extract_audio(input, format, range, &run_control)
-    }).await.map_err(|error| WorkerError::Internal(error.to_string()))??;
+    })
+    .await
+    .map_err(|error| WorkerError::Internal(error.to_string()))??;
 
     // 2. Read bytes into memory
     let wav_bytes = std::fs::read(prepared.path()).map_err(WorkerError::Io)?;
@@ -159,22 +161,22 @@ pub(crate) async fn execute_transcription_window(
         return Err(WorkerError::Cancelled);
     }
 
-    // 4. Formulate inline Gemini TranscribeRequest
-    // Optional early drafts have no timestamps. Timed SSE chunks own timeline updates.
-    // Once the precise response is complete, the guard cancels the now-redundant draft socket.
-    let window_index = window.index;
-    let _live_task = live_draft.map(|callback| {
-        let client = client.clone();
-        let bytes = wav_bytes.clone();
-        let language_hints = config.language_hints.clone();
-        let cancel = cancellation.clone();
-        AbortOnDrop::new(tauri::async_runtime::spawn(stream_live_window(
-            client, bytes, language_hints, cancel, callback, window_index,
-        )))
-    });
+    if live_mode {
+        return execute_live_window(
+            client,
+            &wav_bytes,
+            window,
+            config,
+            cancellation,
+            on_timed_window,
+        )
+        .await;
+    }
+
+    // Regular Gemini Transcribe owns a distinct inline-media transport and word timestamps.
     let inline_media = InlineMedia::new("audio/wav", wav_bytes)?;
-    let request = TranscribeRequest::new(GeminiMediaInput::Inline(inline_media))
-        .with_config(config.clone());
+    let request =
+        TranscribeRequest::new(GeminiMediaInput::Inline(inline_media)).with_config(config.clone());
 
     // The existing transport retries only before accepting a stream. Never replay a body after
     // publishing its words. The caller rolls back presentation on failure/cancellation.
@@ -206,36 +208,116 @@ pub(crate) async fn execute_transcription_window(
     })
 }
 
-async fn stream_live_window(
-    client: GeminiClient,
-    bytes: Vec<u8>,
-    language_hints: Vec<String>,
-    cancel: CancellationToken,
-    callback: LiveDraftCallback,
-    window_index: usize,
-) {
+async fn execute_live_window(
+    client: &GeminiClient,
+    wav_bytes: &[u8],
+    window: &WindowRange,
+    config: &AudioTranscriptionConfig,
+    cancellation: &CancellationToken,
+    on_timed_window: TimedWindowCallback,
+) -> Result<StagedWindowResult, WorkerError> {
     let started = std::time::Instant::now();
-    let mut updates = 0usize;
-    crate::diagnostics::record("transcribe.live.started", &[("window", window_index.to_string())]);
-    let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| {
-        updates += 1;
-        if updates == 1 {
-            crate::diagnostics::record("transcribe.live.first_text", &[
-                ("window", window_index.to_string()),
-                ("elapsed_ms", started.elapsed().as_millis().to_string()),
-            ]);
-        }
-        callback(Ok(text));
-    }).await;
-    crate::diagnostics::record("transcribe.live.finished", &[
-        ("window", window_index.to_string()),
-        ("updates", updates.to_string()),
-        ("elapsed_ms", started.elapsed().as_millis().to_string()),
-        ("outcome", if result.is_err() { "error" } else if updates == 0 { "empty" } else { "ok" }.to_owned()),
-    ]);
-    if result.is_err() && !cancel.is_cancelled() {
-        callback(Err(()));
+    let mut finalized = Vec::new();
+    let mut first_final_seen = false;
+    let window_index = window.index;
+    let window_start_ms = window.start_ms;
+    let window_duration_ms = window.duration_ms().cast_unsigned();
+    crate::diagnostics::record(
+        "transcribe.live.started",
+        &[("window", window_index.to_string())],
+    );
+    client
+        .transcribe_live(wav_bytes, &config.language_hints, cancellation, |event| {
+            if event.kind != LiveTranscriptionKind::Final || event.text.trim().is_empty() {
+                return;
+            }
+            let start_ms = event.start_ms.min(window_duration_ms.saturating_sub(1));
+            let end_ms = event.end_ms.min(window_duration_ms).max(start_ms + 1);
+            finalized.extend(project_live_utterance(
+                &event.text,
+                start_ms,
+                end_ms,
+                window_start_ms,
+            ));
+            if !first_final_seen {
+                first_final_seen = true;
+                crate::diagnostics::record(
+                    "transcribe.live.first_final",
+                    &[
+                        ("window", window_index.to_string()),
+                        ("elapsed_ms", started.elapsed().as_millis().to_string()),
+                    ],
+                );
+            }
+            on_timed_window(StagedWindowResult {
+                window_index,
+                window: WindowRange::new(
+                    window_index,
+                    window_start_ms,
+                    window_start_ms + window_duration_ms.cast_signed(),
+                ),
+                words: finalized.clone(),
+            });
+        })
+        .await?;
+    crate::diagnostics::record(
+        "transcribe.live.finished",
+        &[
+            ("window", window_index.to_string()),
+            ("finalized", finalized.len().to_string()),
+            ("elapsed_ms", started.elapsed().as_millis().to_string()),
+            (
+                "outcome",
+                if finalized.is_empty() { "empty" } else { "ok" }.to_owned(),
+            ),
+        ],
+    );
+    Ok(StagedWindowResult {
+        window_index,
+        window: *window,
+        words: finalized,
+    })
+}
+
+fn project_live_utterance(
+    text: &str,
+    start_ms: u64,
+    end_ms: u64,
+    window_start_ms: i64,
+) -> Vec<ProjectedWordResult> {
+    let tokens = text.split_whitespace().collect::<Vec<_>>();
+    if tokens.is_empty() {
+        return Vec::new();
     }
+    let weights = tokens
+        .iter()
+        .map(|token| token.chars().count().max(1) as u64)
+        .collect::<Vec<_>>();
+    let total_weight = weights.iter().sum::<u64>().max(1);
+    let duration = end_ms.saturating_sub(start_ms).max(tokens.len() as u64);
+    let mut elapsed_weight = 0_u64;
+    tokens
+        .into_iter()
+        .zip(weights)
+        .map(|(token, weight)| {
+            let token_start = start_ms + duration.saturating_mul(elapsed_weight) / total_weight;
+            elapsed_weight += weight;
+            let token_end = (start_ms + duration.saturating_mul(elapsed_weight) / total_weight)
+                .max(token_start + 1)
+                .min(end_ms);
+            ProjectedWordResult {
+                status: WordProjectionStatus::Accepted,
+                text: token.to_owned(),
+                raw_start_ns: token_start.saturating_mul(1_000_000),
+                raw_end_ns: token_end.saturating_mul(1_000_000),
+                project_start_ms: window_start_ms + token_start.cast_signed(),
+                project_end_ms: window_start_ms + token_end.cast_signed(),
+                speaker_id: None,
+                is_unaligned: false,
+                alignment_status: "utterance_interpolated".to_owned(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -254,9 +336,8 @@ mod tests {
         // 3rd permit attempt must block
         let pool_clone = pool.clone();
         let cancel_clone = cancel.clone();
-        let mut acquire_task = tokio::spawn(async move {
-            pool_clone.acquire_permit(&cancel_clone).await
-        });
+        let mut acquire_task =
+            tokio::spawn(async move { pool_clone.acquire_permit(&cancel_clone).await });
 
         // Verify task is waiting (does not complete within 50ms)
         tokio::select! {
@@ -273,6 +354,30 @@ mod tests {
         drop(permit3);
     }
 
+    #[test]
+    fn live_utterance_is_split_into_monotonic_words_for_subtitle_grouping() {
+        let words = project_live_utterance("one longer three", 1_000, 4_000, 60_000);
+        assert_eq!(
+            words
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "longer", "three"]
+        );
+        assert_eq!(words.first().unwrap().project_start_ms, 61_000);
+        assert_eq!(words.last().unwrap().project_end_ms, 64_000);
+        assert!(
+            words
+                .windows(2)
+                .all(|pair| pair[0].project_end_ms <= pair[1].project_start_ms)
+        );
+        assert!(
+            words
+                .iter()
+                .all(|word| word.alignment_status == "utterance_interpolated")
+        );
+    }
+
     #[tokio::test]
     async fn test_worker_pool_cancellation_while_waiting() {
         let pool = WorkerPool::new();
@@ -285,9 +390,8 @@ mod tests {
         let pool_clone = pool.clone();
         let cancel_for_task = wait_cancel.clone();
 
-        let acquire_task = tokio::spawn(async move {
-            pool_clone.acquire_permit(&cancel_for_task).await
-        });
+        let acquire_task =
+            tokio::spawn(async move { pool_clone.acquire_permit(&cancel_for_task).await });
 
         // Cancel while waiting
         tokio::time::sleep(Duration::from_millis(20)).await;

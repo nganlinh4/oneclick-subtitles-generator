@@ -1,7 +1,5 @@
 {
   "speechEngineTranscribeLive": "Gemini Transcribe Live",
-  "liveDraftTiming": "Bản nháp Live · chờ thời gian",
-  "liveDraftUnavailable": "Không có bản nháp Live. Quá trình chép lời có mốc thời gian vẫn tiếp tục.",
   "audioOnly": "Chỉ gửi âm thanh",
   "audioOnlyHelp": "Chỉ trích xuất âm thanh trong phạm vi đã chọn, không tải lên khung hình video. Mô tả hình ảnh và đọc chữ trên màn hình cần video.",
   "configureOptions": "Cấu hình tùy chọn xử lý",

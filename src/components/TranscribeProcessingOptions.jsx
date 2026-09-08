@@ -4,7 +4,7 @@ import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 
 // Method-specific controls inside the existing modal, using its existing primitives.
-export default function TranscribeProcessingOptions({ value, onChange, selectedSegment }) {
+export default function TranscribeProcessingOptions({ value, onChange, selectedSegment, method }) {
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
     const windowMinutes = Math.max(1, Math.round(value.windowDurationSecs / 60));
@@ -33,13 +33,13 @@ export default function TranscribeProcessingOptions({ value, onChange, selectedS
                     {requestCount > 1 ? <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: requestCount })})</span> : null}
                 </>} />
         </div>
-        <div className="option-group">
+        {method === 'gemini-transcribe' ? <div className="option-group">
             <div className="material-switch-container">
                 <MaterialSwitch id="transcribe-speakers" checked={value.diarization}
                     onChange={(event) => update('diarization', event.target.checked)}
                     ariaLabel={t('processing.identifySpeakers', 'Identify speakers')} />
                 <label htmlFor="transcribe-speakers" className="material-switch-label">{t('processing.identifySpeakers', 'Identify speakers')}</label>
             </div>
-        </div>
+        </div> : null}
     </>;
 }

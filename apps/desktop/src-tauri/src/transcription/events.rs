@@ -60,15 +60,6 @@ pub(crate) enum WordNativeTranscriptionEvent {
         window_index: usize,
         projected_cues: Vec<ProjectedCueDto>,
     },
-    #[serde(rename = "liveDraft", rename_all = "camelCase")]
-    LiveDraft {
-        job_id: JobId,
-        window_index: usize,
-        total_windows: usize,
-        window_start_ms: i64,
-        window_end_ms: i64,
-        text: Option<String>,
-    },
     #[serde(rename = "stageChanged", rename_all = "camelCase")]
     StageChanged {
         job_id: JobId,
@@ -112,9 +103,7 @@ pub(crate) enum WordNativeTranscriptionEvent {
         projected_cues: Vec<ProjectedCueDto>,
     },
     #[serde(rename = "cancelled", rename_all = "camelCase")]
-    Cancelled {
-        job_id: JobId,
-    },
+    Cancelled { job_id: JobId },
     #[serde(rename = "failed", rename_all = "camelCase")]
     Failed {
         job_id: JobId,
@@ -191,7 +180,10 @@ mod tests {
         assert_eq!(json_val["projectedCues"][0]["id"], cue_id.to_string());
         assert_eq!(json_val["projectedCues"][0]["startMs"], 100);
         assert_eq!(json_val["projectedCues"][0]["endMs"], 400);
-        assert_eq!(json_val["projectedCues"][0]["wordIds"][0], word_id.to_string());
+        assert_eq!(
+            json_val["projectedCues"][0]["wordIds"][0],
+            word_id.to_string()
+        );
 
         let completed = WordNativeTranscriptionEvent::Completed {
             job_id,

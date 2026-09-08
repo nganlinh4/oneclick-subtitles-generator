@@ -12,12 +12,14 @@ it.each(['gemini-transcribe', 'gemini-transcribe-live'])('dispatches %s without 
     transcribeOptions: { windowDurationSecs: 30, languageHints: ['ko'], diarization: true },
     onProcess: (options) => { request = options; },
   });
+  const model = method === 'gemini-transcribe-live'
+    ? 'gemini-3.5-transcribe-live'
+    : 'gemini-3.5-transcribe';
   expect(request).toEqual({
-    method, engine: 'gemini-3.5-transcribe', model: 'gemini-3.5-transcribe',
-    ...(method === 'gemini-transcribe-live' ? { livePreview: true } : {}),
+    method, engine: model, model,
     segment: selectedSegment, videoFile: { type: 'audio/wav' }, audioOnly: true,
     inlineExtraction: false, windowDurationSecs: 30, maxDurationPerRequest: 30, languageHints: ['ko'],
-    diarization: true, bypassCache: true,
+    diarization: method === 'gemini-transcribe', bypassCache: true,
   });
   expect(getEngineDescriptor(request.method).optionsPanel).toBe('transcribe');
   expect(getEngineDescriptor(request.method).capabilities.tokenCounting).toBe(false);

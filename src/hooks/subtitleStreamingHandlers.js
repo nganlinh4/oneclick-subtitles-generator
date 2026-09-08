@@ -28,10 +28,8 @@ export const createFullMediaStreamingHandler = (
             setStatus({ message: t('output.streamingProgress', 'Streaming...'), type: 'loading' });
         }
     };
-    const handler = (streamingSubtitles, isStreaming, detail = {}) => {
+    const handler = (streamingSubtitles, isStreaming) => {
         if (settled || !Array.isArray(streamingSubtitles)) return;
-        // Untimed hypotheses are not subtitle cues and must not create editor rows.
-        if (detail.liveDraft) return;
         if (isStreaming === false) {
             if (timer !== null) clearTimeout(timer);
             timer = null;

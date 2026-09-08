@@ -1,7 +1,5 @@
 {
   "speechEngineTranscribeLive": "Gemini Transcribe Live",
-  "liveDraftTiming": "Live draft · timing pending",
-  "liveDraftUnavailable": "Live drafts are unavailable. Timed transcription is continuing.",
   "audioOnly": "Send audio only",
   "audioOnlyHelp": "Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.",
   "configureOptions": "Configure Processing Options",

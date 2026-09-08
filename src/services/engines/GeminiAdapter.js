@@ -111,10 +111,14 @@ const namespaceWindowRows = (rows, windowIndex) => rows.map((row) => {
  */
 export const processGeminiSegment = async (file, segment, options, hooks = {}) => {
   const { onStatus, onStreamingUpdate, t } = hooks;
+  const isLiveTranscribe = options?.model === 'gemini-3.5-transcribe-live'
+    || options?.engine === 'gemini-3.5-transcribe-live';
 
   const isExplicitTranscribe = (
     options?.model === 'gemini-3.5-transcribe'
+    || options?.model === 'gemini-3.5-transcribe-live'
     || options?.engine === 'gemini-3.5-transcribe'
+    || options?.engine === 'gemini-3.5-transcribe-live'
     || options?.engine === 'gemini-transcribe'
     || options?.task === 'native-transcribe'
   ) && !options?.forceLegacy;
@@ -224,14 +228,21 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         windowDurationMs: options?.maxDurationPerRequest != null ? Math.round(options.maxDurationPerRequest * 1000) : undefined,
         windowDurationSecs: options?.windowDurationSecs,
         languageHints: options?.languageHints || (options?.language ? [options.language] : undefined),
-        diarization: options?.diarization,
+        diarization: isLiveTranscribe ? false : options?.diarization,
         credentialId: options?.credentialId,
-        ...(options?.livePreview ? { config: { livePreview: true } } : {}),
+        config: {
+          model: isLiveTranscribe
+            ? 'gemini-3.5-transcribe-live'
+            : 'gemini-3.5-transcribe',
+        },
       }, {
         onWindowCues: (event) => {
           if (finished || isProjectMismatch(options?.projectId)) return;
-          windowCues.set(event.windowIndex, (event.projectedCues || []).map((cue) => ({
-            id: cue.id, originalId: cue.id, start: cue.startMs / 1000, end: cue.endMs / 1000,
+          const previousRows = windowCues.get(event.windowIndex) || [];
+          windowCues.set(event.windowIndex, (event.projectedCues || []).map((cue, index) => ({
+            id: previousRows[index]?.id || cue.id,
+            originalId: previousRows[index]?.originalId || cue.id,
+            start: cue.startMs / 1000, end: cue.endMs / 1000,
             text: cue.text, speaker: projectSpeaker(cue.speakerId), wordIds: cue.wordIds,
           })));
           currentCues = [...windowCues.values()].flat().sort((a, b) => a.start - b.start || a.end - b.end);
@@ -251,13 +262,6 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
           window.dispatchEvent(new CustomEvent('processing-ranges', {
             detail: { ranges: [...nativeRanges.values()].sort((a, b) => a.index - b.index) },
           }));
-        },
-        onLiveDraft: (event) => {
-          if (finished || isProjectMismatch(options?.projectId)) return;
-          if (event.text == null) {
-            onStatus?.({ message: t?.('processing.liveDraftUnavailable') ?? 'Live drafts unavailable; timed transcription continues.', type: 'warning' });
-          }
-          onStreamingUpdate?.(currentCues, true, { projectId: options.projectId, liveDraft: event });
         },
         onStageChanged: (event) => {
           onStatus?.({ message: event.message, type: 'loading' });

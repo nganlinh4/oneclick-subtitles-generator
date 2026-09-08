@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use osg_domain::{AssetId, JobId, JobKind, JobSnapshot, JobUpdate, ProjectId, TranscriptRevisionId};
+use osg_domain::{
+    AssetId, JobId, JobKind, JobSnapshot, JobUpdate, ProjectId, TranscriptRevisionId,
+};
 use osg_gemini::{ApiKey, AudioTranscriptionConfig, GeminiClient};
 use osg_infrastructure::secrets::{CredentialId, CredentialPurpose, CredentialState};
 use osg_infrastructure::storage::{Database, TranscriptRevisionRecord};
@@ -11,8 +13,8 @@ use osg_media_pipeline::MediaPipeline;
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use serde_json::Value;
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
 use crate::background;
@@ -23,13 +25,12 @@ use crate::state::{DesktopState, LocalMedia};
 use super::events::{TranscriptionErrorDto, WordNativeTranscriptionEvent};
 use super::planner::plan_windows;
 use super::staging::StagingBuffer;
-use super::worker::{execute_transcription_window, WorkerPool};
+use super::worker::{WorkerPool, execute_transcription_window};
 
 #[derive(Clone, Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WordNativeTranscriptionConfig {
-    #[serde(default)]
-    pub(crate) live_preview: bool,
+    pub(crate) model: Option<TranscriptionModel>,
     pub(crate) credential_id: Option<CredentialId>,
     pub(crate) language_hints: Option<Vec<String>>,
     pub(crate) diarization: Option<bool>,
@@ -41,6 +42,15 @@ pub(crate) struct WordNativeTranscriptionConfig {
     pub(crate) prompt_preset: Option<String>,
     #[allow(dead_code)]
     pub(crate) grouping_policy: Option<Value>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Default, PartialEq, Eq)]
+pub(crate) enum TranscriptionModel {
+    #[default]
+    #[serde(rename = "gemini-3.5-transcribe")]
+    Transcribe,
+    #[serde(rename = "gemini-3.5-transcribe-live")]
+    Live,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -65,6 +75,13 @@ pub(crate) struct StartWordNativeTranscriptionRequest {
 }
 
 impl StartWordNativeTranscriptionRequest {
+    #[must_use]
+    pub(crate) fn model(&self) -> TranscriptionModel {
+        self.config
+            .as_ref()
+            .and_then(|config| config.model)
+            .unwrap_or_default()
+    }
     #[must_use]
     pub(crate) fn credential_id(&self) -> Option<CredentialId> {
         self.credential_id
@@ -138,7 +155,9 @@ pub(crate) async fn start_transcription_engine(
         .map_err(|e| CommandError::internal(format!("media inspection failed: {e}")))?;
 
     if inspection.metadata.primary_audio().is_none() {
-        return Err(CommandError::invalid_input("the selected media has no audio track"));
+        return Err(CommandError::invalid_input(
+            "the selected media has no audio track",
+        ));
     }
 
     let duration_us = inspection.metadata.duration_us().unwrap_or(0);
@@ -212,7 +231,7 @@ pub(crate) async fn start_transcription_engine(
     .unwrap_or(0);
 
     let planned_windows_json = serde_json::to_string(&serde_json::json!({
-        "liveDrafts": request.config.as_ref().is_some_and(|config| config.live_preview),
+        "model": match request.model() { TranscriptionModel::Transcribe => "gemini-3.5-transcribe", TranscriptionModel::Live => "gemini-3.5-transcribe-live" },
         "plannedWindows": windows.iter().map(|w| serde_json::json!({
             "index": w.index,
             "startMs": w.start_ms,
@@ -228,7 +247,11 @@ pub(crate) async fn start_transcription_engine(
         project_id: request.project_id,
         media_id: request.media_asset_id,
         provider: "gemini".to_owned(),
-        model: "gemini-3.5-transcribe".to_owned(),
+        model: match request.model() {
+            TranscriptionModel::Transcribe => "gemini-3.5-transcribe",
+            TranscriptionModel::Live => "gemini-3.5-transcribe-live",
+        }
+        .to_owned(),
         source_range_start_ms: range_start_ms,
         source_range_end_ms: range_end_ms,
         state: "in_progress".to_owned(),
@@ -245,7 +268,9 @@ pub(crate) async fn start_transcription_engine(
     tauri::async_runtime::spawn_blocking(move || db_insert.transcript_insert_revision(&rev_record))
         .await
         .map_err(|_| CommandError::internal("database task stopped unexpectedly"))?
-        .map_err(|e| CommandError::internal(format!("failed to insert transcript revision: {e}")))?;
+        .map_err(|e| {
+            CommandError::internal(format!("failed to insert transcript revision: {e}"))
+        })?;
 
     // 8. Prepare transcription config
     let mut asr_config = AudioTranscriptionConfig::new();
@@ -261,7 +286,7 @@ pub(crate) async fn start_transcription_engine(
     let pipeline = Arc::new(pipeline);
     let native_input = Arc::new(native_input);
     let asr_config = Arc::new(asr_config);
-    let live_preview = request.config.as_ref().is_some_and(|config| config.live_preview);
+    let transcription_model = request.model();
 
     tauri::async_runtime::spawn(async move {
         run_engine_loop(
@@ -275,7 +300,7 @@ pub(crate) async fn start_transcription_engine(
             pipeline,
             native_input,
             asr_config,
-            live_preview,
+            transcription_model,
             cancellation,
             on_event,
         )
@@ -297,7 +322,7 @@ async fn run_engine_loop(
     pipeline: Arc<MediaPipeline>,
     native_input: Arc<NativeMediaInput>,
     asr_config: Arc<AudioTranscriptionConfig>,
-    live_preview: bool,
+    transcription_model: TranscriptionModel,
     cancellation: CancellationToken,
     on_event: Channel<WordNativeTranscriptionEvent>,
 ) {
@@ -356,40 +381,38 @@ async fn run_engine_loop(
                 fraction: Some(0.1),
             });
 
-            let draft_channel = event_channel.clone();
             let window_index = window.index;
-            let window_start_ms = window.start_ms;
-            let window_end_ms = window.end_ms;
-            let draft_callback: Option<super::worker::LiveDraftCallback> = live_preview.then(|| {
-                Arc::new(move |draft: Result<String, ()>| {
-                    let _ = draft_channel.send(WordNativeTranscriptionEvent::LiveDraft {
-                        job_id,
-                        window_index,
-                        total_windows,
-                        window_start_ms,
-                        window_end_ms,
-                        text: draft.ok(),
-                    });
-                }) as super::worker::LiveDraftCallback
-            });
             let timed_channel = event_channel.clone();
             let timed_callback: super::worker::TimedWindowCallback = Arc::new(move |snapshot| {
                 // Reuse the exact final grouping rules. Prefixes are replaceable presentation,
                 // while canonical SQLite promotion remains ordered and waits for valid STOP.
-                let cues = StagingBuffer::new().prepare_promotion(revision_id, snapshot).projected_cues;
+                let cues = StagingBuffer::new()
+                    .prepare_promotion(revision_id, snapshot)
+                    .projected_cues;
                 let _ = timed_channel.send(WordNativeTranscriptionEvent::WindowCues {
-                    job_id, window_index, projected_cues: cues,
+                    job_id,
+                    window_index,
+                    projected_cues: cues,
                 });
             });
-            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback, permit, timed_callback)
-                .await
+            match execute_transcription_window(
+                &client,
+                &pipeline,
+                &input,
+                &window,
+                &config,
+                &cancel,
+                transcription_model == TranscriptionModel::Live,
+                permit,
+                timed_callback,
+            )
+            .await
             {
                 Ok(staged_result) => {
                     buffer.insert(staged_result);
                     let _ = tx.send(window.index);
                 }
-                Err(_err) if cancel.is_cancelled() => {
-                }
+                Err(_err) if cancel.is_cancelled() => {}
                 Err(err) => {
                     failures.store(true, std::sync::atomic::Ordering::Release);
                     let _ = event_channel.send(WordNativeTranscriptionEvent::Failed {
@@ -424,7 +447,11 @@ async fn run_engine_loop(
             update_revision_state_best_effort(
                 &database,
                 revision_id,
-                if total_words_promoted > 0 { "partial" } else { "failed" },
+                if total_words_promoted > 0 {
+                    "partial"
+                } else {
+                    "failed"
+                },
             )
             .await;
             return;
@@ -478,7 +505,11 @@ async fn run_engine_loop(
                 update_revision_state_best_effort(
                     &database,
                     revision_id,
-                    if total_words_promoted > 0 { "partial" } else { "failed" },
+                    if total_words_promoted > 0 {
+                        "partial"
+                    } else {
+                        "failed"
+                    },
                 )
                 .await;
                 return;
@@ -656,8 +687,7 @@ async fn resolve_transcription_media(
         let media = LocalMedia::new(
             AssetId::new(),
             file_path.clone(),
-            osg_domain::media_kind_for_extension(extension)
-                .unwrap_or(osg_domain::MediaKind::Audio),
+            osg_domain::media_kind_for_extension(extension).unwrap_or(osg_domain::MediaKind::Audio),
             extension,
         );
         return Ok(media);

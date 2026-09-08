@@ -174,10 +174,25 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
       { model: 'gemini-3.5-transcribe', projectId: 'project' },
       { onStreamingUpdate: (rows, streaming) => updates.push({ ids: rows.map((row) => row.id), streaming }) });
     expect(updates.map((update) => update.ids)).toEqual([
-      ['later'], ['early', 'later'], ['early', 'later-revised', 'next'],
-      ['durable-early', 'later-revised', 'next'], ['durable-early', 'later-revised', 'next'],
+      ['later'], ['early', 'later'], ['early', 'later', 'next'],
+      ['durable-early', 'later', 'next'], ['durable-early', 'later', 'next'],
     ]);
     expect(updates.map((update) => update.streaming)).toEqual([true, true, true, true, false]);
+  });
+
+  it('routes Live as its own model and never requests regular Transcribe or diarization', async () => {
+    startWordNativeTranscription.mockImplementation(async (request, handlers) => {
+      expect(request.config).toEqual({ model: 'gemini-3.5-transcribe-live' });
+      expect(request.diarization).toBe(false);
+      handlers.onCompleted({ revisionId: 'live-revision', projectedCues: [
+        { id: 'live-cue', startMs: 1000, endMs: 2000, text: 'Live result', wordIds: [] },
+      ] });
+      return { id: 'live-job' };
+    });
+    const result = await processGeminiSegment(media, { start: 0, end: 60 }, {
+      model: 'gemini-3.5-transcribe-live', projectId: 'live-project', diarization: true,
+    });
+    expect(result).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Live result' })]));
   });
 
   it('does not emit streaming updates or set active transcript if project is no longer active', async () => {

@@ -27,6 +27,7 @@ pub use image::{
     GeneratedImage, ImageAspectRatio, ImageGenerateRequest, ImageModel, ImageSize,
     MAX_REFERENCE_IMAGE_BYTES, ReferenceImage,
 };
+pub use live_transcription::{LiveTranscriptionEvent, LiveTranscriptionKind};
 pub use model::{
     ACCURATE_MODEL, DAILY_USE_CHAIN, DEFAULT_MODEL, DailyUse, GEMINI_35_TRANSCRIBE,
     InputModality, Lifecycle, Model, ModelKind, ModelSpec, TRANSCRIPTION_MODELS, ThinkingLevel,

@@ -34,14 +34,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut updates = 0usize;
     client
-        .transcribe_live_draft(&wav, &[], &CancellationToken::new(), |text| {
+        .transcribe_live(&wav, &[], &CancellationToken::new(), |event| {
             updates += 1;
-            println!("Live draft {updates}: {} bytes", text.len());
+            println!(
+                "Live update {updates}: {:?}, {}-{}ms, {} bytes",
+                event.kind,
+                event.start_ms,
+                event.end_ms,
+                event.text.len()
+            );
         })
         .await?;
     if updates == 0 {
-        return Err("No Live drafts received".into());
+        return Err("No Live transcription updates received".into());
     }
-    println!("Shipping Rust transport succeeded: {updates} draft updates");
+    println!("Shipping Rust transport succeeded: {updates} Live updates");
     Ok(())
 }

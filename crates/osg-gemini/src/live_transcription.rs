@@ -1,8 +1,12 @@
-//! Early text only. Live supplies no media offsets: never turn these drafts into timed words.
+//! Standalone Gemini Live transcription over source-paced PCM.
 use crate::{CancellationToken, Error, GeminiClient, Result, TransportKind};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+};
 use std::time::Duration;
 use tokio_tungstenite::{
     connect_async_with_config,
@@ -18,13 +22,94 @@ fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
 
+/// A provider transcription update located on the source-paced PCM clock.
+/// Gemini Live does not expose word offsets. Final events are authoritative utterances; interim
+/// events are replaceable hypotheses and must never be persisted as subtitle rows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveTranscriptionEvent {
+    pub kind: LiveTranscriptionKind,
+    pub text: String,
+    pub language_code: Option<String>,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveTranscriptionKind {
+    Interim,
+    Final,
+}
+
+fn source_ms(sent_pcm_bytes: &AtomicU64) -> u64 {
+    // PCM16 mono, 16 kHz: 32 bytes per millisecond.
+    sent_pcm_bytes.load(Ordering::Acquire) / 32
+}
+
+fn final_turn_received(stream_ended: &AtomicBool, content: &Value) -> bool {
+    stream_ended.load(Ordering::Acquire) && content["turnComplete"].as_bool() == Some(true)
+}
+
+#[derive(Default)]
+struct LiveEventAccumulator {
+    active_start_ms: Option<u64>,
+    previous_final_end_ms: u64,
+}
+
+impl LiveEventAccumulator {
+    fn observe(
+        &mut self,
+        content: &Value,
+        source_position_ms: u64,
+    ) -> Result<Option<LiveTranscriptionEvent>> {
+        let (kind, transcription) = if content["inputTranscription"]["text"].is_string() {
+            (LiveTranscriptionKind::Final, &content["inputTranscription"])
+        } else if content["interimInputTranscription"]["text"].is_string() {
+            (
+                LiveTranscriptionKind::Interim,
+                &content["interimInputTranscription"],
+            )
+        } else {
+            return Ok(None);
+        };
+        let text = transcription["text"].as_str().unwrap_or_default().trim();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        if text.len() > LIMIT {
+            return Err(Error::ResponseTooLarge { limit_bytes: LIMIT });
+        }
+        let end_ms = source_position_ms.max(self.previous_final_end_ms + 1);
+        let start_ms = match kind {
+            LiveTranscriptionKind::Interim => *self
+                .active_start_ms
+                .get_or_insert_with(|| end_ms.saturating_sub(300).max(self.previous_final_end_ms)),
+            LiveTranscriptionKind::Final => self
+                .active_start_ms
+                .take()
+                .unwrap_or(self.previous_final_end_ms)
+                .min(end_ms.saturating_sub(1)),
+        };
+        if kind == LiveTranscriptionKind::Final {
+            self.previous_final_end_ms = end_ms;
+        }
+        Ok(Some(LiveTranscriptionEvent {
+            kind,
+            text: text.to_owned(),
+            language_code: transcription["languageCode"].as_str().map(str::to_owned),
+            start_ms,
+            end_ms,
+        }))
+    }
+}
+
 fn ensure_tls_provider() -> Result<()> {
     // The desktop links both rustls crypto backends. Automatic provider selection panics.
     // Match the existing Live Music transport, respecting a provider installed by another caller.
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
-    rustls::crypto::CryptoProvider::get_default().map(|_| ())
+    rustls::crypto::CryptoProvider::get_default()
+        .map(|_| ())
         .ok_or(Error::Transport(TransportKind::Connect))
 }
 
@@ -65,14 +150,14 @@ fn wav_pcm(bytes: &[u8]) -> Result<&[u8]> {
 }
 
 impl GeminiClient {
-    /// One bounded window, paced at source rate. Callback replaces the current window's draft.
+    /// One bounded window, paced at source rate. Final callbacks are independent utterances.
     /// Authentication and all transport errors stay in Rust; no URLs or keys escape this method.
-    pub async fn transcribe_live_draft(
+    pub async fn transcribe_live(
         &self,
         wav: &[u8],
         language_hints: &[String],
         cancellation: &CancellationToken,
-        mut on_text: impl FnMut(String) + Send,
+        mut on_event: impl FnMut(LiveTranscriptionEvent) + Send,
     ) -> Result<()> {
         let pcm = wav_pcm(wav)?;
         ensure_tls_provider()?;
@@ -92,10 +177,9 @@ impl GeminiClient {
             .map_err(|_| Error::Transport(TransportKind::Timeout))?
             .map_err(|_| Error::Transport(TransportKind::Connect))?;
             let (mut sender, mut receiver) = socket.split();
-            // These are prerecorded, explicitly bounded windows, not microphone turns.
-            // Automatic speech detection can reject singing over music without any error or
-            // transcription. Declare the known activity boundary instead of waiting for VAD.
-            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": true}}}}).to_string().into()))
+            // Live is an utterance stream, not a single push-to-talk turn around a ten-minute file.
+            // Server VAD is required so pauses finalize segments while PCM is still arriving.
+            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": false, "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH", "prefixPaddingMs": 300, "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH", "silenceDurationMs": 500}}}}).to_string().into()))
                 .await.map_err(|_| Error::Transport(TransportKind::Body))?;
             let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
                 .await
@@ -107,30 +191,46 @@ impl GeminiClient {
             if value.get("setupComplete").is_none() {
                 return Err(Error::Transport(TransportKind::Connect));
             }
-            let send_audio = async {
-                sender.send(Message::Text(json!({"realtimeInput":{"activityStart":{}}}).to_string().into()))
-                    .await.map_err(|_| Error::Transport(TransportKind::Body))?;
+            let sent_pcm_bytes = Arc::new(AtomicU64::new(0));
+            let stream_ended = Arc::new(AtomicBool::new(false));
+            let send_clock = Arc::clone(&sent_pcm_bytes);
+            let send_ended = Arc::clone(&stream_ended);
+            let send_audio = async move {
                 let mut pacing = tokio::time::interval(Duration::from_millis(100));
                 pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 for chunk in pcm.chunks(3200) {
                     pacing.tick().await;
                     sender.send(Message::Text(json!({"realtimeInput": {"audio": {"mimeType": "audio/pcm;rate=16000", "data": STANDARD.encode(chunk)}}}).to_string().into()))
                         .await.map_err(|_| Error::Transport(TransportKind::Body))?;
+                    send_clock.fetch_add(chunk.len() as u64, Ordering::Release);
                 }
                 sender
                     .send(Message::Text(
-                        json!({"realtimeInput":{"activityEnd":{}}})
+                        json!({"realtimeInput":{"audioStreamEnd":true}})
                             .to_string()
                             .into(),
                     ))
                     .await
                     .map_err(|_| Error::Transport(TransportKind::Body))?;
-                tokio::time::sleep(Duration::from_secs(8)).await;
+                send_ended.store(true, Ordering::Release);
                 Ok::<(), Error>(())
             };
+            let receive_clock = Arc::clone(&sent_pcm_bytes);
+            let receive_ended = Arc::clone(&stream_ended);
             let receive_text = async {
-                let mut finalized = String::new();
-                while let Some(message) = receiver.next().await {
+                let mut events = LiveEventAccumulator::default();
+                loop {
+                    let next = if receive_ended.load(Ordering::Acquire) {
+                        match tokio::time::timeout(Duration::from_secs(12), receiver.next()).await {
+                            Ok(next) => next,
+                            Err(_) => return Ok(()),
+                        }
+                    } else {
+                        receiver.next().await
+                    };
+                    let Some(message) = next else {
+                        return Ok(());
+                    };
                     let message = message.map_err(|_| Error::Transport(TransportKind::Body))?;
                     if matches!(message, Message::Close(_)) {
                         return Ok(());
@@ -144,26 +244,19 @@ impl GeminiClient {
                         return Err(Error::Transport(TransportKind::Body));
                     }
                     let content = &value["serverContent"];
-                    if let Some(text) = content["inputTranscription"]["text"].as_str() {
-                        if finalized.len() + text.len() > LIMIT {
-                            return Err(Error::ResponseTooLarge { limit_bytes: LIMIT });
-                        }
-                        if !finalized.is_empty() {
-                            finalized.push(' ');
-                        }
-                        finalized.push_str(text);
-                        on_text(finalized.clone());
-                    } else if let Some(text) = content["interimInputTranscription"]["text"].as_str()
-                    {
-                        if finalized.len() + text.len() > LIMIT {
-                            return Err(Error::ResponseTooLarge { limit_bytes: LIMIT });
-                        }
-                        on_text(format!("{finalized} {text}").trim().to_owned());
+                    if let Some(event) = events.observe(content, source_ms(&receive_clock))? {
+                        on_event(event);
+                    }
+                    // Some Live transcription sessions do not emit turnComplete after
+                    // audioStreamEnd. The bounded post-stream inactivity timeout above is the
+                    // terminal contract; a turnComplete after the stream is still an early exit.
+                    if final_turn_received(&receive_ended, content) {
+                        return Ok(());
                     }
                 }
-                Ok::<(), Error>(())
             };
-            tokio::select! { result = send_audio => result, result = receive_text => result }
+            let ((), ()) = tokio::try_join!(send_audio, receive_text)?;
+            Ok(())
         };
         tokio::select! {
             () = cancellation.cancelled() => Err(Error::Cancelled),
@@ -174,7 +267,9 @@ impl GeminiClient {
 
 #[cfg(test)]
 mod tests {
-    use super::wav_pcm;
+    use super::{LiveEventAccumulator, LiveTranscriptionKind, source_ms, wav_pcm};
+    use serde_json::json;
+    use std::sync::atomic::AtomicU64;
 
     #[test]
     fn websocket_crypto_provider_is_explicit_and_idempotent() {
@@ -202,5 +297,36 @@ mod tests {
         wav[22] = 2; // Stereo must not be mislabeled as mono.
         assert!(wav_pcm(&wav).is_err());
         assert!(wav_pcm(&vec![0; super::MAX_PCM_BYTES + 4_097]).is_err());
+    }
+
+    #[test]
+    fn source_clock_is_derived_from_pcm_bytes() {
+        let sent = AtomicU64::new(32_000);
+        assert_eq!(source_ms(&sent), 1_000);
+    }
+
+    #[test]
+    fn finalized_utterances_are_independent_and_monotonic() {
+        let mut state = LiveEventAccumulator::default();
+        let interim = state
+            .observe(&json!({"interimInputTranscription":{"text":"hel"}}), 1_000)
+            .unwrap()
+            .unwrap();
+        let first = state
+            .observe(
+                &json!({"inputTranscription":{"text":"hello","languageCode":"en"}}),
+                1_400,
+            )
+            .unwrap()
+            .unwrap();
+        let second = state
+            .observe(&json!({"inputTranscription":{"text":"world"}}), 2_000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(interim.kind, LiveTranscriptionKind::Interim);
+        assert_eq!((interim.start_ms, interim.end_ms), (700, 1_000));
+        assert_eq!((first.start_ms, first.end_ms), (700, 1_400));
+        assert_eq!((second.start_ms, second.end_ms), (1_400, 2_000));
+        assert_eq!(first.language_code.as_deref(), Some("en"));
     }
 }

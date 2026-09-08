@@ -76,10 +76,13 @@ const runVideoProcess = async ({
     // The native engine owns audio extraction, windowing, and word-to-cue projection.
     // Do not leak the prompt/video transport settings from another selected method.
     if (['gemini-transcribe', 'gemini-transcribe-live'].includes(method) && !retryLock) {
+        const model = method === 'gemini-transcribe-live'
+            ? 'gemini-3.5-transcribe-live'
+            : 'gemini-3.5-transcribe';
         return onProcess({
             method,
-            engine: 'gemini-3.5-transcribe',
-            model: 'gemini-3.5-transcribe',
+            engine: model,
+            model,
             audioOnly: true,
             inlineExtraction: false,
             segment: selectedSegment,
@@ -87,8 +90,7 @@ const runVideoProcess = async ({
             windowDurationSecs: transcribeOptions.windowDurationSecs ?? 600,
             maxDurationPerRequest: transcribeOptions.windowDurationSecs ?? 600,
             languageHints: transcribeOptions.languageHints ?? [],
-            diarization: transcribeOptions.diarization === true,
-            ...(method === 'gemini-transcribe-live' ? { livePreview: true } : {}),
+            diarization: method === 'gemini-transcribe' && transcribeOptions.diarization === true,
             bypassCache: true,
         });
     }
