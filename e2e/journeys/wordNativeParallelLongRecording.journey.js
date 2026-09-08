@@ -64,7 +64,7 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     let nextScreenshot = 0;
     let previousPaintedCount = 3;
     let screenshotIndex = 0;
-    // Observe painted row TEXT over wall-clock time, not our own revision attributes.
+    // Observe actual timeline paints over wall-clock time; untimed draft rows do not count.
     // Finish the recording even when streaming is absent, so a final burst is preserved as evidence.
     await browser.waitUntil(async () => {
       const elapsedMs = Date.now() - started;
@@ -120,5 +120,7 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
       'No timed timeline streaming: the painter never drew more than the three old segments while the job was running. Draft text does not count.');
     assert.ok(new Set(timedSamples.map((sample) => sample.paintedSubtitleCount)).size >= 2,
       'Timed subtitles arrived as one burst: expected multiple painted segment-count updates before completion.');
+    assert.ok(timedSamples[0].elapsedMs < (ledger.ranges[0].end - ledger.ranges[0].start) * 1000,
+      `The first timed timeline update took ${timedSamples[0].elapsedMs}ms, longer than an entire request window. Progressive completion alone is not realtime proof.`);
   });
 });
