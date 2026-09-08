@@ -1,4 +1,5 @@
 {
+  "transcribeMethodDescription": "Chép lời nói từ âm thanh với mốc thời gian từng từ. Với video, chỉ gửi phần âm thanh. Phụ đề xuất hiện trong trình chỉnh sửa hiện tại.",
   "audioOnly": "Chỉ gửi âm thanh",
   "audioOnlyHelp": "Chỉ trích xuất âm thanh trong phạm vi đã chọn, không tải lên khung hình video. Mô tả hình ảnh và đọc chữ trên màn hình cần video.",
   "configureOptions": "Cấu hình tùy chọn xử lý",
@@ -143,7 +144,7 @@
   "taskSpeech": "Lời nói",
   "taskTranslate": "Dịch",
   "taskVisualCustom": "Hình ảnh / Tùy chỉnh",
-  "speechEngineTranscribe": "Gemini Transcribe (Từ gốc)",
+  "speechEngineTranscribe": "Gemini Transcribe",
   "speechEngineLocalAsr": "ASR cục bộ (GPU ngoại tuyến)",
   "speechEngineGeneral": "Gemini tổng quát (Theo prompt)",
   "audioExtractedLocallyNotice": "Âm thanh từ video này được trích xuất cục bộ. Video gốc không bị thay đổi.",

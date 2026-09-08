@@ -19,7 +19,7 @@ const GEMINI_OLD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" view
 const NVIDIA_SVG = `<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-nvidia" viewBox="0 0 16 16" height="16" width="16" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle;"><path d="M1.635 7.146S3.08 5.012 5.97 4.791v-0.774C2.77 4.273 0 6.983 0 6.983s1.57 4.536 5.97 4.952v-0.824c-3.23 -0.406 -4.335 -3.965 -4.335 -3.965M5.97 9.475v0.753c-2.44 -0.435 -3.118 -2.972 -3.118 -2.972S4.023 5.958 5.97 5.747v0.828h-0.004c-1.021 -0.123 -1.82 0.83 -1.82 0.83s0.448 1.607 1.824 2.07M6 2l-0.03 2.017A7 7 0 0 1 6.252 4c3.637 -0.123 6.007 2.983 6.007 2.983s-2.722 3.31 -5.557 3.31q-0.39 -0.002 -0.732 -0.065v0.883q0.292 0.039 0.61 0.04c2.638 0 4.546 -1.348 6.394 -2.943 0.307 0.246 1.561 0.842 1.819 1.104 -1.757 1.47 -5.852 2.657 -8.173 2.657a7 7 0 0 1 -0.65 -0.034V14H16l0.03 -12zm-0.03 3.747v-0.956a6 6 0 0 1 0.282 -0.015c2.616 -0.082 4.332 2.248 4.332 2.248S8.73 9.598 6.743 9.598c-0.286 0 -0.542 -0.046 -0.773 -0.123v-2.9c1.018 0.123 1.223 0.572 1.835 1.593L9.167 7.02s-0.994 -1.304 -2.67 -1.304a5 5 0 0 0 -0.527 0.031" stroke-width="1"></path></svg>`;
 
 const methodIcon = (id) => {
-    if (id === 'new') return <img src={specialStarIcon} alt="" style={ICON_STYLE} />;
+    if (id === 'new' || id === 'gemini-transcribe') return <img src={specialStarIcon} alt="" style={ICON_STYLE} />;
     if (id === 'old') return <span style={{ display: 'inline-flex' }} dangerouslySetInnerHTML={{ __html: GEMINI_OLD_SVG }} />;
     if (id === 'nvidia-parakeet') return <span style={{ display: 'inline-flex' }} dangerouslySetInnerHTML={{ __html: NVIDIA_SVG }} />;
     return null; // catalog ASR engines: name only

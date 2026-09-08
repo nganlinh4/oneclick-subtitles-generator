@@ -38,6 +38,7 @@ const useVideoProcessingState = ({
     onSelectedSegmentChange,
     selectedSegment,
     onProcess,
+    transcribeOptions,
 }) => {
     const { t } = useTranslation();
 
@@ -424,6 +425,7 @@ const useVideoProcessingState = ({
 
     // Handle form submission — delegates to the runVideoProcess builder/dispatcher
     const handleProcess = () => runVideoProcess({
+        transcribeOptions,
         audioOnly,
         selectedSegment,
         isUploading,

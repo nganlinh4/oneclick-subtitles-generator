@@ -21,6 +21,17 @@
  */
 
 import { ASR_ENGINES } from './asrEngines';
+import { isDesktopRuntime } from '../../platform/desktopRuntime';
+
+const GEMINI_TRANSCRIBE = {
+  id: 'gemini-transcribe',
+  type: 'gemini',
+  labelKey: 'processing.speechEngineTranscribe',
+  labelDefault: 'Gemini Transcribe',
+  optionsPanel: 'transcribe',
+  capabilities: { segmentation: false, language: true, tokenCounting: false },
+  availability: () => isDesktopRuntime(),
+};
 
 const GEMINI_NEW = {
   id: 'new',
@@ -71,7 +82,7 @@ const asrDescriptor = (e) => ({
 });
 
 // Ordered: Gemini methods, Parakeet, then catalog ASR engines (the method-dropdown order).
-const DESCRIPTORS = [GEMINI_NEW, GEMINI_OLD, PARAKEET, ...ASR_ENGINES.map(asrDescriptor)];
+const DESCRIPTORS = [GEMINI_NEW, GEMINI_OLD, GEMINI_TRANSCRIBE, PARAKEET, ...ASR_ENGINES.map(asrDescriptor)];
 const BY_ID = Object.fromEntries(DESCRIPTORS.map((d) => [d.id, d]));
 
 export const getEngineDescriptor = (method) => BY_ID[method] || null;

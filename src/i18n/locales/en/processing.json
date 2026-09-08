@@ -1,4 +1,5 @@
 {
+  "transcribeMethodDescription": "Transcribe speech from audio with word timestamps. For video, only its audio is sent. Subtitles appear in the existing editor.",
   "audioOnly": "Send audio only",
   "audioOnlyHelp": "Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.",
   "configureOptions": "Configure Processing Options",
@@ -129,7 +130,7 @@
   "taskSpeech": "Speech",
   "taskTranslate": "Translate",
   "taskVisualCustom": "Visual / Custom",
-  "speechEngineTranscribe": "Gemini Transcribe (Word-native)",
+  "speechEngineTranscribe": "Gemini Transcribe",
   "speechEngineLocalAsr": "Local ASR (Offline GPU)",
   "speechEngineGeneral": "Gemini General (Prompt-based)",
   "audioExtractedLocallyNotice": "Audio from this video is used. The video stays unchanged.",

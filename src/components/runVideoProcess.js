@@ -69,8 +69,27 @@ const runVideoProcess = async ({
     asrLanguage,
     t,
     onProcess,
+    transcribeOptions = {},
 }) => {
     if (!selectedSegment || isUploading) return;
+
+    // The native engine owns audio extraction, windowing, and word-to-cue projection.
+    // Do not leak the prompt/video transport settings from another selected method.
+    if (method === 'gemini-transcribe' && !retryLock) {
+        return onProcess({
+            method,
+            engine: 'gemini-3.5-transcribe',
+            model: 'gemini-3.5-transcribe',
+            audioOnly: true,
+            inlineExtraction: false,
+            segment: selectedSegment,
+            videoFile,
+            windowDurationSecs: transcribeOptions.windowDurationSecs ?? 120,
+            languageHints: transcribeOptions.languageHints ?? [],
+            diarization: transcribeOptions.diarization === true,
+            bypassCache: true,
+        });
+    }
 
     let currentSegment = selectedSegment;
 

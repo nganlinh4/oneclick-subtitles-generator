@@ -12,6 +12,7 @@ import parakeetLightImg from '../assets/transcription-methods/parakeet_light.web
 import whisperDarkImg from '../assets/transcription-methods/whisper_dark.webp';
 import whisperLightImg from '../assets/transcription-methods/whisper_light.webp';
 import { ASR_ENGINES } from '../services/engines/asrEngines';
+import { getEngineDescriptor } from '../services/engines/transcriptionEngineRegistry';
 
 /**
  * Overlay for first-time transcription method selection
@@ -74,6 +75,13 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 desc: t('processing.transcriptionMethodParakeetDescription'),
                 img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
                 disabled: isParakeetDisabled
+            },
+            {
+                id: 'gemini-transcribe',
+                name: t('processing.speechEngineTranscribe'),
+                desc: t('processing.transcribeMethodDescription'),
+                img: isDarkTheme ? newDarkImg : newLightImg,
+                disabled: !getEngineDescriptor('gemini-transcribe').availability()
             },
             // On-demand local GPU ASR engines (faster-whisper, …) — install from the Tools panel; each
             // card is grayed out until its engine is installed and the service reports ready.

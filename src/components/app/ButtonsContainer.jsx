@@ -11,7 +11,6 @@ import Tooltip from '../common/Tooltip';
 import { publishProcessingRanges } from '../../events/bus';
 import useAutoGenerateFlow from './hooks/useAutoGenerateFlow';
 import { useSrtUploadState } from './utils/srtUploadState';
-import CreateSubtitlesModal from '../CreateSubtitlesModal';
 
 
 /**
@@ -103,16 +102,6 @@ const ButtonsContainer = ({
   // Detect current theme from data-theme attribute (light/dark)
   const isDarkTheme = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const rawHandleGenerateSubtitles = handleGenerateSubtitles;
-  handleGenerateSubtitles = (arg) => {
-    if (arg && typeof arg === 'object' && arg.runId) {
-      if (typeof rawHandleGenerateSubtitles === 'function') {
-        return rawHandleGenerateSubtitles(arg);
-      }
-    }
-    setShowCreateModal(true);
-  };
 
   return (
     <div className="buttons-container">
@@ -195,7 +184,7 @@ const ButtonsContainer = ({
               ) : isSrtOnlyMode ? t('output.srtOnlyMode', 'Working with SRT only') :
                 hasUrlAndSrtOnly ? t('output.downloadAndViewWithSrt', 'Download + View with Uploaded SRT') :
                 selectedVideo && !uploadedFile ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
-                t('output.createSubtitles', 'Create subtitles')}
+                t('output.semiAutoGenerate', 'Semi-auto')}
             </button>
           </Tooltip>
 
@@ -269,6 +258,8 @@ const ButtonsContainer = ({
       {(isGenerating || retryingSegments.length > 0 || isRetrying || isProcessingSegment || isAutoGenerating) && (
         <button
           className="force-stop-btn"
+          data-osg-action="cancel-generation"
+          data-testid="cancel-generation-button"
           onClick={(e) => {
             // Add processing class for animation
             e.currentTarget.classList.add('processing');
@@ -319,8 +310,6 @@ const ButtonsContainer = ({
 
             // The state will be updated by the event listener in useSubtitles hook
           }}
-          data-osg-action="cancel-generation"
-          data-testid="force-stop-btn"
           title={t('output.forceStopTooltip', 'Force stop all Gemini requests')}
         >
           {/* Dynamic Gemini effects container - populated by particle system */}
@@ -330,19 +319,6 @@ const ButtonsContainer = ({
           </span>
           {t('output.forceStop', 'Force Stop')}
         </button>
-      )}
-
-      {showCreateModal && (
-        <CreateSubtitlesModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onProcess={handleProcessWithOptions}
-          videoFile={uploadedFileData || uploadedFile || selectedVideo}
-          videoDuration={uploadedFile?.duration || selectedVideo?.duration || 0}
-          selectedSegment={null}
-          subtitlesData={subtitlesData}
-          userProvidedSubtitles={userProvidedSubtitles}
-        />
       )}
     </div>
   );

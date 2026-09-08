@@ -1,4 +1,5 @@
 {
+  "transcribeMethodDescription": "단어별 타임스탬프로 음성을 받아씁니다. 동영상은 오디오만 전송합니다. 자막은 기존 편집기에 표시됩니다.",
   "audioOnly": "오디오만 전송",
   "audioOnlyHelp": "선택한 구간의 오디오만 추출하며 영상 프레임은 업로드하지 않습니다. 장면 설명과 화면 속 텍스트 인식에는 영상이 필요합니다.",
   "secondsDelay": "{{value}}초 대기",
@@ -143,7 +144,7 @@
   "taskSpeech": "음성",
   "taskTranslate": "번역",
   "taskVisualCustom": "시각 / 사용자 지정",
-  "speechEngineTranscribe": "Gemini Transcribe (단어 기준)",
+  "speechEngineTranscribe": "Gemini Transcribe",
   "speechEngineLocalAsr": "로컬 ASR (오프라인 GPU)",
   "speechEngineGeneral": "Gemini 일반 (프롬프트 기반)",
   "audioExtractedLocallyNotice": "이 비디오의 오디오가 로컬에서 사용됩니다. 비디오는 변경되지 않습니다.",

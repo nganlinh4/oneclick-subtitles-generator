@@ -5,8 +5,6 @@ import { useLyricsEditorDrag } from './useLyricsEditorDrag';
 import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import { useLyricsEditorHelpers } from './useLyricsEditorHelpers';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
-import { regroupWordsOffline, regroupPreservingEdits } from '../platform/localCaptionRegrouping';
-import { getActiveTranscript } from '../platform/transcriptStore';
 
 /**
  * Lyrics editor hook. Orchestrates the editor's core state and composes the
@@ -178,15 +176,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
 
   const handleTextEdit = (index, newText) => {
     const updatedLyrics = lyricsRef.current.map((lyric, i) =>
-      i === index
-        ? {
-            ...lyric,
-            text: newText,
-            userEdited: true,
-            manual_state: 'edited_text',
-            alignment_status: 'Modified',
-          }
-        : lyric
+      i === index ? { ...lyric, text: newText, userEdited: true, manual_state: 'edited_text', alignment_status: 'Modified' } : lyric
     );
     commitLyricsMutation(updatedLyrics, LYRICS_EDITOR_ACTIONS.TEXT);
 
@@ -401,35 +391,6 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.APPLY_TIMINGS);
   };
 
-  // Offline zero-provider regrouping (F17). Undoable.
-  const handleRegroup = (policy, options = {}, preserveManualEdits = true) => {
-    const current = lyricsRef.current;
-    if (!current || current.length === 0) return;
-
-    const words = options.words || current.words || getActiveTranscript()?.words;
-    if (!Array.isArray(words) || words.length === 0) {
-      // Cue-only captions remain cue-only. Do not fabricate or interpolate Provider words.
-      return;
-    }
-
-    const customOpts = {
-      max_words: options.maxWords ?? options.max_words,
-      max_duration_ms: (options.maxDuration ?? options.max_duration ?? 5.0) * 1000,
-      pause_threshold_ms: options.pauseThreshold ?? options.pause_threshold_ms ?? 300,
-      split_on_punctuation: options.splitOnPunctuation ?? options.split_on_punctuation ?? true,
-    };
-
-    const newLyrics = preserveManualEdits
-      ? regroupPreservingEdits(words, current, policy, customOpts)
-      : regroupWordsOffline(words, policy, customOpts);
-
-    if (current.words) newLyrics.words = current.words;
-    if (current.turns) newLyrics.turns = current.turns;
-    if (current.revisionId) newLyrics.revisionId = current.revisionId;
-
-    commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.REGROUP);
-  };
-
   return {
     lyrics,
     isSticky,
@@ -453,7 +414,6 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     handleInsertLyric,
     handleMergeLyrics,
     handleSplitSubtitles,
-    handleRegroup,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
     beginRangeMove,

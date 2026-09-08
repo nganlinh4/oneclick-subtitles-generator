@@ -21,11 +21,6 @@ import LyricsDownloadAndOutput from './LyricsDownloadAndOutput';
 import { saveCompleteDocumentResult } from './lyrics/documentProcessingResult';
 import { subtitleImportFileNameForCache } from '../platform/subtitleImportProvenance';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
-import ViewportSwitcher from './lyrics/ViewportSwitcher';
-import TranscriptSurface from './lyrics/transcript/TranscriptSurface';
-import CaptionGroupingToolbar from './lyrics/CaptionGroupingToolbar';
-import { REGROUPING_POLICIES } from '../platform/localCaptionRegrouping';
-import { getActiveTranscript, subscribeActiveTranscript } from '../platform/transcriptStore';
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -213,7 +208,6 @@ const LyricsDisplay = ({
     handleMergeLyrics,
     updateSavedLyrics,
     handleSplitSubtitles,
-    handleRegroup,
     captureStateBeforeMerge,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
@@ -225,44 +219,6 @@ const LyricsDisplay = ({
   } = useLyricsEditor(matchedLyrics, onUpdateLyrics, {
     hasTranslation: Array.isArray(translatedSubtitles) && translatedSubtitles.length > 0,
   });
-
-  const [activeViewport, setActiveViewport] = useState('captions');
-  const [speakerNames, setSpeakerNames] = useState({});
-  const [groupingPolicy, setGroupingPolicy] = useState(REGROUPING_POLICIES.NATURAL);
-  const [preserveManualEdits, setPreserveManualEdits] = useState(true);
-  const [customGroupingOptions, setCustomGroupingOptions] = useState({
-    maxWords: 12,
-    maxDuration: 5.0,
-    pauseThreshold: 300,
-    splitOnPunctuation: true,
-  });
-
-  const [activeTranscript, setActiveTranscript] = useState(getActiveTranscript());
-  useEffect(() => {
-    return subscribeActiveTranscript(setActiveTranscript);
-  }, []);
-
-  const handleSpeakerRename = (speakerId, newName) => {
-    setSpeakerNames((prev) => ({ ...prev, [speakerId]: newName }));
-  };
-
-  const transcriptWords = (Array.isArray(activeTranscript?.words) && activeTranscript.words.length > 0)
-    ? activeTranscript.words
-    : (Array.isArray(matchedLyrics?.words) && matchedLyrics.words.length > 0)
-    ? matchedLyrics.words
-    : (Array.isArray(lyrics.words) && lyrics.words.length > 0)
-    ? lyrics.words
-    : [];
-  const transcriptTurns = (Array.isArray(activeTranscript?.turns) && activeTranscript.turns.length > 0)
-    ? activeTranscript.turns
-    : (Array.isArray(matchedLyrics?.turns) && matchedLyrics.turns.length > 0)
-    ? matchedLyrics.turns
-    : (Array.isArray(lyrics.turns) && lyrics.turns.length > 0)
-    ? lyrics.turns
-    : [];
-  const preservedCount = lyrics.filter(
-    (c) => c.userEdited || (c.manual_state && c.manual_state !== 'clean')
-  ).length;
 
   // Find current lyric index based on time
   const currentIndex = lyrics.findIndex((lyric, index) => {
@@ -485,15 +441,6 @@ const LyricsDisplay = ({
 
   return (
     <div className={`lyrics-display ${Object.keys(isDragging()).length > 0 ? 'dragging-active' : ''}`}>
-      <div className="editor-viewport-header" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '8px' }}>
-        <ViewportSwitcher
-          activeViewport={activeViewport}
-          onViewportChange={setActiveViewport}
-          turnCount={transcriptTurns.length}
-          cueCount={lyrics.length}
-        />
-      </div>
-
       <div className="controls-timeline-container">
         <LyricsHeader
           allowEditing={allowEditing}
@@ -544,75 +491,46 @@ const LyricsDisplay = ({
       </div>
 
       <div className="lyrics-container-wrapper">
-        {activeViewport === 'transcript' ? (
-          <TranscriptSurface
-            turns={transcriptTurns}
-            words={transcriptWords}
+        {lyrics.length > 0 ? (
+          <LyricsVirtualizedList
+            listRef={listRef}
+            lyrics={lyrics}
+            currentIndex={currentIndex}
             currentTime={currentTime}
-            onWordClick={(time) => {
+            allowEditing={allowEditing}
+            isDragging={isDragging}
+            getRowHeight={getRowHeight}
+            onLyricClick={(time) => {
+              // Center the timeline on the clicked lyric
               setCenterTimelineAt(time);
+              // Reset the center time in the next frame to allow future clicks to work
               requestAnimationFrame(() => {
                 setCenterTimelineAt(null);
               });
+              // Call the original onLyricClick function
               onLyricClick(time);
             }}
-            onSpeakerRename={handleSpeakerRename}
-            speakerNames={speakerNames}
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+            getLastDragEnd={getLastDragEnd}
+            onDelete={handleDeleteLyric}
+            onTextEdit={handleTextEdit}
+            onInsert={handleInsertLyric}
+            onMerge={handleMergeLyrics}
+            timeFormat={timeFormat}
           />
         ) : (
-          <>
-            <CaptionGroupingToolbar
-              activePolicy={groupingPolicy}
-              onPolicyChange={(policy, opts) => {
-                setGroupingPolicy(policy);
-                handleRegroup(policy, opts, preserveManualEdits);
-              }}
-              preserveEdits={preserveManualEdits}
-              onPreserveEditsChange={setPreserveManualEdits}
-              customOptions={customGroupingOptions}
-              onOptionsChange={setCustomGroupingOptions}
-              cueCount={lyrics.length}
-              preservedCount={preservedCount}
-            />
-            {lyrics.length > 0 ? (
-              <LyricsVirtualizedList
-                listRef={listRef}
-                lyrics={lyrics}
-                currentIndex={currentIndex}
-                currentTime={currentTime}
-                allowEditing={allowEditing}
-                isDragging={isDragging}
-                getRowHeight={getRowHeight}
-                onLyricClick={(time) => {
-                  setCenterTimelineAt(time);
-                  requestAnimationFrame(() => {
-                    setCenterTimelineAt(null);
-                  });
-                  onLyricClick(time);
-                }}
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                getLastDragEnd={getLastDragEnd}
-                onDelete={handleDeleteLyric}
-                onTextEdit={handleTextEdit}
-                onInsert={handleInsertLyric}
-                onMerge={handleMergeLyrics}
-                timeFormat={timeFormat}
-              />
-            ) : (
-              <div className="lyrics-empty-state" style={{ height: 300 }}>
-                <div className="empty-add-hotspot" title={t('lyrics.addFirst', 'Add first subtitle')}>
-                  <button
-                    className="empty-insert-lyric-btn"
-                    onClick={() => handleInsertLyric(0)}
-                    aria-label={t('lyrics.addFirst', 'Add first subtitle')}
-                  >
-                    <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>add</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+          <div className="lyrics-empty-state" style={{ height: 300 }}>
+            <div className="empty-add-hotspot" title={t('lyrics.addFirst', 'Add first subtitle')}>
+              <button
+                className="empty-insert-lyric-btn"
+                onClick={() => handleInsertLyric(0)}
+                aria-label={t('lyrics.addFirst', 'Add first subtitle')}
+              >
+                <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>add</span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
