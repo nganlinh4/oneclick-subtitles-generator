@@ -125,6 +125,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       let taskId = null;
       let finished = false;
       let currentCues = [];
+      const nativeRanges = new Map();
       let allWords = [];
       let allTurns = [];
       let latestRevisionId = null;
@@ -226,6 +227,21 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         credentialId: options?.credentialId,
         ...(options?.livePreview ? { config: { livePreview: true } } : {}),
       }, {
+        onWindowProgress: (event) => {
+          if (finished || isProjectMismatch(options?.projectId)) return;
+          if (nativeRanges.has(event.windowIndex)) return;
+          nativeRanges.set(event.windowIndex, {
+            index: event.windowIndex,
+            start: event.windowStartMs / 1000,
+            end: event.windowEndMs / 1000,
+            totalSegments: event.totalWindows,
+            isParallel: event.totalWindows > 1,
+            originalSegment: segment,
+          });
+          window.dispatchEvent(new CustomEvent('processing-ranges', {
+            detail: { ranges: [...nativeRanges.values()].sort((a, b) => a.index - b.index) },
+          }));
+        },
         onLiveDraft: (event) => {
           if (finished || isProjectMismatch(options?.projectId)) return;
           if (event.text == null) {

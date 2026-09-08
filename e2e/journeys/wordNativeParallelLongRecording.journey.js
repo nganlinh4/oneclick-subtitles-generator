@@ -63,6 +63,7 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
       timeout: 90000, interval: 100, timeoutMsg: 'not every window streamed repeated text revisions into the ordinary editor',
     });
     const ledger = await browser.execute(() => window.__LIVE_WINDOWS__);
+    assert.deepEqual(ledger.ranges.map(({ start, end }) => [start, end]), [[0, 60], [60, 120], [120, 180], [180, 204]]);
     assert.equal(ledger.rowsOutsideEditor, false);
     assert.equal(await browser.execute(() => !!document.querySelector('.live-transcription-drafts-panel, .live-transcription-window-pending')), false);
     process.stdout.write(`Live per-window DOM revisions: ${JSON.stringify(ledger)}\n`);
@@ -76,7 +77,10 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     });
     const metadata = withDatabase(root, (db) => JSON.parse(db.prepare('SELECT metadata_json FROM transcript_revisions ORDER BY rowid DESC LIMIT 1').get().metadata_json));
     assert.equal(metadata.totalWindows, 4);
-    assert.ok(durableState(root).counts.cues > 3);
+    // Job completion precedes frontend reconciliation and its durable checkpoint.
+    await browser.waitUntil(() => durableState(root).counts.cues > 3, {
+      timeout: 15000, interval: 250, timeoutMsg: 'generated captions never reached the subtitle checkpoint',
+    });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions', description: 'Live rows reconciled to final durable timed captions.' });
   });
 });
