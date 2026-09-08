@@ -38,11 +38,14 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     await clickControl('[data-osg-action="generate-subtitles"]');
     await clickControl('.subtitle-timeline');
     await browser.keys(['\uE009', 'a', '\uE000']);
+    if (await (await $('.range-action-bar .btn-primary')).isExisting()) {
+      await clickControl('.range-action-bar .btn-primary');
+    }
     await clickControl('[data-transcription-method="new"]');
     await clickControl('.header-switch-group .custom-dropdown-button');
     await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
     await actuateNativeRange({ driver: browser, selector: '#transcribe-window', value: 1 });
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '01-four-window-controls' });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '01-four-window-controls', description: 'Live selected with a one-minute maximum over a 204-second recording.' });
     await clickControl('[data-osg-action="process-subtitles"]');
     await browser.waitUntil(() => browser.execute(() => window.__LIVE_WINDOWS__.ranges.length === 4), {
       timeout: 15000, timeoutMsg: 'the existing timeline never received four processing ranges',
@@ -55,7 +58,7 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     assert.equal(ledger.rowsOutsideEditor, false);
     assert.equal(await browser.execute(() => !!document.querySelector('.live-transcription-drafts-panel, .live-transcription-window-pending')), false);
     process.stdout.write(`Live per-window DOM revisions: ${JSON.stringify(ledger)}\n`);
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '02-four-windows-streaming', focusSelector: '.lyrics-container' });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '02-four-windows-streaming', focusSelector: '.lyrics-container', description: 'Each of four windows has delivered multiple revisions into the original subtitle list.' });
     await browser.waitUntil(() => {
       const jobs = durableState(root).jobs.filter((job) => job.kind === 'transcribe');
       return jobs.length > 0 && jobs.every((job) => job.state === 'succeeded');
@@ -66,6 +69,6 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     const metadata = withDatabase(root, (db) => JSON.parse(db.prepare('SELECT metadata_json FROM transcript_revisions ORDER BY rowid DESC LIMIT 1').get().metadata_json));
     assert.equal(metadata.totalWindows, 4);
     assert.ok(durableState(root).counts.cues > 3);
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions' });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions', description: 'Live rows reconciled to final durable timed captions.' });
   });
 });
