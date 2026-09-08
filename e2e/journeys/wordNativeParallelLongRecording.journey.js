@@ -4,9 +4,9 @@ import { durableState, withDatabase } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { openProjectWithMedia, importSubtitles, seekPreviewTo } from '../support/workflow.js';
-import { captureWorkflowStep } from '../support/workflowEvidence.js';
+import { captureWorkflowStep, recordWorkflowDiagnostic } from '../support/workflowEvidence.js';
 
-/* global $, browser, describe, document, it, window, MutationObserver, KeyboardEvent */
+/* global $, browser, describe, document, it, window, innerHeight, MutationObserver, KeyboardEvent */
 const WORKFLOW = 'word-native-parallel-long-recording';
 
 describe('Live transcription uses the ordinary parallel subtitle editor', () => {
@@ -58,16 +58,46 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     await browser.waitUntil(() => browser.execute(() => window.__LIVE_WINDOWS__.ranges.length === 4), {
       timeout: 15000, timeoutMsg: 'the existing timeline never received four processing ranges',
     });
-    await browser.waitUntil(() => browser.execute(() => Object.values(window.__LIVE_WINDOWS__.windows)
-      .filter((revisions) => revisions.length >= 3).length === 4), {
-      timeout: 90000, interval: 100, timeoutMsg: 'not every window streamed repeated text revisions into the ordinary editor',
-    });
+    await browser.execute(() => document.querySelector('.lyrics-container').scrollIntoView({ block: 'center' }));
+    const started = Date.now();
+    const observations = [];
+    let nextScreenshot = 0;
+    // Observe painted row TEXT over wall-clock time, not our own revision attributes.
+    // Finish the recording even when streaming is absent, so a final burst is preserved as evidence.
+    await browser.waitUntil(async () => {
+      const elapsedMs = Date.now() - started;
+      const visible = await browser.execute(() => {
+        const list = document.querySelector('.lyrics-container');
+        const bounds = list.getBoundingClientRect();
+        return [...list.querySelectorAll('.lyric-item')].filter((row) => {
+          const rect = row.getBoundingClientRect();
+          return rect.bottom > Math.max(0, bounds.top) && rect.top < Math.min(innerHeight, bounds.bottom);
+        }).map((row) => ({
+          text: row.querySelector('.lyric-text')?.textContent?.trim() ?? '',
+          draft: row.hasAttribute('data-osg-live-draft'),
+          window: row.getAttribute('data-osg-live-window'),
+        }));
+      });
+      const jobs = durableState(root).jobs.filter((job) => job.kind === 'transcribe');
+      const running = jobs.some((job) => !['succeeded', 'failed', 'cancelled'].includes(job.state));
+      observations.push({ elapsedMs, running, visible });
+      if (elapsedMs >= nextScreenshot) {
+        await captureWorkflowStep({ workflow: WORKFLOW, step: `stream-at-${Math.floor(elapsedMs / 1000)}s`,
+          description: `Unassisted visible editor at ${elapsedMs}ms; native job running: ${running}.` });
+        nextScreenshot = elapsedMs + 15000;
+      }
+      return jobs.length > 0 && !running;
+    }, { timeout: 180000, interval: 500, timeoutMsg: 'transcription never settled during the observation recording' });
+    recordWorkflowDiagnostic({ workflow: WORKFLOW, name: 'visible-streaming', file: 'diagnostics/visible-streaming.json',
+      description: 'Wall-clock samples of viewport-visible row text and native job state; attributes are not the pass oracle.',
+      document: { mediaDurationSeconds: duration, observations } });
     const ledger = await browser.execute(() => window.__LIVE_WINDOWS__);
-    assert.deepEqual(ledger.ranges.map(({ start, end }) => [start, end]), [[0, 60], [60, 120], [120, 180], [180, 204]]);
+    assert.deepEqual(ledger.ranges.slice(0, 3).map(({ start, end }) => [start, end]), [[0, 60], [60, 120], [120, 180]]);
+    assert.ok(Math.abs(ledger.ranges[3].end - duration) < 0.1);
     assert.equal(ledger.rowsOutsideEditor, false);
     assert.equal(await browser.execute(() => !!document.querySelector('.live-transcription-drafts-panel, .live-transcription-window-pending')), false);
     process.stdout.write(`Live per-window DOM revisions: ${JSON.stringify(ledger)}\n`);
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '02-four-windows-streaming', focusSelector: '.lyrics-container', description: 'Each of four windows has delivered multiple revisions into the original subtitle list.' });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '02-observed-editor', description: 'Editor after the timed observation; this screenshot alone is not streaming proof.' });
     await browser.waitUntil(() => {
       const jobs = durableState(root).jobs.filter((job) => job.kind === 'transcribe');
       return jobs.length > 0 && jobs.every((job) => job.state === 'succeeded');
@@ -82,5 +112,11 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
       timeout: 15000, interval: 250, timeoutMsg: 'generated captions never reached the subtitle checkpoint',
     });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-timed-captions', description: 'Live rows reconciled to final durable timed captions.' });
+    const terminalMs = observations.at(-1).elapsedMs;
+    const earlyTextStates = new Set(observations.filter((sample) => sample.running && sample.elapsedMs < terminalMs - 5000)
+      .map((sample) => sample.visible.filter((row) => row.draft && row.text).map((row) => row.text).join('\n'))
+      .filter(Boolean));
+    assert.ok(earlyTextStates.size >= 3,
+      `No real early streaming: only ${earlyTextStates.size} distinct visible Live text states before the last five seconds. Final captions do not count.`);
   });
 });
