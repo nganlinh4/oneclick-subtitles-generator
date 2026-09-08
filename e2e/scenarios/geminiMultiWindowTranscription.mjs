@@ -11,8 +11,9 @@ import {
 withScenarioLeases(({
   applicationLease, inheritedApplication, managedPaths, publication, stagingLease,
 }) => {
-  const label = 'Four-window live Gemini transcription';
-  const spec = process.argv.includes('--transcribe-live')
+  const twoWindows = process.argv.includes('--live-two-windows');
+  const label = twoWindows ? 'Two-window customer Live transcription' : 'Four-window live Gemini transcription';
+  const spec = twoWindows ? './journeys/liveTwoWindowCustomer.journey.js' : process.argv.includes('--transcribe-live')
     ? './journeys/wordNativeParallelLongRecording.journey.js'
     : './journeys/geminiMultiWindowTranscription.journey.js';
   const root = createRunRoot({ stagingLease });
