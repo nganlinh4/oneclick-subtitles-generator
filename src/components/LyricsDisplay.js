@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EVENTS, subscribe } from '../events/bus';
 import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
 import LyricsHeader from './lyrics/LyricsHeader';
-import { getLiveDrafts, subscribeLiveDrafts, groupLiveDraftText } from '../platform/liveTranscriptionDrafts';
 import { translatedSubtitlesForRender } from './previews/previewCueSelection';
 import { useLyricsEditor } from '../hooks/useLyricsEditor';
 import { useLyricsSave } from '../hooks/useLyricsSave';
@@ -48,7 +47,6 @@ const LyricsDisplay = ({
   const [centerTimelineAt, setCenterTimelineAt] = useState(null);
   const rowHeights = useRef({});
   const listRef = useRef(null);
-  const liveDrafts = useSyncExternalStore(subscribeLiveDrafts, getLiveDrafts);
 
   const [txtContent, setTxtContent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -112,7 +110,7 @@ const LyricsDisplay = ({
     if (rowHeights.current[index] !== undefined) {
       return rowHeights.current[index];
     }
-    const lyric = displayLyrics[index];
+    const lyric = lyrics[index];
     if (!lyric) return 50; // Default height
 
     // Count explicit lines from '\n'
@@ -224,34 +222,10 @@ const LyricsDisplay = ({
     hasTranslation: Array.isArray(translatedSubtitles) && translatedSubtitles.length > 0,
   });
 
-  // Live words have no provider timestamps. Merge them only into the existing list presentation;
-  // the timed editor, playback, saves and exports continue to consume authoritative cues.
-  const displayLyrics = useMemo(() => {
-    const rows = lyrics.map((lyric, sourceIndex) => ({ ...lyric, sourceIndex }))
-      .filter((lyric) => !liveDrafts.some((draft) =>
-        lyric.start * 1000 < draft.windowEndMs && lyric.end * 1000 > draft.windowStartMs));
-    for (const draft of liveDrafts) {
-      groupLiveDraftText(draft.text).forEach((text, groupIndex) => rows.push({
-        id: `live:${draft.projectId}:${draft.windowIndex}:${groupIndex}`,
-        text,
-        liveDraft: true,
-        windowIndex: draft.windowIndex,
-        windowStartMs: draft.windowStartMs,
-        revision: draft.revision,
-      }));
-    }
-    return rows.sort((a, b) => (a.liveDraft ? a.windowStartMs / 1000 : a.start)
-      - (b.liveDraft ? b.windowStartMs / 1000 : b.start));
-  }, [lyrics, liveDrafts]);
-
   useEffect(() => {
     rowHeights.current = {};
     listRef.current?.resetAfterIndex(0);
-    if (!autoScrollEnabled || liveDrafts.length === 0) return;
-    const latestRevision = Math.max(...liveDrafts.map((draft) => draft.revision));
-    const index = displayLyrics.findLastIndex((row) => row.liveDraft && row.revision === latestRevision);
-    if (index >= 0) listRef.current?.scrollToItem(index, 'smart');
-  }, [displayLyrics, liveDrafts, autoScrollEnabled]);
+  }, [lyrics]);
 
   // Find current lyric index based on time
   const currentIndex = lyrics.findIndex((lyric, index) => {
@@ -262,10 +236,10 @@ const LyricsDisplay = ({
 
   // Auto-scroll to the current lyric using react-window's scrollToItem (stable)
   useEffect(() => {
-    if (autoScrollEnabled && liveDrafts.length === 0 && currentIndex >= 0 && listRef.current) {
-      listRef.current.scrollToItem(displayLyrics.findIndex((row) => row.sourceIndex === currentIndex), 'center');
+    if (autoScrollEnabled && currentIndex >= 0 && listRef.current) {
+      listRef.current.scrollToItem(currentIndex, 'center');
     }
-  }, [currentIndex, autoScrollEnabled, liveDrafts, displayLyrics]);
+  }, [currentIndex, autoScrollEnabled, lyrics]);
 
   // Watch for seekTime changes to center the timeline
   useEffect(() => {
@@ -527,10 +501,10 @@ const LyricsDisplay = ({
       </div>
 
       <div className="lyrics-container-wrapper">
-        {displayLyrics.length > 0 ? (
+        {lyrics.length > 0 ? (
           <LyricsVirtualizedList
             listRef={listRef}
-            lyrics={displayLyrics}
+            lyrics={lyrics}
             currentIndex={currentIndex}
             currentTime={currentTime}
             allowEditing={allowEditing}

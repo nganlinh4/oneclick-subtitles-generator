@@ -1,10 +1,9 @@
 import { createFullMediaStreamingHandler } from './subtitleStreamingHandlers';
-import { getLiveDrafts } from '../platform/liveTranscriptionDrafts';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-test('routes interleaved Live windows through streaming without persisting invented timestamps', () => {
+test('ignores untimed Live text completely while preserving timed subtitle updates', () => {
   const publishRows = vi.fn();
   const handler = createFullMediaStreamingHandler(publishRows, vi.fn());
   const draft = (index, text) => handler([], true, {
@@ -15,13 +14,12 @@ test('routes interleaved Live windows through streaming without persisting inven
   draft(0, 'first');
   draft(0, 'first window growing');
   vi.advanceTimersByTime(150);
-  expect(getLiveDrafts().map(({ text }) => text)).toEqual(['first window growing', 'fourth window']);
   expect(publishRows).not.toHaveBeenCalled();
   handler([{ start: 1, end: 2, text: 'timed' }], true, { segmentComplete: true, segmentIndex: 0 });
-  expect(getLiveDrafts().map(({ windowIndex }) => windowIndex)).toEqual([3]);
+  expect(publishRows).toHaveBeenLastCalledWith([{ start: 1, end: 2, text: 'timed' }]);
   handler.cancel();
   vi.advanceTimersByTime(1000);
-  expect(getLiveDrafts()).toEqual([]);
+  expect(publishRows).toHaveBeenCalledTimes(1);
 });
 
 test('a terminal callback cancels an older throttled partial update', () => {
@@ -93,7 +91,6 @@ test('timed window updates reach subtitle state and cannot be obscured by later 
   handler(timed, true, { projectId: 'project', liveDraft: draft });
   vi.advanceTimersByTime(500);
   expect(publish).toHaveBeenLastCalledWith(timed);
-  expect(getLiveDrafts()).toEqual([]);
   handler.rollback();
   expect(publish).toHaveBeenLastCalledWith(baseline);
 });

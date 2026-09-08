@@ -21,17 +21,6 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
   } = data;
 
   const lyric = lyrics[index];
-  if (lyric.liveDraft) {
-    return <div style={style} className="lyric-item-container">
-      <div className="lyric-item" data-osg-live-draft data-osg-live-window={lyric.windowIndex} data-osg-live-update={lyric.revision}>
-        <div className="lyric-content">
-          <div className="lyric-number">{index + 1}</div>
-          <div className="lyric-text"><span>{lyric.text}</span></div>
-        </div>
-      </div>
-    </div>;
-  }
-  const sourceIndex = lyric.sourceIndex ?? index;
   const hasNextLyric = index < lyrics.length - 1;
 
   // The complex height measurement logic has been removed.
@@ -41,8 +30,8 @@ const VirtualizedLyricRow = ({ index, style, data }) => {
       <LyricItem
         key={index} // key is appropriate here within the mapping context of the parent
         lyric={lyric}
-        index={sourceIndex}
-        isCurrentLyric={sourceIndex === currentIndex}
+        index={index}
+        isCurrentLyric={index === currentIndex}
         currentTime={currentTime}
         allowEditing={allowEditing}
         isDragging={isDragging}
