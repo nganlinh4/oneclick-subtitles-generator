@@ -64,7 +64,7 @@ const VideoProcessingModalMethodSelector = ({
                 options={methodOptions}
                 placeholder={t('processing.methodLabel', 'Method')}
                 disabled={retryLock}
-                style={{ maxWidth: '200px' }}
+                style={{ maxWidth: method.startsWith('gemini-transcribe') ? '280px' : '200px' }}
             />
             <HelpIcon title={retryLock
                 ? t('processing.changeTranscriptionMethodRetryLocked', 'Cannot change method while in retry mode with old Gemini method')

@@ -6,9 +6,8 @@ export const EDITOR_PREVIEW_RESOLUTION = '1080p';
 /**
  * Select translated text on the original cue's timing.
  *
- * This is a preview decision, not an export action. The render tab consumes the same project-owned
- * subtitle source independently; keeping only the cue mapping here avoids resurrecting the deleted
- * browser-era "download from the preview" renderer.
+ * Preview, video export, and subtitle downloads share this mapping. The original cue owns both
+ * timing and speaker presentation, including an explicitly removed speaker.
  */
 export const translatedSubtitlesForRender = (translatedSubtitles, subtitlesArray) => (
   translatedSubtitles.map((subtitle) => {
@@ -20,7 +19,7 @@ export const translatedSubtitlesForRender = (translatedSubtitles, subtitlesArray
           start: original.start,
           end: original.end,
           text: subtitle.text,
-          speaker: original.speaker ?? subtitle.speaker,
+          speaker: original.speaker,
         };
       }
     }

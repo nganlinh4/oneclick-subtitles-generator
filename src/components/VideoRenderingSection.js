@@ -31,6 +31,7 @@ import {
   runNativeRender,
 } from '../platform/renderService';
 import { stageNativeRenderText } from './previews/native/exportTextStaging';
+import { translatedSubtitlesForRender } from './previews/previewCueSelection';
 
 // Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
 let DEBUG_LOGS = false;
@@ -242,7 +243,7 @@ const VideoRenderingSection = ({
   // Get current subtitles based on selection
   const getSubtitlesForSource = (source) => {
     if (source === 'translated') {
-      return Array.isArray(translatedSubtitles) ? translatedSubtitles : [];
+      return translatedSubtitlesForRender(Array.isArray(translatedSubtitles) ? translatedSubtitles : [], subtitlesData);
     }
     return Array.isArray(subtitlesData) ? subtitlesData : [];
   };

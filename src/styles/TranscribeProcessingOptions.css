@@ -1,0 +1,8 @@
+.video-processing-modal .transcribe-quota-note {
+    color: var(--md-on-surface-variant);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}

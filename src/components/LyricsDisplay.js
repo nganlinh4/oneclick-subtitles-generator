@@ -5,6 +5,7 @@ import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
 import LyricsHeader from './lyrics/LyricsHeader';
 import LiveTranscriptionDrafts from './lyrics/LiveTranscriptionDrafts';
+import { translatedSubtitlesForRender } from './previews/previewCueSelection';
 import { useLyricsEditor } from '../hooks/useLyricsEditor';
 import { useLyricsSave } from '../hooks/useLyricsSave';
 import { useLyricsDrag } from '../hooks/useLyricsDrag';
@@ -253,7 +254,9 @@ const LyricsDisplay = ({
 
   // Handle download request from modal
   const handleDownload = async (source, format, namingInfo = {}) => {
-    const subtitlesToUse = source === 'translated' ? translatedSubtitles : lyrics;
+    const subtitlesToUse = source === 'translated'
+      ? translatedSubtitlesForRender(Array.isArray(translatedSubtitles) ? translatedSubtitles : [], lyrics)
+      : lyrics;
 
     if (subtitlesToUse && subtitlesToUse.length > 0) {
       const baseFilename = generateFilename(source, namingInfo);

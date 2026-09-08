@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { EDITOR_PREVIEW_RESOLUTION, translatedSubtitlesForRender } from './previewCueSelection';
 
 describe('editor preview cue selection', () => {
+  it('shares current speaker presentation and does not resurrect a removed translated label', () => {
+    const speaker = { id: 'one', name: 'Min', labelStyle: 'colon' };
+    const translated = [{ id: 't', originalId: 'a', text: 'Translated', speaker }];
+    const originals = [{ id: 'a', start: 1, end: 2, text: 'Original', speaker: { ...speaker, name: 'New name' } }];
+    expect(translatedSubtitlesForRender(translated, originals)[0].speaker.name).toBe('New name');
+    delete originals[0].speaker;
+    expect(translatedSubtitlesForRender(translated, originals)[0].speaker).toBeUndefined();
+    expect(translated[0].speaker).toEqual(speaker);
+  });
   it('keeps the fixed editor composition size explicit', () => {
     expect(EDITOR_PREVIEW_RESOLUTION).toBe('1080p');
   });
