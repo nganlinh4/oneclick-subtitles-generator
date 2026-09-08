@@ -11,7 +11,8 @@ use super::projection::ProjectedWordResult;
 
 const NATURAL_PAUSE_THRESHOLD_MS: i64 = 1_000;
 const NATURAL_MAX_WORDS: usize = 12;
-const NATURAL_MAX_CHARACTERS: usize = 42;
+// Two conventional 42-character subtitle lines, not 42 characters for the entire cue.
+const NATURAL_MAX_CHARACTERS: usize = 84;
 
 fn ends_sentence(text: &str) -> bool {
     text.trim_end_matches(['\"', '\'', '”', '’', '»', ')', ']', '}'])

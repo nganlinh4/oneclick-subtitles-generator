@@ -8,7 +8,7 @@ const endsSentence = (word) => /[.!?…。！？][\]})"'»”’]*$/u.test(word)
 
 // The provider sends one growing hypothesis. Project it into ordinary readable rows without
 // inventing timestamps or persisting speculative text.
-export const groupLiveDraftText = (text, { maxWords = 12, maxCharacters = 42 } = {}) => {
+export const groupLiveDraftText = (text, { maxWords = 12, maxCharacters = 84 } = {}) => {
   if (typeof text !== 'string') return [];
   const words = text.trim().split(/\s+/u).filter(Boolean);
   const groups = [];

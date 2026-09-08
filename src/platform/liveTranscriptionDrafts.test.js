@@ -9,6 +9,9 @@ it('projects a growing Live hypothesis into readable sentence-sized rows', () =>
     'one two three',
     'four',
   ]);
+  expect(groupLiveDraftText('All right, so here we are in front of the elephants.')).toEqual([
+    'All right, so here we are in front of the elephants.',
+  ]);
 });
 
 test('Live replaces drafts, orders parallel windows, and rejects late events after promotion or cancellation', () => {
