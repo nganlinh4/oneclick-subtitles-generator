@@ -6,7 +6,7 @@ import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { openProjectWithMedia, importSubtitles, seekPreviewTo } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
-/* global $, browser, describe, document, it, window, MutationObserver */
+/* global $, browser, describe, document, it, window, MutationObserver, KeyboardEvent */
 const WORKFLOW = 'word-native-parallel-long-recording';
 
 describe('Live transcription uses the ordinary parallel subtitle editor', () => {
@@ -44,7 +44,12 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     await clickControl('.header-switch-group .custom-dropdown-button');
     await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
     await clickControl('[data-osg-range-id="transcribe-window"]');
-    await browser.keys('Home');
+    // The off-screen, non-activating WebView cannot reliably receive OS key focus.
+    // Exercise the real control's key handler, without setting React or input state.
+    await browser.execute(() => {
+      document.querySelector('[data-osg-range-id="transcribe-window"]')
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    });
     await browser.waitUntil(async () => (await $('[data-osg-range-id="transcribe-window"]').getAttribute('aria-valuenow')) === '1', {
       timeout: 5000, timeoutMsg: 'the one-minute request control did not accept its Home key',
     });
