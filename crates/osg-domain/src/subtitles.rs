@@ -8,6 +8,56 @@ use crate::{CueId, TrackId};
 pub const MAX_TRACK_LABEL_CHARS: usize = 200;
 pub const MAX_CUE_TEXT_CHARS: usize = 1_000_000;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SpeakerLabelStyle {
+    #[default]
+    Hidden,
+    Colon,
+    Brackets,
+    NewLine,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", try_from = "RawSpeaker")]
+pub struct SubtitleSpeaker {
+    id: String,
+    name: String,
+    label_style: SpeakerLabelStyle,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSpeaker {
+    id: String,
+    name: String,
+    #[serde(default)]
+    label_style: SpeakerLabelStyle,
+}
+
+impl TryFrom<RawSpeaker> for SubtitleSpeaker {
+    type Error = String;
+
+    fn try_from(raw: RawSpeaker) -> Result<Self, Self::Error> {
+        for value in [&raw.id, &raw.name] {
+            if value.trim().is_empty()
+                || value.chars().count() > 200
+                || value.chars().any(char::is_control)
+            {
+                return Err(
+                    "speaker identity and name must be nonempty, bounded display strings"
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(Self {
+            id: raw.id,
+            name: raw.name,
+            label_style: raw.label_style,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TrackOrigin {
@@ -24,6 +74,8 @@ pub struct SubtitleCue {
     end_ms: i64,
     text: String,
     source_id: Option<CueId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speaker: Option<SubtitleSpeaker>,
 }
 
 impl SubtitleCue {
@@ -70,6 +122,7 @@ impl SubtitleCue {
             end_ms,
             text,
             source_id,
+            speaker: None,
         })
     }
 
@@ -102,6 +155,17 @@ impl SubtitleCue {
     pub const fn source_id(&self) -> Option<CueId> {
         self.source_id
     }
+
+    #[must_use]
+    pub fn speaker(&self) -> Option<&SubtitleSpeaker> {
+        self.speaker.as_ref()
+    }
+
+    #[must_use]
+    pub fn with_speaker(mut self, speaker: Option<SubtitleSpeaker>) -> Self {
+        self.speaker = speaker;
+        self
+    }
 }
 
 impl<'de> Deserialize<'de> for SubtitleCue {
@@ -118,6 +182,8 @@ impl<'de> Deserialize<'de> for SubtitleCue {
             end_ms: i64,
             text: String,
             source_id: Option<CueId>,
+            #[serde(default)]
+            speaker: Option<SubtitleSpeaker>,
         }
 
         let raw = RawCue::deserialize(deserializer)?;
@@ -129,6 +195,7 @@ impl<'de> Deserialize<'de> for SubtitleCue {
             raw.text,
             raw.source_id,
         )
+        .map(|cue| cue.with_speaker(raw.speaker))
         .map_err(serde::de::Error::custom)
     }
 }

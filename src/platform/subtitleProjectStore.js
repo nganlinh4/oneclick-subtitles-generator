@@ -366,6 +366,7 @@ export const createSubtitleProjectStore = ({
         startMs: cue.startMs,
         endMs: cue.endMs,
         text: cue.text,
+        speaker: cue.speaker ?? null,
         sourceOrdinal: cue.sourceId == null ? null : ordinalById.get(cue.sourceId) ?? null,
       })),
     };

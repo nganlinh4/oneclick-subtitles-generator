@@ -53,6 +53,8 @@ pub(crate) struct TranscriptionErrorDto {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub(crate) enum WordNativeTranscriptionEvent {
+    #[serde(rename = "liveDraft", rename_all = "camelCase")]
+    LiveDraft { job_id: JobId, window_index: usize, text: Option<String> },
     #[serde(rename = "stageChanged", rename_all = "camelCase")]
     StageChanged {
         job_id: JobId,

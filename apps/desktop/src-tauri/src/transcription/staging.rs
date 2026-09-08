@@ -247,7 +247,7 @@ impl StagingBuffer {
                 start_ms: word.project_start_ms,
                 end_ms: word.project_end_ms,
                 speaker_id: word.speaker_id.clone(),
-                confidence: Some(0.99),
+                confidence: None, // This provider response does not supply confidence.
                 is_unaligned: word.is_unaligned,
                 alignment_status: word.alignment_status.clone(),
                 provenance: "provider".to_owned(),
@@ -262,7 +262,7 @@ impl StagingBuffer {
                 start_ms: word.project_start_ms,
                 end_ms: word.project_end_ms,
                 speaker_id: word.speaker_id.clone(),
-                confidence: Some(0.99),
+                confidence: None,
                 provenance: "provider".to_owned(),
                 alignment_status: word.alignment_status.clone(),
             });
@@ -276,12 +276,13 @@ impl StagingBuffer {
             current_speaker.clone_from(&word.speaker_id);
             current_turn_words.push((word_id, ordinal, word));
 
-            // Cue chunking: max 12 words or pause > 300ms
+            // Never label two speakers as one cue, even when their speech is contiguous.
+            // Keep the existing pause and size bounds for ordinary grouped subtitles.
             let pause_split = current_cue_words.last().is_some_and(|(_, prev)| {
                 word.project_start_ms.saturating_sub(prev.project_end_ms) >= 300
             });
             let word_count_split = current_cue_words.len() >= 12;
-            if (pause_split || word_count_split) && !current_cue_words.is_empty() {
+            if (speaker_changed || pause_split || word_count_split) && !current_cue_words.is_empty() {
                 flush_cue(&current_cue_words, &mut projected_cues);
                 current_cue_words.clear();
             }
@@ -794,6 +795,58 @@ mod tests {
         }
     }
 
+    #[test]
+    fn adjacent_speakers_produce_separate_cues_without_invented_confidence() {
+        let staging = StagingBuffer::new();
+        let first = make_test_word("Hello", 0, 500);
+        let mut second = make_test_word("Goodbye", 500, 1000);
+        second.speaker_id = Some("speaker_1".to_owned());
+        let mut unknown = make_test_word("Unidentified", 1000, 1500);
+        unknown.speaker_id = None;
+        let promoted = staging.prepare_promotion(
+            TranscriptRevisionId::new(),
+            StagedWindowResult {
+                window_index: 0,
+                window: WindowRange::new(0, 0, 60_000),
+                words: vec![first, second, unknown],
+            },
+        );
+        assert_eq!(promoted.projected_cues.len(), 3);
+        for (cue, (text, speaker, start)) in promoted.projected_cues.iter().zip([
+            ("Hello", Some("speaker_0"), 0),
+            ("Goodbye", Some("speaker_1"), 500),
+            ("Unidentified", None, 1000),
+        ]) {
+            assert_eq!(cue.text, text);
+            assert_eq!(cue.speaker_id.as_deref(), speaker);
+            assert_eq!(cue.start_ms, start);
+            assert_eq!(cue.end_ms, start + 500);
+            assert_eq!(cue.word_ids.len(), 1);
+        }
+        assert!(promoted.word_records.iter().all(|word| word.confidence.is_none()));
+        assert!(promoted.word_dtos.iter().all(|word| word.confidence.is_none()));
+    }
+
+    #[test]
+    fn same_speaker_words_stay_grouped_until_a_pause() {
+        let promoted = StagingBuffer::new().prepare_promotion(
+            TranscriptRevisionId::new(),
+            StagedWindowResult {
+                window_index: 0,
+                window: WindowRange::new(0, 0, 60_000),
+                words: vec![
+                    make_test_word("Hello", 0, 500),
+                    make_test_word("there", 500, 1000),
+                    make_test_word("Again", 1300, 1800),
+                ],
+            },
+        );
+        assert_eq!(promoted.projected_cues.len(), 2);
+        assert_eq!(promoted.projected_cues[0].text, "Hello there");
+        assert_eq!(promoted.projected_cues[0].word_ids.len(), 2);
+        assert_eq!(promoted.projected_cues[1].text, "Again");
+    }
+
     fn generate_permutations(items: &[usize]) -> Vec<Vec<usize>> {
         fn permute(k: usize, arr: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
             if k == 1 {
@@ -979,5 +1032,3 @@ mod tests {
         }
     }
 }
-
-

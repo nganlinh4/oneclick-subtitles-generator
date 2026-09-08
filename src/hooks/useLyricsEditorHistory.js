@@ -50,6 +50,7 @@ const durableRowsIdentity = (rows) => {
     const sourceKey = source === null ? null : identityKey(source);
     return {
       text: row?.text,
+      speaker: row?.speaker ?? null,
       startMs: Math.round(Number(row?.start ?? row?.startTime) * 1_000),
       endMs: Math.round(Number(row?.end ?? row?.endTime) * 1_000),
       sourceOrdinal: sourceKey === null

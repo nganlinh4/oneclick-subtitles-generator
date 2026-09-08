@@ -896,7 +896,7 @@ fn load_normalized(
     for (track_uuid, label, origin) in raw_tracks {
         let track_id = TrackId::from_uuid(track_uuid).map_err(invalid_snapshot)?;
         let mut cue_statement = connection.prepare(
-            "SELECT id, ordinal, start_ms, end_ms, text, source_cue_id
+            "SELECT id, ordinal, start_ms, end_ms, text, source_cue_id, metadata_json
              FROM cues WHERE track_id = ?1 ORDER BY ordinal",
         )?;
         let cue_rows = cue_statement.query_map([track_id.as_uuid()], |row| {
@@ -907,11 +907,21 @@ fn load_normalized(
                 row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, Option<Uuid>>(5)?,
+                row.get::<_, String>(6)?,
             ))
         })?;
         let mut cues = Vec::new();
         for row in cue_rows {
-            let (cue_uuid, ordinal, start_ms, end_ms, text, source_uuid) = row?;
+            let (cue_uuid, ordinal, start_ms, end_ms, text, source_uuid, metadata_json) = row?;
+            let metadata: serde_json::Value =
+                serde_json::from_str(&metadata_json).map_err(invalid_snapshot)?;
+            let speaker = serde_json::from_value(
+                metadata
+                    .get("speaker")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            )
+            .map_err(invalid_snapshot)?;
             let cue_id = CueId::from_uuid(cue_uuid).map_err(invalid_snapshot)?;
             let ordinal = u32::try_from(ordinal).map_err(|_| {
                 DatabaseError::InvalidProjectSnapshot(
@@ -924,7 +934,8 @@ fn load_normalized(
                 .map_err(invalid_snapshot)?;
             cues.push(
                 SubtitleCue::restore(cue_id, ordinal, start_ms, end_ms, text, source_id)
-                    .map_err(invalid_snapshot)?,
+                    .map_err(invalid_snapshot)?
+                    .with_speaker(speaker),
             );
         }
         tracks.push(
@@ -1067,7 +1078,7 @@ fn write_normalized(
             transaction.execute(
                 "INSERT INTO cues(
                    track_id, id, ordinal, start_ms, end_ms, text, source_cue_id, metadata_json
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '{}')",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     track.id().as_uuid(),
                     cue.id().as_uuid(),
@@ -1076,6 +1087,7 @@ fn write_normalized(
                     cue.end_ms(),
                     cue.text(),
                     cue.source_id().map(CueId::into_uuid),
+                    serde_json::json!({"speaker": cue.speaker()}).to_string(),
                 ],
             )?;
         }
@@ -1609,6 +1621,39 @@ mod tests {
     }
 
     #[test]
+    fn speaker_presentation_survives_normalized_load_history_and_restart() {
+        let (_directory, path, database) = database();
+        let metadata = ProjectMetadata::new("Speakers").unwrap();
+        let base = database.create_project(&metadata).unwrap();
+        let speaker = serde_json::from_value(serde_json::json!({
+            "id": "w0:1", "name": "민지", "labelStyle": "brackets"
+        }))
+        .unwrap();
+        let cue = SubtitleCue::new(0, 1000, "Hello".to_owned())
+            .unwrap()
+            .with_speaker(Some(speaker));
+        let track = SubtitleTrack::new("Subtitles", TrackOrigin::LegacyJson, vec![cue]).unwrap();
+        let candidate = edit(&base, "Speakers", Vec::new(), vec![track]);
+        database
+            .commit_project(&candidate, &reason("speakers"))
+            .unwrap();
+        let loaded = database.load_project(metadata.id()).unwrap().unwrap();
+        assert_eq!(loaded.tracks(), candidate.tracks());
+        let undone = database.undo_project(metadata.id(), 1).unwrap().unwrap();
+        assert!(undone.tracks().is_empty());
+        let redone = database
+            .redo_project_guarded(metadata.id(), 2, &reason("speakers"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone.tracks(), candidate.tracks());
+        drop(database);
+        let reopened = Database::open(&path).unwrap();
+        let loaded = reopened.load_project(metadata.id()).unwrap().unwrap();
+        assert_eq!(loaded.tracks(), candidate.tracks());
+        assert_eq!(loaded.tracks()[0].cues()[0].text(), "Hello");
+    }
+
+    #[test]
     fn idempotent_create_replays_one_authoritative_project_across_restart() {
         let (_directory, path, database) = database();
         let first_request = ProjectMetadata::new("Recovered project").expect("first request");
@@ -1958,8 +2003,8 @@ mod tests {
         let transaction = connection
             .transaction()
             .expect("start v14 fixture transaction");
-        let created = create_project_in_transaction(&transaction, &metadata)
-            .expect("create v14 project");
+        let created =
+            create_project_in_transaction(&transaction, &metadata).expect("create v14 project");
         transaction.commit().expect("commit v14 project");
         drop(connection);
 
@@ -1980,24 +2025,38 @@ mod tests {
 
         // Verify zero rows in transcript tables
         let rev_count: i64 = connection
-            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| {
+                r.get(0)
+            })
             .expect("count transcript revisions");
-        assert_eq!(rev_count, 0, "legacy projects must have zero transcript revisions");
+        assert_eq!(
+            rev_count, 0,
+            "legacy projects must have zero transcript revisions"
+        );
 
         let turn_count: i64 = connection
             .query_row("SELECT count(*) FROM transcript_turns", [], |r| r.get(0))
             .expect("count transcript turns");
-        assert_eq!(turn_count, 0, "legacy projects must have zero transcript turns");
+        assert_eq!(
+            turn_count, 0,
+            "legacy projects must have zero transcript turns"
+        );
 
         let word_count: i64 = connection
             .query_row("SELECT count(*) FROM transcript_words", [], |r| r.get(0))
             .expect("count transcript words");
-        assert_eq!(word_count, 0, "legacy projects must not synthesize word timings");
+        assert_eq!(
+            word_count, 0,
+            "legacy projects must not synthesize word timings"
+        );
 
         let mapping_count: i64 = connection
             .query_row("SELECT count(*) FROM cue_word_mappings", [], |r| r.get(0))
             .expect("count cue word mappings");
-        assert_eq!(mapping_count, 0, "legacy projects must have zero cue word mappings");
+        assert_eq!(
+            mapping_count, 0,
+            "legacy projects must have zero cue word mappings"
+        );
     }
 
     #[test]

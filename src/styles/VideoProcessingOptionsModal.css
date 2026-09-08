@@ -130,6 +130,10 @@
 }
 
 /* Content Layout - Two Column Grid */
+.video-processing-modal .generation-audio-only-option {
+  margin-top: 12px;
+}
+
 .modal-content-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

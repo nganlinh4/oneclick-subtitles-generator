@@ -183,7 +183,7 @@ const VideoProcessingOptionsModal = ({
                             {/* Two-column grid for options */}
                             <div className="modal-content-grid">
                                 {descriptor.optionsPanel === 'transcribe' ? (
-                                    <TranscribeProcessingOptions value={transcribeOptions} onChange={setTranscribeOptions} />
+                                    <TranscribeProcessingOptions value={transcribeOptions} onChange={setTranscribeOptions} live={method === 'gemini-transcribe-live'} />
                                 ) : isAsrPanel ? (
                                     <AsrProcessingOptions
                                         strategy={asrStrategy}

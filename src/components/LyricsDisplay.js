@@ -4,6 +4,7 @@ import { EVENTS, subscribe } from '../events/bus';
 import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
 import LyricsHeader from './lyrics/LyricsHeader';
+import LiveTranscriptionDrafts from './lyrics/LiveTranscriptionDrafts';
 import { useLyricsEditor } from '../hooks/useLyricsEditor';
 import { useLyricsSave } from '../hooks/useLyricsSave';
 import { useLyricsDrag } from '../hooks/useLyricsDrag';
@@ -208,6 +209,7 @@ const LyricsDisplay = ({
     handleMergeLyrics,
     updateSavedLyrics,
     handleSplitSubtitles,
+    handleSpeakerUpdate,
     captureStateBeforeMerge,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
@@ -460,6 +462,7 @@ const LyricsDisplay = ({
           setAutoScrollEnabled={setAutoScrollEnabled}
           lyrics={lyrics}
           onSplitSubtitles={handleSplitSubtitles}
+          onSpeakerUpdate={handleSpeakerUpdate}
           selectedRange={selectedRange}
         />
 
@@ -491,6 +494,7 @@ const LyricsDisplay = ({
       </div>
 
       <div className="lyrics-container-wrapper">
+        <LiveTranscriptionDrafts />
         {lyrics.length > 0 ? (
           <LyricsVirtualizedList
             listRef={listRef}

@@ -1,3 +1,5 @@
+import { subtitleDisplayText } from '../../../utils/subtitleSpeaker';
+
 /**
  * The render request, face and bake request shared by the canvas preview and native export.
  *
@@ -156,7 +158,7 @@ export const selectPreviewCue = (cues, timeSeconds, { fadeInDuration = 0, fadeOu
  */
 export const previewCueList = (subtitles) => {
   if (!Array.isArray(subtitles)) return [];
-  return subtitles
+  return subtitles.map((cue) => ({ ...cue, text: subtitleDisplayText(cue) }))
     .filter((cue) => (
       isFiniteNumber(cue?.start)
       && isFiniteNumber(cue?.end)

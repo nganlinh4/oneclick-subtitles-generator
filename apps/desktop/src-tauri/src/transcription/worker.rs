@@ -95,6 +95,7 @@ impl WorkerPool {
 }
 
 /// Executes audio extraction, Gemini transcription, and coordinate projection for a single window.
+pub(crate) type LiveDraftCallback = Arc<dyn Fn(Result<String, ()>) + Send + Sync>;
 ///
 /// Ensures:
 /// - 16kHz mono WAV extraction.
@@ -108,6 +109,7 @@ pub(crate) async fn execute_transcription_window(
     window: &WindowRange,
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
+    live_draft: Option<LiveDraftCallback>,
 ) -> Result<StagedWindowResult, WorkerError> {
     if cancellation.is_cancelled() {
         return Err(WorkerError::Cancelled);
@@ -150,6 +152,18 @@ pub(crate) async fn execute_transcription_window(
     }
 
     // 4. Formulate inline Gemini TranscribeRequest
+    // Optional early drafts have no timestamps. The existing file response remains authoritative.
+    // Dropping this guard cancels the socket as soon as final timed captions are available.
+    let _live_task = live_draft.map(|callback| {
+        let client = client.clone();
+        let bytes = wav_bytes.clone();
+        let language_hints = config.language_hints.clone();
+        let cancel = cancellation.clone();
+        AbortOnDrop::new(tauri::async_runtime::spawn(async move {
+            let result = client.transcribe_live_draft(&bytes, &language_hints, &cancel, |text| callback(Ok(text))).await;
+            if result.is_err() && !cancel.is_cancelled() { callback(Err(())); }
+        }))
+    });
     let inline_media = InlineMedia::new("audio/wav", wav_bytes)?;
     let request = TranscribeRequest::new(GeminiMediaInput::Inline(inline_media))
         .with_config(config.clone());
@@ -397,5 +411,3 @@ mod tests {
         assert_eq!(pool.semaphore.available_permits(), 2);
     }
 }
-
-

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SubtitleSplitModal from './SubtitleSplitModal';
+import SubtitleSpeakersModal from './SubtitleSpeakersModal';
+import '../../styles/SubtitleSpeakersModal.css';
 import { cueOverlapsTimelineRange } from './utils/timelineDomain';
 
 const LyricsHeader = ({
@@ -21,10 +23,12 @@ const LyricsHeader = ({
   setAutoScrollEnabled,
   lyrics,
   onSplitSubtitles,
+  onSpeakerUpdate,
   selectedRange = null
 }) => {
   const { t } = useTranslation();
   const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showSpeakersModal, setShowSpeakersModal] = useState(false);
   
   // Check if there are subtitles in the selected range
   const hasSubtitlesInRange = () => {
@@ -151,6 +155,11 @@ const LyricsHeader = ({
       <div className="controls-middle-row">
         {allowEditing && (
           <div className="middle-row-buttons">
+            <button className="split-sub-btn" data-osg-action="subtitle-speakers"
+              onClick={() => setShowSpeakersModal(true)} disabled={!lyrics?.length}
+              title={t('lyrics.speakersTitle')} aria-label={t('lyrics.speakersTitle')}>
+              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>record_voice_over</span>
+            </button>
             <button
               className="split-sub-btn"
               onClick={() => setShowSplitModal(true)}
@@ -251,6 +260,8 @@ const LyricsHeader = ({
       </div>
 
       {/* Subtitle Split Modal */}
+      {showSpeakersModal && <SubtitleSpeakersModal lyrics={lyrics} selectedRange={selectedRange}
+        onApply={onSpeakerUpdate} onClose={() => setShowSpeakersModal(false)} />}
       <SubtitleSplitModal
         isOpen={showSplitModal}
         onClose={() => setShowSplitModal(false)}

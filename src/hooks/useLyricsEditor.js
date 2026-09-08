@@ -355,6 +355,10 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
   };
 
   // Handle smart subtitle splitting
+  const handleSpeakerUpdate = (newLyrics) => {
+    commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.SPEAKERS);
+  };
+
   const handleSplitSubtitles = (newLyrics) => {
     commitLyricsMutation(newLyrics, LYRICS_EDITOR_ACTIONS.SPLIT);
 
@@ -414,6 +418,7 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     handleInsertLyric,
     handleMergeLyrics,
     handleSplitSubtitles,
+    handleSpeakerUpdate,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
     beginRangeMove,

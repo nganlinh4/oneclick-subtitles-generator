@@ -83,6 +83,13 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 img: isDarkTheme ? newDarkImg : newLightImg,
                 disabled: !getEngineDescriptor('gemini-transcribe').availability()
             },
+            {
+                id: 'gemini-transcribe-live',
+                name: t('processing.speechEngineTranscribeLive'),
+                desc: t('processing.transcribeLiveDescription'),
+                img: isDarkTheme ? newDarkImg : newLightImg,
+                disabled: !getEngineDescriptor('gemini-transcribe-live').availability()
+            },
             // On-demand local GPU ASR engines (faster-whisper, …) — install from the Tools panel; each
             // card is grayed out until its engine is installed and the service reports ready.
             ...ASR_ENGINES.map((e) => ({

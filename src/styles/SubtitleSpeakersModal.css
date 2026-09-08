@@ -1,0 +1,7 @@
+.subtitle-speakers-options { display: grid; gap: 16px; color: var(--md-on-surface); }
+.subtitle-speakers-options > label { display: grid; gap: 8px; }
+.subtitle-speakers-options input { font: inherit; color: var(--md-on-surface); background: var(--md-surface-container-high); border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-medium); padding: 10px 14px; width: 100%; box-sizing: border-box; }
+.speaker-label-example { white-space: pre-wrap; color: var(--md-on-surface-variant); }
+.speaker-apply-btn { background: var(--md-primary); color: var(--md-on-primary); border: 0; border-radius: var(--md-shape-medium); padding: 8px 16px; cursor: pointer; font: inherit; }
+.speaker-apply-btn:disabled { opacity: .4; cursor: not-allowed; }
+.middle-row-buttons:has([data-osg-action="subtitle-speakers"]) { gap: 8px; }

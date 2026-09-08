@@ -8,6 +8,7 @@ license = "MIT"
 description = "Backend-only, cancellation-safe Gemini media provider for OSG"
 
 [dependencies]
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 async-stream = "0.3.6"
 base64 = "0.22.1"
 bytes = "1.12.1"

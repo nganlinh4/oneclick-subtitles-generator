@@ -9,6 +9,7 @@ mod completion;
 pub mod duration;
 mod error;
 mod image;
+mod live_transcription;
 mod model;
 mod retry;
 mod stream;

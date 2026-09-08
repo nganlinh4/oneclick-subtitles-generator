@@ -10,6 +10,8 @@ import {
 } from '../../platform/nativeWordTranscription';
 import { getActiveProjectSnapshot } from '../../platform/projectService';
 import { setActiveTranscript } from '../../platform/transcriptStore';
+import { beginLiveDrafts } from '../../platform/liveTranscriptionDrafts';
+import { normalizeSpeaker } from '../../utils/subtitleSpeaker';
 
 const isProjectMismatch = (expectedProjectId) => {
   if (!expectedProjectId) return false;
@@ -126,8 +128,16 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       let allWords = [];
       let allTurns = [];
       let latestRevisionId = null;
+      const speakerNames = new Map();
+      const projectSpeaker = (id) => {
+        if (id == null) return null;
+        if (!speakerNames.has(id)) speakerNames.set(id, t?.('lyrics.speakerName', { number: speakerNames.size + 1 }) || `Speaker ${speakerNames.size + 1}`);
+        return normalizeSpeaker({ id, name: speakerNames.get(id), labelStyle: 'hidden' });
+      };
+      const liveDrafts = options?.livePreview ? beginLiveDrafts(options.projectId) : null;
 
       const cleanup = () => {
+        liveDrafts?.dispose();
         removeRequestController(requestCtrl.requestId);
         requestCtrl.signal.removeEventListener('abort', onAbort);
       };
@@ -171,11 +181,21 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         languageHints: options?.languageHints || (options?.language ? [options.language] : undefined),
         diarization: options?.diarization,
         credentialId: options?.credentialId,
+        ...(options?.livePreview ? { config: { livePreview: true } } : {}),
       }, {
+        onLiveDraft: (event) => {
+          if (finished || isProjectMismatch(options?.projectId)) return;
+          if (event.text == null) {
+            liveDrafts?.finalize(event.windowIndex);
+            onStatus?.({ message: t?.('processing.liveDraftUnavailable') ?? 'Live drafts unavailable; timed transcription continues.', type: 'warning' });
+          } else liveDrafts?.update(event.windowIndex, event.text);
+        },
         onStageChanged: (event) => {
           onStatus?.({ message: event.message, type: 'loading' });
         },
         onWindowPromoted: (event) => {
+          if (finished) return;
+          liveDrafts?.finalize(event.windowIndex);
           if (isProjectMismatch(options?.projectId)) {
             return;
           }
@@ -189,7 +209,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
             start: cue.startMs / 1000,
             end: cue.endMs / 1000,
             text: cue.text,
-            speaker: cue.speakerId,
+            speaker: projectSpeaker(cue.speakerId),
             wordIds: cue.wordIds,
           }));
           currentCues.push(...newlyProjected);
@@ -216,7 +236,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
               start: cue.startMs / 1000,
               end: cue.endMs / 1000,
               text: cue.text,
-              speaker: cue.speakerId,
+              speaker: projectSpeaker(cue.speakerId),
               wordIds: cue.wordIds,
             }));
           }

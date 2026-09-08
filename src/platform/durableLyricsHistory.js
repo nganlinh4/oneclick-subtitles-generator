@@ -34,6 +34,7 @@ export const LYRICS_EDITOR_ACTIONS = Object.freeze({
   INSERT: 'insert',
   MERGE: 'merge',
   SPLIT: 'split',
+  SPEAKERS: 'speakers',
   TIMING_DRAG: 'timing drag',
   CLEAR_RANGE: 'clear range',
   MOVE_RANGE: 'move range',

@@ -109,6 +109,7 @@ export const createProcessingHandlers = ({
         windowDurationSecs: options.windowDurationSecs,
         languageHints: options.languageHints,
         diarization: options.diarization,
+        livePreview: options.livePreview === true,
         captionLayout: options.captionLayout,
         maxDurationPerRequest: options.maxDurationPerRequest,
         segmentProcessingDelay: options.segmentProcessingDelay,

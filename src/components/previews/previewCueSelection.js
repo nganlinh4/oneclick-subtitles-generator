@@ -20,6 +20,7 @@ export const translatedSubtitlesForRender = (translatedSubtitles, subtitlesArray
           start: original.start,
           end: original.end,
           text: subtitle.text,
+          speaker: original.speaker ?? subtitle.speaker,
         };
       }
     }
@@ -34,6 +35,7 @@ export const translatedSubtitlesForRender = (translatedSubtitles, subtitlesArray
         ? convertTimeStringToSeconds(subtitle.endTime)
         : 0,
       text: subtitle.text,
+      speaker: subtitle.speaker,
     };
   })
 );

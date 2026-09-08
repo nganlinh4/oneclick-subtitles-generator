@@ -94,7 +94,7 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
       start: 1,
       end: 2.5,
       text: 'Hello world',
-      speaker: 'w0:1',
+      speaker: { id: 'w0:1', name: 'Speaker 1', labelStyle: 'hidden' },
     });
     expect(result.words).toEqual(mockWords);
     expect(result.turns).toEqual(mockTurns);

@@ -56,6 +56,9 @@ export const startWordNativeTranscription = async (request = {}, handlers = {}) 
       handlers.onEvent?.(event);
       if (!event || typeof event !== 'object') return;
       switch (event.event) {
+        case 'liveDraft':
+          handlers.onLiveDraft?.(event);
+          break;
         case 'stageChanged':
           handlers.onStageChanged?.(event);
           break;

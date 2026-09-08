@@ -58,21 +58,6 @@ const VideoProcessingModalGeminiPanel = ({
     return (
         <>
             <div className="option-group">
-                <div className="material-switch-container">
-                    <MaterialSwitch
-                        id="generation-audio-only"
-                        checked={Boolean(audioInput)}
-                        disabled={videoFile?.type?.startsWith('audio/')}
-                        onChange={(event) => setAudioOnly(event.target.checked)}
-                        ariaLabel={t('processing.audioOnly', 'Send audio only')}
-                        icons={true}
-                    />
-                    <label htmlFor="generation-audio-only" className="material-switch-label">
-                        {t('processing.audioOnly', 'Send audio only')}
-                    </label>
-                    <HelpIcon title={t('processing.audioOnlyHelp', 'Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.')} />
-                </div>
-                {/* Audio-only belongs to the existing media controls, not another grid row. */}
                 <div className="combined-options-row">
                     {/* Frame Rate Slider */}
                     <div className="combined-option-half">
@@ -126,6 +111,21 @@ const VideoProcessingModalGeminiPanel = ({
                         />
                     </div>
                 </div>
+                <div className="material-switch-container generation-audio-only-option">
+                    <MaterialSwitch
+                        id="generation-audio-only"
+                        checked={Boolean(audioInput)}
+                        disabled={videoFile?.type?.startsWith('audio/')}
+                        onChange={(event) => setAudioOnly(event.target.checked)}
+                        ariaLabel={t('processing.audioOnly', 'Send audio only')}
+                        icons={true}
+                    />
+                    <label htmlFor="generation-audio-only" className="material-switch-label">
+                        {t('processing.audioOnly', 'Send audio only')}
+                    </label>
+                    <HelpIcon title={t('processing.audioOnlyHelp', 'Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.')} />
+                </div>
+
             </div>
 
             {/* Model and Max Duration Combined Row */}

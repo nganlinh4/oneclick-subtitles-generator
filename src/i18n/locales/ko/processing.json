@@ -1,5 +1,10 @@
 {
-  "transcribeMethodDescription": "단어별 타임스탬프로 음성을 받아씁니다. 동영상은 오디오만 전송합니다. 자막은 기존 편집기에 표시됩니다.",
+  "speechEngineTranscribeLive": "Gemini Transcribe Live",
+  "transcribeLiveDescription": "Live는 초안을 실시간으로 표시하고 Gemini Transcribe는 정확한 타임스탬프의 묶음 자막을 완성합니다. 구간당 모델 요청 2회가 필요합니다(재시도 별도). 초안은 바뀔 수 있으며 저장하거나 내보내지 않습니다.",
+  "liveDraftTiming": "Live 초안 · 타이밍 대기",
+  "liveDraftUnavailable": "Live 초안을 사용할 수 없습니다. 타임스탬프 자막 생성은 계속됩니다.",
+  "transcribeMethodDescription": "오디오를 기존 편집기의 묶음 자막으로 변환합니다. 단어별 타임스탬프로 자막 시점을 맞춥니다. 동영상은 오디오만 전송합니다.",
+  "transcribeDailyQuota": "일일 한도는 Google 프로젝트와 결제 등급에 따라 다릅니다. Google AI Studio에서 확인하세요. 오디오 구간마다 요청을 사용하며 같은 프로젝트의 키는 한도를 공유합니다.",
   "audioOnly": "오디오만 전송",
   "audioOnlyHelp": "선택한 구간의 오디오만 추출하며 영상 프레임은 업로드하지 않습니다. 장면 설명과 화면 속 텍스트 인식에는 영상이 필요합니다.",
   "secondsDelay": "{{value}}초 대기",

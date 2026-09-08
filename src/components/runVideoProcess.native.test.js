@@ -2,18 +2,19 @@ import runVideoProcess from './runVideoProcess';
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 import { getEngineDescriptor } from '../services/engines/transcriptionEngineRegistry';
 
-it('dispatches Transcribe as a method without inheriting video/prompt options or expanding the range', async () => {
+it.each(['gemini-transcribe', 'gemini-transcribe-live'])('dispatches %s without inheriting video/prompt options or expanding the range', async (method) => {
   let request;
   const selectedSegment = { start: 15, end: 145 };
   await runVideoProcess({
-    method: 'gemini-transcribe', selectedSegment, videoFile: { type: 'audio/wav' },
+    method, selectedSegment, videoFile: { type: 'audio/wav' },
     selectedModel: 'ordinary-model', selectedPromptPreset: 'describe-video',
     fps: 4, maxDurationPerRequest: 10, inlineExtraction: true,
     transcribeOptions: { windowDurationSecs: 30, languageHints: ['ko'], diarization: true },
     onProcess: (options) => { request = options; },
   });
   expect(request).toEqual({
-    method: 'gemini-transcribe', engine: 'gemini-3.5-transcribe', model: 'gemini-3.5-transcribe',
+    method, engine: 'gemini-3.5-transcribe', model: 'gemini-3.5-transcribe',
+    ...(method === 'gemini-transcribe-live' ? { livePreview: true } : {}),
     segment: selectedSegment, videoFile: { type: 'audio/wav' }, audioOnly: true,
     inlineExtraction: false, windowDurationSecs: 30, languageHints: ['ko'],
     diarization: true, bypassCache: true,

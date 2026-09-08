@@ -4,12 +4,13 @@ import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 
 // Method-specific controls inside the existing modal, using its existing primitives.
-export default function TranscribeProcessingOptions({ value, onChange }) {
+export default function TranscribeProcessingOptions({ value, onChange, live = false }) {
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
     return <>
         <div className="option-group">
-            <p>{t('processing.transcribeMethodDescription')}</p>
+            <p>{t(live ? 'processing.transcribeLiveDescription' : 'processing.transcribeMethodDescription')}</p>
+            <p className="option-description">{t('processing.transcribeDailyQuota')}</p>
         </div>
         <div className="option-group">
             <label htmlFor="transcribe-language">{t('processing.languageLabel', 'Language')}</label>

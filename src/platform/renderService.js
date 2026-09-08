@@ -1,4 +1,5 @@
 import { Channel } from '@tauri-apps/api/core';
+import { subtitleDisplayText } from '../utils/subtitleSpeaker';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { resolveActiveNativeMedia } from './activeNativeMedia';
@@ -739,7 +740,7 @@ const normalizeLyrics = (lyrics) => {
     ids.add(id);
     const startUs = secondsToMicros(snapshot.start ?? snapshot.start_time ?? snapshot.startTime);
     const endUs = secondsToMicros(snapshot.end ?? snapshot.end_time ?? snapshot.endTime);
-    const text = requireString(String(snapshot.text ?? ''), 16 * 1024, {
+    const text = requireString(subtitleDisplayText({ ...snapshot, text: String(snapshot.text ?? '') }), 16 * 1024, {
       allowTextWhitespace: true,
     });
     totalTextBytes += utf8ByteLength(text);

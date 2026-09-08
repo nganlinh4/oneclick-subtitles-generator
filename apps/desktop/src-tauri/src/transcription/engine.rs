@@ -28,6 +28,8 @@ use super::worker::{execute_transcription_window, WorkerPool};
 #[derive(Clone, Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WordNativeTranscriptionConfig {
+    #[serde(default)]
+    pub(crate) live_preview: bool,
     pub(crate) credential_id: Option<CredentialId>,
     pub(crate) language_hints: Option<Vec<String>>,
     pub(crate) diarization: Option<bool>,
@@ -210,6 +212,7 @@ pub(crate) async fn start_transcription_engine(
     .unwrap_or(0);
 
     let planned_windows_json = serde_json::to_string(&serde_json::json!({
+        "liveDrafts": request.config.as_ref().is_some_and(|config| config.live_preview),
         "plannedWindows": windows.iter().map(|w| serde_json::json!({
             "index": w.index,
             "startMs": w.start_ms,
@@ -258,6 +261,7 @@ pub(crate) async fn start_transcription_engine(
     let pipeline = Arc::new(pipeline);
     let native_input = Arc::new(native_input);
     let asr_config = Arc::new(asr_config);
+    let live_preview = request.config.as_ref().is_some_and(|config| config.live_preview);
 
     tauri::async_runtime::spawn(async move {
         run_engine_loop(
@@ -271,6 +275,7 @@ pub(crate) async fn start_transcription_engine(
             pipeline,
             native_input,
             asr_config,
+            live_preview,
             cancellation,
             on_event,
         )
@@ -292,6 +297,7 @@ async fn run_engine_loop(
     pipeline: Arc<MediaPipeline>,
     native_input: Arc<NativeMediaInput>,
     asr_config: Arc<AudioTranscriptionConfig>,
+    live_preview: bool,
     cancellation: CancellationToken,
     on_event: Channel<WordNativeTranscriptionEvent>,
 ) {
@@ -350,7 +356,16 @@ async fn run_engine_loop(
                 fraction: Some(0.1),
             });
 
-            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel)
+            let draft_channel = event_channel.clone();
+            let window_index = window.index;
+            let draft_callback: Option<super::worker::LiveDraftCallback> = live_preview.then(|| {
+                Arc::new(move |draft: Result<String, ()>| {
+                    let _ = draft_channel.send(WordNativeTranscriptionEvent::LiveDraft {
+                        job_id, window_index, text: draft.ok(),
+                    });
+                }) as super::worker::LiveDraftCallback
+            });
+            match execute_transcription_window(&client, &pipeline, &input, &window, &config, &cancel, draft_callback)
                 .await
             {
                 Ok(staged_result) => {

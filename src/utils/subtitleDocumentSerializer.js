@@ -1,3 +1,5 @@
+import { subtitleDisplayText } from './subtitleSpeaker';
+
 const MAX_SUBTITLE_ENTRIES = 100_000;
 const MAX_SAFE_MILLISECONDS = Number.MAX_SAFE_INTEGER;
 const MAX_SAFE_MILLISECONDS_BIGINT = BigInt(MAX_SAFE_MILLISECONDS);
@@ -92,6 +94,7 @@ const snapshotSubtitle = (value) => {
     startTime: read('startTime'),
     endTime: read('endTime'),
     text: read('text'),
+    speaker: read('speaker'),
   });
 };
 
@@ -189,7 +192,7 @@ export const normalizeSubtitleDocumentRows = (subtitles) => {
       end: formatCanonicalSeconds(endMilliseconds),
       startTime: formatMilliseconds(startMilliseconds),
       endTime: formatMilliseconds(endMilliseconds),
-      text: subtitle.text,
+      text: subtitleDisplayText(subtitle),
     });
   }));
 };

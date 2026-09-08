@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import process from 'node:process';
-import { durableState, durableTranscriptWords } from '../support/database.js';
+import { durableState, durableTranscriptWords, withDatabase } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
@@ -24,7 +24,7 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     await captureWorkflowStep({ workflow: WORKFLOW, step: '02-original-gemini-options', description: 'Original Gemini video, model and prompt controls.' });
 
     await clickControl('.header-switch-group .custom-dropdown-button');
-    await clickControl('[role="option"][data-value="gemini-transcribe"]');
+    await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
     await (await $('#transcribe-window')).waitForExist({ timeout: 10_000 });
     const controls = await browser.execute(() => ({
       replacement: !!document.querySelector('.create-subtitles-modal, [data-task-tab], [data-editor-view], .caption-grouping-toolbar'),
@@ -34,6 +34,8 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.deepEqual(controls, { replacement: false, videoOptions: false, originalModal: true });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-transcribe-method-options', description: 'Transcribe selected as an ordinary method in the original modal.' });
     await clickControl('[data-osg-action="process-subtitles"]');
+    await (await $('[data-osg-live-draft]')).waitForDisplayed({ timeout: 90_000 });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '04-live-draft', description: 'Real Live text before timestamped captions; drafts are outside saved cues.' });
     await browser.waitUntil(async () => {
       const state = durableState(root);
       return state.counts.cues > 0 && durableTranscriptWords(root).length > 0
@@ -44,6 +46,28 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.ok(words.every((word) => word.endMs >= word.startMs && word.text.trim()), 'invalid persisted words');
     await seekPreviewTo((words[0].startMs + words[0].endMs) / 2000);
     await waitForCanvasSubtitleFrame();
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '04-native-captions-in-original-editor', description: 'Provider captions in the original editor and composited video preview.' });
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '05-native-captions-in-original-editor', description: 'Provider captions in the original editor and composited video preview.' });
+    assert.equal(await (await $('[data-osg-live-draft]')).isExisting(), false, 'completed Live drafts must be cleared');
+    const originalText = durableState(root).cues.map((cue) => cue.text);
+    await clickControl('[data-osg-action="subtitle-speakers"]');
+    await clickControl('#speaker-scope');
+    await clickControl('[role="option"][data-value="all"]');
+    await clickControl('#speaker-assignment');
+    await clickControl('[role="option"][data-value="new"]');
+    await (await $('#speaker-new-name')).setValue('Min');
+    await clickControl('#speaker-label-style');
+    await clickControl('[role="option"][data-value="colon"]');
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '06-global-speaker-controls', description: 'Global speaker assignment and label preview using the existing dialog styling.' });
+    await clickControl('.speaker-apply-btn');
+    const savedSpeakers = () => withDatabase(root, (db) => db.prepare('SELECT metadata_json FROM cues ORDER BY ordinal').all().map((row) => JSON.parse(row.metadata_json).speaker));
+    await browser.waitUntil(() => savedSpeakers().every((speaker) => speaker?.name === 'Min' && speaker.labelStyle === 'colon'), { timeout: 15000 });
+    assert.deepEqual(durableState(root).cues.map((cue) => cue.text), originalText, 'speaker formatting must not rewrite subtitle text');
+    await clickControl('.undo-btn');
+    await browser.waitUntil(() => savedSpeakers().every((speaker) => speaker?.name !== 'Min'), { timeout: 15000 });
+    await clickControl('.redo-btn');
+    await browser.waitUntil(() => savedSpeakers().every((speaker) => speaker?.name === 'Min'), { timeout: 15000 });
+    await seekPreviewTo((words[0].startMs + words[0].endMs) / 2000);
+    await waitForCanvasSubtitleFrame();
+    await captureWorkflowStep({ workflow: WORKFLOW, step: '07-speaker-label-in-preview', description: 'Speaker label in the composited video after a real undo/redo cycle; editor text remains unchanged.' });
   });
 });

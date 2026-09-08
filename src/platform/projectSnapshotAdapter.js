@@ -1,4 +1,5 @@
 import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
+import { normalizeSpeaker } from '../utils/subtitleSpeaker';
 
 export const MAX_LEGACY_SUBTITLE_SECONDS = 31_557_600_000;
 export const MAX_PROJECT_CUES = 1_000_000;
@@ -102,7 +103,8 @@ const normalizeCanonicalCue = (cue, trackIndex, cueIndex) => {
     ? null
     : requireUuidV7(cue.sourceId, `${prefix}.sourceId`);
 
-  return { id, ordinal, startMs, endMs, text, sourceId };
+  const speaker = normalizeSpeaker(cue.speaker);
+  return { id, ordinal, startMs, endMs, text, sourceId, ...(speaker ? { speaker } : {}) };
 };
 
 const normalizeCanonicalTrack = (track, trackIndex) => {
@@ -363,6 +365,7 @@ export const legacyRowsToCanonicalTrack = (rows, options = {}) => {
       startMs,
       endMs,
       text,
+      speaker: normalizeSpeaker(row.speaker),
     };
   });
 
@@ -403,6 +406,7 @@ export const legacyRowsToCanonicalTrack = (rows, options = {}) => {
     endMs: cue.endMs,
     text: cue.text,
     sourceId: cue.sourceId,
+    ...(cue.speaker ? { speaker: cue.speaker } : {}),
   }));
 
   const trackId = existingTrack?.id ?? options.trackId;
@@ -425,6 +429,7 @@ export const canonicalTrackToLegacyRows = (track) => {
       start: cue.startMs / 1_000,
       end: cue.endMs / 1_000,
       text: cue.text,
+      ...(cue.speaker ? { speaker: cue.speaker } : {}),
     };
     if (cue.sourceId !== null) {
       row.originalId = ordinalById.get(cue.sourceId);

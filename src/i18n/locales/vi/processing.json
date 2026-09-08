@@ -1,5 +1,10 @@
 {
-  "transcribeMethodDescription": "Chép lời nói từ âm thanh với mốc thời gian từng từ. Với video, chỉ gửi phần âm thanh. Phụ đề xuất hiện trong trình chỉnh sửa hiện tại.",
+  "speechEngineTranscribeLive": "Gemini Transcribe Live",
+  "transcribeLiveDescription": "Live truyền bản nháp sớm; Gemini Transcribe hoàn thiện các câu phụ đề với mốc thời gian chính xác. Dùng hai yêu cầu mô hình mỗi đoạn (chưa tính thử lại). Bản nháp có thể thay đổi và không được lưu hay xuất.",
+  "liveDraftTiming": "Bản nháp Live · chờ thời gian",
+  "liveDraftUnavailable": "Không có bản nháp Live. Quá trình chép lời có mốc thời gian vẫn tiếp tục.",
+  "transcribeMethodDescription": "Chép âm thanh thành các câu phụ đề trong trình chỉnh sửa hiện tại. Mốc thời gian từng từ giúp căn đúng thời điểm. Với video, chỉ gửi phần âm thanh.",
+  "transcribeDailyQuota": "Hạn mức mỗi ngày tùy thuộc dự án Google và bậc thanh toán; xem hạn mức trong Google AI Studio. Mỗi đoạn âm thanh dùng một yêu cầu. Các khóa cùng dự án dùng chung hạn mức.",
   "audioOnly": "Chỉ gửi âm thanh",
   "audioOnlyHelp": "Chỉ trích xuất âm thanh trong phạm vi đã chọn, không tải lên khung hình video. Mô tả hình ảnh và đọc chữ trên màn hình cần video.",
   "configureOptions": "Cấu hình tùy chọn xử lý",

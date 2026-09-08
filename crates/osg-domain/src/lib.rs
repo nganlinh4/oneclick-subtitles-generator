@@ -25,8 +25,8 @@ pub use projects::{
     RevisionReason,
 };
 pub use subtitles::{
-    MAX_CUE_TEXT_CHARS, MAX_TRACK_LABEL_CHARS, SubtitleCue, SubtitleError, SubtitleTrack,
-    TrackOrigin,
+    MAX_CUE_TEXT_CHARS, MAX_TRACK_LABEL_CHARS, SpeakerLabelStyle, SubtitleCue, SubtitleError,
+    SubtitleSpeaker, SubtitleTrack, TrackOrigin,
 };
 pub use transcripts::{
     AlignmentState, AlignmentStatus, CaptionProjection, CompletionState, CustomGroupingConfig,
