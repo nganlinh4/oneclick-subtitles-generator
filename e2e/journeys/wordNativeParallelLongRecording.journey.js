@@ -3,7 +3,6 @@ import process from 'node:process';
 import { durableState, withDatabase } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
-import { actuateNativeRange } from '../support/nativeRange.js';
 import { openProjectWithMedia, importSubtitles, seekPreviewTo } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -44,7 +43,11 @@ describe('Live transcription uses the ordinary parallel subtitle editor', () => 
     await clickControl('[data-transcription-method="new"]');
     await clickControl('.header-switch-group .custom-dropdown-button');
     await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
-    await actuateNativeRange({ driver: browser, selector: '#transcribe-window', value: 1 });
+    await clickControl('[data-osg-range-id="transcribe-window"]');
+    await browser.keys('Home');
+    await browser.waitUntil(async () => (await $('[data-osg-range-id="transcribe-window"]').getAttribute('aria-valuenow')) === '1', {
+      timeout: 5000, timeoutMsg: 'the one-minute request control did not accept its Home key',
+    });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '01-four-window-controls', description: 'Live selected with a one-minute maximum over a 204-second recording.' });
     await clickControl('[data-osg-action="process-subtitles"]');
     await browser.waitUntil(() => browser.execute(() => window.__LIVE_WINDOWS__.ranges.length === 4), {
