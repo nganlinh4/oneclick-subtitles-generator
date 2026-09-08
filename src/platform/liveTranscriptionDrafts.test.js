@@ -17,12 +17,17 @@ it('projects a growing Live hypothesis into readable sentence-sized rows', () =>
 test('Live replaces drafts, orders parallel windows, and rejects late events after promotion or cancellation', () => {
   vi.useFakeTimers();
   const session = beginLiveDrafts('project-a');
-  session.update(1, 'second');
+  session.update(1, 'second', { totalWindows: 2, windowStartMs: 600_000, windowEndMs: 1_200_000 });
   session.update(0, 'hel');
   session.update(0, 'hello');
   vi.advanceTimersByTime(150);
   expect(getLiveDrafts().map((row) => row.text)).toEqual(['hello', 'second']);
   expect(getLiveDrafts().map((row) => row.revision)).toEqual([3, 1]);
+  expect(getLiveDrafts()[1]).toMatchObject({
+    totalWindows: 2,
+    windowStartMs: 600_000,
+    windowEndMs: 1_200_000,
+  });
   session.finalize(0);
   session.update(0, 'late overwrite');
   vi.advanceTimersByTime(150);

@@ -3,12 +3,14 @@ import { processGeminiSegment } from './GeminiAdapter';
 import {
   startWordNativeTranscription,
   cancelWordNativeTranscription,
+  getNativeTranscriptionJob,
 } from '../../platform/nativeWordTranscription';
 import { getActiveTranscript } from '../../platform/transcriptStore';
 
 vi.mock('../../platform/nativeWordTranscription', () => ({
   startWordNativeTranscription: vi.fn(),
   cancelWordNativeTranscription: vi.fn().mockResolvedValue({ id: 'cancelled' }),
+  getNativeTranscriptionJob: vi.fn().mockResolvedValue({ state: 'running' }),
   isNativeWordTranscriptionSupported: vi.fn(() => true),
 }));
 
@@ -25,6 +27,7 @@ const media = Object.freeze({
 describe('GeminiAdapter on Native Desktop Runtime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getNativeTranscriptionJob.mockResolvedValue({ state: 'running' });
   });
 
   it('routes speech transcription directly to native word-native transcription engine and populates transcriptStore', async () => {
@@ -104,6 +107,33 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     expect(active.projectId).toBe('proj-abc');
     expect(active.revisionId).toBe('rev-xyz');
     expect(active.words).toHaveLength(2);
+  });
+
+  it('settles from durable job state when the terminal channel event is lost', async () => {
+    vi.useFakeTimers();
+    getNativeTranscriptionJob.mockResolvedValue({ state: 'succeeded' });
+    startWordNativeTranscription.mockImplementation(async (_request, handlers) => {
+      handlers.onWindowPromoted?.({
+        windowIndex: 0,
+        totalWindows: 1,
+        revisionId: 'rev-reconciled',
+        words: [{ id: 'w-1', text: 'Recovered', startMs: 0, endMs: 500 }],
+        turns: [],
+        projectedCues: [{ id: 'cue-1', startMs: 0, endMs: 500, text: 'Recovered', wordIds: ['w-1'] }],
+      });
+      return { id: 'job-reconciled' };
+    });
+
+    const resultPromise = processGeminiSegment(
+      media,
+      { start: 0, end: 1 },
+      { model: 'gemini-3.5-transcribe', projectId: 'proj-reconciled' },
+    );
+    await vi.advanceTimersByTimeAsync(3_100);
+    const result = await resultPromise;
+    vi.useRealTimers();
+    expect(result[0]).toMatchObject({ text: 'Recovered' });
+    expect(getNativeTranscriptionJob).toHaveBeenCalledWith('job-reconciled');
   });
 
   it('handles cancellation and calls cancelWordNativeTranscription', async () => {

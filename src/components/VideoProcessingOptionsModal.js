@@ -46,7 +46,7 @@ const VideoProcessingOptionsModal = ({
 }) => {
     const { t } = useTranslation();
     const [transcribeOptions, setTranscribeOptions] = useState({
-        windowDurationSecs: 120, languageHints: [], diarization: false,
+        windowDurationSecs: 600, languageHints: [], diarization: false,
     });
 
     const {
@@ -183,7 +183,7 @@ const VideoProcessingOptionsModal = ({
                             {/* Two-column grid for options */}
                             <div className="modal-content-grid">
                                 {descriptor.optionsPanel === 'transcribe' ? (
-                                    <TranscribeProcessingOptions value={transcribeOptions} onChange={setTranscribeOptions} />
+                                    <TranscribeProcessingOptions value={transcribeOptions} onChange={setTranscribeOptions} selectedSegment={selectedSegment} />
                                 ) : isAsrPanel ? (
                                     <AsrProcessingOptions
                                         strategy={asrStrategy}

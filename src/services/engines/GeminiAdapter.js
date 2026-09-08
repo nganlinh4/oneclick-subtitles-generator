@@ -5,6 +5,7 @@ import {
 } from '../gemini/requestManagement';
 import {
   cancelWordNativeTranscription,
+  getNativeTranscriptionJob,
   isNativeWordTranscriptionSupported,
   startWordNativeTranscription,
 } from '../../platform/nativeWordTranscription';
@@ -128,6 +129,8 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       let allWords = [];
       let allTurns = [];
       let latestRevisionId = null;
+      let reconciliationTimer = null;
+      let terminalObservedAt = null;
       const speakerNames = new Map();
       const projectSpeaker = (id) => {
         if (id == null) return null;
@@ -137,6 +140,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
       const liveDrafts = options?.livePreview ? beginLiveDrafts(options.projectId) : null;
 
       const cleanup = () => {
+        if (reconciliationTimer !== null) clearTimeout(reconciliationTimer);
         liveDrafts?.dispose();
         removeRequestController(requestCtrl.requestId);
         requestCtrl.signal.removeEventListener('abort', onAbort);
@@ -161,6 +165,48 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
           Promise.resolve().then(() => cancelWordNativeTranscription(taskId)).catch(() => {});
         }
         fail(aborted(requestCtrl.signal));
+      };
+
+      const reconcileTerminalJob = async () => {
+        if (finished || !taskId) return;
+        try {
+          const snapshot = await getNativeTranscriptionJob(taskId);
+          if (['succeeded', 'failed', 'cancelled', 'interrupted'].includes(snapshot?.state)) {
+            terminalObservedAt ??= Date.now();
+            if (Date.now() - terminalObservedAt >= 2_000) {
+              if (snapshot.state === 'succeeded' && currentCues.length > 0) {
+                setActiveTranscript({
+                  projectId: options?.projectId,
+                  revisionId: latestRevisionId,
+                  words: allWords,
+                  turns: allTurns,
+                });
+                onStreamingUpdate?.(currentCues, false, {
+                  segmentComplete: true,
+                  words: allWords,
+                  turns: allTurns,
+                  revisionId: latestRevisionId,
+                });
+                currentCues.words = allWords;
+                currentCues.turns = allTurns;
+                if (latestRevisionId) currentCues.revisionId = latestRevisionId;
+                finish(currentCues);
+                return;
+              }
+              const error = new Error(snapshot.state === 'succeeded'
+                ? 'Transcription completed, but its result event was not delivered.'
+                : `Transcription ended with state: ${snapshot.state}`);
+              error.code = 'transcriptionTerminalEventMissing';
+              fail(error);
+              return;
+            }
+          } else {
+            terminalObservedAt = null;
+          }
+        } catch {
+          // The event channel remains authoritative. A transient status read must not stop it.
+        }
+        if (!finished) reconciliationTimer = setTimeout(reconcileTerminalJob, 1_000);
       };
 
       if (requestCtrl.signal.aborted) {
@@ -188,7 +234,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
           if (event.text == null) {
             liveDrafts?.finalize(event.windowIndex);
             onStatus?.({ message: t?.('processing.liveDraftUnavailable') ?? 'Live drafts unavailable; timed transcription continues.', type: 'warning' });
-          } else liveDrafts?.update(event.windowIndex, event.text);
+          } else liveDrafts?.update(event.windowIndex, event.text, event);
         },
         onStageChanged: (event) => {
           onStatus?.({ message: event.message, type: 'loading' });
@@ -279,10 +325,11 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         },
       })
       .then((snapshot) => {
+        if (finished) return;
         taskId = snapshot?.id;
         if (options?.signal?.aborted) {
           onAbort();
-        }
+        } else reconciliationTimer = setTimeout(reconcileTerminalJob, 1_000);
       })
       .catch(fail);
     });

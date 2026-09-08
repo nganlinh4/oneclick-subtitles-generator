@@ -84,7 +84,7 @@ const runVideoProcess = async ({
             inlineExtraction: false,
             segment: selectedSegment,
             videoFile,
-            windowDurationSecs: transcribeOptions.windowDurationSecs ?? 120,
+            windowDurationSecs: transcribeOptions.windowDurationSecs ?? 600,
             languageHints: transcribeOptions.languageHints ?? [],
             diarization: transcribeOptions.diarization === true,
             ...(method === 'gemini-transcribe-live' ? { livePreview: true } : {}),

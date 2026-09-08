@@ -1,5 +1,23 @@
 /* Lyric items and related components */
 
+.live-transcription-window + .live-transcription-window {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px solid color-mix(in srgb, var(--md-primary) 38%, transparent);
+}
+
+.live-transcription-window-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  color: var(--md-primary);
+  background: color-mix(in srgb, var(--md-primary) 8%, transparent);
+  font-size: var(--md-label-medium-size);
+  font-weight: 600;
+}
+
 .lyric-item-container {
   position: relative;
   display: flex;

@@ -35,7 +35,7 @@ const publish = () => {
     .sort(([a], [b]) => a - b).map(([windowIndex, draft]) => ({
       projectId: session.projectId,
       windowIndex,
-      text: draft.text,
+      ...draft,
       revision: draft.revision,
     })));
   listeners.forEach((listener) => listener());
@@ -47,11 +47,17 @@ export function beginLiveDrafts(projectId) {
   const session = { projectId, windows: new Map(), finalized: new Set(), revision: 0 };
   sessions.set(token, session);
   return {
-    update(index, text) {
+    update(index, text, window = {}) {
       if (!sessions.has(token) || session.finalized.has(index) || !Number.isSafeInteger(index) || index < 0 || index > 10000) return;
       if (typeof text !== 'string' || text.length > 262144) return;
       session.revision += 1;
-      session.windows.set(index, { text, revision: session.revision });
+      session.windows.set(index, {
+        text,
+        revision: session.revision,
+        totalWindows: Number.isSafeInteger(window.totalWindows) ? window.totalWindows : 1,
+        windowStartMs: Number.isSafeInteger(window.windowStartMs) ? window.windowStartMs : 0,
+        windowEndMs: Number.isSafeInteger(window.windowEndMs) ? window.windowEndMs : 0,
+      });
       if (!timer) timer = setTimeout(publish, 150);
     },
     finalize(index) { session.finalized.add(index); session.windows.delete(index); publish(); },

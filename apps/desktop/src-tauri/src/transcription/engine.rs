@@ -358,10 +358,17 @@ async fn run_engine_loop(
 
             let draft_channel = event_channel.clone();
             let window_index = window.index;
+            let window_start_ms = window.start_ms;
+            let window_end_ms = window.end_ms;
             let draft_callback: Option<super::worker::LiveDraftCallback> = live_preview.then(|| {
                 Arc::new(move |draft: Result<String, ()>| {
                     let _ = draft_channel.send(WordNativeTranscriptionEvent::LiveDraft {
-                        job_id, window_index, text: draft.ok(),
+                        job_id,
+                        window_index,
+                        total_windows,
+                        window_start_ms,
+                        window_end_ms,
+                        text: draft.ok(),
                     });
                 }) as super::worker::LiveDraftCallback
             });

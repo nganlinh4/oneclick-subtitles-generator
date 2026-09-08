@@ -4,9 +4,12 @@ import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
 
 // Method-specific controls inside the existing modal, using its existing primitives.
-export default function TranscribeProcessingOptions({ value, onChange }) {
+export default function TranscribeProcessingOptions({ value, onChange, selectedSegment }) {
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
+    const windowMinutes = Math.max(1, Math.round(value.windowDurationSecs / 60));
+    const segmentMinutes = Math.max(0, ((selectedSegment?.end || 0) - (selectedSegment?.start || 0)) / 60);
+    const requestCount = Math.max(1, Math.ceil(segmentMinutes / windowMinutes));
     return <>
         <div className="option-group">
             <label htmlFor="transcribe-language">{t('processing.languageLabel', 'Language')}</label>
@@ -22,10 +25,13 @@ export default function TranscribeProcessingOptions({ value, onChange }) {
         </div>
         <div className="option-group">
             <label htmlFor="transcribe-window">{t('processing.maxDurationPerRequest', 'Maximum duration per request')}</label>
-            <SliderWithValue id="transcribe-window" min={30} max={120} step={30}
-                value={value.windowDurationSecs} defaultValue={120}
-                onChange={(next) => update('windowDurationSecs', Number(next))}
-                formatValue={(next) => `${next}s`} />
+            <SliderWithValue id="transcribe-window" min={1} max={10} step={1}
+                value={windowMinutes} defaultValue={10}
+                onChange={(next) => update('windowDurationSecs', Number(next) * 60)}
+                formatValue={(next) => <>
+                    {t('processing.minutesValue', '{{value}} minutes', { value: next })}
+                    {requestCount > 1 ? <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: requestCount })})</span> : null}
+                </>} />
         </div>
         <div className="option-group">
             <div className="material-switch-container">

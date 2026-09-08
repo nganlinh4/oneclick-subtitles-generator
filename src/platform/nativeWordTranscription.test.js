@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import {
   startWordNativeTranscription,
   cancelWordNativeTranscription,
+  getNativeTranscriptionJob,
   isNativeWordTranscriptionSupported,
 } from './nativeWordTranscription';
 import { invokeDesktop } from './desktopRuntime';
@@ -129,6 +130,14 @@ describe('nativeWordTranscription', () => {
       taskId,
       jobId: taskId,
     });
+  });
+
+  it('reads the authoritative native job for terminal-event reconciliation', async () => {
+    const taskId = uuidv7();
+    const snapshot = { id: taskId, kind: 'transcribe', state: 'succeeded' };
+    invokeDesktop.mockResolvedValue(snapshot);
+    await expect(getNativeTranscriptionJob(taskId)).resolves.toBe(snapshot);
+    expect(invokeDesktop).toHaveBeenCalledWith('job_get', { id: taskId });
   });
 
   it('rejects immediately when projectId is missing without invoking desktop', async () => {

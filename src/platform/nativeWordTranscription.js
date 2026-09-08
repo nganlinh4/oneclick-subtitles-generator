@@ -104,4 +104,8 @@ export const cancelWordNativeTranscription = async (taskId) => {
   });
 };
 
+export const getNativeTranscriptionJob = async (taskId) => {
+  return await invokeDesktop('job_get', { id: taskId });
+};
+
 export const isNativeWordTranscriptionSupported = () => isDesktopRuntime();
