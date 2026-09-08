@@ -15,6 +15,8 @@ pub(crate) enum ProjectionError {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub(crate) enum WordProjectionStatus {
     Accepted,
+    /// A provider utterance interval divided into subtitle words without native word timestamps.
+    Interpolated,
     Clamped {
         original_end_ms: i64,
         overshoot_ms: i64,
@@ -731,5 +733,4 @@ mod tests {
         assert!(commit_res.is_err(), "SQLite must reject overlong speaker label");
     }
 }
-
 

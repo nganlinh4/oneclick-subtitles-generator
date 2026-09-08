@@ -253,6 +253,9 @@ impl StagingBuffer {
         for word in &valid_words {
             let word_id = WordId::new();
             let ordinal = self.current_word_ordinal.fetch_add(1, Ordering::Relaxed);
+            let interpolated = matches!(word.status, super::projection::WordProjectionStatus::Interpolated);
+            let provenance = if interpolated { "interpolated" } else { "provider" };
+            let metadata_json = if interpolated { r#"{"timing":"utterance_interpolated"}"# } else { "{}" };
 
             word_records.push(TranscriptWordRecord {
                 id: word_id,
@@ -268,8 +271,8 @@ impl StagingBuffer {
                 confidence: None, // This provider response does not supply confidence.
                 is_unaligned: word.is_unaligned,
                 alignment_status: word.alignment_status.clone(),
-                provenance: "provider".to_owned(),
-                metadata_json: "{}".to_owned(),
+                provenance: provenance.to_owned(),
+                metadata_json: metadata_json.to_owned(),
             });
 
             word_dtos.push(TimedWordDto {
@@ -281,7 +284,7 @@ impl StagingBuffer {
                 end_ms: word.project_end_ms,
                 speaker_id: word.speaker_id.clone(),
                 confidence: None,
-                provenance: "provider".to_owned(),
+                provenance: provenance.to_owned(),
                 alignment_status: word.alignment_status.clone(),
             });
 
@@ -868,6 +871,60 @@ mod tests {
         assert_eq!(promoted.projected_cues[0].text, "Hello there Again");
         assert_eq!(promoted.projected_cues[0].word_ids.len(), 3);
         assert_eq!(promoted.projected_cues[1].text, "later");
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn thousands_of_live_interpolated_words_promote_into_sqlite() {
+        use osg_domain::ProjectMetadata;
+        use osg_infrastructure::storage::{Database, TranscriptRevisionRecord};
+        use tempfile::tempdir;
+
+        let directory = tempdir().unwrap();
+        let database = Database::open(directory.path().join("live-promotion.db")).unwrap();
+        let project = ProjectMetadata::new("Live promotion").unwrap();
+        database.create_project(&project).unwrap();
+        let revision_id = TranscriptRevisionId::new();
+        database.transcript_insert_revision(&TranscriptRevisionRecord {
+            id: revision_id,
+            project_id: project.id(),
+            media_id: None,
+            provider: "gemini".to_owned(),
+            model: "gemini-3.5-transcribe-live".to_owned(),
+            source_range_start_ms: 0,
+            source_range_end_ms: 600_000,
+            state: "in_progress".to_owned(),
+            fingerprint: "live-promotion".to_owned(),
+            word_count: 0,
+            metadata_json: "{}".to_owned(),
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        }).unwrap();
+        let words = (0_i64..3_500).map(|index| ProjectedWordResult {
+            status: WordProjectionStatus::Interpolated,
+            text: format!("w{index}"),
+            raw_start_ns: (index * 100_000_000).cast_unsigned(),
+            raw_end_ns: (index * 100_000_000 + 90_000_000).cast_unsigned(),
+            project_start_ms: index * 100,
+            project_end_ms: index * 100 + 90,
+            speaker_id: None,
+            is_unaligned: true,
+            alignment_status: "unaligned".to_owned(),
+        }).collect();
+        let promoted = StagingBuffer::new().prepare_promotion(revision_id, StagedWindowResult {
+            window_index: 0,
+            window: WindowRange::new(0, 0, 600_000),
+            words,
+        });
+        assert!(promoted.word_records.iter().all(|word| {
+            word.alignment_status == "unaligned"
+                && word.provenance == "interpolated"
+                && word.metadata_json == r#"{"timing":"utterance_interpolated"}"#
+        }));
+        database.transcript_promote_window(
+            revision_id, &promoted.turn_records, &promoted.word_records,
+        ).unwrap();
+        assert_eq!(database.transcript_get_revision(revision_id).unwrap().unwrap().word_count, 3_500);
     }
 
     fn generate_permutations(items: &[usize]) -> Vec<Vec<usize>> {

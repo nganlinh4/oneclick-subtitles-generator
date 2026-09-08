@@ -498,6 +498,10 @@ async fn run_engine_loop(
             };
 
             if let Err(e) = commit_res {
+                crate::diagnostics::record(
+                    "transcribe.promotion.failed",
+                    &[("window", win_idx.to_string())],
+                );
                 cancellation.cancel();
                 let _ = on_event.send(WordNativeTranscriptionEvent::Failed {
                     job_id,

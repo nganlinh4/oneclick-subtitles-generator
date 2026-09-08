@@ -320,15 +320,15 @@ fn project_live_utterance(
                 .max(token_start + 1)
                 .min(end_ms);
             ProjectedWordResult {
-                status: WordProjectionStatus::Accepted,
+                status: WordProjectionStatus::Interpolated,
                 text: token.to_owned(),
                 raw_start_ns: token_start.saturating_mul(1_000_000),
                 raw_end_ns: token_end.saturating_mul(1_000_000),
                 project_start_ms: window_start_ms + token_start.cast_signed(),
                 project_end_ms: window_start_ms + token_end.cast_signed(),
                 speaker_id: None,
-                is_unaligned: false,
-                alignment_status: "utterance_interpolated".to_owned(),
+                is_unaligned: true,
+                alignment_status: "unaligned".to_owned(),
             }
         })
         .collect()
@@ -388,7 +388,9 @@ mod tests {
         assert!(
             words
                 .iter()
-                .all(|word| word.alignment_status == "utterance_interpolated")
+                .all(|word| word.status == WordProjectionStatus::Interpolated
+                    && word.alignment_status == "unaligned"
+                    && word.is_unaligned)
         );
     }
 
