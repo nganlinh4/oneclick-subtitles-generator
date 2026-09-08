@@ -18,6 +18,9 @@ const LIMIT: usize = 256 * 1024;
 // Live Transcription supports ten-minute sessions. PCM16 mono at 16 kHz consumes 32,000 bytes
 // per second; the previous 4 MB request cap silently disabled Live after roughly 125 seconds.
 const MAX_PCM_BYTES: usize = 16_000 * 2 * 60 * 10;
+// A connection is capped at about ten minutes. Reserve headroom for setup, finalization, and
+// provider jitter; one user-visible window may therefore use more than one sequential session.
+const MAX_SESSION_PCM_BYTES: usize = 16_000 * 2 * 60 * 8;
 fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
@@ -56,6 +59,13 @@ struct LiveEventAccumulator {
 }
 
 impl LiveEventAccumulator {
+    fn at_source_offset(source_offset_ms: u64) -> Self {
+        Self {
+            active_start_ms: None,
+            previous_final_end_ms: source_offset_ms,
+        }
+    }
+
     fn observe(
         &mut self,
         content: &Value,
@@ -149,6 +159,103 @@ fn wav_pcm(bytes: &[u8]) -> Result<&[u8]> {
     Err(invalid())
 }
 
+async fn transcribe_live_session(
+    endpoint: &url::Url,
+    pcm: &[u8],
+    source_offset_ms: u64,
+    language_hints: &[String],
+    mut on_event: impl FnMut(LiveTranscriptionEvent) + Send,
+) -> Result<()> {
+    let config = WebSocketConfig::default()
+        .max_message_size(Some(LIMIT))
+        .max_frame_size(Some(LIMIT));
+    let (socket, _) = tokio::time::timeout(
+        Duration::from_secs(15),
+        connect_async_with_config(endpoint.as_str(), Some(config), false),
+    )
+    .await
+    .map_err(|_| Error::Transport(TransportKind::Timeout))?
+    .map_err(|_| Error::Transport(TransportKind::Connect))?;
+    let (mut sender, mut receiver) = socket.split();
+    sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": false, "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH", "prefixPaddingMs": 300, "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH", "silenceDurationMs": 500}}}}).to_string().into()))
+        .await.map_err(|_| Error::Transport(TransportKind::Body))?;
+    let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
+        .await
+        .map_err(|_| Error::Transport(TransportKind::Timeout))?
+        .ok_or(Error::Transport(TransportKind::Body))?
+        .map_err(|_| Error::Transport(TransportKind::Body))?;
+    let value: Value = serde_json::from_slice(&setup.into_data())
+        .map_err(|_| Error::Transport(TransportKind::Decode))?;
+    if value.get("setupComplete").is_none() {
+        return Err(Error::Transport(TransportKind::Connect));
+    }
+
+    let sent_pcm_bytes = Arc::new(AtomicU64::new(0));
+    let stream_ended = Arc::new(AtomicBool::new(false));
+    let send_clock = Arc::clone(&sent_pcm_bytes);
+    let send_ended = Arc::clone(&stream_ended);
+    let send_audio = async move {
+        let mut pacing = tokio::time::interval(Duration::from_millis(100));
+        pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        for chunk in pcm.chunks(3200) {
+            pacing.tick().await;
+            sender.send(Message::Text(json!({"realtimeInput": {"audio": {"mimeType": "audio/pcm;rate=16000", "data": STANDARD.encode(chunk)}}}).to_string().into()))
+                .await.map_err(|_| Error::Transport(TransportKind::Body))?;
+            send_clock.fetch_add(chunk.len() as u64, Ordering::Release);
+        }
+        sender
+            .send(Message::Text(
+                json!({"realtimeInput":{"audioStreamEnd":true}})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .map_err(|_| Error::Transport(TransportKind::Body))?;
+        send_ended.store(true, Ordering::Release);
+        Ok::<(), Error>(())
+    };
+    let receive_clock = Arc::clone(&sent_pcm_bytes);
+    let receive_ended = Arc::clone(&stream_ended);
+    let receive_text = async {
+        let mut events = LiveEventAccumulator::at_source_offset(source_offset_ms);
+        loop {
+            let next = if receive_ended.load(Ordering::Acquire) {
+                match tokio::time::timeout(Duration::from_secs(12), receiver.next()).await {
+                    Ok(next) => next,
+                    Err(_) => return Ok(()),
+                }
+            } else {
+                receiver.next().await
+            };
+            let Some(message) = next else {
+                return Ok(());
+            };
+            let message = message.map_err(|_| Error::Transport(TransportKind::Body))?;
+            if matches!(message, Message::Close(_)) {
+                return Ok(());
+            }
+            if !matches!(message, Message::Text(_) | Message::Binary(_)) {
+                continue;
+            }
+            let value: Value = serde_json::from_slice(&message.into_data())
+                .map_err(|_| Error::Transport(TransportKind::Decode))?;
+            if value.get("error").is_some() {
+                return Err(Error::Transport(TransportKind::Body));
+            }
+            let content = &value["serverContent"];
+            let position_ms = source_offset_ms + source_ms(&receive_clock);
+            if let Some(event) = events.observe(content, position_ms)? {
+                on_event(event);
+            }
+            if final_turn_received(&receive_ended, content) {
+                return Ok(());
+            }
+        }
+    };
+    let ((), ()) = tokio::try_join!(send_audio, receive_text)?;
+    Ok(())
+}
+
 impl GeminiClient {
     /// One bounded window, paced at source rate. Final callbacks are independent utterances.
     /// Authentication and all transport errors stay in Rust; no URLs or keys escape this method.
@@ -166,96 +273,17 @@ impl GeminiClient {
             .query_pairs_mut()
             .append_pair("key", self.inner.api_key.expose());
         let task = async {
-            let config = WebSocketConfig::default()
-                .max_message_size(Some(LIMIT))
-                .max_frame_size(Some(LIMIT));
-            let (socket, _) = tokio::time::timeout(
-                Duration::from_secs(15),
-                connect_async_with_config(endpoint.as_str(), Some(config), false),
-            )
-            .await
-            .map_err(|_| Error::Transport(TransportKind::Timeout))?
-            .map_err(|_| Error::Transport(TransportKind::Connect))?;
-            let (mut sender, mut receiver) = socket.split();
-            // Live is an utterance stream, not a single push-to-talk turn around a ten-minute file.
-            // Server VAD is required so pauses finalize segments while PCM is still arriving.
-            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": false, "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH", "prefixPaddingMs": 300, "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH", "silenceDurationMs": 500}}}}).to_string().into()))
-                .await.map_err(|_| Error::Transport(TransportKind::Body))?;
-            let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
-                .await
-                .map_err(|_| Error::Transport(TransportKind::Timeout))?
-                .ok_or(Error::Transport(TransportKind::Body))?
-                .map_err(|_| Error::Transport(TransportKind::Body))?;
-            let value: Value = serde_json::from_slice(&setup.into_data())
-                .map_err(|_| Error::Transport(TransportKind::Decode))?;
-            if value.get("setupComplete").is_none() {
-                return Err(Error::Transport(TransportKind::Connect));
+            for (session_index, session_pcm) in pcm.chunks(MAX_SESSION_PCM_BYTES).enumerate() {
+                let source_offset_ms = (session_index * MAX_SESSION_PCM_BYTES / 32) as u64;
+                transcribe_live_session(
+                    &endpoint,
+                    session_pcm,
+                    source_offset_ms,
+                    language_hints,
+                    &mut on_event,
+                )
+                .await?;
             }
-            let sent_pcm_bytes = Arc::new(AtomicU64::new(0));
-            let stream_ended = Arc::new(AtomicBool::new(false));
-            let send_clock = Arc::clone(&sent_pcm_bytes);
-            let send_ended = Arc::clone(&stream_ended);
-            let send_audio = async move {
-                let mut pacing = tokio::time::interval(Duration::from_millis(100));
-                pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                for chunk in pcm.chunks(3200) {
-                    pacing.tick().await;
-                    sender.send(Message::Text(json!({"realtimeInput": {"audio": {"mimeType": "audio/pcm;rate=16000", "data": STANDARD.encode(chunk)}}}).to_string().into()))
-                        .await.map_err(|_| Error::Transport(TransportKind::Body))?;
-                    send_clock.fetch_add(chunk.len() as u64, Ordering::Release);
-                }
-                sender
-                    .send(Message::Text(
-                        json!({"realtimeInput":{"audioStreamEnd":true}})
-                            .to_string()
-                            .into(),
-                    ))
-                    .await
-                    .map_err(|_| Error::Transport(TransportKind::Body))?;
-                send_ended.store(true, Ordering::Release);
-                Ok::<(), Error>(())
-            };
-            let receive_clock = Arc::clone(&sent_pcm_bytes);
-            let receive_ended = Arc::clone(&stream_ended);
-            let receive_text = async {
-                let mut events = LiveEventAccumulator::default();
-                loop {
-                    let next = if receive_ended.load(Ordering::Acquire) {
-                        match tokio::time::timeout(Duration::from_secs(12), receiver.next()).await {
-                            Ok(next) => next,
-                            Err(_) => return Ok(()),
-                        }
-                    } else {
-                        receiver.next().await
-                    };
-                    let Some(message) = next else {
-                        return Ok(());
-                    };
-                    let message = message.map_err(|_| Error::Transport(TransportKind::Body))?;
-                    if matches!(message, Message::Close(_)) {
-                        return Ok(());
-                    }
-                    if !matches!(message, Message::Text(_) | Message::Binary(_)) {
-                        continue;
-                    }
-                    let value: Value = serde_json::from_slice(&message.into_data())
-                        .map_err(|_| Error::Transport(TransportKind::Decode))?;
-                    if value.get("error").is_some() {
-                        return Err(Error::Transport(TransportKind::Body));
-                    }
-                    let content = &value["serverContent"];
-                    if let Some(event) = events.observe(content, source_ms(&receive_clock))? {
-                        on_event(event);
-                    }
-                    // Some Live transcription sessions do not emit turnComplete after
-                    // audioStreamEnd. The bounded post-stream inactivity timeout above is the
-                    // terminal contract; a turnComplete after the stream is still an early exit.
-                    if final_turn_received(&receive_ended, content) {
-                        return Ok(());
-                    }
-                }
-            };
-            let ((), ()) = tokio::try_join!(send_audio, receive_text)?;
             Ok(())
         };
         tokio::select! {
@@ -303,6 +331,16 @@ mod tests {
     fn source_clock_is_derived_from_pcm_bytes() {
         let sent = AtomicU64::new(32_000);
         assert_eq!(source_ms(&sent), 1_000);
+    }
+
+    #[test]
+    fn ten_minute_window_stays_below_connection_limit_by_using_two_sessions() {
+        let ten_minute_pcm_bytes = std::hint::black_box(super::MAX_PCM_BYTES);
+        assert!(super::MAX_SESSION_PCM_BYTES < ten_minute_pcm_bytes);
+        assert_eq!(
+            ten_minute_pcm_bytes.div_ceil(super::MAX_SESSION_PCM_BYTES),
+            2
+        );
     }
 
     #[test]

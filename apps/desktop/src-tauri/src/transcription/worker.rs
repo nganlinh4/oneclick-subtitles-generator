@@ -39,6 +39,20 @@ pub(crate) enum WorkerError {
     Internal(String),
 }
 
+impl WorkerError {
+    pub(crate) const fn diagnostic_kind(&self) -> &'static str {
+        match self {
+            Self::Cancelled => "cancelled",
+            Self::Pipeline(_) => "pipeline",
+            Self::Media(_) => "media",
+            Self::Io(_) => "io",
+            Self::Gemini(_) => "gemini",
+            Self::Projection(_) => "projection",
+            Self::Internal(_) => "internal",
+        }
+    }
+}
+
 /// RAII guard that aborts an asynchronous task when dropped, guaranteeing clean termination on all error and early-exit paths.
 struct AbortOnDrop<T>(Option<tauri::async_runtime::JoinHandle<T>>);
 

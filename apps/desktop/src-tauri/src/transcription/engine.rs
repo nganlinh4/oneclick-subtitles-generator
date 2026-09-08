@@ -414,6 +414,13 @@ async fn run_engine_loop(
                 }
                 Err(_err) if cancel.is_cancelled() => {}
                 Err(err) => {
+                    crate::diagnostics::record(
+                        "transcribe.window.failed",
+                        &[
+                            ("window", window.index.to_string()),
+                            ("kind", err.diagnostic_kind().to_owned()),
+                        ],
+                    );
                     failures.store(true, std::sync::atomic::Ordering::Release);
                     let _ = event_channel.send(WordNativeTranscriptionEvent::Failed {
                         job_id,
