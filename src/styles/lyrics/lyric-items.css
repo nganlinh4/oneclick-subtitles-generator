@@ -1,5 +1,16 @@
 /* Lyric items and related components */
 
+.live-transcription-drafts-panel {
+  flex: 0 0 auto;
+  max-height: min(34vh, 320px);
+  margin: 8px 0;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--md-primary) 38%, var(--md-outline-variant));
+  border-radius: 12px;
+  background: var(--md-surface-container);
+  box-shadow: var(--md-elevation-level1);
+}
+
 .live-transcription-window + .live-transcription-window {
   margin-top: 10px;
   padding-top: 10px;
@@ -16,6 +27,13 @@
   background: color-mix(in srgb, var(--md-primary) 8%, transparent);
   font-size: var(--md-label-medium-size);
   font-weight: 600;
+}
+
+.live-transcription-window-pending {
+  min-height: 48px;
+  padding: 13px 16px;
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-body-medium-size);
 }
 
 .lyric-item-container {

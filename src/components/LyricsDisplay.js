@@ -496,8 +496,8 @@ const LyricsDisplay = ({
         />
       </div>
 
+      <LiveTranscriptionDrafts />
       <div className="lyrics-container-wrapper">
-        <LiveTranscriptionDrafts />
         {lyrics.length > 0 ? (
           <LyricsVirtualizedList
             listRef={listRef}

@@ -17,6 +17,8 @@ it('projects a growing Live hypothesis into readable sentence-sized rows', () =>
 test('Live replaces drafts, orders parallel windows, and rejects late events after promotion or cancellation', () => {
   vi.useFakeTimers();
   const session = beginLiveDrafts('project-a');
+  session.open(0, { totalWindows: 2, windowStartMs: 0, windowEndMs: 600_000 });
+  expect(getLiveDrafts()[0]).toMatchObject({ text: '', windowIndex: 0, totalWindows: 2 });
   session.update(1, 'second', { totalWindows: 2, windowStartMs: 600_000, windowEndMs: 1_200_000 });
   session.update(0, 'hel');
   session.update(0, 'hello');

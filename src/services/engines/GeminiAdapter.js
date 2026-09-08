@@ -236,6 +236,10 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
             onStatus?.({ message: t?.('processing.liveDraftUnavailable') ?? 'Live drafts unavailable; timed transcription continues.', type: 'warning' });
           } else liveDrafts?.update(event.windowIndex, event.text, event);
         },
+        onWindowProgress: (event) => {
+          if (finished || isProjectMismatch(options?.projectId)) return;
+          liveDrafts?.open(event.windowIndex, event);
+        },
         onStageChanged: (event) => {
           onStatus?.({ message: event.message, type: 'loading' });
         },

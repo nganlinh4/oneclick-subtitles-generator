@@ -11,7 +11,8 @@ const formatWindowTime = (milliseconds) => {
 export default function LiveTranscriptionDrafts() {
   const { t } = useTranslation();
   const drafts = useSyncExternalStore(subscribeLiveDrafts, getLiveDrafts);
-  return drafts.map((draft, draftIndex) => {
+  if (drafts.length === 0) return null;
+  return <div className="live-transcription-drafts-panel">{drafts.map((draft, draftIndex) => {
     const rows = groupLiveDraftText(draft.text);
     return (
       <section className="live-transcription-window" data-osg-live-window={draft.windowIndex} key={`${draft.projectId}:${draft.windowIndex}`}>
@@ -21,7 +22,9 @@ export default function LiveTranscriptionDrafts() {
             <span>{formatWindowTime(draft.windowStartMs)} – {formatWindowTime(draft.windowEndMs)}</span>
           </div>
         ) : null}
-        {rows.map((text, groupIndex) => (
+        {rows.length === 0 ? (
+          <div className="live-transcription-window-pending">{t('processing.liveDraftListening')}</div>
+        ) : rows.map((text, groupIndex) => (
           <div className="lyric-item" data-osg-live-draft data-osg-live-update={draft.revision} key={`${draft.projectId}:${draft.windowIndex}:${groupIndex}`} aria-live={draftIndex === drafts.length - 1 && groupIndex === rows.length - 1 ? 'polite' : undefined}>
             <div className="lyric-content">
               <span className="lyric-number">{t('processing.liveDraftTiming')}</span>
@@ -31,5 +34,5 @@ export default function LiveTranscriptionDrafts() {
         ))}
       </section>
     );
-  });
+  })}</div>;
 }
