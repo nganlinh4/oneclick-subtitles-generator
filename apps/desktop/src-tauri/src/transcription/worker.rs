@@ -286,7 +286,7 @@ async fn stream_live_window(
         ("window", window_index.to_string()),
         ("updates", updates.to_string()),
         ("elapsed_ms", started.elapsed().as_millis().to_string()),
-        ("outcome", if result.is_ok() { "ok" } else { "error" }.to_owned()),
+        ("outcome", if result.is_err() { "error" } else if updates == 0 { "empty" } else { "ok" }.to_owned()),
     ]);
     if result.is_err() && !cancel.is_cancelled() {
         callback(Err(()));

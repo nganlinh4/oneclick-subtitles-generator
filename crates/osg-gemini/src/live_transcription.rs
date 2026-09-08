@@ -92,7 +92,10 @@ impl GeminiClient {
             .map_err(|_| Error::Transport(TransportKind::Timeout))?
             .map_err(|_| Error::Transport(TransportKind::Connect))?;
             let (mut sender, mut receiver) = socket.split();
-            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}}}).to_string().into()))
+            // These are prerecorded, explicitly bounded windows, not microphone turns.
+            // Automatic speech detection can reject singing over music without any error or
+            // transcription. Declare the known activity boundary instead of waiting for VAD.
+            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": true}}}}).to_string().into()))
                 .await.map_err(|_| Error::Transport(TransportKind::Body))?;
             let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
                 .await
@@ -105,6 +108,8 @@ impl GeminiClient {
                 return Err(Error::Transport(TransportKind::Connect));
             }
             let send_audio = async {
+                sender.send(Message::Text(json!({"realtimeInput":{"activityStart":{}}}).to_string().into()))
+                    .await.map_err(|_| Error::Transport(TransportKind::Body))?;
                 let mut pacing = tokio::time::interval(Duration::from_millis(100));
                 pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 for chunk in pcm.chunks(3200) {
@@ -114,7 +119,7 @@ impl GeminiClient {
                 }
                 sender
                     .send(Message::Text(
-                        json!({"realtimeInput":{"audioStreamEnd":true}})
+                        json!({"realtimeInput":{"activityEnd":{}}})
                             .to_string()
                             .into(),
                     ))
