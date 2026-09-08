@@ -8,7 +8,7 @@ import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from 
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 import { extractFrame, listMediaFiles, newestMediaFile, probeMedia } from '../support/nativeMediaOracle.js';
 
-/* global $, browser, describe, document, it */
+/* global $, browser, describe, document, it, MutationObserver, window */
 const WORKFLOW = process.env.OSG_E2E_WORKFLOW || 'word-native-fresh-video-speech';
 
 describe('Transcribe in the original generation modal and subtitle editor', () => {
@@ -35,18 +35,41 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     }));
     assert.deepEqual(controls, { replacement: false, videoOptions: false, originalModal: true });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-transcribe-method-options', description: 'Transcribe selected as an ordinary method in the original modal.' });
+    await browser.execute(() => {
+      window.__OSG_LIVE_DRAFT_HISTORY__ = [];
+      const observe = () => {
+        const rows = [...document.querySelectorAll('[data-osg-live-draft]')];
+        const entry = rows.map((row) => ({
+          revision: Number(row.getAttribute('data-osg-live-update')),
+          textLength: row.textContent?.length ?? 0,
+        }));
+        const history = window.__OSG_LIVE_DRAFT_HISTORY__;
+        if (entry.length && JSON.stringify(entry) !== JSON.stringify(history.at(-1))) history.push(entry);
+      };
+      new MutationObserver(observe).observe(document.body, {
+        attributes: true,
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    });
     await clickControl('[data-osg-action="process-subtitles"]');
     await (await $('[data-osg-live-draft]')).waitForDisplayed({ timeout: 90_000 });
-    await browser.waitUntil(async () => {
-      const rows = await browser.$$('[data-osg-live-draft]');
-      if (rows.length < 2) return false;
-      const revisions = await Promise.all(rows.map((row) => row.getAttribute('data-osg-live-update')));
-      return revisions.some((revision) => Number(revision) >= 3);
-    }, {
-      timeout: 90_000,
-      interval: 100,
-      timeoutMsg: 'Live never advanced beyond one early draft into multiple real-time rows',
-    });
+    try {
+      await browser.waitUntil(async () => browser.execute(() => (
+        window.__OSG_LIVE_DRAFT_HISTORY__?.some((entry) => (
+          entry.length >= 2 && entry.some((row) => row.revision >= 3)
+        ))
+      )), {
+        timeout: 90_000,
+        interval: 100,
+        timeoutMsg: 'Live never advanced beyond one early draft into multiple real-time rows',
+      });
+    } catch (error) {
+      const history = await browser.execute(() => window.__OSG_LIVE_DRAFT_HISTORY__);
+      process.stdout.write(`Live draft DOM history: ${JSON.stringify(history)}\n`);
+      throw error;
+    }
     await captureWorkflowStep({ workflow: WORKFLOW, step: '04-live-draft', focusSelector: '[data-osg-live-draft]', description: 'Real Live text before timestamped captions; drafts are outside saved cues.' });
     await browser.waitUntil(async () => {
       const state = durableState(root);

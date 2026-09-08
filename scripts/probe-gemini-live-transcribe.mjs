@@ -1,13 +1,19 @@
 // Explicit billed diagnostic, not a product test. Never prints credentials or transport errors.
+/* global Buffer, WebSocket, console */
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readGeminiCredentialPool } from '../e2e/support/liveProviderCredentials.js';
 import process from 'node:process';
 import { join } from 'node:path';
 
-const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i',
-  'target/subtitle-benchmark/additional-media/fleurs-ko-1883.mp4',
-  '-t', '12.48', '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', 'pipe:1'],
+const mediaArgument = process.argv.indexOf('--media');
+const media = mediaArgument >= 0
+  ? process.argv[mediaArgument + 1]
+  : 'target/subtitle-benchmark/additional-media/fleurs-ko-1883.mp4';
+if (!media || media.startsWith('--')) throw new Error('--media requires a file path');
+const durationArguments = mediaArgument >= 0 ? [] : ['-t', '12.48'];
+const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', media,
+  ...durationArguments, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', 'pipe:1'],
 { windowsHide: true, maxBuffer: 1024 * 1024 });
 const key = readGeminiCredentialPool()[0].value;
 if (process.argv.includes('--rust')) {
