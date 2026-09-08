@@ -11,6 +11,9 @@ use tokio_tungstenite::{
 
 const ENDPOINT: &str = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const LIMIT: usize = 256 * 1024;
+// Live Transcription supports ten-minute sessions. PCM16 mono at 16 kHz consumes 32,000 bytes
+// per second; the previous 4 MB request cap silently disabled Live after roughly 125 seconds.
+const MAX_PCM_BYTES: usize = 16_000 * 2 * 60 * 10;
 fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
@@ -26,7 +29,7 @@ fn ensure_tls_provider() -> Result<()> {
 }
 
 fn wav_pcm(bytes: &[u8]) -> Result<&[u8]> {
-    if bytes.len() > 4_000_000
+    if bytes.len() > MAX_PCM_BYTES + 4_096
         || bytes.get(..4) != Some(b"RIFF")
         || bytes.get(8..12) != Some(b"WAVE")
     {
@@ -193,6 +196,6 @@ mod tests {
         assert!(wav_pcm(&wav[..45]).is_err());
         wav[22] = 2; // Stereo must not be mislabeled as mono.
         assert!(wav_pcm(&wav).is_err());
-        assert!(wav_pcm(&vec![0; 4_000_001]).is_err());
+        assert!(wav_pcm(&vec![0; super::MAX_PCM_BYTES + 4_097]).is_err());
     }
 }

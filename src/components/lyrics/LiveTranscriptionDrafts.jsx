@@ -11,7 +11,7 @@ export default function LiveTranscriptionDrafts() {
     groupLiveDraftText(draft.text).map((text, groupIndex) => ({ ...draft, text, groupIndex }))
   ));
   return rows.map((draft, index) => (
-    <div className="lyric-item" data-osg-live-draft key={`${projectId}:${draft.windowIndex}:${draft.groupIndex}`} aria-live={index === rows.length - 1 ? 'polite' : undefined}>
+    <div className="lyric-item" data-osg-live-draft data-osg-live-update={draft.revision} key={`${projectId}:${draft.windowIndex}:${draft.groupIndex}`} aria-live={index === rows.length - 1 ? 'polite' : undefined}>
       <div className="lyric-content">
         <span className="lyric-number">{t('processing.liveDraftTiming')}</span>
         <span className="lyric-text">{draft.text}</span>

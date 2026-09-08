@@ -37,6 +37,16 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-transcribe-method-options', description: 'Transcribe selected as an ordinary method in the original modal.' });
     await clickControl('[data-osg-action="process-subtitles"]');
     await (await $('[data-osg-live-draft]')).waitForDisplayed({ timeout: 90_000 });
+    await browser.waitUntil(async () => {
+      const rows = await browser.$$('[data-osg-live-draft]');
+      if (rows.length < 2) return false;
+      const revisions = await Promise.all(rows.map((row) => row.getAttribute('data-osg-live-update')));
+      return revisions.some((revision) => Number(revision) >= 3);
+    }, {
+      timeout: 90_000,
+      interval: 100,
+      timeoutMsg: 'Live never advanced beyond one early draft into multiple real-time rows',
+    });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '04-live-draft', focusSelector: '[data-osg-live-draft]', description: 'Real Live text before timestamped captions; drafts are outside saved cues.' });
     await browser.waitUntil(async () => {
       const state = durableState(root);

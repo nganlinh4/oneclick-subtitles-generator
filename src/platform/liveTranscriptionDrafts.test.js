@@ -22,6 +22,7 @@ test('Live replaces drafts, orders parallel windows, and rejects late events aft
   session.update(0, 'hello');
   vi.advanceTimersByTime(150);
   expect(getLiveDrafts().map((row) => row.text)).toEqual(['hello', 'second']);
+  expect(getLiveDrafts().map((row) => row.revision)).toEqual([3, 1]);
   session.finalize(0);
   session.update(0, 'late overwrite');
   vi.advanceTimersByTime(150);

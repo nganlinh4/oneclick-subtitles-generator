@@ -176,10 +176,11 @@ pub(crate) async fn execute_transcription_window(
 
     // 4. Formulate inline Gemini TranscribeRequest
     // Optional early drafts have no timestamps. The existing file response remains authoritative.
-    // Dropping this guard cancels the socket as soon as final timed captions are available.
+    // The guard cancels the socket on errors and early returns. The success path explicitly joins
+    // it below so the customer sees the complete source-paced stream before timed promotion.
     let first_live_draft = Arc::new(FirstLiveDraft::default());
     let live_requested = live_draft.is_some();
-    let _live_task = live_draft.map(|callback| {
+    let mut live_task = live_draft.map(|callback| {
         let client = client.clone();
         let bytes = wav_bytes.clone();
         let language_hints = config.language_hints.clone();
@@ -227,6 +228,20 @@ pub(crate) async fn execute_transcription_window(
             Err(err) => return Err(WorkerError::Gemini(err)),
         }
     };
+
+    // A Live request is a source-paced customer-visible stream, not merely a race against the
+    // faster file endpoint. Keep it alive through the complete window before publishing the
+    // authoritative timed result. Dropping this guard here used to abort Live after its first
+    // phrase and made the batch result appear all at once for longer media.
+    if let Some(mut task) = live_task.as_mut().and_then(|task| task.0.take()) {
+        tokio::select! {
+            () = cancellation.cancelled() => {
+                task.abort();
+                return Err(WorkerError::Cancelled);
+            }
+            _ = &mut task => {}
+        }
+    }
 
     // 6. Word Projection & Clamp
     let raw_words = response.transcription_words();
