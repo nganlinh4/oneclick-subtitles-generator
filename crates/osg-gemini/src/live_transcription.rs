@@ -89,7 +89,7 @@ impl GeminiClient {
             .map_err(|_| Error::Transport(TransportKind::Timeout))?
             .map_err(|_| Error::Transport(TransportKind::Connect))?;
             let (mut sender, mut receiver) = socket.split();
-            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints}}}).to_string().into()))
+            sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}}}).to_string().into()))
                 .await.map_err(|_| Error::Transport(TransportKind::Body))?;
             let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
                 .await

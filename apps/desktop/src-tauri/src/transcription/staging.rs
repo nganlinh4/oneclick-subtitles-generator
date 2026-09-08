@@ -9,6 +9,21 @@ use super::events::{ProjectedCueDto, TimedWordDto, TranscriptTurnDto};
 use super::planner::WindowRange;
 use super::projection::ProjectedWordResult;
 
+const NATURAL_PAUSE_THRESHOLD_MS: i64 = 1_000;
+const NATURAL_MAX_WORDS: usize = 12;
+const NATURAL_MAX_CHARACTERS: usize = 42;
+
+fn ends_sentence(text: &str) -> bool {
+    text.trim_end_matches(['\"', '\'', '”', '’', '»', ')', ']', '}'])
+        .ends_with(['.', '!', '?', '…', '。', '！', '？'])
+}
+
+fn cue_character_count(words: &[(WordId, &ProjectedWordResult)], next: &str) -> usize {
+    words.iter().map(|(_, word)| word.text.chars().count()).sum::<usize>()
+        + words.len()
+        + next.chars().count()
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct StagedWindowResult {
     pub(crate) window_index: usize,
@@ -203,7 +218,9 @@ impl StagingBuffer {
             });
         };
 
-        // Also group words into projected cues (e.g. natural phrasing: <=12 words or pause > 300ms)
+        // Group into readable subtitle phrases. A 300 ms threshold split normal intra-sentence
+        // hesitations into one-word cues; only a substantial pause or sentence boundary starts a
+        // new phrase, while size limits still keep every cue readable.
         let mut current_cue_words: Vec<(WordId, &ProjectedWordResult)> = Vec::new();
 
         let flush_cue = |cue_words: &[(WordId, &ProjectedWordResult)],
@@ -279,10 +296,14 @@ impl StagingBuffer {
             // Never label two speakers as one cue, even when their speech is contiguous.
             // Keep the existing pause and size bounds for ordinary grouped subtitles.
             let pause_split = current_cue_words.last().is_some_and(|(_, prev)| {
-                word.project_start_ms.saturating_sub(prev.project_end_ms) >= 300
+                word.project_start_ms.saturating_sub(prev.project_end_ms) >= NATURAL_PAUSE_THRESHOLD_MS
             });
-            let word_count_split = current_cue_words.len() >= 12;
-            if (speaker_changed || pause_split || word_count_split) && !current_cue_words.is_empty() {
+            let sentence_split = current_cue_words.last()
+                .is_some_and(|(_, previous)| ends_sentence(&previous.text));
+            let size_split = current_cue_words.len() >= NATURAL_MAX_WORDS
+                || cue_character_count(&current_cue_words, &word.text) > NATURAL_MAX_CHARACTERS;
+            let phrase_split = current_cue_words.len() >= 2 && (pause_split || sentence_split);
+            if (speaker_changed || phrase_split || size_split) && !current_cue_words.is_empty() {
                 flush_cue(&current_cue_words, &mut projected_cues);
                 current_cue_words.clear();
             }
@@ -828,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn same_speaker_words_stay_grouped_until_a_pause() {
+    fn natural_grouping_ignores_brief_hesitation_but_splits_a_substantial_pause() {
         let promoted = StagingBuffer::new().prepare_promotion(
             TranscriptRevisionId::new(),
             StagedWindowResult {
@@ -838,13 +859,14 @@ mod tests {
                     make_test_word("Hello", 0, 500),
                     make_test_word("there", 500, 1000),
                     make_test_word("Again", 1300, 1800),
+                    make_test_word("later", 2800, 3200),
                 ],
             },
         );
         assert_eq!(promoted.projected_cues.len(), 2);
-        assert_eq!(promoted.projected_cues[0].text, "Hello there");
-        assert_eq!(promoted.projected_cues[0].word_ids.len(), 2);
-        assert_eq!(promoted.projected_cues[1].text, "Again");
+        assert_eq!(promoted.projected_cues[0].text, "Hello there Again");
+        assert_eq!(promoted.projected_cues[0].word_ids.len(), 3);
+        assert_eq!(promoted.projected_cues[1].text, "later");
     }
 
     fn generate_permutations(items: &[usize]) -> Vec<Vec<usize>> {

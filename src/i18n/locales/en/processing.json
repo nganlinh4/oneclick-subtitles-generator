@@ -1,10 +1,7 @@
 {
   "speechEngineTranscribeLive": "Gemini Transcribe Live",
-  "transcribeLiveDescription": "Live streams early text drafts; Gemini Transcribe finalizes grouped captions with accurate timestamps. Uses two model requests per part (plus retries). Draft text may change and is not saved or exported.",
   "liveDraftTiming": "Live draft · timing pending",
   "liveDraftUnavailable": "Live drafts are unavailable. Timed transcription is continuing.",
-  "transcribeMethodDescription": "Transcribe audio into grouped subtitles in the existing editor. Word timestamps keep the captions aligned. For video, only its audio is sent.",
-  "transcribeDailyQuota": "Daily allowance depends on your Google project and billing tier; check its limits in Google AI Studio. Each audio part uses a request. Keys from the same project share the allowance.",
   "audioOnly": "Send audio only",
   "audioOnlyHelp": "Extract only audio for the selected range. No video frames are uploaded; visual descriptions and on-screen text require video.",
   "configureOptions": "Configure Processing Options",

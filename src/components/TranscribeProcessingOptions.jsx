@@ -2,17 +2,12 @@ import { useTranslation } from 'react-i18next';
 import MaterialSwitch from './common/MaterialSwitch';
 import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
-import '../styles/TranscribeProcessingOptions.css';
 
 // Method-specific controls inside the existing modal, using its existing primitives.
-export default function TranscribeProcessingOptions({ value, onChange, live = false }) {
+export default function TranscribeProcessingOptions({ value, onChange }) {
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
     return <>
-        <div className="option-group">
-            <p>{t(live ? 'processing.transcribeLiveDescription' : 'processing.transcribeMethodDescription')}</p>
-            <p className="transcribe-quota-note">{t('processing.transcribeDailyQuota')}</p>
-        </div>
         <div className="option-group">
             <label htmlFor="transcribe-language">{t('processing.languageLabel', 'Language')}</label>
             <CustomDropdown

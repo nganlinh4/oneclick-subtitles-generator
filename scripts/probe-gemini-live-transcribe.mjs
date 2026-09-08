@@ -30,9 +30,11 @@ const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.g
 let ready;
 const setup = new Promise((resolve) => { ready = resolve; });
 let finalCount = 0;
+let interimCount = 0;
+let streamStartedAt = 0;
 ws.onopen = () => ws.send(JSON.stringify({ setup: {
   model: 'models/gemini-3.5-transcribe-live', generationConfig: { responseModalities: ['TEXT'] },
-  inputAudioTranscription: { languageCodes: [], ...(process.argv.includes('--word-timestamps') ? { wordTimestamp: true } : {}) },
+  inputAudioTranscription: { languageCodes: [], mode: 'SMART', ...(process.argv.includes('--word-timestamps') ? { wordTimestamp: true } : {}) },
 } }));
 ws.onmessage = async ({ data }) => {
   const raw = typeof data === 'string' ? data : await data.text();
@@ -43,9 +45,12 @@ ws.onmessage = async ({ data }) => {
   const content = event.serverContent;
   if (content) {
     if (content.inputTranscription) finalCount++;
+    if (content.interimInputTranscription) interimCount++;
     console.log(JSON.stringify({ fields: Object.keys(content),
-      final: content.inputTranscription ?? null,
+      elapsedMs: streamStartedAt ? Date.now() - streamStartedAt : null,
+      finalBytes: content.inputTranscription?.text?.length ?? 0,
       interimFields: content.interimInputTranscription ? Object.keys(content.interimInputTranscription) : [],
+      interimBytes: content.interimInputTranscription?.text?.length ?? 0,
     }));
   } else if (!event.setupComplete) console.log(JSON.stringify({ eventFields: Object.keys(event) }));
 };
@@ -53,6 +58,7 @@ ws.onerror = () => { console.log('Live transport failed (details redacted)'); re
 ws.onclose = ({ code }) => { console.log(JSON.stringify({ closeCode: code, finalCount })); ready(false); };
 const connected = await Promise.race([setup, delay(15000, false)]);
 if (connected) {
+  streamStartedAt = Date.now();
   for (let offset = 0; offset < pcm.length && ws.readyState === WebSocket.OPEN; offset += 3200) {
     ws.send(JSON.stringify({ realtimeInput: { audio: { data: pcm.subarray(offset, offset + 3200).toString('base64'), mimeType: 'audio/pcm;rate=16000' } } }));
     await delay(100);
@@ -61,4 +67,5 @@ if (connected) {
   await delay(8000);
 }
 ws.close();
+console.log(JSON.stringify({ finalCount, interimCount }));
 if (!finalCount) process.exitCode = 1;

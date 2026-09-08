@@ -3,6 +3,32 @@ const listeners = new Set();
 const sessions = new Map();
 let snapshot = [];
 let timer;
+
+const endsSentence = (word) => /[.!?…。！？][\]})"'»”’]*$/u.test(word);
+
+// The provider sends one growing hypothesis. Project it into ordinary readable rows without
+// inventing timestamps or persisting speculative text.
+export const groupLiveDraftText = (text, { maxWords = 12, maxCharacters = 42 } = {}) => {
+  if (typeof text !== 'string') return [];
+  const words = text.trim().split(/\s+/u).filter(Boolean);
+  const groups = [];
+  let current = [];
+  for (const word of words) {
+    const candidateLength = current.reduce((sum, item) => sum + [...item].length, 0)
+      + Math.max(0, current.length - 1) + (current.length ? 1 : 0) + [...word].length;
+    if (current.length && (current.length >= maxWords || candidateLength > maxCharacters)) {
+      groups.push(current.join(' '));
+      current = [];
+    }
+    current.push(word);
+    if (current.length >= 2 && endsSentence(word)) {
+      groups.push(current.join(' '));
+      current = [];
+    }
+  }
+  if (current.length) groups.push(current.join(' '));
+  return groups;
+};
 const publish = () => {
   clearTimeout(timer); timer = undefined;
   snapshot = [...sessions.values()].flatMap((session) => [...session.windows.entries()]

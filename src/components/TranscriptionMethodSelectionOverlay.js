@@ -79,14 +79,14 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
             {
                 id: 'gemini-transcribe',
                 name: t('processing.speechEngineTranscribe'),
-                desc: t('processing.transcribeMethodDescription'),
+                desc: '',
                 img: isDarkTheme ? newDarkImg : newLightImg,
                 disabled: !getEngineDescriptor('gemini-transcribe').availability()
             },
             {
                 id: 'gemini-transcribe-live',
                 name: t('processing.speechEngineTranscribeLive'),
-                desc: t('processing.transcribeLiveDescription'),
+                desc: '',
                 img: isDarkTheme ? newDarkImg : newLightImg,
                 disabled: !getEngineDescriptor('gemini-transcribe-live').availability()
             },
@@ -155,7 +155,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                          >
                              <div className="method-name">{method.name}</div>
                              <img src={method.img} alt={method.name} />
-                             <div className="method-desc">{method.desc}</div>
+                             {method.desc && <div className="method-desc">{method.desc}</div>}
                          </div>
                      ))}
                  </div>
