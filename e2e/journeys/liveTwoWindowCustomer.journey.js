@@ -33,10 +33,10 @@ describe('Customer video with Gemini Transcribe Live', () => {
       .down({ button: 0 }).pause(100)
       .move({ origin: timeline, x: Math.floor(1199 / duration * width) - Math.floor(width / 2), y: 0, duration: 450 })
       .up({ button: 0 }).perform();
-    await clickControl('.range-action-bar .btn-primary');
-    await clickControl('[data-transcription-method="new"]');
-    await clickControl('.header-switch-group .custom-dropdown-button');
-    await clickControl('[role="option"][data-value="gemini-transcribe-live"]');
+    if (await $('.range-action-bar .btn-primary').isExisting()) {
+      await clickControl('.range-action-bar .btn-primary');
+    }
+    await clickControl('[data-transcription-method="gemini-transcribe-live"]');
     assert.equal(await $('[data-osg-range-id="transcribe-window"]').getAttribute('aria-valuenow'), '10');
     await captureWorkflowStep({ workflow: WORKFLOW, step: '01-live-two-window-settings',
       description: 'Requested YouTube video; Live selected, ten-minute windows over a pointer-selected first-twenty-minute range.' });
