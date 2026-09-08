@@ -34,7 +34,7 @@ export default function SubtitleSpeakersModal({ lyrics, selectedRange, onApply, 
       else if (assignment === 'new') speaker = { id: newId, name: newName.trim(), labelStyle: speaker?.labelStyle ?? 'hidden' };
       else if (assignment !== 'keep') {
         const source = speakers.find((s) => `id:${s.id}` === assignment);
-        if (source) speaker = { ...source, name: names[source.id] };
+        if (source) speaker = { ...source, name: names[source.id] ?? source.name };
       }
       if (speaker && style !== 'keep') speaker = { ...speaker, labelStyle: style };
     }
@@ -47,7 +47,7 @@ export default function SubtitleSpeakersModal({ lyrics, selectedRange, onApply, 
       <p>{t('lyrics.speakersDescription')}</p>
       {speakers.map((speaker, index) => <label key={speaker.id}>
         <span>{t('lyrics.speakerName', { number: index + 1 })}</span>
-        <input value={names[speaker.id]} maxLength={200} onChange={(event) => setNames({ ...names, [speaker.id]: event.target.value })} />
+        <input value={names[speaker.id] ?? speaker.name} maxLength={200} onChange={(event) => setNames({ ...names, [speaker.id]: event.target.value })} />
       </label>)}
       <label><span>{t('lyrics.speakerScope')}</span>
         <CustomDropdown id="speaker-scope" value={scope} onChange={setScope} options={[
@@ -58,7 +58,7 @@ export default function SubtitleSpeakersModal({ lyrics, selectedRange, onApply, 
       <label><span>{t('lyrics.speakerAssign')}</span>
         <CustomDropdown id="speaker-assignment" value={assignment} onChange={setAssignment} options={[
           { value: 'keep', label: t('lyrics.speakerKeep') },
-          ...speakers.map((s) => ({ value: `id:${s.id}`, label: names[s.id] })),
+          ...speakers.map((s) => ({ value: `id:${s.id}`, label: names[s.id] ?? s.name })),
           { value: 'new', label: t('lyrics.speakerNew') },
           { value: 'none', label: t('lyrics.speakerNone') },
         ]} />

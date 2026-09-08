@@ -9,8 +9,10 @@ export default function LiveTranscriptionDrafts() {
   const projectId = getActiveProjectSnapshot()?.metadata?.id;
   return drafts.filter((draft) => draft.projectId === projectId).map((draft) => (
     <div className="lyric-item" data-osg-live-draft key={`${projectId}:${draft.windowIndex}`} aria-live="polite">
-      <span className="lyric-time">{t('processing.liveDraftTiming')}</span>
-      <span className="lyric-text">{draft.text}</span>
+      <div className="lyric-content">
+        <span className="lyric-number">{t('processing.liveDraftTiming')}</span>
+        <span className="lyric-text">{draft.text}</span>
+      </div>
     </div>
   ));
 }

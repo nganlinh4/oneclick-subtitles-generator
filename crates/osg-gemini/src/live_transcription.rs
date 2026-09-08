@@ -15,6 +15,16 @@ fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
 
+fn ensure_tls_provider() -> Result<()> {
+    // The desktop links both rustls crypto backends. Automatic provider selection panics.
+    // Match the existing Live Music transport, respecting a provider installed by another caller.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+    rustls::crypto::CryptoProvider::get_default().map(|_| ())
+        .ok_or(Error::Transport(TransportKind::Connect))
+}
+
 fn wav_pcm(bytes: &[u8]) -> Result<&[u8]> {
     if bytes.len() > 4_000_000
         || bytes.get(..4) != Some(b"RIFF")
@@ -62,6 +72,7 @@ impl GeminiClient {
         mut on_text: impl FnMut(String) + Send,
     ) -> Result<()> {
         let pcm = wav_pcm(wav)?;
+        ensure_tls_provider()?;
         let mut endpoint = url::Url::parse(ENDPOINT).expect("constant endpoint");
         endpoint
             .query_pairs_mut()
@@ -156,6 +167,13 @@ impl GeminiClient {
 #[cfg(test)]
 mod tests {
     use super::wav_pcm;
+
+    #[test]
+    fn websocket_crypto_provider_is_explicit_and_idempotent() {
+        super::ensure_tls_provider().unwrap();
+        super::ensure_tls_provider().unwrap();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
 
     #[test]
     fn only_valid_bounded_pcm_is_streamed_without_wav_headers() {

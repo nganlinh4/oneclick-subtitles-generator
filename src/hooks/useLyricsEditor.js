@@ -337,6 +337,8 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     const mergedLyric = {
       id: currentLyric.id,
       text: `${currentLyric.text} ${nextLyric.text}`.trim(),
+      speaker: JSON.stringify(currentLyric.speaker ?? null) === JSON.stringify(nextLyric.speaker ?? null)
+        ? currentLyric.speaker ?? null : null,
       start: currentLyric.start,
       end: nextLyric.end
     };

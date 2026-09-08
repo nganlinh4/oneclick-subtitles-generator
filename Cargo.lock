@@ -3657,6 +3657,7 @@ dependencies = [
  "futures-util",
  "httpdate",
  "reqwest",
+ "rustls",
  "secrecy",
  "serde",
  "serde_json",

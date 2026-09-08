@@ -3,12 +3,29 @@ import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readGeminiCredentialPool } from '../e2e/support/liveProviderCredentials.js';
 import process from 'node:process';
+import { join } from 'node:path';
 
 const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i',
   'target/subtitle-benchmark/additional-media/fleurs-ko-1883.mp4',
   '-t', '12.48', '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', 'pipe:1'],
 { windowsHide: true, maxBuffer: 1024 * 1024 });
 const key = readGeminiCredentialPool()[0].value;
+if (process.argv.includes('--rust')) {
+  const header = Buffer.alloc(44);
+  header.write('RIFF'); header.writeUInt32LE(pcm.length + 36, 4); header.write('WAVEfmt ', 8);
+  header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(16000, 24); header.writeUInt32LE(32000, 28);
+  header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34);
+  header.write('data', 36); header.writeUInt32LE(pcm.length, 40);
+  const executable = join(process.env.LOCALAPPDATA, 'OSG-Development/cache/cargo/dev/debug/examples/live_transcribe_smoke.exe');
+  try {
+    const output = execFileSync(executable, [], { input: Buffer.concat([header, pcm]),
+      env: { ...process.env, GEMINI_API_KEY: key }, windowsHide: true, timeout: 60000,
+      maxBuffer: 1024 * 1024 });
+    process.stdout.write(output);
+  } catch { console.error('Shipping Rust Live transport failed (details redacted)'); process.exitCode = 1; }
+  process.exit(process.exitCode ?? 0);
+}
 const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(key)}`);
 let ready;
 const setup = new Promise((resolve) => { ready = resolve; });

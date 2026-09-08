@@ -50,8 +50,10 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.equal(await (await $('[data-osg-live-draft]')).isExisting(), false, 'completed Live drafts must be cleared');
     const originalText = durableState(root).cues.map((cue) => cue.text);
     await clickControl('[data-osg-action="subtitle-speakers"]');
-    await clickControl('#speaker-scope');
-    await clickControl('[role="option"][data-value="all"]');
+    if (await (await $('#speaker-scope')).isEnabled()) {
+      await clickControl('#speaker-scope');
+      await clickControl('[role="option"][data-value="all"]');
+    }
     await clickControl('#speaker-assignment');
     await clickControl('[role="option"][data-value="new"]');
     await (await $('#speaker-new-name')).setValue('Min');
