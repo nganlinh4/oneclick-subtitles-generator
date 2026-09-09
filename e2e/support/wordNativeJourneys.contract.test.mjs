@@ -1,4 +1,4 @@
-// Contract test verifying opaque-box compliance for all 10 Word-Native customer journeys.
+// Contract test verifying opaque-box compliance for the remaining Word-Native customer journeys.
 // Asserts absence of backdoor IPC, absence of API secrets, and presence of evidence recording.
 
 import assert from 'node:assert/strict';
@@ -11,7 +11,6 @@ const JOURNEYS = [
   'wordNativeAudioRangeProjection.journey.js',
   'wordNativeEditReflowOffline.journey.js',
   'wordNativeSaveRelaunchMigration.journey.js',
-  'wordNativeParallelLongRecording.journey.js',
   'wordNativeCancelRetrySwitch.journey.js',
   'wordNativeMultilingualSpeakers.journey.js',
   'wordNativeTranslationVisualCustom.journey.js',
@@ -19,7 +18,7 @@ const JOURNEYS = [
   'wordNativeRefusalsRecovery.journey.js',
 ];
 
-test('all 10 word-native customer journeys exist and adhere to opaque-box contracts', () => {
+test('all word-native customer journeys exist and adhere to opaque-box contracts', () => {
   const journeysDir = join(import.meta.dirname, '..', 'journeys');
 
   for (const filename of JOURNEYS) {

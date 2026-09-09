@@ -30,8 +30,8 @@ const transcriptionDiagnostics = (root) => readFileSync(join(root, 'logs', 'osg.
   .map((line) => JSON.parse(line))
   .filter(({ event }) => typeof event === 'string' && event.startsWith('transcribe.'));
 
-describe('Gemini transcribes a real four-window source', () => {
-  it('splits the public one-minute request, streams every window and persists one merged track', async () => {
+describe('Gemini Transcribe Live handles the real customer workflow', () => {
+  it('streams a real four-window recording through Live only and persists one merged track', async () => {
     const root = process.env.OSG_E2E_DATA_ROOT;
     assert.ok(root, 'the Gemini multi-window journey requires an isolated root');
     await openProjectWithMedia();
@@ -165,7 +165,7 @@ describe('Gemini transcribes a real four-window source', () => {
     }, {
       timeout: 90_000,
       interval: 2_000,
-      timeoutMsg: 'the four-window Gemini run never completed four succeeded jobs',
+      timeoutMsg: 'the real four-window Gemini Live run did not complete its native job',
     });
     if (terminalFailure !== null) throw new Error(terminalFailure);
 
@@ -204,7 +204,7 @@ describe('Gemini transcribes a real four-window source', () => {
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-four-live-windows-complete',
-      description: 'The public one-minute setting split 204 seconds of real speech into four live Gemini jobs and merged their streamed cues durably.',
+      description: 'The public one-minute setting split 204 seconds of real media into four Live windows and merged their streamed cues durably.',
       details: {
         durationSeconds: duration,
         requestWindowCount: ranges.length,

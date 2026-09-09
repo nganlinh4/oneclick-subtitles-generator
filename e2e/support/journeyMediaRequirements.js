@@ -51,7 +51,6 @@ const GENERIC_REAL_MEDIA = new Set([
   'wordNativeEditReflowOffline.journey.js',
   'wordNativeFreshVideoSpeech.journey.js',
   'wordNativeMultilingualSpeakers.journey.js',
-  'wordNativeParallelLongRecording.journey.js',
   'wordNativePreviewDecodedExport.journey.js',
   'wordNativeRefusalsRecovery.journey.js',
   'wordNativeSaveRelaunchMigration.journey.js',
@@ -60,7 +59,6 @@ const GENERIC_REAL_MEDIA = new Set([
 ]);
 
 const CUSTOM_STAGED_MEDIA = new Set([
-  'liveTwoWindowCustomer.journey.js',
   'geminiBackgroundImageSuccess.journey.js',
   'geminiMediaBenchmark.journey.js',
   'geminiMultiWindowTranscription.journey.js',

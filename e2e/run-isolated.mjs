@@ -52,7 +52,6 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'wordNativeEditReflowOffline.journey.js',
   'wordNativeFreshVideoSpeech.journey.js',
   'wordNativeMultilingualSpeakers.journey.js',
-  'wordNativeParallelLongRecording.journey.js',
   'wordNativePreviewDecodedExport.journey.js',
   'wordNativeRefusalsRecovery.journey.js',
   'wordNativeSaveRelaunchMigration.journey.js',

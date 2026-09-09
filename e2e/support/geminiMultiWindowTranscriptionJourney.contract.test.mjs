@@ -7,7 +7,7 @@ const read = (...parts) => readFileSync(join(import.meta.dirname, ...parts), 'ut
 const journey = read('..', 'journeys', 'geminiMultiWindowTranscription.journey.js');
 const scenario = read('..', 'scenarios', 'geminiMultiWindowTranscription.mjs');
 
-test('the live four-window journey uses the reviewed real-speech fixture and public Gemini controls', () => {
+test('the sole Live success journey uses real media, the public controls and observable streaming', () => {
   assert.match(scenario, /stagedFourWindowAsrVideo/u);
   assert.match(journey, /FOUR_WINDOW_ASR_FIXTURE/u);
   assert.match(journey, /#transcribe-window/u);
@@ -16,6 +16,11 @@ test('the live four-window journey uses the reviewed real-speech fixture and pub
   assert.match(journey, /EXPECTED_WINDOWS/u);
   assert.match(journey, /processing-ranges/u);
   assert.match(journey, /streaming-update/u);
+  assert.match(journey, /transcribe\.live\.first_final/u);
+  assert.match(journey, /sawCuesWhileRunning/u);
+  assert.match(journey, /durable\.cues/u);
+  assert.match(journey, /credential_pool_size/u);
+  assert.doesNotMatch(scenario, /live-two-windows|transcribe-live/u);
 });
 
 test('the live four-window journey contains no credential value or private transport', () => {
