@@ -173,6 +173,11 @@ describe('Gemini transcribes a real four-window source', () => {
 
     const ranges = witness.ranges.find((entry) => entry.length === EXPECTED_WINDOWS);
     assert.ok(ranges, `the UI never published four request windows: ${JSON.stringify(witness.ranges)}`);
+    for (const [index, range] of ranges.entries()) {
+      assert.ok(durable.cues.some((cue) => cue.start_ms < range.end * 1000
+        && cue.end_ms > range.start * 1000),
+      `request window ${index + 1} persisted no subtitle coverage`);
+    }
     assert.equal(sawCuesWhileRunning, true,
       'no subtitle segment became visible before the native transcription job completed');
     assert.ok(firstCueElapsedMs !== null && firstCueElapsedMs <= 30_000,

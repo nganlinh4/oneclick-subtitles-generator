@@ -61,6 +61,24 @@ fn final_turn_received(stream_ended: &AtomicBool, content: &Value) -> bool {
             || content["generationComplete"].as_bool() == Some(true))
 }
 
+fn setup_message(language_hints: &[String]) -> Value {
+    // LiveConnect setup fields are siblings. Nesting the transcription or VAD
+    // configuration inside generationConfig is accepted by the socket handshake
+    // but ignored by the service, producing a connected session with no transcript.
+    json!({"setup": {
+        "model": "models/gemini-3.5-transcribe-live",
+        "generationConfig": {"responseModalities": ["TEXT"]},
+        "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"},
+        "realtimeInputConfig": {"automaticActivityDetection": {
+            "disabled": false,
+            "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
+            "prefixPaddingMs": 300,
+            "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH",
+            "silenceDurationMs": 500
+        }}
+    }})
+}
+
 #[derive(Default)]
 struct LiveEventAccumulator {
     active_start_ms: Option<u64>,
@@ -280,8 +298,12 @@ async fn transcribe_live_session(
     .map_err(|_| Error::Transport(TransportKind::Timeout))?
     .map_err(|_| Error::Transport(TransportKind::Connect))?;
     let (mut sender, mut receiver) = socket.split();
-    sender.send(Message::Text(json!({"setup": {"model": "models/gemini-3.5-transcribe-live", "generationConfig": {"responseModalities": ["TEXT"]}, "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"}, "realtimeInputConfig": {"automaticActivityDetection": {"disabled": false, "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH", "prefixPaddingMs": 300, "endOfSpeechSensitivity": "END_SENSITIVITY_HIGH", "silenceDurationMs": 500}}}}).to_string().into()))
-        .await.map_err(|_| Error::Transport(TransportKind::Body))?;
+    sender
+        .send(Message::Text(
+            setup_message(language_hints).to_string().into(),
+        ))
+        .await
+        .map_err(|_| Error::Transport(TransportKind::Body))?;
     let setup = tokio::time::timeout(Duration::from_secs(15), receiver.next())
         .await
         .map_err(|_| Error::Transport(TransportKind::Timeout))?
@@ -434,7 +456,10 @@ impl GeminiClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{LiveEventAccumulator, LiveTranscriptionKind, source_ms, speech_regions, wav_pcm};
+    use super::{
+        LiveEventAccumulator, LiveTranscriptionKind, setup_message, source_ms, speech_regions,
+        wav_pcm,
+    };
     use serde_json::json;
     use std::sync::atomic::AtomicU64;
 
@@ -470,6 +495,30 @@ mod tests {
     fn source_clock_is_derived_from_pcm_bytes() {
         let sent = AtomicU64::new(32_000);
         assert_eq!(source_ms(&sent), 1_000);
+    }
+
+    #[test]
+    fn live_transcription_and_vad_are_top_level_setup_fields() {
+        let value = setup_message(&["ko-KR".to_owned()]);
+        let setup = &value["setup"];
+        assert_eq!(
+            setup["inputAudioTranscription"]["languageCodes"][0],
+            "ko-KR"
+        );
+        assert_eq!(
+            setup["realtimeInputConfig"]["automaticActivityDetection"]["disabled"],
+            false
+        );
+        assert!(
+            setup["generationConfig"]
+                .get("inputAudioTranscription")
+                .is_none()
+        );
+        assert!(
+            setup["generationConfig"]
+                .get("realtimeInputConfig")
+                .is_none()
+        );
     }
 
     #[test]
