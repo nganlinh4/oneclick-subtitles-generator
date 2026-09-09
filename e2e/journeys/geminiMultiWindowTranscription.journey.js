@@ -1,6 +1,8 @@
 /* global $, browser, describe, document, it, localStorage, window */
 
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import process from 'node:process';
 
 import { durableState } from '../support/database.js';
@@ -12,6 +14,7 @@ import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-multi-window-transcription';
+const CUSTOM_MEDIA = process.env.OSG_E2E_CUSTOM_GEMINI_MEDIA === '1';
 const EXPECTED_WINDOWS = FOUR_WINDOW_ASR_FIXTURE.expectedWindowCount;
 const terminalStates = new Set(['failed', 'cancelled', 'interrupted']);
 const milestone = (name, details = {}) => {
@@ -21,6 +24,12 @@ const milestone = (name, details = {}) => {
 const readWitness = () => browser.execute(() => JSON.parse(JSON.stringify(
   window.__OSG_GEMINI_WINDOWS__ ?? { ranges: [], streams: [], errors: [] },
 )));
+
+const transcriptionDiagnostics = (root) => readFileSync(join(root, 'logs', 'osg.log'), 'utf8')
+  .split(/\r?\n/u)
+  .filter(Boolean)
+  .map((line) => JSON.parse(line))
+  .filter(({ event }) => typeof event === 'string' && event.startsWith('transcribe.'));
 
 describe('Gemini transcribes a real four-window source', () => {
   it('splits the public one-minute request, streams every window and persists one merged track', async () => {
@@ -33,9 +42,13 @@ describe('Gemini transcribes a real four-window source', () => {
     milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
-    assert.ok(Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
-      <= FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds,
-    `the staged source has unexpected duration ${duration}`);
+    if (!CUSTOM_MEDIA) {
+      assert.ok(Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
+        <= FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds,
+      `the staged source has unexpected duration ${duration}`);
+    }
+    assert.equal(Math.ceil(duration / 60), EXPECTED_WINDOWS,
+      `the customer reproduction must exercise four windows, got ${duration}s`);
     milestone('duration-verified', { duration });
 
     await browser.execute(() => {
@@ -158,6 +171,20 @@ describe('Gemini transcribes a real four-window source', () => {
       `the four windows were not streamed incrementally: ${JSON.stringify(witness.streams)}`);
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
+    const diagnostics = transcriptionDiagnostics(root);
+    const assignments = diagnostics.filter(({ event }) => event === 'transcribe.window.credential_assigned');
+    assert.deepEqual(
+      assignments.map(({ credential_slot: slot }) => Number(slot)).sort((left, right) => left - right),
+      [0, 1, 2, 3],
+      'parallel windows did not use four distinct ready credentials',
+    );
+    if (CUSTOM_MEDIA) {
+      assert.equal(
+        diagnostics.filter(({ event }) => event === 'transcribe.live.inactive_recovery_finished').length,
+        EXPECTED_WINDOWS,
+        'the singing-video reproduction did not recover every silent Live window',
+      );
+    }
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-four-live-windows-complete',

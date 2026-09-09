@@ -182,36 +182,56 @@ pub(crate) async fn start_transcription_engine(
     // 5. Resolve Gemini API credential
     let credentials = state.credentials.clone();
     let request_credential_id = request.credential_id();
-    let secret = tauri::async_runtime::spawn_blocking(move || {
-        let cred_id = if let Some(id) = request_credential_id {
-            id
-        } else {
-            let report = credentials
-                .status(Some(CredentialPurpose::GeminiApiKey))
-                .map_err(|e| CommandError::internal(e.to_string()))?;
-            report
-                .credentials
-                .into_iter()
-                .find(|c| c.state == CredentialState::Ready)
-                .map(|c| c.id)
-                .ok_or_else(|| {
-                    CommandError::invalid_input(
-                        "No ready Gemini API key found. Please configure an API key in Settings.",
-                    )
-                })?
-        };
-        credentials
-            .resolve(cred_id, CredentialPurpose::GeminiApiKey)
-            .map_err(|e| CommandError::internal(e.to_string()))
+    let secrets = tauri::async_runtime::spawn_blocking(move || {
+        let report = credentials
+            .status(Some(CredentialPurpose::GeminiApiKey))
+            .map_err(|e| CommandError::internal(e.to_string()))?;
+        let mut ready_ids = report
+            .credentials
+            .into_iter()
+            .filter(|credential| credential.state == CredentialState::Ready)
+            .map(|credential| credential.id)
+            .collect::<Vec<_>>();
+        if let Some(preferred) = request_credential_id {
+            ready_ids.retain(|id| *id != preferred);
+            ready_ids.insert(0, preferred);
+        }
+        if ready_ids.is_empty() {
+            return Err(CommandError::invalid_input(
+                "No ready Gemini API key found. Please configure an API key in Settings.",
+            ));
+        }
+
+        let mut secrets = Vec::with_capacity(ready_ids.len());
+        for (index, id) in ready_ids.into_iter().enumerate() {
+            match credentials.resolve(id, CredentialPurpose::GeminiApiKey) {
+                Ok(secret) => secrets.push(secret),
+                Err(error) if index == 0 => {
+                    return Err(CommandError::internal(error.to_string()));
+                }
+                Err(_) => {}
+            }
+        }
+        if secrets.is_empty() {
+            return Err(CommandError::invalid_input(
+                "No ready Gemini API key found. Please configure an API key in Settings.",
+            ));
+        }
+        Ok(secrets)
     })
     .await
     .map_err(|_| CommandError::internal("credential resolution task failed"))??;
 
-    let api_key = ApiKey::new(secret.expose_secret().to_owned())
-        .map_err(|e| CommandError::invalid_input(e.to_string()))?;
-    let client = Arc::new(
-        GeminiClient::new(api_key).map_err(|e| CommandError::invalid_input(e.to_string()))?,
-    );
+    let clients = secrets
+        .into_iter()
+        .map(|secret| {
+            let api_key = ApiKey::new(secret.expose_secret().to_owned())
+                .map_err(|e| CommandError::invalid_input(e.to_string()))?;
+            GeminiClient::new(api_key)
+                .map(Arc::new)
+                .map_err(|e| CommandError::invalid_input(e.to_string()))
+        })
+        .collect::<CommandResult<Vec<_>>>()?;
 
     // 6. Register running background job
     let jobs = Arc::clone(&state.jobs);
@@ -296,7 +316,7 @@ pub(crate) async fn start_transcription_engine(
             revision_id,
             total_windows,
             windows,
-            client,
+            clients,
             pipeline,
             native_input,
             asr_config,
@@ -318,7 +338,7 @@ async fn run_engine_loop(
     revision_id: TranscriptRevisionId,
     total_windows: usize,
     windows: Vec<super::planner::WindowRange>,
-    client: Arc<GeminiClient>,
+    clients: Vec<Arc<GeminiClient>>,
     pipeline: Arc<MediaPipeline>,
     native_input: Arc<NativeMediaInput>,
     asr_config: Arc<AudioTranscriptionConfig>,
@@ -346,7 +366,8 @@ async fn run_engine_loop(
     for window in windows {
         let pool = Arc::clone(&worker_pool);
         let buffer = Arc::clone(&staging_buffer);
-        let client = Arc::clone(&client);
+        let credential_slot = credential_slot(window.index, clients.len());
+        let client = Arc::clone(&clients[credential_slot]);
         let pipeline = Arc::clone(&pipeline);
         let input = Arc::clone(&native_input);
         let config = Arc::clone(&asr_config);
@@ -354,6 +375,15 @@ async fn run_engine_loop(
         let event_channel = on_event.clone();
         let tx = notify_tx.clone();
         let failures = Arc::clone(&has_failures);
+
+        crate::diagnostics::record(
+            "transcribe.window.credential_assigned",
+            &[
+                ("window", window.index.to_string()),
+                ("credential_slot", credential_slot.to_string()),
+                ("credential_pool_size", clients.len().to_string()),
+            ],
+        );
 
         tauri::async_runtime::spawn(async move {
             let Ok(permit) = pool.acquire_permit(&cancel).await else {
@@ -648,6 +678,11 @@ async fn run_engine_loop(
     }
 }
 
+fn credential_slot(window_index: usize, credential_count: usize) -> usize {
+    debug_assert!(credential_count > 0);
+    window_index % credential_count
+}
+
 async fn update_revision_state_best_effort(
     database: &Database,
     revision_id: TranscriptRevisionId,
@@ -707,4 +742,25 @@ async fn resolve_transcription_media(
     Err(CommandError::invalid_input(
         "transcription requires either mediaAssetId or filePath",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::credential_slot;
+
+    #[test]
+    fn parallel_windows_rotate_across_ready_credentials() {
+        assert_eq!(
+            (0..4)
+                .map(|index| credential_slot(index, 20))
+                .collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+        assert_eq!(
+            (0..6)
+                .map(|index| credential_slot(index, 2))
+                .collect::<Vec<_>>(),
+            [0, 1, 0, 1, 0, 1]
+        );
+    }
 }
