@@ -258,7 +258,11 @@ pub(crate) async fn execute_transcription_window(
     .await
 }
 
-const MAX_OUTPUT_SPLIT_DEPTH: u8 = 4;
+// One retry subdivision bounds a one-key Live recovery to ten provider calls:
+// four Live sessions, four ordinary fallbacks, and at most two children for the
+// one pathological window. Recursive binary fan-out can exhaust the very key
+// needed to finish the job, especially when music makes a model repeat output.
+const MAX_OUTPUT_SPLIT_DEPTH: u8 = 1;
 const MIN_OUTPUT_SPLIT_MS: i64 = 4_000;
 const STANDARD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -272,6 +276,15 @@ fn execute_standard_window_resilient<'a>(
     depth: u8,
 ) -> BoxFuture<'a, Result<StagedWindowResult, WorkerError>> {
     Box::pin(async move {
+        let latest_partial = Arc::new(std::sync::Mutex::new(None));
+        let attempt_partial = Arc::clone(&latest_partial);
+        let attempt_downstream = Arc::clone(&on_timed_window);
+        let attempt_callback: TimedWindowCallback = Arc::new(move |result| {
+            *attempt_partial
+                .lock()
+                .expect("transcription partial-result mutex poisoned") = Some(result.clone());
+            attempt_downstream(result);
+        });
         let attempt = tokio::time::timeout(
             STANDARD_ATTEMPT_TIMEOUT,
             execute_standard_window(
@@ -280,7 +293,7 @@ fn execute_standard_window_resilient<'a>(
                 window,
                 config,
                 cancellation,
-                Arc::clone(&on_timed_window),
+                attempt_callback,
             ),
         )
         .await;
@@ -339,9 +352,29 @@ fn execute_standard_window_resilient<'a>(
             on_timed_window(result.clone());
             Ok(result)
         } else {
-            Err(WorkerError::Internal(format!(
-                "transcription {split_reason} persisted below the minimum retry window"
-            )))
+            // A bounded retry may still encounter repetitive music that never reaches a
+            // provider stop condition. Preserve any timestamped words already accepted;
+            // otherwise this subdivision truthfully contributes no speech. Failing the
+            // parent would discard valid subtitles from every other completed window.
+            let partial = latest_partial
+                .lock()
+                .expect("transcription partial-result mutex poisoned")
+                .clone()
+                .unwrap_or_else(|| StagedWindowResult {
+                    window_index: window.index,
+                    window: *window,
+                    words: Vec::new(),
+                });
+            crate::diagnostics::record(
+                "transcribe.window.bounded_recovery_finished",
+                &[
+                    ("window", window.index.to_string()),
+                    ("depth", depth.to_string()),
+                    ("reason", split_reason.to_owned()),
+                    ("words", partial.words.len().to_string()),
+                ],
+            );
+            Ok(partial)
         }
     })
 }
