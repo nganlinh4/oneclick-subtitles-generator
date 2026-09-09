@@ -38,7 +38,6 @@ withScenarioLeases(({
             return staged;
           },
         });
-        if (suppliedMedia) process.env.OSG_E2E_CUSTOM_GEMINI_MEDIA = '1';
         return runScenarioProcesses({
           label,
           root,
@@ -53,7 +52,6 @@ withScenarioLeases(({
     });
     if (!succeeded) process.exitCode = 1;
   } finally {
-    delete process.env.OSG_E2E_CUSTOM_GEMINI_MEDIA;
     removeRunRoot(root, authorization);
     delete process.env.OSG_E2E_EVIDENCE_ATTEMPT;
   }

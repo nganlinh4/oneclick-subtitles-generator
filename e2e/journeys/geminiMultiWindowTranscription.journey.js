@@ -14,7 +14,6 @@ import { openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-multi-window-transcription';
-const CUSTOM_MEDIA = process.env.OSG_E2E_CUSTOM_GEMINI_MEDIA === '1';
 const EXPECTED_WINDOWS = FOUR_WINDOW_ASR_FIXTURE.expectedWindowCount;
 const terminalStates = new Set(['failed', 'cancelled', 'interrupted']);
 const milestone = (name, details = {}) => {
@@ -42,11 +41,8 @@ describe('Gemini transcribes a real four-window source', () => {
     milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
-    if (!CUSTOM_MEDIA) {
-      assert.ok(Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
-        <= FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds,
-      `the staged source has unexpected duration ${duration}`);
-    }
+    const customMedia = Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
+      > FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds;
     assert.equal(Math.ceil(duration / 60), EXPECTED_WINDOWS,
       `the customer reproduction must exercise four windows, got ${duration}s`);
     milestone('duration-verified', { duration });
@@ -178,7 +174,7 @@ describe('Gemini transcribes a real four-window source', () => {
       [0, 1, 2, 3],
       'parallel windows did not use four distinct ready credentials',
     );
-    if (CUSTOM_MEDIA) {
+    if (customMedia) {
       assert.equal(
         diagnostics.filter(({ event }) => event === 'transcribe.live.inactive_recovery_finished').length,
         EXPECTED_WINDOWS,
