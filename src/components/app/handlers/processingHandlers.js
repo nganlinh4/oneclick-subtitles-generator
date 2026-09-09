@@ -144,7 +144,8 @@ export const createProcessingHandlers = ({
         try {
           // Native Transcribe publishes its actual Rust-planned bounds through windowProgress.
           // The classic Gemini splitter balances windows and must not predict those bounds.
-          if (options.model !== 'gemini-3.5-transcribe' && options.maxDurationPerRequest && options.segment) {
+          if (!['gemini-3.5-transcribe', 'gemini-3.5-transcribe-live'].includes(options.model)
+            && options.maxDurationPerRequest && options.segment) {
             const { splitSegmentForParallelProcessing } = await import('../../../utils/parallelProcessingUtils');
             const subSegments = splitSegmentForParallelProcessing(options.segment, options.maxDurationPerRequest);
             if (subSegments && subSegments.length > 1) {

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -176,24 +177,34 @@ pub(crate) async fn execute_transcription_window(
     }
 
     if live_mode {
-        let live_result = execute_live_window(
+        let live_activity = Arc::new(AtomicBool::new(false));
+        let mut live = Box::pin(execute_live_window(
             client,
             &wav_bytes,
             window,
             config,
             cancellation,
             Arc::clone(&on_timed_window),
-        )
-        .await?;
-        if !live_result.words.is_empty() {
-            return Ok(live_result);
+            Arc::clone(&live_activity),
+        ));
+        let early_result = tokio::select! {
+            result = &mut live => Some(result?),
+            () = tokio::time::sleep(Duration::from_secs(5)) => None,
+        };
+        if let Some(result) = early_result {
+            if !result.words.is_empty() {
+                return Ok(result);
+            }
+        } else if live_activity.load(Ordering::Acquire) {
+            return live.await;
         }
+        drop(live);
 
-        // Live can validly close with no transcription for speech mixed into music even though
-        // Gemini Transcribe handles the same audio. An empty successful socket is therefore not a
-        // successful product result: recover this exact window through the timestamped transport.
+        // Live can remain completely silent for speech mixed into music even though Gemini
+        // Transcribe handles the same audio. Do not wait for the entire source-paced window before
+        // recovering. Any real interim/final activity keeps the genuine Live session authoritative.
         crate::diagnostics::record(
-            "transcribe.live.empty_recovery_started",
+            "transcribe.live.inactive_recovery_started",
             &[("window", window.index.to_string())],
         );
         let recovered = execute_standard_window(
@@ -206,7 +217,7 @@ pub(crate) async fn execute_transcription_window(
         )
         .await?;
         crate::diagnostics::record(
-            "transcribe.live.empty_recovery_finished",
+            "transcribe.live.inactive_recovery_finished",
             &[
                 ("window", window.index.to_string()),
                 ("words", recovered.words.len().to_string()),
@@ -285,6 +296,7 @@ async fn execute_live_window(
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
     on_timed_window: TimedWindowCallback,
+    activity: Arc<AtomicBool>,
 ) -> Result<StagedWindowResult, WorkerError> {
     let started = std::time::Instant::now();
     let mut finalized = Vec::new();
@@ -298,7 +310,11 @@ async fn execute_live_window(
     );
     client
         .transcribe_live(wav_bytes, &config.language_hints, cancellation, |event| {
-            if event.kind != LiveTranscriptionKind::Final || event.text.trim().is_empty() {
+            if event.text.trim().is_empty() {
+                return;
+            }
+            activity.store(true, Ordering::Release);
+            if event.kind != LiveTranscriptionKind::Final {
                 return;
             }
             let start_ms = event.start_ms.min(window_duration_ms.saturating_sub(1));

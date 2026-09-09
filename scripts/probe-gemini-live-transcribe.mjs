@@ -18,6 +18,11 @@ const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', media,
   ...durationArguments, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', 'pipe:1'],
 { windowsHide: true, maxBuffer: 20 * 1024 * 1024 });
 const key = readGeminiCredentialPool()[0].value;
+const languageArgument = process.argv.indexOf('--language');
+const languageCodes = languageArgument >= 0 ? [process.argv[languageArgument + 1]] : [];
+if (languageCodes.some(code => !/^[A-Za-z0-9-]{1,16}$/u.test(code))) {
+  throw new Error('--language requires a BCP-47 language code');
+}
 if (process.argv.includes('--rust')) {
   const header = Buffer.alloc(44);
   header.write('RIFF'); header.writeUInt32LE(pcm.length + 36, 4); header.write('WAVEfmt ', 8);
@@ -46,7 +51,7 @@ let firstFinalElapsedMs = null;
 let finalText = '';
 ws.onopen = () => ws.send(JSON.stringify({ setup: {
   model: 'models/gemini-3.5-transcribe-live', generationConfig: { responseModalities: ['TEXT'] },
-  inputAudioTranscription: { languageCodes: [], mode: 'SMART', ...(process.argv.includes('--word-timestamps') ? { wordTimestamp: true } : {}) },
+  inputAudioTranscription: { languageCodes, mode: 'SMART', ...(process.argv.includes('--word-timestamps') ? { wordTimestamp: true } : {}) },
 } }));
 ws.onmessage = async ({ data }) => {
   const raw = typeof data === 'string' ? data : await data.text();

@@ -73,7 +73,8 @@ impl WindowRange {
 /// - Windows are bounded between 30,000ms and 600,000ms.
 /// - Default target window duration is 600,000ms.
 /// - If the total duration is less than or equal to the target, a single window is returned.
-/// - The selected maximum is strict; a short final window never expands the preceding request.
+/// - The selected maximum is strict.
+/// - Multi-window ranges are balanced to within one millisecond; there is no undersized tail.
 pub(crate) fn plan_windows(
     range_start_ms: i64,
     range_end_ms: i64,
@@ -103,28 +104,26 @@ pub(crate) fn plan_windows(
         }]);
     }
 
-    let mut windows = Vec::new();
+    let window_count = total_duration / target_w + i64::from(total_duration % target_w != 0);
+    let window_count_usize = usize::try_from(window_count)
+        .expect("a positive millisecond range has a representable window count");
+    let base_duration = total_duration / window_count;
+    let remainder = total_duration % window_count;
+    let mut windows = Vec::with_capacity(window_count_usize);
     let mut current_start = range_start_ms;
-    let mut index = 0;
-
-    while current_start < range_end_ms {
-        let remaining = range_end_ms - current_start;
-        if remaining <= target_w {
-            windows.push(WindowRange {
-                index,
-                start_ms: current_start,
-                end_ms: range_end_ms,
-            });
-            break;
-        }
-
+    for index in 0..window_count {
+        let duration = base_duration + i64::from(index < remainder);
+        let end_ms = if index + 1 == window_count {
+            range_end_ms
+        } else {
+            current_start + duration
+        };
         windows.push(WindowRange {
-            index,
+            index: usize::try_from(index).expect("bounded window index fits usize"),
             start_ms: current_start,
-            end_ms: current_start + target_w,
+            end_ms,
         });
-        current_start += target_w;
-        index += 1;
+        current_start = end_ms;
     }
 
     Ok(windows)
@@ -152,28 +151,29 @@ mod tests {
     }
 
     #[test]
-    fn test_short_tail_respects_selected_maximum() {
+    fn test_non_multiple_ranges_are_balanced_without_a_short_tail() {
         let windows = plan_windows(0, 63_000, Some(60_000)).unwrap();
         assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0], WindowRange::new(0, 0, 60_000));
-        assert_eq!(windows[1], WindowRange::new(1, 60_000, 63_000));
+        assert_eq!(windows[0], WindowRange::new(0, 0, 31_500));
+        assert_eq!(windows[1], WindowRange::new(1, 31_500, 63_000));
 
-        // Total duration 123s: first window 60s, remainder 63s -> next window 60s would leave 3s (< 5s),
-        // so second window is 63s (<= 120s)
         let windows2 = plan_windows(0, 123_000, Some(60_000)).unwrap();
         assert_eq!(windows2.len(), 3);
-        assert_eq!(windows2[0], WindowRange::new(0, 0, 60_000));
-        assert_eq!(windows2[1], WindowRange::new(1, 60_000, 120_000));
-        assert_eq!(windows2[2], WindowRange::new(2, 120_000, 123_000));
+        assert_eq!(windows2[0], WindowRange::new(0, 0, 41_000));
+        assert_eq!(windows2[1], WindowRange::new(1, 41_000, 82_000));
+        assert_eq!(windows2[2], WindowRange::new(2, 82_000, 123_000));
     }
 
     #[test]
-    fn test_remainder_above_or_equal_5s_not_merged() {
-        // Total duration 66s (remainder 6s >= 5s): two windows [0, 60s], [60s, 66s]
+    fn test_balancing_distributes_rounding_without_gaps() {
         let windows = plan_windows(0, 66_000, Some(60_000)).unwrap();
         assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0], WindowRange::new(0, 0, 60_000));
-        assert_eq!(windows[1], WindowRange::new(1, 60_000, 66_000));
+        assert_eq!(windows[0], WindowRange::new(0, 0, 33_000));
+        assert_eq!(windows[1], WindowRange::new(1, 33_000, 66_000));
+
+        let odd = plan_windows(10, 63_011, Some(60_000)).unwrap();
+        assert_eq!(odd[0], WindowRange::new(0, 10, 31_511));
+        assert_eq!(odd[1], WindowRange::new(1, 31_511, 63_011));
     }
 
     #[test]
