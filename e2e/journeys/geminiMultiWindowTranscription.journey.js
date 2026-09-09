@@ -75,13 +75,13 @@ describe('Gemini transcribes a real four-window source', () => {
     await timeline.waitForDisplayed({ timeout: 60_000 });
     await timeline.click();
     await browser.keys(['\uE009', 'a', '\uE000']);
-    const method = await $('[data-transcription-method="new"]');
+    const method = await $('[data-transcription-method="gemini-transcribe-live"]');
     await method.waitForClickable({ timeout: 60_000 });
     await method.click();
     milestone('method-selected');
     const actuation = await actuateNativeRange({
       driver: browser,
-      selector: '#max-duration-slider',
+      selector: '#transcribe-window',
       value: 1,
       label: 'Gemini one-minute maximum request duration',
     });
@@ -89,7 +89,7 @@ describe('Gemini transcribes a real four-window source', () => {
     milestone('request-window-selected', { minutes: actuation.value });
     milestone('before-process', await browser.execute(() => ({
       actionDisabled: document.querySelector('[data-osg-action="process-subtitles"]')?.disabled ?? null,
-      selectedRange: document.querySelector('#max-duration-slider')?.value ?? null,
+      selectedRange: document.querySelector('#transcribe-window')?.value ?? null,
       modalText: (document.querySelector('.video-processing-modal')?.innerText || '').slice(0, 500),
     })));
     await clickControl('[data-osg-action="process-subtitles"]');

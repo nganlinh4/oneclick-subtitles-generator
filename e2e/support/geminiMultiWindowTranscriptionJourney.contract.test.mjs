@@ -10,8 +10,9 @@ const scenario = read('..', 'scenarios', 'geminiMultiWindowTranscription.mjs');
 test('the live four-window journey uses the reviewed real-speech fixture and public Gemini controls', () => {
   assert.match(scenario, /stagedFourWindowAsrVideo/u);
   assert.match(journey, /FOUR_WINDOW_ASR_FIXTURE/u);
-  assert.match(journey, /#max-duration-slider/u);
-  assert.match(journey, /data-transcription-method="new"/u);
+  assert.match(journey, /#transcribe-window/u);
+  assert.match(journey, /data-transcription-method="gemini-transcribe-live"/u);
+  assert.doesNotMatch(journey, /data-transcription-method="new"/u);
   assert.match(journey, /EXPECTED_WINDOWS/u);
   assert.match(journey, /processing-ranges/u);
   assert.match(journey, /streaming-update/u);
