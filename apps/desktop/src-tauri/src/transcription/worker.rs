@@ -260,6 +260,7 @@ pub(crate) async fn execute_transcription_window(
 
 const MAX_OUTPUT_SPLIT_DEPTH: u8 = 4;
 const MIN_OUTPUT_SPLIT_MS: i64 = 4_000;
+const STANDARD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn execute_standard_window_resilient<'a>(
     client: &'a GeminiClient,
@@ -271,69 +272,76 @@ fn execute_standard_window_resilient<'a>(
     depth: u8,
 ) -> BoxFuture<'a, Result<StagedWindowResult, WorkerError>> {
     Box::pin(async move {
-        match execute_standard_window(
-            client,
-            wav_bytes.clone(),
-            window,
-            config,
-            cancellation,
-            Arc::clone(&on_timed_window),
+        let attempt = tokio::time::timeout(
+            STANDARD_ATTEMPT_TIMEOUT,
+            execute_standard_window(
+                client,
+                wav_bytes.clone(),
+                window,
+                config,
+                cancellation,
+                Arc::clone(&on_timed_window),
+            ),
         )
-        .await
-        {
-            Ok(result) => Ok(result),
-            Err(error)
-                if error.is_output_limit()
-                    && depth < MAX_OUTPUT_SPLIT_DEPTH
-                    && window.duration_ms() >= MIN_OUTPUT_SPLIT_MS * 2 =>
-            {
-                let (left_wav, right_wav) = split_pcm_wav(&wav_bytes)?;
-                let midpoint = window.start_ms + window.duration_ms() / 2;
-                let left_window = WindowRange::new(window.index, window.start_ms, midpoint);
-                let right_window = WindowRange::new(window.index, midpoint, window.end_ms);
-                crate::diagnostics::record(
-                    "transcribe.window.output_limit_split",
-                    &[
-                        ("window", window.index.to_string()),
-                        ("depth", (depth + 1).to_string()),
-                        ("split_ms", midpoint.to_string()),
-                    ],
-                );
+        .await;
+        let split_reason = match attempt {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(error)) if error.is_output_limit() => "output_limit",
+            Ok(Err(error)) => return Err(error),
+            Err(_) => "attempt_timeout",
+        };
+        if depth < MAX_OUTPUT_SPLIT_DEPTH && window.duration_ms() >= MIN_OUTPUT_SPLIT_MS * 2 {
+            let (left_wav, right_wav) = split_pcm_wav(&wav_bytes)?;
+            let midpoint = window.start_ms + window.duration_ms() / 2;
+            let left_window = WindowRange::new(window.index, window.start_ms, midpoint);
+            let right_window = WindowRange::new(window.index, midpoint, window.end_ms);
+            crate::diagnostics::record(
+                "transcribe.window.output_limit_split",
+                &[
+                    ("window", window.index.to_string()),
+                    ("depth", (depth + 1).to_string()),
+                    ("reason", split_reason.to_owned()),
+                    ("split_ms", midpoint.to_string()),
+                ],
+            );
 
-                // A retry publishes only complete subdivision results. The original truncated
-                // prefix may already be visible, but the final aggregate replaces it atomically.
-                let no_op: TimedWindowCallback = Arc::new(|_| {});
-                let left = execute_standard_window_resilient(
-                    client,
-                    left_wav,
-                    &left_window,
-                    config,
-                    cancellation,
-                    Arc::clone(&no_op),
-                    depth + 1,
-                )
-                .await?;
-                let right = execute_standard_window_resilient(
-                    client,
-                    right_wav,
-                    &right_window,
-                    config,
-                    cancellation,
-                    no_op,
-                    depth + 1,
-                )
-                .await?;
-                let mut words = left.words;
-                words.extend(right.words);
-                let result = StagedWindowResult {
-                    window_index: window.index,
-                    window: *window,
-                    words,
-                };
-                on_timed_window(result.clone());
-                Ok(result)
-            }
-            Err(error) => Err(error),
+            // A retry publishes only complete subdivision results. The original truncated
+            // prefix may already be visible, but the final aggregate replaces it atomically.
+            let no_op: TimedWindowCallback = Arc::new(|_| {});
+            let left = execute_standard_window_resilient(
+                client,
+                left_wav,
+                &left_window,
+                config,
+                cancellation,
+                Arc::clone(&no_op),
+                depth + 1,
+            );
+            let right = execute_standard_window_resilient(
+                client,
+                right_wav,
+                &right_window,
+                config,
+                cancellation,
+                no_op,
+                depth + 1,
+            );
+            let (left, right) = tokio::join!(left, right);
+            let left = left?;
+            let right = right?;
+            let mut words = left.words;
+            words.extend(right.words);
+            let result = StagedWindowResult {
+                window_index: window.index,
+                window: *window,
+                words,
+            };
+            on_timed_window(result.clone());
+            Ok(result)
+        } else {
+            Err(WorkerError::Internal(format!(
+                "transcription {split_reason} persisted below the minimum retry window"
+            )))
         }
     })
 }
