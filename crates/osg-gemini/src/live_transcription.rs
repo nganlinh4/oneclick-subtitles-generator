@@ -23,12 +23,11 @@ const MAX_PCM_BYTES: usize = 16_000 * 2 * 60 * 10;
 // A connection is capped at about ten minutes. Reserve headroom for setup, finalization, and
 // provider jitter; one user-visible window may therefore use more than one sequential session.
 const MAX_SESSION_PCM_BYTES: usize = 16_000 * 2 * 60 * 8;
-// Prerecorded media is packet-paced at 4x without time-stretching or resampling its samples. A
-// cross-language/noise/two-speaker benchmark plus a 90-second overlapping-speaker YouTube sample
-// produced byte-identical final text through 4x. Higher rates showed diminishing or negative
-// first-result latency and coalesced provider finalization boundaries. The source clock remains
-// derived from PCM bytes, never wall time.
-const PACKET_PACING_MS: u64 = 25;
+// Prerecorded media is packet-paced at 2x without time-stretching or resampling its samples. Keep
+// this conservative ceiling until accelerated pacing is proven through the real multi-window app
+// path, not only isolated provider probes. The source clock remains derived from PCM bytes, never
+// wall time.
+const PACKET_PACING_MS: u64 = 50;
 fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }

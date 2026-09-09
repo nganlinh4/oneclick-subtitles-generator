@@ -176,17 +176,73 @@ pub(crate) async fn execute_transcription_window(
     }
 
     if live_mode {
-        return execute_live_window(
+        let live_result = execute_live_window(
             client,
             &wav_bytes,
             window,
             config,
             cancellation,
+            Arc::clone(&on_timed_window),
+        )
+        .await?;
+        if !live_result.words.is_empty() {
+            return Ok(live_result);
+        }
+
+        // Live can validly close with no transcription for speech mixed into music even though
+        // Gemini Transcribe handles the same audio. An empty successful socket is therefore not a
+        // successful product result: recover this exact window through the timestamped transport.
+        crate::diagnostics::record(
+            "transcribe.live.empty_recovery_started",
+            &[("window", window.index.to_string())],
+        );
+        let recovered = execute_standard_window(
+            client,
+            wav_bytes,
+            window,
+            config,
+            cancellation,
             on_timed_window,
         )
-        .await;
+        .await?;
+        crate::diagnostics::record(
+            "transcribe.live.empty_recovery_finished",
+            &[
+                ("window", window.index.to_string()),
+                ("words", recovered.words.len().to_string()),
+                (
+                    "outcome",
+                    if recovered.words.is_empty() {
+                        "empty"
+                    } else {
+                        "ok"
+                    }
+                    .to_owned(),
+                ),
+            ],
+        );
+        return Ok(recovered);
     }
 
+    execute_standard_window(
+        client,
+        wav_bytes,
+        window,
+        config,
+        cancellation,
+        on_timed_window,
+    )
+    .await
+}
+
+async fn execute_standard_window(
+    client: &GeminiClient,
+    wav_bytes: Vec<u8>,
+    window: &WindowRange,
+    config: &AudioTranscriptionConfig,
+    cancellation: &CancellationToken,
+    on_timed_window: TimedWindowCallback,
+) -> Result<StagedWindowResult, WorkerError> {
     // Regular Gemini Transcribe owns a distinct inline-media transport and word timestamps.
     let inline_media = InlineMedia::new("audio/wav", wav_bytes)?;
     let request =
