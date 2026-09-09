@@ -617,6 +617,7 @@ pub(crate) struct WireTranscribeRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WireTranscribeGenerationConfig {
+    max_output_tokens: u32,
     audio_transcription_config: AudioTranscriptionConfig,
 }
 
@@ -644,6 +645,11 @@ pub(crate) fn build_transcribe_payload(request: &TranscribeRequest) -> WireTrans
             parts: vec![part],
         }],
         generation_config: WireTranscribeGenerationConfig {
+            // The provider's model-dependent default is too small for dense word annotations: a
+            // sub-minute song can otherwise terminate with MAX_TOKENS after returning valid words.
+            // Pin the documented model ceiling so completion is governed by the requested audio
+            // window, not an opaque server default.
+            max_output_tokens: request.model.output_token_limit(),
             audio_transcription_config: request.config.clone(),
         },
     }
@@ -879,6 +885,7 @@ mod tests {
         let json = serde_json::to_value(&payload).unwrap();
         let asr_config = &json["generationConfig"]["audioTranscriptionConfig"];
 
+        assert_eq!(json["generationConfig"]["maxOutputTokens"], 32_768);
         assert_eq!(asr_config["wordTimestamp"], true);
         assert_eq!(asr_config["diarization"], true);
         assert_eq!(asr_config["languageCodes"], serde_json::json!(["en", "ko"]));

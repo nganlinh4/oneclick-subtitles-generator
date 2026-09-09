@@ -553,6 +553,7 @@ async fn transcribe_wire_shape_strict_separation() {
     assert!(parts[0]["text"].is_null());
 
     let gen_config = &body["generationConfig"];
+    assert_eq!(gen_config["maxOutputTokens"], 32_768);
     let asr_config = &gen_config["audioTranscriptionConfig"];
     assert_eq!(asr_config["wordTimestamp"], true);
     assert_eq!(asr_config["diarization"], true);

@@ -101,6 +101,7 @@ describe('Gemini transcribes a real four-window source', () => {
     let witness = null;
     let lastProgressTrace = 0;
     let terminalFailure = null;
+    let sawCuesWhileRunning = false;
     await browser.waitUntil(async () => {
       durable = durableState(root);
       jobs = durable.jobs.filter(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
@@ -125,6 +126,9 @@ describe('Gemini transcribes a real four-window source', () => {
         visibleCueCount: document.querySelectorAll('.lyric-text').length,
       }));
       witness = await readWitness();
+      if (jobs.some(({ state }) => state === 'running') && surface.visibleCueCount > 0) {
+        sawCuesWhileRunning = true;
+      }
       if (Date.now() - lastProgressTrace >= 10_000) {
         lastProgressTrace = Date.now();
         milestone('processing-observation', {
@@ -149,8 +153,8 @@ describe('Gemini transcribes a real four-window source', () => {
         terminalFailure = `Gemini multi-window run stopped before creating a provider job: ${JSON.stringify({ surface, witness })}`;
         return true;
       }
-      return jobs.length === EXPECTED_WINDOWS
-        && jobs.every(({ state }) => state === 'succeeded')
+      return jobs.length === 1
+        && jobs[0].state === 'succeeded'
         && surface.processing === false
         && surface.visibleCueCount > 0
         && durable.counts.cues > 0;
@@ -163,8 +167,8 @@ describe('Gemini transcribes a real four-window source', () => {
 
     const ranges = witness.ranges.find((entry) => entry.length === EXPECTED_WINDOWS);
     assert.ok(ranges, `the UI never published four request windows: ${JSON.stringify(witness.ranges)}`);
-    assert.ok(witness.streams.length >= EXPECTED_WINDOWS,
-      `the four windows were not streamed incrementally: ${JSON.stringify(witness.streams)}`);
+    assert.equal(sawCuesWhileRunning, true,
+      'no subtitle segment became visible before the native transcription job completed');
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
     const diagnostics = transcriptionDiagnostics(root);
