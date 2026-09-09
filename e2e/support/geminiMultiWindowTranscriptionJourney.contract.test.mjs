@@ -15,7 +15,7 @@ test('the sole Live success journey uses real media, the public controls and obs
   assert.doesNotMatch(journey, /data-transcription-method="new"/u);
   assert.match(journey, /EXPECTED_WINDOWS/u);
   assert.match(journey, /processing-ranges/u);
-  assert.match(journey, /streaming-update/u);
+  assert.doesNotMatch(journey, /streaming-update/u);
   assert.match(journey, /transcribe\.live\.first_final/u);
   assert.match(journey, /sawCuesWhileRunning/u);
   assert.match(journey, /durable\.cues/u);

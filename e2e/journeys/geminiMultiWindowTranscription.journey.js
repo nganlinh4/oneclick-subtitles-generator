@@ -21,7 +21,7 @@ const milestone = (name, details = {}) => {
 };
 
 const readWitness = () => browser.execute(() => JSON.parse(JSON.stringify(
-  window.__OSG_GEMINI_WINDOWS__ ?? { ranges: [], streams: [], errors: [] },
+  window.__OSG_GEMINI_WINDOWS__ ?? { ranges: [], errors: [] },
 )));
 
 const transcriptionDiagnostics = (root) => readFileSync(join(root, 'logs', 'osg.log'), 'utf8')
@@ -49,18 +49,12 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     milestone('duration-verified', { duration });
 
     await browser.execute(() => {
-      const ledger = { ranges: [], streams: [], errors: [] };
+      const ledger = { ranges: [], errors: [] };
       window.__OSG_GEMINI_WINDOWS__ = ledger;
       window.addEventListener('processing-ranges', (event) => {
         const ranges = event.detail?.ranges;
         if (Array.isArray(ranges) && ledger.ranges.length < 16) {
           ledger.ranges.push(ranges.map(({ start, end }) => ({ start, end })));
-        }
-      });
-      window.addEventListener('streaming-update', (event) => {
-        const rows = event.detail?.subtitles;
-        if (Array.isArray(rows) && ledger.streams.length < 64) {
-          ledger.streams.push({ count: rows.length, segment: event.detail?.segment ?? null });
         }
       });
       window.addEventListener('unhandledrejection', (event) => {
@@ -145,7 +139,6 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
           errorToasts: surface.errorToasts,
           visibleCueCount: surface.visibleCueCount,
           publishedRangeShapes: witness.ranges.map((ranges) => ranges.length),
-          streamPublications: witness.streams.length,
           runtimeErrors: witness.errors,
         });
       }
@@ -153,7 +146,7 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
         terminalFailure = `Gemini multi-window run terminated: ${JSON.stringify({ jobs, surface, witness })}`;
         return true;
       }
-      if (surface.processing === false && jobs.length === 0 && witness.streams.length === 0) {
+      if (surface.processing === false && jobs.length === 0) {
         terminalFailure = `Gemini multi-window run stopped before creating a provider job: ${JSON.stringify({ surface, witness })}`;
         return true;
       }
@@ -208,7 +201,6 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       details: {
         durationSeconds: duration,
         requestWindowCount: ranges.length,
-        streamPublicationCount: witness.streams.length,
         cueCount: durable.counts.cues,
         firstCueElapsedMs,
         completionElapsedMs,
