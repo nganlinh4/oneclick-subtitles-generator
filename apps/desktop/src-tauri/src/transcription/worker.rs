@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use futures_util::future::BoxFuture;
 use osg_gemini::{
     AudioTranscriptionConfig, GeminiClient, InlineMedia, LiveTranscriptionKind,
     MediaInput as GeminiMediaInput, TranscribeRequest, TranscriptionStreamCompletion,
@@ -51,6 +52,15 @@ impl WorkerError {
             Self::Projection(_) => "projection",
             Self::Internal(_) => "internal",
         }
+    }
+
+    fn is_output_limit(&self) -> bool {
+        matches!(
+            self,
+            Self::Gemini(osg_gemini::Error::IncompleteTextOutput {
+                reason: "outputLimit"
+            })
+        )
     }
 }
 
@@ -207,13 +217,14 @@ pub(crate) async fn execute_transcription_window(
             "transcribe.live.inactive_recovery_started",
             &[("window", window.index.to_string())],
         );
-        let recovered = execute_standard_window(
+        let recovered = execute_standard_window_resilient(
             client,
             wav_bytes,
             window,
             config,
             cancellation,
-            on_timed_window,
+            Arc::clone(&on_timed_window),
+            0,
         )
         .await?;
         crate::diagnostics::record(
@@ -235,15 +246,154 @@ pub(crate) async fn execute_transcription_window(
         return Ok(recovered);
     }
 
-    execute_standard_window(
+    execute_standard_window_resilient(
         client,
         wav_bytes,
         window,
         config,
         cancellation,
         on_timed_window,
+        0,
     )
     .await
+}
+
+const MAX_OUTPUT_SPLIT_DEPTH: u8 = 4;
+const MIN_OUTPUT_SPLIT_MS: i64 = 4_000;
+
+fn execute_standard_window_resilient<'a>(
+    client: &'a GeminiClient,
+    wav_bytes: Vec<u8>,
+    window: &'a WindowRange,
+    config: &'a AudioTranscriptionConfig,
+    cancellation: &'a CancellationToken,
+    on_timed_window: TimedWindowCallback,
+    depth: u8,
+) -> BoxFuture<'a, Result<StagedWindowResult, WorkerError>> {
+    Box::pin(async move {
+        match execute_standard_window(
+            client,
+            wav_bytes.clone(),
+            window,
+            config,
+            cancellation,
+            Arc::clone(&on_timed_window),
+        )
+        .await
+        {
+            Ok(result) => Ok(result),
+            Err(error)
+                if error.is_output_limit()
+                    && depth < MAX_OUTPUT_SPLIT_DEPTH
+                    && window.duration_ms() >= MIN_OUTPUT_SPLIT_MS * 2 =>
+            {
+                let (left_wav, right_wav) = split_pcm_wav(&wav_bytes)?;
+                let midpoint = window.start_ms + window.duration_ms() / 2;
+                let left_window = WindowRange::new(window.index, window.start_ms, midpoint);
+                let right_window = WindowRange::new(window.index, midpoint, window.end_ms);
+                crate::diagnostics::record(
+                    "transcribe.window.output_limit_split",
+                    &[
+                        ("window", window.index.to_string()),
+                        ("depth", (depth + 1).to_string()),
+                        ("split_ms", midpoint.to_string()),
+                    ],
+                );
+
+                // A retry publishes only complete subdivision results. The original truncated
+                // prefix may already be visible, but the final aggregate replaces it atomically.
+                let no_op: TimedWindowCallback = Arc::new(|_| {});
+                let left = execute_standard_window_resilient(
+                    client,
+                    left_wav,
+                    &left_window,
+                    config,
+                    cancellation,
+                    Arc::clone(&no_op),
+                    depth + 1,
+                )
+                .await?;
+                let right = execute_standard_window_resilient(
+                    client,
+                    right_wav,
+                    &right_window,
+                    config,
+                    cancellation,
+                    no_op,
+                    depth + 1,
+                )
+                .await?;
+                let mut words = left.words;
+                words.extend(right.words);
+                let result = StagedWindowResult {
+                    window_index: window.index,
+                    window: *window,
+                    words,
+                };
+                on_timed_window(result.clone());
+                Ok(result)
+            }
+            Err(error) => Err(error),
+        }
+    })
+}
+
+fn split_pcm_wav(bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>), WorkerError> {
+    if bytes.len() < 44 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err(WorkerError::Internal(
+            "transcription retry received a malformed WAV".to_owned(),
+        ));
+    }
+    let mut cursor = 12_usize;
+    let mut data = None;
+    let mut block_align = None;
+    while cursor.checked_add(8).is_some_and(|end| end <= bytes.len()) {
+        let size = u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap()) as usize;
+        let payload = cursor + 8;
+        let end = payload
+            .checked_add(size)
+            .ok_or_else(|| WorkerError::Internal("WAV chunk size overflow".to_owned()))?;
+        if end > bytes.len() {
+            return Err(WorkerError::Internal(
+                "WAV chunk exceeds payload".to_owned(),
+            ));
+        }
+        if &bytes[cursor..cursor + 4] == b"fmt " && size >= 16 {
+            block_align = Some(u16::from_le_bytes(
+                bytes[payload + 12..payload + 14].try_into().unwrap(),
+            ) as usize);
+        }
+        if &bytes[cursor..cursor + 4] == b"data" {
+            data = Some((cursor, payload, end));
+            break;
+        }
+        cursor = end + (size & 1);
+    }
+    let (data_header, data_start, data_end) =
+        data.ok_or_else(|| WorkerError::Internal("WAV has no data chunk".to_owned()))?;
+    let align = block_align
+        .filter(|value| *value > 0)
+        .ok_or_else(|| WorkerError::Internal("WAV has no valid PCM block alignment".to_owned()))?;
+    let data_len = data_end - data_start;
+    let midpoint = (data_len / 2 / align) * align;
+    if midpoint == 0 || midpoint == data_len {
+        return Err(WorkerError::Internal(
+            "WAV is too short to subdivide".to_owned(),
+        ));
+    }
+    let build = |samples: &[u8]| {
+        let mut wav = bytes[..data_start].to_vec();
+        wav.extend_from_slice(samples);
+        let riff_size = u32::try_from(wav.len() - 8).unwrap();
+        let sample_size = u32::try_from(samples.len()).unwrap();
+        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
+        wav[data_header + 4..data_header + 8].copy_from_slice(&sample_size.to_le_bytes());
+        wav
+    };
+    Ok((
+        build(&bytes[data_start..data_start + midpoint]),
+        build(&bytes[data_start + midpoint..data_end]),
+    ))
 }
 
 async fn execute_standard_window(
@@ -409,6 +559,33 @@ fn project_live_utterance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pcm_wav(samples: &[u8]) -> Vec<u8> {
+        let mut wav = Vec::with_capacity(44 + samples.len());
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36_u32 + samples.len() as u32).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
+        wav.extend_from_slice(&16_000_u32.to_le_bytes());
+        wav.extend_from_slice(&32_000_u32.to_le_bytes());
+        wav.extend_from_slice(&2_u16.to_le_bytes());
+        wav.extend_from_slice(&16_u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+        wav.extend_from_slice(samples);
+        wav
+    }
+
+    #[test]
+    fn output_limit_retry_splits_pcm_wav_without_losing_samples() {
+        let source = pcm_wav(&[0, 1, 2, 3, 4, 5, 6, 7]);
+        let (left, right) = split_pcm_wav(&source).expect("split");
+        assert_eq!(&left[44..], &[0, 1, 2, 3]);
+        assert_eq!(&right[44..], &[4, 5, 6, 7]);
+        assert_eq!(u32::from_le_bytes(left[4..8].try_into().unwrap()), 40);
+        assert_eq!(u32::from_le_bytes(left[40..44].try_into().unwrap()), 4);
+        assert_eq!(u32::from_le_bytes(right[4..8].try_into().unwrap()), 40);
+        assert_eq!(u32::from_le_bytes(right[40..44].try_into().unwrap()), 4);
+    }
 
     #[tokio::test]
     async fn test_worker_pool_bounded_concurrency() {
