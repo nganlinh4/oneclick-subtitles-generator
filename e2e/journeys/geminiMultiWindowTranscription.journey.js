@@ -36,8 +36,11 @@ describe('Gemini transcribes a real four-window source', () => {
     assert.ok(root, 'the Gemini multi-window journey requires an isolated root');
     await openProjectWithMedia();
     milestone('media-ready');
-    const enrollment = await enrollGeminiCredentials({ limit: 20 });
-    assert.equal(enrollment.enrolled, 20);
+    // Match the customer's normal configuration: one enrolled key serving every
+    // parallel window. A large synthetic key pool can hide permit starvation and
+    // retry serialization that the installed product actually experiences.
+    const enrollment = await enrollGeminiCredentials({ limit: 1 });
+    assert.equal(enrollment.enrolled, 1);
     milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
@@ -93,6 +96,7 @@ describe('Gemini transcribes a real four-window source', () => {
       modalText: (document.querySelector('.video-processing-modal')?.innerText || '').slice(0, 500),
     })));
     await clickControl('[data-osg-action="process-subtitles"]');
+    const processingStartedAt = Date.now();
     milestone('process-clicked');
 
     let jobs = [];
@@ -102,6 +106,7 @@ describe('Gemini transcribes a real four-window source', () => {
     let lastProgressTrace = 0;
     let terminalFailure = null;
     let sawCuesWhileRunning = false;
+    let firstCueElapsedMs = null;
     await browser.waitUntil(async () => {
       durable = durableState(root);
       jobs = durable.jobs.filter(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
@@ -128,6 +133,7 @@ describe('Gemini transcribes a real four-window source', () => {
       witness = await readWitness();
       if (jobs.some(({ state }) => state === 'running') && surface.visibleCueCount > 0) {
         sawCuesWhileRunning = true;
+        firstCueElapsedMs ??= Date.now() - processingStartedAt;
       }
       if (Date.now() - lastProgressTrace >= 10_000) {
         lastProgressTrace = Date.now();
@@ -159,7 +165,7 @@ describe('Gemini transcribes a real four-window source', () => {
         && surface.visibleCueCount > 0
         && durable.counts.cues > 0;
     }, {
-      timeout: 20 * 60_000,
+      timeout: 90_000,
       interval: 2_000,
       timeoutMsg: 'the four-window Gemini run never completed four succeeded jobs',
     });
@@ -169,15 +175,22 @@ describe('Gemini transcribes a real four-window source', () => {
     assert.ok(ranges, `the UI never published four request windows: ${JSON.stringify(witness.ranges)}`);
     assert.equal(sawCuesWhileRunning, true,
       'no subtitle segment became visible before the native transcription job completed');
+    assert.ok(firstCueElapsedMs !== null && firstCueElapsedMs <= 30_000,
+      `the first streamed subtitle took ${firstCueElapsedMs ?? 'unknown'} ms (maximum 30000 ms)`);
+    const completionElapsedMs = Date.now() - processingStartedAt;
+    assert.ok(completionElapsedMs <= 90_000,
+      `the four-window transcription took ${completionElapsedMs} ms (maximum 90000 ms)`);
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
     const diagnostics = transcriptionDiagnostics(root);
     const assignments = diagnostics.filter(({ event }) => event === 'transcribe.window.credential_assigned');
     assert.deepEqual(
-      assignments.map(({ credential_slot: slot }) => Number(slot)).sort((left, right) => left - right),
-      [0, 1, 2, 3],
-      'parallel windows did not use four distinct ready credentials',
+      assignments.map(({ credential_slot: slot }) => Number(slot)),
+      [0, 0, 0, 0],
+      'the customer reproduction did not run all four windows through its one enrolled credential',
     );
+    assert.ok(assignments.every(({ pool_size: size }) => Number(size) === 1),
+      'the customer reproduction unexpectedly used a synthetic multi-key credential pool');
     if (customMedia) {
       assert.equal(
         diagnostics.filter(({ event }) => event === 'transcribe.live.inactive_recovery_finished').length,
@@ -194,6 +207,8 @@ describe('Gemini transcribes a real four-window source', () => {
         requestWindowCount: ranges.length,
         streamPublicationCount: witness.streams.length,
         cueCount: durable.counts.cues,
+        firstCueElapsedMs,
+        completionElapsedMs,
       },
       focusSelector: '.timeline-container',
     });
