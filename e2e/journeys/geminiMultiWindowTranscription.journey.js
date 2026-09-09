@@ -189,7 +189,7 @@ describe('Gemini transcribes a real four-window source', () => {
       [0, 0, 0, 0],
       'the customer reproduction did not run all four windows through its one enrolled credential',
     );
-    assert.ok(assignments.every(({ pool_size: size }) => Number(size) === 1),
+    assert.ok(assignments.every(({ credential_pool_size: size }) => Number(size) === 1),
       'the customer reproduction unexpectedly used a synthetic multi-key credential pool');
     if (customMedia) {
       assert.equal(
