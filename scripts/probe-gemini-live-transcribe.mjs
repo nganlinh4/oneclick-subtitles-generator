@@ -5,6 +5,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { readGeminiCredentialPool } from '../e2e/support/liveProviderCredentials.js';
 import process from 'node:process';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const mediaArgument = process.argv.indexOf('--media');
 const media = mediaArgument >= 0
@@ -23,7 +25,9 @@ if (process.argv.includes('--rust')) {
   header.writeUInt32LE(16000, 24); header.writeUInt32LE(32000, 28);
   header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34);
   header.write('data', 36); header.writeUInt32LE(pcm.length, 40);
-  const executable = join(process.env.LOCALAPPDATA, 'OSG-Development/cache/cargo/dev/debug/examples/live_transcribe_smoke.exe');
+  const workspaceExecutable = join(process.cwd(), 'target/debug/examples/live_transcribe_smoke.exe');
+  const cachedExecutable = join(process.env.LOCALAPPDATA, 'OSG-Development/cache/cargo/dev/debug/examples/live_transcribe_smoke.exe');
+  const executable = existsSync(workspaceExecutable) ? workspaceExecutable : cachedExecutable;
   try {
     const output = execFileSync(executable, [], { input: Buffer.concat([header, pcm]),
       env: { ...process.env, GEMINI_API_KEY: key }, windowsHide: true, timeout: 60000,
@@ -38,6 +42,8 @@ const setup = new Promise((resolve) => { ready = resolve; });
 let finalCount = 0;
 let interimCount = 0;
 let streamStartedAt = 0;
+let firstFinalElapsedMs = null;
+let finalText = '';
 ws.onopen = () => ws.send(JSON.stringify({ setup: {
   model: 'models/gemini-3.5-transcribe-live', generationConfig: { responseModalities: ['TEXT'] },
   inputAudioTranscription: { languageCodes: [], mode: 'SMART', ...(process.argv.includes('--word-timestamps') ? { wordTimestamp: true } : {}) },
@@ -50,7 +56,11 @@ ws.onmessage = async ({ data }) => {
   if (event.error) { console.log(JSON.stringify({ providerErrorCode: event.error.code })); ready(false); }
   const content = event.serverContent;
   if (content) {
-    if (content.inputTranscription) finalCount++;
+    if (content.inputTranscription) {
+      finalCount++;
+      firstFinalElapsedMs ??= Date.now() - streamStartedAt;
+      finalText += content.inputTranscription.text ?? '';
+    }
     if (content.interimInputTranscription) interimCount++;
     console.log(JSON.stringify({ fields: Object.keys(content),
       elapsedMs: streamStartedAt ? Date.now() - streamStartedAt : null,
@@ -65,13 +75,18 @@ ws.onclose = ({ code }) => { console.log(JSON.stringify({ closeCode: code, final
 const connected = await Promise.race([setup, delay(15000, false)]);
 if (connected) {
   streamStartedAt = Date.now();
+  const rateArgument = process.argv.indexOf('--rate');
+  const rate = rateArgument >= 0 ? Number(process.argv[rateArgument + 1]) : 1;
+  if (!Number.isFinite(rate) || rate < 0.5 || rate > 2) throw new Error('--rate must be between 0.5 and 2');
   for (let offset = 0; offset < pcm.length && ws.readyState === WebSocket.OPEN; offset += 3200) {
     ws.send(JSON.stringify({ realtimeInput: { audio: { data: pcm.subarray(offset, offset + 3200).toString('base64'), mimeType: 'audio/pcm;rate=16000' } } }));
-    await delay(100);
+    await delay(100 / rate);
   }
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
   await delay(8000);
 }
 ws.close();
-console.log(JSON.stringify({ finalCount, interimCount }));
+console.log(JSON.stringify({ finalCount, interimCount, firstFinalElapsedMs,
+  finalTextBytes: Buffer.byteLength(finalText),
+  finalTextSha256: createHash('sha256').update(finalText).digest('hex') }));
 if (!finalCount) process.exitCode = 1;

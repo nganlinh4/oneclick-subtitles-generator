@@ -11,6 +11,7 @@ use super::projection::ProjectedWordResult;
 
 const NATURAL_PAUSE_THRESHOLD_MS: i64 = 1_000;
 const NATURAL_MAX_WORDS: usize = 12;
+const NATURAL_MIN_SENTENCE_WORDS: usize = 4;
 // Two conventional 42-character subtitle lines, not 42 characters for the entire cue.
 const NATURAL_MAX_CHARACTERS: usize = 84;
 
@@ -219,9 +220,9 @@ impl StagingBuffer {
             });
         };
 
-        // Group into readable subtitle phrases. A 300 ms threshold split normal intra-sentence
-        // hesitations into one-word cues; only a substantial pause or sentence boundary starts a
-        // new phrase, while size limits still keep every cue readable.
+        // Group into readable subtitle phrases. A one-second threshold preserves normal
+        // intra-sentence hesitation; only a substantial pause or sufficiently complete sentence
+        // starts a new phrase, while size limits still keep every cue readable.
         let mut current_cue_words: Vec<(WordId, &ProjectedWordResult)> = Vec::new();
 
         let flush_cue = |cue_words: &[(WordId, &ProjectedWordResult)],
@@ -306,7 +307,10 @@ impl StagingBuffer {
                 .is_some_and(|(_, previous)| ends_sentence(&previous.text));
             let size_split = current_cue_words.len() >= NATURAL_MAX_WORDS
                 || cue_character_count(&current_cue_words, &word.text) > NATURAL_MAX_CHARACTERS;
-            let phrase_split = current_cue_words.len() >= 2 && (pause_split || sentence_split);
+            // Live Transcribe may finalize very short clauses aggressively. Punctuation alone is
+            // not enough to freeze a one- or two-word subtitle; keep that provisional tail open.
+            let phrase_split = (current_cue_words.len() >= 2 && pause_split)
+                || (current_cue_words.len() >= NATURAL_MIN_SENTENCE_WORDS && sentence_split);
             if (speaker_changed || phrase_split || size_split) && !current_cue_words.is_empty() {
                 flush_cue(&current_cue_words, &mut projected_cues);
                 current_cue_words.clear();
@@ -871,6 +875,26 @@ mod tests {
         assert_eq!(promoted.projected_cues[0].text, "Hello there Again");
         assert_eq!(promoted.projected_cues[0].word_ids.len(), 3);
         assert_eq!(promoted.projected_cues[1].text, "later");
+    }
+
+    #[test]
+    fn natural_grouping_merges_tiny_finalized_sentences_into_a_readable_tail() {
+        let promoted = StagingBuffer::new().prepare_promotion(
+            TranscriptRevisionId::new(),
+            StagedWindowResult {
+                window_index: 0,
+                window: WindowRange::new(0, 0, 60_000),
+                words: vec![
+                    make_test_word("Yes.", 0, 300),
+                    make_test_word("I", 320, 450),
+                    make_test_word("agree.", 450, 800),
+                    make_test_word("Let's", 820, 1_050),
+                    make_test_word("continue.", 1_050, 1_500),
+                ],
+            },
+        );
+        assert_eq!(promoted.projected_cues.len(), 1);
+        assert_eq!(promoted.projected_cues[0].text, "Yes. I agree. Let's continue.");
     }
 
     #[test]
