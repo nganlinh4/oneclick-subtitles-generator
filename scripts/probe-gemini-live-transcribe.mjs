@@ -16,7 +16,7 @@ if (!media || media.startsWith('--')) throw new Error('--media requires a file p
 const durationArguments = mediaArgument >= 0 ? [] : ['-t', '12.48'];
 const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', media,
   ...durationArguments, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', 'pipe:1'],
-{ windowsHide: true, maxBuffer: 1024 * 1024 });
+{ windowsHide: true, maxBuffer: 20 * 1024 * 1024 });
 const key = readGeminiCredentialPool()[0].value;
 if (process.argv.includes('--rust')) {
   const header = Buffer.alloc(44);
@@ -77,7 +77,7 @@ if (connected) {
   streamStartedAt = Date.now();
   const rateArgument = process.argv.indexOf('--rate');
   const rate = rateArgument >= 0 ? Number(process.argv[rateArgument + 1]) : 1;
-  if (!Number.isFinite(rate) || rate < 0.5 || rate > 2) throw new Error('--rate must be between 0.5 and 2');
+  if (!Number.isFinite(rate) || rate < 0.5 || rate > 8) throw new Error('--rate must be between 0.5 and 8');
   for (let offset = 0; offset < pcm.length && ws.readyState === WebSocket.OPEN; offset += 3200) {
     ws.send(JSON.stringify({ realtimeInput: { audio: { data: pcm.subarray(offset, offset + 3200).toString('base64'), mimeType: 'audio/pcm;rate=16000' } } }));
     await delay(100 / rate);
