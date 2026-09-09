@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -37,6 +36,8 @@ pub(crate) enum WorkerError {
     Gemini(#[from] osg_gemini::Error),
     #[error("word projection error: {0}")]
     Projection(#[from] ProjectionError),
+    #[error("Gemini Live completed without producing a transcription")]
+    LiveEmpty,
     #[error("internal worker error: {0}")]
     Internal(String),
 }
@@ -50,6 +51,7 @@ impl WorkerError {
             Self::Io(_) => "io",
             Self::Gemini(_) => "gemini",
             Self::Projection(_) => "projection",
+            Self::LiveEmpty => "live_empty",
             Self::Internal(_) => "internal",
         }
     }
@@ -187,63 +189,20 @@ pub(crate) async fn execute_transcription_window(
     }
 
     if live_mode {
-        let live_activity = Arc::new(AtomicBool::new(false));
-        let mut live = Box::pin(execute_live_window(
+        let result = execute_live_window(
             client,
             &wav_bytes,
             window,
             config,
             cancellation,
             Arc::clone(&on_timed_window),
-            Arc::clone(&live_activity),
-        ));
-        let early_result = tokio::select! {
-            result = &mut live => Some(result?),
-            () = tokio::time::sleep(Duration::from_secs(5)) => None,
-        };
-        if let Some(result) = early_result {
-            if !result.words.is_empty() {
-                return Ok(result);
-            }
-        } else if live_activity.load(Ordering::Acquire) {
-            return live.await;
-        }
-        drop(live);
-
-        // Live can remain completely silent for speech mixed into music even though Gemini
-        // Transcribe handles the same audio. Do not wait for the entire source-paced window before
-        // recovering. Any real interim/final activity keeps the genuine Live session authoritative.
-        crate::diagnostics::record(
-            "transcribe.live.inactive_recovery_started",
-            &[("window", window.index.to_string())],
-        );
-        let recovered = execute_standard_window_resilient(
-            client,
-            wav_bytes,
-            window,
-            config,
-            cancellation,
-            Arc::clone(&on_timed_window),
-            0,
         )
         .await?;
-        crate::diagnostics::record(
-            "transcribe.live.inactive_recovery_finished",
-            &[
-                ("window", window.index.to_string()),
-                ("words", recovered.words.len().to_string()),
-                (
-                    "outcome",
-                    if recovered.words.is_empty() {
-                        "empty"
-                    } else {
-                        "ok"
-                    }
-                    .to_owned(),
-                ),
-            ],
-        );
-        return Ok(recovered);
+        return if result.words.is_empty() {
+            Err(WorkerError::LiveEmpty)
+        } else {
+            Ok(result)
+        };
     }
 
     execute_standard_window_resilient(
@@ -258,10 +217,9 @@ pub(crate) async fn execute_transcription_window(
     .await
 }
 
-// One retry subdivision bounds a one-key Live recovery to ten provider calls:
-// four Live sessions, four ordinary fallbacks, and at most two children for the
-// one pathological window. Recursive binary fan-out can exhaust the very key
-// needed to finish the job, especially when music makes a model repeat output.
+// One retry subdivision bounds recovery within the ordinary Transcribe model.
+// Recursive binary fan-out can exhaust the key needed to finish the job,
+// especially when music makes a model repeat output. Live never enters this path.
 const MAX_OUTPUT_SPLIT_DEPTH: u8 = 1;
 const MIN_OUTPUT_SPLIT_MS: i64 = 4_000;
 const STANDARD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -487,7 +445,6 @@ async fn execute_live_window(
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
     on_timed_window: TimedWindowCallback,
-    activity: Arc<AtomicBool>,
 ) -> Result<StagedWindowResult, WorkerError> {
     let started = std::time::Instant::now();
     let mut finalized = Vec::new();
@@ -504,7 +461,6 @@ async fn execute_live_window(
             if event.text.trim().is_empty() {
                 return;
             }
-            activity.store(true, Ordering::Release);
             if event.kind != LiveTranscriptionKind::Final {
                 return;
             }

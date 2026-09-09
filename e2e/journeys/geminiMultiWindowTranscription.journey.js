@@ -44,8 +44,6 @@ describe('Gemini transcribes a real four-window source', () => {
     milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
-    const customMedia = Math.abs(duration - FOUR_WINDOW_ASR_FIXTURE.durationSeconds)
-      > FOUR_WINDOW_ASR_FIXTURE.durationToleranceSeconds;
     assert.equal(Math.ceil(duration / 60), EXPECTED_WINDOWS,
       `the customer reproduction must exercise four windows, got ${duration}s`);
     milestone('duration-verified', { duration });
@@ -196,13 +194,11 @@ describe('Gemini transcribes a real four-window source', () => {
     );
     assert.ok(assignments.every(({ credential_pool_size: size }) => Number(size) === 1),
       'the customer reproduction unexpectedly used a synthetic multi-key credential pool');
-    if (customMedia) {
-      assert.equal(
-        diagnostics.filter(({ event }) => event === 'transcribe.live.inactive_recovery_finished').length,
-        EXPECTED_WINDOWS,
-        'the singing-video reproduction did not recover every silent Live window',
-      );
-    }
+    assert.equal(
+      diagnostics.some(({ event }) => event.includes('recovery')),
+      false,
+      'Gemini Live crossed into a hidden recovery or fallback path',
+    );
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-four-live-windows-complete',
