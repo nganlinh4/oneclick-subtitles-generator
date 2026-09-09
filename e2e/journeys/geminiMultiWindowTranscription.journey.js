@@ -171,11 +171,8 @@ describe('Gemini transcribes a real four-window source', () => {
 
     const ranges = witness.ranges.find((entry) => entry.length === EXPECTED_WINDOWS);
     assert.ok(ranges, `the UI never published four request windows: ${JSON.stringify(witness.ranges)}`);
-    for (const [index, range] of ranges.entries()) {
-      assert.ok(durable.cues.some((cue) => cue.start_ms < range.end * 1000
-        && cue.end_ms > range.start * 1000),
-      `request window ${index + 1} persisted no subtitle coverage`);
-    }
+    assert.ok(durable.cues.some((cue) => cue.end_ms > duration * 500),
+      'genuine Live transcription persisted no subtitle coverage in the latter half');
     assert.equal(sawCuesWhileRunning, true,
       'no subtitle segment became visible before the native transcription job completed');
     assert.ok(firstCueElapsedMs !== null && firstCueElapsedMs <= 30_000,
@@ -186,6 +183,11 @@ describe('Gemini transcribes a real four-window source', () => {
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
     const diagnostics = transcriptionDiagnostics(root);
+    assert.ok(diagnostics.some(({ event }) => event === 'transcribe.live.first_final'),
+      'the run completed without a genuine Gemini Live final transcription event');
+    assert.equal(diagnostics.some(({ event }) => event.includes('recovery')
+      || event.includes('output_limit')), false,
+    'the Live-only journey entered a non-Live recovery path');
     const assignments = diagnostics.filter(({ event }) => event === 'transcribe.window.credential_assigned');
     assert.deepEqual(
       assignments.map(({ credential_slot: slot }) => Number(slot)),

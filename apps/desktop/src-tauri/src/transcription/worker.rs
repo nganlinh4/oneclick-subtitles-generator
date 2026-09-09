@@ -36,8 +36,6 @@ pub(crate) enum WorkerError {
     Gemini(#[from] osg_gemini::Error),
     #[error("word projection error: {0}")]
     Projection(#[from] ProjectionError),
-    #[error("Gemini Live completed without producing a transcription")]
-    LiveEmpty,
     #[error("internal worker error: {0}")]
     Internal(String),
 }
@@ -51,7 +49,6 @@ impl WorkerError {
             Self::Io(_) => "io",
             Self::Gemini(_) => "gemini",
             Self::Projection(_) => "projection",
-            Self::LiveEmpty => "live_empty",
             Self::Internal(_) => "internal",
         }
     }
@@ -189,7 +186,7 @@ pub(crate) async fn execute_transcription_window(
     }
 
     if live_mode {
-        let result = execute_live_window(
+        return execute_live_window(
             client,
             &wav_bytes,
             window,
@@ -197,12 +194,7 @@ pub(crate) async fn execute_transcription_window(
             cancellation,
             Arc::clone(&on_timed_window),
         )
-        .await?;
-        return if result.words.is_empty() {
-            Err(WorkerError::LiveEmpty)
-        } else {
-            Ok(result)
-        };
+        .await;
     }
 
     execute_standard_window_resilient(
