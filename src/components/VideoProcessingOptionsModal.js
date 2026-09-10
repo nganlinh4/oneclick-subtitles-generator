@@ -1,5 +1,5 @@
 import ReactDOM from 'react-dom';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/VideoProcessingOptionsModal.css';
 import { formatTime } from '../utils/timeFormatter';
@@ -10,6 +10,7 @@ import VideoProcessingModalMethodSelector from './VideoProcessingModalMethodSele
 import VideoProcessingModalGeminiPanel from './VideoProcessingModalGeminiPanel';
 import useVideoProcessingState from './useVideoProcessingState';
 import TranscribeProcessingOptions from './TranscribeProcessingOptions';
+import { readTranscribeOptions, writeTranscribeOptions } from './videoProcessingPreferences';
 
 // Supported languages for Parakeet with alphabetical color groups.
 // Static data — defined at module scope so it isn't re-allocated on every render.
@@ -45,9 +46,13 @@ const VideoProcessingOptionsModal = ({
     onSelectedSegmentChange = null // Callback to update selectedSegment in parent
 }) => {
     const { t } = useTranslation();
-    const [transcribeOptions, setTranscribeOptions] = useState({
-        windowDurationSecs: 600, languageHints: [], diarization: false,
-    });
+    const [transcribeOptions, setTranscribeOptionsState] = useState(readTranscribeOptions);
+    const setTranscribeOptions = useCallback((nextOptions) => {
+        setTranscribeOptionsState((previousOptions) => {
+            const requested = typeof nextOptions === 'function' ? nextOptions(previousOptions) : nextOptions;
+            return writeTranscribeOptions(requested);
+        });
+    }, []);
 
     const {
         modalRef,

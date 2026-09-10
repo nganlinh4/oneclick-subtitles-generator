@@ -18,6 +18,7 @@ import {
     computeOutsideContext,
     getSelectedPromptText,
 } from './videoProcessingOptionsHelpers';
+import { readProcessingMethod, writeProcessingMethod } from './videoProcessingPreferences';
 
 /**
  * Owns all state, persistence, and derived values for the video processing modal.
@@ -49,10 +50,13 @@ const useVideoProcessingState = ({
     const engineStatus = useEngineStatus();
 
     // Processing method: 'new' (Files API), 'old' (inline), 'nvidia-parakeet'
-    const [method, setMethod] = useState(() => {
-        const saved = localStorage.getItem('video_processing_method');
-        return saved || 'new';
-    });
+    const [method, setMethodState] = useState(readProcessingMethod);
+    const setMethod = useCallback((nextMethod) => {
+        setMethodState((previousMethod) => {
+            const requested = typeof nextMethod === 'function' ? nextMethod(previousMethod) : nextMethod;
+            return writeProcessingMethod(requested);
+        });
+    }, []);
 
     // First-time method selection overlay
     const [showMethodSelection, setShowMethodSelection] = useState(() => {
