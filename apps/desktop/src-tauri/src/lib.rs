@@ -24,6 +24,7 @@ mod download;
 mod engine_packages;
 mod error;
 mod external_links;
+mod f5_models;
 mod font_readiness;
 mod font_repair;
 mod gemini;
@@ -84,6 +85,7 @@ use engine_packages::{
 };
 use error::{CommandError, CommandResult};
 use external_links::open_external_link;
+use f5_models::{F5ModelRuntime, f5_model_cancel, f5_model_install, f5_model_remove, f5_models_status};
 use font_readiness::FontReadiness;
 use font_repair::font_readiness_retry;
 use gemini::gemini_start;
@@ -369,6 +371,10 @@ pub fn run() {
             speech_packages_status,
             speech_package_install,
             speech_package_remove,
+            f5_models_status,
+            f5_model_install,
+            f5_model_cancel,
+            f5_model_remove,
             media_drop_subscribe,
             media_drop_unsubscribe,
             media_drop_discard,
@@ -539,6 +545,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         EnginePackageRuntime::new(engine_package_manager, database.clone(), Arc::clone(&jobs))?;
     let speech_package_runtime =
         SpeechPackageRuntime::new(speech_runtime.package_manager()?, Arc::clone(&jobs));
+    let f5_model_runtime = F5ModelRuntime::new(&local_data_dir.join("engines/speech/f5-models-v1"))?;
     let native_tool_runtime = NativeToolRuntime::new(
         &local_data_dir.join("native-tools/v1"),
         database.clone(),
@@ -561,6 +568,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(render_runtime);
     app.manage(engine_package_runtime);
     app.manage(speech_package_runtime);
+    app.manage(f5_model_runtime);
     app.manage(native_tool_runtime);
     app.manage(voice_sample_runtime);
     app.manage(speech_runtime);

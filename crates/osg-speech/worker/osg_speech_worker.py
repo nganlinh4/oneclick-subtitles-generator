@@ -71,13 +71,26 @@ _ORIGINAL_STDOUT = sys.stdout
 _ORIGINAL_STDERR = sys.stderr
 _PROTOCOL_OUT: BinaryIO = os.fdopen(os.dup(sys.stdout.buffer.fileno()), "wb", buffering=0)
 _OUTPUT_SINK: Any = None
-_F5_MODEL: Any = None
+_F5_MODEL: tuple[str, Any] | None = None
 _CHATTERBOX_EN: Any = None
 _CHATTERBOX_MULTI: Any = None
 _CHATTERBOX_VC: Any = None
 _PROVIDER_SECRET = os.environ.pop("OSG_SPEECH_PROVIDER_SECRET", "")
 _MODEL_ROOT_VALUE = os.environ.pop("OSG_SPEECH_MODEL_ROOT", "")
 _MODEL_ROOT: Path | None = None
+_F5_MODEL_STORE_VALUE = os.environ.pop("OSG_F5_MODEL_STORE", "")
+_F5_MODEL_STORE: Path | None = None
+
+F5_VARIANTS = {
+    "f5tts-spanish": ("F5TTS_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-russian": ("F5TTS_v1_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-portuguese-br": ("F5TTS_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-italian": ("F5TTS_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-vietnamese-vivoice": ("F5TTS_Base", "model.pt", "vocab.txt"),
+    "f5tts-german": ("F5TTS_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-finnish": ("F5TTS_Base", "model.safetensors", "vocab.txt"),
+    "f5tts-polish": ("F5TTS_Base", "model.pt", "vocab.txt"),
+}
 
 
 class WorkerFailure(Exception):
@@ -451,6 +464,24 @@ def _managed_model_root() -> Path | None:
     return candidate
 
 
+def _managed_f5_model_store() -> Path | None:
+    global _F5_MODEL_STORE
+    if not _F5_MODEL_STORE_VALUE:
+        return None
+    if _F5_MODEL_STORE is None:
+        try:
+            candidate = Path(_F5_MODEL_STORE_VALUE)
+            if not candidate.is_absolute():
+                raise OSError
+            candidate = candidate.resolve(strict=True)
+            if not candidate.is_dir():
+                raise OSError
+        except (OSError, RuntimeError):
+            raise WorkerFailure("model_unavailable") from None
+        _F5_MODEL_STORE = candidate
+    return _F5_MODEL_STORE
+
+
 def _managed_model_file(root: Path, relative: str) -> Path:
     try:
         candidate = (root / relative).resolve(strict=True)
@@ -473,9 +504,9 @@ def _managed_model_directory(root: Path, relative: str, required_files: tuple[st
     return candidate
 
 
-def _load_f5() -> Any:
+def _load_f5(model_id: str = "f5tts-v1-base") -> Any:
     global _F5_MODEL
-    if _F5_MODEL is None:
+    if _F5_MODEL is None or _F5_MODEL[0] != model_id:
         try:
             from f5_tts.api import F5TTS
             _require_keywords(F5TTS, {
@@ -487,26 +518,41 @@ def _load_f5() -> Any:
             })
             model_root = _managed_model_root()
             if model_root is None:
-                _F5_MODEL = F5TTS(device=_device())
+                if model_id != "f5tts-v1-base":
+                    raise WorkerFailure("model_unavailable")
+                instance = F5TTS(device=_device())
             else:
-                checkpoint = _managed_model_file(
-                    model_root, "F5TTS_v1_Base/model_1250000.safetensors",
-                )
-                vocabulary = _managed_model_file(model_root, "F5TTS_v1_Base/vocab.txt")
+                if model_id == "f5tts-v1-base":
+                    architecture = "F5TTS_v1_Base"
+                    checkpoint = _managed_model_file(model_root, "F5TTS_v1_Base/model_1250000.safetensors")
+                    vocabulary = _managed_model_file(model_root, "F5TTS_v1_Base/vocab.txt")
+                else:
+                    definition = F5_VARIANTS.get(model_id)
+                    store = _managed_f5_model_store()
+                    if definition is None or store is None:
+                        raise WorkerFailure("model_unavailable")
+                    architecture, checkpoint_name, vocabulary_name = definition
+                    variant_root = _managed_model_directory(store, model_id, (checkpoint_name, vocabulary_name, "receipt.json"))
+                    checkpoint = _managed_model_file(variant_root, checkpoint_name)
+                    vocabulary = _managed_model_file(variant_root, vocabulary_name)
                 vocoder = _managed_model_directory(
                     model_root, "vocos", ("config.yaml", "pytorch_model.bin"),
                 )
-                _F5_MODEL = F5TTS(
+                arguments = dict(
                     ckpt_file=str(checkpoint),
                     vocab_file=str(vocabulary),
                     vocoder_local_path=str(vocoder),
                     device=_device(),
                 )
+                if model_id != "f5tts-v1-base":
+                    arguments["model"] = architecture
+                instance = F5TTS(**arguments)
+            _F5_MODEL = (model_id, instance)
         except ImportError:
             raise WorkerFailure("model_unavailable") from None
         except Exception:
             raise WorkerFailure("model_unavailable") from None
-    return _F5_MODEL
+    return _F5_MODEL[1]
 
 
 def _load_chatterbox(multilingual: bool) -> Any:
@@ -840,7 +886,11 @@ def _synthesize_f5(text: str, settings: dict[str, Any], reference: Path, output:
         # release workers are offline and must receive host-transcribed text.
         raise WorkerFailure("model_unavailable")
     model = settings["model"]
-    if model not in (None, "f5tts-v1-base", "F5TTS_v1_Base"):
+    if model == "F5TTS_v1_Base":
+        model = "f5tts-v1-base"
+    if model is None:
+        model = "f5tts-v1-base"
+    if model != "f5tts-v1-base" and model not in F5_VARIANTS:
         raise WorkerFailure("model_unavailable")
     rate = _require_number(settings["speech_rate_milli"], 500, 2000) / 1000.0
     steps = _require_number(settings["nfe_steps"], 8, 64)
@@ -854,7 +904,7 @@ def _synthesize_f5(text: str, settings: dict[str, Any], reference: Path, output:
     if not isinstance(settings["remove_silence"], bool):
         raise WorkerFailure("invalid_request")
     _require_audio_duration(reference, 13)
-    instance = _load_f5()
+    instance = _load_f5(model)
     try:
         import torchaudio
         original_load = torchaudio.load

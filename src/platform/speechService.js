@@ -298,7 +298,11 @@ export const normalizeSpeechProfile = (profile) => {
       const model = profile.model === undefined || profile.model === null
         ? null
         : profile.model;
-      if (model !== null && model !== 'f5tts-v1-base' && model !== 'F5TTS_v1_Base') {
+      if (model !== null && !new Set([
+        'f5tts-v1-base', 'F5TTS_v1_Base', 'f5tts-spanish', 'f5tts-russian',
+        'f5tts-portuguese-br', 'f5tts-italian', 'f5tts-vietnamese-vivoice',
+        'f5tts-german', 'f5tts-finnish', 'f5tts-polish',
+      ]).has(model)) {
         throw invalidRequest();
       }
       const seed = profile.seed === undefined || profile.seed === null

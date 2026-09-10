@@ -22,6 +22,7 @@ pub struct WorkerProgram {
     executable: PathBuf,
     bootstrap: Option<PathBuf>,
     model_root: Option<PathBuf>,
+    model_store: Option<PathBuf>,
     origin: WorkerOrigin,
 }
 
@@ -56,6 +57,11 @@ impl WorkerProgram {
         )
     }
 
+    pub fn with_model_store(mut self, model_store: &Path) -> Result<Self> {
+        self.model_store = Some(canonical_directory(model_store)?);
+        Ok(self)
+    }
+
     #[must_use]
     pub fn origin(&self) -> WorkerOrigin {
         self.origin
@@ -73,6 +79,10 @@ impl WorkerProgram {
         self.model_root.as_deref()
     }
 
+    pub(crate) fn model_store(&self) -> Option<&Path> {
+        self.model_store.as_deref()
+    }
+
     pub(crate) fn revalidate(&self) -> Result<()> {
         if !self.executable.is_file() || !is_executable(&self.executable) {
             return Err(SpeechError::InvalidWorker("worker executable changed"));
@@ -88,6 +98,9 @@ impl WorkerProgram {
         if self.model_root.as_ref().is_some_and(|path| !path.is_dir()) {
             return Err(SpeechError::InvalidWorker("worker model root changed"));
         }
+        if self.model_store.as_ref().is_some_and(|path| !path.is_dir()) {
+            return Err(SpeechError::InvalidWorker("worker model store changed"));
+        }
         Ok(())
     }
 }
@@ -102,6 +115,10 @@ impl fmt::Debug for WorkerProgram {
             .field(
                 "model_root",
                 &self.model_root.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "model_store",
+                &self.model_store.as_ref().map(|_| "<redacted>"),
             )
             .finish()
     }
@@ -199,13 +216,17 @@ enum Candidate {
 }
 
 fn revalidate_program(program: &WorkerProgram) -> Result<WorkerProgram> {
-    resolve_program(
+    let resolved = resolve_program(
         &program.executable,
         program.bootstrap.as_deref(),
         program.model_root.as_deref(),
         program.origin,
         None,
-    )
+    )?;
+    match program.model_store.as_deref() {
+        Some(store) => resolved.with_model_store(store),
+        None => Ok(resolved),
+    }
 }
 
 fn resolve_program(
@@ -236,6 +257,7 @@ fn resolve_program(
         executable,
         bootstrap,
         model_root,
+        model_store: None,
         origin,
     })
 }

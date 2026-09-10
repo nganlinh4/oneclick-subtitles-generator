@@ -405,6 +405,7 @@ impl LazySpeechWorker {
             .env("NO_COLOR", "1")
             .env_remove("OSG_SPEECH_PROVIDER_SECRET")
             .env_remove("OSG_SPEECH_MODEL_ROOT")
+            .env_remove("OSG_F5_MODEL_STORE")
             .env_remove("GEMINI_API_KEY")
             .env_remove("GOOGLE_API_KEY")
             .env_remove("HF_HUB_OFFLINE")
@@ -423,6 +424,9 @@ impl LazySpeechWorker {
                 .env("HF_HUB_OFFLINE", "1")
                 .env("HF_DATASETS_OFFLINE", "1")
                 .env("TRANSFORMERS_OFFLINE", "1");
+        }
+        if let Some(model_store) = self.program.model_store() {
+            command.env("OSG_F5_MODEL_STORE", native_process_path(model_store)?);
         }
         let child = spawn_group(&mut command)?;
         let mut session = WorkerSession::new(child, cache_directory)?;

@@ -56,7 +56,7 @@ use crate::media_blob::MediaBlobStore;
 use crate::media_export::copy_export;
 use crate::state::DesktopState;
 
-const WORKER_BYTES: &[u8] =
+pub(crate) const WORKER_BYTES: &[u8] =
     include_bytes!("../../../../crates/osg-speech/worker/osg_speech_worker.py");
 const SPEECH_TIMEOUT: Duration = Duration::from_hours(2);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -87,6 +87,11 @@ const CHATTERBOX_LANGUAGES: &[&str] = &[
     "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko", "ms", "nl", "no",
     "pl", "pt", "ru", "sv", "sw", "tr", "zh",
 ];
+pub(crate) const F5_MODEL_IDS: &[&str] = &[
+    "f5tts-v1-base", "F5TTS_v1_Base", "f5tts-spanish", "f5tts-russian",
+    "f5tts-portuguese-br", "f5tts-italian", "f5tts-vietnamese-vivoice",
+    "f5tts-german", "f5tts-finnish", "f5tts-polish",
+];
 
 #[derive(Clone)]
 pub(crate) struct SpeechRuntime(Arc<SpeechRuntimeInner>);
@@ -96,6 +101,7 @@ pub(crate) struct SpeechPackageCoordinator(Weak<SpeechRuntimeInner>);
 
 struct SpeechRuntimeInner {
     install_root: PathBuf,
+    model_store: PathBuf,
     work_root: PathBuf,
     staging_authority: RuntimeStagingAuthority,
     resource_root: Option<PathBuf>,
@@ -123,6 +129,7 @@ struct WorkerPaths {
     python: PathBuf,
     bootstrap: PathBuf,
     model: Option<PathBuf>,
+    model_store: Option<PathBuf>,
 }
 
 struct CachedWorker {
@@ -156,6 +163,7 @@ impl SpeechRuntime {
         resource_root: Option<PathBuf>,
     ) -> io::Result<Self> {
         fs::create_dir_all(install_root.as_ref())?;
+        fs::create_dir_all(install_root.as_ref().join("f5-models-v1"))?;
         fs::create_dir_all(work_root.as_ref())?;
         let work_root = fs::canonicalize(work_root)?;
         let staging_authority =
@@ -170,11 +178,15 @@ impl SpeechRuntime {
         staging_authority: RuntimeStagingAuthority,
     ) -> io::Result<Self> {
         fs::create_dir_all(install_root.as_ref())?;
+        fs::create_dir_all(install_root.as_ref().join("f5-models-v1"))?;
         fs::create_dir_all(work_root.as_ref())?;
         let work_root = fs::canonicalize(work_root)?;
         staging_authority.reconcile_all()?;
+        let install_root = fs::canonicalize(install_root.as_ref())?;
+        let model_store = fs::canonicalize(install_root.join("f5-models-v1"))?;
         let runtime = Self(Arc::new(SpeechRuntimeInner {
-            install_root: fs::canonicalize(install_root)?,
+            install_root,
+            model_store,
             work_root,
             staging_authority,
             resource_root: canonical_directory(resource_root),
@@ -257,12 +269,17 @@ impl SpeechRuntime {
                         python: runtime.python().to_owned(),
                         bootstrap,
                         model: runtime.model().map(Path::to_owned),
+                        model_store: (backend == SpeechBackendRequest::F5Tts)
+                            .then(|| self.0.model_store.clone()),
                     };
-                    WorkerProgram::managed_bootstrap(
+                    let program = WorkerProgram::managed_bootstrap(
                         &paths.python,
                         &paths.bootstrap,
                         paths.model.as_deref(),
                     )?;
+                    if let Some(store) = paths.model_store.as_deref() {
+                        program.with_model_store(store)?;
+                    }
                     return Ok(RuntimeResolution {
                         paths,
                         managed_runtime: Some(Arc::new(runtime)),
@@ -440,7 +457,7 @@ impl SpeechRuntime {
             previous.worker.shutdown();
         }
         let paths = resolution.paths;
-        let program = if resolution.managed_runtime.is_some() {
+        let mut program = if resolution.managed_runtime.is_some() {
             WorkerProgram::managed_bootstrap(
                 &paths.python,
                 &paths.bootstrap,
@@ -449,6 +466,9 @@ impl SpeechRuntime {
         } else {
             WorkerProgram::bootstrap(&paths.python, &paths.bootstrap)?
         };
+        if let Some(store) = paths.model_store.as_deref() {
+            program = program.with_model_store(store)?;
+        }
         let worker = Arc::new(ManagedSpeechWorker {
             worker: LazySpeechWorker::new(program, backend.native())
                 .with_staging_authority(self.0.staging_authority.clone(), &self.0.work_root),
@@ -501,7 +521,7 @@ impl SpeechRuntime {
         self.enabled_worker_for_epoch(backend, expected_epoch)?;
         let resolution = self.resolve_runtime(backend)?;
         let paths = resolution.paths;
-        let program = if resolution.managed_runtime.is_some() {
+        let mut program = if resolution.managed_runtime.is_some() {
             WorkerProgram::managed_bootstrap(
                 &paths.python,
                 &paths.bootstrap,
@@ -510,6 +530,9 @@ impl SpeechRuntime {
         } else {
             WorkerProgram::bootstrap(&paths.python, &paths.bootstrap)?
         };
+        if let Some(store) = paths.model_store.as_deref() {
+            program = program.with_model_store(store)?;
+        }
         let worker = Arc::new(ManagedSpeechWorker {
             worker: LazySpeechWorker::new(program, backend.native())
                 .with_provider_secret(secret)
@@ -687,6 +710,14 @@ impl SpeechRuntime {
         Ok((self.status(backend), detached))
     }
 
+    pub(crate) fn reload_f5_models(&self) -> CommandResult<()> {
+        let (_, detached) = self.begin_shutdown(SpeechBackendRequest::F5Tts)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            for worker in detached { worker.shutdown(); }
+        });
+        Ok(())
+    }
+
     fn quiesce_package(&self, backend: SpeechPackageId) -> Result<(), PackageError> {
         self.shutdown(package_to_speech(backend))
             .map_err(|_| PackageError::StoreUnavailable)
@@ -744,6 +775,7 @@ impl fmt::Debug for WorkerPaths {
             .field("python", &"<redacted>")
             .field("bootstrap", &"<redacted>")
             .field("model", &self.model.as_ref().map(|_| "<redacted>"))
+            .field("model_store", &self.model_store.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -994,7 +1026,7 @@ impl SpeechProfileRequest {
             } => {
                 if model
                     .as_deref()
-                    .is_some_and(|model| !matches!(model, "f5tts-v1-base" | "F5TTS_v1_Base"))
+                    .is_some_and(|model| !F5_MODEL_IDS.contains(&model))
                 {
                     return Err(SpeechError::InvalidOption("unsupported F5 model ID"));
                 }
@@ -5875,6 +5907,22 @@ fn speech_failure_code_command_error(code: SpeechFailureCode) -> CommandError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn production_constructor_creates_the_optional_f5_model_store_before_canonicalizing_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let work = directory.path().join("work");
+        fs::create_dir_all(&work).unwrap();
+        let authority = RuntimeStagingAuthority::prepare(&work.join("authority")).unwrap();
+        let install = directory.path().join("fresh-install");
+        let runtime = SpeechRuntime::new_with_staging_authority(
+            &install,
+            &work,
+            None,
+            authority,
+        ).unwrap();
+        assert!(runtime.0.model_store.is_dir());
+    }
+
     fn standalone_runtime(directory: &TempDir) -> SpeechRuntime {
         SpeechRuntime::new(
             directory.path().join("standalone-install"),
@@ -6599,6 +6647,7 @@ mod tests {
                     python: executable,
                     bootstrap: marker.to_owned(),
                     model: None,
+                    model_store: None,
                 },
                 worker,
             },
@@ -7152,6 +7201,7 @@ mod tests {
                     python: executable,
                     bootstrap: directory.path().join("replaced-worker.py"),
                     model: None,
+                    model_store: None,
                 },
                 worker,
             },
@@ -7657,6 +7707,7 @@ mod tests {
             python: PathBuf::from("C:/private/python.exe"),
             bootstrap: PathBuf::from("C:/private/osg_speech_worker.py"),
             model: Some(PathBuf::from("C:/private/models")),
+            model_store: Some(PathBuf::from("C:/private/variants")),
         };
         let debug = format!("{paths:?}");
         assert!(!debug.contains("private"));

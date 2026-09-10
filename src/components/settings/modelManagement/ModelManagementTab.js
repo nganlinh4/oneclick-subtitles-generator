@@ -6,6 +6,7 @@ import {
   installNarrationModelPackage,
   removeNarrationModelPackage,
 } from '../../../services/modelService';
+import { cancelF5Model, getF5ModelsStatus, installF5Model, removeF5Model } from '../../../platform/f5ModelService';
 import { invalidateModelsCache } from '../../../services/modelAvailabilityService';
 import { showErrorToast, showSuccessToast } from '../../../utils/toastUtils';
 import '../../../styles/settings/modelManagement.css';
@@ -69,6 +70,7 @@ const stateCopy = (t, status) => {
 const ModelManagementTab = ({ activeTab }) => {
   const { t } = useTranslation();
   const [status, setStatus] = useState(null);
+  const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [launching, setLaunching] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -90,8 +92,12 @@ const ModelManagementTab = ({ activeTab }) => {
     refreshGenerationRef.current = generation;
     setLoading(true);
     try {
-      const next = await getNarrationModelPackageStatus();
-      if (mountedRef.current && refreshGenerationRef.current === generation) setStatus(next);
+      const [next, nextVariants] = await Promise.all([
+        getNarrationModelPackageStatus(), getF5ModelsStatus().catch(() => []),
+      ]);
+      if (mountedRef.current && refreshGenerationRef.current === generation) {
+        setStatus(next); setVariants(nextVariants);
+      }
       return next;
     } catch (error) {
       if (mountedRef.current && refreshGenerationRef.current === generation) {
@@ -276,6 +282,44 @@ const ModelManagementTab = ({ activeTab }) => {
           </article>
         </div>
       </div> : null}
+
+      <div className="model-management-section">
+        <div className="section-header">
+          <h4>{t('settings.modelManagement.languageModels', 'Language Models')}</h4>
+        </div>
+        <div className="model-cards-container">
+          {variants.map((variant) => {
+            const variantBusy = Boolean(variant.operation || launching === variant.id);
+            const progress = variant.operation?.basisPoints ?? 0;
+            const run = async (action) => {
+              setLaunching(variant.id);
+              try {
+                if (action === 'install') await installF5Model(variant.id, (event) => {
+                  if (event?.event === 'progress') setVariants((current) => current.map((item) => item.id === variant.id ? { ...item, operation: event.operation } : item));
+                });
+                else if (action === 'remove') await removeF5Model(variant.id);
+                else await cancelF5Model(variant.id);
+                invalidateModelsCache(); await refresh();
+              } catch { showErrorToast(t('settings.modelManagement.actionFailed', 'The narration model operation failed.')); }
+              finally { if (mountedRef.current) setLaunching(null); }
+            };
+            return <article className={`model-card ${variant.installed ? 'installed-model' : ''}`} data-model-package-id={variant.id} key={variant.id}>
+              <div className="model-card-content narration-model-package__body">
+                <h5 className="model-title">{variant.name}</h5>
+                <p className="model-author">{t('settings.modelManagement.by', 'by')} {variant.author}</p>
+                <div className="model-languages"><span className={`language-chip ${variant.language}`}>{variant.language.toUpperCase()}</span></div>
+                <span className="narration-model-package__state">{variant.installed ? t('settings.modelManagement.installed', 'Installed') : `${(variant.downloadBytes / 1_000_000_000).toFixed(2)} GB · ${variant.license}`}</span>
+                {variant.operation ? <div className="narration-model-package__progress"><div style={{ width: `${progress / 100}%` }} /></div> : null}
+              </div>
+              <div className="model-card-actions narration-model-package__actions">
+                {variant.operation ? <button type="button" className="cancel-download-btn" onClick={() => run('cancel')}>{t('settings.modelManagement.cancel', 'Cancel')}</button>
+                  : variant.installed ? <button type="button" className="delete-model-btn" onClick={() => run('remove')} disabled={variantBusy}>{t('settings.modelManagement.remove', 'Remove')}</button>
+                    : <button type="button" className="download-model-btn" onClick={() => run('install')} disabled={variantBusy || !status?.installed}>{t('settings.modelManagement.install', 'Install')}</button>}
+              </div>
+            </article>;
+          })}
+        </div>
+      </div>
     </section>
   );
 };

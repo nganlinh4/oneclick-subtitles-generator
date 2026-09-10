@@ -274,6 +274,10 @@ commands.allow = [
   "speech_packages_status",
   "speech_package_install",
   "speech_package_remove",
+  "f5_models_status",
+  "f5_model_install",
+  "f5_model_cancel",
+  "f5_model_remove",
 ]
 
 [[permission]]

@@ -20,8 +20,6 @@ import ManualLanguageSelectionModal from './ManualLanguageSelectionModal';
 import HelpIcon from '../../common/HelpIcon';
 import { showErrorToast } from '../../../utils/toastUtils';
 import useSubtitleLanguageDetection from '../hooks/useSubtitleLanguageDetection';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
-import { getSpeechStatus } from '../../../platform/speechService';
 import { F5_TTS_SUPPORTED_LANGUAGE_CODES } from '../../../platform/nativeNarrationCapabilities';
 import { handleGroupingToggle as handleGroupingToggleHandler } from '../utils/subtitleGroupingHandlers';
 import {
@@ -185,12 +183,6 @@ const SubtitleSourceSelection = ({
     const loadModels = async () => {
       setIsLoadingModels(true);
       try {
-        if (isDesktopRuntime()) {
-          const status = await getSpeechStatus();
-          const f5 = status.backends.find((backend) => backend.backend === 'f5Tts');
-          setAvailableModels(nativeF5ModelsForStatus(f5));
-          return;
-        }
         const { models } = await getAvailableModels();
         setAvailableModels(models || []);
       } catch (error) {

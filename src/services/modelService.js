@@ -4,6 +4,7 @@ import {
   installSpeechPackage,
   removeSpeechPackage,
 } from '../platform/speechPackageService';
+import { getF5ModelsStatus } from '../platform/f5ModelService';
 
 const PACKAGE_BACKEND = 'f5-tts';
 export const DEFAULT_NARRATION_MODEL_ID = 'f5tts-v1-base';
@@ -104,9 +105,22 @@ export const getNarrationModelPackageStatus = async () => (
 // The public narration-model inventory intentionally contains one entry. Arbitrary model URLs and
 // filesystem paths are not part of the desktop contract; the native delivery catalog owns bytes.
 export const getModels = async () => {
-  const entry = await getF5Package();
+  const [entry, variants] = await Promise.all([
+    getF5Package(), getF5ModelsStatus().catch(() => []),
+  ]);
+  const installedVariants = variants.filter(({ installed }) => installed).map((variant) => Object.freeze({
+    id: variant.id,
+    name: variant.name,
+    repo_id: variant.author,
+    source: 'verified-optional-model',
+    language: variant.language,
+    languages: variant.languages,
+    license: variant.license,
+    revision: variant.revision,
+    config: Object.freeze({ architecture: variant.architecture }),
+  }));
   return Object.freeze({
-    models: Object.freeze(entry.installed ? [modelFromPackage(entry)] : []),
+    models: Object.freeze(entry.installed ? [modelFromPackage(entry), ...installedVariants] : []),
     active_model: entry.installed ? DEFAULT_NARRATION_MODEL_ID : null,
     package_state: entry.state,
   });
