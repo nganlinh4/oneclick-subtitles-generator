@@ -21,6 +21,8 @@
   "closeMessage": "닫기",
   "geminiApiKey": "Gemini API 키",
   "geminiApiKeys": "Gemini API 키 목록",
+  "geminiKeyRotation": "준비된 키는 병렬 처리 또는 제공자 재시도 시 자동으로 순환합니다.",
+  "secureCredentialReference": "이 기기에 안전하게 저장됨",
   "geminiApiUsage": "Gemini API 사용량",
   "youtubeApiKey": "YouTube API 키",
   "geniusApiKey": "Genius API 키",

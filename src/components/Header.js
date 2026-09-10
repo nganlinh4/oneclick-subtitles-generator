@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/Header.css';
 import GeminiHeaderAnimation from './GeminiHeaderAnimation';
@@ -13,9 +13,50 @@ import {
 const Header = ({ onSettingsClick }) => {
   const { t } = useTranslation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [settingsOpenCount, setSettingsOpenCount] = useState(() => (
+    Number.parseInt(localStorage.getItem('settings_open_count') || '0', 10) || 0
+  ));
+  const [showFloatingSettings, setShowFloatingSettings] = useState(true);
+  const hideTimerRef = useRef(null);
 
   const [isVercelMode, setIsVercelMode] = useState(false); // Track if running via npm start (Vercel)
   const [startupModeDetected, setStartupModeDetected] = useState(false); // Track if startup mode detection is complete
+
+  const revealSettings = useCallback(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setShowFloatingSettings(true);
+  }, []);
+
+  useEffect(() => {
+    if (settingsOpenCount < 5) {
+      setShowFloatingSettings(true);
+      return undefined;
+    }
+    const scheduleHide = (delay = 350) => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = setTimeout(() => setShowFloatingSettings(false), delay);
+    };
+    const handlePointerMove = ({ clientX, clientY }) => {
+      if (clientY <= 120 && clientX >= window.innerWidth - 160) revealSettings();
+      else scheduleHide();
+    };
+    const handlePointerLeave = () => scheduleHide(500);
+    document.addEventListener('pointermove', handlePointerMove, { passive: true });
+    document.addEventListener('pointerleave', handlePointerLeave);
+    scheduleHide(5_000);
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerleave', handlePointerLeave);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [revealSettings, settingsOpenCount]);
+
+  const handleSettingsClick = () => {
+    const nextCount = settingsOpenCount + 1;
+    setSettingsOpenCount(nextCount);
+    localStorage.setItem('settings_open_count', String(nextCount));
+    onSettingsClick();
+  };
 
   // Detect startup mode (lite vs full version)
   useEffect(() => {
@@ -94,9 +135,10 @@ const Header = ({ onSettingsClick }) => {
 
 
       <button
-        className="settings-button"
+        className={`settings-button floating-settings ${showFloatingSettings ? 'floating-visible' : 'floating-hidden'}`}
         data-app-action="open-settings"
-        onClick={onSettingsClick}
+        onClick={handleSettingsClick}
+        onPointerEnter={revealSettings}
         aria-label={t('header.settingsAria')}
       >
         <img

@@ -23,6 +23,8 @@
   "closeMessage": "Đóng",
   "geminiApiKey": "Khóa API Gemini",
   "geminiApiKeys": "Các Khóa API Gemini",
+  "geminiKeyRotation": "Các khóa sẵn sàng sẽ tự động luân phiên khi xử lý song song hoặc cần thử lại với nhà cung cấp.",
+  "secureCredentialReference": "Được lưu an toàn trên thiết bị này",
   "geminiApiUsage": "Mức dùng API Gemini",
   "youtubeApiKey": "Khóa API YouTube",
   "geniusApiKey": "Khóa API Genius",

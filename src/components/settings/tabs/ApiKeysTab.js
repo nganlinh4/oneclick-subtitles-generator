@@ -152,6 +152,7 @@ const ApiKeysTab = ({
 
           <p className="api-key-help">
             {t('settings.geminiApiKeyHelp', 'Required for all functions. Get one at')}
+            {' '}
             <a
               href="https://aistudio.google.com/app/apikey"
               target="_blank"

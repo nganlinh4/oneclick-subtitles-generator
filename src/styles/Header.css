@@ -247,6 +247,52 @@
 
 }
 
+/* The original floating Material 3 action remains reachable while the long editor scrolls. */
+.settings-button.floating-settings {
+  position: fixed;
+  top: 12px;
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 2147483000;
+  min-width: 120px;
+  height: 48px;
+  padding: 12px 20px;
+  background: rgba(var(--md-surface-rgb), 0.95);
+  border-color: rgba(var(--md-outline-variant-rgb), 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: opacity 0.28s var(--md-easing-standard),
+              transform 0.4s var(--md-easing-emphasized),
+              filter 0.28s var(--md-easing-standard),
+              background-color 0.2s ease,
+              box-shadow 0.2s ease;
+}
+
+.settings-button.floating-settings img {
+  width: 20px;
+  height: 20px;
+}
+
+.settings-button.floating-settings.floating-visible {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+  pointer-events: auto;
+}
+
+.settings-button.floating-settings.floating-hidden {
+  opacity: 0;
+  transform: scale(0.8);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+.settings-button.floating-settings.floating-visible:hover {
+  background: rgba(var(--md-surface-rgb), 0.98);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  transform: scale(1.05);
+}
+
 @media (max-width: 600px) {
   .settings-button span {
     display: none;

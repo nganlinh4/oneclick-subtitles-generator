@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import Header from './Header';
 
 vi.mock('react-i18next', () => ({
@@ -26,16 +26,29 @@ test('does not expose the retired source-branch switch as an installed-app actio
   expect(screen.getByRole('button', { name: 'header.settingsAria' })).toBeEnabled();
 });
 
-test('keeps Settings in normal header layout without a scroll-owned floating state machine', () => {
+test('keeps the Material settings action floating and persists its discoverability count', () => {
   const onSettingsClick = vi.fn();
   const { container } = render(<Header onSettingsClick={onSettingsClick} />);
   const button = screen.getByRole('button', { name: 'header.settingsAria' });
 
   expect(button).toHaveClass('settings-button');
-  expect(button).not.toHaveClass('floating-settings');
+  expect(button).toHaveClass('floating-settings', 'floating-visible');
   expect(container.querySelector('.app-header > [data-app-action="open-settings"]')).toBe(button);
 
   fireEvent.click(button);
   expect(onSettingsClick).toHaveBeenCalledTimes(1);
-  expect(localStorage.getItem('settings_open_count')).toBeNull();
+  expect(localStorage.getItem('settings_open_count')).toBe('1');
+});
+
+test('hides an experienced-user action and reveals it in the top-right discovery zone', () => {
+  vi.useFakeTimers();
+  localStorage.setItem('settings_open_count', '5');
+  render(<Header onSettingsClick={vi.fn()} />);
+  const button = screen.getByRole('button', { name: 'header.settingsAria' });
+
+  act(() => vi.advanceTimersByTime(5_000));
+  expect(button).toHaveClass('floating-hidden');
+  fireEvent.pointerMove(document, { clientX: window.innerWidth - 1, clientY: 1 });
+  expect(button).toHaveClass('floating-visible');
+  vi.useRealTimers();
 });

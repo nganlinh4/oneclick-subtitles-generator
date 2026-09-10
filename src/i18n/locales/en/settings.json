@@ -20,6 +20,8 @@
   "closeMessage": "Close",
   "geminiApiKey": "Gemini API Key",
   "geminiApiKeys": "Gemini API Keys",
+  "geminiKeyRotation": "Ready keys rotate automatically when work is parallel or a provider retry is needed.",
+  "secureCredentialReference": "Stored securely on this device",
   "geminiApiUsage": "Gemini API usage",
   "youtubeApiKey": "YouTube API Key",
   "geniusApiKey": "Genius API Key",

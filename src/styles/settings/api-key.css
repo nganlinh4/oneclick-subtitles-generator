@@ -377,6 +377,14 @@
   border-radius: 6px;
 }
 
+.gemini-key-rotation-note {
+  grid-column: 1 / -1;
+  margin: 0 12px;
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-sys-typescale-body-small-font-size);
+  line-height: 1.4;
+}
+
 .gemini-key-item {
   border: 1px solid var(--md-outline-variant);
   border-radius: 32px;

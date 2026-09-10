@@ -149,6 +149,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
   };
 
   return {
+    nativeCredentialMode,
     geminiApiKeys,
     newGeminiKey,
     setNewGeminiKey,
@@ -165,6 +166,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
 
 // Presentational component rendering the multi-key management UI.
 const GeminiKeysManager = ({
+  nativeCredentialMode,
   geminiApiKeys,
   newGeminiKey,
   setNewGeminiKey,
@@ -197,7 +199,7 @@ const GeminiKeysManager = ({
               className={`gemini-key-item ${index === activeKeyIndex ? 'active' : ''} ${geminiApiKeys.length === 1 ? 'single-key' : ''}`}
             >
               <div className="gemini-key-content">
-                {visibleKeyIndices[index] ? (
+                {!nativeCredentialMode && visibleKeyIndices[index] ? (
                   <>
                     <div className="gemini-key-display">
                       <div className="gemini-key-text">
@@ -242,19 +244,25 @@ const GeminiKeysManager = ({
                   <div className="gemini-key-row">
                     <div
                       className="gemini-key-text gemini-key-masked"
-                      title={key}
+                      title={nativeCredentialMode
+                        ? t('settings.secureCredentialReference', 'Stored securely on this device')
+                        : key}
                     >
-                      {key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
+                      {nativeCredentialMode
+                        ? `Gemini API •••• ${key.slice(-4)}`
+                        : key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
                     </div>
                     <div className="gemini-key-actions">
-                      <button
-                        type="button"
-                        className="gemini-key-button"
-                        onClick={() => toggleKeyVisibility(index, setVisibleKeyIndices)}
-                        title={t('settings.showKey', 'Show key')}
-                      >
-                        {t('settings.show', 'Show')}
-                      </button>
+                      {!nativeCredentialMode && (
+                        <button
+                          type="button"
+                          className="gemini-key-button"
+                          onClick={() => toggleKeyVisibility(index, setVisibleKeyIndices)}
+                          title={t('settings.showKey', 'Show key')}
+                        >
+                          {t('settings.show', 'Show')}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={`gemini-key-button ${index === activeKeyIndex ? 'active' : ''}`}
@@ -281,6 +289,11 @@ const GeminiKeysManager = ({
 
             </div>
           ))}
+          {nativeCredentialMode && geminiApiKeys.length > 1 && (
+            <p className="gemini-key-rotation-note">
+              {t('settings.geminiKeyRotation', 'Ready keys rotate automatically when work is parallel or a provider retry is needed.')}
+            </p>
+          )}
         </div>
       ) : (
         <div className="no-keys-message">
