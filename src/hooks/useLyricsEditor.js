@@ -121,10 +121,10 @@ export const useLyricsEditor = (initialLyrics, onUpdateLyrics, { hasTranslation 
     if (Array.isArray(initialLyrics)) {
       observeExternalLyrics(initialLyrics);
       setLyrics(initialLyrics);
-      if (originalLyrics.length === 0) {
+      if (originalLyrics.length === 0 && initialLyrics.length > 0) {
         setOriginalLyrics(JSON.parse(JSON.stringify(initialLyrics)));
       }
-      if (savedLyrics.length === 0) {
+      if (savedLyrics.length === 0 && initialLyrics.length > 0) {
         setSavedLyrics(JSON.parse(JSON.stringify(initialLyrics)));
       }
       setIsAtOriginalState(JSON.stringify(initialLyrics) === JSON.stringify(originalLyrics));

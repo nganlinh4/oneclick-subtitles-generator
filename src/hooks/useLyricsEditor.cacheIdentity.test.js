@@ -54,6 +54,15 @@ vi.mock('./useLyricsEditorHelpers', () => ({
 
 const rows = (text) => [{ id: 1, start: 0, end: 1, text }];
 
+it('settles an empty project without recursively replacing empty baselines', async () => {
+  historyApi.observeExternalLyrics.mockClear();
+  const emptyRows = [];
+  const { result } = renderHook(() => useLyricsEditor(emptyRows, vi.fn()));
+
+  await waitFor(() => expect(result.current.lyrics).toEqual([]));
+  expect(historyApi.observeExternalLyrics).toHaveBeenCalledTimes(1);
+});
+
 it('does not repopulate reset/save baselines from the prior media while new rows hydrate', async () => {
   const mediaA = rows('Media A');
   const mediaB = rows('Media B');
