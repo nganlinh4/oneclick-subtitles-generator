@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/OutputContainer.css';
 import '../styles/narration/unifiedNarrationRedesign.css';
@@ -152,13 +152,11 @@ const OutputContainer = ({
     onSaveSubtitles: handleSaveSubtitles,
   });
 
-  const formatSubtitlesForLyricsDisplay = (subtitles) => {
-    return subtitles?.map(sub => ({
+  const displayLyrics = useMemo(() => subtitlesData?.map(sub => ({
       ...sub,
       startTime: sub.start,
       endTime: sub.end
-    })) || [];
-  };
+    })) || [], [subtitlesData]);
 
 
   // Background Image Generator functionality moved back to AppLayout
@@ -347,7 +345,7 @@ const OutputContainer = ({
             )}
             <LyricsDisplay
               key={videoSource || 'no-video-source'}
-              matchedLyrics={formatSubtitlesForLyricsDisplay(subtitlesData)}
+              matchedLyrics={displayLyrics}
               currentTime={currentTabIndex}
               onLyricClick={handleLyricClick}
               onUpdateLyrics={handleUpdateLyrics}
