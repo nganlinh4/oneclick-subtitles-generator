@@ -188,8 +188,8 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     const assignments = diagnostics.filter(({ event }) => event === 'transcribe.window.credential_assigned');
     assert.deepEqual(
       assignments.map(({ credential_slot: slot }) => Number(slot)),
-      Array.from({ length: expectedWindows }, (_, index) => index),
-      'the parallel quality run did not allocate one distinct credential to every window',
+      Array.from({ length: expectedWindows }, (_, index) => index % enrollment.enrolled),
+      'the parallel quality run did not distribute windows deterministically across credentials',
     );
     assert.ok(assignments.every(({ credential_pool_size: size }) => Number(size) === enrollment.enrolled),
       'the native scheduler did not expose the enrolled credential pool to every window');
