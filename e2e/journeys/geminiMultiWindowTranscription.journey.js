@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
-import { durableState } from '../support/database.js';
+import { durableState, durableTranscriptWords } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { FOUR_WINDOW_ASR_FIXTURE } from '../support/fourWindowAsrFixture.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
@@ -199,9 +199,15 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       'Gemini Live crossed into a hidden recovery or fallback path',
     );
     const generatedCuesPath = join(root, 'evidence', 'generated-cues.json');
+    const transcriptWords = durableTranscriptWords(root);
     writeFileSync(
       generatedCuesPath,
-      `${JSON.stringify({ schemaVersion: 1, durationSeconds: duration, cues: durable.cues }, null, 2)}\n`,
+      `${JSON.stringify({
+        schemaVersion: 2,
+        durationSeconds: duration,
+        cues: durable.cues,
+        words: transcriptWords,
+      }, null, 2)}\n`,
       'utf8',
     );
     copyWorkflowArtifact({

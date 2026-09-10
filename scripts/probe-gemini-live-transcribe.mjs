@@ -69,6 +69,7 @@ ws.onmessage = async ({ data }) => {
     if (content.interimInputTranscription) interimCount++;
     console.log(JSON.stringify({ fields: Object.keys(content),
       elapsedMs: streamStartedAt ? Date.now() - streamStartedAt : null,
+      finalFields: content.inputTranscription ? Object.keys(content.inputTranscription) : [],
       finalBytes: content.inputTranscription?.text?.length ?? 0,
       interimFields: content.interimInputTranscription ? Object.keys(content.interimInputTranscription) : [],
       interimBytes: content.interimInputTranscription?.text?.length ?? 0,

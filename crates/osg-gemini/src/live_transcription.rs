@@ -78,15 +78,17 @@ fn setup_message(language_hints: &[String]) -> Value {
 
 #[derive(Default)]
 struct LiveEventAccumulator {
-    active_start_ms: Option<u64>,
-    previous_final_end_ms: u64,
+    active_start: Option<u64>,
+    active_end: Option<u64>,
+    previous_final_end: u64,
 }
 
 impl LiveEventAccumulator {
     fn with_source_offset(source_offset_ms: u64) -> Self {
         Self {
-            active_start_ms: None,
-            previous_final_end_ms: source_offset_ms,
+            active_start: None,
+            active_end: None,
+            previous_final_end: source_offset_ms,
         }
     }
 
@@ -112,20 +114,37 @@ impl LiveEventAccumulator {
         if text.len() > LIMIT {
             return Err(Error::ResponseTooLarge { limit_bytes: LIMIT });
         }
-        let end_ms = source_position_ms.max(self.previous_final_end_ms + 1);
+        let observed_end_ms = source_position_ms.max(self.previous_final_end + 1);
+        let end_ms = match kind {
+            LiveTranscriptionKind::Interim => {
+                self.active_end = Some(observed_end_ms);
+                observed_end_ms
+            }
+            // A final message is emitted after the provider has finished recognizing the
+            // utterance. That network/VAD delay is not source audio and must not move subtitles
+            // later. The most recent interim is the last source-clock observation belonging to
+            // the utterance. Some very short utterances have no interim, so retain the receipt
+            // clock as the explicit fallback for that case.
+            LiveTranscriptionKind::Final => self
+                .active_end
+                .take()
+                .unwrap_or(observed_end_ms)
+                .max(self.previous_final_end + 1),
+        };
         let start_ms = match kind {
             LiveTranscriptionKind::Interim => *self
-                .active_start_ms
-                .get_or_insert_with(|| end_ms.saturating_sub(300).max(self.previous_final_end_ms)),
+                .active_start
+                .get_or_insert_with(|| end_ms.saturating_sub(300).max(self.previous_final_end)),
             LiveTranscriptionKind::Final => self
-                .active_start_ms
+                .active_start
                 .take()
-                .unwrap_or(self.previous_final_end_ms)
+                .unwrap_or(self.previous_final_end)
                 .min(end_ms.saturating_sub(1)),
         };
         if kind == LiveTranscriptionKind::Final {
-            self.active_start_ms = None;
-            self.previous_final_end_ms = end_ms;
+            self.active_start = None;
+            self.active_end = None;
+            self.previous_final_end = end_ms;
         }
         Ok(Some(LiveTranscriptionEvent {
             kind,
@@ -479,8 +498,37 @@ mod tests {
             .unwrap();
         assert_eq!(interim.kind, LiveTranscriptionKind::Interim);
         assert_eq!((interim.start_ms, interim.end_ms), (700, 1_000));
-        assert_eq!((first.start_ms, first.end_ms), (700, 1_400));
-        assert_eq!((second.start_ms, second.end_ms), (1_400, 2_000));
+        assert_eq!((first.start_ms, first.end_ms), (700, 1_000));
+        assert_eq!((second.start_ms, second.end_ms), (1_000, 2_000));
         assert_eq!(first.language_code.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn delayed_finalization_does_not_shift_the_audio_boundary() {
+        let mut state = LiveEventAccumulator::with_source_offset(60_000);
+        state
+            .observe(
+                &json!({"interimInputTranscription":{"text":"still speaking"}}),
+                64_500,
+            )
+            .unwrap();
+        let final_event = state
+            .observe(
+                &json!({"inputTranscription":{"text":"still speaking"}}),
+                66_200,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!((final_event.start_ms, final_event.end_ms), (64_200, 64_500));
+    }
+
+    #[test]
+    fn final_without_an_interim_uses_the_source_receipt_clock() {
+        let mut state = LiveEventAccumulator::with_source_offset(7_000);
+        let final_event = state
+            .observe(&json!({"inputTranscription":{"text":"yes"}}), 7_240)
+            .unwrap()
+            .unwrap();
+        assert_eq!((final_event.start_ms, final_event.end_ms), (7_000, 7_240));
     }
 }
