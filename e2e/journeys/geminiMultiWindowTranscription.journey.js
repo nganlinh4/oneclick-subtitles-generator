@@ -11,7 +11,7 @@ import { FOUR_WINDOW_ASR_FIXTURE } from '../support/fourWindowAsrFixture.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { actuateNativeRange } from '../support/nativeRange.js';
 import { openProjectWithMedia } from '../support/workflow.js';
-import { captureWorkflowStep } from '../support/workflowEvidence.js';
+import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'gemini-multi-window-transcription';
 const EXPECTED_WINDOWS = FOUR_WINDOW_ASR_FIXTURE.expectedWindowCount;
@@ -196,11 +196,18 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       false,
       'Gemini Live crossed into a hidden recovery or fallback path',
     );
+    const generatedCuesPath = join(root, 'evidence', 'generated-cues.json');
     writeFileSync(
-      join(root, 'evidence', 'generated-cues.json'),
+      generatedCuesPath,
       `${JSON.stringify({ schemaVersion: 1, durationSeconds: duration, cues: durable.cues }, null, 2)}\n`,
       'utf8',
     );
+    copyWorkflowArtifact({
+      workflow: WORKFLOW,
+      name: 'generated-cues',
+      source: generatedCuesPath,
+      description: 'Persisted Gemini Transcribe Live cues used by the transcript quality benchmark.',
+    });
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-four-live-windows-complete',
