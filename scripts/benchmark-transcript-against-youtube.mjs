@@ -24,13 +24,17 @@ let revision;
 let generated;
 if (generatedPath.toLocaleLowerCase('en-US').endsWith('.json')) {
   const evidence = JSON.parse(readFileSync(generatedPath, 'utf8'));
-  if (evidence.schemaVersion !== 1 || !Array.isArray(evidence.cues)) {
+  if (![1, 2].includes(evidence.schemaVersion) || !Array.isArray(evidence.cues)) {
     throw new Error('generated-cues evidence has an unsupported shape');
   }
   revision = { model: 'gemini-transcribe-live', durationMs: evidence.durationSeconds * 1000 };
-  generated = evidence.cues.flatMap(({ text, start_ms: startMs }) => (
-    tokens(text).map((word) => ({ text: word, startMs }))
-  ));
+  generated = evidence.schemaVersion === 2 && Array.isArray(evidence.words)
+    ? evidence.words.flatMap(({ text, startMs }) => (
+      tokens(text).map((word) => ({ text: word, startMs }))
+    ))
+    : evidence.cues.flatMap(({ text, start_ms: startMs }) => (
+      tokens(text).map((word) => ({ text: word, startMs }))
+    ));
 } else {
   const database = new DatabaseSync(generatedPath, { readOnly: true });
   revision = database.prepare(`
