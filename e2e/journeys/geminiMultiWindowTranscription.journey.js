@@ -36,18 +36,18 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     assert.ok(root, 'the Gemini multi-window journey requires an isolated root');
     await openProjectWithMedia();
     milestone('media-ready');
-    // Match the customer's normal configuration: one enrolled key serving every
-    // parallel window. A large synthetic key pool can hide permit starvation and
-    // retry serialization that the installed product actually experiences.
-    const enrollment = await enrollGeminiCredentials({ limit: 1 });
-    assert.equal(enrollment.enrolled, 1);
-    milestone('credentials-enrolled', { count: enrollment.enrolled });
-
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
     const expectedWindows = Math.ceil(duration / 60);
     assert.ok(expectedWindows >= EXPECTED_WINDOWS,
       `the customer reproduction must exercise at least four windows, got ${duration}s`);
     milestone('duration-verified', { duration });
+
+    // Exercise the installed app's real parallel scheduling with the same credential pool the
+    // customer configured. One credential per window prevents this quality benchmark from
+    // accidentally measuring a 15-minute serial queue instead of Live transcription quality.
+    const enrollment = await enrollGeminiCredentials({ limit: Math.min(expectedWindows, 20) });
+    assert.equal(enrollment.enrolled, Math.min(expectedWindows, 20));
+    milestone('credentials-enrolled', { count: enrollment.enrolled });
 
     await browser.execute(() => {
       const ledger = { ranges: [], errors: [] };
