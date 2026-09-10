@@ -22,12 +22,10 @@ const MAX_PCM_BYTES: usize = 16_000 * 2 * 60 * 10;
 // A connection is capped at about ten minutes. Reserve headroom for setup, finalization, and
 // provider jitter; one user-visible window may therefore use more than one sequential session.
 const MAX_SESSION_PCM_BYTES: usize = 16_000 * 2 * 60 * 8;
-// Prerecorded media is packet-paced at 2x without time-stretching or resampling its samples. Keep
-// this conservative ceiling until accelerated pacing is proven through the real multi-window app
-// path, not only isolated provider probes. The source clock remains derived from PCM bytes, never
-// wall time.
-const PACKET_PACING_MS: u64 = 50;
-const MANUAL_TURN_MS: u64 = 8_000;
+// Live Transcribe is a real-time streaming recognizer. A 3,200-byte PCM16/16-kHz/mono packet is
+// exactly 100 ms of source audio and must therefore be paced at 100 ms. Sending it at 2x measured
+// only 46.3% reference-word recall on a real 15-minute captioned video.
+const PACKET_PACING_MS: u64 = 100;
 fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
@@ -68,10 +66,9 @@ fn setup_message(language_hints: &[String]) -> Value {
     json!({"setup": {
         "model": "models/gemini-3.5-transcribe-live",
         "generationConfig": {"responseModalities": ["TEXT"]},
-        "inputAudioTranscription": {"languageCodes": language_hints, "mode": "SMART"},
-        "realtimeInputConfig": {"automaticActivityDetection": {
-            "disabled": true
-        }}
+        // Completeness is the product invariant; subtitle grouping and cleanup happen downstream.
+        // SMART intentionally removes disfluencies and therefore cannot be the source transcript.
+        "inputAudioTranscription": {"languageCodes": language_hints, "mode": "VERBATIM"}
     }})
 }
 
@@ -229,49 +226,12 @@ async fn transcribe_live_session(
     let send_audio = async move {
         let mut pacing = tokio::time::interval(Duration::from_millis(PACKET_PACING_MS));
         pacing.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        sender
-            .send(Message::Text(
-                json!({"realtimeInput":{"activityStart":{}}})
-                    .to_string()
-                    .into(),
-            ))
-            .await
-            .map_err(|_| Error::Transport(TransportKind::Body))?;
-        let mut next_turn_end_ms = MANUAL_TURN_MS;
         for chunk in pcm.chunks(3200) {
             pacing.tick().await;
             sender.send(Message::Text(json!({"realtimeInput": {"audio": {"mimeType": "audio/pcm;rate=16000", "data": STANDARD.encode(chunk)}}}).to_string().into()))
                 .await.map_err(|_| Error::Transport(TransportKind::Body))?;
             send_clock.fetch_add(chunk.len() as u64, Ordering::Release);
-            let sent_ms = source_ms(&send_clock);
-            if sent_ms >= next_turn_end_ms && sent_ms < pcm.len() as u64 / 32 {
-                sender
-                    .send(Message::Text(
-                        json!({"realtimeInput":{"activityEnd":{}}})
-                            .to_string()
-                            .into(),
-                    ))
-                    .await
-                    .map_err(|_| Error::Transport(TransportKind::Body))?;
-                sender
-                    .send(Message::Text(
-                        json!({"realtimeInput":{"activityStart":{}}})
-                            .to_string()
-                            .into(),
-                    ))
-                    .await
-                    .map_err(|_| Error::Transport(TransportKind::Body))?;
-                next_turn_end_ms = next_turn_end_ms.saturating_add(MANUAL_TURN_MS);
-            }
         }
-        sender
-            .send(Message::Text(
-                json!({"realtimeInput":{"activityEnd":{}}})
-                    .to_string()
-                    .into(),
-            ))
-            .await
-            .map_err(|_| Error::Transport(TransportKind::Body))?;
         send_ended.store(true, Ordering::Release);
         let _ = ended_tx.send(true);
         tokio::time::timeout(
@@ -291,8 +251,9 @@ async fn transcribe_live_session(
     let receive_ended = Arc::clone(&stream_ended);
     let receive_text = async {
         let mut ended_rx = ended_rx;
-        // Manual activity turns define the utterance boundaries. Reusing heuristic VAD
-        // regions here would assign a future detected region to an earlier forced turn.
+        // Server-side VAD owns real speech boundaries. The former fixed eight-second manual turns
+        // cut through active speech and immediately reopened without waiting for finalization,
+        // which discarded large spans of otherwise valid audio.
         let mut events = LiveEventAccumulator::with_source_offset(source_offset_ms);
         loop {
             let next = if *ended_rx.borrow() {
@@ -452,17 +413,15 @@ mod tests {
     }
 
     #[test]
-    fn live_transcription_and_vad_are_top_level_setup_fields() {
+    fn live_transcription_uses_verbatim_mode_and_server_vad() {
         let value = setup_message(&["ko-KR".to_owned()]);
         let setup = &value["setup"];
         assert_eq!(
             setup["inputAudioTranscription"]["languageCodes"][0],
             "ko-KR"
         );
-        assert_eq!(
-            setup["realtimeInputConfig"]["automaticActivityDetection"]["disabled"],
-            true
-        );
+        assert_eq!(setup["inputAudioTranscription"]["mode"], "VERBATIM");
+        assert!(setup.get("realtimeInputConfig").is_none());
         assert!(
             setup["generationConfig"]
                 .get("inputAudioTranscription")
