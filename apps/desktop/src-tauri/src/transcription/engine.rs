@@ -233,7 +233,12 @@ pub(crate) async fn start_transcription_engine(
         .map(|secret| {
             let api_key = ApiKey::new(secret.expose_secret().to_owned())
                 .map_err(|e| CommandError::invalid_input(e.to_string()))?;
-            GeminiClient::new(api_key)
+            // Gemini Live can accept several simultaneous sockets on one key and still return
+            // formally successful but severely truncated transcripts. Keep one in-flight request
+            // per credential; multiple enrolled credentials still run in parallel.
+            osg_gemini::GeminiClientBuilder::new(api_key)
+                .max_concurrent_requests(1)
+                .build()
                 .map(Arc::new)
                 .map_err(|e| CommandError::invalid_input(e.to_string()))
         })

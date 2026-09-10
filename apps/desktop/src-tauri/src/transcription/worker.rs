@@ -430,6 +430,27 @@ async fn execute_standard_window(
     })
 }
 
+const LIVE_SPARSE_MIN_WINDOW_MS: i64 = 15_000;
+
+fn live_attempt_is_sparse(result: &StagedWindowResult) -> bool {
+    let owned_duration_ms = result.window.duration_ms();
+    let minimum_words = usize::try_from((owned_duration_ms / 1_000).cast_unsigned())
+        .unwrap_or(usize::MAX);
+    owned_duration_ms >= LIVE_SPARSE_MIN_WINDOW_MS
+        && result.words.len() < minimum_words
+}
+
+fn prefer_more_complete_live_attempt(
+    first: StagedWindowResult,
+    second: StagedWindowResult,
+) -> StagedWindowResult {
+    if second.words.len() > first.words.len() {
+        second
+    } else {
+        first
+    }
+}
+
 async fn execute_live_window(
     client: &GeminiClient,
     wav_bytes: &[u8],
@@ -437,6 +458,60 @@ async fn execute_live_window(
     config: &AudioTranscriptionConfig,
     cancellation: &CancellationToken,
     on_timed_window: TimedWindowCallback,
+) -> Result<StagedWindowResult, WorkerError> {
+    let first = execute_live_window_once(
+        client,
+        wav_bytes,
+        window,
+        config,
+        cancellation,
+        Arc::clone(&on_timed_window),
+        1,
+    )
+    .await?;
+    if !live_attempt_is_sparse(&first) {
+        return Ok(first);
+    }
+
+    crate::diagnostics::record(
+        "transcribe.live.sparse_retry",
+        &[
+            ("window", window.index.to_string()),
+            ("first_words", first.words.len().to_string()),
+        ],
+    );
+    // The retry uses the same Live model and audio. Do not intermingle two stochastic attempts on
+    // screen; publish the replacement atomically only when it is demonstrably more complete.
+    let second = execute_live_window_once(
+        client,
+        wav_bytes,
+        window,
+        config,
+        cancellation,
+        Arc::new(|_| {}),
+        2,
+    )
+    .await?;
+    let selected = prefer_more_complete_live_attempt(first, second);
+    on_timed_window(selected.clone());
+    crate::diagnostics::record(
+        "transcribe.live.sparse_retry_finished",
+        &[
+            ("window", window.index.to_string()),
+            ("selected_words", selected.words.len().to_string()),
+        ],
+    );
+    Ok(selected)
+}
+
+async fn execute_live_window_once(
+    client: &GeminiClient,
+    wav_bytes: &[u8],
+    window: &WindowRange,
+    config: &AudioTranscriptionConfig,
+    cancellation: &CancellationToken,
+    on_timed_window: TimedWindowCallback,
+    attempt: u8,
 ) -> Result<StagedWindowResult, WorkerError> {
     let started = std::time::Instant::now();
     let mut finalized = Vec::new();
@@ -446,7 +521,10 @@ async fn execute_live_window(
     let window_duration_ms = (window.end_ms - audio_start_ms).cast_unsigned();
     crate::diagnostics::record(
         "transcribe.live.started",
-        &[("window", window_index.to_string())],
+        &[
+            ("window", window_index.to_string()),
+            ("attempt", attempt.to_string()),
+        ],
     );
     client
         .transcribe_live(wav_bytes, &config.language_hints, cancellation, |event| {
@@ -483,6 +561,7 @@ async fn execute_live_window(
         "transcribe.live.finished",
         &[
             ("window", window_index.to_string()),
+            ("attempt", attempt.to_string()),
             ("finalized", finalized.len().to_string()),
             ("elapsed_ms", started.elapsed().as_millis().to_string()),
             (
@@ -583,6 +662,42 @@ mod tests {
         assert!(live_word_is_owned(&word(56_900, 57_100), &right));
         assert!(!live_word_is_owned(&word(56_000, 56_900), &right));
         assert!(!live_word_is_owned(&word(57_000, 57_100), &left));
+    }
+
+    #[test]
+    fn sparse_live_attempts_retry_and_keep_the_more_complete_result() {
+        let window = WindowRange::new(3, 0, 60_000);
+        let result = |count| StagedWindowResult {
+            window_index: window.index,
+            window,
+            words: (0_usize..count)
+                .map(|ordinal| ProjectedWordResult {
+                    status: WordProjectionStatus::Interpolated,
+                    text: format!("w{ordinal}"),
+                    raw_start_ns: u64::try_from(ordinal).unwrap(),
+                    raw_end_ns: u64::try_from(ordinal).unwrap() + 1,
+                    project_start_ms: i64::try_from(ordinal).unwrap(),
+                    project_end_ms: i64::try_from(ordinal).unwrap() + 1,
+                    speaker_id: None,
+                    is_unaligned: true,
+                    alignment_status: "unaligned".to_owned(),
+                })
+                .collect(),
+        };
+        assert!(live_attempt_is_sparse(&result(59)));
+        assert!(!live_attempt_is_sparse(&result(60)));
+        assert_eq!(
+            prefer_more_complete_live_attempt(result(11), result(47))
+                .words
+                .len(),
+            47
+        );
+        assert_eq!(
+            prefer_more_complete_live_attempt(result(47), result(11))
+                .words
+                .len(),
+            47
+        );
     }
 
     #[test]
