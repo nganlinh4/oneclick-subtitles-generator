@@ -8,7 +8,6 @@ import {
 } from '../../../services/modelService';
 import { invalidateModelsCache } from '../../../services/modelAvailabilityService';
 import { showErrorToast, showSuccessToast } from '../../../utils/toastUtils';
-import { formatBytes } from '../../../utils/formatUtils';
 import '../../../styles/settings/modelManagement.css';
 
 const packageFailureCopy = (code) => {
@@ -212,7 +211,6 @@ const ModelManagementTab = ({ activeTab }) => {
   };
 
   const busy = Boolean(launching || status?.operation);
-  const model = status?.model;
   const installLabel = status?.state === 'corrupt'
     ? t('settings.modelManagement.repair', 'Repair')
     : status?.updateAvailable
@@ -221,96 +219,63 @@ const ModelManagementTab = ({ activeTab }) => {
 
   return (
     <section
-      className="model-management-section narration-model-panel"
-      data-model-package-id="f5tts-v1-base"
+      className="narration-model-panel"
       data-model-package-state={status?.state ?? 'checking'}
     >
-      <header className="narration-model-panel__hero">
-        <span className="material-symbols-rounded" aria-hidden="true">graphic_eq</span>
-        <div>
-          <h3>{t('settings.modelManagement', 'Narration Models')}</h3>
-          <p className="narration-model-panel__description">
-            {t(
-              'settings.modelManagement.description',
-              'Install and manage verified local narration models.'
-            )}
-          </p>
-        </div>
-      </header>
+      <p className="model-management-description">
+        {t('settings.modelManagement.description', 'Manage F5-TTS models for narration.')}
+      </p>
 
-      <div className="section-header narration-model-panel__section-heading">
-        <h4>{status?.installed
-          ? t('settings.modelManagement.installedModels', 'Installed Models')
-          : t('settings.modelManagement.availableModels', 'Available Models')}</h4>
-        <span>1</span>
-      </div>
-
-      <article className="narration-model-package">
-        <div className="narration-model-package__icon" aria-hidden="true">
-          <span className="material-symbols-rounded">record_voice_over</span>
+      {status?.installed ? <div className="model-management-section">
+        <div className="section-header">
+          <h4>{t('settings.modelManagement.installedModels', 'Installed Models')}</h4>
+          <button type="button" className="refresh-models-btn" onClick={() => refresh({ announceError: true })} disabled={busy || loading}>
+            <span className={`material-symbols-rounded ${loading ? 'spinning' : ''}`} aria-hidden="true">refresh</span>
+            {t('settings.modelManagement.refresh', 'Refresh')}
+          </button>
         </div>
-        <div className="narration-model-package__body">
-          <div className="narration-model-package__heading">
-            <div>
-              <h4>{model?.name ?? 'F5-TTS v1 Base'}</h4>
-              <p>{t('settings.modelManagement.signedSource', 'Catalog-verified OSG package')}</p>
+        <div className="model-cards-container">
+          <article className="model-card installed-model" data-model-package-id="f5tts-v1-base">
+            <div className="model-card-content narration-model-package__body">
+              <h5 className="model-title">F5-TTS v1 Base</h5>
+              <p className="model-source">{t('settings.modelManagement.source', 'Source')}: F5-TTS</p>
+              <div className="model-languages"><span className="language-chip zh">Chinese</span><span className="language-chip en">English</span></div>
+              <span className={`narration-model-package__state state-${status?.state ?? 'checking'}`}>{stateCopy(t, status)}</span>
+              {status?.operation ? <div className="narration-model-package__progress"><div style={{ width: `${status.operation.basisPoints / 100}%` }} /></div> : null}
             </div>
-            <span className={`narration-model-package__state state-${status?.state ?? 'checking'}`}>
-              {loading && !status
-                ? t('settings.modelManagement.checking', 'Checking package…')
-                : stateCopy(t, status)}
-            </span>
-          </div>
-
-          <div className="narration-model-package__facts">
-            <span>{t('settings.modelManagement.languages', 'English · Chinese')}</span>
-            {status?.version ? (
-              <span>{t('settings.modelManagement.version', 'Version {{version}}', { version: status.version })}</span>
-            ) : null}
-            {status?.installedBytes > 0 ? <span>{formatBytes(status.installedBytes)}</span> : null}
-          </div>
-
-          {status?.operation ? (
-            <div className="narration-model-package__progress" aria-label={stateCopy(t, status)}>
-              <div style={{ width: `${status.operation.basisPoints / 100}%` }} />
+            <div className="model-card-actions narration-model-package__actions">
+              {status?.operation ? <button type="button" data-model-action="cancel" onClick={runCancel} disabled={launching === 'cancel'}>{t('settings.modelManagement.cancel', 'Cancel')}</button> : null}
+              {!status?.operation && (status?.state === 'corrupt' || status?.updateAvailable) ? <button type="button" className="download-model-btn" data-model-action="install" onClick={runInstall} disabled={busy}>{installLabel}</button> : null}
+              {!status?.operation && !confirmRemove ? <button type="button" data-model-action="remove" className="delete-model-btn" onClick={() => setConfirmRemove(true)} disabled={busy}>{t('settings.modelManagement.remove', 'Remove')}</button> : null}
+              {!status?.operation && confirmRemove ? <div className="narration-model-package__confirm"><button type="button" data-model-action="confirm-remove" className="delete-model-btn" onClick={runRemove}>{t('settings.modelManagement.confirm', 'Confirm')}</button><button type="button" data-model-action="keep" onClick={() => setConfirmRemove(false)}>{t('settings.modelManagement.keep', 'Keep')}</button></div> : null}
             </div>
-          ) : null}
-
-          <div className="narration-model-package__actions">
-            {status?.operation ? (
-              <button type="button" data-model-action="cancel" onClick={runCancel} disabled={launching === 'cancel'}>
-                {t('settings.modelManagement.cancel', 'Cancel')}
-              </button>
-            ) : null}
-            {!status?.operation && status?.deliveryAvailable
-                && (!status.installed || status.updateAvailable || status.state === 'corrupt') ? (
-                  <button type="button" data-model-action="install" onClick={runInstall} disabled={busy}>
-                    {installLabel}
-                  </button>
-              ) : null}
-            {!status?.operation && status?.installed && !confirmRemove ? (
-              <button type="button" data-model-action="remove" className="danger" onClick={() => setConfirmRemove(true)} disabled={busy}>
-                {t('settings.modelManagement.remove', 'Remove')}
-              </button>
-            ) : null}
-            {!status?.operation && status?.installed && confirmRemove ? (
-              <div className="narration-model-package__confirm">
-                <span>{t('settings.modelManagement.confirmRemove', 'Remove this model package?')}</span>
-                <button type="button" data-model-action="confirm-remove" className="danger" onClick={runRemove} disabled={busy}>
-                  {t('settings.modelManagement.confirm', 'Confirm')}
-                </button>
-                <button type="button" data-model-action="keep" onClick={() => setConfirmRemove(false)} disabled={busy}>
-                  {t('settings.modelManagement.keep', 'Keep')}
-                </button>
-              </div>
-            ) : null}
-            <button type="button" data-model-action="refresh" className="ghost" onClick={() => refresh({ announceError: true })} disabled={busy || loading}>
-              <span className="material-symbols-rounded" aria-hidden="true">refresh</span>
-              {t('settings.modelManagement.refresh', 'Refresh')}
-            </button>
-          </div>
+          </article>
         </div>
-      </article>
+      </div> : null}
+
+      {!status?.installed ? <div className="model-management-section">
+        <div className="section-header">
+          <h4>{t('settings.modelManagement.availableModels', 'Available Models')}</h4>
+          <button type="button" className="refresh-models-btn" onClick={() => refresh({ announceError: true })} disabled={busy || loading}>
+            <span className={`material-symbols-rounded ${loading ? 'spinning' : ''}`} aria-hidden="true">refresh</span>
+            {t('settings.modelManagement.refresh', 'Refresh')}
+          </button>
+        </div>
+        <div className="model-cards-container">
+          <article className="model-card" data-model-package-id="f5tts-v1-base">
+            <div className="model-card-content">
+              <h5 className="model-title">F5-TTS v1 Base</h5>
+              <p className="model-author">{t('settings.modelManagement.by', 'by')} F5-TTS</p>
+              <div className="model-languages"><span className="language-chip zh">Chinese</span><span className="language-chip en">English</span></div>
+              <span className={`narration-model-package__state state-${status?.state ?? 'checking'}`}>{stateCopy(t, status)}</span>
+              {status?.operation ? <div className="narration-model-package__progress"><div style={{ width: `${status.operation.basisPoints / 100}%` }} /></div> : null}
+            </div>
+            <div className="model-card-actions">
+              {status?.operation ? <button type="button" className="cancel-download-btn" data-model-action="cancel" onClick={runCancel} disabled={launching === 'cancel'}>{t('settings.modelManagement.cancel', 'Cancel')}</button> : <button type="button" className="download-model-btn" data-model-action="install" onClick={runInstall} disabled={busy || !status?.deliveryAvailable}>{installLabel}</button>}
+            </div>
+          </article>
+        </div>
+      </div> : null}
     </section>
   );
 };

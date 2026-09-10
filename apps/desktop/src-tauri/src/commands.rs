@@ -20,6 +20,7 @@ use osg_infrastructure::storage::{
 use osg_media_server::{MediaServer, RegisteredMedia};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use secrecy::ExposeSecret;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
@@ -700,6 +701,23 @@ pub(crate) async fn credential_replace(
 ) -> CommandResult<CredentialStatus> {
     let credentials = state.credentials.clone();
     run_credential_task("replace credential", move || credentials.replace(id, request)).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
+pub(crate) async fn credential_reveal(
+    state: State<'_, DesktopState>,
+    id: CredentialId,
+) -> CommandResult<String> {
+    let credentials = state.credentials.clone();
+    run_credential_task("reveal credential", move || {
+        credentials.resolve(id, CredentialPurpose::GeminiApiKey)
+    })
+        .await
+        .map(|secret| secret.expose_secret().to_owned())
 }
 
 #[tauri::command]

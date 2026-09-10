@@ -7,22 +7,23 @@ import {
   getCredentialAvailability,
   initializeCredentialState,
   removeGeminiCredential,
-  replaceGeminiCredential,
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { revealCredential } from '../../../platform/credentialService';
 import { animateToggle, toggleKeyVisibility } from '../utils/keyVisibilityAnimation';
 
 // Hook owning the multiple Gemini API key state + handlers.
 export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
+  const { t } = useTranslation();
   const nativeCredentialMode = isDesktopRuntime();
   const [geminiApiKeys, setGeminiApiKeys] = useState([]);
   const [newGeminiKey, setNewGeminiKey] = useState('');
   const [showNewGeminiKey, setShowNewGeminiKey] = useState(false);
   const [activeKeyIndex, setActiveKeyIndexState] = useState(0);
   const [visibleKeyIndices, setVisibleKeyIndices] = useState({});
-  const [replacementKeys, setReplacementKeys] = useState({});
+  const [revealedKeyValues, setRevealedKeyValues] = useState({});
   const credentialIdByReference = useRef(new Map());
   const nativeAddPending = useRef(false);
 
@@ -150,18 +151,24 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
     return false;
   };
 
-  const handleReplaceGeminiKey = async (index) => {
-    if (!nativeCredentialMode) return false;
-    const reference = geminiApiKeys[index];
-    const id = credentialIdByReference.current.get(reference);
-    const secret = replacementKeys[index]?.trim();
-    if (!id || !secret) return false;
+  const handleToggleKeyVisibility = async (index) => {
+    if (!nativeCredentialMode) {
+      toggleKeyVisibility(index, setVisibleKeyIndices);
+      return;
+    }
+    if (visibleKeyIndices[index]) {
+      setVisibleKeyIndices((current) => ({ ...current, [index]: false }));
+      setRevealedKeyValues((current) => ({ ...current, [index]: '' }));
+      return;
+    }
+    const id = credentialIdByReference.current.get(geminiApiKeys[index]);
+    if (!id) return;
     try {
-      await replaceGeminiCredential(id, secret);
-      setReplacementKeys((current) => ({ ...current, [index]: '' }));
-      return true;
+      const secret = await revealCredential(id);
+      setRevealedKeyValues((current) => ({ ...current, [index]: secret }));
+      setVisibleKeyIndices((current) => ({ ...current, [index]: true }));
     } catch {
-      return false;
+      window.addToast?.(t('settings.credentialRevealFailed', 'The saved key could not be shown.'), 'error', 8000);
     }
   };
 
@@ -175,12 +182,11 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
     activeKeyIndex,
     visibleKeyIndices,
     setVisibleKeyIndices,
-    replacementKeys,
-    setReplacementKeys,
+    revealedKeyValues,
     handleSetActiveKey,
     handleAddGeminiKey,
     handleRemoveGeminiKey,
-    handleReplaceGeminiKey,
+    handleToggleKeyVisibility,
   };
 };
 
@@ -194,13 +200,11 @@ const GeminiKeysManager = ({
   setShowNewGeminiKey,
   activeKeyIndex,
   visibleKeyIndices,
-  setVisibleKeyIndices,
-  replacementKeys,
-  setReplacementKeys,
+  revealedKeyValues,
   handleSetActiveKey,
   handleAddGeminiKey,
   handleRemoveGeminiKey,
-  handleReplaceGeminiKey,
+  handleToggleKeyVisibility,
 }) => {
   const { t } = useTranslation();
   const newGeminiKeyRef = useRef(null);
@@ -222,12 +226,12 @@ const GeminiKeysManager = ({
               className={`gemini-key-item ${index === activeKeyIndex ? 'active' : ''} ${geminiApiKeys.length === 1 ? 'single-key' : ''}`}
             >
               <div className="gemini-key-content">
-                {!nativeCredentialMode && visibleKeyIndices[index] ? (
+                {visibleKeyIndices[index] ? (
                   <>
                     <div className="gemini-key-display">
                       <div className="gemini-key-text">
                         <div className="gemini-key-visible">
-                          {key}
+                          {nativeCredentialMode ? revealedKeyValues[index] : key}
                         </div>
                       </div>
                     </div>
@@ -235,7 +239,7 @@ const GeminiKeysManager = ({
                       <button
                         type="button"
                         className="gemini-key-button"
-                        onClick={() => toggleKeyVisibility(index, setVisibleKeyIndices)}
+                        onClick={() => handleToggleKeyVisibility(index)}
                         title={t('settings.hideKey', 'Hide key')}
                       >
                         {t('settings.hide', 'Hide')}
@@ -266,49 +270,21 @@ const GeminiKeysManager = ({
                 ) : (
                   <div className="gemini-key-row">
                     {nativeCredentialMode ? (
-                      <input
-                        type="password"
-                        className="gemini-key-text gemini-key-masked gemini-key-replacement"
-                        value={replacementKeys[index] ?? ''}
-                        onChange={(event) => setReplacementKeys((current) => ({
-                          ...current,
-                          [index]: event.target.value,
-                        }))}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') handleReplaceGeminiKey(index);
-                        }}
-                        placeholder={`•••••••• ${key.slice(-4)}`}
-                        aria-label={t('settings.replaceGeminiKey', 'Replace saved Gemini API key')}
-                        title={t('settings.secureCredentialReference', 'Stored securely on this device')}
-                        autoComplete="new-password"
-                        spellCheck="false"
-                      />
+                      <div className="gemini-key-text gemini-key-masked">•••••••• {key.slice(-4)}</div>
                     ) : (
                       <div className="gemini-key-text gemini-key-masked" title={key}>
                         {key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
                       </div>
                     )}
                     <div className="gemini-key-actions">
-                      {!nativeCredentialMode && (
-                        <button
-                          type="button"
-                          className="gemini-key-button"
-                          onClick={() => toggleKeyVisibility(index, setVisibleKeyIndices)}
-                          title={t('settings.showKey', 'Show key')}
-                        >
-                          {t('settings.show', 'Show')}
-                        </button>
-                      )}
-                      {nativeCredentialMode && (
-                        <button
-                          type="button"
-                          className="gemini-key-button"
-                          onClick={() => handleReplaceGeminiKey(index)}
-                          disabled={!replacementKeys[index]?.trim()}
-                        >
-                          {t('settings.updateKey', 'Update')}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="gemini-key-button"
+                        onClick={() => handleToggleKeyVisibility(index)}
+                        title={t('settings.showKey', 'Show key')}
+                      >
+                        {t('settings.show', 'Show')}
+                      </button>
                       <button
                         type="button"
                         className={`gemini-key-button ${index === activeKeyIndex ? 'active' : ''}`}
@@ -335,7 +311,7 @@ const GeminiKeysManager = ({
 
             </div>
           ))}
-          {nativeCredentialMode && geminiApiKeys.length > 1 && (
+          {nativeCredentialMode && (
             <p className="gemini-key-rotation-note">
               {t('settings.geminiKeyRotation', 'Ready keys rotate automatically when work is parallel or a provider retry is needed.')}
             </p>

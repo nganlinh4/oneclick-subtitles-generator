@@ -93,6 +93,15 @@ it('atomically replaces one UUID-addressed secret without returning it', async (
   expect(JSON.stringify(result)).not.toContain(secret);
 });
 
+it('reveals an explicitly requested UUID-addressed credential', async () => {
+  const id = uuidv7();
+  const invokeCommand = vi.fn().mockResolvedValue('private-gemini-key');
+  const service = createCredentialService({ invokeCommand });
+
+  await expect(service.revealCredential(id)).resolves.toBe('private-gemini-key');
+  expect(invokeCommand).toHaveBeenCalledExactlyOnceWith('credential_reveal', { id });
+});
+
 it('requests all or purpose-filtered safe credential statuses', async () => {
   const gemini = readyGeminiCredential();
   const invokeCommand = vi.fn()

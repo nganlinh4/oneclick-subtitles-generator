@@ -65,7 +65,7 @@ use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
 use commands::{
     active_workspace_begin, active_workspace_clear, active_workspace_get, active_workspace_set,
-    app_health, clear_media, credential_delete, credential_replace, credential_set,
+    app_health, clear_media, credential_delete, credential_replace, credential_reveal, credential_set,
     credential_status, credential_upsert, discard_media_candidate, get_session_snapshot, job_cancel, job_get,
     job_recovery_abandon_transcribe, jobs_list, open_media_asset, project_commit, project_create,
     project_history_status, project_load, project_load_transcript, project_redo, project_track_commit,
@@ -306,6 +306,7 @@ pub fn run() {
             credential_set,
             credential_upsert,
             credential_replace,
+            credential_reveal,
             credential_delete,
             credential_status,
             genius_lyrics,

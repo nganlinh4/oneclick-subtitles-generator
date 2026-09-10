@@ -442,17 +442,6 @@
   transition: opacity 0.15s ease-in-out;
 }
 
-.gemini-key-replacement {
-  border: 0;
-  outline: 0;
-  background: transparent;
-}
-
-.gemini-key-replacement::placeholder {
-  color: var(--md-on-surface-variant);
-  opacity: 1;
-}
-
 .gemini-key-visible {
   font-family: monospace;
   word-break: break-all;

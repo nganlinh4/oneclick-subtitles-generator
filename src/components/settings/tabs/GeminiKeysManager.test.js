@@ -8,11 +8,11 @@ import {
   getCredentialAvailability,
   initializeCredentialState,
   removeGeminiCredential,
-  replaceGeminiCredential,
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { revealCredential } from '../../../platform/credentialService';
 import {
   addKey,
   getActiveKeyIndex,
@@ -50,6 +50,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: vi.fn(() => false),
 }));
 vi.mock('../../../platform/desktopRuntime', () => ({
+  invokeDesktop: vi.fn(),
   isDesktopRuntime: vi.fn(),
 }));
 vi.mock('../../../platform/credentialStateController', () => ({
@@ -67,7 +68,6 @@ vi.mock('../../../platform/credentialStateController', () => ({
   })),
   initializeCredentialState: vi.fn(),
   removeGeminiCredential: vi.fn(),
-  replaceGeminiCredential: vi.fn(),
   selectGeminiCredential: vi.fn(),
   subscribeCredentialState: vi.fn(),
 }));
@@ -77,6 +77,9 @@ vi.mock('../../../services/gemini/keyManager', () => ({
   getAllKeys: vi.fn(),
   removeKey: vi.fn(),
   setActiveKeyIndex: vi.fn(),
+}));
+vi.mock('../../../platform/credentialService', () => ({
+  revealCredential: vi.fn(),
 }));
 
 const nativeSnapshot = (credentials, activeIndex = 0) => ({
@@ -108,8 +111,8 @@ beforeEach(() => {
   initializeCredentialState.mockResolvedValue(undefined);
   addGeminiCredential.mockResolvedValue(uuidv7());
   removeGeminiCredential.mockResolvedValue(true);
-  replaceGeminiCredential.mockResolvedValue(uuidv7());
   selectGeminiCredential.mockResolvedValue(undefined);
+  revealCredential.mockResolvedValue('revealed-native-secret');
   subscribeCredentialState.mockImplementation(() => () => undefined);
 });
 
@@ -150,10 +153,6 @@ it('keeps only unique safe references in native React state and selects by UUID'
   ));
   expect(removeGeminiCredential).toHaveBeenCalledWith(second.id);
 
-  act(() => result.current.setReplacementKeys({ 0: 'replacement-secret' }));
-  await act(async () => result.current.handleReplaceGeminiKey(0));
-  expect(replaceGeminiCredential).toHaveBeenCalledWith(first.id, 'replacement-secret');
-  expect(result.current.replacementKeys[0]).toBe('');
 });
 
 it('uses a write-only native add buffer and clears it after success or failure', async () => {
@@ -172,6 +171,34 @@ it('uses a write-only native add buffer and clears it after success or failure',
   act(() => result.current.setNewGeminiKey('second-transient-secret'));
   await act(async () => result.current.handleAddGeminiKey());
   expect(result.current.newGeminiKey).toBe('');
+});
+
+it('reveals a native key only on demand and erases the revealed value when hidden', async () => {
+  isDesktopRuntime.mockReturnValue(true);
+  let subscriber;
+  subscribeCredentialState.mockImplementation((next) => {
+    subscriber = next;
+    return () => undefined;
+  });
+  const credential = {
+    id: '01901234-5678-7abc-8def-0123456789ab',
+    purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234',
+  };
+  const { result } = renderHook(() => useGeminiKeys({
+    setGeminiApiKey: vi.fn(),
+    setApiKeysSet: vi.fn(),
+  }));
+  act(() => subscriber(nativeSnapshot([credential])));
+
+  expect(revealCredential).not.toHaveBeenCalled();
+  await act(async () => result.current.handleToggleKeyVisibility(0));
+  expect(revealCredential).toHaveBeenCalledWith(credential.id);
+  expect(result.current.revealedKeyValues[0]).toBe('revealed-native-secret');
+  expect(result.current.visibleKeyIndices[0]).toBe(true);
+
+  await act(async () => result.current.handleToggleKeyVisibility(0));
+  expect(result.current.revealedKeyValues[0]).toBe('');
+  expect(result.current.visibleKeyIndices[0]).toBe(false);
 });
 
 it('does not report a ready key when the native credential store is unavailable', () => {
