@@ -57,6 +57,16 @@ fn source_ms(sent_pcm_bytes: &AtomicU64) -> u64 {
     sent_pcm_bytes.load(Ordering::Acquire) / 32
 }
 
+fn minimum_spoken_duration_ms(text: &str) -> u64 {
+    // Live exposes text but no offsets. Do not squeeze a complete sentence into the 300 ms used
+    // to seed its first interim: distribute it over a conservative speech span derived from the
+    // finalized token count. The adjacent finalized boundary remains authoritative, so this can
+    // never overlap the preceding utterance. 320 ms/token corresponds to 187.5 spoken words/min,
+    // deliberately faster than ordinary speech so the estimate does not invent long lead-ins.
+    let token_count = text.split_whitespace().count().max(1) as u64;
+    token_count.saturating_mul(320).clamp(300, 15_000)
+}
+
 fn final_turn_received(stream_ended: &AtomicBool, content: &Value) -> bool {
     stream_ended.load(Ordering::Acquire)
         && (content["turnComplete"].as_bool() == Some(true)
@@ -135,11 +145,13 @@ impl LiveEventAccumulator {
             LiveTranscriptionKind::Interim => *self
                 .active_start
                 .get_or_insert_with(|| end_ms.saturating_sub(300).max(self.previous_final_end)),
-            LiveTranscriptionKind::Final => self
-                .active_start
-                .take()
-                .unwrap_or(self.previous_final_end)
-                .min(end_ms.saturating_sub(1)),
+            LiveTranscriptionKind::Final => {
+                let observed_start = self.active_start.take().unwrap_or(self.previous_final_end);
+                observed_start
+                    .min(end_ms.saturating_sub(minimum_spoken_duration_ms(text)))
+                    .max(self.previous_final_end)
+                    .min(end_ms.saturating_sub(1))
+            }
         };
         if kind == LiveTranscriptionKind::Final {
             self.active_start = None;
@@ -498,7 +510,7 @@ mod tests {
             .unwrap();
         assert_eq!(interim.kind, LiveTranscriptionKind::Interim);
         assert_eq!((interim.start_ms, interim.end_ms), (700, 1_000));
-        assert_eq!((first.start_ms, first.end_ms), (700, 1_000));
+        assert_eq!((first.start_ms, first.end_ms), (680, 1_000));
         assert_eq!((second.start_ms, second.end_ms), (1_000, 2_000));
         assert_eq!(first.language_code.as_deref(), Some("en"));
     }
@@ -519,7 +531,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        assert_eq!((final_event.start_ms, final_event.end_ms), (64_200, 64_500));
+        assert_eq!((final_event.start_ms, final_event.end_ms), (63_860, 64_500));
     }
 
     #[test]
@@ -530,5 +542,33 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!((final_event.start_ms, final_event.end_ms), (7_000, 7_240));
+    }
+
+    #[test]
+    fn finalized_sentence_uses_its_text_span_without_crossing_the_prior_final() {
+        let mut state = LiveEventAccumulator::with_source_offset(10_000);
+        let first = state
+            .observe(
+                &json!({"inputTranscription":{"text":"one two three four five"}}),
+                12_000,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!((first.start_ms, first.end_ms), (10_000, 12_000));
+
+        state
+            .observe(
+                &json!({"interimInputTranscription":{"text":"six seven eight nine"}}),
+                12_600,
+            )
+            .unwrap();
+        let second = state
+            .observe(
+                &json!({"inputTranscription":{"text":"six seven eight nine"}}),
+                13_100,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!((second.start_ms, second.end_ms), (12_000, 12_600));
     }
 }
