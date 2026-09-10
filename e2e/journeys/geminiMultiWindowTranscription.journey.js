@@ -1,7 +1,7 @@
 /* global $, browser, describe, document, it, localStorage, window */
 
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
@@ -186,20 +186,25 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     const assignments = diagnostics.filter(({ event }) => event === 'transcribe.window.credential_assigned');
     assert.deepEqual(
       assignments.map(({ credential_slot: slot }) => Number(slot)),
-      Array.from({ length: expectedWindows }, () => 0),
-      'the customer reproduction did not run every window through its one enrolled credential',
+      Array.from({ length: expectedWindows }, (_, index) => index),
+      'the parallel quality run did not allocate one distinct credential to every window',
     );
-    assert.ok(assignments.every(({ credential_pool_size: size }) => Number(size) === 1),
-      'the customer reproduction unexpectedly used a synthetic multi-key credential pool');
+    assert.ok(assignments.every(({ credential_pool_size: size }) => Number(size) === enrollment.enrolled),
+      'the native scheduler did not expose the enrolled credential pool to every window');
     assert.equal(
       diagnostics.some(({ event }) => event.includes('recovery')),
       false,
       'Gemini Live crossed into a hidden recovery or fallback path',
     );
+    writeFileSync(
+      join(root, 'evidence', 'generated-cues.json'),
+      `${JSON.stringify({ schemaVersion: 1, durationSeconds: duration, cues: durable.cues }, null, 2)}\n`,
+      'utf8',
+    );
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-four-live-windows-complete',
-      description: 'The public one-minute setting split 204 seconds of real media into four Live windows and merged their streamed cues durably.',
+      description: `The public one-minute setting split ${Math.ceil(duration)} seconds of real media into ${ranges.length} Live windows and merged their streamed cues durably.`,
       details: {
         durationSeconds: duration,
         requestWindowCount: ranges.length,
