@@ -4,6 +4,7 @@ use thiserror::Error;
 pub(crate) const MIN_WINDOW_DURATION_MS: i64 = 30_000;
 pub(crate) const MAX_WINDOW_DURATION_MS: i64 = 600_000;
 pub(crate) const DEFAULT_WINDOW_DURATION_MS: i64 = 600_000;
+const LIVE_PREFIX_CONTEXT_MS: i64 = 3_000;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(crate) enum PlannerError {
@@ -19,6 +20,10 @@ pub(crate) struct WindowRange {
     pub(crate) index: usize,
     pub(crate) start_ms: i64,
     pub(crate) end_ms: i64,
+    /// Audio supplied before this window's owned range so server VAD can observe speech that began
+    /// across a boundary. Persisted words remain clipped to `start_ms..end_ms`.
+    #[serde(default)]
+    pub(crate) context_start_ms: i64,
 }
 
 impl WindowRange {
@@ -29,6 +34,7 @@ impl WindowRange {
             index,
             start_ms,
             end_ms,
+            context_start_ms: start_ms,
         }
     }
 
@@ -39,16 +45,16 @@ impl WindowRange {
 
     #[must_use]
     pub(crate) const fn start_us(&self) -> u64 {
-        if self.start_ms < 0 {
+        if self.context_start_ms < 0 {
             0
         } else {
-            self.start_ms.cast_unsigned() * 1_000
+            self.context_start_ms.cast_unsigned() * 1_000
         }
     }
 
     #[must_use]
     pub(crate) const fn duration_us(&self) -> u64 {
-        let dur = self.duration_ms();
+        let dur = self.end_ms - self.context_start_ms;
         if dur < 0 {
             0
         } else {
@@ -101,6 +107,7 @@ pub(crate) fn plan_windows(
             index: 0,
             start_ms: range_start_ms,
             end_ms: range_end_ms,
+            context_start_ms: range_start_ms,
         }]);
     }
 
@@ -122,10 +129,38 @@ pub(crate) fn plan_windows(
             index: usize::try_from(index).expect("bounded window index fits usize"),
             start_ms: current_start,
             end_ms,
+            context_start_ms: current_start,
         });
         current_start = end_ms;
     }
 
+    Ok(windows)
+}
+
+/// Plans Live requests with bounded prefix context while retaining non-overlapping ownership.
+/// Balancing against `maximum - context` keeps every physical request within the user's selected
+/// maximum and avoids a tiny final request.
+pub(crate) fn plan_live_windows(
+    range_start_ms: i64,
+    range_end_ms: i64,
+    preferred_window_duration_ms: Option<u64>,
+) -> Result<Vec<WindowRange>, PlannerError> {
+    let maximum = preferred_window_duration_ms
+        .unwrap_or(DEFAULT_WINDOW_DURATION_MS as u64)
+        .clamp(MIN_WINDOW_DURATION_MS as u64, MAX_WINDOW_DURATION_MS as u64)
+        .cast_signed();
+    let core_target = maximum.saturating_sub(LIVE_PREFIX_CONTEXT_MS);
+    let mut windows = plan_windows(
+        range_start_ms,
+        range_end_ms,
+        Some(core_target.cast_unsigned()),
+    )?;
+    for window in windows.iter_mut().skip(1) {
+        window.context_start_ms = window
+            .start_ms
+            .saturating_sub(LIVE_PREFIX_CONTEXT_MS)
+            .max(range_start_ms);
+    }
     Ok(windows)
 }
 
@@ -205,5 +240,27 @@ mod tests {
             plan_windows(-1, 50, None),
             Err(PlannerError::NegativeStart(-1))
         ));
+    }
+
+    #[test]
+    fn live_windows_overlap_for_context_but_own_every_millisecond_once() {
+        let windows = plan_live_windows(0, 120_000, Some(60_000)).unwrap();
+        assert_eq!(windows.len(), 3);
+        assert_eq!((windows[0].start_ms, windows[0].end_ms), (0, 40_000));
+        assert_eq!(windows[0].context_start_ms, 0);
+        assert_eq!((windows[1].start_ms, windows[1].end_ms), (40_000, 80_000));
+        assert_eq!(windows[1].context_start_ms, 37_000);
+        assert_eq!((windows[2].start_ms, windows[2].end_ms), (80_000, 120_000));
+        assert_eq!(windows[2].context_start_ms, 77_000);
+        assert!(
+            windows
+                .iter()
+                .all(|window| window.duration_us() <= 60_000_000)
+        );
+        assert!(
+            windows
+                .windows(2)
+                .all(|pair| pair[0].end_ms == pair[1].start_ms)
+        );
     }
 }

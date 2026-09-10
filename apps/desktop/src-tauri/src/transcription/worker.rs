@@ -442,8 +442,8 @@ async fn execute_live_window(
     let mut finalized = Vec::new();
     let mut first_final_seen = false;
     let window_index = window.index;
-    let window_start_ms = window.start_ms;
-    let window_duration_ms = window.duration_ms().cast_unsigned();
+    let audio_start_ms = window.context_start_ms;
+    let window_duration_ms = (window.end_ms - audio_start_ms).cast_unsigned();
     crate::diagnostics::record(
         "transcribe.live.started",
         &[("window", window_index.to_string())],
@@ -458,12 +458,10 @@ async fn execute_live_window(
             }
             let start_ms = event.start_ms.min(window_duration_ms.saturating_sub(1));
             let end_ms = event.end_ms.min(window_duration_ms).max(start_ms + 1);
-            finalized.extend(project_live_utterance(
-                &event.text,
-                start_ms,
-                end_ms,
-                window_start_ms,
-            ));
+            let owned_words = project_live_utterance(&event.text, start_ms, end_ms, audio_start_ms)
+                .into_iter()
+                .filter(|word| live_word_is_owned(word, window));
+            finalized.extend(owned_words);
             if !first_final_seen {
                 first_final_seen = true;
                 crate::diagnostics::record(
@@ -476,11 +474,7 @@ async fn execute_live_window(
             }
             on_timed_window(StagedWindowResult {
                 window_index,
-                window: WindowRange::new(
-                    window_index,
-                    window_start_ms,
-                    window_start_ms + window_duration_ms.cast_signed(),
-                ),
+                window: WindowRange::new(window_index, window.start_ms, window.end_ms),
                 words: finalized.clone(),
             });
         })
@@ -502,6 +496,11 @@ async fn execute_live_window(
         window: *window,
         words: finalized,
     })
+}
+
+fn live_word_is_owned(word: &ProjectedWordResult, window: &WindowRange) -> bool {
+    let midpoint = word.project_start_ms + (word.project_end_ms - word.project_start_ms) / 2;
+    midpoint >= window.start_ms && midpoint < window.end_ms
 }
 
 fn project_live_utterance(
@@ -551,17 +550,39 @@ mod tests {
 
     fn pcm_wav(samples: &[u8]) -> Vec<u8> {
         let mut wav = Vec::with_capacity(44 + samples.len());
+        let sample_bytes = u32::try_from(samples.len()).expect("test WAV length fits u32");
         wav.extend_from_slice(b"RIFF");
-        wav.extend_from_slice(&(36_u32 + samples.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&(36_u32 + sample_bytes).to_le_bytes());
         wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
         wav.extend_from_slice(&16_000_u32.to_le_bytes());
         wav.extend_from_slice(&32_000_u32.to_le_bytes());
         wav.extend_from_slice(&2_u16.to_le_bytes());
         wav.extend_from_slice(&16_u16.to_le_bytes());
         wav.extend_from_slice(b"data");
-        wav.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&sample_bytes.to_le_bytes());
         wav.extend_from_slice(samples);
         wav
+    }
+
+    #[test]
+    fn live_overlap_context_never_owns_duplicate_boundary_words() {
+        let word = |start, end| ProjectedWordResult {
+            status: WordProjectionStatus::Interpolated,
+            text: "boundary".to_owned(),
+            raw_start_ns: 0,
+            raw_end_ns: 1,
+            project_start_ms: start,
+            project_end_ms: end,
+            speaker_id: None,
+            is_unaligned: true,
+            alignment_status: "unaligned".to_owned(),
+        };
+        let left = WindowRange::new(0, 0, 57_000);
+        let mut right = WindowRange::new(1, 57_000, 114_000);
+        right.context_start_ms = 54_000;
+        assert!(live_word_is_owned(&word(56_900, 57_100), &right));
+        assert!(!live_word_is_owned(&word(56_000, 56_900), &right));
+        assert!(!live_word_is_owned(&word(57_000, 57_100), &left));
     }
 
     #[test]

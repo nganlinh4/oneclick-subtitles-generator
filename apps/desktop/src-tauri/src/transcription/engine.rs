@@ -23,7 +23,7 @@ use crate::media_blob::MediaBlobStore;
 use crate::state::{DesktopState, LocalMedia};
 
 use super::events::{TranscriptionErrorDto, WordNativeTranscriptionEvent};
-use super::planner::plan_windows;
+use super::planner::{plan_live_windows, plan_windows};
 use super::staging::StagingBuffer;
 use super::worker::{WorkerPool, execute_transcription_window};
 
@@ -174,9 +174,15 @@ pub(crate) async fn start_transcription_engine(
         )));
     }
 
-    // 4. Plan windows
-    let windows = plan_windows(range_start_ms, range_end_ms, request.window_duration_ms())
-        .map_err(|e| CommandError::invalid_input(e.to_string()))?;
+    // 4. Plan windows. Live receives bounded prefix context at every internal boundary so server
+    // VAD can finish a sentence that began in the preceding owned range.
+    let transcription_model = request.model();
+    let windows = if transcription_model == TranscriptionModel::Live {
+        plan_live_windows(range_start_ms, range_end_ms, request.window_duration_ms())
+    } else {
+        plan_windows(range_start_ms, range_end_ms, request.window_duration_ms())
+    }
+    .map_err(|e| CommandError::invalid_input(e.to_string()))?;
     let total_windows = windows.len();
 
     // 5. Resolve Gemini API credential
@@ -306,7 +312,6 @@ pub(crate) async fn start_transcription_engine(
     let pipeline = Arc::new(pipeline);
     let native_input = Arc::new(native_input);
     let asr_config = Arc::new(asr_config);
-    let transcription_model = request.model();
 
     tauri::async_runtime::spawn(async move {
         run_engine_loop(
