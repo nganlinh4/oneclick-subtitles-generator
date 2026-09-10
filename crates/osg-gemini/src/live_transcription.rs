@@ -352,6 +352,12 @@ impl GeminiClient {
     ) -> Result<()> {
         let pcm = wav_pcm(wav)?;
         ensure_tls_provider()?;
+        // Live WebSockets consume the same per-credential provider concurrency budget as REST
+        // requests. Previously this path bypassed GeminiClient's semaphore entirely, so a long
+        // recording with sixteen planned windows opened sixteen sessions on one key at once;
+        // Google accepted the first eight and rejected the rest. Waiting here preserves every
+        // requested Live window on the same model instead of failing or switching engines.
+        let _permit = self.acquire(cancellation).await?;
         let mut endpoint = url::Url::parse(ENDPOINT).expect("constant endpoint");
         endpoint
             .query_pairs_mut()
@@ -380,18 +386,13 @@ impl GeminiClient {
 #[cfg(test)]
 mod tests {
     use super::{LiveEventAccumulator, LiveTranscriptionKind, setup_message, source_ms, wav_pcm};
+    use crate::{ApiKey, Error, GeminiClient};
     use serde_json::json;
     use std::sync::atomic::AtomicU64;
+    use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
 
-    #[test]
-    fn websocket_crypto_provider_is_explicit_and_idempotent() {
-        super::ensure_tls_provider().unwrap();
-        super::ensure_tls_provider().unwrap();
-        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
-    }
-
-    #[test]
-    fn only_valid_bounded_pcm_is_streamed_without_wav_headers() {
+    fn one_sample_wav() -> Vec<u8> {
         let mut wav = Vec::new();
         wav.extend_from_slice(b"RIFF");
         wav.extend_from_slice(&38u32.to_le_bytes());
@@ -404,11 +405,44 @@ mod tests {
         wav.extend_from_slice(b"data");
         wav.extend_from_slice(&2u32.to_le_bytes());
         wav.extend_from_slice(&[42, 0]);
+        wav
+    }
+
+    #[test]
+    fn websocket_crypto_provider_is_explicit_and_idempotent() {
+        super::ensure_tls_provider().unwrap();
+        super::ensure_tls_provider().unwrap();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+
+    #[test]
+    fn only_valid_bounded_pcm_is_streamed_without_wav_headers() {
+        let mut wav = one_sample_wav();
         assert_eq!(wav_pcm(&wav).unwrap(), &[42, 0]);
         assert!(wav_pcm(&wav[..45]).is_err());
         wav[22] = 2; // Stereo must not be mislabeled as mono.
         assert!(wav_pcm(&wav).is_err());
         assert!(wav_pcm(&vec![0; super::MAX_PCM_BYTES + 4_097]).is_err());
+    }
+
+    #[tokio::test]
+    async fn live_sessions_wait_for_the_credential_concurrency_budget() {
+        let client = GeminiClient::builder(ApiKey::new("secret").unwrap())
+            .max_concurrent_requests(1)
+            .build()
+            .unwrap();
+        let holder_cancel = CancellationToken::new();
+        let _held = client.acquire(&holder_cancel).await.unwrap();
+        let cancel = CancellationToken::new();
+        let wav = one_sample_wav();
+        let waiting = client.transcribe_live(&wav, &[], &cancel, |_| {});
+        tokio::pin!(waiting);
+
+        assert!(tokio::time::timeout(Duration::from_millis(50), &mut waiting)
+            .await
+            .is_err());
+        cancel.cancel();
+        assert!(matches!(waiting.await, Err(Error::Cancelled)));
     }
 
     #[test]
