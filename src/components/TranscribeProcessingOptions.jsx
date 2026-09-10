@@ -8,8 +8,12 @@ export default function TranscribeProcessingOptions({ value, onChange, selectedS
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
     const windowMinutes = Math.max(1, Math.round(value.windowDurationSecs / 60));
-    const segmentMinutes = Math.max(0, ((selectedSegment?.end || 0) - (selectedSegment?.start || 0)) / 60);
-    const requestCount = Math.max(1, Math.ceil(segmentMinutes / windowMinutes));
+    const physicalWindowSeconds = windowMinutes * 60;
+    const ownedWindowSeconds = method === 'gemini-transcribe-live'
+        ? Math.max(1, physicalWindowSeconds - 3)
+        : physicalWindowSeconds;
+    const segmentSeconds = Math.max(0, (selectedSegment?.end || 0) - (selectedSegment?.start || 0));
+    const requestCount = Math.max(1, Math.ceil(segmentSeconds / ownedWindowSeconds));
     return <>
         <div className="option-group">
             <label htmlFor="transcribe-language">{t('processing.languageLabel', 'Language')}</label>

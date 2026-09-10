@@ -37,7 +37,9 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     await openProjectWithMedia();
     milestone('media-ready');
     const duration = await browser.execute(() => document.querySelector('video.video-player')?.duration ?? null);
-    const expectedWindows = Math.ceil(duration / 60);
+    // Live reserves three seconds of each request for prefix context, so a one-minute physical
+    // request owns at most 57 seconds. Match the native planner rather than the generic splitter.
+    const expectedWindows = Math.ceil(duration / 57);
     assert.ok(expectedWindows >= EXPECTED_WINDOWS,
       `the customer reproduction must exercise at least four windows, got ${duration}s`);
     milestone('duration-verified', { duration });
@@ -54,7 +56,7 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       window.__OSG_GEMINI_WINDOWS__ = ledger;
       window.addEventListener('processing-ranges', (event) => {
         const ranges = event.detail?.ranges;
-        if (Array.isArray(ranges) && ledger.ranges.length < 16) {
+        if (Array.isArray(ranges) && ledger.ranges.length < 64) {
           ledger.ranges.push(ranges.map(({ start, end }) => ({ start, end })));
         }
       });
