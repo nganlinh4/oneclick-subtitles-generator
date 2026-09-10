@@ -124,6 +124,18 @@ const AppLayout = ({
     isProcessingSegment
   } = appState;
 
+  // A timeline range belongs to one exact media selection. Downloading or activating another
+  // video must invalidate it even when React keeps the editor subtree mounted; otherwise the old
+  // range is clamped onto the new duration and remains an interactive modal/range lock.
+  const activeMediaSelectionKey = [
+    uploadedFile?.assetId ?? uploadedFile?.playbackUrl ?? uploadedFile?.path ?? uploadedFile?.name ?? '',
+    selectedVideo?.id ?? selectedVideo?.videoId ?? selectedVideo?.url ?? '',
+  ].join('|');
+  useEffect(() => {
+    setSelectedSegment(null);
+    setShowProcessingModal(false);
+  }, [activeMediaSelectionKey, setSelectedSegment, setShowProcessingModal]);
+
   // A translation is a projection of one exact source timeline. Clear it as soon as that source
   // changes so sibling preview/export surfaces can never observe rows from the previous revision.
   useEffect(() => {

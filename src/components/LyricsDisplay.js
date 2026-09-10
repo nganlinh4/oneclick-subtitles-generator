@@ -474,6 +474,7 @@ const LyricsDisplay = ({
         />
 
         <TimelineVisualization
+          key={videoSource || 'no-video-source'}
           lyrics={lyrics}
           currentTime={currentTime}
           duration={duration}

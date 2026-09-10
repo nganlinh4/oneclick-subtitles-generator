@@ -193,3 +193,51 @@ test('shares one translated projection with sibling render UI and clears it on s
   view.unmount();
   vi.useRealTimers();
 });
+
+test('invalidates a selected timeline range when the active media changes', async () => {
+  const setSelectedSegment = vi.fn();
+  const setShowProcessingModal = vi.fn();
+  const state = {
+    ...appState(),
+    uploadedFile: {
+      assetId: 'asset-a',
+      playbackUrl: 'http://127.0.0.1/media/a',
+      name: 'A.mp4',
+    },
+    selectedVideo: { id: 'video-a', url: 'https://example.test/a' },
+    selectedSegment: { start: 10, end: 20 },
+    showProcessingModal: true,
+    setSelectedSegment,
+    setShowProcessingModal,
+  };
+  const view = render(<AppLayout
+    appState={state}
+    appHandlers={appHandlers}
+    modalHandlers={modalHandlers}
+    t={(_key, fallback) => fallback}
+  />);
+
+  await act(async () => {});
+  setSelectedSegment.mockClear();
+  setShowProcessingModal.mockClear();
+
+  view.rerender(<AppLayout
+    appState={{
+      ...state,
+      uploadedFile: {
+        assetId: 'asset-b',
+        playbackUrl: 'http://127.0.0.1/media/b',
+        name: 'B.mp4',
+      },
+      selectedVideo: { id: 'video-b', url: 'https://example.test/b' },
+    }}
+    appHandlers={appHandlers}
+    modalHandlers={modalHandlers}
+    t={(_key, fallback) => fallback}
+  />);
+  await act(async () => {});
+
+  expect(setSelectedSegment).toHaveBeenCalledExactlyOnceWith(null);
+  expect(setShowProcessingModal).toHaveBeenCalledExactlyOnceWith(false);
+  view.unmount();
+});
