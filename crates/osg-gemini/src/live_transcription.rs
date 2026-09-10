@@ -26,6 +26,10 @@ const MAX_SESSION_PCM_BYTES: usize = 16_000 * 2 * 60 * 8;
 // exactly 100 ms of source audio and must therefore be paced at 100 ms. Sending it at 2x measured
 // only 46.3% reference-word recall on a real 15-minute captioned video.
 const PACKET_PACING_MS: u64 = 100;
+// audioStreamEnd finalizes current speech but deliberately keeps a continuous Live session open for
+// later audio. The service therefore does not reliably send turnComplete/generationComplete. A
+// bounded period with no further messages is the native protocol's usable end-of-input boundary.
+const FINAL_QUIET_DRAIN_SECS: u64 = 12;
 fn invalid() -> Error {
     Error::InvalidRequest("Live requires bounded 16-kHz mono PCM16 WAV".into())
 }
@@ -232,8 +236,6 @@ async fn transcribe_live_session(
                 .await.map_err(|_| Error::Transport(TransportKind::Body))?;
             send_clock.fetch_add(chunk.len() as u64, Ordering::Release);
         }
-        send_ended.store(true, Ordering::Release);
-        let _ = ended_tx.send(true);
         tokio::time::timeout(
             Duration::from_secs(5),
             sender.send(Message::Text(
@@ -245,6 +247,11 @@ async fn transcribe_live_session(
         .await
         .map_err(|_| Error::Transport(TransportKind::Timeout))?
         .map_err(|_| Error::Transport(TransportKind::Body))?;
+        // Start the bounded final-drain period only after the provider has accepted the explicit
+        // end marker. Publishing this state before the send gave the receiver permission to time
+        // out successfully while the marker was still blocked in the socket sink.
+        send_ended.store(true, Ordering::Release);
+        let _ = ended_tx.send(true);
         Ok::<(), Error>(())
     };
     let receive_clock = Arc::clone(&sent_pcm_bytes);
@@ -257,8 +264,16 @@ async fn transcribe_live_session(
         let mut events = LiveEventAccumulator::with_source_offset(source_offset_ms);
         loop {
             let next = if *ended_rx.borrow() {
-                match tokio::time::timeout(Duration::from_secs(12), receiver.next()).await {
+                match tokio::time::timeout(
+                    Duration::from_secs(FINAL_QUIET_DRAIN_SECS),
+                    receiver.next(),
+                )
+                .await
+                {
                     Ok(next) => next,
+                    // Every received message restarts this wait. Forty-second real-provider probes
+                    // produced no later text or terminal marker, confirming that quiet—not a turn
+                    // marker—is the completion signal available to a finite-file client.
                     Err(_) => return Ok(()),
                 }
             } else {
