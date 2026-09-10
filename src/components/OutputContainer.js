@@ -346,6 +346,7 @@ const OutputContainer = ({
               </div>
             )}
             <LyricsDisplay
+              key={videoSource || 'no-video-source'}
               matchedLyrics={formatSubtitlesForLyricsDisplay(subtitlesData)}
               currentTime={currentTabIndex}
               onLyricClick={handleLyricClick}
