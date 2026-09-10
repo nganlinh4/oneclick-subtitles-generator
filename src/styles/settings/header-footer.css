@@ -57,6 +57,45 @@
   margin-right: 0;
 }
 
+.app-ui-scale {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  background: var(--md-surface-1);
+}
+
+.app-ui-scale button {
+  width: 36px;
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-on-surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.2rem;
+}
+
+.app-ui-scale button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-primary), transparent 90%);
+}
+
+.app-ui-scale button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.app-ui-scale output {
+  min-width: 46px;
+  color: var(--md-on-surface-variant);
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
 /* Theme toggle button in settings footer */
 .settings-footer .theme-toggle {
   background: none;

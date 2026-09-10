@@ -110,6 +110,7 @@ description = "Allows the main window to create, delete, and inspect safe metada
 commands.allow = [
   "credential_set",
   "credential_upsert",
+  "credential_replace",
   "credential_delete",
   "credential_status",
 ]

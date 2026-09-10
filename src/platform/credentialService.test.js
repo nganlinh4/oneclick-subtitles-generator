@@ -77,6 +77,22 @@ it('validates UUIDv7 deletion IDs before crossing IPC', async () => {
   expect(invokeCommand).toHaveBeenCalledWith('credential_delete', { id });
 });
 
+it('atomically replaces one UUID-addressed secret without returning it', async () => {
+  const id = uuidv7();
+  const secret = 'replacement-gemini-key';
+  const invokeCommand = vi.fn().mockResolvedValue(readyGeminiCredential({ id, last4: '-key' }));
+  const service = createCredentialService({ invokeCommand });
+
+  const result = await service.replaceCredential(id, { purpose: 'geminiApiKey', secret });
+
+  expect(invokeCommand).toHaveBeenCalledWith('credential_replace', {
+    id,
+    request: { purpose: 'geminiApiKey', secret },
+  });
+  expect(result.last4).toBe('-key');
+  expect(JSON.stringify(result)).not.toContain(secret);
+});
+
 it('requests all or purpose-filtered safe credential statuses', async () => {
   const gemini = readyGeminiCredential();
   const invokeCommand = vi.fn()

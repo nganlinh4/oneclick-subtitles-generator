@@ -8,6 +8,7 @@ import {
   getCredentialAvailability,
   initializeCredentialState,
   removeGeminiCredential,
+  replaceGeminiCredential,
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
@@ -66,6 +67,7 @@ vi.mock('../../../platform/credentialStateController', () => ({
   })),
   initializeCredentialState: vi.fn(),
   removeGeminiCredential: vi.fn(),
+  replaceGeminiCredential: vi.fn(),
   selectGeminiCredential: vi.fn(),
   subscribeCredentialState: vi.fn(),
 }));
@@ -106,6 +108,7 @@ beforeEach(() => {
   initializeCredentialState.mockResolvedValue(undefined);
   addGeminiCredential.mockResolvedValue(uuidv7());
   removeGeminiCredential.mockResolvedValue(true);
+  replaceGeminiCredential.mockResolvedValue(uuidv7());
   selectGeminiCredential.mockResolvedValue(undefined);
   subscribeCredentialState.mockImplementation(() => () => undefined);
 });
@@ -146,6 +149,11 @@ it('keeps only unique safe references in native React state and selects by UUID'
     result.current.geminiApiKeys[1]
   ));
   expect(removeGeminiCredential).toHaveBeenCalledWith(second.id);
+
+  act(() => result.current.setReplacementKeys({ 0: 'replacement-secret' }));
+  await act(async () => result.current.handleReplaceGeminiKey(0));
+  expect(replaceGeminiCredential).toHaveBeenCalledWith(first.id, 'replacement-secret');
+  expect(result.current.replacementKeys[0]).toBe('');
 });
 
 it('uses a write-only native add buffer and clears it after success or failure', async () => {

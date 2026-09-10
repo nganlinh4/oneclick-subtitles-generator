@@ -23,6 +23,11 @@
   "geminiApiKeys": "Gemini API 키 목록",
   "geminiKeyRotation": "준비된 키는 병렬 처리 또는 제공자 재시도 시 자동으로 순환합니다.",
   "secureCredentialReference": "이 기기에 안전하게 저장됨",
+  "replaceGeminiKey": "저장된 Gemini API 키 교체",
+  "updateKey": "업데이트",
+  "appUiScale": "인터페이스 배율",
+  "decreaseUiScale": "인터페이스 축소",
+  "increaseUiScale": "인터페이스 확대",
   "geminiApiUsage": "Gemini API 사용량",
   "youtubeApiKey": "YouTube API 키",
   "geniusApiKey": "Genius API 키",
@@ -431,5 +436,7 @@
   "youtubeOAuth.urlGenFailed": "인증 URL을 생성하지 못했습니다. 클라이언트 인증 정보를 확인해 주세요.",
   "youtubeOAuth.authTitle": "YouTube 인증",
   "modelManagement": "내레이션 모델",
+  "modelManagement.availableModels": "사용 가능한 모델",
+  "modelManagement.installedModels": "설치된 모델",
   "youtubeOAuth": "YouTube OAuth 2.0"
 }

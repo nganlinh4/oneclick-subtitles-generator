@@ -18,7 +18,10 @@ import { startNativeJobRecovery } from './platform/jobRecoveryCoordinator';
 import { installLegacyImportKeyboardAction } from './platform/legacyImportService';
 import { revealDesktopWindowWhenReady } from './platform/uiFontBootstrap';
 import { installAppCloseCheckpoint } from './platform/appCloseCheckpoint';
-import { initializeEffectiveAppFont } from './platform/nativeUiPreferences';
+import {
+  initializeEffectiveAppFont,
+  initializeEffectiveAppUiScale,
+} from './platform/nativeUiPreferences';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -77,6 +80,7 @@ if (window.history && window.history.scrollRestoration) {
 initializeEffectiveTheme();
 subscribeToEffectiveSystemTheme();
 initializeEffectiveAppFont();
+initializeEffectiveAppUiScale();
 
 // Mark Material Symbols font ready to avoid showing ligature text
 const markMaterialSymbolsReady = () => {

@@ -7,6 +7,7 @@ import {
   getCredentialAvailability,
   initializeCredentialState,
   removeGeminiCredential,
+  replaceGeminiCredential,
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
@@ -21,6 +22,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
   const [showNewGeminiKey, setShowNewGeminiKey] = useState(false);
   const [activeKeyIndex, setActiveKeyIndexState] = useState(0);
   const [visibleKeyIndices, setVisibleKeyIndices] = useState({});
+  const [replacementKeys, setReplacementKeys] = useState({});
   const credentialIdByReference = useRef(new Map());
   const nativeAddPending = useRef(false);
 
@@ -148,6 +150,21 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
     return false;
   };
 
+  const handleReplaceGeminiKey = async (index) => {
+    if (!nativeCredentialMode) return false;
+    const reference = geminiApiKeys[index];
+    const id = credentialIdByReference.current.get(reference);
+    const secret = replacementKeys[index]?.trim();
+    if (!id || !secret) return false;
+    try {
+      await replaceGeminiCredential(id, secret);
+      setReplacementKeys((current) => ({ ...current, [index]: '' }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return {
     nativeCredentialMode,
     geminiApiKeys,
@@ -158,9 +175,12 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
     activeKeyIndex,
     visibleKeyIndices,
     setVisibleKeyIndices,
+    replacementKeys,
+    setReplacementKeys,
     handleSetActiveKey,
     handleAddGeminiKey,
     handleRemoveGeminiKey,
+    handleReplaceGeminiKey,
   };
 };
 
@@ -175,9 +195,12 @@ const GeminiKeysManager = ({
   activeKeyIndex,
   visibleKeyIndices,
   setVisibleKeyIndices,
+  replacementKeys,
+  setReplacementKeys,
   handleSetActiveKey,
   handleAddGeminiKey,
   handleRemoveGeminiKey,
+  handleReplaceGeminiKey,
 }) => {
   const { t } = useTranslation();
   const newGeminiKeyRef = useRef(null);
@@ -242,16 +265,29 @@ const GeminiKeysManager = ({
                   </>
                 ) : (
                   <div className="gemini-key-row">
-                    <div
-                      className="gemini-key-text gemini-key-masked"
-                      title={nativeCredentialMode
-                        ? t('settings.secureCredentialReference', 'Stored securely on this device')
-                        : key}
-                    >
-                      {nativeCredentialMode
-                        ? `Gemini API •••• ${key.slice(-4)}`
-                        : key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
-                    </div>
+                    {nativeCredentialMode ? (
+                      <input
+                        type="password"
+                        className="gemini-key-text gemini-key-masked gemini-key-replacement"
+                        value={replacementKeys[index] ?? ''}
+                        onChange={(event) => setReplacementKeys((current) => ({
+                          ...current,
+                          [index]: event.target.value,
+                        }))}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') handleReplaceGeminiKey(index);
+                        }}
+                        placeholder={`•••••••• ${key.slice(-4)}`}
+                        aria-label={t('settings.replaceGeminiKey', 'Replace saved Gemini API key')}
+                        title={t('settings.secureCredentialReference', 'Stored securely on this device')}
+                        autoComplete="new-password"
+                        spellCheck="false"
+                      />
+                    ) : (
+                      <div className="gemini-key-text gemini-key-masked" title={key}>
+                        {key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
+                      </div>
+                    )}
                     <div className="gemini-key-actions">
                       {!nativeCredentialMode && (
                         <button
@@ -261,6 +297,16 @@ const GeminiKeysManager = ({
                           title={t('settings.showKey', 'Show key')}
                         >
                           {t('settings.show', 'Show')}
+                        </button>
+                      )}
+                      {nativeCredentialMode && (
+                        <button
+                          type="button"
+                          className="gemini-key-button"
+                          onClick={() => handleReplaceGeminiKey(index)}
+                          disabled={!replacementKeys[index]?.trim()}
+                        >
+                          {t('settings.updateKey', 'Update')}
                         </button>
                       )}
                       <button

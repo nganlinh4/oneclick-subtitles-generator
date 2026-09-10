@@ -5,7 +5,9 @@ import CustomDropdown from '../common/CustomDropdown';
 import '../../styles/common/CustomDropdown.css';
 import {
   APP_FONT_PREFERENCE,
+  APP_UI_SCALE_PREFERENCE,
   applyEffectiveAppFont,
+  applyEffectiveAppUiScale,
 } from '../../platform/nativeUiPreferences';
 import { toggleTheme as toggleThemeUtil, getThemeIcon, getThemeLabel, initializeTheme, setupSystemThemeListener } from './utils/themeUtils';
 import { showPreferenceProjectionWarning } from './utils/preferenceProjectionWarning';
@@ -27,10 +29,14 @@ const SettingsFooterControls = ({
   const { t } = useTranslation();
   const themeWriteInFlightRef = useRef(false);
   const appFontWriteInFlightRef = useRef(false);
+  const appScaleWriteInFlightRef = useRef(false);
 
   const [theme, setTheme] = useState(() => initializeTheme());
   const [appFont, setAppFont] = useState(() => (
     APP_FONT_PREFERENCE.readMirror('google-sans')
+  ));
+  const [appScale, setAppScale] = useState(() => (
+    APP_UI_SCALE_PREFERENCE.readMirror('100')
   ));
 
   useEffect(() => {
@@ -90,6 +96,52 @@ const SettingsFooterControls = ({
     { value: 'noto-sans', label: 'Noto Sans' },
   ]), []);
 
+  const handleAppScaleStep = async (direction) => {
+    if (disabled || appScaleWriteInFlightRef.current) return;
+    const values = APP_UI_SCALE_PREFERENCE.values;
+    const currentIndex = values.indexOf(appScale);
+    const nextScale = values[Math.max(0, Math.min(values.length - 1, currentIndex + direction))];
+    if (nextScale === appScale) return;
+    appScaleWriteInFlightRef.current = true;
+    try {
+      const committedScale = await APP_UI_SCALE_PREFERENCE.commit(nextScale, {
+        apply: applyEffectiveAppUiScale,
+        publish: (publishedScale) => window.dispatchEvent(new StorageEvent('storage', {
+          key: APP_UI_SCALE_PREFERENCE.key,
+          newValue: publishedScale,
+        })),
+        onProjectionWarning: () => showPreferenceProjectionWarning(t),
+      });
+      setAppScale(committedScale);
+    } catch {
+      window.addToast?.(
+        t('settings.saveFailed', 'Settings could not be saved. Please try again.'),
+        'error',
+        8000,
+      );
+    } finally {
+      appScaleWriteInFlightRef.current = false;
+    }
+  };
+
+  const scaleControls = (
+    <div className="app-ui-scale" aria-label={t('settings.appUiScale', 'Interface scale')}>
+      <button
+        type="button"
+        onClick={() => handleAppScaleStep(-1)}
+        disabled={disabled || appScale === APP_UI_SCALE_PREFERENCE.values[0]}
+        aria-label={t('settings.decreaseUiScale', 'Decrease interface scale')}
+      >−</button>
+      <output aria-live="polite">{appScale}%</output>
+      <button
+        type="button"
+        onClick={() => handleAppScaleStep(1)}
+        disabled={disabled || appScale === APP_UI_SCALE_PREFERENCE.values.at(-1)}
+        aria-label={t('settings.increaseUiScale', 'Increase interface scale')}
+      >+</button>
+    </div>
+  );
+
   if (layout === 'split') {
     return (
       <div className={`settings-footer-controls ${size === 'large' ? 'controls-large' : ''} split-layout ${className}`.trim()}>
@@ -115,6 +167,7 @@ const SettingsFooterControls = ({
             />
           )}
           <LanguageSelector isDropup={isDropup} disabled={disabled} />
+          {scaleControls}
         </div>
       </div>
     );
@@ -141,6 +194,7 @@ const SettingsFooterControls = ({
         />
       )}
       <LanguageSelector isDropup={isDropup} disabled={disabled} />
+      {scaleControls}
     </div>
   );
 };

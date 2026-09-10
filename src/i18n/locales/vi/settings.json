@@ -25,6 +25,11 @@
   "geminiApiKeys": "Các Khóa API Gemini",
   "geminiKeyRotation": "Các khóa sẵn sàng sẽ tự động luân phiên khi xử lý song song hoặc cần thử lại với nhà cung cấp.",
   "secureCredentialReference": "Được lưu an toàn trên thiết bị này",
+  "replaceGeminiKey": "Thay thế khóa API Gemini đã lưu",
+  "updateKey": "Cập nhật",
+  "appUiScale": "Tỷ lệ giao diện",
+  "decreaseUiScale": "Thu nhỏ giao diện",
+  "increaseUiScale": "Phóng to giao diện",
   "geminiApiUsage": "Mức dùng API Gemini",
   "youtubeApiKey": "Khóa API YouTube",
   "geniusApiKey": "Khóa API Genius",
@@ -431,5 +436,7 @@
   "youtubeOAuth.urlGenFailed": "Không tạo được URL ủy quyền. Vui lòng kiểm tra thông tin Client của bạn.",
   "youtubeOAuth.authTitle": "Xác thực YouTube",
   "modelManagement": "Mô hình thuyết minh",
+  "modelManagement.availableModels": "Mô hình có sẵn",
+  "modelManagement.installedModels": "Mô hình đã cài đặt",
   "youtubeOAuth": "YouTube OAuth 2.0"
 }

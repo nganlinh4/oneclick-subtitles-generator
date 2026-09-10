@@ -39,6 +39,21 @@ beforeEach(() => {
   window.addToast = vi.fn();
   document.documentElement.style.removeProperty('--font-primary');
   document.documentElement.style.removeProperty('--font-title');
+  document.documentElement.style.removeProperty('zoom');
+});
+
+it('commits interface scale natively before applying it to the window', async () => {
+  mocks.invokeDesktop.mockResolvedValue(undefined);
+  render(<SettingsFooterControls />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Increase interface scale' }));
+
+  await waitFor(() => expect(mocks.invokeDesktop).toHaveBeenCalledExactlyOnceWith('setting_set', {
+    key: 'app_ui_scale', value: '110',
+  }));
+  expect(localStorage.getItem('app_ui_scale')).toBe('110');
+  expect(document.documentElement.style.zoom).toBe('110%');
+  expect(screen.getByText('110%')).toBeInTheDocument();
 });
 
 afterEach(() => {

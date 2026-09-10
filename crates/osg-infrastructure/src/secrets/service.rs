@@ -95,6 +95,31 @@ where
         Ok(self.database.credential_mark_ready(status.id, &last4)?)
     }
 
+    /// Atomically replaces one explicitly selected credential without exposing its prior value.
+    pub fn replace(
+        &self,
+        id: CredentialId,
+        request: CredentialSetRequest,
+    ) -> Result<CredentialStatus, CredentialServiceError> {
+        let (purpose, secret) = request.into_parts();
+        let _guard = self.lock_mutations()?;
+        let existing = self.database.credential_get(id)?;
+        if existing.purpose != purpose {
+            return Err(CredentialError::PurposeMismatch.into());
+        }
+        validate_credential(purpose, &secret)?;
+        let last4 = credential_last_four(purpose, &secret)?;
+        match self.vault.availability()? {
+            CredentialStoreAvailability::Available => {}
+            CredentialStoreAvailability::Locked => return Err(CredentialError::Locked.into()),
+            CredentialStoreAvailability::Unavailable => {
+                return Err(CredentialError::Unavailable.into());
+            }
+        }
+        self.vault.replace(id, &secret)?;
+        Ok(self.database.credential_mark_ready(id, &last4)?)
+    }
+
     /// Deletes the keyring entry before deleting its non-secret metadata.
     ///
     /// If the metadata deletion later fails, a subsequent status pass marks the stale
@@ -407,6 +432,44 @@ mod tests {
         let bytes = std::fs::read(backup).expect("read backup");
         assert!(!contains_bytes(&bytes, b"second-access"));
         assert!(!contains_bytes(&bytes, b"second-refresh"));
+    }
+
+    #[test]
+    fn selected_multi_credential_is_replaced_in_place() {
+        let (_directory, database) = database();
+        let service = CredentialService::new(database, SessionCredentialBackend::new());
+        let first = service
+            .set(CredentialSetRequest::new(
+                CredentialPurpose::GeminiApiKey,
+                "gemini-first-1111".to_owned(),
+            ))
+            .expect("store first key");
+        let untouched = service
+            .set(CredentialSetRequest::new(
+                CredentialPurpose::GeminiApiKey,
+                "gemini-second-2222".to_owned(),
+            ))
+            .expect("store second key");
+
+        let replaced = service
+            .replace(
+                first.id,
+                CredentialSetRequest::new(
+                    CredentialPurpose::GeminiApiKey,
+                    "gemini-replacement-3333".to_owned(),
+                ),
+            )
+            .expect("replace selected key");
+
+        assert_eq!(replaced.id, first.id);
+        assert_eq!(replaced.last4.as_deref(), Some("3333"));
+        assert_eq!(
+            service
+                .resolve(untouched.id, CredentialPurpose::GeminiApiKey)
+                .expect("resolve untouched key")
+                .expose_secret(),
+            "gemini-second-2222"
+        );
     }
 
     #[test]

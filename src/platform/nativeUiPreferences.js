@@ -74,6 +74,11 @@ export const APP_FONT_PREFERENCE = createEnumeratedUiPreference({
   values: ['google-sans', 'system-ui', 'noto-sans'],
 });
 
+export const APP_UI_SCALE_PREFERENCE = createEnumeratedUiPreference({
+  key: 'app_ui_scale',
+  values: ['80', '90', '100', '110', '120'],
+});
+
 const APP_FONT_STACKS = Object.freeze({
   'google-sans': Object.freeze({
     primary: '"Google Sans", "Open Sans", sans-serif',
@@ -111,6 +116,22 @@ export const initializeEffectiveAppFont = ({
   root = defaultRoot(),
 } = {}) => applyEffectiveAppFont(
   APP_FONT_PREFERENCE.readMirror('google-sans', { storage }),
+  { root },
+);
+
+export const applyEffectiveAppUiScale = (scale, { root = defaultRoot() } = {}) => {
+  if (!APP_UI_SCALE_PREFERENCE.accepts(scale)) {
+    throw new TypeError('Unsupported app_ui_scale preference');
+  }
+  root.style.zoom = `${scale}%`;
+  return scale;
+};
+
+export const initializeEffectiveAppUiScale = ({
+  storage = defaultStorage(),
+  root = defaultRoot(),
+} = {}) => applyEffectiveAppUiScale(
+  APP_UI_SCALE_PREFERENCE.readMirror('100', { storage }),
   { root },
 );
 

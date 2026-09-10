@@ -52,6 +52,18 @@ const createHarness = ({
       credentials.push(created);
       return created;
     }),
+    upsertCredential: vi.fn(),
+    replaceCredential: vi.fn(async (id, { purpose, secret }) => {
+      const index = credentials.findIndex((credential) => credential.id === id);
+      if (index < 0) throw new Error('safe test failure');
+      credentials[index] = {
+        ...credentials[index],
+        purpose,
+        last4: Array.from(secret).slice(-4).join(''),
+        state: 'ready',
+      };
+      return credentials[index];
+    }),
     deleteCredential: vi.fn(async (id) => {
       const index = credentials.findIndex((credential) => credential.id === id);
       if (index < 0) return false;

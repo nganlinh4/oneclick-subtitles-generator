@@ -693,6 +693,20 @@ pub(crate) async fn credential_upsert(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
+pub(crate) async fn credential_replace(
+    state: State<'_, DesktopState>,
+    id: CredentialId,
+    request: CredentialSetRequest,
+) -> CommandResult<CredentialStatus> {
+    let credentials = state.credentials.clone();
+    run_credential_task("replace credential", move || credentials.replace(id, request)).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri injects State as an owned command extractor"
+)]
 pub(crate) async fn credential_delete(
     state: State<'_, DesktopState>,
     id: CredentialId,

@@ -5,6 +5,61 @@
   padding: 4px 2px 24px;
 }
 
+.narration-model-panel__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--md-primary-container) 72%, transparent),
+    color-mix(in srgb, var(--md-tertiary-container) 45%, transparent));
+}
+
+.narration-model-panel__hero > .material-symbols-rounded {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 15px;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  font-size: 25px;
+  box-shadow: var(--md-elevation-level2);
+}
+
+.narration-model-panel__hero h3 {
+  margin: 0 0 3px;
+  color: var(--text-primary);
+  font-size: 1.08rem;
+}
+
+.narration-model-panel__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 2px -7px;
+}
+
+.narration-model-panel__section-heading h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.narration-model-panel__section-heading span {
+  display: grid;
+  min-width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .narration-model-panel__description {
   max-width: 760px;
   margin: 0;
@@ -22,6 +77,15 @@
   border-radius: 20px;
   background: var(--md-surface-1);
   box-shadow: var(--md-elevation-level1);
+  transition: transform 0.2s var(--md-easing-standard),
+              box-shadow 0.2s var(--md-easing-standard),
+              border-color 0.2s var(--md-easing-standard);
+}
+
+.narration-model-package:hover {
+  transform: translateY(-2px);
+  border-color: var(--md-primary);
+  box-shadow: var(--md-elevation-level2);
 }
 
 .narration-model-package__icon {

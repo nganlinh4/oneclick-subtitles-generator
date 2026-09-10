@@ -1,7 +1,10 @@
 import {
   APP_FONT_PREFERENCE,
+  APP_UI_SCALE_PREFERENCE,
   PREFERRED_LANGUAGE_PREFERENCE,
+  applyEffectiveAppUiScale,
   initializeEffectiveAppFont,
+  initializeEffectiveAppUiScale,
   createEnumeratedUiPreference,
 } from './nativeUiPreferences';
 
@@ -33,6 +36,22 @@ it('reads a missing or hostile mirror without turning the fallback into user int
     .toBe('google-sans');
   expect(missing.setItem).not.toHaveBeenCalled();
   expect(hostile.setItem).not.toHaveBeenCalled();
+});
+
+it('restores and applies a bounded native app scale without inventing a preference', () => {
+  const root = { style: {} };
+  const returning = createStorage({ app_ui_scale: '110' });
+
+  expect(initializeEffectiveAppUiScale({ storage: returning, root })).toBe('110');
+  expect(root.style.zoom).toBe('110%');
+  expect(returning.setItem).not.toHaveBeenCalled();
+
+  expect(applyEffectiveAppUiScale('80', { root })).toBe('80');
+  expect(root.style.zoom).toBe('80%');
+  expect(() => applyEffectiveAppUiScale('125', { root })).toThrow(
+    /Unsupported app_ui_scale preference/,
+  );
+  expect(APP_UI_SCALE_PREFERENCE.values).toEqual(['80', '90', '100', '110', '120']);
 });
 
 it('paints a returning-user font at startup without mounting settings or persisting a fallback', () => {

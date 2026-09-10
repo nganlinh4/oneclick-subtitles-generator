@@ -2,6 +2,7 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import {
   deleteCredential,
   getCredentialStatus,
+  replaceCredential,
   setCredential,
   upsertCredential,
 } from './credentialService';
@@ -207,6 +208,7 @@ export const createCredentialStateController = ({
     setCredential,
     upsertCredential,
     deleteCredential,
+    replaceCredential,
     getCredentialStatus,
   },
   invokeCommand = invokeDesktop,
@@ -406,6 +408,23 @@ export const createCredentialStateController = ({
     });
   };
 
+  const replaceGeminiCredential = async (id, secret) => {
+    await initialize();
+    return enqueue(async () => {
+      if (!snapshot.credentials.some((credential) => (
+        credential.id === id && credential.purpose === GEMINI_PURPOSE
+      ))) throw invalidSelection();
+      const status = await credentialApi.replaceCredential(
+        id,
+        { purpose: GEMINI_PURPOSE, secret },
+      );
+      selection.cooldowns.delete(id);
+      publish(await credentialApi.getCredentialStatus());
+      await persistSelection();
+      return status.id;
+    });
+  };
+
   const removeSingletonCredential = async (purpose) => {
     if (!SINGLETON_PURPOSES.has(purpose)) throw invalidSelection();
     await initialize();
@@ -509,6 +528,7 @@ export const createCredentialStateController = ({
     addSingletonCredential,
     upsertSingletonCredential,
     removeGeminiCredential,
+    replaceGeminiCredential,
     removeSingletonCredential,
     selectGeminiCredential,
     rotateGeminiCredential,
@@ -533,6 +553,7 @@ export const addGeminiCredential = credentialStateController.addGeminiCredential
 export const addSingletonCredential = credentialStateController.addSingletonCredential;
 export const upsertSingletonCredential = credentialStateController.upsertSingletonCredential;
 export const removeGeminiCredential = credentialStateController.removeGeminiCredential;
+export const replaceGeminiCredential = credentialStateController.replaceGeminiCredential;
 export const removeSingletonCredential = credentialStateController.removeSingletonCredential;
 export const selectGeminiCredential = credentialStateController.selectGeminiCredential;
 export const rotateGeminiCredential = credentialStateController.rotateGeminiCredential;

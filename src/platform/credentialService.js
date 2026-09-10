@@ -273,6 +273,21 @@ export const createCredentialService = ({ invokeCommand = invokeDesktop } = {}) 
     return normalizeCredentialStatus(result);
   };
 
+  const replaceCredential = async (id, request) => {
+    const credentialId = requireCredentialId(id);
+    const normalized = normalizeSetRequest(request);
+    let result;
+    try {
+      result = await invokeCommand('credential_replace', {
+        id: credentialId,
+        request: normalized,
+      });
+    } catch (error) {
+      throw normalizeCredentialCommandFailure(error);
+    }
+    return normalizeCredentialStatus(result);
+  };
+
   const deleteCredential = async (id) => {
     const credentialId = requireCredentialId(id);
     let deleted;
@@ -299,6 +314,7 @@ export const createCredentialService = ({ invokeCommand = invokeDesktop } = {}) 
   return Object.freeze({
     setCredential,
     upsertCredential,
+    replaceCredential,
     deleteCredential,
     getCredentialStatus,
   });
@@ -308,5 +324,6 @@ const credentialService = createCredentialService();
 
 export const setCredential = credentialService.setCredential;
 export const upsertCredential = credentialService.upsertCredential;
+export const replaceCredential = credentialService.replaceCredential;
 export const deleteCredential = credentialService.deleteCredential;
 export const getCredentialStatus = credentialService.getCredentialStatus;

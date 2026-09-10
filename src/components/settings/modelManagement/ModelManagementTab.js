@@ -221,16 +221,29 @@ const ModelManagementTab = ({ activeTab }) => {
 
   return (
     <section
-      className="narration-model-panel"
+      className="model-management-section narration-model-panel"
       data-model-package-id="f5tts-v1-base"
       data-model-package-state={status?.state ?? 'checking'}
     >
-      <p className="narration-model-panel__description">
-        {t(
-          'settings.modelManagement.description',
-          'OSG supports one catalog-verified narration model package: F5-TTS v1 Base. Install, update, repair, or remove its signed files here.'
-        )}
-      </p>
+      <header className="narration-model-panel__hero">
+        <span className="material-symbols-rounded" aria-hidden="true">graphic_eq</span>
+        <div>
+          <h3>{t('settings.modelManagement', 'Narration Models')}</h3>
+          <p className="narration-model-panel__description">
+            {t(
+              'settings.modelManagement.description',
+              'Install and manage verified local narration models.'
+            )}
+          </p>
+        </div>
+      </header>
+
+      <div className="section-header narration-model-panel__section-heading">
+        <h4>{status?.installed
+          ? t('settings.modelManagement.installedModels', 'Installed Models')
+          : t('settings.modelManagement.availableModels', 'Available Models')}</h4>
+        <span>1</span>
+      </div>
 
       <article className="narration-model-package">
         <div className="narration-model-package__icon" aria-hidden="true">

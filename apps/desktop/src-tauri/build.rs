@@ -54,6 +54,7 @@ const COMMANDS: &[&str] = &[
     "job_result_ack",
     "credential_set",
     "credential_upsert",
+    "credential_replace",
     "credential_delete",
     "credential_status",
     "genius_lyrics",
