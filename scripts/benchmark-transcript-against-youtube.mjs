@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
-const [databasePath, captionsPath, videoId] = process.argv.slice(2);
-if (!databasePath || !captionsPath || !videoId) {
-  throw new Error('usage: node scripts/benchmark-transcript-against-youtube.mjs <db> <json3> <video-id>');
+const [generatedPath, captionsPath, videoId] = process.argv.slice(2);
+if (!generatedPath || !captionsPath || !videoId) {
+  throw new Error('usage: node scripts/benchmark-transcript-against-youtube.mjs <db-or-generated-cues.json> <youtube.json3> <video-id>');
 }
 
 const normalize = (text) => text.toLocaleLowerCase('en-US')
@@ -20,19 +20,32 @@ const reference = captions.events.flatMap((event) => (event.segs || []).flatMap(
   return words.map((text) => ({ text, startMs }));
 }));
 
-const database = new DatabaseSync(databasePath, { readOnly: true });
-const revision = database.prepare(`
+let revision;
+let generated;
+if (generatedPath.toLocaleLowerCase('en-US').endsWith('.json')) {
+  const evidence = JSON.parse(readFileSync(generatedPath, 'utf8'));
+  if (evidence.schemaVersion !== 1 || !Array.isArray(evidence.cues)) {
+    throw new Error('generated-cues evidence has an unsupported shape');
+  }
+  revision = { model: 'gemini-transcribe-live', durationMs: evidence.durationSeconds * 1000 };
+  generated = evidence.cues.flatMap(({ text, start_ms: startMs }) => (
+    tokens(text).map((word) => ({ text: word, startMs }))
+  ));
+} else {
+  const database = new DatabaseSync(generatedPath, { readOnly: true });
+  revision = database.prepare(`
   SELECT hex(r.id) id, r.word_count wordCount, r.source_range_end_ms durationMs, r.model
   FROM transcript_revisions r JOIN projects p ON p.id = r.project_id
   WHERE p.title = ? AND r.state = 'completed'
   ORDER BY r.updated_at_ms DESC LIMIT 1
 `).get(videoId);
-if (!revision) throw new Error(`no completed transcript revision for ${videoId}`);
-const generated = database.prepare(`
+  if (!revision) throw new Error(`no completed transcript revision for ${videoId}`);
+  generated = database.prepare(`
   SELECT w.text, w.start_ms startMs FROM transcript_words w
   JOIN transcript_revisions r ON r.id = w.revision_id
   WHERE hex(r.id) = ? ORDER BY w.ordinal
 `).all(revision.id).flatMap(({ text, startMs }) => tokens(text).map((word) => ({ text: word, startMs })));
+}
 
 const rows = reference.length + 1;
 const columns = generated.length + 1;
