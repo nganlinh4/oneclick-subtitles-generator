@@ -106,14 +106,14 @@ const useVideoProcessingState = ({
         if (isAsr(method) && !engineStatus.loading && !engineAvailable) {
             setMethod('new');
         }
-    }, [engineAvailable, engineStatus.loading, method]);
+    }, [engineAvailable, engineStatus.loading, method, setMethod]);
 
     // Prevent old method selection in Vercel mode
     useEffect(() => {
         if (isVercelMode && method === 'old') {
             setMethod('new');
         }
-    }, [isVercelMode, method]);
+    }, [isVercelMode, method, setMethod]);
 
     // Processing options state with localStorage persistence
     const [audioOnly, setAudioOnly] = useState(() => localStorage.getItem('video_processing_audio_only') === 'true');
