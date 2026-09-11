@@ -1754,7 +1754,8 @@ it('keeps native picker media opaque while preparing the file workflow', async (
   expect(setUploadedFileData).toHaveBeenCalledWith(nativeMedia);
   expect(setIsUploading).toHaveBeenLastCalledWith(false);
   expect(setIsDownloading).toHaveBeenLastCalledWith(false);
-  expect(setStatus).toHaveBeenCalledWith(expect.objectContaining({ type: 'info' }));
+  expect(setStatus).toHaveBeenLastCalledWith({});
+  expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'info' }));
   createObjectUrl.mockRestore();
 });
 
