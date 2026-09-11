@@ -315,7 +315,7 @@ const selectFirstHalfOfTimeline = async () => {
     timeout: 30_000,
     timeoutMsg: 'pointer selection did not expose the selected-range actions',
   });
-  await waitForHistoryControl('.split-sub-btn', true);
+  await waitForHistoryControl('[data-osg-action="split-subtitles"]', true);
 };
 
 const saveAndWaitForCheckpoint = async (root, expected) => {
@@ -416,7 +416,7 @@ describe('customer subtitle cue CRUD and history', () => {
     // policy. The short final cue overlaps the range but remains unchanged; only the merged long cue
     // is split.
     await selectFirstHalfOfTimeline();
-    await clickControl('.split-sub-btn');
+    await clickControl('[data-osg-action="split-subtitles"]');
     const apply = await $('.apply-btn');
     await apply.waitForClickable({ timeout: 30_000, timeoutMsg: 'the smart-split dialog did not open' });
     await apply.click();

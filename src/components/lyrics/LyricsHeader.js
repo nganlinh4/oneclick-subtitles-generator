@@ -162,6 +162,7 @@ const LyricsHeader = ({
             </button>
             <button
               className="split-sub-btn"
+              data-osg-action="split-subtitles"
               onClick={() => setShowSplitModal(true)}
               disabled={!canSplitSubtitles}
               title={canSplitSubtitles 
