@@ -44,6 +44,13 @@ const geometry = () => browser.execute(() => {
     languageButton: read('.settings-footer-controls .custom-dropdown-button'),
     continueButton: read('.lets-go-btn'),
     continueLabel: read('.lets-go-text'),
+    settingsButtonCovered: (() => {
+      const button = document.querySelector('[data-app-action="open-settings"]');
+      if (button === null) return null;
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit !== button && !button.contains(hit);
+    })(),
   };
 });
 
@@ -61,6 +68,7 @@ describe('a first-time customer sees intentional full-window onboarding', () => 
 
     const first = await geometry();
     assertCoversViewport(first.banner, first.viewport, 'the first onboarding overlay');
+    assert.equal(first.settingsButtonCovered, true, 'the Settings action leaked above first-run onboarding');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-welcome',
@@ -83,6 +91,7 @@ describe('a first-time customer sees intentional full-window onboarding', () => 
       `theme and language do not share a row: ${JSON.stringify(second)}`,
     );
     assert.ok(second.continueLabel?.width >= 40, `the continue label has no painted width: ${JSON.stringify(second)}`);
+    assert.equal(second.settingsButtonCovered, true, 'the Settings action leaked above onboarding preferences');
     assert.equal(second.continueLabel.visibility, 'visible', 'the continue label is hidden');
     assert.equal(second.continueLabel.opacity, '1', 'the continue label is transparent');
     const controlsCentreX = second.controls.left + second.controls.width / 2;

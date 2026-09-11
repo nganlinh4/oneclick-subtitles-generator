@@ -1,8 +1,9 @@
-/* Overlay sits above app content but below onboarding overlay z-index */
+/* This second onboarding stage still owns the whole window. Keep it above the floating Settings
+   action; the initial onboarding overlay uses the same top layer while it is mounted. */
 .onboarding-reveal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 99999; /* Below onboarding overlay (100000), above app */
+  z-index: 2147483647;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -8,7 +8,9 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 100000; /* Extremely high z-index to ensure it's on top of everything */
+  /* The floating Settings action intentionally sits near the top of the app stack. First-run
+     onboarding owns the whole window, so it must also cover that action. */
+  z-index: 2147483647;
   /* No fade-in animation to prevent content from showing through */
   /* Ensure complete coverage */
   backdrop-filter: blur(10px); /* Blur any content that might show through */
