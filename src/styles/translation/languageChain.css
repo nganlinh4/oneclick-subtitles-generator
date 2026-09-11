@@ -67,8 +67,8 @@
   background-color: var(--md-primary-container);
   color: var(--md-on-primary-container);
   border: 1px solid var(--md-primary);
-  min-width: 80px;
-  max-width: 120px;
+  min-width: 10rem;
+  max-width: 15rem;
   padding: 0.5rem 0.75rem;
   z-index: 1; /* Lower z-index than delimiter dropdown */
 }
