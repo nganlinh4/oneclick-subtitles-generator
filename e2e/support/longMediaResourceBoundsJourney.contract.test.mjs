@@ -116,7 +116,12 @@ test('recovery is a two-process PHASE-gated scenario over the same synthetic lon
     mediaPipeline,
     /#\[cfg\(feature = "e2e-automation"\)\][\s\S]*?OSG_E2E_WORKFLOW[\s\S]*?OSG_E2E_PERSISTENCE_PHASE/u,
   );
-  assert.match(mediaPipeline, /tokio::time::sleep\(Duration::from_secs\(60\)\)/u);
+  // Rust 1.91 added Duration::from_mins; keep checking the one-minute hold's semantics instead
+  // of pinning whichever equivalent constructor spelling rustfmt/current Rust encourages.
+  assert.match(
+    mediaPipeline,
+    /tokio::time::sleep\(Duration::from_(?:secs\(60\)|mins\(1\))\)/u,
+  );
 });
 
 test('both heavy long-media journeys are excluded from the default suite with their own npm scripts', () => {
