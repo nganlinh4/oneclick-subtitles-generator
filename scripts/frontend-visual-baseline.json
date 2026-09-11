@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "301a93557ddbbb929db01ace5df8899766a90290",
+  "baselineRevision": "450d64021d45c016d1ae3fda246272ea02a36940",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -111,7 +111,7 @@
     "src/styles/GeminiButtonAnimations.css": "e9d1a790ff7e2de3cdc4546e69ebc2a6242ecc88491180b58de22624681e30a3",
     "src/styles/GeminiHeaderAnimation.css": "a12aa6db9e1d99067b3daa9636302c6d06dc873ccd1daf12d82e29e8437457d7",
     "src/styles/Header.css": "c1702ba7bfb6cd414a1ac7c3c0bf8e41a0411546f514f4ac259ff30fb47a52de",
-    "src/styles/index.css": "039a7fe8623829bbc491322c0921e66fb1ce544c6f3ba1d508183f7e31f2582c",
+    "src/styles/index.css": "93836afff1f4b3c06f8a44376f6f7303cb2afc8fac733726d7c079508f0b2511",
     "src/styles/InputMethods.css": "1de24ed124fb9c34e80a2e93e78cf103793a00ecb4a7ee1499cda8e5ecd88370",
     "src/styles/InputMethodsBase.css": "6d9bf67a81f3bc943331a90facfe69c677ac45c660efcb3c43b7504004f27ec9",
     "src/styles/LanguageSelector.css": "5607a96e593d2061bee65af3c4abc4d9ae782b275c934a975811ee5eaf947c3b",
@@ -161,8 +161,8 @@
     "src/styles/narration/VoiceSelectionModal.css": "f62de9cdd2bb2f6d61b3f4f988cfbd9436d73ed2d78fb5530e67bbbe6767e307",
     "src/styles/oauth-callback.css": "ec23bb636da84eeb1fe746d0e7ea58b17c434727bd0350d7a8ac9a7442936fd0",
     "src/styles/OAuthCallback.css": "64525be09c10d027325a3bdd15c6ea2522a31010619e7f69c14a17c41e37b0ab",
-    "src/styles/OnboardingBanner.css": "c133425efc92357e0c9276ab2ef3d34da634a77fa8b1c8c6cd7b128186d3547c",
-    "src/styles/OnboardingFooterReveal.css": "3f28a3ac8c491d199a03f353d3b7f12101fe5a70aae94aeb3427cd7a093aea19",
+    "src/styles/OnboardingBanner.css": "7f50b029bc9e526d49b6ff056f683f3e09863c057a1386d7b66e6287b68ad8ee",
+    "src/styles/OnboardingFooterReveal.css": "82024014e840eb9448f1dbf144ea1d056b6675e5dd1ec75adfae926f68a7c762",
     "src/styles/OutputContainer.css": "bc36eadba7f240cfc2595bff667f24345f1f8ba065e29ea390a0844f53bb4f40",
     "src/styles/ParallelProcessingStatus.css": "e9091a4db39ef26b96a38e1ab206d9cbf264d4287b92d7171346d5406304b4f1",
     "src/styles/ProcessingTextAnimation.css": "5d69880b3cb6d527b84360042198e66860603430b19b2df0abce632fb99b4e5b",
@@ -9243,10 +9243,10 @@
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "e008b7d62675722e7d69248c3a8c42501fd8e73d3cf0d1a9788e31bdc7430e2b",
+      "hash": "cee803d298587f3b3fb04fbcbc9978e40e2b1fd69b67688d2169282c233f6f25",
       "rootCount": 1,
       "roots": [
-        "607c6ad8e832ae5e63a8ccf9d379ab4f5da75dcb984ebda73720d4813b5a92c0"
+        "69463ab5713feaa8781f7adf12abd82b184b982563a1aab6e377cde4ef85f81d"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {
@@ -9257,10 +9257,10 @@
       ]
     },
     "src/components/settings/tabs/GeminiKeysManager.js": {
-      "hash": "4892c964fe9d9fb1d2635daa6b85a637a9fff7f04dabd7debfc7a55bcc738038",
+      "hash": "921ef7f4b06c42404a9c292622f5a02ffe949e2ce737cc28ee17620f070aff31",
       "rootCount": 1,
       "roots": [
-        "e9c4d9dd64bc20f63ffcfaefd6569cd1458c2a311916332ffc5f726258f65bca"
+        "9c115b509d244c5496af281e04417a83c952b97a19ee61b45e79e6b216747e5f"
       ]
     },
     "src/components/settings/tabs/PromptsTab.js": {
