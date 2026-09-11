@@ -47,12 +47,13 @@ export const selectAlternateDropdownOption = async (buttonSelector) => {
   assert.ok(optionIndex >= 0, `${buttonSelector} has no alternate public option`);
   const choice = options[optionIndex];
   const selected = await choice.getText();
-  await browser.action('pointer')
-    .move({ origin: choice })
-    .down({ button: 0 })
-    .pause(100)
-    .up({ button: 0 })
-    .perform();
+  // WebDriver's semantic element click is still public user input, and it is the stable path for
+  // this portalled control. A manually assembled pointer sequence can retain a now-stale origin
+  // while the dropdown recalculates its fixed position after a theme/font/locale repaint; the
+  // gesture then closes the portal without activating an option. CustomDropdown explicitly owns
+  // click-without-mousedown for keyboard/accessibility activation and tests that path in
+  // CustomDropdown.activation.test.jsx.
+  await choice.click();
   await browser.waitUntil(async () => (
     (await $(`${buttonSelector} .dropdown-value`).getText()) !== before
   ), {
