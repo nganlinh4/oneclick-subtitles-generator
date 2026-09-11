@@ -11,33 +11,31 @@
 
 /* No fixed heights - content will determine the height */
 
-/* Unavailable narration section */
-.narration-section.unavailable {
-  opacity: 0.8;
-  background-color: var(--md-surface-2);
-  border: 1px solid var(--md-error-container);
+/* An optional engine that has not been installed is setup state, not a product error. */
+.narration-section.setup-required {
+  background-color: var(--md-surface-1);
 }
 
-/* Unavailable message styling */
-.narration-unavailable-message {
+/* Setup message styling */
+.narration-setup-message {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1.5rem;
-  background-color: rgba(var(--md-error-rgb), 0.08);
+  background-color: var(--md-surface-2);
   border-radius: 16px;
   margin-top: 1rem;
-  border: 1px solid rgba(var(--md-error-rgb), 0.2);
+  border: 1px solid var(--md-outline-variant);
 }
 
-.narration-unavailable-message .warning-icon {
+.narration-setup-message .setup-icon {
   flex-shrink: 0;
-  color: var(--md-error);
+  color: var(--md-primary);
 }
 
-.narration-unavailable-message .message {
+.narration-setup-message .message {
   font-size: 1rem;
-  color: var(--md-error);
+  color: var(--md-on-surface-variant);
   font-weight: 500;
 }
 

@@ -185,19 +185,13 @@ const UnifiedNarrationSection = ({
 
   if (allServicesUnavailable) {
     return (
-      <div className="narration-section unavailable" ref={sectionRef}>
+      <div className="narration-section setup-required" ref={sectionRef}>
         <div className="narration-header">
-          <h3>
-            {t('narration.title', 'Generate Narration')}
-            {' '}
-            <span className="service-unavailable">
-              {t('narration.serviceUnavailableIndicator', '(Service Unavailable)')}
-            </span>
-          </h3>
+          <h3>{t('narration.title', 'Generate Narration')}</h3>
         </div>
-        <div className="narration-unavailable-message">
-          <div className="warning-icon">
-            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>warning</span>
+        <div className="narration-setup-message">
+          <div className="setup-icon">
+            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>info</span>
           </div>
           <div className="message">
             {allServicesUnavailableMessage}
