@@ -376,6 +376,7 @@ const AppLayout = ({
     <>
       <Header
         onSettingsClick={() => setShowSettings(true)}
+        settingsOpen={showSettings}
       />
 
       {isAppReady && (

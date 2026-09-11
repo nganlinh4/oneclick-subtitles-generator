@@ -40,6 +40,16 @@ test('keeps the Material settings action floating and persists its discoverabili
   expect(localStorage.getItem('settings_open_count')).toBe('1');
 });
 
+test('removes the floating launcher from paint and focus while Settings owns the screen', () => {
+  const { container } = render(<Header onSettingsClick={vi.fn()} settingsOpen />);
+  const button = container.querySelector('[data-app-action="open-settings"]');
+
+  expect(button).toHaveClass('floating-hidden');
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute('aria-hidden', 'true');
+  expect(button).toHaveAttribute('tabindex', '-1');
+});
+
 test('hides an experienced-user action and reveals it in the top-right discovery zone', () => {
   vi.useFakeTimers();
   localStorage.setItem('settings_open_count', '5');

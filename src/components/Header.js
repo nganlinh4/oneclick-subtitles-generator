@@ -10,7 +10,7 @@ import {
   startStartupUpdateCheck,
   subscribeDesktopUpdateStatus,
 } from '../platform/startupUpdateCoordinator';
-const Header = ({ onSettingsClick }) => {
+const Header = ({ onSettingsClick, settingsOpen = false }) => {
   const { t } = useTranslation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [settingsOpenCount, setSettingsOpenCount] = useState(() => (
@@ -113,6 +113,7 @@ const Header = ({ onSettingsClick }) => {
     }, 30 * 60 * 1000);
     return () => { mounted = false; clearInterval(id); unsubscribe(); };
   }, []);
+  const settingsButtonVisible = showFloatingSettings && !settingsOpen;
   return (
     <header className="app-header">
       {/* Gemini constellation animation */}
@@ -135,11 +136,14 @@ const Header = ({ onSettingsClick }) => {
 
 
       <button
-        className={`settings-button floating-settings ${showFloatingSettings ? 'floating-visible' : 'floating-hidden'}`}
+        className={`settings-button floating-settings ${settingsButtonVisible ? 'floating-visible' : 'floating-hidden'}`}
         data-app-action="open-settings"
         onClick={handleSettingsClick}
         onPointerEnter={revealSettings}
         aria-label={t('header.settingsAria')}
+        aria-hidden={!settingsButtonVisible}
+        tabIndex={settingsButtonVisible ? 0 : -1}
+        disabled={settingsOpen}
       >
         <img
           src={specialStarIcon}
