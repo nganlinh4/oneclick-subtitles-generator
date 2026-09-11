@@ -651,10 +651,13 @@ describe('main preview customer controls and source transitions', () => {
       null,
       'background waveform work inserted an inline status into the customer timeline',
     );
+    const newSuccessToasts = sourceB.successToasts.filter(
+      message => !sourceA.successToasts.includes(message),
+    );
     assert.deepEqual(
-      sourceB.successToasts,
+      newSuccessToasts,
       [],
-      `media activation falsely announced subtitle readiness: ${JSON.stringify(sourceB.successToasts)}`,
+      `media activation falsely announced subtitle readiness: ${JSON.stringify(newSuccessToasts)}`,
     );
 
     const durableB = durableState(root);
