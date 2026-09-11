@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "30368d85b7480a364e43805ae4261b913b224ae1",
+  "baselineRevision": "4a77c0426b7fcb29f160f0e074877a90be987fca",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -2206,7 +2206,7 @@
       ]
     },
     "src/i18n/locales/en/translation.json": {
-      "hash": "5164b5cd9168c461dace4ac146c8e0392d06e608537607b57d96e42471755851",
+      "hash": "9ab6f53504f794bb5a22cd5774359bdd0eb7b0e886e102e01d8e13a522bcec63",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -2215,6 +2215,7 @@
         "allSubtitles",
         "bulk.addMore",
         "bulk.addMoreWithSettings",
+        "bulk.allFailed",
         "bulk.complete",
         "bulk.completeWithMain",
         "bulk.downloadAll",
@@ -4884,7 +4885,7 @@
       ]
     },
     "src/i18n/locales/ko/translation.json": {
-      "hash": "2146b4361418d94ab9e0f703796fd33b3e0e6b889d03e78861dc72408f63e6d5",
+      "hash": "fb57a8f99e5323a9b829f26ded4f34778f5a7daa090b0bfa47b2b1b3133ad23a",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -4893,6 +4894,7 @@
         "allSubtitles",
         "bulk.addMore",
         "bulk.addMoreWithSettings",
+        "bulk.allFailed",
         "bulk.complete",
         "bulk.completeWithMain",
         "bulk.downloadAll",
@@ -7673,7 +7675,7 @@
       ]
     },
     "src/i18n/locales/vi/translation.json": {
-      "hash": "7f28d7d313cc942bb09bebac797144b9e70bb3170ed599f2d9a7f4f7dc1035ef",
+      "hash": "0412cebcb1a277c31a193c55069b544a1c814eef5e221e21e41fe7b1cb1fae68",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -7682,6 +7684,7 @@
         "allSubtitles",
         "bulk.addMore",
         "bulk.addMoreWithSettings",
+        "bulk.allFailed",
         "bulk.complete",
         "bulk.completeWithMain",
         "bulk.downloadAll",
@@ -8247,10 +8250,10 @@
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
-      "hash": "a055280840920f04f4213f23b1abc0880dc98bdf56897aaeb4d2af09182429b4",
+      "hash": "74932666cddc8578c6d88890ca18b7423a443b5b054c12cb3a93d6425e81765b",
       "rootCount": 1,
       "roots": [
-        "d96df34edb3973dd5c777f60347f818f6912398a7f75bb531e6fa2a2e0c600d3"
+        "7be19fa381be0c6a002bbead1a6a4858dffdff6d4019113d86cf0b7d06d84390"
       ]
     },
     "src/components/app/index.js": {
