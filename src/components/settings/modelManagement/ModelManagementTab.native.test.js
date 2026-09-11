@@ -7,6 +7,7 @@ import {
   removeNarrationModelPackage,
 } from '../../../services/modelService';
 import { showErrorToast } from '../../../utils/toastUtils';
+import { getF5ModelsStatus, installF5Model } from '../../../platform/f5ModelService';
 import ModelManagementTab from './ModelManagementTab';
 
 const i18nMocks = vi.hoisted(() => ({
@@ -24,6 +25,12 @@ vi.mock('../../../services/modelService', () => ({
 }));
 vi.mock('../../../services/modelAvailabilityService', () => ({
   invalidateModelsCache: vi.fn(),
+}));
+vi.mock('../../../platform/f5ModelService', () => ({
+  cancelF5Model: vi.fn(),
+  getF5ModelsStatus: vi.fn(),
+  installF5Model: vi.fn(),
+  removeF5Model: vi.fn(),
 }));
 vi.mock('../../../utils/toastUtils', () => ({
   showErrorToast: vi.fn(),
@@ -54,6 +61,32 @@ beforeEach(() => {
   installNarrationModelPackage.mockResolvedValue({ started: false, job: null });
   removeNarrationModelPackage.mockResolvedValue({ started: false, job: null });
   cancelNarrationModelPackageOperation.mockResolvedValue({ cancelled: false, job: null });
+  getF5ModelsStatus.mockResolvedValue([]);
+  installF5Model.mockResolvedValue(undefined);
+});
+
+it('starts the missing shared runtime and selected language model together', async () => {
+  let releaseRuntime;
+  let releaseModel;
+  installNarrationModelPackage.mockReturnValue(new Promise((resolve) => { releaseRuntime = resolve; }));
+  installF5Model.mockReturnValue(new Promise((resolve) => { releaseModel = resolve; }));
+  getF5ModelsStatus.mockResolvedValue([{
+    id: 'f5tts-vietnamese-vivoice', name: 'F5 Vietnamese ViVoice', author: 'hynt',
+    language: 'vi', license: 'CC-BY-NC-SA-4.0', installed: false,
+    downloadBytes: 5_394_373_461, operation: null,
+  }]);
+  render(<ModelManagementTab activeTab="model-management" />);
+
+  const card = (await screen.findByText('F5 Vietnamese ViVoice')).closest('article');
+  const install = card.querySelector('.download-model-btn');
+  expect(install).toBeEnabled();
+  fireEvent.click(install);
+  await waitFor(() => {
+    expect(installNarrationModelPackage).toHaveBeenCalledTimes(1);
+    expect(installF5Model).toHaveBeenCalledWith('f5tts-vietnamese-vivoice', expect.any(Function));
+  });
+  releaseRuntime({ started: true, job: { id: 'runtime' } });
+  releaseModel();
 });
 
 it('shows only the shipping signed package and invokes a URL-free install contract', async () => {

@@ -294,9 +294,19 @@ const ModelManagementTab = ({ activeTab }) => {
             const run = async (action) => {
               setLaunching(variant.id);
               try {
-                if (action === 'install') await installF5Model(variant.id, (event) => {
-                  if (event?.event === 'progress') setVariants((current) => current.map((item) => item.id === variant.id ? { ...item, operation: event.operation } : item));
-                });
+                if (action === 'install') {
+                  const variantInstall = installF5Model(variant.id, (event) => {
+                    if (event?.event === 'progress') setVariants((current) => current.map((item) => item.id === variant.id ? { ...item, operation: event.operation } : item));
+                  });
+                  // A language checkpoint and the shared runtime/vocoder are independent,
+                  // content-addressed downloads. Start both immediately on a clean install;
+                  // making the user install an unexplained prerequisite first only serialized
+                  // work the native delivery systems can safely perform in parallel.
+                  const runtimeInstall = status?.installed
+                    ? Promise.resolve()
+                    : installNarrationModelPackage(operationHandlers('install'));
+                  await Promise.all([runtimeInstall, variantInstall]);
+                }
                 else if (action === 'remove') await removeF5Model(variant.id);
                 else await cancelF5Model(variant.id);
                 invalidateModelsCache(); await refresh();
@@ -314,7 +324,7 @@ const ModelManagementTab = ({ activeTab }) => {
               <div className="model-card-actions narration-model-package__actions">
                 {variant.operation ? <button type="button" className="cancel-download-btn" onClick={() => run('cancel')}>{t('settings.modelManagement.cancel', 'Cancel')}</button>
                   : variant.installed ? <button type="button" className="delete-model-btn" onClick={() => run('remove')} disabled={variantBusy}>{t('settings.modelManagement.remove', 'Remove')}</button>
-                    : <button type="button" className="download-model-btn" onClick={() => run('install')} disabled={variantBusy || !status?.installed}>{t('settings.modelManagement.install', 'Install')}</button>}
+                    : <button type="button" className="download-model-btn" onClick={() => run('install')} disabled={variantBusy}>{t('settings.modelManagement.install', 'Install')}</button>}
               </div>
             </article>;
           })}
