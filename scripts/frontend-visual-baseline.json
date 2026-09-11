@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "450d64021d45c016d1ae3fda246272ea02a36940",
+  "baselineRevision": "2eb15b94f82cfbe7f4660c179e799d656ff68068",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8964,10 +8964,10 @@
       ]
     },
     "src/components/narration/UnifiedNarrationSection.js": {
-      "hash": "98f3d13d2e426fc1eaffe3226dfbffe926ba5d0bd2c13fb02388c95f8d0bf023",
+      "hash": "569aca07619be98445b123bd377aa4bc7c90592b7ae7496e56e3808020f09104",
       "rootCount": 2,
       "roots": [
-        "b4a7b5875b36e6ecd05f1d4ceac6b9b12bb600c465570c6d666204b600a8e9ac",
+        "b0f215277eff627ce16b9467344cc61cbc839f307a5cc86c2a2263399b0442bc",
         "f4f9979fe0309741cc873b0481dfa8a26aa2bb487b3fa43aa04a0caa1d7065f9"
       ]
     },
