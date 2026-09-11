@@ -10,10 +10,10 @@
     clippy::shadow_unrelated
 )]
 
-//! Adversarial empirical verification tests for osg-infrastructure schema v15.
+//! Adversarial empirical verification tests for osg-infrastructure schema v16.
 //!
 //! Tests:
-//! 1. Idempotent migration from versions 1..=14 to 15 under dirty / aborted state simulations.
+//! 1. Idempotent migration from versions 1..=14 to 16 under dirty / aborted state simulations.
 //! 2. Stress-testing transactional integrity: promote windows (rollback on any failure, constraint checks),
 //!    concurrent range queries / promotions stress harness, and cascading deletes across all entity levels.
 //! 3. Backward compatibility: ensuring legacy v1-v14 projects load cleanly without synthetic word timings or errors.
@@ -67,6 +67,9 @@ fn test_migrations() -> Migrations<'static> {
         )),
         M::up(include_str!(
             "../src/storage/sql/0015_word_native_transcripts.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0016_late_legacy_default_subtitle_scale.sql"
         )),
     ])
 }
@@ -204,7 +207,7 @@ fn create_sample_revision(
 }
 
 // =========================================================================================
-// SECTION 1: Idempotent Migration v1..=14 -> 15 under Dirty / Aborted State Simulations
+// SECTION 1: Idempotent Migration v1..=14 -> 16 under Dirty / Aborted State Simulations
 // =========================================================================================
 
 #[test]
@@ -230,13 +233,13 @@ fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
             );
         }
 
-        // 2. Open with production Database::open, upgrading to schema v15
+        // 2. Open with production Database::open, upgrading to schema v16
         {
-            let db = Database::open(&db_path).expect("Database::open to v15");
+            let db = Database::open(&db_path).expect("Database::open to v16");
             let health = db.health().expect("health");
             assert_eq!(
                 health.schema_version, 16,
-                "Schema must be v15 after Database::open for v{prior_version}"
+                "Schema must be v16 after Database::open for v{prior_version}"
             );
 
             // Verify project loads seamlessly
@@ -263,7 +266,7 @@ fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
             let version: i64 = conn
                 .query_row("PRAGMA user_version", [], |r| r.get(0))
                 .unwrap();
-            assert_eq!(version, 15);
+            assert_eq!(version, 16);
 
             let integrity: String = conn
                 .query_row("PRAGMA integrity_check", [], |r| r.get(0))
