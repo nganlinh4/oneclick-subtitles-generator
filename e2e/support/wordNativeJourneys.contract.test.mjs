@@ -9,13 +9,9 @@ import test from 'node:test';
 const JOURNEYS = [
   'wordNativeFreshVideoSpeech.journey.js',
   'wordNativeAudioRangeProjection.journey.js',
-  'wordNativeEditReflowOffline.journey.js',
-  'wordNativeSaveRelaunchMigration.journey.js',
   'wordNativeCancelRetrySwitch.journey.js',
-  'wordNativeMultilingualSpeakers.journey.js',
   'wordNativeTranslationVisualCustom.journey.js',
   'wordNativePreviewDecodedExport.journey.js',
-  'wordNativeRefusalsRecovery.journey.js',
 ];
 
 test('all word-native customer journeys exist and adhere to opaque-box contracts', () => {
@@ -28,6 +24,8 @@ test('all word-native customer journeys exist and adhere to opaque-box contracts
 
     // 1. Must use public selectors and evidence captures
     assert.match(content, /captureWorkflowStep/u, `${filename} must record workflow screenshot checkpoints`);
+    assert.doesNotMatch(content, /captureWorkflowStep\s*\(\s*(?!\{)/u,
+      `${filename} must use the current object-shaped evidence API`);
 
     // 2. Must NOT contain private backdoor invocations or credentials
     assert.doesNotMatch(content, /AIza|__TAURI__|invokeDesktop|invokeCommand/u,

@@ -49,12 +49,8 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'unicodeCues.journey.js',
   'wordNativeAudioRangeProjection.journey.js',
   'wordNativeCancelRetrySwitch.journey.js',
-  'wordNativeEditReflowOffline.journey.js',
   'wordNativeFreshVideoSpeech.journey.js',
-  'wordNativeMultilingualSpeakers.journey.js',
   'wordNativePreviewDecodedExport.journey.js',
-  'wordNativeRefusalsRecovery.journey.js',
-  'wordNativeSaveRelaunchMigration.journey.js',
   'wordNativeTranslationVisualCustom.journey.js',
   'wordNativeVerticalSlice.journey.js',
 ]);
