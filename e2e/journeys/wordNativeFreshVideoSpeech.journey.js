@@ -8,7 +8,7 @@ import { openProjectWithMedia, seekPreviewTo, waitForCanvasSubtitleFrame } from 
 import { captureWorkflowStep, copyWorkflowArtifact } from '../support/workflowEvidence.js';
 import { extractFrame, listMediaFiles, newestMediaFile, probeMedia } from '../support/nativeMediaOracle.js';
 
-/* global $, browser, describe, document, it, MutationObserver, window */
+/* global $, browser, describe, document, it, MutationObserver, performance, window */
 const WORKFLOW = process.env.OSG_E2E_WORKFLOW || 'word-native-fresh-video-speech';
 
 describe('Transcribe in the original generation modal and subtitle editor', () => {
@@ -36,15 +36,17 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     assert.deepEqual(controls, { replacement: false, videoOptions: false, originalModal: true });
     await captureWorkflowStep({ workflow: WORKFLOW, step: '03-transcribe-method-options', description: 'Transcribe selected as an ordinary method in the original modal.' });
     await browser.execute(() => {
-      window.__OSG_LIVE_DRAFT_HISTORY__ = [];
+      window.__OSG_STREAMED_CUE_HISTORY__ = [];
       const observe = () => {
-        const rows = [...document.querySelectorAll('[data-osg-live-draft]')];
-        const entry = rows.map((row) => ({
-          revision: Number(row.getAttribute('data-osg-live-update')),
-          textLength: row.textContent?.length ?? 0,
-        }));
-        const history = window.__OSG_LIVE_DRAFT_HISTORY__;
-        if (entry.length && JSON.stringify(entry) !== JSON.stringify(history.at(-1))) history.push(entry);
+        const rows = [...document.querySelectorAll('.lyric-text')]
+          .map((row) => (row.textContent || '').trim())
+          .filter(Boolean);
+        const generationActive = document.querySelector('[data-osg-action="generate-subtitles"]')
+          ?.classList.contains('processing') === true;
+        const history = window.__OSG_STREAMED_CUE_HISTORY__;
+        if (generationActive && rows.length > 0 && rows.length !== history.at(-1)?.count) {
+          history.push({ count: rows.length, observedAtMs: performance.now() });
+        }
       };
       new MutationObserver(observe).observe(document.body, {
         attributes: true,
@@ -54,23 +56,28 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
       });
     });
     await clickControl('[data-osg-action="process-subtitles"]');
-    await (await $('[data-osg-live-draft]')).waitForDisplayed({ timeout: 90_000 });
     try {
       await browser.waitUntil(async () => browser.execute(() => (
-        window.__OSG_LIVE_DRAFT_HISTORY__?.some((entry) => (
-          entry.length >= 2 && entry.some((row) => row.revision >= 3)
-        ))
+        window.__OSG_STREAMED_CUE_HISTORY__?.length > 0
       )), {
         timeout: 90_000,
         interval: 100,
-        timeoutMsg: 'Live never advanced beyond one early draft into multiple real-time rows',
+        timeoutMsg: 'Live never published ordinary subtitle rows while generation was active',
       });
     } catch (error) {
-      const history = await browser.execute(() => window.__OSG_LIVE_DRAFT_HISTORY__);
-      process.stdout.write(`Live draft DOM history: ${JSON.stringify(history)}\n`);
+      const history = await browser.execute(() => window.__OSG_STREAMED_CUE_HISTORY__);
+      process.stdout.write(`Streamed cue DOM history: ${JSON.stringify(history)}\n`);
       throw error;
     }
-    await captureWorkflowStep({ workflow: WORKFLOW, step: '04-live-draft', focusSelector: '[data-osg-live-draft]', description: 'Real Live text before timestamped captions; drafts are outside saved cues.' });
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '04-streaming-cues',
+      focusSelector: '.lyrics-container-wrapper',
+      description: 'Timestamped subtitle rows stream into the ordinary editor while generation is active; no separate draft surface is rendered.',
+      details: {
+        history: await browser.execute(() => window.__OSG_STREAMED_CUE_HISTORY__),
+      },
+    });
     await browser.waitUntil(async () => {
       const state = durableState(root);
       return state.counts.cues > 0 && durableTranscriptWords(root).length > 0
@@ -82,7 +89,8 @@ describe('Transcribe in the original generation modal and subtitle editor', () =
     await seekPreviewTo((words[0].startMs + words[0].endMs) / 2000);
     await waitForCanvasSubtitleFrame();
     await captureWorkflowStep({ workflow: WORKFLOW, step: '05-native-captions-in-original-editor', description: 'Provider captions in the original editor and composited video preview.' });
-    assert.equal(await (await $('[data-osg-live-draft]')).isExisting(), false, 'completed Live drafts must be cleared');
+    assert.equal(await (await $('[data-osg-live-draft]')).isExisting(), false,
+      'the removed growing-draft surface must never return');
     const originalText = durableState(root).cues.map((cue) => cue.text);
     await clickControl('[data-osg-action="subtitle-speakers"]');
     if (await (await $('#speaker-scope')).isEnabled()) {
