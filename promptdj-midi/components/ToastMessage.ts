@@ -92,9 +92,13 @@ export class ToastMessage extends LitElement {
     </div>`;
   }
 
-  show(message: string) {
+  show(message: string, type: 'info' | 'error' | 'success' | 'warning' = 'error') {
     this.showing = true;
     this.message = message;
+    const host = window.top;
+    if (host && host !== window) {
+      host.postMessage({ type: 'pm-dj-toast-history', message, toastType: type }, window.location.origin);
+    }
   }
 
   hide() {

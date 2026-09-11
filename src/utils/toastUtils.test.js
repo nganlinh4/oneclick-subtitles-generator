@@ -25,3 +25,14 @@ test('renders fallback messages as text instead of executable markup', () => {
   expect(window.__toastInjected).toBeUndefined();
   toast.remove();
 });
+
+test('records a fallback DOM toast when the display hook is temporarily unavailable', () => {
+  const recordToastHistory = vi.fn();
+  window.recordToastHistory = recordToastHistory;
+  delete window.addToast;
+
+  const toast = showErrorToast('fallback failure');
+
+  expect(recordToastHistory).toHaveBeenCalledWith('fallback failure', 'error');
+  toast.remove();
+});

@@ -235,7 +235,7 @@ fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
             let db = Database::open(&db_path).expect("Database::open to v15");
             let health = db.health().expect("health");
             assert_eq!(
-                health.schema_version, 15,
+                health.schema_version, 16,
                 "Schema must be v15 after Database::open for v{prior_version}"
             );
 
@@ -360,7 +360,7 @@ fn test_migration_aborted_transaction_simulation() {
     // Now open with production Database::open, which must complete migration cleanly
     let db = Database::open(&db_path).expect("Database::open after abort");
     let health = db.health().expect("health");
-    assert_eq!(health.schema_version, 15);
+    assert_eq!(health.schema_version, 16);
 
     // Verify all 4 tables exist and have expected strict definitions
     let conn = Connection::open(&db_path).expect("inspect");

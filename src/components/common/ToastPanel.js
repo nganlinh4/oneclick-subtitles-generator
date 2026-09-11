@@ -45,6 +45,7 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   });
   const toastsRef = useRef([]);
   const toastIdRef = useRef(0);
+  const historyIdRef = useRef(0);
   const toastSessionIdRef = useRef(
     `${Date.now().toString(36)}-${(++toastSessionSequence).toString(36)}`
   );
@@ -62,12 +63,16 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
     return next;
   }, []);
 
-  const recordToastHistory = useCallback((toast) => {
-    const { timerId: _timerId, button: _button, ...historyToast } = toast;
-    setToastHistory((previous) => [
-      historyToast,
-      ...previous.filter((entry) => entry.id !== historyToast.id),
-    ]);
+  const recordToastHistory = useCallback(({ message, type, timestamp }) => {
+    // History is an event log. Live toasts may reuse an ID so progress can update in place, but
+    // every accepted notification needs its own immutable history identity.
+    const historyToast = {
+      id: `${toastSessionIdRef.current}-history-${(++historyIdRef.current).toString(36)}`,
+      message,
+      type,
+      timestamp,
+    };
+    setToastHistory((previous) => [historyToast, ...previous]);
   }, []);
 
   const removeToast = useCallback((id) => {
@@ -107,16 +112,23 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   // This effect sets up the global function and event listeners
   useEffect(() => {
     const removalTimeouts = removalTimeoutsRef.current;
+    window.recordToastHistory = (message, type = 'info') => {
+      recordToastHistory({ message, type, timestamp: Date.now() });
+      return true;
+    };
     window.addToast = (message, type = 'info', duration = 6000, key, button) => {
+      const now = Date.now();
+      recordToastHistory({ message, type, timestamp: now });
       // Onboarding may suppress routine progress noise, but never a failure, warning, or action
-      // the user must see. Dropping those is indistinguishable from a hung clean install.
+      // the user must see. Suppressed display noise still belongs in the history event log.
       if (onboardingActiveRef.current
           && type !== 'error'
           && type !== 'warning'
           && !button) return false;
       const previous = toastsRef.current;
-      const now = Date.now();
-      const keyedIndex = key ? previous.findIndex((toast) => toast.key === key) : -1;
+      const keyedIndex = key
+        ? previous.findIndex((toast) => toast.key === key && !toast.dismissing)
+        : -1;
       // A rapid repeat can represent two legitimate completed actions (for example, two saved
       // checkpoints). Preserve both actions while refreshing their one identical success notice.
       // Failures and actionable notifications deliberately remain one-per-occurrence.
@@ -148,7 +160,6 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
         };
         publishToasts([published, ...previous]);
       }
-      recordToastHistory(published);
       return true;
     };
     const queued = pendingToasts.splice(0);
@@ -184,6 +195,7 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
       toastsRef.current = [];
       window.addToast = enqueuePendingToast;
       delete window.removeToastByKey;
+      delete window.recordToastHistory;
       window.removeEventListener('aligned-narration-status', handleAlignedNarrationStatus);
       window.removeEventListener('translation-warning', handleTranslationWarning);
     };

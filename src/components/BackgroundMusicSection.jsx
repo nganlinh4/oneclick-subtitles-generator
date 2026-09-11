@@ -310,6 +310,17 @@ const BackgroundMusicSection = () => {
       const data = event.data;
       if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
 
+      if (data.type === 'pm-dj-toast-history') {
+        const allowedTypes = new Set(['info', 'error', 'success', 'warning']);
+        if (typeof data.message === 'string'
+            && data.message.length > 0
+            && data.message.length <= 4_096
+            && allowedTypes.has(data.toastType)) {
+          window.recordToastHistory?.(data.message, data.toastType);
+        }
+        return;
+      }
+
       if (data.type === 'pm-dj-native-start') handleNativeStart(data.weightedPrompts);
       if (data.type === 'pm-dj-native-update') handleNativeUpdate(data.weightedPrompts);
       if (data.type === 'pm-dj-native-control') handleNativeControl(data.control);

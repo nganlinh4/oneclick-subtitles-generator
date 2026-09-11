@@ -112,6 +112,85 @@ test('coalesces only recent identical non-actionable successes', () => {
   expect(screen.getAllByText('Progress saved successfully')).toHaveLength(2);
 });
 
+test('records every keyed update while updating one live toast in place', async () => {
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => {
+    window.addToast('Downloading', 'info', 60_000, 'output-status');
+    window.addToast('Transcribing', 'info', 60_000, 'output-status');
+    window.addToast('Finished', 'success', 60_000, 'output-status');
+  });
+
+  expect(screen.queryByText('Downloading')).not.toBeInTheDocument();
+  expect(screen.queryByText('Transcribing')).not.toBeInTheDocument();
+  expect(screen.getByText('Finished')).toBeInTheDocument();
+  await waitFor(() => expect(
+    JSON.parse(localStorage.getItem('toast_history_v1')).map((toast) => toast.message)
+  ).toEqual(['Finished', 'Transcribing', 'Downloading']));
+});
+
+test('records suppressed onboarding notifications without displaying them', async () => {
+  render(<ToastPanel />);
+
+  act(() => {
+    expect(window.addToast('Routine startup status', 'info')).toBe(false);
+    expect(window.addToast('Startup complete', 'success')).toBe(false);
+  });
+
+  expect(screen.queryByText('Routine startup status')).not.toBeInTheDocument();
+  await waitFor(() => expect(
+    JSON.parse(localStorage.getItem('toast_history_v1')).map((toast) => toast.message)
+  ).toEqual(['Startup complete', 'Routine startup status']));
+});
+
+test('records repeated coalesced successes as separate history events', async () => {
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => {
+    window.addToast('Saved', 'success', 60_000);
+    window.addToast('Saved', 'success', 60_000);
+  });
+
+  expect(screen.getAllByText('Saved')).toHaveLength(1);
+  await waitFor(() => expect(
+    JSON.parse(localStorage.getItem('toast_history_v1')).filter((toast) => toast.message === 'Saved')
+  ).toHaveLength(2));
+});
+
+test('records notifications displayed by an embedded application without duplicating them live', async () => {
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => window.recordToastHistory('Embedded music failed', 'error'));
+
+  expect(screen.queryByText('Embedded music failed')).not.toBeInTheDocument();
+  await waitFor(() => expect(
+    JSON.parse(localStorage.getItem('toast_history_v1'))[0]
+  ).toMatchObject({ message: 'Embedded music failed', type: 'error' }));
+});
+
+test('a keyed update during dismissal creates a fresh live toast and stable history entry', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('has_visited_site', 'true');
+  localStorage.setItem('onboarding_controls_dismissed', 'true');
+  render(<ToastPanel />);
+
+  act(() => window.addToast('Starting', 'info', 1000, 'progress'));
+  act(() => vi.advanceTimersByTime(1000));
+  act(() => window.addToast('Completed', 'success', 60_000, 'progress'));
+  act(() => vi.advanceTimersByTime(500));
+
+  expect(screen.getByText('Completed').closest('.toast-item')).toHaveClass('live', 'show');
+  const history = JSON.parse(localStorage.getItem('toast_history_v1'));
+  expect(history[0]).toMatchObject({ message: 'Completed', type: 'success' });
+  expect(history[0]).not.toHaveProperty('dismissing');
+});
+
 test('does not coalesce identical successes that carry independent actions', () => {
   vi.useFakeTimers();
   localStorage.setItem('has_visited_site', 'true');

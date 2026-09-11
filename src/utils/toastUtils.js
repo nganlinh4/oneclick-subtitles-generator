@@ -17,6 +17,8 @@ export const showToast = (message, type = 'info', duration = 6000, className = '
   }
 
   // Fallback to DOM manipulation
+  // A mounted history recorder can survive a temporarily replaced display hook.
+  window.recordToastHistory?.(message, type);
   // Create the toast element
   const toast = document.createElement('div');
   toast.className = `custom-toast ${type} ${className}`;

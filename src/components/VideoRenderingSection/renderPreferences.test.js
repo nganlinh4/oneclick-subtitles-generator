@@ -148,6 +148,29 @@ describe('video rendering preferences', () => {
     });
   });
 
+  it('upgrades only untouched browser-era 28px defaults during late localStorage consumption', () => {
+    const untouchedRenderDefault = storageWith({
+      videoRender_subtitleCustomization: JSON.stringify({ fontSize: 28 }),
+    });
+    expect(consumeLegacyRenderScene(untouchedRenderDefault).customization.fontSize).toBe(48);
+
+    const untouchedEditorDefault = storageWith({
+      subtitle_settings: JSON.stringify({ fontSize: '28' }),
+    });
+    expect(consumeLegacyRenderScene(untouchedEditorDefault).customization.fontSize).toBe(48);
+
+    const intentionalTwentyEight = storageWith({
+      videoRender_subtitleCustomization: JSON.stringify({
+        fontSize: 28,
+        textColor: '#ff00ff',
+      }),
+    });
+    expect(consumeLegacyRenderScene(intentionalTwentyEight).customization).toMatchObject({
+      fontSize: 28,
+      textColor: '#ff00ff',
+    });
+  });
+
   it('refuses an unreadable or undeletable legacy scene instead of silently skipping it', () => {
     const unreadable = { getItem: () => { throw new Error('blocked read'); } };
     expect(() => consumeLegacyRenderScene(unreadable)).toThrow(expect.objectContaining({

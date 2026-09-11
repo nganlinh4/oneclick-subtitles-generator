@@ -154,7 +154,7 @@ function main() {
   }));
   liveMusicHelper.addEventListener('filtered-prompt', ((event: Event) => {
     const filtered = (event as CustomEvent<{ text: string; filteredReason: string }>).detail;
-    toastMessage.show(filtered.filteredReason);
+    toastMessage.show(filtered.filteredReason, 'warning');
     pdjMidi.addFilteredPrompt(filtered.text);
   }));
   liveMusicHelper.addEventListener('error', ((event: Event) => {

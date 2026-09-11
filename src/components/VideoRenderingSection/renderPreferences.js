@@ -1,4 +1,5 @@
 import {
+  defaultCustomization,
   parseStoredSubtitleCustomization,
 } from '../subtitleCustomization/defaultCustomization';
 import { previewCustomizationForNativeRender } from '../previews/projectPreviewSettings';
@@ -75,6 +76,26 @@ const readStorage = (key, storage) => {
     return null;
   }
 };
+
+const sameCustomizationExceptFontSize = (candidate, reference) => (
+  Object.keys(reference).every((key) => (
+    key === 'fontSize' || Object.is(candidate[key], reference[key])
+  ))
+);
+
+/**
+ * Translate the untouched browser-era 28 CSS-pixel default into the 1080p-native style unit.
+ *
+ * Database migrations cannot close this path on their own: localStorage is consumed only after a
+ * newly activated project has opened the already-migrated database. That allowed a fresh project
+ * to materialize the obsolete value after the one-shot SQL repair had run. Only the exact default
+ * fingerprint is upgraded; an intentional 28px style remains customer data.
+ */
+const upgradeLegacyDefaultSubtitleScale = (customization, reference) => (
+  customization.fontSize === 28 && sameCustomizationExceptFontSize(customization, reference)
+    ? { ...customization, fontSize: defaultCustomization.fontSize }
+    : customization
+);
 
 export const loadRenderSettings = (storage) => {
   const candidate = parseStoredRecord(readStorage('videoRender_renderSettings', storage));
@@ -202,9 +223,16 @@ export const consumeLegacyRenderScene = (storage) => {
 
   const customization = (() => {
     if (renderCustomizationSerialized === null && editorSettingsSerialized !== null) {
-      return previewCustomizationForNativeRender(parseStoredRecord(editorSettingsSerialized) ?? {});
+      const parsed = previewCustomizationForNativeRender(
+        parseStoredRecord(editorSettingsSerialized) ?? {},
+      );
+      const legacyEditorDefault = previewCustomizationForNativeRender({ fontSize: 48 });
+      return upgradeLegacyDefaultSubtitleScale(parsed, legacyEditorDefault);
     }
-    return parseStoredSubtitleCustomization(renderCustomizationSerialized);
+    return upgradeLegacyDefaultSubtitleScale(
+      parseStoredSubtitleCustomization(renderCustomizationSerialized),
+      defaultCustomization,
+    );
   })();
   const editorSettings = parseStoredRecord(editorSettingsSerialized);
   const scene = {
