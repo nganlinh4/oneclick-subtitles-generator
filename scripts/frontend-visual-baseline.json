@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "4a77c0426b7fcb29f160f0e074877a90be987fca",
+  "baselineRevision": "2bc9b48dfc9270996d6a3b9ec02980d2823d21cc",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -218,7 +218,7 @@
     "src/styles/translation/header.css": "05154ac0864f51131c468533002e20d7103130e256fb31bae8fbdadd6c55cb01",
     "src/styles/translation/index.css": "f961d3d6359e0fe3600d4dc4f71e26f29c8b1c247732997c96bc2349407cf586",
     "src/styles/translation/inputs.css": "269152f7e71f89e7d32bcd90d6d6f9f12c42c03bb4de91bb6544e83563e014dc",
-    "src/styles/translation/languageChain.css": "5baae66602528f818b114c50bb54dcf99992e2a7d66c2c163c66b24417268141",
+    "src/styles/translation/languageChain.css": "b15b921e326fb415af4358b673e9701eb523a9bd850219b011410ca7775240d4",
     "src/styles/translation/preview.css": "7466dae8c2ceb30af082b524f865b9de5c4a37b4e9c6c7628fdba554497d0279",
     "src/styles/translation/slider-fixes.css": "65991848138c48f32a4301531538bbff247b228ed20f50bff4bc97fe028b669f",
     "src/styles/translation/slider.css": "9540758818b343dc83d0e2c4c21b29d3f0ce9503eed401610e92a2c34baedcb4",
