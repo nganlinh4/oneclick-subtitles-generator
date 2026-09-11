@@ -28,8 +28,9 @@ const EXPECTED_CUES = Object.freeze([
 /* global browser, describe, document, it */
 
 const editorSurface = () => browser.execute(() => ({
-  generationMode: document.querySelector('[data-osg-action="generate-subtitles"]')
-    ?.getAttribute('data-generation-mode') ?? null,
+  srtOnlyExplanations: document.querySelectorAll('.srt-only-message').length,
+  mediaGenerationActions: document.querySelectorAll('[data-osg-action="generate-subtitles"]').length,
+  mediaAnalysisActions: document.querySelectorAll('.video-analysis-button').length,
   cueTexts: [...document.querySelectorAll('.lyric-item[data-lyric-index] .lyric-text')]
     .map(node => (node.innerText || '').trim()),
   videos: document.querySelectorAll('.video-preview video.video-player').length,
@@ -49,8 +50,12 @@ describe('subtitle-only authoring followed by media', () => {
     await openEditor();
     await importSubtitles();
     let surface = await editorSurface();
-    assert.equal(surface.generationMode, 'srt-only',
-      'a media-free document import must enter the explicit SRT-only mode');
+    assert.equal(surface.srtOnlyExplanations, 1,
+      'a media-free document import must explain SRT-only mode exactly once');
+    assert.equal(surface.mediaGenerationActions, 0,
+      'a media-free document must not expose a generation action that cannot run');
+    assert.equal(surface.mediaAnalysisActions, 0,
+      'a media-free document must not expose a video-analysis action that cannot run');
     assert.equal(surface.videos, 0, 'no video may exist before the customer opens one');
     assert.deepEqual(surface.cueTexts, EXPECTED_CUES,
       'the imported document is not the visible track');
