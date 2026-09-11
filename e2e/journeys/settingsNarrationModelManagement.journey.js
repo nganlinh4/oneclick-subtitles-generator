@@ -63,9 +63,10 @@ const openModelManagement = async () => {
 const panelSnapshot = () => browser.execute((selector) => {
   const panel = document.querySelector(selector);
   if (panel === null) return null;
+  const primaryPackage = panel.querySelector('[data-model-package-id="f5tts-v1-base"]');
   return {
     state: panel.getAttribute('data-model-package-state'),
-    packageId: panel.getAttribute('data-model-package-id'),
+    packageId: primaryPackage?.getAttribute('data-model-package-id') ?? null,
     installVisible: panel.querySelector('[data-model-action="install"]') !== null,
     cancelVisible: panel.querySelector('[data-model-action="cancel"]') !== null,
     removeVisible: panel.querySelector('[data-model-action="remove"]') !== null,
