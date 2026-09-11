@@ -249,6 +249,20 @@ it('consumes each status publication once across translation and unrelated reren
   );
 });
 
+it('presents status copy verbatim instead of guessing state from localized words', () => {
+  const failure = {
+    message: 'The cache could not be read',
+    type: 'error',
+  };
+  render(<OutputContainer {...props} status={failure} statusEventId={43} />);
+
+  expect(window.addToast).toHaveBeenCalledExactlyOnceWith(
+    failure.message,
+    'error',
+    5000,
+  );
+});
+
 it('forwards first-run failures once and never collapses two occurrences behind a progress key', () => {
   localStorage.removeItem('has_visited_site');
   localStorage.removeItem('onboarding_controls_dismissed');
