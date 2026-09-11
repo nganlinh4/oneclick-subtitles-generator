@@ -4,11 +4,10 @@
 // a customer journey can be written against the controls the application really renders rather than
 // against names guessed from source. Run it with `npm --prefix e2e run recon` when the UI moves.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { openProjectWithMedia, importSubtitles, waitForCanvasSubtitleFrame } from '../support/workflow.js';
+import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
-import { clickControl, openEditor } from '../support/editor.js';
-import { FIXTURE_ROOT } from '../support/environment.js';
+const WORKFLOW = 'reconnaissance';
 
 const survey = () => browser.execute(() => {
   const visible = (node) => {
@@ -45,36 +44,23 @@ const show = (label, value) => console.log(`=== ${label} ===\n${JSON.stringify(v
 
 describe('the editor surface', () => {
   it('reports the controls reachable once a project has media and subtitles', async () => {
-    await openEditor();
-    await clickControl('[data-input-tab="file-upload"]');
-    await clickControl('.file-upload-input');
-
-    await browser.waitUntil(
-      async () => (await browser.execute(() => document.querySelector('video') !== null)),
-      { timeout: 120_000, interval: 1_000, timeoutMsg: 'media never activated' },
-    );
-
-    // cues-ascii.srt (not the retired media/cues-6s.srt fixture removed in 5c03e278) --
-    // its first cue is this same "First cue for the preview" text.
-    const subtitles = readFileSync(join(FIXTURE_ROOT, 'cues-ascii.srt'), 'utf8');
-    await browser.execute((text, name) => {
-      const target = document.querySelector('.srt-upload-button-container');
-      const file = new File([text], name, { type: 'application/x-subrip' });
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      for (const type of ['dragover', 'drop']) {
-        target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
-      }
-    }, subtitles, 'cues-ascii.srt');
-
-    await browser.waitUntil(
-      async () => (await browser.execute(
-        () => (document.body?.innerText || '').includes('First cue for the preview'),
-      )),
-      { timeout: 60_000, interval: 1_000, timeoutMsg: 'subtitles never appeared' },
-    );
+    await openProjectWithMedia();
+    await importSubtitles();
+    await browser.execute(() => {
+      const video = document.querySelector('.video-preview video.video-player');
+      if (video !== null) video.currentTime = 1;
+    });
+    await waitForCanvasSubtitleFrame();
     await browser.pause(3_000);
 
-    show('with media and subtitles', await survey());
+    const controls = await survey();
+    show('with media and subtitles', controls);
+    await captureWorkflowStep({
+      workflow: WORKFLOW,
+      step: '01-editor-with-media-and-subtitles',
+      description: 'Unconstrained release reconnaissance of the current editor after real media and subtitles are active.',
+      details: controls,
+      focusSelector: '.video-preview',
+    });
   });
 });
