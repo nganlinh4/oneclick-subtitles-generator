@@ -38,6 +38,14 @@ import {
 
 const WORKFLOW = 'settings-surface';
 const PROMPT_MARKER = 'OSG real-binary settings persistence journey.';
+const DISABLED_UPDATER_ALERTS = Object.freeze([
+  'Unable to check for updates',
+  'Không thể kiểm tra cập nhật',
+  '업데이트를 확인할 수 없습니다',
+].map((text) => ({
+  text,
+  reason: 'The e2e-automation binary compiles its updater channel off; the dedicated updater journey verifies the disabled native outcome and zero network access.',
+})));
 const SETTING_KEYS = Object.freeze([
   'theme',
   'app_font',
@@ -742,10 +750,7 @@ describe('a customer changes and safely resets Settings', () => {
         focusSelector: '.settings-modal',
         ...(surface.tab === 'about' ? {
           allowVisibleProblems: {
-            errorAlerts: [{
-              text: 'Unable to check for updates',
-              reason: 'The e2e-automation binary compiles its updater channel off; the dedicated updater journey verifies the disabled native outcome and zero network access.',
-            }],
+            errorAlerts: DISABLED_UPDATER_ALERTS,
           },
         } : {}),
       });
@@ -776,6 +781,7 @@ describe('a customer changes and safely resets Settings', () => {
       description: 'Theme, application font, and language change through their real footer controls.',
       details: { before: initialAppearance, after: changedAppearance, paint: changedPaint },
       focusSelector: '.settings-modal',
+      allowVisibleProblems: { errorAlerts: DISABLED_UPDATER_ALERTS },
     });
     const changedChromePixelBaseline = assertSettingsChromePixels(
       '08-appearance-changed',
