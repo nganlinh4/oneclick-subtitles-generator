@@ -740,6 +740,14 @@ describe('a customer changes and safely resets Settings', () => {
         description: surface.claim,
         details: { tab: surface.tab, controlMap, geometry },
         focusSelector: '.settings-modal',
+        ...(surface.tab === 'about' ? {
+          allowVisibleProblems: {
+            errorAlerts: [{
+              text: 'Unable to check for updates',
+              reason: 'The e2e-automation binary compiles its updater channel off; the dedicated updater journey verifies the disabled native outcome and zero network access.',
+            }],
+          },
+        } : {}),
       });
       darkChromePixelBaseline = assertSettingsChromePixels(
         surface.step,
