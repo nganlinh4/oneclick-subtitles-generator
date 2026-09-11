@@ -189,6 +189,7 @@ const UnifiedNarrationSection = ({
         <div className="narration-header">
           <h3>
             {t('narration.title', 'Generate Narration')}
+            {' '}
             <span className="service-unavailable">
               {t('narration.serviceUnavailableIndicator', '(Service Unavailable)')}
             </span>
