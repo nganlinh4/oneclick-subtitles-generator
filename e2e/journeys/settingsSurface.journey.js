@@ -205,9 +205,9 @@ const TAB_SURFACES = Object.freeze([
     claim: 'The cache surface reports the native rebuildable-only inventory.',
   },
   {
-    tab: 'model-management', step: '05-narration-models', root: '.narration-model-panel', minimumControls: 0,
-    required: ['.narration-model-package'],
-    claim: 'The catalog-managed narration package reports an explicit state.',
+    tab: 'model-management', step: '05-narration-models', root: '.narration-model-panel', minimumControls: 2,
+    required: ['[data-model-package-id]', '[data-model-action="install"], .download-model-btn'],
+    claim: 'The catalog-managed runtime and language models report explicit states and actions.',
   },
   {
     tab: 'tools', step: '06-tools', root: '.engines-panel', minimumControls: 1,
