@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use osg_domain::{CueId, TranscriptRevisionId, TurnId, WordId};
 use osg_infrastructure::storage::{TranscriptTurnRecord, TranscriptWordRecord};
@@ -21,7 +21,10 @@ fn ends_sentence(text: &str) -> bool {
 }
 
 fn cue_character_count(words: &[(WordId, &ProjectedWordResult)], next: &str) -> usize {
-    words.iter().map(|(_, word)| word.text.chars().count()).sum::<usize>()
+    words
+        .iter()
+        .map(|(_, word)| word.text.chars().count())
+        .sum::<usize>()
         + words.len()
         + next.chars().count()
 }
@@ -71,7 +74,10 @@ impl StagingBuffer {
 
     pub(crate) fn insert(&self, result: StagedWindowResult) {
         let mut map = self.staged.lock().expect("staging lock poisoned");
-        let failed = self.failed_indices.lock().expect("failed_indices lock poisoned");
+        let failed = self
+            .failed_indices
+            .lock()
+            .expect("failed_indices lock poisoned");
         if !failed.contains(&result.window_index) {
             map.insert(result.window_index, result);
         }
@@ -81,7 +87,10 @@ impl StagingBuffer {
     /// past any failed windows so subsequent completed sister windows are never stranded.
     pub(crate) fn pop_promotable(&self) -> Option<StagedWindowResult> {
         let mut map = self.staged.lock().expect("staging lock poisoned");
-        let failed = self.failed_indices.lock().expect("failed_indices lock poisoned");
+        let failed = self
+            .failed_indices
+            .lock()
+            .expect("failed_indices lock poisoned");
 
         loop {
             let next = self.next_promote_index.load(Ordering::Acquire);
@@ -112,7 +121,10 @@ impl StagingBuffer {
     pub(crate) fn skip_failed_window(&self, failed_index: usize) -> bool {
         let mut map = self.staged.lock().expect("staging lock poisoned");
         map.remove(&failed_index);
-        let mut failed = self.failed_indices.lock().expect("failed_indices lock poisoned");
+        let mut failed = self
+            .failed_indices
+            .lock()
+            .expect("failed_indices lock poisoned");
         failed.insert(failed_index)
     }
 
@@ -181,7 +193,9 @@ impl StagingBuffer {
             let turn_id = TurnId::new();
             let turn_ordinal = self.current_turn_ordinal.fetch_add(1, Ordering::Relaxed);
             let start_ms = turn_words.first().map_or(0, |(_, _, w)| w.project_start_ms);
-            let end_ms = turn_words.last().map_or(start_ms, |(_, _, w)| w.project_end_ms);
+            let end_ms = turn_words
+                .last()
+                .map_or(start_ms, |(_, _, w)| w.project_end_ms);
             let speaker_id = turn_words
                 .first()
                 .and_then(|(_, _, w)| w.speaker_id.clone())
@@ -192,7 +206,9 @@ impl StagingBuffer {
                 .collect::<Vec<_>>()
                 .join(" ");
             let start_word_ordinal = turn_words.first().map_or(1, |(_, ord, _)| *ord);
-            let end_word_ordinal = turn_words.last().map_or(start_word_ordinal, |(_, ord, _)| *ord);
+            let end_word_ordinal = turn_words
+                .last()
+                .map_or(start_word_ordinal, |(_, ord, _)| *ord);
 
             turn_records.push(TranscriptTurnRecord {
                 id: turn_id,
@@ -254,9 +270,20 @@ impl StagingBuffer {
         for word in &valid_words {
             let word_id = WordId::new();
             let ordinal = self.current_word_ordinal.fetch_add(1, Ordering::Relaxed);
-            let interpolated = matches!(word.status, super::projection::WordProjectionStatus::Interpolated);
-            let provenance = if interpolated { "interpolated" } else { "provider" };
-            let metadata_json = if interpolated { r#"{"timing":"utterance_interpolated"}"# } else { "{}" };
+            let interpolated = matches!(
+                word.status,
+                super::projection::WordProjectionStatus::Interpolated
+            );
+            let provenance = if interpolated {
+                "interpolated"
+            } else {
+                "provider"
+            };
+            let metadata_json = if interpolated {
+                r#"{"timing":"utterance_interpolated"}"#
+            } else {
+                "{}"
+            };
 
             word_records.push(TranscriptWordRecord {
                 id: word_id,
@@ -301,9 +328,11 @@ impl StagingBuffer {
             // Never label two speakers as one cue, even when their speech is contiguous.
             // Keep the existing pause and size bounds for ordinary grouped subtitles.
             let pause_split = current_cue_words.last().is_some_and(|(_, prev)| {
-                word.project_start_ms.saturating_sub(prev.project_end_ms) >= NATURAL_PAUSE_THRESHOLD_MS
+                word.project_start_ms.saturating_sub(prev.project_end_ms)
+                    >= NATURAL_PAUSE_THRESHOLD_MS
             });
-            let sentence_split = current_cue_words.last()
+            let sentence_split = current_cue_words
+                .last()
                 .is_some_and(|(_, previous)| ends_sentence(&previous.text));
             let size_split = current_cue_words.len() >= NATURAL_MAX_WORDS
                 || cue_character_count(&current_cue_words, &word.text) > NATURAL_MAX_CHARACTERS;
@@ -687,7 +716,10 @@ mod tests {
 
         // Window 1 fails out-of-order in parallel worker:
         let skipped = staging.skip_failed_window(1);
-        assert!(skipped, "skip_failed_window(1) must return true and register failure");
+        assert!(
+            skipped,
+            "skip_failed_window(1) must return true and register failure"
+        );
         assert!(staging.is_window_failed(1));
 
         // next_promote_index remains 0 because Window 0 hasn't completed or failed yet
@@ -716,7 +748,9 @@ mod tests {
         // Now pop_promotable() is called:
         // Staging buffer encounters failed window 1, automatically advances
         // next_promote_index past 1, and immediately returns window 2!
-        let popped2 = staging.pop_promotable().expect("window 2 popped past failed window 1");
+        let popped2 = staging
+            .pop_promotable()
+            .expect("window 2 popped past failed window 1");
         assert_eq!(popped2.window_index, 2);
 
         // Staging buffer is now drained
@@ -772,12 +806,16 @@ mod tests {
         let d0 = staging.prepare_promotion(rev_id, p0);
         assert_eq!(d0.word_records[0].ordinal, 1);
 
-        let p2 = staging.pop_promotable().expect("window 2 ready past failed 1");
+        let p2 = staging
+            .pop_promotable()
+            .expect("window 2 ready past failed 1");
         assert_eq!(p2.window_index, 2);
         let d2 = staging.prepare_promotion(rev_id, p2);
         assert_eq!(d2.word_records[0].ordinal, 2);
 
-        let p4 = staging.pop_promotable().expect("window 4 ready past failed 3");
+        let p4 = staging
+            .pop_promotable()
+            .expect("window 4 ready past failed 3");
         assert_eq!(p4.window_index, 4);
         let d4 = staging.prepare_promotion(rev_id, p4);
         assert_eq!(d4.word_records[0].ordinal, 3);
@@ -804,7 +842,9 @@ mod tests {
         staging.insert(win1);
 
         // pop_promotable advances past 0 and returns Window 1
-        let popped = staging.pop_promotable().expect("window 1 ready past failed window 0");
+        let popped = staging
+            .pop_promotable()
+            .expect("window 1 ready past failed window 0");
         assert_eq!(popped.window_index, 1);
         assert_eq!(staging.next_promote_index(), 2);
         assert!(staging.pop_promotable().is_none());
@@ -852,8 +892,18 @@ mod tests {
             assert_eq!(cue.end_ms, start + 500);
             assert_eq!(cue.word_ids.len(), 1);
         }
-        assert!(promoted.word_records.iter().all(|word| word.confidence.is_none()));
-        assert!(promoted.word_dtos.iter().all(|word| word.confidence.is_none()));
+        assert!(
+            promoted
+                .word_records
+                .iter()
+                .all(|word| word.confidence.is_none())
+        );
+        assert!(
+            promoted
+                .word_dtos
+                .iter()
+                .all(|word| word.confidence.is_none())
+        );
     }
 
     #[test]
@@ -894,7 +944,10 @@ mod tests {
             },
         );
         assert_eq!(promoted.projected_cues.len(), 1);
-        assert_eq!(promoted.projected_cues[0].text, "Yes. I agree. Let's continue.");
+        assert_eq!(
+            promoted.projected_cues[0].text,
+            "Yes. I agree. Let's continue."
+        );
     }
 
     #[test]
@@ -909,46 +962,60 @@ mod tests {
         let project = ProjectMetadata::new("Live promotion").unwrap();
         database.create_project(&project).unwrap();
         let revision_id = TranscriptRevisionId::new();
-        database.transcript_insert_revision(&TranscriptRevisionRecord {
-            id: revision_id,
-            project_id: project.id(),
-            media_id: None,
-            provider: "gemini".to_owned(),
-            model: "gemini-3.5-transcribe-live".to_owned(),
-            source_range_start_ms: 0,
-            source_range_end_ms: 600_000,
-            state: "in_progress".to_owned(),
-            fingerprint: "live-promotion".to_owned(),
-            word_count: 0,
-            metadata_json: "{}".to_owned(),
-            created_at_ms: 1,
-            updated_at_ms: 1,
-        }).unwrap();
-        let words = (0_i64..3_500).map(|index| ProjectedWordResult {
-            status: WordProjectionStatus::Interpolated,
-            text: format!("w{index}"),
-            raw_start_ns: (index * 100_000_000).cast_unsigned(),
-            raw_end_ns: (index * 100_000_000 + 90_000_000).cast_unsigned(),
-            project_start_ms: index * 100,
-            project_end_ms: index * 100 + 90,
-            speaker_id: None,
-            is_unaligned: true,
-            alignment_status: "unaligned".to_owned(),
-        }).collect();
-        let promoted = StagingBuffer::new().prepare_promotion(revision_id, StagedWindowResult {
-            window_index: 0,
-            window: WindowRange::new(0, 0, 600_000),
-            words,
-        });
+        database
+            .transcript_insert_revision(&TranscriptRevisionRecord {
+                id: revision_id,
+                project_id: project.id(),
+                media_id: None,
+                provider: "gemini".to_owned(),
+                model: "gemini-3.5-transcribe-live".to_owned(),
+                source_range_start_ms: 0,
+                source_range_end_ms: 600_000,
+                state: "in_progress".to_owned(),
+                fingerprint: "live-promotion".to_owned(),
+                word_count: 0,
+                metadata_json: "{}".to_owned(),
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+        let words = (0_i64..3_500)
+            .map(|index| ProjectedWordResult {
+                status: WordProjectionStatus::Interpolated,
+                text: format!("w{index}"),
+                raw_start_ns: (index * 100_000_000).cast_unsigned(),
+                raw_end_ns: (index * 100_000_000 + 90_000_000).cast_unsigned(),
+                project_start_ms: index * 100,
+                project_end_ms: index * 100 + 90,
+                speaker_id: None,
+                is_unaligned: true,
+                alignment_status: "unaligned".to_owned(),
+            })
+            .collect();
+        let promoted = StagingBuffer::new().prepare_promotion(
+            revision_id,
+            StagedWindowResult {
+                window_index: 0,
+                window: WindowRange::new(0, 0, 600_000),
+                words,
+            },
+        );
         assert!(promoted.word_records.iter().all(|word| {
             word.alignment_status == "unaligned"
                 && word.provenance == "interpolated"
                 && word.metadata_json == r#"{"timing":"utterance_interpolated"}"#
         }));
-        database.transcript_promote_window(
-            revision_id, &promoted.turn_records, &promoted.word_records,
-        ).unwrap();
-        assert_eq!(database.transcript_get_revision(revision_id).unwrap().unwrap().word_count, 3_500);
+        database
+            .transcript_promote_window(revision_id, &promoted.turn_records, &promoted.word_records)
+            .unwrap();
+        assert_eq!(
+            database
+                .transcript_get_revision(revision_id)
+                .unwrap()
+                .unwrap()
+                .word_count,
+            3_500
+        );
     }
 
     fn generate_permutations(items: &[usize]) -> Vec<Vec<usize>> {
@@ -1003,9 +1070,13 @@ mod tests {
             for &event in perm {
                 match event {
                     0 => staging.insert(create_win0()),
-                    1 => { staging.skip_failed_window(1); }
+                    1 => {
+                        staging.skip_failed_window(1);
+                    }
                     2 => staging.insert(create_win2()),
-                    3 => { staging.skip_failed_window(3); }
+                    3 => {
+                        staging.skip_failed_window(3);
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -1015,21 +1086,52 @@ mod tests {
                 popped.push(w);
             }
 
-            assert_eq!(popped.len(), 2, "Permutation {perm:?} must yield exactly 2 windows");
-            assert_eq!(popped[0].window_index, 0, "Window 0 must be first in {perm:?}");
-            assert_eq!(popped[1].window_index, 2, "Window 2 must be second in {perm:?}");
+            assert_eq!(
+                popped.len(),
+                2,
+                "Permutation {perm:?} must yield exactly 2 windows"
+            );
+            assert_eq!(
+                popped[0].window_index, 0,
+                "Window 0 must be first in {perm:?}"
+            );
+            assert_eq!(
+                popped[1].window_index, 2,
+                "Window 2 must be second in {perm:?}"
+            );
 
             let d0 = staging.prepare_promotion(rev_id, popped.remove(0));
             let d2 = staging.prepare_promotion(rev_id, popped.remove(0));
 
             assert_eq!(d0.word_records.len(), 3);
-            assert_eq!(d0.word_records.iter().map(|w| w.ordinal).collect::<Vec<_>>(), vec![1, 2, 3]);
+            assert_eq!(
+                d0.word_records
+                    .iter()
+                    .map(|w| w.ordinal)
+                    .collect::<Vec<_>>(),
+                vec![1, 2, 3]
+            );
 
             assert_eq!(d2.word_records.len(), 2);
-            assert_eq!(d2.word_records.iter().map(|w| w.ordinal).collect::<Vec<_>>(), vec![4, 5]);
+            assert_eq!(
+                d2.word_records
+                    .iter()
+                    .map(|w| w.ordinal)
+                    .collect::<Vec<_>>(),
+                vec![4, 5]
+            );
 
-            let all_ordinals: Vec<u32> = d0.word_records.iter().chain(d2.word_records.iter()).map(|w| w.ordinal).collect();
-            assert_eq!(all_ordinals, vec![1, 2, 3, 4, 5], "Ordinals must be contiguous 1..5 in {perm:?}");
+            let all_ordinals: Vec<u32> = d0
+                .word_records
+                .iter()
+                .chain(d2.word_records.iter())
+                .map(|w| w.ordinal)
+                .collect();
+            assert_eq!(
+                all_ordinals,
+                vec![1, 2, 3, 4, 5],
+                "Ordinals must be contiguous 1..5 in {perm:?}"
+            );
 
             assert_eq!(staging.next_promote_index(), 4);
             assert_eq!(staging.failed_indices_count(), 2);
@@ -1045,9 +1147,13 @@ mod tests {
             for &event in perm {
                 match event {
                     0 => staging.insert(create_win0()),
-                    1 => { staging.skip_failed_window(1); }
+                    1 => {
+                        staging.skip_failed_window(1);
+                    }
                     2 => staging.insert(create_win2()),
-                    3 => { staging.skip_failed_window(3); }
+                    3 => {
+                        staging.skip_failed_window(3);
+                    }
                     _ => unreachable!(),
                 }
                 while let Some(w) = staging.pop_promotable() {
@@ -1055,14 +1161,23 @@ mod tests {
                 }
             }
 
-            assert_eq!(popped.len(), 2, "Interleaved {perm:?} must yield exactly 2 windows");
+            assert_eq!(
+                popped.len(),
+                2,
+                "Interleaved {perm:?} must yield exactly 2 windows"
+            );
             assert_eq!(popped[0].window_index, 0);
             assert_eq!(popped[1].window_index, 2);
 
             let d0 = staging.prepare_promotion(rev_id, popped.remove(0));
             let d2 = staging.prepare_promotion(rev_id, popped.remove(0));
 
-            let all_ordinals: Vec<u32> = d0.word_records.iter().chain(d2.word_records.iter()).map(|w| w.ordinal).collect();
+            let all_ordinals: Vec<u32> = d0
+                .word_records
+                .iter()
+                .chain(d2.word_records.iter())
+                .map(|w| w.ordinal)
+                .collect();
             assert_eq!(all_ordinals, vec![1, 2, 3, 4, 5]);
             assert_eq!(staging.next_promote_index(), 4);
         }
@@ -1081,10 +1196,7 @@ mod tests {
                 let win0 = StagedWindowResult {
                     window_index: 0,
                     window: WindowRange::new(0, 0, 60_000),
-                    words: vec![
-                        make_test_word("a", 0, 500),
-                        make_test_word("b", 500, 1000),
-                    ],
+                    words: vec![make_test_word("a", 0, 500), make_test_word("b", 500, 1000)],
                 };
                 s0.insert(win0);
             });
@@ -1130,7 +1242,12 @@ mod tests {
             let d0 = staging.prepare_promotion(rev_id, popped.remove(0));
             let d2 = staging.prepare_promotion(rev_id, popped.remove(0));
 
-            let ordinals: Vec<u32> = d0.word_records.iter().chain(d2.word_records.iter()).map(|w| w.ordinal).collect();
+            let ordinals: Vec<u32> = d0
+                .word_records
+                .iter()
+                .chain(d2.word_records.iter())
+                .map(|w| w.ordinal)
+                .collect();
             assert_eq!(ordinals, vec![1, 2, 3, 4, 5]);
             assert_eq!(staging.next_promote_index(), 4);
         }

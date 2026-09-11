@@ -1,7 +1,7 @@
 use osg_domain::{
     CaptionProjection, CompletionState, CueId, CustomGroupingConfig, GroupingPolicy,
-    ManualEditState, ProjectId, ScriptSpacing, TimedWord, TrackId, TrackOrigin,
-    TranscriptError, TranscriptRevision, TranscriptRevisionId, TranscriptTurn, TurnId, WordId,
+    ManualEditState, ProjectId, ScriptSpacing, TimedWord, TrackId, TrackOrigin, TranscriptError,
+    TranscriptRevision, TranscriptRevisionId, TranscriptTurn, TurnId, WordId,
 };
 
 fn make_word(
@@ -25,10 +25,7 @@ fn make_word(
     .expect("valid word")
 }
 
-fn make_revision(
-    words: Vec<TimedWord>,
-    turns: Vec<TranscriptTurn>,
-) -> TranscriptRevision {
+fn make_revision(words: Vec<TimedWord>, turns: Vec<TranscriptTurn>) -> TranscriptRevision {
     let max_end = words.iter().map(TimedWord::end_ms).max().unwrap_or(1000);
     TranscriptRevision::new(
         ProjectId::new(),
@@ -148,13 +145,23 @@ fn stress_test_active_turn_at_breaks_early_on_overlapping_turns() {
     // t=4500: t0 [0, 5000] is active. t1 and t2 ended.
     let active_turn = rev.active_turn_at(4500);
 
-    println!("active_turn_at(4500) = {:?}", active_turn.map(|t| (t.ordinal(), t.start_ms(), t.end_ms())));
-    assert!(active_turn.is_some(), "Turn 0 (0..5000) must be active at 4500ms");
+    println!(
+        "active_turn_at(4500) = {:?}",
+        active_turn.map(|t| (t.ordinal(), t.start_ms(), t.end_ms()))
+    );
+    assert!(
+        active_turn.is_some(),
+        "Turn 0 (0..5000) must be active at 4500ms"
+    );
     assert_eq!(active_turn.unwrap().ordinal(), 1);
 
     // Multi-speaker concurrent turns lookup:
     let active_turns = rev.active_turns_at(2500);
-    assert_eq!(active_turns.len(), 2, "Both Turn 0 and Turn 1 must be active at 2500ms");
+    assert_eq!(
+        active_turns.len(),
+        2,
+        "Both Turn 0 and Turn 1 must be active at 2500ms"
+    );
     assert_eq!(active_turns[0].ordinal(), 1);
     assert_eq!(active_turns[1].ordinal(), 2);
 }
@@ -233,18 +240,7 @@ fn stress_test_restore_unsorted_words_binary_search_failure() {
 fn stress_test_split_cue_zero_duration_invalidates_track() {
     let rev_id = TranscriptRevisionId::new();
     // Zero duration word w1: 1000..1000
-    let w1 = TimedWord::new(
-        rev_id,
-        1,
-        "instant",
-        "1.0s",
-        "1.0s",
-        1000,
-        1000,
-        None,
-        None,
-    )
-    .unwrap();
+    let w1 = TimedWord::new(rev_id, 1, "instant", "1.0s", "1.0s", 1000, 1000, None, None).unwrap();
     let w2 = make_word(rev_id, 2, "normal", 1000, 2000);
 
     let t1 = TranscriptTurn::from_words(
@@ -277,8 +273,14 @@ fn stress_test_split_cue_zero_duration_invalidates_track() {
 
     let cue1 = proj.cues().iter().find(|c| c.id == c1).unwrap();
     let cue2 = proj.cues().iter().find(|c| c.id == c2).unwrap();
-    println!("After split: cue1 start={} end={}", cue1.start_ms, cue1.end_ms);
-    println!("After split: cue2 start={} end={}", cue2.start_ms, cue2.end_ms);
+    println!(
+        "After split: cue1 start={} end={}",
+        cue1.start_ms, cue1.end_ms
+    );
+    println!(
+        "After split: cue2 start={} end={}",
+        cue2.start_ms, cue2.end_ms
+    );
 
     // Verification: cue1 duration clamped to at least start_ms + 50
     assert_eq!(cue1.start_ms, 1000);
@@ -313,7 +315,9 @@ fn stress_test_merge_cues_erases_user_text() {
     let proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::OneWord { min_duration_ms: 50 },
+        GroupingPolicy::OneWord {
+            min_duration_ms: 50,
+        },
         ScriptSpacing::SpaceSeparated,
     )
     .unwrap();
@@ -370,11 +374,17 @@ fn stress_test_create_cue_truncates_overlapping_word_duration() {
 
     assert_eq!(proj.cues().len(), 1);
     let cue = &proj.cues()[0];
-    println!("Grouped cue bounds: start_ms={} end_ms={}", cue.start_ms, cue.end_ms);
+    println!(
+        "Grouped cue bounds: start_ms={} end_ms={}",
+        cue.start_ms, cue.end_ms
+    );
 
     // Verification: create_cue_from_slice covers the longest word end_ms (5000ms)
     assert_eq!(cue.start_ms, 0);
-    assert_eq!(cue.end_ms, 5000, "cue.end_ms must equal max(w.end_ms) across the slice");
+    assert_eq!(
+        cue.end_ms, 5000,
+        "cue.end_ms must equal max(w.end_ms) across the slice"
+    );
 }
 
 #[test]
@@ -388,14 +398,8 @@ fn stress_test_offline_regrouping_extreme_inputs() {
         make_word(rev_id, 3, "반갑습니다！", 1000, 1500),
         make_word(rev_id, 4, "你好世界", 1500, 2000),
     ];
-    let t_cjk = TranscriptTurn::from_words(
-        rev_id,
-        1,
-        None,
-        &cjk_words,
-        ScriptSpacing::NoSpaces,
-    )
-    .unwrap();
+    let t_cjk =
+        TranscriptTurn::from_words(rev_id, 1, None, &cjk_words, ScriptSpacing::NoSpaces).unwrap();
     let rev_cjk = make_revision(cjk_words, vec![t_cjk]);
 
     let proj_cjk = CaptionProjection::project(
@@ -420,14 +424,9 @@ fn stress_test_offline_regrouping_extreme_inputs() {
         make_word(rev_id, 3, "really", 400, 600),
         make_word(rev_id, 4, "....", 600, 800),
     ];
-    let t_punct = TranscriptTurn::from_words(
-        rev_id,
-        1,
-        None,
-        &punct_words,
-        ScriptSpacing::SpaceSeparated,
-    )
-    .unwrap();
+    let t_punct =
+        TranscriptTurn::from_words(rev_id, 1, None, &punct_words, ScriptSpacing::SpaceSeparated)
+            .unwrap();
     let rev_punct = make_revision(punct_words, vec![t_punct]);
 
     let proj_punct = CaptionProjection::project(
@@ -474,14 +473,8 @@ fn stress_test_words_in_range_exhaustive_oracle() {
         ));
     }
 
-    let turn = TranscriptTurn::from_words(
-        rev_id,
-        1,
-        None,
-        &words,
-        ScriptSpacing::SpaceSeparated,
-    )
-    .unwrap();
+    let turn =
+        TranscriptTurn::from_words(rev_id, 1, None, &words, ScriptSpacing::SpaceSeparated).unwrap();
     let rev = make_revision(words.clone(), vec![turn]);
 
     // Test a sweep of query ranges [q_start, q_end) against a ground-truth naive filter
@@ -495,10 +488,10 @@ fn stress_test_words_in_range_exhaustive_oracle() {
         (199, 200), // does not touch zero-duration w2
         (499, 501), // touches zero-duration w5
         (500, 600),
-        (0, 2500),  // all words
+        (0, 2500),    // all words
         (2500, 3000), // beyond all words
-        (-100, -10), // negative range
-        (-100, 50),  // crosses 0
+        (-100, -10),  // negative range
+        (-100, 50),   // crosses 0
     ];
 
     for (q_start, q_end) in test_ranges {
@@ -512,7 +505,8 @@ fn stress_test_words_in_range_exhaustive_oracle() {
                 .iter()
                 .filter(|w| {
                     w.start_ms() < q_end
-                        && (w.end_ms() > q_start || (w.is_zero_duration() && w.start_ms() >= q_start))
+                        && (w.end_ms() > q_start
+                            || (w.is_zero_duration() && w.start_ms() >= q_start))
                 })
                 .collect()
         };
@@ -580,10 +574,16 @@ fn stress_test_active_turn_at_exhaustive_oracle() {
     assert_eq!(active_2000[0].speaker_id(), Some("spk_a"));
     assert_eq!(active_2000[1].speaker_id(), Some("spk_b"));
     // active_turn_at returns the most recent (Turn 2)
-    assert_eq!(rev.active_turn_at(2000).unwrap().speaker_id(), Some("spk_b"));
+    assert_eq!(
+        rev.active_turn_at(2000).unwrap().speaker_id(),
+        Some("spk_b")
+    );
 
     // t = 3000: Turn 1 active, Turn 2 ended, Turn 3 not started
-    assert_eq!(rev.active_turn_at(3000).unwrap().speaker_id(), Some("spk_a"));
+    assert_eq!(
+        rev.active_turn_at(3000).unwrap().speaker_id(),
+        Some("spk_a")
+    );
     assert_eq!(rev.active_turns_at(3000).len(), 1);
 
     // t = 4000: Turn 1 and Turn 3 active
@@ -591,10 +591,16 @@ fn stress_test_active_turn_at_exhaustive_oracle() {
     assert_eq!(active_4000.len(), 2);
     assert_eq!(active_4000[0].speaker_id(), Some("spk_a"));
     assert_eq!(active_4000[1].speaker_id(), Some("spk_c"));
-    assert_eq!(rev.active_turn_at(4000).unwrap().speaker_id(), Some("spk_c"));
+    assert_eq!(
+        rev.active_turn_at(4000).unwrap().speaker_id(),
+        Some("spk_c")
+    );
 
     // t = 5000: Turn 1 at exact boundary
-    assert_eq!(rev.active_turn_at(5000).unwrap().speaker_id(), Some("spk_a"));
+    assert_eq!(
+        rev.active_turn_at(5000).unwrap().speaker_id(),
+        Some("spk_a")
+    );
 
     // t = 5001: After all turns
     assert!(rev.active_turn_at(5001).is_none());
@@ -653,7 +659,9 @@ fn stress_test_split_cue_comprehensive_boundaries() {
     );
 
     // 4. Valid split at index 1 -> produces cues with 1 word and 2 words
-    let (c1, c2) = proj.split_cue(cue_id, 1, &rev, ScriptSpacing::SpaceSeparated).unwrap();
+    let (c1, c2) = proj
+        .split_cue(cue_id, 1, &rev, ScriptSpacing::SpaceSeparated)
+        .unwrap();
     assert_eq!(proj.cues().len(), 2);
     assert_eq!(proj.cues()[0].id, c1);
     assert_eq!(proj.cues()[0].text, "first");
@@ -668,7 +676,9 @@ fn stress_test_split_cue_comprehensive_boundaries() {
     assert_eq!(res_single, Err(TranscriptError::InvalidSplitIndex));
 
     // 6. Split c2 at index 1 -> produces 3 total cues
-    let (c2_1, c2_2) = proj.split_cue(c2, 1, &rev, ScriptSpacing::SpaceSeparated).unwrap();
+    let (c2_1, c2_2) = proj
+        .split_cue(c2, 1, &rev, ScriptSpacing::SpaceSeparated)
+        .unwrap();
     assert_eq!(proj.cues().len(), 3);
     assert_eq!(proj.cues()[1].id, c2_1);
     assert_eq!(proj.cues()[1].text, "second");
@@ -702,7 +712,9 @@ fn stress_test_merge_cues_comprehensive_boundaries() {
     let mut proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::OneWord { min_duration_ms: 50 },
+        GroupingPolicy::OneWord {
+            min_duration_ms: 50,
+        },
         ScriptSpacing::SpaceSeparated,
     )
     .unwrap();
@@ -726,13 +738,17 @@ fn stress_test_merge_cues_comprehensive_boundaries() {
     assert_eq!(err_unknown, Err(TranscriptError::CueNotFound(fake_id)));
 
     // 4. Test ScriptSpacing::NoSpaces (CJK)
-    let merged_id = proj.merge_cues(id0, id1, &rev, ScriptSpacing::NoSpaces).unwrap();
+    let merged_id = proj
+        .merge_cues(id0, id1, &rev, ScriptSpacing::NoSpaces)
+        .unwrap();
     assert_eq!(proj.cues().len(), 2);
     let merged_cue = proj.cues().iter().find(|c| c.id == merged_id).unwrap();
     assert_eq!(merged_cue.text, "alphabeta");
 
     // 5. Test merging with remaining cue (id2) using SpaceSeparated
-    let final_id = proj.merge_cues(merged_id, id2, &rev, ScriptSpacing::SpaceSeparated).unwrap();
+    let final_id = proj
+        .merge_cues(merged_id, id2, &rev, ScriptSpacing::SpaceSeparated)
+        .unwrap();
     assert_eq!(proj.cues().len(), 1);
     let final_cue = &proj.cues()[0];
     assert_eq!(final_cue.id, final_id);
@@ -772,7 +788,10 @@ fn stress_test_restore_validation_boundary_conditions() {
         vec![w1.clone(), w1.clone()], // duplicate word
         vec![t1.clone()],
     );
-    assert!(matches!(res_dup_word, Err(TranscriptError::DuplicateWord(_))));
+    assert!(matches!(
+        res_dup_word,
+        Err(TranscriptError::DuplicateWord(_))
+    ));
 
     // 2. Out-of-order words rejected with UnsortedWords:
     let w_late = make_word(rev_id, 1, "late", 500, 600);
@@ -804,7 +823,10 @@ fn stress_test_restore_validation_boundary_conditions() {
         vec![w_late, w_early],
         vec![t_order],
     );
-    assert!(matches!(res_unsorted, Err(TranscriptError::UnsortedWords { .. })));
+    assert!(matches!(
+        res_unsorted,
+        Err(TranscriptError::UnsortedWords { .. })
+    ));
 
     // 3. Word referenced in multiple turns rejected:
     let t_dup1 = TranscriptTurn::restore(
@@ -845,7 +867,10 @@ fn stress_test_restore_validation_boundary_conditions() {
         vec![w1.clone(), w2.clone()],
         vec![t_dup1, t_dup2],
     );
-    assert!(matches!(res_multi_turn, Err(TranscriptError::WordInMultipleTurns(_))));
+    assert!(matches!(
+        res_multi_turn,
+        Err(TranscriptError::WordInMultipleTurns(_))
+    ));
 }
 
 #[test]
@@ -859,14 +884,8 @@ fn stress_test_grouping_policies_extreme_scale() {
         words.push(make_word(rev_id, i + 1, &format!("w{i}"), start, end));
     }
 
-    let turn = TranscriptTurn::from_words(
-        rev_id,
-        1,
-        None,
-        &words,
-        ScriptSpacing::SpaceSeparated,
-    )
-    .unwrap();
+    let turn =
+        TranscriptTurn::from_words(rev_id, 1, None, &words, ScriptSpacing::SpaceSeparated).unwrap();
 
     let rev = make_revision(words, vec![turn]);
 
@@ -874,7 +893,9 @@ fn stress_test_grouping_policies_extreme_scale() {
     let proj_one = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::OneWord { min_duration_ms: 50 },
+        GroupingPolicy::OneWord {
+            min_duration_ms: 50,
+        },
         ScriptSpacing::SpaceSeparated,
     )
     .unwrap();
@@ -910,10 +931,11 @@ fn stress_test_grouping_policies_extreme_scale() {
     assert!(!proj_custom.cues().is_empty());
 
     // Verify all generated cues convert to valid SubtitleTrack
-    let track = proj_short.to_subtitle_track("Track", TrackOrigin::Srt).unwrap();
+    let track = proj_short
+        .to_subtitle_track("Track", TrackOrigin::Srt)
+        .unwrap();
     assert_eq!(track.cues().len(), 200);
     for cue in track.cues() {
         assert!(cue.end_ms() > cue.start_ms());
     }
 }
-

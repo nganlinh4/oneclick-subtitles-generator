@@ -45,11 +45,11 @@ mod render;
 mod speech;
 mod speech_packages;
 mod state;
+pub(crate) mod transcription;
 mod ui_fonts;
 mod updater;
 mod voice_samples;
 mod waveform_cache;
-pub(crate) mod transcription;
 
 use std::collections::BTreeMap;
 use std::{
@@ -66,13 +66,14 @@ use asr::{AsrRuntimeManager, asr_start, asr_status};
 use cache::{cache_clear, cache_info, cache_prune_expired};
 use commands::{
     active_workspace_begin, active_workspace_clear, active_workspace_get, active_workspace_set,
-    app_health, clear_media, credential_delete, credential_replace, credential_reveal, credential_set,
-    credential_status, credential_upsert, discard_media_candidate, get_session_snapshot, job_cancel, job_get,
-    job_recovery_abandon_transcribe, jobs_list, open_media_asset, project_commit, project_create,
-    project_history_status, project_load, project_load_transcript, project_redo, project_track_commit,
-    project_track_history_status, project_track_redo, project_track_undo, project_undo,
-    select_media, setting_delete, setting_get, setting_set, settings_clear, settings_set_many,
-    subtitle_project_alias_activate, subtitle_project_alias_remove, subtitle_project_index_get,
+    app_health, clear_media, credential_delete, credential_replace, credential_reveal,
+    credential_set, credential_status, credential_upsert, discard_media_candidate,
+    get_session_snapshot, job_cancel, job_get, job_recovery_abandon_transcribe, jobs_list,
+    open_media_asset, project_commit, project_create, project_history_status, project_load,
+    project_load_transcript, project_redo, project_track_commit, project_track_history_status,
+    project_track_redo, project_track_undo, project_undo, select_media, setting_delete,
+    setting_get, setting_set, settings_clear, settings_set_many, subtitle_project_alias_activate,
+    subtitle_project_alias_remove, subtitle_project_index_get,
 };
 use document_export::{generated_file_export, subtitle_archive_export, subtitle_document_export};
 use download::{
@@ -85,11 +86,12 @@ use engine_packages::{
 };
 use error::{CommandError, CommandResult};
 use external_links::open_external_link;
-use f5_models::{F5ModelRuntime, f5_model_cancel, f5_model_install, f5_model_remove, f5_models_status};
+use f5_models::{
+    F5ModelRuntime, f5_model_cancel, f5_model_install, f5_model_remove, f5_models_status,
+};
 use font_readiness::FontReadiness;
 use font_repair::font_readiness_retry;
 use gemini::gemini_start;
-use transcription::{cancel_transcription, start_word_native_transcription};
 use gemini_image::{
     GeneratedImageRuntime, gemini_image_complete, gemini_image_start, generated_image_clear,
     generated_image_delete, generated_image_export, generated_image_list,
@@ -156,6 +158,7 @@ use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewWindowBuilder, Window, WindowEvent};
 #[cfg(not(feature = "e2e-automation"))]
 use tauri_plugin_window_state::StateFlags;
+use transcription::{cancel_transcription, start_word_native_transcription};
 use ui_fonts::UiFontRuntime;
 use updater::{
     AppUpdateRuntime, app_update_cancel, app_update_check, app_update_install, updater_plugin,
@@ -545,7 +548,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         EnginePackageRuntime::new(engine_package_manager, database.clone(), Arc::clone(&jobs))?;
     let speech_package_runtime =
         SpeechPackageRuntime::new(speech_runtime.package_manager()?, Arc::clone(&jobs));
-    let f5_model_runtime = F5ModelRuntime::new(&local_data_dir.join("engines/speech/f5-models-v1"))?;
+    let f5_model_runtime =
+        F5ModelRuntime::new(&local_data_dir.join("engines/speech/f5-models-v1"))?;
     let native_tool_runtime = NativeToolRuntime::new(
         &local_data_dir.join("native-tools/v1"),
         database.clone(),

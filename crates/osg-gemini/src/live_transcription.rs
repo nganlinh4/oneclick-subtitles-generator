@@ -445,9 +445,11 @@ mod tests {
         let waiting = client.transcribe_live(&wav, &[], &cancel, |_| {});
         tokio::pin!(waiting);
 
-        assert!(tokio::time::timeout(Duration::from_millis(50), &mut waiting)
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut waiting)
+                .await
+                .is_err()
+        );
         cancel.cancel();
         assert!(matches!(waiting.await, Err(Error::Cancelled)));
     }

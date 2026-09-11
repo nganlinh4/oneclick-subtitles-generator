@@ -1,6 +1,4 @@
-use osg_domain::{
-    AssetId, CueId, ProjectId, TranscriptRevisionId, TurnId, WordId,
-};
+use osg_domain::{AssetId, CueId, ProjectId, TranscriptRevisionId, TurnId, WordId};
 use rusqlite::{Connection, Transaction, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -220,8 +218,8 @@ pub fn list_transcript_revisions_for_project(
 
         let id = TranscriptRevisionId::from_uuid(id_uuid)
             .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let project_id = ProjectId::from_uuid(proj_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let project_id =
+            ProjectId::from_uuid(proj_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
         let media_id = media_uuid
             .map(|u| AssetId::from_uuid(u).map_err(|e| DatabaseError::Integrity(e.to_string())))
             .transpose()?;
@@ -407,10 +405,10 @@ pub fn load_cue_word_mappings_for_project(
     let mut records = Vec::new();
     for row in rows {
         let (cue_uuid, word_uuid, word_ordinal, metadata_json) = row?;
-        let cue_id = CueId::from_uuid(cue_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let word_id = WordId::from_uuid(word_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let cue_id =
+            CueId::from_uuid(cue_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let word_id =
+            WordId::from_uuid(word_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
         let word_ordinal = u32::try_from(word_ordinal)
             .map_err(|_| DatabaseError::Integrity("word_ordinal out of range".into()))?;
 
@@ -529,8 +527,7 @@ pub fn query_turns_in_range(
             metadata_json,
         ) = row?;
 
-        let id = TurnId::from_uuid(id_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let id = TurnId::from_uuid(id_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
         let revision_id = TranscriptRevisionId::from_uuid(rev_uuid)
             .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
         let ordinal = u32::try_from(ordinal)
@@ -579,8 +576,7 @@ fn extract_word_record_from_rusqlite(
     let provenance: String = row.get(13)?;
     let metadata_json: String = row.get(14)?;
 
-    let id = WordId::from_uuid(id_uuid)
-        .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+    let id = WordId::from_uuid(id_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
     let revision_id = TranscriptRevisionId::from_uuid(rev_uuid)
         .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
     let turn_id = turn_uuid
@@ -614,8 +610,10 @@ mod tests {
     use super::*;
     use crate::storage::actor::Database;
     use crate::storage::migrations::migrations;
-    use osg_domain::{CueId, ProjectId, ProjectMetadata, TrackId, TranscriptRevisionId, TurnId, WordId};
-    use rusqlite::{params, Connection};
+    use osg_domain::{
+        CueId, ProjectId, ProjectMetadata, TrackId, TranscriptRevisionId, TurnId, WordId,
+    };
+    use rusqlite::{Connection, params};
     use tempfile::tempdir;
 
     fn setup_test_db() -> (Connection, ProjectId) {
@@ -870,7 +868,8 @@ mod tests {
              VALUES (?1, ?2, 1, 0, 2000, 'Hello world'),
                     (?1, ?3, 2, 4000, 6000, 'Rust rocks')",
             params![track_id.as_uuid(), cue1_id.as_uuid(), cue2_id.as_uuid()],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Seed revision and words
         let rev_id = TranscriptRevisionId::new();
@@ -1012,16 +1011,27 @@ mod tests {
         assert_eq!(loaded[3].word_id, w4_id);
 
         // Test FK cascade: deleting cue1 removes mappings for cue1
-        conn.execute("DELETE FROM cues WHERE id = ?1", [cue1_id.as_uuid()]).unwrap();
-        let loaded_after_cue_delete = load_cue_word_mappings_for_project(&conn, project_id).unwrap();
+        conn.execute("DELETE FROM cues WHERE id = ?1", [cue1_id.as_uuid()])
+            .unwrap();
+        let loaded_after_cue_delete =
+            load_cue_word_mappings_for_project(&conn, project_id).unwrap();
         assert_eq!(loaded_after_cue_delete.len(), 2);
         assert_eq!(loaded_after_cue_delete[0].cue_id, cue2_id);
 
         // Test FK cascade: deleting project cascades and removes everything
-        conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()]).unwrap();
-        let rev_count: i64 = conn.query_row("SELECT count(*) FROM transcript_revisions", [], |r| r.get(0)).unwrap();
-        let word_count: i64 = conn.query_row("SELECT count(*) FROM transcript_words", [], |r| r.get(0)).unwrap();
-        let mapping_count: i64 = conn.query_row("SELECT count(*) FROM cue_word_mappings", [], |r| r.get(0)).unwrap();
+        conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()])
+            .unwrap();
+        let rev_count: i64 = conn
+            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let word_count: i64 = conn
+            .query_row("SELECT count(*) FROM transcript_words", [], |r| r.get(0))
+            .unwrap();
+        let mapping_count: i64 = conn
+            .query_row("SELECT count(*) FROM cue_word_mappings", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(rev_count, 0);
         assert_eq!(word_count, 0);
         assert_eq!(mapping_count, 0);
@@ -1105,11 +1115,16 @@ mod tests {
 
         db.transcript_promote_window(rev_id, &[], &words).unwrap();
 
-        let active = db.transcript_query_active_word(rev_id, 200).unwrap().unwrap();
+        let active = db
+            .transcript_query_active_word(rev_id, 200)
+            .unwrap()
+            .unwrap();
         assert_eq!(active.id, w1_id);
         assert_eq!(active.text, "First");
 
-        let in_range = db.transcript_query_words_in_range(rev_id, 300, 600).unwrap();
+        let in_range = db
+            .transcript_query_words_in_range(rev_id, 300, 600)
+            .unwrap();
         assert_eq!(in_range.len(), 2);
     }
 
@@ -1167,4 +1182,3 @@ mod tests {
         ));
     }
 }
-

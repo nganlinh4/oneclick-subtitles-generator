@@ -394,7 +394,9 @@ impl AudioTranscriptionConfig {
             let trimmed = hint.trim();
             if trimmed.is_empty()
                 || trimmed.len() > 16
-                || !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                || !trimmed
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
             {
                 return Err(Error::InvalidRequest(format!(
                     "invalid language hint: '{hint}'"
@@ -520,7 +522,11 @@ pub struct TranscriptionWord {
     pub start_offset: String,
     #[serde(alias = "end_offset")]
     pub end_offset: String,
-    #[serde(default, alias = "speaker_label", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "speaker_label",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub speaker_label: Option<String>,
 }
 
@@ -544,7 +550,11 @@ pub struct Part {
     #[serde(default)]
     pub thought: bool,
     pub thought_signature: Option<String>,
-    #[serde(default, alias = "audio_transcription", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "audio_transcription",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub audio_transcription: Option<AudioTranscription>,
 }
 

@@ -268,10 +268,9 @@ impl GeminiClient {
         let _permit = self.acquire(cancel).await?;
 
         let payload = build_transcribe_payload(&request);
-        let payload =
-            Arc::new(serde_json::to_vec(&payload).map_err(|_| {
-                Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
-            })?);
+        let payload = Arc::new(serde_json::to_vec(&payload).map_err(|_| {
+            Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
+        })?);
         if payload.len() > self.inner.options.max_inline_request_bytes {
             return Err(Error::InlineRequestTooLarge {
                 actual_bytes: payload.len(),
@@ -656,8 +655,9 @@ pub(crate) fn build_transcribe_payload(request: &TranscribeRequest) -> WireTrans
 }
 
 pub(crate) fn encode_transcribe_request(request: &TranscribeRequest) -> Result<Vec<u8>> {
-    serde_json::to_vec(&build_transcribe_payload(request))
-        .map_err(|_| Error::InvalidRequest("failed to encode Gemini transcription request".to_owned()))
+    serde_json::to_vec(&build_transcribe_payload(request)).map_err(|_| {
+        Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
+    })
 }
 
 pub(crate) fn validate_generate_request(request: &GenerateRequest) -> Result<()> {

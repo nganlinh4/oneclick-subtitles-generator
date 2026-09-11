@@ -18,9 +18,9 @@ use osg_infrastructure::storage::{
     DatabaseError, ProjectAliasEntry, ProjectAliasIndex, ProjectAliasMutation,
 };
 use osg_media_server::{MediaServer, RegisteredMedia};
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use secrecy::ExposeSecret;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
@@ -337,9 +337,10 @@ pub(crate) async fn project_load_transcript(
     let database = state.database.clone();
     run_database_task("load project transcript", move || {
         let revisions = database.transcript_list_revisions(id)?;
-        let latest = revisions.into_iter().rev().find(|r| {
-            r.state == "completed" || r.state == "partial" || r.state == "in_progress"
-        });
+        let latest = revisions
+            .into_iter()
+            .rev()
+            .find(|r| r.state == "completed" || r.state == "partial" || r.state == "in_progress");
 
         let Some(rev) = latest else {
             return Ok(None);
@@ -700,7 +701,10 @@ pub(crate) async fn credential_replace(
     request: CredentialSetRequest,
 ) -> CommandResult<CredentialStatus> {
     let credentials = state.credentials.clone();
-    run_credential_task("replace credential", move || credentials.replace(id, request)).await
+    run_credential_task("replace credential", move || {
+        credentials.replace(id, request)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -716,8 +720,8 @@ pub(crate) async fn credential_reveal(
     run_credential_task("reveal credential", move || {
         credentials.resolve(id, CredentialPurpose::GeminiApiKey)
     })
-        .await
-        .map(|secret| secret.expose_secret().to_owned())
+    .await
+    .map(|secret| secret.expose_secret().to_owned())
 }
 
 #[tauri::command]

@@ -75,7 +75,11 @@ impl TranscriptionStreamCompletion {
         let Some(candidate) = response.candidates.first() else {
             return Ok(());
         };
-        if candidate.safety_ratings.iter().any(|r| r.blocked == Some(true)) {
+        if candidate
+            .safety_ratings
+            .iter()
+            .any(|r| r.blocked == Some(true))
+        {
             return Err(Error::IncompleteTextOutput { reason: "blocked" });
         }
 

@@ -10,8 +10,8 @@ mod migrations;
 mod project_render_scenes;
 mod project_speech_references;
 mod projects;
-pub mod transcripts;
 mod track_history;
+pub mod transcripts;
 
 pub use transcripts::{
     CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,

@@ -48,14 +48,20 @@ fn test_ass_stress_single_word_variations() {
     {
         let cue = SubtitleCue::new(1000, 2000, "Solo".to_string()).unwrap();
         let track = SubtitleTrack::new("Main".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
-        let w = TimedWord::new(rev_id, 0, "Solo", "1.000s", "2.000s", 1000, 2000, None, None).unwrap();
+        let w = TimedWord::new(
+            rev_id, 0, "Solo", "1.000s", "2.000s", 1000, 2000, None, None,
+        )
+        .unwrap();
         let rev = make_revision(vec![w]);
         let ass = write_ass(&track, Some(&rev));
         let line = ass.lines().find(|l| l.starts_with("Dialogue:")).unwrap();
         let text = line.splitn(10, ',').nth(9).unwrap();
         let total_cs = extract_total_k_cs(text);
         let cue_dur_cs = (2000 - 1000) / 10;
-        assert_eq!(total_cs, cue_dur_cs, "Single word exact: expected {cue_dur_cs}, got {total_cs}");
+        assert_eq!(
+            total_cs, cue_dur_cs,
+            "Single word exact: expected {cue_dur_cs}, got {total_cs}"
+        );
     }
 
     // 2. Single word with lead-in and lead-out pause
@@ -63,14 +69,20 @@ fn test_ass_stress_single_word_variations() {
         let cue = SubtitleCue::new(1000, 3000, "Solo".to_string()).unwrap(); // 200cs
         let track = SubtitleTrack::new("Main".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
         // lead-in 300ms, word 1000ms, lead-out 700ms
-        let w = TimedWord::new(rev_id, 0, "Solo", "1.300s", "2.300s", 1300, 2300, None, None).unwrap();
+        let w = TimedWord::new(
+            rev_id, 0, "Solo", "1.300s", "2.300s", 1300, 2300, None, None,
+        )
+        .unwrap();
         let rev = make_revision(vec![w]);
         let ass = write_ass(&track, Some(&rev));
         let line = ass.lines().find(|l| l.starts_with("Dialogue:")).unwrap();
         let text = line.splitn(10, ',').nth(9).unwrap();
         let total_cs = extract_total_k_cs(text);
         let cue_dur_cs = (3000 - 1000) / 10;
-        assert_eq!(total_cs, cue_dur_cs, "Single word with pauses: expected {cue_dur_cs}, got {total_cs}");
+        assert_eq!(
+            total_cs, cue_dur_cs,
+            "Single word with pauses: expected {cue_dur_cs}, got {total_cs}"
+        );
         assert!(text.contains("{\\k30}"), "Expected 30cs lead-in");
         assert!(text.contains("{\\k100}Solo"), "Expected 100cs word");
         assert!(text.contains("{\\k70}"), "Expected 70cs lead-out");
@@ -86,20 +98,31 @@ fn test_ass_stress_many_words_with_irregular_gaps() {
 
     // 8 words with varying lengths and gaps
     let intervals = vec![
-        (5200, 5800, "One"),    // gap 200 lead-in, word 600
-        (6100, 6900, "Two"),    // gap 300, word 800
-        (7000, 7500, "Three"),  // gap 100, word 500
-        (7500, 8200, "Four"),   // gap 0, word 700
-        (8500, 9300, "Five"),   // gap 300, word 800
-        (9400, 10200, "Six"),   // gap 100, word 800
-        (10500, 12000, "Seven"),// gap 300, word 1500
-        (12500, 14200, "Eight"),// gap 500, word 1700, lead-out 800
+        (5200, 5800, "One"),     // gap 200 lead-in, word 600
+        (6100, 6900, "Two"),     // gap 300, word 800
+        (7000, 7500, "Three"),   // gap 100, word 500
+        (7500, 8200, "Four"),    // gap 0, word 700
+        (8500, 9300, "Five"),    // gap 300, word 800
+        (9400, 10200, "Six"),    // gap 100, word 800
+        (10500, 12000, "Seven"), // gap 300, word 1500
+        (12500, 14200, "Eight"), // gap 500, word 1700, lead-out 800
     ];
 
     let mut words = Vec::new();
     let mut word_texts = Vec::new();
     for (idx, (st, et, txt)) in intervals.into_iter().enumerate() {
-        let w = TimedWord::new(rev_id, idx as u32, txt, &format!("{st}"), &format!("{et}"), st, et, None, None).unwrap();
+        let w = TimedWord::new(
+            rev_id,
+            idx as u32,
+            txt,
+            &format!("{st}"),
+            &format!("{et}"),
+            st,
+            et,
+            None,
+            None,
+        )
+        .unwrap();
         words.push(w);
         word_texts.push(txt);
     }
@@ -114,7 +137,10 @@ fn test_ass_stress_many_words_with_irregular_gaps() {
     let text = line.splitn(10, ',').nth(9).unwrap();
     let total_cs = extract_total_k_cs(text);
 
-    assert_eq!(total_cs, cue_dur_cs, "Sum of tags must match cue duration exactly: {total_cs} == {cue_dur_cs}");
+    assert_eq!(
+        total_cs, cue_dur_cs,
+        "Sum of tags must match cue duration exactly: {total_cs} == {cue_dur_cs}"
+    );
 }
 
 #[test]
@@ -127,9 +153,18 @@ fn test_ass_stress_rounding_and_fractional_centiseconds() {
     let cue = SubtitleCue::new(1003, 2507, "Alpha Beta Gamma".to_string()).unwrap();
     let track = SubtitleTrack::new("Main".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
 
-    let w1 = TimedWord::new(rev_id, 0, "Alpha", "1.003s", "1.407s", 1003, 1407, None, None).unwrap();
-    let w2 = TimedWord::new(rev_id, 1, "Beta", "1.411s", "1.999s", 1411, 1999, None, None).unwrap();
-    let w3 = TimedWord::new(rev_id, 2, "Gamma", "2.001s", "2.507s", 2001, 2507, None, None).unwrap();
+    let w1 = TimedWord::new(
+        rev_id, 0, "Alpha", "1.003s", "1.407s", 1003, 1407, None, None,
+    )
+    .unwrap();
+    let w2 = TimedWord::new(
+        rev_id, 1, "Beta", "1.411s", "1.999s", 1411, 1999, None, None,
+    )
+    .unwrap();
+    let w3 = TimedWord::new(
+        rev_id, 2, "Gamma", "2.001s", "2.507s", 2001, 2507, None, None,
+    )
+    .unwrap();
 
     let rev = make_revision(vec![w1, w2, w3]);
     let ass = write_ass(&track, Some(&rev));
@@ -138,7 +173,10 @@ fn test_ass_stress_rounding_and_fractional_centiseconds() {
     let total_cs = extract_total_k_cs(text);
 
     let target_dur_cs = (((2507 - 1003) + 5) / 10).max(1);
-    assert_eq!(total_cs, target_dur_cs, "Fractional ms rounding must reconcile: {total_cs} == {target_dur_cs}");
+    assert_eq!(
+        total_cs, target_dur_cs,
+        "Fractional ms rounding must reconcile: {total_cs} == {target_dur_cs}"
+    );
 }
 
 #[test]
@@ -148,7 +186,9 @@ fn test_ass_stress_pseudo_random_simulation_100_runs() {
     // Deterministic pseudo-random sequence (Linear Congruential Generator)
     let mut seed: u64 = 0xDEADBEEF;
     let mut next_rand = || -> u64 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         seed
     };
 
@@ -209,8 +249,14 @@ fn test_ass_stress_pseudo_random_simulation_100_runs() {
 #[test]
 fn test_ass_stress_translation_matrix() {
     let rev_id = TranscriptRevisionId::new();
-    let w1 = TimedWord::new(rev_id, 0, "Good", "1.000s", "1.500s", 1000, 1500, None, None).unwrap();
-    let w2 = TimedWord::new(rev_id, 1, "Morning", "1.600s", "2.000s", 1600, 2000, None, None).unwrap();
+    let w1 = TimedWord::new(
+        rev_id, 0, "Good", "1.000s", "1.500s", 1000, 1500, None, None,
+    )
+    .unwrap();
+    let w2 = TimedWord::new(
+        rev_id, 1, "Morning", "1.600s", "2.000s", 1600, 2000, None, None,
+    )
+    .unwrap();
     let rev = make_revision(vec![w1, w2]);
 
     let test_cases = vec![
@@ -229,8 +275,11 @@ fn test_ass_stress_translation_matrix() {
 
     for (label, source_id, text, should_preserve) in test_cases {
         let cues = if let Some(sid) = source_id {
-            let src_cue = SubtitleCue::with_id(sid, 1000, 2000, "Source text".to_string(), None).unwrap();
-            let trans_cue = SubtitleCue::with_id(CueId::new(), 1000, 2000, text.to_string(), Some(sid)).unwrap();
+            let src_cue =
+                SubtitleCue::with_id(sid, 1000, 2000, "Source text".to_string(), None).unwrap();
+            let trans_cue =
+                SubtitleCue::with_id(CueId::new(), 1000, 2000, text.to_string(), Some(sid))
+                    .unwrap();
             vec![src_cue, trans_cue]
         } else {
             vec![SubtitleCue::new(1000, 2000, text.to_string()).unwrap()]

@@ -1,7 +1,7 @@
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -9,15 +9,15 @@ use std::{
 use bytes::Bytes;
 use osg_gemini::{
     ApiKey, AudioTranscriptionConfig, CancellationToken, Error, GeminiClient, InlineMedia,
-    MediaInput, RetryPolicy, TranscribeRequest, TranscriptionWord,
-    WordProjectionStatus, parse_duration, parse_duration_ms, parse_duration_nanos,
+    MediaInput, RetryPolicy, TranscribeRequest, TranscriptionWord, WordProjectionStatus,
+    parse_duration, parse_duration_ms, parse_duration_nanos,
     project_word_with_100ms_overshoot_policy,
 };
 use serde_json::json;
 use url::Url;
 use wiremock::{
-    matchers::{method, path, query_param},
     Mock, MockServer, ResponseTemplate,
+    matchers::{method, path, query_param},
 };
 
 fn challenge_client(server: &MockServer, retry: RetryPolicy) -> GeminiClient {
@@ -128,43 +128,43 @@ fn duration_nanos_extreme_values_and_u64_boundary() {
 #[test]
 fn duration_nanos_malformed_inputs_strictly_rejected() {
     let malformed_cases = [
-        "",                             // empty
-        "   ",                          // whitespace only
-        "s",                            // lone unit
-        " s ",                          // lone unit with spaces
-        ".",                            // lone dot
-        "-0s",                          // negative zero
-        "-1s",                          // negative integer
-        "-0.5s",                        // negative decimal
-        "+0s",                          // explicit plus zero
-        "+1s",                          // explicit plus integer
-        "+0.5s",                        // explicit plus decimal
-        "123",                          // missing unit
-        "123.456",                      // missing unit decimal
-        "123ms",                        // wrong unit milliseconds
-        "123us",                        // wrong unit microseconds
-        "123ns",                        // wrong unit nanoseconds
-        "123sec",                       // wrong unit sec
-        "1.2.3s",                       // double decimal points
-        "1..2s",                        // adjacent decimal points
-        "..s",                          // only decimal points
-        "1s2",                          // trailing characters after unit
-        "1s extra",                     // trailing words
-        "1s\0",                         // embedded null after unit
-        "1\0s",                         // embedded null in digits
-        "1a2s",                         // alphabetical character in seconds
-        "1.2bs",                        // alphabetical character in fraction
-        "1,2s",                         // comma decimal separator
-        "1e5s",                         // scientific notation
-        "1E-3s",                        // negative scientific notation
-        "NaNs",                         // NaN string
-        "Infs",                         // Infinity string
-        "-Infs",                        // Negative infinity string
-        "１２.３s",                     // fullwidth unicode numbers
-        "١٢.٣s",                        // Arabic-Indic digits
-        "1 2s",                         // space inside seconds
-        "1. 2s",                        // space after decimal point
-        "1 .2s",                        // space before decimal point
+        "",         // empty
+        "   ",      // whitespace only
+        "s",        // lone unit
+        " s ",      // lone unit with spaces
+        ".",        // lone dot
+        "-0s",      // negative zero
+        "-1s",      // negative integer
+        "-0.5s",    // negative decimal
+        "+0s",      // explicit plus zero
+        "+1s",      // explicit plus integer
+        "+0.5s",    // explicit plus decimal
+        "123",      // missing unit
+        "123.456",  // missing unit decimal
+        "123ms",    // wrong unit milliseconds
+        "123us",    // wrong unit microseconds
+        "123ns",    // wrong unit nanoseconds
+        "123sec",   // wrong unit sec
+        "1.2.3s",   // double decimal points
+        "1..2s",    // adjacent decimal points
+        "..s",      // only decimal points
+        "1s2",      // trailing characters after unit
+        "1s extra", // trailing words
+        "1s\0",     // embedded null after unit
+        "1\0s",     // embedded null in digits
+        "1a2s",     // alphabetical character in seconds
+        "1.2bs",    // alphabetical character in fraction
+        "1,2s",     // comma decimal separator
+        "1e5s",     // scientific notation
+        "1E-3s",    // negative scientific notation
+        "NaNs",     // NaN string
+        "Infs",     // Infinity string
+        "-Infs",    // Negative infinity string
+        "１２.３s", // fullwidth unicode numbers
+        "١٢.٣s",    // Arabic-Indic digits
+        "1 2s",     // space inside seconds
+        "1. 2s",    // space after decimal point
+        "1 .2s",    // space before decimal point
     ];
 
     for &input in &malformed_cases {
@@ -738,7 +738,10 @@ async fn mock_transcribe_stream_429_quota_refusal_sets_cooldown() {
         .await;
     match res1 {
         Err(Error::Provider(_)) => {}
-        other => panic!("Expected Err(Error::Provider), got is_ok: {}", other.is_ok()),
+        other => panic!(
+            "Expected Err(Error::Provider), got is_ok: {}",
+            other.is_ok()
+        ),
     }
 
     // Second call should fail fast with CooldownActive without network request
@@ -747,7 +750,10 @@ async fn mock_transcribe_stream_429_quota_refusal_sets_cooldown() {
         .await;
     match res2 {
         Err(Error::CooldownActive { .. }) => {}
-        other => panic!("Expected Err(Error::CooldownActive), got is_ok: {}", other.is_ok()),
+        other => panic!(
+            "Expected Err(Error::CooldownActive), got is_ok: {}",
+            other.is_ok()
+        ),
     }
 
     let reqs = server.received_requests().await.unwrap();

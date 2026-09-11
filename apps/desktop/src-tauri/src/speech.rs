@@ -88,9 +88,16 @@ const CHATTERBOX_LANGUAGES: &[&str] = &[
     "pl", "pt", "ru", "sv", "sw", "tr", "zh",
 ];
 pub(crate) const F5_MODEL_IDS: &[&str] = &[
-    "f5tts-v1-base", "F5TTS_v1_Base", "f5tts-spanish", "f5tts-russian",
-    "f5tts-portuguese-br", "f5tts-italian", "f5tts-vietnamese-vivoice",
-    "f5tts-german", "f5tts-finnish", "f5tts-polish",
+    "f5tts-v1-base",
+    "F5TTS_v1_Base",
+    "f5tts-spanish",
+    "f5tts-russian",
+    "f5tts-portuguese-br",
+    "f5tts-italian",
+    "f5tts-vietnamese-vivoice",
+    "f5tts-german",
+    "f5tts-finnish",
+    "f5tts-polish",
 ];
 
 #[derive(Clone)]
@@ -713,7 +720,9 @@ impl SpeechRuntime {
     pub(crate) fn reload_f5_models(&self) -> CommandResult<()> {
         let (_, detached) = self.begin_shutdown(SpeechBackendRequest::F5Tts)?;
         tauri::async_runtime::spawn_blocking(move || {
-            for worker in detached { worker.shutdown(); }
+            for worker in detached {
+                worker.shutdown();
+            }
         });
         Ok(())
     }
@@ -775,7 +784,10 @@ impl fmt::Debug for WorkerPaths {
             .field("python", &"<redacted>")
             .field("bootstrap", &"<redacted>")
             .field("model", &self.model.as_ref().map(|_| "<redacted>"))
-            .field("model_store", &self.model_store.as_ref().map(|_| "<redacted>"))
+            .field(
+                "model_store",
+                &self.model_store.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -5914,12 +5926,8 @@ mod tests {
         fs::create_dir_all(&work).unwrap();
         let authority = RuntimeStagingAuthority::prepare(&work.join("authority")).unwrap();
         let install = directory.path().join("fresh-install");
-        let runtime = SpeechRuntime::new_with_staging_authority(
-            &install,
-            &work,
-            None,
-            authority,
-        ).unwrap();
+        let runtime =
+            SpeechRuntime::new_with_staging_authority(&install, &work, None, authority).unwrap();
         assert!(runtime.0.model_store.is_dir());
     }
 

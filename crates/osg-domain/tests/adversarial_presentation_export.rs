@@ -33,13 +33,30 @@ fn test_ass_karaoke_duration_sum_with_inter_word_gaps() {
 
     let rev_id = TranscriptRevisionId::new();
     // w1: 1000..1400 (400ms = 40cs)
-    let w1 = TimedWord::new(rev_id, 0, "Word", "1.000s", "1.400s", 1000, 1400, None, None).unwrap();
+    let w1 = TimedWord::new(
+        rev_id, 0, "Word", "1.000s", "1.400s", 1000, 1400, None, None,
+    )
+    .unwrap();
     // 100ms pause: 1400..1500
     // w2: 1500..2100 (600ms = 60cs)
-    let w2 = TimedWord::new(rev_id, 1, "Highlight", "1.500s", "2.100s", 1500, 2100, None, None).unwrap();
+    let w2 = TimedWord::new(
+        rev_id,
+        1,
+        "Highlight",
+        "1.500s",
+        "2.100s",
+        1500,
+        2100,
+        None,
+        None,
+    )
+    .unwrap();
     // 100ms pause: 2100..2200
     // w3: 2200..2700 (500ms = 50cs)
-    let w3 = TimedWord::new(rev_id, 2, "Check", "2.200s", "2.700s", 2200, 2700, None, None).unwrap();
+    let w3 = TimedWord::new(
+        rev_id, 2, "Check", "2.200s", "2.700s", 2200, 2700, None, None,
+    )
+    .unwrap();
 
     let rev = make_test_revision(vec![w1, w2, w3]);
     let ass = write_ass(&track, Some(&rev));
@@ -90,21 +107,42 @@ fn test_ass_export_translation_track_with_source_revision() {
     )
     .unwrap();
 
-    let trans_track = SubtitleTrack::new(
-        "Vietnamese".to_string(),
-        TrackOrigin::Srt,
-        vec![trans_cue],
-    )
-    .unwrap();
+    let trans_track =
+        SubtitleTrack::new("Vietnamese".to_string(), TrackOrigin::Srt, vec![trans_cue]).unwrap();
 
     let rev_id = TranscriptRevisionId::new();
-    let w1 = TimedWord::new(rev_id, 0, "Artificial", "1.000s", "1.800s", 1000, 1800, None, None).unwrap();
-    let w2 = TimedWord::new(rev_id, 1, "Intelligence", "1.900s", "2.700s", 1900, 2700, None, None).unwrap();
+    let w1 = TimedWord::new(
+        rev_id,
+        0,
+        "Artificial",
+        "1.000s",
+        "1.800s",
+        1000,
+        1800,
+        None,
+        None,
+    )
+    .unwrap();
+    let w2 = TimedWord::new(
+        rev_id,
+        1,
+        "Intelligence",
+        "1.900s",
+        "2.700s",
+        1900,
+        2700,
+        None,
+        None,
+    )
+    .unwrap();
     let rev = make_test_revision(vec![w1, w2]);
 
     // When exporting translation track with source revision:
     let ass_with_rev = write_ass(&trans_track, Some(&rev));
-    let dialogue = ass_with_rev.lines().find(|l| l.starts_with("Dialogue:")).unwrap();
+    let dialogue = ass_with_rev
+        .lines()
+        .find(|l| l.starts_with("Dialogue:"))
+        .unwrap();
     println!("Dialogue line: {dialogue}");
 
     assert!(

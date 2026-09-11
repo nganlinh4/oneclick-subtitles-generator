@@ -61,7 +61,9 @@ pub fn write_ass(track: &SubtitleTrack, revision: Option<&TranscriptRevision>) -
     output.push_str("Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n");
 
     output.push_str("[Events]\n");
-    output.push_str("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n");
+    output.push_str(
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
+    );
 
     let is_trans_track = is_translation_track_label(track.label());
 
@@ -192,9 +194,26 @@ mod tests {
         let track = SubtitleTrack::new("Main".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
 
         let rev_id = TranscriptRevisionId::new();
-        let w1 = TimedWord::new(rev_id, 0, "Word", "1.000s", "1.400s", 1000, 1400, None, None).unwrap();
-        let w2 = TimedWord::new(rev_id, 1, "Highlight", "1.500s", "2.100s", 1500, 2100, None, None).unwrap();
-        let w3 = TimedWord::new(rev_id, 2, "Check", "2.200s", "2.700s", 2200, 2700, None, None).unwrap();
+        let w1 = TimedWord::new(
+            rev_id, 0, "Word", "1.000s", "1.400s", 1000, 1400, None, None,
+        )
+        .unwrap();
+        let w2 = TimedWord::new(
+            rev_id,
+            1,
+            "Highlight",
+            "1.500s",
+            "2.100s",
+            1500,
+            2100,
+            None,
+            None,
+        )
+        .unwrap();
+        let w3 = TimedWord::new(
+            rev_id, 2, "Check", "2.200s", "2.700s", 2200, 2700, None, None,
+        )
+        .unwrap();
 
         let rev = TranscriptRevision::new(
             ProjectId::new(),
@@ -209,7 +228,8 @@ mod tests {
             1000,
             vec![w1, w2, w3],
             Vec::new(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let ass = write_ass(&track, Some(&rev));
         assert!(ass.contains("Dialogue: 0,0:00:01.00,0:00:02.70,Default,,0,0,0,,{\\k40}Word{\\k10} {\\k60}Highlight{\\k10} {\\k50}Check"));
@@ -218,11 +238,18 @@ mod tests {
     #[test]
     fn writes_ass_preserves_translation_track_text() {
         let cue = SubtitleCue::new(1000, 2700, "Xin chào thế giới".to_string()).unwrap();
-        let track = SubtitleTrack::new("Vietnamese".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
+        let track =
+            SubtitleTrack::new("Vietnamese".to_string(), TrackOrigin::Srt, vec![cue]).unwrap();
 
         let rev_id = TranscriptRevisionId::new();
-        let w1 = TimedWord::new(rev_id, 0, "Hello", "1.000s", "1.800s", 1000, 1800, None, None).unwrap();
-        let w2 = TimedWord::new(rev_id, 1, "world", "1.900s", "2.700s", 1900, 2700, None, None).unwrap();
+        let w1 = TimedWord::new(
+            rev_id, 0, "Hello", "1.000s", "1.800s", 1000, 1800, None, None,
+        )
+        .unwrap();
+        let w2 = TimedWord::new(
+            rev_id, 1, "world", "1.900s", "2.700s", 1900, 2700, None, None,
+        )
+        .unwrap();
 
         let rev = TranscriptRevision::new(
             ProjectId::new(),
@@ -237,10 +264,13 @@ mod tests {
             1000,
             vec![w1, w2],
             Vec::new(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let ass = write_ass(&track, Some(&rev));
-        assert!(ass.contains("Dialogue: 0,0:00:01.00,0:00:02.70,Default,,0,0,0,,Xin chào thế giới"));
+        assert!(
+            ass.contains("Dialogue: 0,0:00:01.00,0:00:02.70,Default,,0,0,0,,Xin chào thế giới")
+        );
         assert!(!ass.contains("Hello"));
     }
 }

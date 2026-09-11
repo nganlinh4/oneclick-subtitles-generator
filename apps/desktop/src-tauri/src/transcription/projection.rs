@@ -1,5 +1,5 @@
-use osg_gemini::duration::parse_duration_nanos;
 use osg_gemini::TranscriptionWord;
+use osg_gemini::duration::parse_duration_nanos;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -414,11 +414,11 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     fn test_adversarial_boundary_conditions_and_sqlite_insertion() {
-        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
-        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
-        use osg_infrastructure::storage::Database;
-        use tempfile::tempdir;
         use crate::transcription::staging::{StagedWindowResult, StagingBuffer};
+        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
+        use osg_infrastructure::storage::Database;
+        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
+        use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("projection_test.db");
@@ -608,11 +608,11 @@ mod tests {
     #[test]
     #[allow(clippy::uninlined_format_args)]
     fn test_adversarial_submillisecond_reversed_timestamps() {
-        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
-        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
-        use osg_infrastructure::storage::Database;
-        use tempfile::tempdir;
         use crate::transcription::staging::{StagedWindowResult, StagingBuffer};
+        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
+        use osg_infrastructure::storage::Database;
+        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
+        use tempfile::tempdir;
 
         let window = WindowRange::new(0, 0, 60_000);
         let reversed_subms_word = TranscriptionWord {
@@ -674,11 +674,11 @@ mod tests {
     #[test]
     #[allow(clippy::uninlined_format_args)]
     fn test_adversarial_overlong_speaker_label() {
-        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
-        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
-        use osg_infrastructure::storage::Database;
-        use tempfile::tempdir;
         use crate::transcription::staging::{StagedWindowResult, StagingBuffer};
+        use osg_domain::{ProjectMetadata, TranscriptRevisionId};
+        use osg_infrastructure::storage::Database;
+        use osg_infrastructure::storage::transcripts::TranscriptRevisionRecord;
+        use tempfile::tempdir;
 
         let window = WindowRange::new(0, 0, 60_000);
         // 64 character speaker label: when prefixed with "w0:", length becomes 67 (> 64)
@@ -730,7 +730,9 @@ mod tests {
             &promoted_data.word_records,
         );
 
-        assert!(commit_res.is_err(), "SQLite must reject overlong speaker label");
+        assert!(
+            commit_res.is_err(),
+            "SQLite must reject overlong speaker label"
+        );
     }
 }
-

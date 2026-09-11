@@ -8,8 +8,8 @@ pub(crate) mod worker;
 use std::sync::Arc;
 
 use osg_domain::{JobId, JobSnapshot, JobUpdate};
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use crate::error::{CommandError, CommandResult};
 use crate::media_blob::MediaBlobStore;

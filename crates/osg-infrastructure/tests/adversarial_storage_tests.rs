@@ -24,9 +24,8 @@ use std::time::Duration;
 
 use osg_domain::{
     CaptionProjection, CompletionState, CueId, GroupingPolicy, ManualEditState, ProjectId,
-    ProjectMetadata, RevisionReason, ScriptSpacing, SubtitleCue, SubtitleTrack, TimedWord,
-    TrackId, TrackOrigin, TranscriptRevision, TranscriptRevisionId, TranscriptTurn, TurnId,
-    WordId,
+    ProjectMetadata, RevisionReason, ScriptSpacing, SubtitleCue, SubtitleTrack, TimedWord, TrackId,
+    TrackOrigin, TranscriptRevision, TranscriptRevisionId, TranscriptTurn, TurnId, WordId,
 };
 use osg_infrastructure::storage::transcripts::{
     CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
@@ -40,16 +39,30 @@ use uuid::Uuid;
 fn test_migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(include_str!("../src/storage/sql/0001_initial.sql")),
-        M::up(include_str!("../src/storage/sql/0002_youtube_oauth_token.sql")),
-        M::up(include_str!("../src/storage/sql/0003_job_restore_window.sql")),
-        M::up(include_str!("../src/storage/sql/0004_editor_track_history.sql")),
-        M::up(include_str!("../src/storage/sql/0005_process_media_job.sql")),
-        M::up(include_str!("../src/storage/sql/0006_media_artifact_ownership.sql")),
-        M::up(include_str!("../src/storage/sql/0007_media_artifact_repair.sql")),
+        M::up(include_str!(
+            "../src/storage/sql/0002_youtube_oauth_token.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0003_job_restore_window.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0004_editor_track_history.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0005_process_media_job.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0006_media_artifact_ownership.sql"
+        )),
+        M::up(include_str!(
+            "../src/storage/sql/0007_media_artifact_repair.sql"
+        )),
         M::up(include_str!(
             "../src/storage/sql/0008_media_artifact_duplicate_key_repair.sql"
         )),
-        M::up(include_str!("../src/storage/sql/0009_job_result_deliveries.sql")),
+        M::up(include_str!(
+            "../src/storage/sql/0009_job_result_deliveries.sql"
+        )),
         M::up(include_str!(
             "../src/storage/sql/0010_project_speech_references.sql"
         )),
@@ -131,13 +144,8 @@ fn seed_legacy_project_in_db(
         );
     }
 
-    let track = SubtitleTrack::restore(
-        track_id,
-        "Subtitles",
-        TrackOrigin::Srt,
-        domain_cues,
-    )
-    .expect("valid track");
+    let track = SubtitleTrack::restore(track_id, "Subtitles", TrackOrigin::Srt, domain_cues)
+        .expect("valid track");
 
     let metadata = ProjectMetadata::with_id(project_id, title).expect("valid metadata");
     let snapshot =
@@ -297,15 +305,17 @@ fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
             let db1 = Database::open(&db_path).expect("reopen Database 1");
             drop(db1);
             let db2 = Database::open(&db_path).expect("reopen Database 2");
-            let loaded = db2
-                .load_project(project_id)
-                .expect("load")
-                .expect("exists");
+            let loaded = db2.load_project(project_id).expect("load").expect("exists");
             assert_eq!(loaded.tracks()[0].cues().len(), 2);
 
             // Verify transcript tables remain zero
-            let revs = db2.transcript_list_revisions(project_id).expect("list revs");
-            assert!(revs.is_empty(), "legacy project must have 0 transcript revisions");
+            let revs = db2
+                .transcript_list_revisions(project_id)
+                .expect("list revs");
+            assert!(
+                revs.is_empty(),
+                "legacy project must have 0 transcript revisions"
+            );
 
             let mappings = db2
                 .transcript_load_cue_mappings(project_id)
@@ -347,7 +357,8 @@ fn test_migration_aborted_transaction_simulation() {
             [],
         )
         .unwrap();
-        tx.rollback().expect("simulate crash / rollback before commit");
+        tx.rollback()
+            .expect("simulate crash / rollback before commit");
 
         // Verify partial table was indeed rolled back
         let table_exists: bool = conn
@@ -973,34 +984,47 @@ fn test_range_query_edge_cases_and_intervals() {
     // NOTE: In osg-domain (line 714 of transcripts.rs), `start_ms >= end_ms` returns empty `&[]`.
     // In osg-infrastructure (transcripts.rs line 422), SQL evaluates `start_ms < 1500 AND end_ms > 1500`.
     // Thus it returns words strictly enclosing 1500ms (w1: 1000..2000), deviating from half-open [a, b) interval definition!
-    let degen = db.transcript_query_words_in_range(rev.id, 1500, 1500).unwrap();
+    let degen = db
+        .transcript_query_words_in_range(rev.id, 1500, 1500)
+        .unwrap();
     assert_eq!(
-        degen.len(), 1,
+        degen.len(),
+        1,
         "Empirical finding: query_words_in_range without start_ms < end_ms guard returns enclosing words on [T, T)"
     );
     assert_eq!(degen[0].id, w1_id);
 
     // Inverted range [2500, 500):
     // SQL evaluates `start_ms < 500 AND end_ms > 2500`. Since w1 is [1000, 2000], it does not match (start_ms is not < 500).
-    let inverted = db.transcript_query_words_in_range(rev.id, 2500, 500).unwrap();
+    let inverted = db
+        .transcript_query_words_in_range(rev.id, 2500, 500)
+        .unwrap();
     assert_eq!(inverted.len(), 0);
 
     // 2. Query [500, 1000): ends at 1000. start_ms < 1000 is FALSE for w1 (1000). 0 words.
-    let before = db.transcript_query_words_in_range(rev.id, 500, 1000).unwrap();
+    let before = db
+        .transcript_query_words_in_range(rev.id, 500, 1000)
+        .unwrap();
     assert_eq!(before.len(), 0);
 
     // 3. Query [1000, 2000): matches w1 only! (w2 starts at 2000, not < 2000)
-    let q_w1 = db.transcript_query_words_in_range(rev.id, 1000, 2000).unwrap();
+    let q_w1 = db
+        .transcript_query_words_in_range(rev.id, 1000, 2000)
+        .unwrap();
     assert_eq!(q_w1.len(), 1);
     assert_eq!(q_w1[0].id, w1_id);
 
     // 4. Query [2000, 3000): matches w2 only! (w1 ends at 2000, not > 2000)
-    let q_w2 = db.transcript_query_words_in_range(rev.id, 2000, 3000).unwrap();
+    let q_w2 = db
+        .transcript_query_words_in_range(rev.id, 2000, 3000)
+        .unwrap();
     assert_eq!(q_w2.len(), 1);
     assert_eq!(q_w2[0].id, w2_id);
 
     // 5. Query [1500, 2500): intersects both w1 and w2!
-    let q_both = db.transcript_query_words_in_range(rev.id, 1500, 2500).unwrap();
+    let q_both = db
+        .transcript_query_words_in_range(rev.id, 1500, 2500)
+        .unwrap();
     assert_eq!(q_both.len(), 2);
 
     // 6. Active word seeking:
@@ -1008,36 +1032,58 @@ fn test_range_query_edge_cases_and_intervals() {
     // In osg-infrastructure, SQL uses closed interval [start_ms, end_ms] with ORDER BY start_ms ASC LIMIT 1.
     // Thus at t = 2000, Word 1 (1000..2000) is returned instead of Word 2 (2000..3000).
     assert!(
-        db.transcript_query_active_word(rev.id, 999).unwrap().is_none()
+        db.transcript_query_active_word(rev.id, 999)
+            .unwrap()
+            .is_none()
     );
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 1000).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 1000)
+            .unwrap()
+            .unwrap()
+            .id,
         w1_id
     );
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 1500).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 1500)
+            .unwrap()
+            .unwrap()
+            .id,
         w1_id
     );
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 2000).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 2000)
+            .unwrap()
+            .unwrap()
+            .id,
         w1_id,
         "SQL returns w1 at t=2000 due to start_ms <= 2000 AND end_ms >= 2000 with start_ms ASC"
     );
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 2001).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 2001)
+            .unwrap()
+            .unwrap()
+            .id,
         w2_id
     );
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 3000).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 3000)
+            .unwrap()
+            .unwrap()
+            .id,
         w2_id
     );
     assert!(
-        db.transcript_query_active_word(rev.id, 3001).unwrap().is_none()
+        db.transcript_query_active_word(rev.id, 3001)
+            .unwrap()
+            .is_none()
     );
 
     // 7. Zero-duration word at 5000:
     assert_eq!(
-        db.transcript_query_active_word(rev.id, 5000).unwrap().unwrap().id,
+        db.transcript_query_active_word(rev.id, 5000)
+            .unwrap()
+            .unwrap()
+            .id,
         w3_zero_id
     );
 }
@@ -1101,7 +1147,8 @@ fn test_save_cue_mappings_duplicate_fails_unique_constraint() {
             "INSERT INTO cues(track_id, id, ordinal, start_ms, end_ms, text)
              VALUES (?1, ?2, 1, 0, 500, 'test')",
             params![track_id.as_uuid(), cue_id.as_uuid()],
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     let mapping = CueWordMappingRecord {
@@ -1112,7 +1159,8 @@ fn test_save_cue_mappings_duplicate_fails_unique_constraint() {
     };
 
     // First save succeeds
-    db.transcript_save_cue_mappings(&[mapping.clone()]).expect("first save");
+    db.transcript_save_cue_mappings(&[mapping.clone()])
+        .expect("first save");
 
     // Second save of the exact same mapping fails because of PRIMARY KEY / UNIQUE constraint without UPSERT
     let second_res = db.transcript_save_cue_mappings(&[mapping]);
@@ -1192,7 +1240,8 @@ fn test_cascade_delete_project_purges_all_transcript_entities() {
         },
     ];
 
-    db.transcript_promote_window(rev.id, &[turn], &words).unwrap();
+    db.transcript_promote_window(rev.id, &[turn], &words)
+        .unwrap();
 
     // Map cues to words
     let cue_id = CueId::new();
@@ -1208,7 +1257,8 @@ fn test_cascade_delete_project_purges_all_transcript_entities() {
             "INSERT INTO cues(track_id, id, ordinal, start_ms, end_ms, text)
              VALUES (?1, ?2, 1, 0, 2000, 'hello world')",
             params![track_id.as_uuid(), cue_id.as_uuid()],
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     let mappings = vec![
@@ -1231,7 +1281,8 @@ fn test_cascade_delete_project_purges_all_transcript_entities() {
     // Open raw connection with foreign_keys ON and delete project
     let conn = Connection::open(&db_path).unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()]).unwrap();
+    conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()])
+        .unwrap();
 
     // Assert ALL child records across all 4 v15 tables were purged
     for table in [
@@ -1243,12 +1294,17 @@ fn test_cascade_delete_project_purges_all_transcript_entities() {
         let count: i64 = conn
             .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 0, "Table {table} must have 0 rows after project cascade delete");
+        assert_eq!(
+            count, 0,
+            "Table {table} must have 0 rows after project cascade delete"
+        );
     }
 
     // Verify foreign key integrity
     let fk_violations: i64 = conn
-        .query_row("SELECT count(*) FROM pragma_foreign_key_check()", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM pragma_foreign_key_check()", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(fk_violations, 0, "No foreign key violations allowed");
 }
@@ -1299,26 +1355,46 @@ fn test_cascade_delete_granular_entities() {
         metadata_json: "{}".to_string(),
     }];
 
-    db.transcript_promote_window(rev.id, &[turn], &words).unwrap();
+    db.transcript_promote_window(rev.id, &[turn], &words)
+        .unwrap();
     drop(db);
 
     let conn = Connection::open(&db_path).unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
 
     // 1. Deleting turn sets turn_id = NULL on words (ON DELETE SET NULL)
-    conn.execute("DELETE FROM transcript_turns WHERE id = ?1", [turn_id.as_uuid()]).unwrap();
+    conn.execute(
+        "DELETE FROM transcript_turns WHERE id = ?1",
+        [turn_id.as_uuid()],
+    )
+    .unwrap();
     let turn_id_on_word: Option<Uuid> = conn
-        .query_row("SELECT turn_id FROM transcript_words WHERE id = ?1", [word_id.as_uuid()], |r| r.get(0))
+        .query_row(
+            "SELECT turn_id FROM transcript_words WHERE id = ?1",
+            [word_id.as_uuid()],
+            |r| r.get(0),
+        )
         .unwrap();
     assert!(turn_id_on_word.is_none(), "turn_id must be set to NULL");
 
     let word_still_exists: bool = conn
-        .query_row("SELECT EXISTS(SELECT 1 FROM transcript_words WHERE id = ?1)", [word_id.as_uuid()], |r| r.get(0))
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM transcript_words WHERE id = ?1)",
+            [word_id.as_uuid()],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert!(word_still_exists, "Word must NOT be deleted when turn is deleted");
+    assert!(
+        word_still_exists,
+        "Word must NOT be deleted when turn is deleted"
+    );
 
     // 2. Deleting revision cascades to delete words
-    conn.execute("DELETE FROM transcript_revisions WHERE id = ?1", [rev.id.as_uuid()]).unwrap();
+    conn.execute(
+        "DELETE FROM transcript_revisions WHERE id = ?1",
+        [rev.id.as_uuid()],
+    )
+    .unwrap();
     let words_left: i64 = conn
         .query_row("SELECT count(*) FROM transcript_words", [], |r| r.get(0))
         .unwrap();
@@ -1340,7 +1416,9 @@ fn test_all_v1_to_v14_projects_load_without_synthetic_words_or_errors() {
         {
             let mut conn = Connection::open(&db_path).unwrap();
             conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-            test_migrations().to_version(&mut conn, prior_version).unwrap();
+            test_migrations()
+                .to_version(&mut conn, prior_version)
+                .unwrap();
 
             seed_legacy_project_in_db(
                 &conn,
@@ -1356,10 +1434,16 @@ fn test_all_v1_to_v14_projects_load_without_synthetic_words_or_errors() {
 
         // Open with v15 runtime
         let db = Database::open(&db_path).expect("open legacy project in v15 runtime");
-        let loaded = db.load_project(project_id).unwrap().expect("project loaded");
+        let loaded = db
+            .load_project(project_id)
+            .unwrap()
+            .expect("project loaded");
 
         // Verify project tracks and cues are preserved byte-for-byte
-        assert_eq!(loaded.metadata().name(), format!("Legacy Project v{prior_version}"));
+        assert_eq!(
+            loaded.metadata().name(),
+            format!("Legacy Project v{prior_version}")
+        );
         assert_eq!(loaded.tracks().len(), 1);
         let cues = loaded.tracks()[0].cues();
         assert_eq!(cues.len(), 3);
@@ -1394,7 +1478,9 @@ fn test_all_v1_to_v14_projects_load_without_synthetic_words_or_errors() {
         );
 
         let rev_count: i64 = conn
-            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM transcript_revisions", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(
             rev_count, 0,
@@ -1433,24 +1519,70 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
 
     let rev_id = TranscriptRevisionId::new();
     let w0 = TimedWord::new(
-        rev_id, 1, "First", "0ms", "1000ms", 0, 1000, Some("Speaker A".to_string()), None,
-    ).unwrap();
+        rev_id,
+        1,
+        "First",
+        "0ms",
+        "1000ms",
+        0,
+        1000,
+        Some("Speaker A".to_string()),
+        None,
+    )
+    .unwrap();
     let w1 = TimedWord::new(
-        rev_id, 2, "overlapping", "200ms", "400ms", 200, 400, Some("Speaker A".to_string()), None,
-    ).unwrap();
+        rev_id,
+        2,
+        "overlapping",
+        "200ms",
+        "400ms",
+        200,
+        400,
+        Some("Speaker A".to_string()),
+        None,
+    )
+    .unwrap();
     let w2 = TimedWord::new(
-        rev_id, 3, "zero", "600ms", "600ms", 600, 600, Some("Speaker B".to_string()), None,
-    ).unwrap();
+        rev_id,
+        3,
+        "zero",
+        "600ms",
+        "600ms",
+        600,
+        600,
+        Some("Speaker B".to_string()),
+        None,
+    )
+    .unwrap();
     let w3 = TimedWord::new(
-        rev_id, 4, "trail", "650ms", "900ms", 650, 900, Some("Speaker B".to_string()), None,
-    ).unwrap();
+        rev_id,
+        4,
+        "trail",
+        "650ms",
+        "900ms",
+        650,
+        900,
+        Some("Speaker B".to_string()),
+        None,
+    )
+    .unwrap();
 
     let t0 = TranscriptTurn::from_words(
-        rev_id, 1, Some("Speaker A".to_string()), &[w0.clone(), w1.clone()], ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+        rev_id,
+        1,
+        Some("Speaker A".to_string()),
+        &[w0.clone(), w1.clone()],
+        ScriptSpacing::SpaceSeparated,
+    )
+    .unwrap();
     let t1 = TranscriptTurn::from_words(
-        rev_id, 2, Some("Speaker B".to_string()), &[w2.clone(), w3.clone()], ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+        rev_id,
+        2,
+        Some("Speaker B".to_string()),
+        &[w2.clone(), w3.clone()],
+        ScriptSpacing::SpaceSeparated,
+    )
+    .unwrap();
 
     let rev = TranscriptRevision::new(
         project_id,
@@ -1465,15 +1597,19 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
         1000,
         vec![w0.clone(), w1.clone(), w2.clone(), w3.clone()],
         vec![t0, t1],
-    ).unwrap();
+    )
+    .unwrap();
 
     // 1. One-word projection: zero duration clamped to 600 + 100 = 700
     let one_word_proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::OneWord { min_duration_ms: 100 },
+        GroupingPolicy::OneWord {
+            min_duration_ms: 100,
+        },
         ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+    )
+    .unwrap();
     let one_word_track = one_word_proj
         .to_subtitle_track("One Word", TrackOrigin::Srt)
         .expect("one word track");
@@ -1485,9 +1621,13 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
     let short_proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::Short { max_words: 2, max_duration_ms: 5000 },
+        GroupingPolicy::Short {
+            max_words: 2,
+            max_duration_ms: 5000,
+        },
         ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+    )
+    .unwrap();
     let short_track = short_proj
         .to_subtitle_track("Short", TrackOrigin::Srt)
         .expect("short track");
@@ -1498,9 +1638,13 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
     let mut proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::Short { max_words: 3, max_duration_ms: 10000 },
+        GroupingPolicy::Short {
+            max_words: 3,
+            max_duration_ms: 10000,
+        },
         ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(proj.cues().len(), 2);
     assert_eq!(proj.cues()[0].word_ids.len(), 3); // w0, w1, w2
 
@@ -1522,7 +1666,9 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
     let mut proj: CaptionProjection = serde_json::from_value(val).unwrap();
 
     // Now merge split1 and split2 cues
-    let merged_id = proj.merge_cues(split1_id, split2_id, &rev, ScriptSpacing::SpaceSeparated).unwrap();
+    let merged_id = proj
+        .merge_cues(split1_id, split2_id, &rev, ScriptSpacing::SpaceSeparated)
+        .unwrap();
     let merged_cue = proj.cues().iter().find(|c| c.id == merged_id).unwrap();
     assert_eq!(merged_cue.text, "USER_CUSTOM_SPLIT zero");
     assert_eq!(merged_cue.manual_state, ManualEditState::EditedText);
@@ -1535,19 +1681,21 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
     assert_eq!(final_track.cues().len(), 2);
 
     // 4. Construct ProjectSnapshot and commit to SQLite Database
-    let snapshot = osg_application::ProjectSnapshot::new(
-        meta.clone(),
-        0,
-        Vec::new(),
-        vec![final_track],
-    ).expect("valid snapshot");
+    let snapshot =
+        osg_application::ProjectSnapshot::new(meta.clone(), 0, Vec::new(), vec![final_track])
+            .expect("valid snapshot");
 
     let reason = RevisionReason::new("Commit remediated projection").unwrap();
-    let commit = db.commit_project(&snapshot, &reason).expect("commit project");
+    let commit = db
+        .commit_project(&snapshot, &reason)
+        .expect("commit project");
     assert_eq!(commit.state_version, 1);
 
     // 5. Load project from Database and verify snapshot decompression, blake3 hash, and exact fidelity
-    let loaded = db.load_project(project_id).unwrap().expect("project loaded");
+    let loaded = db
+        .load_project(project_id)
+        .unwrap()
+        .expect("project loaded");
     assert_eq!(loaded.state_version(), 1);
     assert_eq!(loaded.tracks().len(), 1);
     let loaded_cues = loaded.tracks()[0].cues();
@@ -1566,18 +1714,28 @@ fn test_remediated_domain_projection_and_snapshot_commit_roundtrip() {
         .unwrap();
     assert_eq!(cue_count, 2);
 
-    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
+    let integrity: String = conn
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(integrity, "ok");
 
     let fk_count: i64 = conn
-        .query_row("SELECT count(*) FROM pragma_foreign_key_check()", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM pragma_foreign_key_check()", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(fk_count, 0);
 
     // 6. Test undo/redo
-    let undone = db.undo_project(project_id, 1).unwrap().expect("undone snapshot");
+    let undone = db
+        .undo_project(project_id, 1)
+        .unwrap()
+        .expect("undone snapshot");
     assert_eq!(undone.tracks().len(), 0);
-    let redone = db.redo_project(project_id, 2).unwrap().expect("redone snapshot");
+    let redone = db
+        .redo_project(project_id, 2)
+        .unwrap()
+        .expect("redone snapshot");
     assert_eq!(redone.tracks().len(), 1);
     assert_eq!(redone.tracks()[0].cues().len(), 2);
 }
@@ -1664,14 +1822,18 @@ fn test_remediated_cue_word_mappings_foreign_key_and_storage_integrity() {
         },
     ];
 
-    db.transcript_promote_window(rev_id, &[turn_rec], &word_recs).unwrap();
+    db.transcript_promote_window(rev_id, &[turn_rec], &word_recs)
+        .unwrap();
 
     // Create and commit a track with 1 cue enclosing both words
     let cue_id = CueId::new();
     let cue = SubtitleCue::restore(cue_id, 1, 0, 2000, "hello world".to_string(), None).unwrap();
-    let track = SubtitleTrack::restore(TrackId::new(), "Subtitles", TrackOrigin::Srt, vec![cue]).unwrap();
-    let snap = osg_application::ProjectSnapshot::new(meta.clone(), 0, Vec::new(), vec![track]).unwrap();
-    db.commit_project(&snap, &RevisionReason::new("commit cues").unwrap()).unwrap();
+    let track =
+        SubtitleTrack::restore(TrackId::new(), "Subtitles", TrackOrigin::Srt, vec![cue]).unwrap();
+    let snap =
+        osg_application::ProjectSnapshot::new(meta.clone(), 0, Vec::new(), vec![track]).unwrap();
+    db.commit_project(&snap, &RevisionReason::new("commit cues").unwrap())
+        .unwrap();
 
     // 1. Save valid mappings
     let valid_mappings = vec![
@@ -1688,7 +1850,8 @@ fn test_remediated_cue_word_mappings_foreign_key_and_storage_integrity() {
             metadata_json: "{}".to_string(),
         },
     ];
-    db.transcript_save_cue_mappings(&valid_mappings).expect("valid mappings save");
+    db.transcript_save_cue_mappings(&valid_mappings)
+        .expect("valid mappings save");
 
     let loaded_mappings = db.transcript_load_cue_mappings(project_id).unwrap();
     assert_eq!(loaded_mappings.len(), 2);
@@ -1713,18 +1876,25 @@ fn test_remediated_cue_word_mappings_foreign_key_and_storage_integrity() {
         word_ordinal: 3,
         metadata_json: "{}".to_string(),
     };
-    assert!(db.transcript_save_cue_mappings(&[bad_word_mapping]).is_err());
+    assert!(
+        db.transcript_save_cue_mappings(&[bad_word_mapping])
+            .is_err()
+    );
 
     // 4. Cascade delete: deleting project removes cue_word_mappings
     drop(db);
     let conn = Connection::open(&db_path).unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()]).unwrap();
+    conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_uuid()])
+        .unwrap();
 
     let remaining_mappings: i64 = conn
         .query_row("SELECT count(*) FROM cue_word_mappings", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(remaining_mappings, 0, "cue_word_mappings must be purged on cascade delete");
+    assert_eq!(
+        remaining_mappings, 0,
+        "cue_word_mappings must be purged on cascade delete"
+    );
 }
 
 #[test]
@@ -1733,17 +1903,60 @@ fn test_transcript_revision_serde_prefix_index_reconstitution() {
     let project_id = ProjectId::new();
 
     // Words with out-of-order end times
-    let w0 = TimedWord::new(rev_id, 1, "long", "0ms", "1000ms", 0, 1000, Some("A".to_string()), None).unwrap();
-    let w1 = TimedWord::new(rev_id, 2, "short", "200ms", "400ms", 200, 400, Some("A".to_string()), None).unwrap();
-    let w2 = TimedWord::new(rev_id, 3, "nested", "600ms", "800ms", 600, 800, Some("B".to_string()), None).unwrap();
+    let w0 = TimedWord::new(
+        rev_id,
+        1,
+        "long",
+        "0ms",
+        "1000ms",
+        0,
+        1000,
+        Some("A".to_string()),
+        None,
+    )
+    .unwrap();
+    let w1 = TimedWord::new(
+        rev_id,
+        2,
+        "short",
+        "200ms",
+        "400ms",
+        200,
+        400,
+        Some("A".to_string()),
+        None,
+    )
+    .unwrap();
+    let w2 = TimedWord::new(
+        rev_id,
+        3,
+        "nested",
+        "600ms",
+        "800ms",
+        600,
+        800,
+        Some("B".to_string()),
+        None,
+    )
+    .unwrap();
 
     // Overlapping turns
     let t0 = TranscriptTurn::from_words(
-        rev_id, 1, Some("A".to_string()), &[w0.clone(), w1.clone()], ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+        rev_id,
+        1,
+        Some("A".to_string()),
+        &[w0.clone(), w1.clone()],
+        ScriptSpacing::SpaceSeparated,
+    )
+    .unwrap();
     let t1 = TranscriptTurn::from_words(
-        rev_id, 2, Some("B".to_string()), &[w2.clone()], ScriptSpacing::SpaceSeparated,
-    ).unwrap();
+        rev_id,
+        2,
+        Some("B".to_string()),
+        &[w2.clone()],
+        ScriptSpacing::SpaceSeparated,
+    )
+    .unwrap();
 
     let rev = TranscriptRevision::new(
         project_id,
@@ -1758,7 +1971,8 @@ fn test_transcript_revision_serde_prefix_index_reconstitution() {
         1000,
         vec![w0, w1, w2],
         vec![t0, t1],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Serialize to JSON
     let json = serde_json::to_string(&rev).expect("serialize revision");
@@ -1777,11 +1991,26 @@ fn test_transcript_revision_serde_prefix_index_reconstitution() {
     assert_eq!(restored, rev);
 
     // Verify spatial queries produce identical results on restored revision:
-    assert_eq!(restored.active_word_at(100).map(TimedWord::text), Some("long"));
-    assert_eq!(restored.active_word_at(300).map(TimedWord::text), Some("short"));
-    assert_eq!(restored.active_word_at(500).map(TimedWord::text), Some("long"));
-    assert_eq!(restored.active_word_at(700).map(TimedWord::text), Some("nested"));
-    assert_eq!(restored.active_word_at(900).map(TimedWord::text), Some("long"));
+    assert_eq!(
+        restored.active_word_at(100).map(TimedWord::text),
+        Some("long")
+    );
+    assert_eq!(
+        restored.active_word_at(300).map(TimedWord::text),
+        Some("short")
+    );
+    assert_eq!(
+        restored.active_word_at(500).map(TimedWord::text),
+        Some("long")
+    );
+    assert_eq!(
+        restored.active_word_at(700).map(TimedWord::text),
+        Some("nested")
+    );
+    assert_eq!(
+        restored.active_word_at(900).map(TimedWord::text),
+        Some("long")
+    );
     assert_eq!(restored.active_word_at(1000), None);
 
     // Intersecting words in range
@@ -1822,20 +2051,47 @@ fn test_legacy_project_mutation_with_remediated_domain_in_v15_runtime() {
     // 3. Add a word-native transcript revision to this project
     let rev_id = TranscriptRevisionId::new();
     let w0 = TimedWord::new(rev_id, 1, "new", "1000ms", "1500ms", 1000, 1500, None, None).unwrap();
-    let w1 = TimedWord::new(rev_id, 2, "words", "1600ms", "2200ms", 1600, 2200, None, None).unwrap();
-    let t0 = TranscriptTurn::from_words(rev_id, 1, None, &[w0.clone(), w1.clone()], ScriptSpacing::SpaceSeparated).unwrap();
+    let w1 = TimedWord::new(
+        rev_id, 2, "words", "1600ms", "2200ms", 1600, 2200, None, None,
+    )
+    .unwrap();
+    let t0 = TranscriptTurn::from_words(
+        rev_id,
+        1,
+        None,
+        &[w0.clone(), w1.clone()],
+        ScriptSpacing::SpaceSeparated,
+    )
+    .unwrap();
     let rev = TranscriptRevision::new(
-        project_id, None, 1000, 2500, "gemini", "gemini-3.5-transcribe",
-        1, CompletionState::Completed, "fp", 1000, vec![w0, w1], vec![t0],
-    ).unwrap();
+        project_id,
+        None,
+        1000,
+        2500,
+        "gemini",
+        "gemini-3.5-transcribe",
+        1,
+        CompletionState::Completed,
+        "fp",
+        1000,
+        vec![w0, w1],
+        vec![t0],
+    )
+    .unwrap();
 
     let proj = CaptionProjection::project(
         &rev,
         TrackId::new(),
-        GroupingPolicy::Short { max_words: 2, max_duration_ms: 5000 },
+        GroupingPolicy::Short {
+            max_words: 2,
+            max_duration_ms: 5000,
+        },
         ScriptSpacing::SpaceSeparated,
-    ).unwrap();
-    let new_track = proj.to_subtitle_track("Word-Native Track", TrackOrigin::Srt).unwrap();
+    )
+    .unwrap();
+    let new_track = proj
+        .to_subtitle_track("Word-Native Track", TrackOrigin::Srt)
+        .unwrap();
 
     // 4. Update snapshot with BOTH legacy track and new remediated track
     let updated_snapshot = osg_application::ProjectSnapshot::new(
@@ -1843,9 +2099,15 @@ fn test_legacy_project_mutation_with_remediated_domain_in_v15_runtime() {
         initial_loaded.state_version(),
         initial_loaded.media().to_vec(),
         vec![legacy_track.clone(), new_track.clone()],
-    ).unwrap();
+    )
+    .unwrap();
 
-    let commit = db.commit_project(&updated_snapshot, &RevisionReason::new("add native track").unwrap()).unwrap();
+    let commit = db
+        .commit_project(
+            &updated_snapshot,
+            &RevisionReason::new("add native track").unwrap(),
+        )
+        .unwrap();
     assert_eq!(commit.state_version, 1);
 
     // 5. Verify both tracks are loaded and intact

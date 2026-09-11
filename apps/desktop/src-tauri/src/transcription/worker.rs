@@ -434,10 +434,9 @@ const LIVE_SPARSE_MIN_WINDOW_MS: i64 = 15_000;
 
 fn live_attempt_is_sparse(result: &StagedWindowResult) -> bool {
     let owned_duration_ms = result.window.duration_ms();
-    let minimum_words = usize::try_from((owned_duration_ms / 1_000).cast_unsigned())
-        .unwrap_or(usize::MAX);
-    owned_duration_ms >= LIVE_SPARSE_MIN_WINDOW_MS
-        && result.words.len() < minimum_words
+    let minimum_words =
+        usize::try_from((owned_duration_ms / 1_000).cast_unsigned()).unwrap_or(usize::MAX);
+    owned_duration_ms >= LIVE_SPARSE_MIN_WINDOW_MS && result.words.len() < minimum_words
 }
 
 fn prefer_more_complete_live_attempt(

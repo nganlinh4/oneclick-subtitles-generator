@@ -13,6 +13,9 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::transcripts::{
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+};
 use osg_application::{
     JobStore, JobWrite, ProjectHistoryStatus, ProjectRepository, ProjectSnapshot,
     ProjectTrackHistoryMutation, ProjectTrackHistoryStatus, ProjectTrackSelector, RevisionCommit,
@@ -20,9 +23,6 @@ use osg_application::{
 use osg_domain::{
     AssetId, JobId, JobSnapshot, MediaAsset, ProjectId, ProjectMetadata, RevisionReason,
     SubtitleTrack, TranscriptRevisionId,
-};
-use super::transcripts::{
-    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
 };
 
 use super::error::DatabaseError;

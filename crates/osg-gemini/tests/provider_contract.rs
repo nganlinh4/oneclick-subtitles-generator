@@ -522,15 +522,17 @@ async fn transcribe_wire_shape_strict_separation() {
     let media = MediaInput::Inline(
         InlineMedia::new("audio/wav", Bytes::from_static(b"RIFF....WAVEfmt ")).unwrap(),
     );
-    let req = TranscribeRequest::new(media)
-        .with_config(
-            AudioTranscriptionConfig::new()
-                .with_diarization(true)
-                .with_language_hints(["en", "vi"]),
-        );
+    let req = TranscribeRequest::new(media).with_config(
+        AudioTranscriptionConfig::new()
+            .with_diarization(true)
+            .with_language_hints(["en", "vi"]),
+    );
 
     let client = client(&server);
-    let response = client.transcribe(req, &CancellationToken::new()).await.unwrap();
+    let response = client
+        .transcribe(req, &CancellationToken::new())
+        .await
+        .unwrap();
 
     let words = response.transcription_words();
     assert_eq!(words.len(), 2);
@@ -558,7 +560,10 @@ async fn transcribe_wire_shape_strict_separation() {
     assert_eq!(asr_config["wordTimestamp"], true);
     assert_eq!(asr_config["diarization"], true);
     assert_eq!(asr_config["languageCodes"], json!(["en", "vi"]));
-    assert!(asr_config["languageHints"].is_null(), "obsolete languageHints must not be emitted");
+    assert!(
+        asr_config["languageHints"].is_null(),
+        "obsolete languageHints must not be emitted"
+    );
 
     // Strict separation: forbidden text generation fields
     assert!(gen_config["thinkingConfig"].is_null());
@@ -577,7 +582,9 @@ async fn transcribe_streaming_sse_words_deserialization() {
     );
 
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:streamGenerateContent"))
+        .and(path(
+            "/v1beta/models/gemini-3.5-transcribe:streamGenerateContent",
+        ))
         .and(query_param("alt", "sse"))
         .respond_with(
             ResponseTemplate::new(200)
@@ -588,9 +595,8 @@ async fn transcribe_streaming_sse_words_deserialization() {
         .mount(&server)
         .await;
 
-    let media = MediaInput::Inline(
-        InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap(),
-    );
+    let media =
+        MediaInput::Inline(InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap());
     let req = TranscribeRequest::new(media);
     let client = client(&server);
 
@@ -636,17 +642,21 @@ async fn transcribe_quota_429_fail_fast_cooldown() {
         .await;
 
     let client = client(&server);
-    let media = MediaInput::Inline(
-        InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap(),
-    );
+    let media =
+        MediaInput::Inline(InlineMedia::new("audio/wav", Bytes::from_static(b"wavdata")).unwrap());
     let req = TranscribeRequest::new(media);
 
-    let err1 = client.transcribe(req.clone(), &CancellationToken::new()).await.unwrap_err();
+    let err1 = client
+        .transcribe(req.clone(), &CancellationToken::new())
+        .await
+        .unwrap_err();
     assert!(matches!(err1, Error::Provider(_)));
 
     // Second call fails fast with CooldownActive without hitting server
-    let err2 = client.transcribe(req, &CancellationToken::new()).await.unwrap_err();
+    let err2 = client
+        .transcribe(req, &CancellationToken::new())
+        .await
+        .unwrap_err();
     assert!(matches!(err2, Error::CooldownActive { .. }));
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }
-

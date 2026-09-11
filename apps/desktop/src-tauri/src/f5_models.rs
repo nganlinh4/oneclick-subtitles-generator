@@ -531,7 +531,11 @@ mod tests {
             assert_eq!(model.vocabulary.sha256.len(), 64);
             assert!(model.checkpoint.bytes > 1_000_000_000);
             assert!(F5_MODEL_IDS.contains(&model.id));
-            assert!(std::str::from_utf8(crate::speech::WORKER_BYTES).unwrap().contains(model.id));
+            assert!(
+                std::str::from_utf8(crate::speech::WORKER_BYTES)
+                    .unwrap()
+                    .contains(model.id)
+            );
         }
     }
     #[test]

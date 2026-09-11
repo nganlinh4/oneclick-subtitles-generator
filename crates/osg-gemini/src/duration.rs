@@ -113,13 +113,9 @@ pub enum WordProjectionStatus {
         overshoot_ms: i64,
     },
     /// Word exceeded media boundary by > 100ms or started after media end.
-    Quarantined {
-        reason: String,
-    },
+    Quarantined { reason: String },
     /// Word rejected due to malformed, negative, or reversed timestamps.
-    Rejected {
-        reason: String,
-    },
+    Rejected { reason: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
