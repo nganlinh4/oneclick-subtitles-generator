@@ -141,22 +141,9 @@ const useNarrationEffects = ({
   // Dispatch toast notifications for generation status
   useEffect(() => {
     if ((isGenerating || retryingSubtitleId) && generationStatus) {
-      // Set different durations based on status message type
-      let duration = 6000; // Default duration
-
-      // 15 seconds for warming up and initializing messages
-      if (generationStatus.includes('Warming up') || generationStatus.includes('initializingService') ||
-          generationStatus.includes('Waking up')) {
-        duration = 15000;
-      }
-      // 12 seconds for progress messages
-      else if (generationStatus.includes('Generating') || generationStatus.includes('Generated') ||
-               generationStatus.includes('chatterboxGeneratingProgress')) {
-        duration = 12000;
-      }
-
-      // Progress replaces its predecessor instead of obscuring the editor with one toast per cue.
-      showInfoToast(generationStatus, duration, 'narration-generation-progress');
+      // The message is already localized, so its wording cannot be used as a state machine.
+      // Keep one bounded progress notification alive while work is active; each update replaces it.
+      showInfoToast(generationStatus, 12000, 'narration-generation-progress');
     }
   }, [generationStatus, isGenerating, retryingSubtitleId]);
 };

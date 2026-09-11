@@ -37,3 +37,22 @@ test('narration progress replaces one keyed toast instead of stacking per cue', 
     'narration-generation-progress',
   );
 });
+
+test('localized narration progress does not depend on English message parsing', () => {
+  renderHook(() => useNarrationEffects({
+    narrationMethod: 'gtts',
+    setGenerationStatus: vi.fn(),
+    setError: vi.fn(),
+    sectionRef: { current: null },
+    error: '',
+    isGenerating: true,
+    retryingSubtitleId: null,
+    generationStatus: 'Đã tạo 2 trên 5 thuyết minh...',
+  }));
+
+  expect(showInfoToast).toHaveBeenCalledWith(
+    'Đã tạo 2 trên 5 thuyết minh...',
+    12000,
+    'narration-generation-progress',
+  );
+});
