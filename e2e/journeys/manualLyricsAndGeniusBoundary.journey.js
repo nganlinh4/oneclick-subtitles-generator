@@ -70,6 +70,7 @@ const surfaceState = () => browser.execute(() => {
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   };
   const text = (node) => (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ');
+  const floatingSettings = document.querySelector('.settings-button.floating-settings');
   return {
     errorToasts: [...document.querySelectorAll('.toast-item.live .toast.toast-error')]
       .filter(visible).map(text).filter(Boolean),
@@ -78,6 +79,9 @@ const surfaceState = () => browser.execute(() => {
     hasSubtitlesButton: document.querySelector('.add-subtitles-button.has-subtitles') !== null,
     modalOpen: document.querySelector('.subtitles-input-modal') !== null,
     lyricsSectionOpen: document.querySelector('.lyrics-input-section') !== null,
+    floatingSettingsVisible: floatingSettings !== null
+      && visible(floatingSettings)
+      && Number.parseFloat(getComputedStyle(floatingSettings).opacity) > 0.01,
   };
 });
 
@@ -121,6 +125,11 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
     await openManualModal();
     const textarea = await $(TEXTAREA);
     await textarea.waitForDisplayed({ timeout: 15_000 });
+    assert.equal(
+      (await surfaceState()).floatingSettingsVisible,
+      false,
+      'the floating Settings action remained visible or clickable above the modal backdrop',
+    );
     await textarea.setValue(MANUAL_TYPED);
     await clickControl(SAVE_BUTTON);
     await $(MODAL).waitForExist({ reverse: true, timeout: 15_000, timeoutMsg: 'saving manual subtitles never closed the modal' });

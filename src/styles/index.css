@@ -144,6 +144,16 @@ html[data-osg-modal-scroll-lock] body {
   overscroll-behavior: none;
 }
 
+/* A viewport modal also owns the app actions beneath it. The floating Settings action normally
+   sits above the long editor surface, but must neither show through nor accept clicks while any
+   rendered modal backdrop owns the viewport. */
+html[data-osg-modal-scroll-lock] .settings-button.floating-settings {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(0.8);
+}
+
 code {
   font-family: var(--font-code);
 }
