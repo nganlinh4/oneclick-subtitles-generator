@@ -303,17 +303,10 @@ export const createDownloadHandlers = ({
                 dbg(
                   "[AppHandlers] No cached subtitles found for this downloaded video"
                 );
-                const isAudio = processedFile?.type?.startsWith('audio/');
-                setStatus({
-                  message: isAudio ? t(
-                    "output.audioReady",
-                    "Audio ready for segment selection..."
-                  ) : t(
-                    "output.videoReady",
-                    "Video ready for segment selection..."
-                  ),
-                  type: "info",
-                });
+                // The processing modal already owns the selected range and next action. Clear the
+                // transient download/upload state instead of covering that modal with a redundant
+                // "ready for segment selection" toast.
+                setStatus({});
               }
 
               if (processedFile instanceof File) {
@@ -332,17 +325,7 @@ export const createDownloadHandlers = ({
               console.warn(
                 "[AppHandlers] No current video URL found for downloaded video"
               );
-              const isAudio = processedFile?.type?.startsWith('audio/');
-              setStatus({
-                message: isAudio ? t(
-                  "output.audioReady",
-                  "Audio ready for segment selection..."
-                ) : t(
-                  "output.videoReady",
-                  "Video ready for segment selection..."
-                ),
-                type: "info",
-              });
+              setStatus({});
             }
           } catch (error) {
             if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)
@@ -457,17 +440,7 @@ export const createDownloadHandlers = ({
             dbg(
               "[AppHandlers] No cached subtitles found for this file"
             );
-            const isAudio = processedFile?.type?.startsWith('audio/');
-            setStatus({
-              message: isAudio ? t(
-                "output.audioReady",
-                "Audio ready for segment selection..."
-              ) : t(
-                "output.videoReady",
-                "Video ready for segment selection..."
-              ),
-              type: "info",
-            });
+            setStatus({});
           }
         } catch (error) {
           if (isAutoGenerationCancellation(error, guardedAutoRequest?.signal)

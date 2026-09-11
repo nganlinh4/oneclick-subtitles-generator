@@ -82,6 +82,9 @@ it('keeps the product notice without rendering or persisting the removed UDBM pr
   const { container } = render(<ApiKeysTab {...defaultProps} />);
 
   expect(screen.getByText('settings.gemini25ProPaused')).toBeInTheDocument();
+  expect(screen.getByText(
+    'Add multiple keys and OSG will distribute parallel Gemini work across them, rotating when a request can be retried.'
+  )).toBeInTheDocument();
   expect(container.querySelector('.udbm-message')).toBeNull();
   expect(container.querySelector('a[href*="/udbm/"]')).toBeNull();
 

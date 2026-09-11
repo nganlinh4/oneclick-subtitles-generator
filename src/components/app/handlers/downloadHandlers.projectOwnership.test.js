@@ -221,6 +221,7 @@ test('activates the URL project before reading cache or exposing prepared native
     .toBeLessThan(getCachedSubtitles.mock.invocationCallOrder[0]);
   expect(setSubtitlesCacheId.mock.invocationCallOrder[0])
     .toBeLessThan(state.setUploadedFileData.mock.invocationCallOrder[0]);
+  expect(state.setStatus).toHaveBeenLastCalledWith({});
 });
 
 test('activates the native asset project before local cache lookup', async () => {
@@ -348,13 +349,13 @@ test('a superseded preparation cannot clear the newer media status when its cach
   await vi.waitFor(() => expect(getCachedSubtitles).toHaveBeenCalledTimes(1));
   await expect(handlers.startBackgroundVideoProcessing(second, 'file-upload'))
     .resolves.toBe(second);
+  const statusCallsAfterSecond = state.setStatus.mock.calls.length;
   releaseFirstCache(null);
   await expect(stale).resolves.toBeNull();
 
   expect(state.setUploadedFileData).toHaveBeenLastCalledWith(second);
-  expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({
-    type: 'info',
-  }));
+  expect(state.setStatus).toHaveBeenLastCalledWith({});
+  expect(state.setStatus).toHaveBeenCalledTimes(statusCallsAfterSecond);
   expect(toastMocks.showErrorToast).not.toHaveBeenCalled();
 });
 

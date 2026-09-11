@@ -311,11 +311,6 @@ const GeminiKeysManager = ({
 
             </div>
           ))}
-          {nativeCredentialMode && (
-            <p className="gemini-key-rotation-note">
-              {t('settings.geminiKeyRotation', 'Ready keys rotate automatically when work is parallel or a provider retry is needed.')}
-            </p>
-          )}
         </div>
       ) : (
         <div className="no-keys-message">
