@@ -46,6 +46,7 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 const WORKFLOW = 'settings-narration-model-management';
 const PHASE = process.env.OSG_E2E_MODEL_MANAGEMENT_PHASE;
 const PANEL = '.narration-model-panel';
+const PRIMARY_CARD = `${PANEL} [data-model-package-id="f5tts-v1-base"]`;
 const BACKEND = 'f5-tts';
 
 const openModelManagement = async () => {
@@ -166,7 +167,7 @@ describe('the narration model package honestly reports and safely handles Instal
       step: '01-truthfully-not-installed',
       description: 'On a genuinely empty package store, the panel reports "not installed" and offers only Install.',
       details: { notInstalled, emptyBaseline, capacity },
-      focusSelector: PANEL,
+      focusSelector: PRIMARY_CARD,
     });
 
     const toastsBeforeClick = await visibleErrorToasts();
@@ -195,7 +196,7 @@ describe('the narration model package honestly reports and safely handles Instal
         step: '02-refused-without-room',
         description: 'Below the package\'s real disk requirement the install refuses, keeps the truthful "not installed" status and writes nothing.',
         details: { capacity, refusal, afterRefusalDigest },
-        focusSelector: PANEL,
+        focusSelector: PRIMARY_CARD,
         allowVisibleProblems: {
           errorToasts: refusal.announced.slice(0, 4).map((text) => ({
             text,
@@ -223,7 +224,7 @@ describe('the narration model package honestly reports and safely handles Instal
       step: '02-install-begun',
       description: 'A real native install job starts and exposes a Cancel control.',
       details: { installing, capacity },
-      focusSelector: PANEL,
+      focusSelector: PRIMARY_CARD,
     });
 
     await clickSettingsControl(`${PANEL} [data-model-action="cancel"]`);
@@ -248,7 +249,7 @@ describe('the narration model package honestly reports and safely handles Instal
       step: '03-cancelled-cleanly',
       description: 'Cancelling returns the panel to "not installed" and the package store to its exact pre-install shape.',
       details: { cancelled, afterCancelDigest },
-      focusSelector: PANEL,
+      focusSelector: PRIMARY_CARD,
     });
 
     await clickControl('[data-settings-action="close"]');
