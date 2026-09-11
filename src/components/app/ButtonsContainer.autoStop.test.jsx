@@ -23,7 +23,9 @@ vi.mock('./utils/srtUploadState', () => ({
 vi.mock('../../utils/videoUtils', () => ({ hasValidDownloadedVideo: () => false }));
 vi.mock('../SrtUploadButton', () => ({ default: () => null }));
 vi.mock('../AddSubtitlesButton', () => ({ default: () => null }));
-vi.mock('../VideoAnalysisButton', () => ({ default: () => null }));
+vi.mock('../VideoAnalysisButton', () => ({
+  default: ({ disabled }) => <button data-testid="video-analysis" disabled={disabled}>Analyze</button>,
+}));
 vi.mock('../common/LoadingIndicator', () => ({ default: () => null }));
 vi.mock('../common/WavyProgressIndicator', () => ({ default: () => null }));
 vi.mock('../common/Tooltip', () => ({ default: ({ children }) => children }));
@@ -110,4 +112,27 @@ test('manual Force Stop retains the existing global cancellation behavior', () =
   expect(props.setIsRetrying).toHaveBeenCalledWith(false);
   expect(props.setIsProcessingSegment).toHaveBeenCalledWith(false);
   expect(publishProcessingRanges).toHaveBeenCalledWith({ ranges: [] });
+});
+
+test('subtitle-only mode exposes no dead media actions', () => {
+  mocks.autoState = {
+    ...mocks.autoState,
+    isAutoGenerating: false,
+    autoFlowActiveRef: { current: false },
+  };
+  const props = {
+    ...baseProps(),
+    isGenerating: false,
+    isDownloading: false,
+    isRetrying: false,
+    isProcessingSegment: false,
+    isSrtOnlyMode: true,
+    selectedVideo: null,
+  };
+
+  render(<ButtonsContainer {...props} />);
+
+  expect(screen.queryByTestId('cancel-generation-button')).not.toBeInTheDocument();
+  expect(document.querySelector('[data-osg-action="generate-subtitles"]')).toBeNull();
+  expect(screen.queryByTestId('video-analysis')).not.toBeInTheDocument();
 });

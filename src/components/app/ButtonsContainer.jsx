@@ -99,6 +99,7 @@ const ButtonsContainer = ({
   const generationMode = isSrtOnlyMode
     ? 'srt-only'
     : hasUrlAndSrtOnly ? 'url-with-srt' : 'other';
+  const canGenerateFromMedia = !isSrtOnlyMode && validateInput();
   // Detect current theme from data-theme attribute (light/dark)
   const isDarkTheme = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark');
 
@@ -128,7 +129,7 @@ const ButtonsContainer = ({
       </div>
 
       {/* Hide generate button when retrying segments, when isRetrying is true, or when any segment is being retried */}
-      {validateInput() && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && (
+      {canGenerateFromMedia && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && (
         <>
           {/* Semi-automatic Generate Button */}
           <Tooltip content={t('output.semiAutoTooltip', 'Tiết kiệm request và token vì không bắt buộc phân tích video')}>
@@ -222,7 +223,7 @@ const ButtonsContainer = ({
       )}
 
       {/* Add cancel button as a proper member of the buttons-container */}
-      {isDownloading && currentDownloadId && validateInput() && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && !isAutoGenerating && (
+      {isDownloading && currentDownloadId && canGenerateFromMedia && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && !isAutoGenerating && (
         <button
           className="cancel-download-btn"
           onClick={handleCancelDownload}
@@ -248,12 +249,14 @@ const ButtonsContainer = ({
         </button>
       )}
 
-      {/* Video Analysis Button - always visible like SrtUploadButton */}
-      <VideoAnalysisButton
-        disabled={isGenerating || isDownloading}
-        uploadedFile={uploadedFile}
-        uploadedFileData={uploadedFileData}
-      />
+      {/* Analysis belongs to a concrete local media source; without one it is a dead action. */}
+      {(uploadedFile || uploadedFileData) && (
+        <VideoAnalysisButton
+          disabled={isGenerating || isDownloading}
+          uploadedFile={uploadedFile}
+          uploadedFileData={uploadedFileData}
+        />
+      )}
 
       {(isGenerating || retryingSegments.length > 0 || isRetrying || isProcessingSegment || isAutoGenerating) && (
         <button
