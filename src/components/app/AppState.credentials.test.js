@@ -156,7 +156,7 @@ it('hydrates native API availability only from safe status metadata', async () =
   view.unmount();
 });
 
-it('keeps the YouTube credential notice until YouTube is actually available', async () => {
+it('tracks credential availability without proactively nagging before a gated action', async () => {
   let publishSnapshot;
   subscribeCredentialState.mockImplementation((listener) => {
     publishSnapshot = listener;
@@ -164,26 +164,21 @@ it('keeps the YouTube credential notice until YouTube is actually available', as
   });
   const view = renderAppState();
   await act(async () => view.result.current.setActiveTab('youtube-search'));
+  const statusCallsAfterMount = view.result.current.setStatus.mock.calls.length;
 
   await act(async () => publishSnapshot({
     initialized: true,
     store: 'available',
     credentials: [],
   }));
-  expect(view.result.current.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({
-    code: 'youtubeCredentialsRequired',
-    message: expect.stringContaining('Gemini API key'),
-  }));
+  expect(view.result.current.setStatus).toHaveBeenCalledTimes(statusCallsAfterMount);
 
   await act(async () => publishSnapshot({
     initialized: true,
     store: 'available',
     credentials: [{ purpose: 'geminiApiKey', state: 'ready', last4: '1234' }],
   }));
-  expect(view.result.current.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({
-    code: 'youtubeCredentialsRequired',
-    message: expect.stringContaining('YouTube API key'),
-  }));
+  expect(view.result.current.setStatus).toHaveBeenCalledTimes(statusCallsAfterMount);
 
   await act(async () => publishSnapshot({
     initialized: true,
@@ -193,9 +188,6 @@ it('keeps the YouTube credential notice until YouTube is actually available', as
       { purpose: 'youtubeApiKey', state: 'ready', last4: '5678' },
     ],
   }));
-  const clearOwnedNotice = view.result.current.setStatus.mock.calls.at(-1)[0];
-  expect(clearOwnedNotice({ code: 'youtubeCredentialsRequired', message: 'old' })).toEqual({});
-  const unrelated = { code: 'downloadFailed', message: 'API key rejected during download' };
-  expect(clearOwnedNotice(unrelated)).toBe(unrelated);
+  expect(view.result.current.setStatus).toHaveBeenCalledTimes(statusCallsAfterMount);
   view.unmount();
 });

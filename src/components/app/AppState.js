@@ -166,20 +166,6 @@ export const useAppState = () => {
       const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
       const availability = getCredentialAvailability(snapshot, { useOAuth });
       setApiKeysSet(availability);
-
-      if (activeTab === 'youtube-search' && !availability.youtube) {
-        let message;
-        if (!availability.gemini) {
-          message = t('errors.bothKeysRequired', 'Please set your Gemini API key and configure YouTube authentication in the settings to use this application.');
-        } else if (useOAuth) {
-          message = t('errors.youtubeAuthRequired', 'YouTube authentication required. Please set up OAuth in settings.');
-        } else {
-          message = t('errors.youtubeApiKeyRequired', 'Please set your YouTube API key in the settings to use this application.');
-        }
-        setStatus({ code: 'youtubeCredentialsRequired', message, type: 'info' });
-      } else {
-        setStatus((current) => current?.code === 'youtubeCredentialsRequired' ? {} : current);
-      }
     };
     const unsubscribe = subscribeCredentialState(applySnapshot);
     initializeCredentialState().then(applySnapshot).catch(() => {
@@ -189,7 +175,7 @@ export const useAppState = () => {
       alive = false;
       unsubscribe();
     };
-  }, [setStatus, activeTab, t]);
+  }, []);
 
   // Apply theme to document
   useEffect(() => {
