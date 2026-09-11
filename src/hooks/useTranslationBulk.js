@@ -168,18 +168,19 @@ export const useTranslationBulk = ({
 
       const successfulBulkFiles = results.filter(r => r.success).length;
 
-      // A missing Gemini credential fails every attempt identically, so if nothing succeeded and
-      // every failure carries that exact signature, this is not a partial result to report as
-      // 'complete' -- it is the same total refusal the single-track path hits when it calls
-      // translateSubtitles() with no credential. Surface it the same way that path does: one
-      // setError() call, which TranslationError already turns into exactly one bounded toast
-      // (see TranslationError.js). Any other all-failed mix (parse/empty-result errors, etc.)
-      // keeps reporting 'complete' with its honest X/{{total}} count -- that is a pre-existing,
-      // separate concern this fix does not expand into.
+      // Zero translated files is a total refusal, never a completed bulk run. Preserve the exact
+      // credential refusal when it explains every failure; otherwise use one customer-facing
+      // aggregate error rather than selecting an arbitrary per-file implementation detail.
       const isCredentialMissing = (result) => !result.success && result.code === 'geminiCredentialUnavailable';
-      if (results.length > 0 && successfulBulkFiles === 0 && results.every(isCredentialMissing)) {
+      if (results.length > 0 && successfulBulkFiles === 0) {
+        const terminalError = results.every(isCredentialMissing)
+          ? results[results.length - 1].error
+          : t(
+            'translation.bulk.allFailed',
+            'Bulk translation failed: no files were translated'
+          );
         await publishOwnedState(() => {
-          setError(results[results.length - 1].error);
+          setError(terminalError);
         });
         return { status: 'failed', results };
       }

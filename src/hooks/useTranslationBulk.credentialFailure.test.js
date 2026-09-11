@@ -93,8 +93,8 @@ test('a partial success keeps the documented complete-with-warnings semantics (n
   );
 });
 
-test('an all-failed run with a non-credential reason mixed in still reports complete (out of this fix\'s scope)', async () => {
-  const { result, setError } = setupHook();
+test('an all-failed run with mixed reasons is one terminal refusal, never complete', async () => {
+  const { result, setError, setTranslationStatus } = setupHook();
   act(() => result.current.setBulkFiles(filesOf(['alpha.srt', 'beta.srt'])));
   translateSubtitles
     .mockRejectedValueOnce(credentialMissingError())
@@ -105,6 +105,9 @@ test('an all-failed run with a non-credential reason mixed in still reports comp
     outcome = await result.current.handleBulkTranslate(['Spanish']);
   });
 
-  expect(outcome.status).toBe('complete');
-  expect(setError).not.toHaveBeenCalledWith(CREDENTIAL_MISSING_MESSAGE);
+  expect(outcome.status).toBe('failed');
+  expect(setError).toHaveBeenLastCalledWith('Bulk translation failed: no files were translated');
+  expect(setTranslationStatus.mock.calls.some(
+    ([message]) => /processed successfully/.test(message)
+  )).toBe(false);
 });

@@ -111,6 +111,7 @@
     "processing": "Đang xử lý tệp {{current}}/{{total}}: {{filename}}",
     "complete": "Dịch hàng loạt hoàn thành: {{success}}/{{total}} tệp được xử lý thành công",
     "completeWithMain": "Tệp hàng loạt hoàn thành: {{success}}/{{bulkTotal}} tệp hàng loạt đã xử lý, tệp chính tiếp theo ({{current}}/{{total}} tổng)",
+    "allFailed": "Dịch hàng loạt thất bại: không có tệp nào được dịch",
     "downloadAll": "Tải xuống tất cả",
     "downloadZip": "Tải xuống ZIP",
     "error": "Lỗi khi dịch hàng loạt: {{message}}",

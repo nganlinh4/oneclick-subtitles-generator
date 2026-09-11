@@ -111,6 +111,7 @@
     "processing": "Processing file {{current}}/{{total}}: {{filename}}",
     "complete": "Bulk translation complete: {{success}}/{{total}} files processed successfully",
     "completeWithMain": "Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)",
+    "allFailed": "Bulk translation failed: no files were translated",
     "downloadAll": "Download All",
     "downloadZip": "Download ZIP",
     "rejectedSummary": "{{count}} file(s) skipped: {{details}}",
