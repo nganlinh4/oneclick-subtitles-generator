@@ -159,6 +159,7 @@ export const useAppHandlers = (appState) => {
     // If we're in SRT-only mode, just show a message
     if (isSrtOnlyMode) {
       setStatus({
+        code: 'srtOnlyMode',
         message: t(
           "output.srtOnlyMode",
           "Working with SRT only. No video source available."

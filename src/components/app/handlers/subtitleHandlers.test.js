@@ -6,7 +6,7 @@ const SRT = '1\n00:00:00,000 --> 00:00:01,000\nHello\n';
 
 const setup = (persistUploadedSubtitles, clearUploadedSubtitles = vi.fn(async () => ({
   success: true, cacheId: 'asset-a', projectId: 'project-a', subtitleCount: 0,
-}))) => {
+})), overrides = {}) => {
   const state = {
     setStatus: vi.fn(),
     setSubtitlesData: vi.fn(),
@@ -22,6 +22,7 @@ const setup = (persistUploadedSubtitles, clearUploadedSubtitles = vi.fn(async ()
     persistUploadedSubtitles,
     clearUploadedSubtitles,
     t: (_key, fallback) => fallback,
+    ...overrides,
     ...state,
   });
   return { handlers, state };
@@ -55,6 +56,21 @@ describe('subtitle file import durability', () => {
 
     expect(state.setSubtitlesData).not.toHaveBeenCalled();
     expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('marks the no-media notice by code so adding media can clear it in every locale', async () => {
+    const { handlers, state } = setup(
+      vi.fn(async () => ({ success: true })),
+      undefined,
+      { uploadedFile: null },
+    );
+
+    await handlers.handleSrtUpload(SRT, 'captions.srt');
+
+    expect(state.setStatus).toHaveBeenLastCalledWith(expect.objectContaining({
+      code: 'srtOnlyMode',
+      type: 'info',
+    }));
   });
 
   it('waits for exact-project clearing before withdrawing visible rows', async () => {

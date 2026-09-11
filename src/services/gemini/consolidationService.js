@@ -18,9 +18,9 @@ import { DEFAULT_GEMINI_MODEL_ID } from '../../config/geminiModels';
 
 const WORDS_PER_MINUTE = 150;
 
-const dispatchStatus = (message) => {
+const dispatchStatus = (phase, message) => {
   globalThis.window?.dispatchEvent(new CustomEvent('consolidation-status', {
-    detail: { message },
+    detail: { phase, message },
   }));
 };
 
@@ -77,7 +77,7 @@ const completeDocumentByChunks = async (
   splitDuration,
 ) => {
   const chunks = splitIntoChunks(subtitlesText, splitDuration);
-  dispatchStatus(i18n.t(
+  dispatchStatus('split', i18n.t(
     'consolidation.splitComplete',
     'Split text into {{chunks}} chunks',
     { chunks: chunks.length },
@@ -89,7 +89,7 @@ const completeDocumentByChunks = async (
 
   for (let index = 0; index < chunks.length; index += 1) {
     const chunkId = index + 1;
-    dispatchStatus(i18n.t(
+    dispatchStatus('processing', i18n.t(
       'consolidation.processingChunk',
       'Processing chunk {{current}}/{{total}}',
       { current: chunkId, total: chunks.length },
@@ -110,7 +110,7 @@ const completeDocumentByChunks = async (
   }
 
   if (failures.length > 0) {
-    dispatchStatus(i18n.t(
+    dispatchStatus('error', i18n.t(
       'consolidation.error',
       'Error processing document: {{message}}',
       { message: `Incomplete chunks: ${failures.map(({ chunkId }) => chunkId).join(', ')}` },
@@ -137,7 +137,7 @@ const completeDocumentByChunks = async (
     });
   }
 
-  dispatchStatus(i18n.t(
+  dispatchStatus('complete', i18n.t(
     'consolidation.processingComplete',
     'Processing completed for all {{count}} chunks',
     { count: chunks.length },
@@ -163,7 +163,7 @@ export const completeDocumentWithResult = async (
   }
 
   if (splitDuration > 0) {
-    dispatchStatus(i18n.t(
+    dispatchStatus('splitting', i18n.t(
       'consolidation.splittingText',
       'Splitting text into chunks of {{duration}} minutes',
       { duration: splitDuration },

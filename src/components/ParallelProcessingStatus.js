@@ -69,11 +69,7 @@ const ParallelProcessingStatus = ({
   // Show status as toast instead of inline
   useEffect(() => {
     if (overallStatus) {
-      const message = typeof overallStatus === 'string' ? (
-        overallStatus.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
-        overallStatus.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
-        overallStatus
-      ) : 'Processing...';
+      const message = typeof overallStatus === 'string' ? overallStatus : 'Processing...';
 
       // ToastPanel owns display suppression and records every status event in history.
       window.addToast(message, statusType || 'info', 5000, 'parallel-processing-status');

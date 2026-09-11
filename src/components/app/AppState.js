@@ -176,7 +176,9 @@ export const useAppState = () => {
         } else {
           message = t('errors.youtubeApiKeyRequired', 'Please set your YouTube API key in the settings to use this application.');
         }
-        setStatus({ message, type: 'info' });
+        setStatus({ code: 'youtubeCredentialsRequired', message, type: 'info' });
+      } else {
+        setStatus((current) => current?.code === 'youtubeCredentialsRequired' ? {} : current);
       }
     };
     const unsubscribe = subscribeCredentialState(applySnapshot);
@@ -188,24 +190,6 @@ export const useAppState = () => {
       unsubscribe();
     };
   }, [setStatus, activeTab, t]);
-
-  // Reactively update status messages based on API key changes
-  useEffect(() => {
-    // If we have a Gemini API key and the current status is an API key required message, clear it
-    if (apiKeysSet.gemini && status?.message) {
-      const isApiKeyRequiredMessage =
-        status.message.includes('Please set your API key') ||
-        status.message.includes('Vui lòng cài đặt khóa API') ||
-        status.message.includes('먼저 설정에서 API 키를 설정하세요') ||
-        status.message.includes('API key') ||
-        status.message.includes('khóa API') ||
-        status.message.includes('API 키');
-
-      if (isApiKeyRequiredMessage) {
-        setStatus({});
-      }
-    }
-  }, [apiKeysSet.gemini, status, setStatus, t]);
 
   // Apply theme to document
   useEffect(() => {

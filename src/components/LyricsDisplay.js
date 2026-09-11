@@ -168,8 +168,7 @@ const LyricsDisplay = ({
       if (event.detail && event.detail.message) {
         setConsolidationStatus(event.detail.message);
 
-        // Check if this is a completion message
-        if (event.detail.message.includes('Processing completed for all')) {
+        if (event.detail.phase === 'complete') {
           // Clear the status after a delay
           setTimeout(() => {
             setConsolidationStatus('');

@@ -79,6 +79,23 @@ test('all successful chunks produce one complete document in source order', asyn
   expect(secondAck).not.toHaveBeenCalled();
 });
 
+test('publishes language-independent lifecycle phases instead of encoding state in copy', async () => {
+  const phases = [];
+  const listener = (event) => phases.push(event.detail.phase);
+  window.addEventListener('consolidation-status', listener);
+  runGeminiDocumentRequestResult
+    .mockResolvedValueOnce(completed('first'))
+    .mockResolvedValueOnce(completed('second'));
+
+  try {
+    await completeDocumentWithResult(words(151), 'model', null, 1);
+  } finally {
+    window.removeEventListener('consolidation-status', listener);
+  }
+
+  expect(phases).toEqual(['splitting', 'split', 'processing', 'processing', 'complete']);
+});
+
 test('only invalid empty chunk results produce a refused result with every failed chunk id', async () => {
   const firstAck = vi.fn();
   const secondAck = vi.fn();

@@ -363,11 +363,7 @@ const AppLayout = ({
     const hasAnyVideoSource = selectedVideo || uploadedFile || hasDownloadedVideo;
 
     // Only clear specific SRT-only messages, not all status messages
-    if (hasAnyVideoSource && status?.message && status.type === 'info' && (
-      status.message.includes('Working with SRT only') ||
-      status.message.includes('SRT only') ||
-      status.message.includes('No video source available')
-    )) {
+    if (hasAnyVideoSource && status?.code === 'srtOnlyMode') {
       setStatus({});
     }
   }, [selectedVideo, uploadedFile, status, setStatus]);

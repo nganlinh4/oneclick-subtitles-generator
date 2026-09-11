@@ -119,6 +119,7 @@ export const createSubtitleHandlers = ({
         setIsSrtOnlyMode(true);
         setSubtitlesData(parsedSubtitles);
         setStatus({
+          code: 'srtOnlyMode',
           message: t(
             "output.srtOnlyMode",
             "Working with SRT only. No video source available."

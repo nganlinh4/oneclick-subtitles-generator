@@ -238,11 +238,7 @@ const OutputContainer = ({
     consumedStatusEventRef.current = { hasValue: true, identity: eventIdentity };
 
     if (status?.message) {
-      const message = typeof status.message === 'string' ? (
-        status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
-        status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
-        status.message
-      ) : 'Processing...';
+      const message = typeof status.message === 'string' ? status.message : 'Processing...';
 
       // ToastPanel is the single onboarding policy owner. In particular it keeps warnings, errors
       // and actionable notices visible; filtering here used to consume a first-run failure before
@@ -265,7 +261,7 @@ const OutputContainer = ({
 
   // Determine if there's any content to show
   const hasParallelProcessingStatus = segmentsStatus.length > 0 && (subtitlesData || !activeTab.includes('youtube'));
-  const hasMainContent = (subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment'));
+  const hasMainContent = Boolean(subtitlesData || uploadedFile || isUploading);
 
   // Don't render anything if there's no content to show
   if (!hasParallelProcessingStatus && !hasMainContent) {
@@ -282,11 +278,9 @@ const OutputContainer = ({
           segments={segmentsStatus}
           overallStatus={
             // Translate common status messages that might be hardcoded
-            typeof status?.message === 'string' ? (
-              status.message.includes('cache') ? t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!') :
-              status.message.includes('Video segments ready') ? t('output.segmentsReady', 'Video segments are ready for processing!') :
-              status.message
-            ) : t('output.segmentsReady', 'Video segments are ready for processing!')
+            typeof status?.message === 'string'
+              ? status.message
+              : t('output.segmentsReady', 'Video segments are ready for processing!')
           }
           statusType={status?.type || 'success'}
           onRetrySegment={(segmentIndex, _, options) => {
@@ -304,7 +298,7 @@ const OutputContainer = ({
         />
       ) : null}
 
-      {(subtitlesData || uploadedFile || isUploading || status?.message?.includes('select a segment')) && (
+      {hasMainContent && (
         <>
           {!isDownloading && (
             <div className="preview-section">
