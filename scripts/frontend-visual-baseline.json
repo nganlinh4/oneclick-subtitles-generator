@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "2bc9b48dfc9270996d6a3b9ec02980d2823d21cc",
+  "baselineRevision": "b32e42149b78e87b6d9263ab07a9f1e62e6e1ea4",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -141,7 +141,7 @@
     "src/styles/narration/modelDropdown.css": "c0e8a76e93e401a32c0fca4cbd11408ad11769b3d2bad98e1e2904f527e89fc6",
     "src/styles/narration/modules/animations.css": "f583e98a36b9cc91678371994ca7dd051434e1f4eac13a1d29743badd0f55924",
     "src/styles/narration/modules/audio.css": "7b58fd824d91a95bcb2c5ceef014aefdd8299edc3e3b994d0ed1d5c1cccbbdfd",
-    "src/styles/narration/modules/base.css": "104157fb14f65d88cee6cebb1f57990d892836d4217f47c855efb9dd0c400301",
+    "src/styles/narration/modules/base.css": "bf05150ff2095de1fbd079e768a532789f0ae45bed92f7e12cfed55456001046",
     "src/styles/narration/modules/buttons.css": "6309435921260d4d3bc9065fd3bcd8054c1d65d5abdcfaf4881a4937923388d3",
     "src/styles/narration/modules/forms.css": "3079dd79d1e39ca06cf31def1ac96ee1118b5e1f90e9b970c0638f782dd4f415",
     "src/styles/narration/modules/index.css": "1c336f45447e587b9cb24bc26bc6bbcc32c5489bcab4094178e4061c52405c7f",
@@ -8967,10 +8967,10 @@
       ]
     },
     "src/components/narration/UnifiedNarrationSection.js": {
-      "hash": "569aca07619be98445b123bd377aa4bc7c90592b7ae7496e56e3808020f09104",
+      "hash": "62b1a4ba55b48baa785875ab3a7879ba0c9ece038fec5dc63b8bd96123745ef9",
       "rootCount": 2,
       "roots": [
-        "b0f215277eff627ce16b9467344cc61cbc839f307a5cc86c2a2263399b0442bc",
+        "45ccfca9d45f01aad8cc766b4e175c8288ca09874cf46c09204332e5cebe7df4",
         "f4f9979fe0309741cc873b0481dfa8a26aa2bb487b3fa43aa04a0caa1d7065f9"
       ]
     },
