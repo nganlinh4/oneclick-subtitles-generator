@@ -1040,6 +1040,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the 24-order adversarial fixture keeps each independently failing window visible"
+    )]
     fn test_adversarial_all_24_permutations_windows_1_and_3_fail_0_and_2_succeed() {
         let rev_id = TranscriptRevisionId::new();
 

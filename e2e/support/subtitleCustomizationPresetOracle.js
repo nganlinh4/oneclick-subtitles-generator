@@ -15,7 +15,7 @@ const SCREENSHOT_PRESETS = new Set([
 ]);
 
 const PRESET_DIGESTS = Object.freeze({
-  default: 'c32d50c3b3cf011a88cf47fdb7ced9c2942400e0df3444ab490a51d2a051a313',
+  default: 'e6dbc49bb939385bf5c2621b551ed0964b7c7a94dc20c0ddeeebe7d2ddf32fee',
   modern: '5ee9a630c52f98ddd77ed1b8de10bef8350ef8fde2b6d8122033207644d79884',
   classic: 'bccb3d10ee9112e738d395b40869a1779d123330b410936696bc1aee0ded7d79',
   neon: '614139a52000c0ad06876eb5ef0e66a716d4f3d174730a371f5bc100b7bae71e',

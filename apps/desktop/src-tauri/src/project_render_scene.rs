@@ -268,7 +268,7 @@ const DEFAULT_SCENE_INPUT: &str = r##"{
     "originalAudioVolume":100,"narrationVolume":100,"trimStart":0,"trimEnd":0
   },
   "customization":{
-    "fontSize":48,"fontFamily":"'Google Sans', sans-serif","fontWeight":400,
+    "fontSize":72,"fontFamily":"'Google Sans', sans-serif","fontWeight":400,
     "textColor":"#ffffff","textAlign":"center","lineHeight":1.2,"letterSpacing":0,
     "textTransform":"none","backgroundColor":"#000000","backgroundOpacity":70,
     "backgroundPaddingX":16,"backgroundPaddingY":8,

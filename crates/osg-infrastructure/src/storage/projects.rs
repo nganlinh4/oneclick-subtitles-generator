@@ -1971,7 +1971,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 16);
+        assert_eq!(schema_version, 17);
         for revision in detached {
             let exists: bool = connection
                 .query_row(
@@ -2021,7 +2021,7 @@ mod tests {
         let schema_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read schema version");
-        assert_eq!(schema_version, 16);
+        assert_eq!(schema_version, 17);
 
         // Verify zero rows in transcript tables
         let rev_count: i64 = connection

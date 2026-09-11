@@ -152,12 +152,12 @@ describe('video rendering preferences', () => {
     const untouchedRenderDefault = storageWith({
       videoRender_subtitleCustomization: JSON.stringify({ fontSize: 28 }),
     });
-    expect(consumeLegacyRenderScene(untouchedRenderDefault).customization.fontSize).toBe(48);
+    expect(consumeLegacyRenderScene(untouchedRenderDefault).customization.fontSize).toBe(72);
 
     const untouchedEditorDefault = storageWith({
       subtitle_settings: JSON.stringify({ fontSize: '28' }),
     });
-    expect(consumeLegacyRenderScene(untouchedEditorDefault).customization.fontSize).toBe(48);
+    expect(consumeLegacyRenderScene(untouchedEditorDefault).customization.fontSize).toBe(72);
 
     const intentionalTwentyEight = storageWith({
       videoRender_subtitleCustomization: JSON.stringify({

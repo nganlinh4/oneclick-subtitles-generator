@@ -2,12 +2,12 @@
  * Constants for subtitle settings
  */
 
-import { DEFAULT_SUBTITLE_FONT_FAMILY } from '../../shared/subtitle/defaultSubtitleFont';
+import { defaultSubtitleCustomization } from '../../shared/subtitle/subtitleCustomizationDefaults';
 
 // Default settings
 export const defaultSettings = {
-  fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
-  fontSize: '48',
+  fontFamily: defaultSubtitleCustomization.fontFamily,
+  fontSize: String(defaultSubtitleCustomization.fontSize),
   fontWeight: '400',
   position: '90',
   boxWidth: '80',

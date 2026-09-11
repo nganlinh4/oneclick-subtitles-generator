@@ -24,6 +24,7 @@ pub(super) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "sql/0016_late_legacy_default_subtitle_scale.sql"
         )),
+        M::up(include_str!("sql/0017_readable_default_subtitle_scale.sql")),
     ])
 }
 
@@ -511,7 +512,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         let claim_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM media_artifact_job_claims
@@ -524,8 +525,8 @@ mod tests {
     }
 
     #[test]
-    fn every_prior_schema_version_upgrades_to_v16_idempotently() {
-        for prior_version in 1..=15 {
+    fn every_prior_schema_version_upgrades_to_v17_idempotently() {
+        for prior_version in 1..=16 {
             let database_file = NamedTempFile::new().expect("database file");
             let database_path = database_file.path();
             {
@@ -550,7 +551,7 @@ mod tests {
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version");
-            assert_eq!(version, 16, "failed to upgrade schema v{prior_version}");
+            assert_eq!(version, 17, "failed to upgrade schema v{prior_version}");
         }
     }
 
@@ -609,6 +610,11 @@ mod tests {
             value["customization"]["fontSize"] = json!(48);
             value
         };
+        let intentional_48 = {
+            let mut value = current_default.clone();
+            value["customization"]["textColor"] = json!("#ff00ff");
+            value
+        };
         let sparse_legacy_default = {
             let mut value = legacy_default.clone();
             value["customization"]
@@ -627,8 +633,10 @@ mod tests {
             customized,
             current_default,
             sparse_legacy_default,
+            intentional_48,
         ];
         let project_ids = [
+            Uuid::now_v7(),
             Uuid::now_v7(),
             Uuid::now_v7(),
             Uuid::now_v7(),
@@ -668,10 +676,11 @@ mod tests {
                     )
                     .expect("read migrated scene")
             };
-            assert_eq!(read_scene(project_ids[0]), (2, 48));
+            assert_eq!(read_scene(project_ids[0]), (3, 72));
             assert_eq!(read_scene(project_ids[1]), (1, 28));
-            assert_eq!(read_scene(project_ids[2]), (1, 48));
-            assert_eq!(read_scene(project_ids[3]), (2, 48));
+            assert_eq!(read_scene(project_ids[2]), (2, 72));
+            assert_eq!(read_scene(project_ids[3]), (3, 72));
+            assert_eq!(read_scene(project_ids[4]), (1, 48));
         }
 
         migrations()
@@ -684,7 +693,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read scene after repeated migration");
-        assert_eq!(revision, 2);
+        assert_eq!(revision, 3);
     }
 
     #[test]
@@ -719,7 +728,9 @@ mod tests {
                 .expect("seed late scene");
         }
 
-        migrations().to_latest(&mut connection).expect("apply v16");
+        migrations()
+            .to_latest(&mut connection)
+            .expect("apply latest");
         let read = |id| {
             connection
                 .query_row(
@@ -730,7 +741,7 @@ mod tests {
                 )
                 .expect("read scene")
         };
-        assert_eq!(read(exact_id), (2, 48));
+        assert_eq!(read(exact_id), (3, 72));
         assert_eq!(read(custom_id), (1, 28));
     }
 
@@ -1276,7 +1287,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         for (media_id, artifact_id) in valid_pairs {
             let claim_count: i64 = connection
                 .query_row(
@@ -1304,7 +1315,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("schema version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         // Verify table existence
         let tables: Vec<String> = connection

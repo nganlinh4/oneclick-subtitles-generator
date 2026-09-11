@@ -17,7 +17,7 @@ describe('subtitle customization default authority', () => {
     expect(defaultCustomization).toBe(rendererDefaultCustomization);
     expect(Object.isFrozen(defaultCustomization)).toBe(true);
     expect(defaultCustomization).toMatchObject({
-      fontSize: 48,
+      fontSize: 72,
       fontFamily: DEFAULT_SUBTITLE_FONT_FAMILY,
       fontWeight: 400,
       backgroundOpacity: 70,
