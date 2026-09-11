@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "2eb15b94f82cfbe7f4660c179e799d656ff68068",
+  "baselineRevision": "8c9119cf86471b9162ac19bd9a361f752fc6a01b",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
