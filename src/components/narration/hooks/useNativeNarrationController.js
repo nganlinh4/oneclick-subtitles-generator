@@ -391,9 +391,9 @@ const useNativeNarrationController = (state) => {
         current.setGenerationResults((previous) => mergeResults(previous, [result]));
         if (!ownsLifecycle() || !ownsProjectAuthority(authority)) return;
         current.setGenerationStatus(current.t(
-          'narration.generatingProgressWithId',
-          'Generated {{progress}} of {{total}} narrations (ID: {{id}})...',
-          { progress, total, id: result.subtitle_id },
+          'narration.generatingProgress',
+          'Generated {{progress}} of {{total}} narrations...',
+          { progress, total },
         ));
       };
       const outcome = await runNativeNarrationJob(request, {

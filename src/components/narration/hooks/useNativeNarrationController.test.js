@@ -764,3 +764,29 @@ test('does not publish a stale narration restore failure into the next project',
 
   expect(result.current.error).toBe('');
 });
+
+test('reports customer narration progress without exposing internal subtitle identifiers', async () => {
+  const t = vi.fn((_key, fallback) => fallback);
+  const completed = {
+    ...originalEditedResult,
+    subtitle_id: 'internal-cue-018f4c22',
+  };
+  runNativeNarrationJob.mockImplementation(async (_request, handlers) => {
+    handlers.onResult(completed, 1, 1);
+    return { status: 'completed', results: [completed] };
+  });
+  const { result } = renderHook(() => useHarness({ t }));
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(t).toHaveBeenCalledWith(
+    'narration.generatingProgress',
+    'Generated {{progress}} of {{total}} narrations...',
+    { progress: 1, total: 1 },
+  );
+  expect(t).not.toHaveBeenCalledWith(
+    'narration.generatingProgressWithId',
+    expect.anything(),
+    expect.anything(),
+  );
+});
