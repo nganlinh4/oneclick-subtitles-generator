@@ -363,3 +363,15 @@ test('non-green journeys are explicit closure blockers', (context) => {
   assert.equal(report.local.length, 0);
   assert.match(report.closureBlockers[0], /status unproven/u);
 });
+
+test('a green claim cannot admit it only has static proof', (context) => {
+  const state = fixture(context);
+  state.inventory.journeys[0].note = (
+    'Authored by a contract test (node --test only); never executed against the real binary.'
+  );
+
+  const report = verifyInventoryState(state);
+
+  assert.match(report.failures[0], /green but its own note says it has no real-binary execution/u);
+  assert.equal(verificationExitCode(report), 1);
+});

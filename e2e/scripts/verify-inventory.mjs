@@ -431,6 +431,12 @@ const verifyInventoryState = ({
   for (const entry of inventory.journeys ?? []) {
     counts[entry.status] = (counts[entry.status] ?? 0) + 1;
     if (entry.status !== 'green') continue;
+    if (/never executed against the real binary|node --test only/iu.test(entry.note ?? '')) {
+      failures.push(
+        `"${entry.name}" is green but its own note says it has no real-binary execution`,
+      );
+      continue;
+    }
     if (EXTERNAL_EVIDENCE_RUNS_AGAINST.has(entry.runsAgainst)) {
       external.push(entry.name);
       continue;
