@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "5308c79993b42ea051a65b1d30216c2fe86adad8",
+  "baselineRevision": "eb6ecc707fa32b2b6c914313d8c445f793b4ff2c",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -170,7 +170,7 @@
     "src/styles/QueueManagerPanel.css": "564420862fdc0d0faa61ded0c1f6d4752b8a7353d5517c902cc148accbe5e394",
     "src/styles/SegmentRetryModal.css": "3a267cd10cd0f44242993fc3bb42c8bb6d57583b90fb8236c1e618cf4b69e761",
     "src/styles/settings/about.css": "f31204ca5b1b04e5846f6a51e4d85ffcaf7f86610127e6377ea993095a870358",
-    "src/styles/settings/api-key.css": "cab16ec0da31a9fb658ef3f9621bbd570310da09b7874bf2fe9ec75a9734dbc8",
+    "src/styles/settings/api-key.css": "7ee31c9cd9f25b840dca5409256e85bb4fd25bc7eaf830454cdebd9779bdef01",
     "src/styles/settings/appearance.css": "4c4cc096039a1b27b7817206b1d05a3c2eb53de998bbf624608bfe0ad1c5dc59",
     "src/styles/settings/base.css": "b28cd70558973b2eec6691c6db8f1bd48a93d334133c4d97f62015e076f6ab9c",
     "src/styles/settings/buttons.css": "1e8af0ed3924c80c74164b670d178c8daf8732e9584b6324b52f55fef4f33bdb",
@@ -179,7 +179,6 @@
     "src/styles/settings/content-scrollbars.css": "73a172842c5de2c0df3f7aca670b8286ed00dbccda4a7c174b12f199dd17b070",
     "src/styles/settings/customGeminiModels.css": "a896cb79e654289c83d71dea4fe4aaaec42d78905290d00f67011350c72edc71",
     "src/styles/settings/customModelDialog.css": "04650db06d97fc7ea537d356c7481bf9d9acc6717f79c98cc2c7b413b7e820c5",
-    "src/styles/settings/gemini-paused-message.css": "f70be60326e9ecdf0f3ce3d9055981f28c979bd8112379e018268f135dc05cff",
     "src/styles/settings/header-footer.css": "0155a1edc5173e7773c046a09d55ed95607743e5ac354e6ab77e0aea5d43f3c6",
     "src/styles/settings/modelDialog.css": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "src/styles/settings/modelManagement.css": "71ac8ff1cbd69b2a9a234f8cfa1085f8ee8ec2d1c68aff27c13739b3bfce3f39",
@@ -193,7 +192,7 @@
     "src/styles/settings/translation-language-input.css": "bcad09c7e2b54c63a2db04a42bcd8520b5c1d07bd7d13ee3f9a7e4c9360c3c44",
     "src/styles/settings/video-processing-redesign.css": "ae4da8c87999934ba3b47793d964c540909b4d0e30a1ccf91637c4697b894a3b",
     "src/styles/settings/video-processing.css": "8c24b2a4de4f728a7ac4f7146fc59b4f56beb3600ddd54969e93cac5b2f9ecbe",
-    "src/styles/SettingsModal.css": "1b607d87b36a78ebe52b234298db0bf1a7e7d79b926e291b0553b94460e044fc",
+    "src/styles/SettingsModal.css": "4025e1895f7f36d9d2dfe27d47b959a3e5a1d0e28374db2ec89294a582b4e838",
     "src/styles/SrtUploadButton.css": "17553cfed2250db2294a26931832be6183a80bd50cd99ffd2c620f892ff6bea0",
     "src/styles/subtitle-customization/FontDropdown.css": "6f910680287c0c299d3365be26af64a0668da19fa41a315b9e797373ad4ce247",
     "src/styles/subtitle-customization/FontSelectionModal.css": "71c7e69040c134f85112b395a832d1623698b3c7946e964483e3221f41143ccf",
@@ -228,7 +227,7 @@
     "src/styles/VideoAnalysisButton.css": "3a0129a7716bd08ab8cd6829a0c3ee84845929fda6a291504c89620dd712e65e",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
     "src/styles/VideoPreview.css": "7b29b749d70ab953ea739c4a43ee77c2a27c416bb2f33ca48df385f700ca88e9",
-    "src/styles/VideoPreviewPanel.css": "4c0259677b0c64d0fc9a0c65e377075502caf79383dd3765658f429d0b3531dd",
+    "src/styles/VideoPreviewPanel.css": "28c0d791916d8a36c31a7111ef3a1d54b7d09fea045d1103dc9e7e909cc05d6e",
     "src/styles/VideoProcessingOptionsModal.css": "9f690d57082b4529cc563c90f0e3f14e0d33b893a14a202496a963e34eebfd68",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
     "src/styles/VideoRenderingControls.css": "90945973be9b4d58451c32d2844b92973fa945daeef4236bf987c0cbb13cb15e",
@@ -1641,7 +1640,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "6915669f33b993334c503fb5e1ebb1b6efedfec5ddfc8a0d89e63332b9680f0e",
+      "hash": "669b68f6d5aaa92456122831d5f3e63bbf877d0436dcf1d661f1a4272255dc04",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1693,7 +1692,6 @@
         "clickSave",
         "clientId",
         "clientSecret",
-        "closeMessage",
         "concurrentClients",
         "concurrentClientsDescription",
         "confirmClearCache",
@@ -1749,7 +1747,6 @@
         "favoriteMaxSubtitleLength",
         "favoriteMaxSubtitleLengthDescription",
         "findOAuthClient",
-        "gemini25ProPaused",
         "geminiApiKey",
         "geminiApiKeyHelp",
         "geminiApiKeyPlaceholder",
@@ -1853,7 +1850,6 @@
         "narrationReferenceCount",
         "noGeminiKeys",
         "noGeminiModelsAvailable",
-        "noNewNotifications",
         "noSuitableGeminiModels",
         "notAuthenticated",
         "oauthDescription",
@@ -4257,7 +4253,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "db69d3e2ea3cb1481a3864b905f679efc2c44b2acb97f93763ef9a52f1be823c",
+      "hash": "0b9b4d50f1ef021c7afd6e103063f0a74e27e34f1b28cb2206e2cf2265f369d9",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4326,7 +4322,6 @@
         "clientIdPlaceholder",
         "clientSecret",
         "clientSecretPlaceholder",
-        "closeMessage",
         "concurrentClients",
         "concurrentClientsDescription",
         "confirmClearCache",
@@ -4384,7 +4379,6 @@
         "favoriteMaxSubtitleLength",
         "favoriteMaxSubtitleLengthDescription",
         "findOAuthClient",
-        "gemini25ProPaused",
         "geminiApiKey",
         "geminiApiKeyHelp",
         "geminiApiKeyPlaceholder",
@@ -4495,7 +4489,6 @@
         "noChanges",
         "noGeminiKeys",
         "noGeminiModelsAvailable",
-        "noNewNotifications",
         "noSuitableGeminiModels",
         "notAuthenticated",
         "oauthDescription",
@@ -7045,7 +7038,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "044ce092a164e32304e9e1856788ce14b91f4bcfcb612073f06ec8ebc1e10c4e",
+      "hash": "f9d30b495e83397b609daf1f0a556e271ce00625d5916adfc9029e85533c5cdc",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -7114,7 +7107,6 @@
         "clientIdPlaceholder",
         "clientSecret",
         "clientSecretPlaceholder",
-        "closeMessage",
         "concurrentClients",
         "concurrentClientsDescription",
         "confirmClearCache",
@@ -7172,7 +7164,6 @@
         "favoriteMaxSubtitleLength",
         "favoriteMaxSubtitleLengthDescription",
         "findOAuthClient",
-        "gemini25ProPaused",
         "geminiApiKey",
         "geminiApiKeyHelp",
         "geminiApiKeyPlaceholder",
@@ -7283,7 +7274,6 @@
         "noChanges",
         "noGeminiKeys",
         "noGeminiModelsAvailable",
-        "noNewNotifications",
         "noSuitableGeminiModels",
         "notAuthenticated",
         "oauthDescription",
@@ -9253,10 +9243,10 @@
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "2d3a8e2381cc9a081a6c95df62223cd84344e279c4898c126cf5fa8a89a250e0",
+      "hash": "1764f0c4f4639ff88d076e3de7aedaacb585a1aeca8d437e0a3baca465b7e958",
       "rootCount": 1,
       "roots": [
-        "440c44c1240c5c79b0b5f5ad68e2b2bd692b05749d7941daffd585d97bec21b3"
+        "26eda2bda9ada6121e44d89264ceb3cbeb48885f97d316e295b5901c4fc7a39b"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {
