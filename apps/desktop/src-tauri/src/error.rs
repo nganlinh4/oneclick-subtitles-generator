@@ -984,9 +984,13 @@ impl From<osg_gemini::Error> for CommandError {
                 "Gemini did not finish within the configured time limit.",
             ),
             Error::Provider(provider) => match provider.http_status {
-                400 | 404 => (
-                    "invalidGeminiRequest",
-                    "Gemini rejected the selected model or request.",
+                400 => (
+                    "geminiRequestRejected",
+                    "Gemini rejected the request. Review the selected model and request settings.",
+                ),
+                404 => (
+                    "geminiModelUnavailable",
+                    "The selected Gemini model is not available for this operation.",
                 ),
                 401 | 403 => (
                     "geminiCredentialRejected",
@@ -1100,6 +1104,28 @@ mod tests {
         assert!(!command.message.contains("private prompt"));
         assert!(!command.message.contains("RESOURCE_EXHAUSTED"));
         assert!(!command.message.contains("17"));
+
+        let rejected: CommandError = osg_gemini::Error::Provider(osg_gemini::ProviderError {
+            http_status: 400,
+            api_status: Some("INVALID_ARGUMENT".to_owned()),
+            message: "private request body".to_owned(),
+            retry_after: None,
+            retryable: false,
+        })
+        .into();
+        assert_eq!(rejected.code, "geminiRequestRejected");
+        assert!(!rejected.message.contains("private request body"));
+
+        let unavailable: CommandError = osg_gemini::Error::Provider(osg_gemini::ProviderError {
+            http_status: 404,
+            api_status: Some("NOT_FOUND".to_owned()),
+            message: "private model diagnostic".to_owned(),
+            retry_after: None,
+            retryable: false,
+        })
+        .into();
+        assert_eq!(unavailable.code, "geminiModelUnavailable");
+        assert!(!unavailable.message.contains("private model diagnostic"));
     }
 
     #[test]

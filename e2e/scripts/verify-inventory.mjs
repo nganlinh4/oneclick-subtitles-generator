@@ -503,13 +503,13 @@ const renderReport = (report, {
     `worktree clean:     ${!report.currentSource.dirty}`,
     `applications retained: ${report.applicationsRetained}`,
     '',
-    '-- generated status counts --',
+    '-- declared historical ledger counts (not current-source proof) --',
   ];
   for (const status of Object.keys(report.counts).sort()) {
     lines.push(`  ${status.padEnd(20)} ${report.counts[status]}`);
   }
   lines.push(`  ${'total'.padEnd(20)} ${report.total}`, '');
-  lines.push('-- authoritative local green classification --');
+  lines.push('-- authoritative evidence freshness for declared green entries --');
   for (const classification of Object.keys(report.classifications)) {
     lines.push(`  ${classification.padEnd(20)} ${report.classifications[classification]}`);
   }

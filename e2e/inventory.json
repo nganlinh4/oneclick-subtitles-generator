@@ -6,11 +6,11 @@
     "and configures itself; a WORKFLOW journey proves a customer got what they came for. Only the",
     "second kind counts as a feature being verified. Unit tests and mock-call assertions never do.",
     "",
-    "status: green (passing real-binary proof), red (a real-binary journey is written and failing),",
+    "status is only the declared historical ledger: green means a real-binary proof passed at least once; red means a real-binary journey is written and failing;",
     "unproven (the customer capability exists but has no product-level success proof), planned",
     "(the named non-overlapping journey is not written yet), or covered-indirectly.",
     "A red entry is not a gap in coverage -- it is coverage that has found something. Source tests",
-    "and screenshots of a surface alone never promote a customer outcome to green."
+    "and screenshots of a surface alone never promote a customer outcome to green. A green label never means current source is proven: verify-inventory derives current-head, retained-historical, rotated-historical, missing, and installed classifications from immutable evidence."
   ],
   "updated": "2026-08-31",
   "binary": {

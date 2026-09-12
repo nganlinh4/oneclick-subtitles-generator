@@ -666,7 +666,8 @@ async fn run_gemini(
         record_gemini_phase(job_id, "generationStarted", started);
         let mut stream = client
             .generate_stream(request.into_native(uploaded), cancellation)
-            .await?;
+            .await
+            .map_err(|error| gemini_command_error(job_id, "streamOpen", error))?;
         let mut text = String::new();
         let mut usage = None;
         let mut first_chunk = true;
@@ -685,7 +686,8 @@ async fn run_gemini(
             );
         };
         while let Some(response) = stream.next().await {
-            let response = response?;
+            let response =
+                response.map_err(|error| gemini_command_error(job_id, "streamRead", error))?;
             if let Err(error) = completion.observe(&response) {
                 record_completion_failure(&error);
                 return Err(error.into());
@@ -842,6 +844,54 @@ fn record_gemini_phase(job_id: JobId, phase: &'static str, started: Instant) {
             ("elapsedMs", elapsed_millis(started)),
         ],
     );
+}
+
+fn gemini_command_error(
+    job_id: JobId,
+    phase: &'static str,
+    error: osg_gemini::Error,
+) -> CommandError {
+    use osg_gemini::Error;
+
+    let kind = match &error {
+        Error::Cancelled => "cancelled",
+        Error::InvalidConfig(_) => "localConfig",
+        Error::InvalidRequest(_) => "localRequest",
+        Error::UnsupportedMimeType(_) => "unsupportedMime",
+        Error::InlineRequestTooLarge { .. } | Error::UploadTooLarge { .. } => "sizeLimit",
+        Error::Io { .. } => "localIo",
+        Error::Transport(_) => "transport",
+        Error::Timeout { .. } => "timeout",
+        Error::Provider(_) => "provider",
+        Error::CooldownActive { .. } => "cooldown",
+        Error::UploadProtocol(_) | Error::FileProcessingFailed { .. } => "upload",
+        Error::UploadOutcomeUnknown => "uploadOutcomeUnknown",
+        Error::ResponseTooLarge { .. } => "responseLimit",
+        Error::NoTextOutput => "noText",
+        Error::IncompleteTextOutput { .. } => "incompleteText",
+        Error::NoImageOutput | Error::InvalidImageOutput | Error::ImageOutputBlocked => "image",
+    };
+    let mut fields = vec![
+        ("job", job_id.to_string()),
+        ("phase", phase.to_owned()),
+        ("kind", kind.to_owned()),
+    ];
+    if let Error::Provider(provider) = &error {
+        fields.push(("httpStatus", provider.http_status.to_string()));
+        if let Some(api_status) = provider.api_status.as_deref().filter(|value| {
+            !value.is_empty()
+                && value.len() <= 128
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        }) {
+            fields.push(("apiStatus", api_status.to_owned()));
+        }
+    }
+    // Never record provider messages: providers may echo prompts or subtitle content. The
+    // bounded phase/kind/status tuple is enough to distinguish product, transport and API faults.
+    diagnostics::record("gemini.failure_detail", &fields);
+    error.into()
 }
 
 fn elapsed_millis(started: Instant) -> String {

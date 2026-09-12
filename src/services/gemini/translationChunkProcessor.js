@@ -124,18 +124,20 @@ const translateSubtitlesByChunks = async (
   );
   await publishStatus(fileContext ? `[${fileContext}] ${splitMessage}` : splitMessage);
 
-  const completed = [];
-  const failedChunks = [];
-  for (let index = 0; index < chunks.length; index += 1) {
+  // Chunks are independent provider requests. Launch every customer-requested chunk rather than
+  // silently imposing a one-request throttle; credential admission and provider cooldowns remain
+  // the authoritative limits. `restTime` is a start stagger, not a global serialization switch.
+  const outcomes = await Promise.all(chunks.map(async (chunk, index) => {
+    if (restTime > 0 && index > 0) {
+      await abortableTranslationDelay(index * restTime * 1_000, signal);
+    }
     await assertBoundary();
-    const chunk = chunks[index];
     const chunkMessage = i18n.t(
       'translation.translatingChunk',
       'Translating chunk {{current}}/{{total}} with {{count}} subtitles',
       { current: index + 1, total: chunks.length, count: chunk.length }
     );
     await publishStatus(fileContext ? `[${fileContext}] ${chunkMessage}` : chunkMessage);
-
     try {
       await assertBoundary();
       const translated = await translateChunk(
@@ -156,37 +158,30 @@ const translateSubtitlesByChunks = async (
         mismatch.code = 'translationChunkCountMismatch';
         throw mismatch;
       }
-      completed.push(...translated);
+      return { index, translated, failure: null };
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError' || error?.code === 'translationAborted') {
         throw createTranslationAbortError();
       }
       const sourceOrders = chunk.map((subtitle) => subtitle.sourceOrder)
         .filter((order) => Number.isSafeInteger(order) && order >= 0);
-      failedChunks.push({
-        chunkIndex: index,
-        startOrder: sourceOrders.length > 0 ? Math.min(...sourceOrders) : index,
-        endOrder: sourceOrders.length > 0 ? Math.max(...sourceOrders) : index,
-        errorCode: errorCodeForChunk(error),
-      });
+      return {
+        index,
+        translated: [],
+        failure: {
+          chunkIndex: index,
+          startOrder: sourceOrders.length > 0 ? Math.min(...sourceOrders) : index,
+          endOrder: sourceOrders.length > 0 ? Math.max(...sourceOrders) : index,
+          errorCode: errorCodeForChunk(error),
+        },
+      };
     }
-
-    if (restTime > 0 && index < chunks.length - 1) {
-      for (let second = restTime; second > 0; second -= 1) {
-        await assertBoundary();
-        const waitMessage = i18n.t(
-          'translation.waitingForNextChunk',
-          'Waiting {{seconds}} seconds before translating the next chunk...',
-          { seconds: second }
-        );
-        await publishStatus(fileContext ? `[${fileContext}] ${waitMessage}` : waitMessage);
-        await abortableTranslationDelay(1_000, signal);
-        await assertBoundary();
-      }
-    }
-  }
+  }));
 
   await assertBoundary();
+  outcomes.sort((left, right) => left.index - right.index);
+  const completed = outcomes.flatMap(({ translated }) => translated);
+  const failedChunks = outcomes.flatMap(({ failure }) => failure === null ? [] : [failure]);
   if (failedChunks.length > 0) throw new PartialTranslationError(completed, failedChunks);
   const completionMessage = i18n.t(
     'translation.translationComplete',

@@ -45,7 +45,25 @@ it('reports successful chunks plus exact failed chunk metadata without fake tran
   }]);
 });
 
-it('stops at chunk N when exact project ownership changes', async () => {
+it('starts every chunk concurrently and restores source order regardless of completion order', async () => {
+  const releases = [];
+  const translateChunk = vi.fn((chunk) => new Promise((resolve) => {
+    releases.push(() => resolve(chunk.map((row) => ({ ...row, text: row.text.toUpperCase() }))));
+  }));
+
+  const pending = runChunks(translateChunk);
+  await vi.waitFor(() => expect(translateChunk).toHaveBeenCalledTimes(3));
+  releases[2]();
+  releases[0]();
+  releases[1]();
+
+  await expect(pending).resolves.toEqual(rows.map((row) => ({
+    ...row,
+    text: row.text.toUpperCase(),
+  })));
+});
+
+it('refuses the aggregate when exact project ownership changes', async () => {
   let valid = true;
   const assertOwned = vi.fn(async () => {
     if (!valid) {
@@ -62,7 +80,25 @@ it('stops at chunk N when exact project ownership changes', async () => {
   await expect(runChunks(translateChunk, { assertOwned })).rejects.toMatchObject({
     name: 'AbortError',
   });
+  expect(translateChunk.mock.calls.length).toBeGreaterThanOrEqual(1);
+});
+
+it('uses rest time only to stagger starts without serializing provider work', async () => {
+  vi.useFakeTimers();
+  const pendingResolvers = [];
+  const translateChunk = vi.fn((chunk) => new Promise((resolve) => {
+    pendingResolvers.push(() => resolve(chunk));
+  }));
+  const pending = runChunks(translateChunk, {}, 2);
+  await vi.advanceTimersByTimeAsync(0);
   expect(translateChunk).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(translateChunk).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(translateChunk).toHaveBeenCalledTimes(3);
+  pendingResolvers.forEach((resolve) => resolve());
+  await expect(pending).resolves.toHaveLength(3);
+  vi.useRealTimers();
 });
 
 it('aborts an inter-chunk delay promptly without touching an unrelated controller', async () => {
