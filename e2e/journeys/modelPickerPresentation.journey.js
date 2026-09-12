@@ -77,6 +77,7 @@ describe('consistent model pickers in the real editor', () => {
     await clickControl('[data-osg-action="generate-subtitles"]');
     await clickControl('.subtitle-timeline');
     await browser.keys(['\uE009', 'a', '\uE000']);
+    await clickControl('.range-action-bar > button:first-child');
     await clickControl('[data-transcription-method="new"]');
     await clickControl('#generation-model');
     await inspectMenu('04-generation-models');
