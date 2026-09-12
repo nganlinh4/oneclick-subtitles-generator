@@ -106,11 +106,11 @@ describe('a customer translates a real subtitle track through Gemini', () => {
     const succeededJobs = translationJobs.filter(({ state }) => state === 'succeeded');
     assert.ok(succeededJobs.length >= 3, 'three requested windows did not produce three successful jobs');
     const firstThree = [...translationJobs]
-      .sort((left, right) => left.createdAtMs - right.createdAtMs)
+      .sort((left, right) => left.created_at_ms - right.created_at_ms)
       .slice(0, 3);
     assert.ok(
-      Math.max(...firstThree.map(({ createdAtMs }) => createdAtMs))
-        < Math.min(...firstThree.map(({ updatedAtMs }) => updatedAtMs)),
+      Math.max(...firstThree.map(({ created_at_ms: createdAtMs }) => createdAtMs))
+        < Math.min(...firstThree.map(({ updated_at_ms: updatedAtMs }) => updatedAtMs)),
       'the three requested translation windows did not overlap in the native job ledger',
     );
 
