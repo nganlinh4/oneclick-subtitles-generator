@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "eb6ecc707fa32b2b6c914313d8c445f793b4ff2c",
+  "baselineRevision": "65e7e93b0d78a1b77228b9e99a4b08240f727dd4",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8635,11 +8635,17 @@
         "128ed795fa37d9bbcf888d9c56704d5b9a916be4f834e0ca606479ded12882e4"
       ]
     },
-    "src/components/lyrics/LyricItem.js": {
-      "hash": "8986c8184d474d6655eaf92ecfb9777c74fa36e0c993f63690a2383393a8dd55",
-      "rootCount": 2,
+    "src/components/lyrics/ContinuousProgressIndicator.jsx": {
+      "hash": "3429bc6d4968e3578870aad70e189917bd9259cb314511c0a80b93d5121a7c5b",
+      "rootCount": 1,
       "roots": [
-        "f23b35f737e4a275d961c006e27cc179dac1faf5444ed5f08781aa1005eb4333",
+        "4bb7b6627dd0db7f65d29f1f698d659e5d5f289dccbd6ccbe4e34a576e1f07f2"
+      ]
+    },
+    "src/components/lyrics/LyricItem.js": {
+      "hash": "530bad5bc60b0d6585f587de0ac1de023eaedcd2555dc455dd03100e067c0f62",
+      "rootCount": 1,
+      "roots": [
         "f44fa0c649e374ae29165836b353436878e6434d83bb7e82f0e0aa9c773ff54b"
       ]
     },
@@ -8693,10 +8699,10 @@
       ]
     },
     "src/components/lyrics/TimelineVisualization.js": {
-      "hash": "5438e706dadd9959a63775cdcf679e83c2f42a816e97aa90b7351b6d01281d16",
+      "hash": "0688b8d1bfbe796c2ca4bf2cbda89b0839a93aff251e64482a7937d6d207b65c",
       "rootCount": 1,
       "roots": [
-        "609a8468eb0a0b4b714eea865e7dfcd1d3e02776d155ec550a4c9b894838f50e"
+        "e54f739f68d7e36bef4ae09c94c551252682863dab725b34583989797f5ed0a8"
       ]
     },
     "src/components/lyrics/TimelineZoomControls.js": {
