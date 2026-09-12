@@ -44,7 +44,7 @@
   "addGeminiKeyPlaceholder": "새 Gemini API 키 입력",
   "youtubeApiKeyPlaceholder": "YouTube API 키 입력",
   "geniusApiKeyPlaceholder": "Genius API 키 입력",
-  "geminiApiKeyHelp": "모든 기능에 필요합니다. 다음에서 받으세요",
+  "geminiApiKeyHelp": "Gemini 기능에 필요합니다. 다음에서 받으세요",
   "youtubeApiKeyHelp": "YouTube 검색에 필요합니다. 다음에서 받으세요",
   "geniusApiKeyHelp": "가사 가져오기에 필요합니다. 다음에서 받으세요",
   "youtubeAuthMethod": "YouTube 인증 방법",

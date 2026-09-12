@@ -35,11 +35,8 @@
 // (-> platform/updateService.js's getDesktopAppVersion() -> the native `app_health` command, for
 // the CURRENT version) and getLatestVersion() (-> platform/startupUpdateCoordinator.js's
 // startStartupUpdateCheck() -> checkDesktopUpdate() -> the native `app_update_check` command) on
-// `window.isTauri`. getLatestVersion() explicitly throws 'Signed updater is not configured' when
-// `status.configured` is false -- exactly what the disabled channel returns -- so on this binary
-// About's `checkForUpdates()` catch always sets `latestVersionInfo` to null, and the ONLY rendered
-// branch becomes `.update-check-failed` ("Unable to check for updates"). This journey asserts that
-// literal branch is what a customer sees, not a fabricated "offline" state.
+// `window.isTauri`. A disabled channel has no latest-release result and must remain neutral in
+// About: neither an error nor a claim that the installed version is the latest release.
 //
 // THE DIAGNOSTIC LOG IS A POSITIVE ORACLE HERE, NOT JUST AN ABSENCE CHECK.
 // `app_update_check` unconditionally records "app-update.check_started" first, then --on the
@@ -61,17 +58,6 @@ import { clickSettingsControl } from '../support/settingsControls.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'about-and-updater-lifecycle';
-
-const disabledUpdaterAllowance = (surface) => (
-  surface.updateCheckFailedText === 'Unable to check for updates'
-    ? {
-        errorAlerts: [{
-          text: surface.updateCheckFailedText,
-          reason: 'This exact compiled-disabled updater outcome is the customer state under test.',
-        }],
-      }
-    : {}
-);
 
 const waitUntilWithDiagnostic = async (predicate, { diagnostic, ...options }) => {
   try {
@@ -134,29 +120,26 @@ describe('About reports the real installed version and the updater proves its co
       description: 'About is reached through real Settings navigation and reports the real installed application version, independent of the updater channel.',
       details: { versionDisplay: surface.versionDisplay },
       focusSelector: '.version-info',
-      allowVisibleProblems: disabledUpdaterAllowance(surface),
     });
 
-    // The disabled-channel outcome: no update, and the exact "Unable to check for updates" branch.
+    // A compiled-disabled channel settles without presenting an update, failure, or latest claim.
     await waitUntilWithDiagnostic(async () => {
       surface = await aboutSurface();
-      return !surface.checking && (surface.updateCheckFailedPresent || surface.updateAvailablePresent || surface.upToDatePresent);
+      return !surface.checking;
     }, {
       timeout: 30_000,
       interval: 250,
       diagnostic: () => `the About update check never settled: ${JSON.stringify(surface)}`,
     });
-    assert.equal(surface.updateCheckFailedPresent, true, 'the disabled updater channel did not surface "Unable to check for updates"');
-    assert.equal(surface.updateCheckFailedText, 'Unable to check for updates');
+    assert.equal(surface.updateCheckFailedPresent, false, 'a disabled updater channel was misreported as a failed check');
     assert.equal(surface.updateAvailablePresent, false, 'a disabled updater channel reported an update as available');
-    assert.equal(surface.upToDatePresent, false, 'a disabled updater channel reported the app as up to date instead of failing honestly');
+    assert.equal(surface.upToDatePresent, false, 'a disabled updater channel claimed a latest release without checking');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-updater-disabled-channel',
-      description: 'The compiled-disabled updater channel (e2e-automation) makes app_update_check report unconfigured; About shows the honest "Unable to check for updates" branch, never a fabricated up-to-date or available state.',
+      description: 'The compiled-disabled updater channel settles neutrally in About; the installed version remains visible without a check failure or a latest-release claim.',
       details: { surface },
-      focusSelector: '.update-check-failed',
-      allowVisibleProblems: disabledUpdaterAllowance(surface),
+      focusSelector: '.version-info',
     });
 
     const after = durableState(root);

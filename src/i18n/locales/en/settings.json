@@ -43,7 +43,7 @@
   "addGeminiKeyPlaceholder": "Enter a new Gemini API key",
   "youtubeApiKeyPlaceholder": "Enter your YouTube API key",
   "geniusApiKeyPlaceholder": "Enter your Genius API key",
-  "geminiApiKeyHelp": "Required for all functions. Get one at",
+  "geminiApiKeyHelp": "Required for Gemini features. Get one at",
   "youtubeApiKeyHelp": "Required for YouTube search. Get one at",
   "geniusApiKeyHelp": "Required for lyrics fetching. Get one at",
   "youtubeAuthMethod": "YouTube Authentication Method",

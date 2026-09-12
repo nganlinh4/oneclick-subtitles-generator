@@ -168,8 +168,13 @@ export const getLatestVersion = async () => {
     if (typeof window !== 'undefined' && window.isTauri) {
       const current = await getGitVersion();
       const status = await startStartupUpdateCheck();
-      if (status === null || !status.configured) {
-        throw new Error('Signed updater is not configured');
+      if (status === null) {
+        throw new Error('The signed update check failed');
+      }
+      if (!status.configured) {
+        // Local/automation builds intentionally skip update checks. They have no latest-release
+        // result, but that is not a failed request and must not become an error in About.
+        return { configured: false, source: 'tauri-updater-unavailable' };
       }
       if (status.update === null) {
         return {

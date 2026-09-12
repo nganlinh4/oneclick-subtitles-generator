@@ -2,7 +2,10 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { getGitVersion, getDisplayVersion, getLatestVersion, compareVersions, getInstallerFilename } from '../../../utils/gitVersion';
-import { subscribeDesktopUpdateStatus } from '../../../platform/startupUpdateCoordinator';
+import {
+  beginDesktopUpdateInstall,
+  subscribeDesktopUpdateStatus,
+} from '../../../platform/startupUpdateCoordinator';
 import LoadingIndicator from '../../common/LoadingIndicator';
 
 const AboutTab = ({ backgroundType }) => {
@@ -132,7 +135,7 @@ const AboutTab = ({ backgroundType }) => {
                     <LoadingIndicator size={16} theme="dark" showContainer={false} />
                     {t('settings.checkingUpdates', 'Checking for updates...')}
                   </div>
-                ) : latestVersionInfo ? (
+                ) : latestVersionInfo?.configured === false ? null : latestVersionInfo ? (
                   <div className="latest-version-info">
                     <p className="latest-version-display">
                       <strong>{t('settings.latestVersion', 'Latest Version')}:</strong> {getDisplayVersion(latestVersionInfo)}
@@ -147,14 +150,22 @@ const AboutTab = ({ backgroundType }) => {
                         <p className="update-description">
                           {t('settings.updateDescription', 'Update to get the latest features and bug fixes.')}
                         </p>
-                        <div className="update-instructions">
+                        {latestVersionInfo.source === 'tauri-updater' ? (
+                          <button
+                            type="button"
+                            className="installer-option primary-installer"
+                            onClick={() => beginDesktopUpdateInstall({ version: latestVersionInfo.version })}
+                          >
+                            {t('settings.installUpdate', 'Install update')}
+                          </button>
+                        ) : <div className="update-instructions">
                           <p><strong>{t('settings.howToUpdate', 'How to update')}:</strong></p>
                           <div className="installer-options">
                             <div className="installer-option primary-installer">
                               {t('settings.runInstaller', 'Run')} <code>{getInstallerFilename()}</code>
                             </div>
                           </div>
-                        </div>
+                        </div>}
                       </div>
                     ) : (
                       <p className="up-to-date">

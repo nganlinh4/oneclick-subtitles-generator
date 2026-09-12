@@ -6,7 +6,7 @@ import {
   checkDesktopUpdate,
   getDesktopAppVersion,
 } from '../platform/updateService';
-import { resetStartupUpdateCheckForTests } from '../platform/startupUpdateCoordinator';
+import * as updateCoordinator from '../platform/startupUpdateCoordinator';
 
 vi.mock('../platform/updateService', () => ({
   checkDesktopUpdate: vi.fn(),
@@ -17,7 +17,8 @@ const originalTauri = window.isTauri;
 const originalFetch = global.fetch;
 
 beforeEach(() => {
-  resetStartupUpdateCheckForTests();
+  vi.restoreAllMocks();
+  updateCoordinator.resetStartupUpdateCheckForTests();
   window.isTauri = true;
   global.fetch = vi.fn();
   getDesktopAppVersion.mockReset().mockResolvedValue('2.0.0');
@@ -74,15 +75,52 @@ test('desktop reports the installed release when the signed endpoint has no upda
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
-test('desktop fails closed when no permanent update signing identity is configured', async () => {
+test('desktop preserves an unavailable updater without claiming a latest release', async () => {
   checkDesktopUpdate.mockResolvedValue({
     configured: false,
     currentVersion: '2.0.0',
     update: null,
   });
 
-  await expect(getLatestVersion()).rejects.toThrow('Unable to fetch latest version information');
+  await expect(getLatestVersion()).resolves.toEqual({
+    configured: false,
+    source: 'tauri-updater-unavailable',
+  });
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('About keeps a disabled update channel neutral and still shows the installed version', async () => {
+  checkDesktopUpdate.mockResolvedValue({ configured: false, currentVersion: '2.0.0', update: null });
+  const { container } = render(<AboutTab />);
+
+  await screen.findByText(/v2.0.0/);
+  await waitFor(() => expect(container.querySelector('.checking-update')).toBeNull());
+  expect(screen.queryByText('Unable to check for updates')).not.toBeInTheDocument();
+  expect(screen.queryByText('You are using the latest version!')).not.toBeInTheDocument();
+  expect(container.querySelector('.latest-version-info')).toBeNull();
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('About still reports a genuine updater failure', async () => {
+  checkDesktopUpdate.mockRejectedValue(new Error('endpoint unavailable'));
+  render(<AboutTab />);
+
+  expect(await screen.findByText('Unable to check for updates')).toBeInTheDocument();
+  expect(screen.queryByText('You are using the latest version!')).not.toBeInTheDocument();
+});
+
+test('About offers the native install action instead of obsolete script instructions', async () => {
+  const install = vi.spyOn(updateCoordinator, 'beginDesktopUpdateInstall').mockImplementation(() => {});
+  checkDesktopUpdate.mockResolvedValue({
+    configured: true,
+    currentVersion: '2.0.0',
+    update: { version: '2.1.0', publishedAt: '2026-09-12T00:00:00Z', notes: null },
+  });
+  const { container } = render(<AboutTab />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Install update' }));
+
+  expect(install).toHaveBeenCalledExactlyOnceWith({ version: '2.1.0' });
+  expect(container).not.toHaveTextContent('OSG_installer_Windows.bat');
 });
 
 test('browser builds preserve the legacy GitHub commit lookup', async () => {
@@ -110,3 +148,5 @@ test('browser builds preserve the legacy GitHub commit lookup', async () => {
   );
   expect(checkDesktopUpdate).not.toHaveBeenCalled();
 });
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import AboutTab from '../components/settings/tabs/AboutTab';

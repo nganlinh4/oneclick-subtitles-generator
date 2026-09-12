@@ -83,6 +83,24 @@ describe('settings edits belong to the form until Save', () => {
         description: `Current ${tab} Settings surface for visual inspection.`,
         focusSelector: `.settings-tab.active`,
       });
+      const scrolled = await browser.execute(() => {
+        const panel = document.querySelector('.settings-tab-content.active');
+        const candidates = [document.querySelector('.settings-content'), panel,
+          ...panel.querySelectorAll('*')];
+        const scroller = candidates.filter((node) => node
+          && /auto|scroll/.test(getComputedStyle(node).overflowY)
+          && node.scrollHeight > node.clientHeight + 20)
+          .sort((a, b) => b.clientHeight - a.clientHeight)[0];
+        if (!scroller) return false;
+        scroller.scrollTop = scroller.scrollHeight;
+        return scroller.scrollTop > 0;
+      });
+      if (scrolled) {
+        await captureWorkflowStep({ workflow: WORKFLOW, step: `surface-${tab}-lower`,
+          description: `Lower ${tab} Settings controls reached by scrolling the visible panel.`,
+          focusSelector: '.settings-tab.active',
+        });
+      }
     }
     await closeSettings();
   });
