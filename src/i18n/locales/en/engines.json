@@ -1,5 +1,5 @@
 {
-  "intro": "Packages install outside the app. Availability, active version, disk use, and restart state are shown exactly.",
+  "intro": "Install packages here or simply use a feature. The app prepares and starts its engine automatically when needed.",
   "download": "Download",
   "update": "Update",
   "repair": "Repair",
@@ -58,6 +58,7 @@
   "state": {
     "not-installed": "Not installed",
     "installed-stopped": "Installed",
+    "installed-on-demand": "Installed · starts automatically when used",
     "included": "Included",
     "ready": "Running",
     "checking": "Checking package",

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { useEngineStatus } from '../hooks/useEngineStatus';
 import CloseButton from './common/CloseButton';
 import newDarkImg from '../assets/transcription-methods/new_dark.webp';
 import newLightImg from '../assets/transcription-methods/new_light.webp';
@@ -27,9 +26,6 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
     const [isVercelMode] = useState(() => {
         return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
     });
-    // Per-engine Parakeet availability (replaces the old is_full_version gate).
-    const { isReady } = useEngineStatus();
-
     // Update theme detection
     useEffect(() => {
         const updateTheme = () => {
@@ -50,8 +46,6 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
     }, []);
 
     const methods = React.useMemo(() => {
-        // Determine which methods are disabled based on per-engine availability
-        const isParakeetDisabled = !isReady('parakeet'); // Disabled when the Parakeet engine isn't running
         const isOldMethodDisabled = isVercelMode; // Disabled only in Vercel mode
 
         return [
@@ -74,7 +68,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 name: t('processing.transcriptionMethodParakeetName'),
                 desc: t('processing.transcriptionMethodParakeetDescription'),
                 img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
-                disabled: isParakeetDisabled
+                disabled: !getEngineDescriptor('nvidia-parakeet').availability()
             },
             {
                 id: 'gemini-transcribe',
@@ -90,14 +84,14 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 img: isDarkTheme ? newDarkImg : newLightImg,
                 disabled: !getEngineDescriptor('gemini-transcribe-live').availability()
             },
-            // On-demand local GPU ASR engines (faster-whisper, …) — install from the Tools panel; each
-            // card is grayed out until its engine is installed and the service reports ready.
+            // Local ASR engines are selectable in desktop mode. Their packages and runtimes are
+            // prepared by the generation action itself.
             ...ASR_ENGINES.map((e) => ({
                 id: e.id,
                 name: e.name,
-                desc: t('processing.transcriptionMethodLocalAsrDescription', 'Local GPU transcription — install from the Tools panel, then it runs offline.'),
+                desc: t('processing.transcriptionMethodLocalAsrDescription', 'Local GPU transcription — prepared automatically on first use, then runs offline.'),
                 img: isDarkTheme ? whisperDarkImg : whisperLightImg,
-                disabled: !isReady(e.id)
+                disabled: !getEngineDescriptor(e.id).availability()
             })),
             {
                 id: 'groq-whisper',
@@ -107,7 +101,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 disabled: true
             }
         ];
-    }, [isDarkTheme, t, isReady, isVercelMode]);
+    }, [isDarkTheme, t, isVercelMode]);
 
     const handleMethodClick = (method) => {
         if (method.disabled) return; // Prevent clicks on disabled methods

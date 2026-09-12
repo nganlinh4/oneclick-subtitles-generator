@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useEngineInstall from '../../hooks/useEngineInstall';
 import LoadingIndicator from '../common/LoadingIndicator';
@@ -9,21 +9,25 @@ import { useWaveColors } from '../../utils/waveColors';
  * One heavy engine row: a single centered line — [state icon] [name + descriptor·state] … [action].
  * The action reflects the state:
  *   - installing  → wavy progress bar (milestone %) + Cancel
- *   - starting / stopping / uninstalling → loading spinner + label (transient transitions)
+ *   - uninstalling → loading spinner + label (transient transition)
  *   - confirm-uninstall → "Uninstall?" + confirm/cancel
- *   - installed-stopped → Start + trash · ready → Stop + trash · not-installed → Download
+ *   - installed → managed automatically at point of use + trash · not-installed → Download
  * Uses the shared Material 3 WavyProgressIndicator + LoadingIndicator so it matches the rest of the
  * app's download/processing UI.
  */
 const STATE_ICON = {
   ready: 'check_circle',
   included: 'inventory_2',
-  'installed-stopped': 'pause_circle',
+  'installed-on-demand': 'check_circle',
   'not-installed': 'download',
   'update-available': 'system_update_alt',
   unavailable: 'block',
   corrupt: 'warning',
   checking: 'progress_activity',
+};
+
+const STATE_LABEL_FALLBACK = {
+  'installed-on-demand': 'Installed · starts automatically when used',
 };
 
 const formatBytes = (bytes) => {
@@ -51,7 +55,7 @@ const EngineCard = ({
   const { t } = useTranslation();
   const packageStatus = status?.package;
   const {
-    install, cancel, start, stop, uninstall, installing, percent, log,
+    install, cancel, uninstall, installing, percent, log,
     operation: liveOperation, error,
   } = useEngineInstall(
     id,
@@ -63,7 +67,6 @@ const EngineCard = ({
     || packageOperation?.action === 'update';
   const packageRemoving = packageOperation?.action === 'remove';
   const isInstalling = installing || packageInstalling;
-  const nativeStarting = status?.starting === true;
   const state = managedByElectron
     ? (status?.running ? 'ready' : 'included')
     : !packageStatus
@@ -75,7 +78,7 @@ const EngineCard = ({
           : packageStatus.state === 'update-available'
             ? 'update-available'
             : packageStatus.installed
-              ? status?.running ? 'ready' : 'installed-stopped'
+              ? 'installed-on-demand'
               : 'not-installed';
   const lastLog = log.length ? log[log.length - 1] : '';
   const operationProgress = activeOperation
@@ -88,43 +91,11 @@ const EngineCard = ({
     : '';
   const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();
 
-  // Transient transition flags (the underlying status poll catches up a beat later).
-  const [starting, setStarting] = useState(false);
-  const [stopping, setStopping] = useState(false);
+  // Package removal remains user-controlled. Runtime lifetime is owned by feature actions.
   const [uninstalling, setUninstalling] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
-  const startTimer = useRef(null);
-
-  useEffect(() => {
-    if (status?.running) {
-      setStarting(false);
-      if (startTimer.current) { clearTimeout(startTimer.current); startTimer.current = null; }
-    } else if (!nativeStarting) {
-      setStopping(false);
-    }
-  }, [nativeStarting, status?.running]);
-  useEffect(() => () => { if (startTimer.current) clearTimeout(startTimer.current); }, []);
 
   const refreshSoon = (ms) => setTimeout(() => onChanged && onChanged(), ms);
-
-  const handleStart = async () => {
-    setStarting(true);
-    if (startTimer.current) clearTimeout(startTimer.current);
-    startTimer.current = setTimeout(() => setStarting(false), 120000);
-    try { await start(); refreshSoon(800); } catch (_) { setStarting(false); }
-  };
-
-  const handleStop = async () => {
-    setStopping(true);
-    try {
-      await stop();
-      setStarting(false);
-      if (startTimer.current) { clearTimeout(startTimer.current); startTimer.current = null; }
-      refreshSoon(0);
-    } catch (_) {
-      setStopping(false);
-    }
-  };
 
   const handleUninstall = async () => {
     setConfirmUninstall(false);
@@ -213,45 +184,7 @@ const EngineCard = ({
         </div>
       );
     }
-    if (stopping && state !== 'installed-stopped') return loadingRow('engines.stopping', 'Stopping…');
-    if ((starting || nativeStarting) && state !== 'ready') {
-      return (
-        <div className="engine-card__installing">
-          {loadingRow('engines.starting', 'Starting…')}
-          <button
-            type="button"
-            className="engine-card__cancel"
-            onClick={handleStop}
-            title={t('engines.stop', 'Stop')}
-            aria-label={t('engines.stop', 'Stop')}
-          >
-            <span className="material-symbols-rounded" aria-hidden="true">stop</span>
-          </button>
-        </div>
-      );
-    }
-    if (state === 'installed-stopped') {
-      return (
-        <>
-          <button type="button" className="engine-card__btn" onClick={handleStart}>
-            <span className="material-symbols-rounded" aria-hidden="true">play_arrow</span>
-            {t('engines.start', 'Start')}
-          </button>
-          {trashButton}
-        </>
-      );
-    }
-    if (state === 'ready') {
-      return (
-        <>
-          <button type="button" className="engine-card__btn engine-card__btn--ghost" onClick={handleStop}>
-            <span className="material-symbols-rounded" aria-hidden="true">stop</span>
-            {t('engines.stop', 'Stop')}
-          </button>
-          {trashButton}
-        </>
-      );
-    }
+    if (state === 'installed-on-demand') return trashButton;
     if (state === 'update-available') {
       return (
         <>
@@ -279,8 +212,7 @@ const EngineCard = ({
     );
   };
 
-  const busy = isInstalling || confirmUninstall || uninstalling || packageRemoving
-    || starting || nativeStarting || stopping;
+  const busy = isInstalling || confirmUninstall || uninstalling || packageRemoving;
   const installedSize = formatBytes(packageStatus?.installedBytes);
   const downloadSize = formatBytes(packageStatus?.downloadBytes);
   const availableInstalledSize = formatBytes(packageStatus?.availableInstalledBytes);
@@ -295,7 +227,7 @@ const EngineCard = ({
     ].filter(Boolean);
   const stateMeta = [
     t(`engines.kind.${kind}`, kind),
-    t(`engines.state.${state}`, state),
+    t(`engines.state.${state}`, STATE_LABEL_FALLBACK[state] || state),
     license || null,
     packageVersion ? `v${packageVersion}` : null,
   ].filter(Boolean).join(' · ');

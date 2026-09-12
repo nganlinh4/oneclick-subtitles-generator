@@ -8,6 +8,10 @@ import {
   buildMethodDescriptors,
 } from './transcriptionEngineRegistry';
 
+vi.mock('../../platform/desktopRuntime', () => ({
+  isDesktopRuntime: () => true,
+}));
+
 describe('transcriptionEngineRegistry', () => {
   test('gemini methods are type gemini: token counting, no segmentation/language', () => {
     for (const id of ['new', 'old']) {
@@ -49,14 +53,14 @@ describe('transcriptionEngineRegistry', () => {
     expect(getEngineDescriptor('faster-whisper-turbo').supportedLanguageCodes).toBeNull();
   });
 
-  test('buildMethodDescriptors computes availability from engineStatus + isVercelMode', () => {
-    const engineStatus = { isReady: (id) => id === 'faster-whisper-turbo' };
+  test('local engines stay selectable while cold because generation prepares them on demand', () => {
+    const engineStatus = { isReady: () => false };
     const list = buildMethodDescriptors(engineStatus, { isVercelMode: true });
     const byId = Object.fromEntries(list.map((d) => [d.id, d]));
     expect(byId.new.available).toBe(true);
     expect(byId.old.available).toBe(false); // disabled in Vercel mode
-    expect(byId['nvidia-parakeet'].available).toBe(false); // engine not ready
-    expect(byId['faster-whisper-turbo'].available).toBe(true); // engine ready
+    expect(byId['nvidia-parakeet'].available).toBe(true);
+    expect(byId['faster-whisper-turbo'].available).toBe(true);
   });
 
   test('getEngineType defaults to gemini for an unknown method', () => {

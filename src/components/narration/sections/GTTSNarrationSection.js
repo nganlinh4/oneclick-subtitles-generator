@@ -118,7 +118,7 @@ const GTTSNarrationSection = ({
         isServiceAvailable={isGTTSAvailable}
         serviceUnavailableMessage={t(
           'narration.engineUnavailableMessage',
-          'This narration engine is not ready. Install or start it in Settings > Tools.'
+          'This narration engine could not be prepared automatically. Try generating again.'
         )}
         narrationMethod="gtts"
       />

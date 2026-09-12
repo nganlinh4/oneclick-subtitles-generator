@@ -202,6 +202,29 @@ it('starts an installed cold speech engine as part of the requested action', asy
   expect(probeSpeechBackend).toHaveBeenCalledWith('edgeTts');
 });
 
+it('installs and starts a missing ASR engine from the transcription action', async () => {
+  getEnginePackagesStatus
+    .mockResolvedValueOnce({ engines: [{
+      id: 'parakeet', installed: false, state: 'missing', deliveryAvailable: true, operation: null,
+    }] })
+    .mockResolvedValueOnce({ engines: [{
+      id: 'parakeet', installed: true, state: 'installed', deliveryAvailable: true, operation: null,
+    }] });
+  installEnginePackage.mockImplementationOnce(async (_engine, handlers) => {
+    queueMicrotask(() => handlers.onCompleted({ event: 'completed' }));
+    return { id: 'asr-job' };
+  });
+
+  await ensureManagedEngineReady('nvidia-parakeet');
+
+  expect(installEnginePackage).toHaveBeenCalledWith(
+    'parakeet',
+    expect.objectContaining({ onProgress: expect.any(Function), onCompleted: expect.any(Function) }),
+    { signal: undefined },
+  );
+  expect(startEngineRuntime).toHaveBeenCalledWith('parakeet');
+});
+
 it('installs a missing verified speech package and then starts it without a Tools detour', async () => {
   getSpeechPackagesStatus
     .mockResolvedValueOnce({ packages: [{

@@ -66,8 +66,8 @@ export const removeNativeEnginePackage = (engine) => new Promise((resolve) => {
 });
 
 /**
- * Settings panel listing the heavy engines, each with an on-demand Download / Start / Stop / Uninstall
- * control, plus an "Uninstall all" action to reclaim disk in one go.
+ * Settings panel listing engine packages with Download / Update / Repair / Uninstall controls.
+ * Runtime start/stop is deliberately absent: feature actions own the automatic runtime lifecycle.
  */
 const EnginesPanel = () => {
   const { t } = useTranslation();

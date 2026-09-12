@@ -62,7 +62,7 @@ const PARAKEET = {
   route: 'parakeet',
   runnerKey: 'nvidia-parakeet',
   capabilities: { segmentation: true, language: false, tokenCounting: false },
-  availability: (ctx) => !!ctx.engineStatus && ctx.engineStatus.isReady('parakeet'),
+  availability: () => isDesktopRuntime(),
   supportedLanguagesBadges: true,
   defaultStrategy: 'sentence',
 };
@@ -76,7 +76,7 @@ const asrDescriptor = (e) => ({
   route: e.route || `asr/${e.id}`,
   runnerKey: e.id,
   capabilities: { segmentation: true, language: !!e.supportsLanguage, tokenCounting: false },
-  availability: (ctx) => !!ctx.engineStatus && ctx.engineStatus.isReady(e.id),
+  availability: () => isDesktopRuntime(),
   supportedLanguageCodes: e.supportedLanguageCodes,
   defaultStrategy: e.defaultStrategy || 'sentence',
 });

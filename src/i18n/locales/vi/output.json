@@ -128,6 +128,7 @@
   "usingLegacyFallback": "Đang dùng xử lý cũ. Bật \"Xử lý đơn giản hóa\" trong cài đặt để tăng hiệu suất.",
   "videoAnalysisAborted": "Đã hủy phân tích video",
   "asrTranscriptionComplete": "Đã phiên âm xong bằng {{engine}}",
+  "preparingLocalEngine": "Đang chuẩn bị {{engine}}…{{percent}}",
   "emptyGenerationResult": "Không nhận được kết quả cho yêu cầu đã chọn. Hãy thử lại hoặc chọn mô hình khác.",
   "subtitlesDeliveryPending": "Phụ đề đã được lưu. Việc hoàn tất kết quả gốc sẽ tự động thử lại.",
   "createSubtitles": "Tạo phụ đề"

@@ -5,6 +5,7 @@ import {
 } from '../services/lifecycleOrchestrator';
 import { runAsrGeneration } from './runAsrGeneration';
 import { acknowledgeJobResult } from '../platform/jobResultDeliveryService';
+import { ensureManagedEngineReady } from '../platform/managedEngineService';
 
 vi.mock('../events/bus', () => ({
   publishProcessingRanges: vi.fn(),
@@ -22,6 +23,10 @@ vi.mock('../services/lifecycleOrchestrator', () => ({
 
 vi.mock('../platform/jobResultDeliveryService', () => ({
   acknowledgeJobResult: vi.fn(),
+}));
+
+vi.mock('../platform/managedEngineService', () => ({
+  ensureManagedEngineReady: vi.fn(),
 }));
 
 vi.mock('../utils/subtitle/subtitleMerger', () => ({
@@ -50,8 +55,22 @@ const createParams = (overrides = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   checkpointBeforeUpdate.mockResolvedValue(undefined);
+  ensureManagedEngineReady.mockResolvedValue(undefined);
   processAsrSegment.mockResolvedValue(true);
   acknowledgeJobResult.mockResolvedValue(undefined);
+});
+
+it('prepares an uninstalled or cold engine from the feature action before invoking ASR', async () => {
+  const params = createParams();
+
+  await expect(runAsrGeneration(params)).resolves.toBe(true);
+
+  expect(ensureManagedEngineReady).toHaveBeenCalledWith('parakeet', {
+    signal: undefined,
+    onProgress: expect.any(Function),
+  });
+  expect(ensureManagedEngineReady.mock.invocationCallOrder[0])
+    .toBeLessThan(processAsrSegment.mock.invocationCallOrder[0]);
 });
 
 it('always clears generation state when native ASR fails', async () => {

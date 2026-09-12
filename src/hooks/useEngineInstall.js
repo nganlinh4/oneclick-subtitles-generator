@@ -5,12 +5,10 @@ import {
   getManagedEnginePackageStatus,
   installManagedEnginePackage,
   removeManagedEnginePackage,
-  startManagedEngineRuntime,
-  stopManagedEngineRuntime,
 } from '../platform/managedEngineService';
 
 /**
- * Drives on-demand install + start/stop of a single heavy engine.
+ * Drives package install/removal for a single heavy engine.
  *
  * Installation runs outside the WebView in the native package manager. On mount this hook
  * reconnects to durable progress and resumes polling, so navigating away or closing the view does
@@ -168,26 +166,6 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
     return Promise.resolve();
   }, [id]);
 
-  const start = useCallback(async () => {
-    setError(null);
-    try {
-      return await startManagedEngineRuntime(id);
-    } catch (e) {
-      setError(e.message || i18n.t('engines.error.startFailed', 'Engine failed to start'));
-      throw e;
-    }
-  }, [id]);
-
-  const stop = useCallback(async () => {
-    setError(null);
-    try {
-      return await stopManagedEngineRuntime(id);
-    } catch (e) {
-      setError(e.message || i18n.t('engines.error.stopFailed', 'Engine failed to stop'));
-      throw e;
-    }
-  }, [id]);
-
   const uninstall = useCallback(async () => {
     setError(null);
     try {
@@ -206,7 +184,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   }, [id]);
 
   return {
-    install, cancel, start, stop, uninstall, installing, percent, log, operation, error,
+    install, cancel, uninstall, installing, percent, log, operation, error,
   };
 };
 

@@ -5,8 +5,6 @@ import {
   getManagedEnginePackageStatus,
   installManagedEnginePackage,
   removeManagedEnginePackage,
-  startManagedEngineRuntime,
-  stopManagedEngineRuntime,
 } from '../platform/managedEngineService';
 import { useEngineInstall } from './useEngineInstall';
 
@@ -15,8 +13,6 @@ vi.mock('../platform/managedEngineService', () => ({
   getManagedEnginePackageStatus: vi.fn(),
   installManagedEnginePackage: vi.fn(),
   removeManagedEnginePackage: vi.fn(),
-  startManagedEngineRuntime: vi.fn(),
-  stopManagedEngineRuntime: vi.fn(),
 }));
 
 const jobSnapshot = (overrides = {}) => ({
@@ -62,8 +58,6 @@ beforeEach(() => {
   installManagedEnginePackage.mockResolvedValue(jobSnapshot());
   removeManagedEnginePackage.mockResolvedValue(jobSnapshot());
   cancelManagedEnginePackageJob.mockResolvedValue(jobSnapshot({ state: 'cancelling', sequence: 2 }));
-  startManagedEngineRuntime.mockResolvedValue(undefined);
-  stopManagedEngineRuntime.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -289,23 +283,6 @@ it('cancels a rendered durable operation before the mount-time status query sett
   unmount();
 });
 
-it('uses native runtime commands and propagates their bounded errors', async () => {
-  const { result, unmount } = renderHook(() => useEngineInstall('parakeet'));
-  await waitFor(() => expect(getManagedEnginePackageStatus).toHaveBeenCalled());
-
-  await act(async () => { await result.current.start(); });
-  await act(async () => { await result.current.stop(); });
-  expect(startManagedEngineRuntime).toHaveBeenCalledWith('parakeet');
-  expect(stopManagedEngineRuntime).toHaveBeenCalledWith('parakeet');
-
-  startManagedEngineRuntime.mockRejectedValueOnce(new Error('Runtime is unavailable'));
-  await act(async () => {
-    await expect(result.current.start()).rejects.toThrow('Runtime is unavailable');
-  });
-  expect(result.current.error).toBe('Runtime is unavailable');
-  unmount();
-});
-
 it('preserves the speech engine ID across package, runtime, and terminal removal operations', async () => {
   let installHandlers;
   let removalHandlers;
@@ -327,11 +304,6 @@ it('preserves the speech engine ID across package, runtime, and terminal removal
     { signal: expect.any(AbortSignal) }
   );
   act(() => installHandlers.onCompleted({ event: 'completed' }));
-  await act(async () => { await result.current.start(); });
-  await act(async () => { await result.current.stop(); });
-  expect(startManagedEngineRuntime).toHaveBeenCalledWith('f5tts');
-  expect(stopManagedEngineRuntime).toHaveBeenCalledWith('f5tts');
-
   let removing;
   act(() => { removing = result.current.uninstall(); });
   await waitFor(() => expect(removalHandlers).toBeDefined());
@@ -416,8 +388,6 @@ it('routes every engine mutation through typed native services only', async () =
 
   await act(async () => { await result.current.install(); });
   await act(async () => { await result.current.cancel(); });
-  await act(async () => { await result.current.start(); });
-  await act(async () => { await result.current.stop(); });
   let removing;
   act(() => { removing = result.current.uninstall(); });
   await waitFor(() => expect(removalHandlers).toBeDefined());
@@ -428,8 +398,6 @@ it('routes every engine mutation through typed native services only', async () =
 
   expect(installManagedEnginePackage).toHaveBeenCalled();
   expect(removeManagedEnginePackage).toHaveBeenCalled();
-  expect(startManagedEngineRuntime).toHaveBeenCalledWith('parakeet');
-  expect(stopManagedEngineRuntime).toHaveBeenCalledWith('parakeet');
   expect(global.fetch).not.toHaveBeenCalled();
   unmount();
 });

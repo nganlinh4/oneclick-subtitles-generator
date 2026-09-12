@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({
   processGeminiSegment: vi.fn(),
   processAsrSegment: vi.fn(),
+  ensureManagedEngineReady: vi.fn(),
   saveSubtitlesToCache: vi.fn(),
   commitDurableSubtitleCheckpoint: vi.fn(),
   captureDurableSubtitleSegmentRevision: vi.fn(),
@@ -30,6 +31,9 @@ vi.mock('../services/engines/GeminiAdapter', () => ({
 }));
 vi.mock('../services/engines/AsrAdapter', () => ({
   processAsrSegment: mocks.processAsrSegment,
+}));
+vi.mock('../platform/managedEngineService', () => ({
+  ensureManagedEngineReady: mocks.ensureManagedEngineReady,
 }));
 vi.mock('../services/subtitleCache', () => ({
   saveSubtitlesToCache: mocks.saveSubtitlesToCache,
@@ -254,6 +258,10 @@ test('local ASR captures one range revision before inference and commits only th
   });
 
   expect(terminal).toBe(true);
+  expect(mocks.ensureManagedEngineReady).toHaveBeenCalledWith(
+    'nvidia-parakeet',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
   expect(mocks.captureDurableSubtitleSegmentRevision).toHaveBeenCalledTimes(1);
   expect(mocks.captureDurableSubtitleSegmentRevision)
     .toHaveBeenCalledBefore(mocks.processAsrSegment);

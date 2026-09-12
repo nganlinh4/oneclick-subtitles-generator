@@ -1,5 +1,5 @@
 {
-  "intro": "Các gói được cài bên ngoài ứng dụng. Trạng thái khả dụng, phiên bản đang dùng, dung lượng đĩa và yêu cầu khởi động lại đều được hiển thị chính xác.",
+  "intro": "Cài gói tại đây hoặc chỉ cần dùng tính năng. Ứng dụng sẽ tự chuẩn bị và khởi động engine khi cần.",
   "download": "Tải về",
   "update": "Cập nhật",
   "repair": "Sửa chữa",
@@ -58,6 +58,7 @@
   "state": {
     "not-installed": "Chưa cài đặt",
     "installed-stopped": "Đã cài đặt",
+    "installed-on-demand": "Đã cài đặt · tự khởi động khi sử dụng",
     "included": "Đã bao gồm",
     "ready": "Đang chạy",
     "checking": "Đang kiểm tra gói",

@@ -133,7 +133,7 @@
   "asrLanguageHelp": "Buộc một ngôn ngữ phiên âm, hoặc để Tự động phát hiện.",
   "engineServiceUnavailable": "Dịch vụ {{engine}} không khả dụng",
   "engineGeneric": "Engine ASR",
-  "transcriptionMethodLocalAsrDescription": "Phiên âm bằng GPU cục bộ — cài đặt từ bảng Công cụ, sau đó chạy ngoại tuyến.",
+  "transcriptionMethodLocalAsrDescription": "Phiên âm bằng GPU cục bộ — tự chuẩn bị ở lần dùng đầu tiên, sau đó chạy ngoại tuyến.",
   "notAvailableVercelVersion": "không khả dụng trong phiên bản Vercel",
   "engineStartingUp": "đang khởi động…",
   "transcribingWithEngine": "Đang phiên âm bằng {{engine}} ({{current}}/{{total}})...",

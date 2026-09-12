@@ -2,6 +2,7 @@ import { mergeSegmentSubtitles } from '../utils/subtitle/subtitleMerger';
 import { publishProcessingRanges, publishStreamingUpdate, publishStreamingComplete } from '../events/bus';
 import { processAsrSegment } from '../services/engines/AsrAdapter';
 import { acknowledgeJobResult } from '../platform/jobResultDeliveryService';
+import { ensureManagedEngineReady } from '../platform/managedEngineService';
 
 /**
  * Generic local-ASR generation branch (faster-whisper, qwen3-asr, …), generalized from
@@ -36,6 +37,24 @@ export const runAsrGeneration = async ({
       setStatus({ message: t('errors.invalidSegmentSelection', 'Invalid segment selection'), type: 'error' });
       return false;
     }
+
+    await ensureManagedEngineReady(engine.id, {
+      signal: options.signal,
+      onProgress: (event) => {
+        const basisPoints = Number(event?.basisPoints);
+        const percent = Number.isFinite(basisPoints)
+          ? ` ${Math.max(0, Math.min(100, Math.round(basisPoints / 100)))}%`
+          : '';
+        setStatus({
+          message: t(
+            'output.preparingLocalEngine',
+            'Preparing {{engine}}…{{percent}}',
+            { engine: engineName, percent },
+          ),
+          type: 'loading',
+        });
+      },
+    });
 
     if (!options.autoRunContext) {
       const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');

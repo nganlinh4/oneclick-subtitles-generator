@@ -225,9 +225,7 @@ it('keeps a provider install cancellable while its durable native job is running
   expect(cancel).toHaveBeenCalledWith('provider-install-job');
 });
 
-it('recovers a native ASR warm-up as stoppable instead of exposing a second Start action', () => {
-  const stop = vi.fn().mockResolvedValue(undefined);
-  useEngineInstall.mockReturnValue(hookState({ stop }));
+it('keeps runtime controls private while an installed engine is warming on demand', () => {
   render(
     <EngineCard
       id="qwen3-asr-1.7b"
@@ -248,8 +246,8 @@ it('recovers a native ASR warm-up as stoppable instead of exposing a second Star
     />
   );
 
-  expect(screen.getByText('Starting…')).toBeInTheDocument();
+  expect(screen.getByText(/Installed · starts automatically when used/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-  expect(stop).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Uninstall' })).toBeInTheDocument();
 });
