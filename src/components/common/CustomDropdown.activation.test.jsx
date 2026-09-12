@@ -70,4 +70,24 @@ describe('CustomDropdown option activation', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(400);
   });
+
+  it('Escape dismisses the menu first, without closing the enclosing modal or changing its value', () => {
+    const closeModal = vi.fn();
+    const onChange = vi.fn();
+    const modalKeydown = (event) => { if (event.key === 'Escape') closeModal(); };
+    document.addEventListener('keydown', modalKeydown);
+    try {
+      render(<CustomDropdown value={700} onChange={onChange} options={OPTIONS} ariaLabel="Font weight" />);
+      openDropdown();
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      act(() => vi.runAllTimers());
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(closeModal).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(closeModal).toHaveBeenCalledOnce();
+    } finally {
+      document.removeEventListener('keydown', modalKeydown);
+    }
+  });
 });

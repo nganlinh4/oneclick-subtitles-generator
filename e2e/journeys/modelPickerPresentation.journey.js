@@ -57,6 +57,8 @@ describe('consistent model pickers in the real editor', () => {
     await clickSettingsControl('.thinking-card .custom-dropdown-button');
     await inspectMenu('03-thinking-models');
     await closeMenu();
+    assert.equal(await $('.settings-modal').isDisplayed(), true,
+      'dismissing the model menu must not also close Settings');
     await clickControl('[data-settings-action="close"]');
   });
 });

@@ -138,9 +138,17 @@ const CustomDropdown = ({
   };
 
   useEffect(() => {
-    const handleEscape = (event) => { if (event.key === 'Escape') handleSmoothCloseRef.current(); };
-    if (isOpen) { document.addEventListener('keydown', handleEscape); }
-    return () => document.removeEventListener('keydown', handleEscape);
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      const menus = document.querySelectorAll('.custom-dropdown-clipper');
+      if (menus[menus.length - 1] !== menuRef.current) return;
+      // The topmost menu owns Escape, before an enclosing modal's document listener sees it.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      handleSmoothCloseRef.current();
+    };
+    if (isOpen) { document.addEventListener('keydown', handleEscape, true); }
+    return () => document.removeEventListener('keydown', handleEscape, true);
   }, [isOpen]);
 
   useEffect(() => {
