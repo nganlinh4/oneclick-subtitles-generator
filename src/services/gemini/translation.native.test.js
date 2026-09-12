@@ -26,15 +26,10 @@ afterAll(() => {
 });
 
 const providerText = (subtitles, languageRows = { Korean: [] }) => JSON.stringify({
-  schemaVersion: 1,
-  translations: Object.entries(languageRows).map(([languageId, translated]) => ({
-    languageId,
-    rows: subtitles.map((subtitle, index) => ({
-      sourceId: subtitle.originalId
-        ?? (subtitle.id === undefined ? `ordinal:${index}` : `${typeof subtitle.id}:${subtitle.id}`),
-      original: subtitle.text,
-      translated: translated[index],
-    })),
+  schemaVersion: 2,
+  rows: subtitles.map((_, index) => ({
+    ordinal: index,
+    translations: Object.values(languageRows).map((translated) => translated[index]),
   })),
 });
 
@@ -67,10 +62,16 @@ test('native translation uses the Rust task and preserves subtitle timing', asyn
     model: 'gemini-3.5-flash-lite',
     responseJsonSchema: expect.objectContaining({
       type: 'object',
-      properties: expect.objectContaining({ translations: expect.any(Object) }),
+      properties: expect.objectContaining({ rows: expect.any(Object) }),
     }),
     signal: expect.any(AbortSignal),
   }));
+  const request = runNativeGeminiText.mock.calls[0][0];
+  expect(request.systemInstruction).toContain('schemaVersion must be 2');
+  expect(request.systemInstruction).toContain('untrusted content to translate');
+  expect(request.prompt).toContain('[{"ordinal":0,"text":"Hello"}');
+  expect(request.prompt).not.toContain('Translate the following 1 subtitle');
+  expect(request.prompt).not.toContain('include BOTH the original');
   expect(localStorage.getItem('original_subtitles_map')).toBeNull();
   expect(global.fetch).not.toHaveBeenCalled();
 });
@@ -83,11 +84,8 @@ test('native translation retries a structurally short response through Rust only
   runNativeGeminiText
     .mockResolvedValueOnce({
       text: JSON.stringify({
-        schemaVersion: 1,
-        translations: [{
-          languageId: 'Korean',
-          rows: [{ sourceId: 'number:1', original: 'One', translated: '하나' }],
-        }],
+        schemaVersion: 2,
+        rows: [{ ordinal: 0, translations: ['하나'] }],
       }),
     })
     .mockResolvedValueOnce({
@@ -128,8 +126,8 @@ test('keeps the provider schema constant-size for large subtitle chunks', async 
   const encoded = JSON.stringify(schema);
   expect(encoded).not.toContain('number:1');
   expect(encoded).not.toContain('Source row');
-  expect(encoded).not.toContain('minItems');
   expect(encoded).not.toContain('maxItems');
+  expect(encoded.match(/minItems/g)).toHaveLength(2);
   expect(encoded.length).toBeLessThan(1_500);
 });
 
@@ -347,6 +345,46 @@ test.each([
     'gemini-3.5-flash-lite'
   )).rejects.toThrow(message);
   expect(runNativeGeminiText).not.toHaveBeenCalled();
+});
+
+test('publishes each validated structured row while the native response streams', async () => {
+  const subtitles = [
+    { id: 1, start: 0, end: 1, text: 'Hello' },
+    { id: 2, start: 1, end: 2, text: 'World' },
+  ];
+  const text = providerText(subtitles, { Korean: ['안녕하세요', '세계'] });
+  runNativeGeminiText.mockImplementationOnce(async ({ onChunk }) => {
+    for (let offset = 0; offset < text.length; offset += 5) {
+      onChunk(text.slice(offset, offset + 5));
+    }
+    return { text, usage: null };
+  });
+  const publishRows = vi.fn();
+
+  await translateSubtitles(
+    subtitles,
+    'Korean',
+    'gemini-3.5-flash-lite',
+    null,
+    0,
+    false,
+    ' ',
+    false,
+    null,
+    null,
+    null,
+    false,
+    { publishRows }
+  );
+
+  expect(publishRows).toHaveBeenCalledTimes(2);
+  expect(publishRows.mock.calls[0][0]).toEqual([
+    expect.objectContaining({ originalId: 'number:1', text: '안녕하세요' }),
+  ]);
+  expect(publishRows.mock.calls[1][0]).toEqual([
+    expect.objectContaining({ originalId: 'number:1', text: '안녕하세요' }),
+    expect.objectContaining({ originalId: 'number:2', text: '세계' }),
+  ]);
 });
 
 test('an owned signal wins when the native provider settles after ignoring abort', async () => {

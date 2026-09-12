@@ -12,22 +12,10 @@ const context = Object.freeze({
 });
 
 const validEnvelope = () => ({
-  schemaVersion: 1,
-  translations: [
-    {
-      languageId: 'ko',
-      rows: [
-        { sourceId: 'string:cue-a', original: 'Hello', translated: '안녕하세요' },
-        { sourceId: 'string:cue-b', original: 'World', translated: '세계' },
-      ],
-    },
-    {
-      languageId: 'vi',
-      rows: [
-        { sourceId: 'string:cue-a', original: 'Hello', translated: 'Xin chào' },
-        { sourceId: 'string:cue-b', original: 'World', translated: 'Thế giới' },
-      ],
-    },
+  schemaVersion: 2,
+  rows: [
+    { ordinal: 0, translations: ['안녕하세요', 'Xin chào'] },
+    { ordinal: 1, translations: ['세계', 'Thế giới'] },
   ],
 });
 
@@ -37,7 +25,7 @@ const response = (value) => ({
 
 it('accepts only the exact ordered source-language matrix', () => {
   expect(processTranslationResponse(response(validEnvelope()), context)).toEqual({
-    schemaVersion: 1,
+    schemaVersion: 2,
     languageIds: ['ko', 'vi'],
     rows: [
       {
@@ -59,17 +47,17 @@ it('accepts only the exact ordered source-language matrix', () => {
 });
 
 it.each([
-  ['missing language', (value) => { value.translations.pop(); }],
-  ['unknown language', (value) => { value.translations[1].languageId = 'Vietnamese'; }],
-  ['duplicate language', (value) => { value.translations[1].languageId = 'ko'; }],
-  ['reordered language', (value) => { value.translations.reverse(); }],
-  ['empty provider text', (value) => { value.translations[0].rows[0].translated = '   '; }],
-  ['missing source row', (value) => { value.translations[0].rows.pop(); }],
-  ['duplicate source row', (value) => { value.translations[0].rows[1] = { ...value.translations[0].rows[0] }; }],
-  ['reordered source rows', (value) => { value.translations[0].rows.reverse(); }],
-  ['incorrect echoed original', (value) => { value.translations[0].rows[0].original = ' hello '; }],
-  ['language-label substitution', (value) => { value.translations[0].rows[0].translated = ''; value.translations[0].rows[0].language = 'Korean'; }],
-  ['unknown property', (value) => { value.translations[0].rows[0].confidence = 1; }],
+  ['wrong schema version', (value) => { value.schemaVersion = 1; }],
+  ['unknown envelope property', (value) => { value.language = 'vi'; }],
+  ['missing target translation', (value) => { value.rows[0].translations.pop(); }],
+  ['extra target translation', (value) => { value.rows[0].translations.push('extra'); }],
+  ['empty provider text', (value) => { value.rows[0].translations[0] = '   '; }],
+  ['missing source row', (value) => { value.rows.pop(); }],
+  ['duplicate source row', (value) => { value.rows[1] = { ...value.rows[0] }; }],
+  ['reordered source rows', (value) => { value.rows.reverse(); }],
+  ['non-integer source order', (value) => { value.rows[0].ordinal = '0'; }],
+  ['non-array translations', (value) => { value.rows[0].translations = '안녕하세요'; }],
+  ['unknown property', (value) => { value.rows[0].confidence = 1; }],
 ])('rejects %s instead of turning it into a complete translation', (_label, mutate) => {
   const envelope = validEnvelope();
   mutate(envelope);

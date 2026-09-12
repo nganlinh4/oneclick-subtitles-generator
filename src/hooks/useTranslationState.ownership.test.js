@@ -300,6 +300,31 @@ it('canonicalizes blank editor targets out of a translated run and durable recor
   view.unmount();
 });
 
+it('publishes provider-validated rows before the complete translation settles', async () => {
+  const view = await mount();
+  const finish = deferred();
+  mocks.translate.mockImplementationOnce(async (input, ...args) => {
+    const ownership = args.at(-1);
+    ownership.publishRows(translatedRows(input.slice(0, 1)));
+    await finish.promise;
+    return translationResult(input);
+  });
+
+  let pending;
+  act(() => { pending = start(view.result); });
+  await waitFor(() => {
+    expect(view.result.current.translatedSubtitles).toEqual([
+      expect.objectContaining({ originalId: 'string:a-1', text: 'T:Hello' }),
+    ]);
+  });
+  await act(async () => {
+    finish.resolve();
+    await pending;
+  });
+  expect(view.result.current.translatedSubtitles).toHaveLength(2);
+  view.unmount();
+});
+
 it('acquires a synchronous lease so same-tick double click starts one run', async () => {
   const view = await mount();
   const checkpoint = deferred();

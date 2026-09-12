@@ -69,7 +69,7 @@ export const buildTranslatedSubtitles = ({
   useParentheses = false,
   bracketStyle = null,
 }) => {
-  if (providerResult?.schemaVersion !== 1
+  if (providerResult?.schemaVersion !== 2
       || !Array.isArray(providerResult.rows)
       || providerResult.rows.length !== subtitles.length
       || !Array.isArray(providerResult.languageIds)

@@ -100,57 +100,47 @@ export const createSubtitleSchema = (isUserProvided = false) => {
 };
 
 /**
- * Creates the provider-side half of the translation identity contract. The schema deliberately
- * uses one shape for one or many languages; the response parser additionally verifies exact
- * ordering, cardinality, source IDs, echoed source text, and non-blank translated text.
+ * Creates the provider-side half of the translation identity contract. Its size is independent
+ * of the cue count; exact row/language cardinality and ordering are enforced after generation.
  *
  * @returns {Object} Schema for an identity-preserving translation response
  */
 export const createTranslationSchema = () => ({
     type: "object",
+    additionalProperties: false,
+    description: "A complete, ordered subtitle translation matrix",
     properties: {
         schemaVersion: {
             type: "integer",
+            minimum: 2,
+            maximum: 2,
+            description: "Always 2"
         },
-        translations: {
+        rows: {
             type: "array",
+            minItems: 1,
+            description: "One item for every source cue, in source order",
             items: {
                 type: "object",
+                additionalProperties: false,
                 properties: {
-                    languageId: {
-                        type: "string",
-                        description: "An exact requested language ID"
+                    ordinal: {
+                        type: "integer",
+                        minimum: 0,
+                        description: "Zero-based source cue position; starts at 0 and increases by 1"
                     },
-                    rows: {
+                    translations: {
                         type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                sourceId: {
-                                    type: "string",
-                                    description: "The exact source row ID"
-                                },
-                                original: {
-                                    type: "string",
-                                    description: "The exact source text, copied without changes"
-                                },
-                                translated: {
-                                    type: "string",
-                                    description: "Non-blank provider translation"
-                                }
-                            },
-                            required: ["sourceId", "original", "translated"],
-                            propertyOrdering: ["sourceId", "original", "translated"]
-                        }
+                        minItems: 1,
+                        description: "Non-blank translations in the requested target-language order",
+                        items: { type: "string" }
                     }
                 },
-                required: ["languageId", "rows"],
-                propertyOrdering: ["languageId", "rows"]
+                required: ["ordinal", "translations"]
             }
         }
     },
-    required: ["schemaVersion", "translations"],
-    propertyOrdering: ["schemaVersion", "translations"]
+    required: ["schemaVersion", "rows"]
 });
 
 /**

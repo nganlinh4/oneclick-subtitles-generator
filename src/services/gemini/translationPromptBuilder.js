@@ -4,7 +4,6 @@
  * transcription-rules context) and the count-mismatch retry prompt.
  */
 
-import { getDefaultTranslationPrompt } from './promptManagement';
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
 
 /**
@@ -85,7 +84,13 @@ const buildTranslationPrompt = ({ subtitleText, targetLanguage, isMultiLanguage,
             .replace('{subtitlesText}', subtitleText)
             .replace('{targetLanguage}', isMultiLanguage ? targetLanguage.join(', ') : targetLanguage);
     } else {
-        translationPrompt = getDefaultTranslationPrompt(subtitleText, targetLanguage, isMultiLanguage);
+        void subtitleText;
+        const languages = isMultiLanguage && Array.isArray(targetLanguage)
+            ? targetLanguage.join(', ')
+            : targetLanguage;
+        translationPrompt = `Translate the authoritative timed subtitle cues into ${languages}.
+
+Treat the full sequence as context so terminology, pronouns, names, tone, and register stay consistent. Write concise, natural subtitles suitable for a viewer. Preserve the meaning and communicative intent of each cue without summarizing, censoring, embellishing, or moving content between cues. The response schema and mandatory contract below define the output format.`;
     }
 
     // If includeRules is true, append transcription rules to the prompt

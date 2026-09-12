@@ -743,6 +743,19 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       }
       if (!hasMainSubtitles) return { status: 'complete', scope: 'bulk' };
 
+      const streamedRows = new Map();
+      const mainOwnership = {
+        ...ownership,
+        publishRows: (rows) => {
+          if (context.signal.aborted || activeLeaseRef.current !== lease || !mountedRef.current) {
+            return;
+          }
+          rows.forEach((row) => streamedRows.set(row.originalId, row));
+          setTranslatedSubtitles(context.sourceSubtitles
+            .map((row) => streamedRows.get(row.originalId))
+            .filter(Boolean));
+        },
+      };
       const translationResult = requireCompleteTranslationResult(await translateSubtitles(
         context.sourceSubtitles,
         languages.length === 1 ? languages[0] : languages,
@@ -758,7 +771,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         normalizedChain,
         null,
         false,
-        ownership
+        mainOwnership
       ));
       await assertRunOwned(context);
       if (translationResult.rows.length === 0) {

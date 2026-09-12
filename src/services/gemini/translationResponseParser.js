@@ -1,11 +1,10 @@
 /**
  * Strict response parsing for Gemini translation.
  *
- * A provider response is untrusted data. It is accepted only when it reproduces the exact
- * requested language order and the exact source-row identity, order, cardinality, and text for
- * every language. There are intentionally no line-oriented, fuzzy-language, or source-text
- * fallback formats here: those formats cannot prove which source-language pair a string belongs
- * to.
+ * A provider response is untrusted data. The provider supplies only ordered translations and
+ * zero-based ordinals; caller-owned source IDs and timing are rebound after exact cardinality,
+ * ordering, shape, and non-blank checks. Asking a model to echo source IDs or source text does not
+ * prove semantic alignment and wastes the output budget, so neither is part of the wire envelope.
  */
 
 export class TranslationResponseError extends Error {
@@ -46,12 +45,12 @@ const extractJson = (responseData) => {
   }
 };
 
-const freezeProviderRows = (sourceRows, translationsByLanguage) => Object.freeze(
+const freezeProviderRows = (sourceRows, rows, languageIds) => Object.freeze(
   sourceRows.map((source, sourceIndex) => Object.freeze({
     sourceId: source.sourceId,
-    translations: Object.freeze(translationsByLanguage.map((language) => Object.freeze({
-      languageId: language.languageId,
-      text: language.rows[sourceIndex].translated,
+    translations: Object.freeze(languageIds.map((languageId, languageIndex) => Object.freeze({
+      languageId,
+      text: rows[sourceIndex].translations[languageIndex],
     }))),
   }))
 );
@@ -59,62 +58,41 @@ const freezeProviderRows = (sourceRows, translationsByLanguage) => Object.freeze
 /**
  * @param {Object} responseData Raw Gemini response wrapper
  * @param {{languageIds: string[], sourceRows: Array<{sourceId: string, text: string}>}} ctx
- * @returns {{schemaVersion: 1, languageIds: readonly string[], rows: readonly Object[]}}
+ * @returns {{schemaVersion: 2, languageIds: readonly string[], rows: readonly Object[]}}
  */
 export const processTranslationResponse = (responseData, { languageIds, sourceRows }) => {
   const envelope = extractJson(responseData);
-  if (!hasExactKeys(envelope, ['schemaVersion', 'translations'])
-      || envelope.schemaVersion !== 1
-      || !Array.isArray(envelope.translations)
-      || envelope.translations.length !== languageIds.length) {
+  if (!hasExactKeys(envelope, ['schemaVersion', 'rows'])
+      || envelope.schemaVersion !== 2
+      || !Array.isArray(envelope.rows)
+      || envelope.rows.length !== sourceRows.length) {
     throw invalidResponse('envelope-shape');
   }
 
-  const seenLanguages = new Set();
-  const translationsByLanguage = envelope.translations.map((language, languageIndex) => {
-    const expectedLanguageId = languageIds[languageIndex];
-    if (!hasExactKeys(language, ['languageId', 'rows'])
-        || language.languageId !== expectedLanguageId
-        || seenLanguages.has(language.languageId)
-        || !Array.isArray(language.rows)
-        || language.rows.length !== sourceRows.length) {
-      throw invalidResponse(`language-shape-${languageIndex}`);
+  const rows = envelope.rows.map((row, sourceIndex) => {
+    if (!hasExactKeys(row, ['ordinal', 'translations'])
+        || row.ordinal !== sourceIndex
+        || !Array.isArray(row.translations)
+        || row.translations.length !== languageIds.length
+        || row.translations.some((text) => (
+          typeof text !== 'string' || text.trim().length === 0
+        ))) {
+      const reason = !hasExactKeys(row, ['ordinal', 'translations'])
+        ? 'row-shape'
+        : row.ordinal !== sourceIndex
+          ? 'source-order'
+          : 'translation-shape';
+      throw invalidResponse(`${reason}-${sourceIndex}`);
     }
-    seenLanguages.add(language.languageId);
-
-    const seenSources = new Set();
-    const rows = language.rows.map((row, sourceIndex) => {
-      const expected = sourceRows[sourceIndex];
-      if (!hasExactKeys(row, ['sourceId', 'original', 'translated'])
-          || row.sourceId !== expected.sourceId
-          || seenSources.has(row.sourceId)
-          || row.original !== expected.text
-          || typeof row.translated !== 'string'
-          || row.translated.trim().length === 0) {
-        const reason = !hasExactKeys(row, ['sourceId', 'original', 'translated'])
-          ? 'row-shape'
-          : row.sourceId !== expected.sourceId
-            ? 'source-id'
-            : seenSources.has(row.sourceId)
-              ? 'duplicate-source-id'
-              : row.original !== expected.text
-                ? 'original-text'
-                : 'blank-translation';
-        throw invalidResponse(`${reason}-${languageIndex}-${sourceIndex}`);
-      }
-      seenSources.add(row.sourceId);
-      return Object.freeze({
-        sourceId: row.sourceId,
-        original: row.original,
-        translated: row.translated,
-      });
+    return Object.freeze({
+      ordinal: row.ordinal,
+      translations: Object.freeze([...row.translations]),
     });
-    return Object.freeze({ languageId: language.languageId, rows: Object.freeze(rows) });
   });
 
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     languageIds: Object.freeze([...languageIds]),
-    rows: freezeProviderRows(sourceRows, translationsByLanguage),
+    rows: freezeProviderRows(sourceRows, rows, languageIds),
   });
 };
