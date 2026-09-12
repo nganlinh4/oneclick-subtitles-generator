@@ -89,17 +89,12 @@ pub(crate) struct WorkerPool {
     semaphore: Arc<Semaphore>,
 }
 
-impl Default for WorkerPool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl WorkerPool {
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(max_concurrent: usize) -> Self {
+        debug_assert!(max_concurrent > 0);
         Self {
-            semaphore: Arc::new(Semaphore::new(2)),
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
         }
     }
 
@@ -713,7 +708,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_worker_pool_bounded_concurrency() {
-        let pool = WorkerPool::new();
+        let pool = WorkerPool::new(2);
         let cancel = CancellationToken::new();
 
         // Should acquire permit 1 and 2
@@ -769,7 +764,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_worker_pool_cancellation_while_waiting() {
-        let pool = WorkerPool::new();
+        let pool = WorkerPool::new(2);
         let cancel = CancellationToken::new();
 
         let _permit1 = pool.acquire_permit(&cancel).await.expect("permit 1");
@@ -792,7 +787,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_worker_pool_pre_cancelled_deterministic() {
-        let pool = WorkerPool::new();
+        let pool = WorkerPool::new(2);
         let cancel = CancellationToken::new();
         cancel.cancel();
 
@@ -827,7 +822,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_adversarial_permit_acquisition_pre_cancelled_exhaustive() {
-        let pool = WorkerPool::new();
+        let pool = WorkerPool::new(2);
 
         // 1. With 2 permits available (empty pool)
         let cancel_2 = CancellationToken::new();
@@ -870,7 +865,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_adversarial_multithreaded_pre_cancelled_race() {
-        let pool = Arc::new(WorkerPool::new());
+        let pool = Arc::new(WorkerPool::new(2));
         let mut handles = Vec::new();
 
         // 16 concurrent tasks doing 500 acquires each on pre-cancelled tokens = 8,000 requests
@@ -905,7 +900,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_adversarial_permit_acquisition_concurrent_cancellation_race() {
-        let pool = Arc::new(WorkerPool::new());
+        let pool = Arc::new(WorkerPool::new(2));
         let cancel = CancellationToken::new();
         let mut handles = Vec::new();
 

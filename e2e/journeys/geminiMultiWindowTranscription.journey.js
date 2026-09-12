@@ -216,6 +216,14 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
     const diagnostics = transcriptionDiagnostics(root);
+    const firstFinished = diagnostics.findIndex(({ event }) => event === 'transcribe.live.finished');
+    const startsBeforeAnyFinished = diagnostics
+      .slice(0, firstFinished < 0 ? diagnostics.length : firstFinished)
+      .filter(({ event, attempt }) => event === 'transcribe.live.started' && Number(attempt) === 0);
+    assert.equal(startsBeforeAnyFinished.length, expectedWindows,
+      `the ${expectedWindows} requested windows were silently serialized before provider admission`);
+    assert.equal(new Set(startsBeforeAnyFinished.map(({ window: index }) => Number(index))).size,
+      expectedWindows, 'provider admission did not cover every requested window exactly once');
     // A scheduled task may still be awaiting its credential. Count only sessions that have
     // delivered a real final and have not finished yet: an observed concurrency lower bound.
     const respondingWindows = new Set();

@@ -44,7 +44,7 @@
   "unlimited": "Max",
   "linesCount": "{{count}} lines",
   "maxDurationPerRequest": "Max duration per request",
-  "maxDurationPerRequestDesc": "Maximum duration for each Gemini request. Longer segments will be split into parallel requests.",
+  "maxDurationPerRequestDesc": "Maximum duration for each Gemini request. Longer ranges are divided into independent requests.",
   "minutesValue": "{{value}} minutes",
   "parallelRequestsInfo": "{{count}} parts",
   "segmentProcessingDelay": "Segment processing delay",

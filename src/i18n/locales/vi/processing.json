@@ -44,7 +44,7 @@
   "unlimited": "Max",
   "linesCount": "{{count}} dòng",
   "maxDurationPerRequest": "Thời lượng tối đa mỗi yêu cầu",
-  "maxDurationPerRequestDesc": "Thời lượng tối đa cho mỗi yêu cầu Gemini. Các phân đoạn dài hơn sẽ được chia thành nhiều yêu cầu song song.",
+  "maxDurationPerRequestDesc": "Thời lượng tối đa cho mỗi yêu cầu Gemini. Phạm vi dài hơn được chia thành các yêu cầu độc lập.",
   "minutesValue": "{{value}} phút",
   "parallelRequestsInfo": "{{count}} phần",
   "segmentProcessingDelay": "Độ trễ xử lý phân đoạn",

@@ -49,7 +49,7 @@
   "unlimited": "최대",
   "linesCount": "{{count}}줄",
   "maxDurationPerRequest": "요청당 최대 시간",
-  "maxDurationPerRequestDesc": "각 Gemini 요청의 최대 시간. 더 긴 구간은 병렬 요청으로 분할됩니다.",
+  "maxDurationPerRequestDesc": "Gemini 요청 하나의 최대 길이입니다. 더 긴 범위는 독립 요청으로 나뉩니다.",
   "minutesValue": "{{value}}분",
   "parallelRequestsInfo": "{{count}} 부분",
   "autoSplitSubtitles": "자막 자동 분할",

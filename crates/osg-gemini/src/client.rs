@@ -772,7 +772,7 @@ fn validate_options(options: &ClientOptions) -> Result<()> {
         || options.max_upload_bytes > 20_000_000_000
         || !(256 * 1024..=16 * 1024 * 1024).contains(&options.upload_chunk_bytes)
         || options.max_concurrent_requests == 0
-        || options.max_concurrent_requests > 64
+        || options.max_concurrent_requests > 4_096
     {
         return Err(Error::InvalidConfig("client bounds are invalid".to_owned()));
     }

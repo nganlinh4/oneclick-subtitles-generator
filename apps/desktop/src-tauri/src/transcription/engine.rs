@@ -228,16 +228,18 @@ pub(crate) async fn start_transcription_engine(
     .await
     .map_err(|_| CommandError::internal("credential resolution task failed"))??;
 
+    let credential_count = secrets.len();
+    let requests_per_credential = total_windows.div_ceil(credential_count);
     let clients = secrets
         .into_iter()
         .map(|secret| {
             let api_key = ApiKey::new(secret.expose_secret().to_owned())
                 .map_err(|e| CommandError::invalid_input(e.to_string()))?;
-            // Gemini Live can accept several simultaneous sockets on one key and still return
-            // formally successful but severely truncated transcripts. Keep one in-flight request
-            // per credential; multiple enrolled credentials still run in parallel.
+            // The public window count is an execution contract. Distribute windows across every
+            // ready credential and allow that credential's assigned sessions to overlap; provider
+            // retries/cooldowns remain responsible for upstream throttling.
             osg_gemini::GeminiClientBuilder::new(api_key)
-                .max_concurrent_requests(1)
+                .max_concurrent_requests(requests_per_credential)
                 .build()
                 .map(Arc::new)
                 .map_err(|e| CommandError::invalid_input(e.to_string()))
@@ -368,7 +370,10 @@ async fn run_engine_loop(
     });
 
     let staging_buffer = Arc::new(StagingBuffer::new());
-    let worker_pool = Arc::new(WorkerPool::new());
+    // Preparing a window must not silently reduce the user-visible concurrency. Every planned
+    // window is admitted; each releases its local extraction permit before opening the provider
+    // session, so this capacity mirrors the exact public window count.
+    let worker_pool = Arc::new(WorkerPool::new(total_windows));
     let (notify_tx, mut notify_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
     let has_failures = Arc::new(std::sync::atomic::AtomicBool::new(false));
 

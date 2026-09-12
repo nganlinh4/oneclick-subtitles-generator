@@ -96,7 +96,7 @@ it('keeps a range within the maximum on the single-job path', async () => {
   expect(processSegmentWithStreaming.mock.calls[0][2].maxDurationPerRequest).toBe(60);
 });
 
-it('bounds native clip and provider work for long videos', async () => {
+it('starts every advertised request window without a hidden frontend throttle', async () => {
   let active = 0;
   let peak = 0;
   const releases = [];
@@ -113,21 +113,14 @@ it('bounds native clip and provider work for long videos', async () => {
     { start: 0, end: 480 },
     { maxDurationPerRequest: 60, segmentProcessingDelay: 0 },
   );
-  await vi.waitFor(() => expect(processSegmentWithStreaming).toHaveBeenCalledTimes(2));
-  expect(peak).toBe(2);
-
-  releases.splice(0).forEach((release) => release());
-  await vi.waitFor(() => expect(processSegmentWithStreaming).toHaveBeenCalledTimes(4));
-  releases.splice(0).forEach((release) => release());
-  await vi.waitFor(() => expect(processSegmentWithStreaming).toHaveBeenCalledTimes(6));
-  releases.splice(0).forEach((release) => release());
   await vi.waitFor(() => expect(processSegmentWithStreaming).toHaveBeenCalledTimes(8));
+  expect(peak).toBe(8);
   releases.splice(0).forEach((release) => release());
   await expect(pending).resolves.toHaveLength(8);
-  expect(peak).toBe(2);
+  expect(peak).toBe(8);
 });
 
-it('aborts active siblings and never starts queued windows after one part fails', async () => {
+it('aborts every active sibling after one concurrent part fails', async () => {
   const signals = [];
   processSegmentWithStreaming.mockImplementation((_media, window, childOptions) => {
     signals.push(childOptions.signal);
@@ -145,6 +138,6 @@ it('aborts active siblings and never starts queued windows after one part fails'
     { maxDurationPerRequest: 60, segmentProcessingDelay: 0 },
   )).rejects.toThrow('part failed');
 
-  expect(processSegmentWithStreaming.mock.calls.length).toBeLessThanOrEqual(2);
+  expect(processSegmentWithStreaming).toHaveBeenCalledTimes(8);
   expect(signals.every((signal) => signal.aborted)).toBe(true);
 });

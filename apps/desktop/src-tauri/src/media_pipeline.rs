@@ -23,6 +23,7 @@ use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{State, ipc::Channel};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::background;
 use crate::error::{CommandError, CommandResult};
@@ -175,43 +176,31 @@ struct PlaybackRegistry {
 #[derive(Debug)]
 struct SlotLimiter {
     active: AtomicUsize,
-    maximum: usize,
+    semaphore: Arc<Semaphore>,
 }
 
 impl SlotLimiter {
     fn new(maximum: usize) -> Arc<Self> {
         Arc::new(Self {
             active: AtomicUsize::new(0),
-            maximum,
+            semaphore: Arc::new(Semaphore::new(maximum)),
         })
     }
 
-    fn acquire(self: &Arc<Self>) -> Option<SlotPermit> {
-        let mut observed = self.active.load(Ordering::Acquire);
-        loop {
-            if observed >= self.maximum {
-                return None;
-            }
-            match self.active.compare_exchange_weak(
-                observed,
-                observed + 1,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => {
-                    return Some(SlotPermit {
-                        limiter: Arc::clone(self),
-                    });
-                }
-                Err(actual) => observed = actual,
-            }
-        }
+    async fn acquire(self: &Arc<Self>) -> Option<SlotPermit> {
+        let permit = Arc::clone(&self.semaphore).acquire_owned().await.ok()?;
+        self.active.fetch_add(1, Ordering::AcqRel);
+        Some(SlotPermit {
+            limiter: Arc::clone(self),
+            _permit: permit,
+        })
     }
 }
 
 #[derive(Debug)]
 struct SlotPermit {
     limiter: Arc<SlotLimiter>,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl Drop for SlotPermit {
@@ -732,9 +721,16 @@ pub(crate) async fn media_pipeline_start(
     let request = request.validate()?;
     let operation = request.operation.wire_operation();
     let pipeline = runtime.pipeline()?;
-    let permit = runtime.slots.acquire().ok_or_else(|| {
-        CommandError::invalid_input("Too many native media operations are already running.")
-    })?;
+    // Independent Gemini analysis windows must be prepared together: serializing their short
+    // clips here silently turns N requested provider calls into batches of two. Other heavyweight
+    // media jobs retain the shared resource queue.
+    let permit = if matches!(request.operation, ValidatedOperation::AnalysisClip { .. }) {
+        None
+    } else {
+        Some(runtime.slots.acquire().await.ok_or_else(|| {
+            CommandError::internal("The native media operation queue is unavailable.")
+        })?)
+    };
     let database = state.database.clone();
     let resolved = tauri::async_runtime::spawn_blocking({
         let database = database.clone();

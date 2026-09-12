@@ -23,10 +23,6 @@ const isProjectMismatch = (expectedProjectId) => {
   }
 };
 
-// The native media pipeline admits two clip operations. Matching that capacity prevents windows
-// three and four from being rejected before they reach Gemini on a clean split-media run.
-const MAX_ACTIVE_GEMINI_WINDOWS = 2;
-
 const aborted = (signal) => {
   if (signal?.reason instanceof Error) return signal.reason;
   const error = new Error('Gemini transcription was cancelled.');
@@ -444,18 +440,9 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
   };
 
   try {
-    // Clip creation performs real native decode/encode work. A worker pool prevents an hours-long
-    // source from starting dozens of native encoders and provider uploads simultaneously.
-    let nextWindow = 0;
-    const worker = async () => {
-      while (nextWindow < windows.length) {
-        const index = nextWindow;
-        nextWindow += 1;
-        await processWindow(windows[index], index);
-      }
-    };
-    const workerCount = Math.min(MAX_ACTIVE_GEMINI_WINDOWS, windows.length);
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    // Submit every requested window. Each window prepares and uploads independently, so the
+    // window count the user selected is the actual provider concurrency contract.
+    await Promise.all(windows.map(processWindow));
   } catch (error) {
     batchController.abort(error);
     throw error;

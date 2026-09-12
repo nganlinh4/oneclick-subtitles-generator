@@ -159,7 +159,7 @@ const VideoProcessingModalGeminiPanel = ({
                                         return t('processing.maxDurationAudioNewMethod', 'Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.');
                                     }
                                 }
-                                return t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer segments will be split into parallel requests.');
+                                return t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer ranges are divided into independent requests.');
                             })()} />
                         </div>
                         <div>
@@ -191,7 +191,7 @@ const VideoProcessingModalGeminiPanel = ({
                                             const segmentDuration = (selectedSegment.end - selectedSegment.start) / 60;
                                             const numRequests = Math.ceil(segmentDuration / Number(v || 1));
                                             return numRequests > 1 ? (
-                                                <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', 'Will split into {{count}} parallel requests', { count: numRequests })})</span>
+                                                <span className="parallel-info">{' '}({t('processing.parallelRequestsInfo', '{{count}} parts', { count: numRequests })})</span>
                                             ) : null;
                                         })()}
                                     </>
