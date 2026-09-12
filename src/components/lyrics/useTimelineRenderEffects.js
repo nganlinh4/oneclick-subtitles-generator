@@ -25,7 +25,17 @@ export const useTimelineRenderEffects = ({
     useEffect(() => {
         if (!isProcessing && newSegments.size === 0) return undefined;
         let frame = null;
+        let timer = null;
         let disposed = false;
+        const schedule = () => {
+            // The timeline's processing glow has no information above 30 Hz. WebView2 may drive
+            // requestAnimationFrame near 100 Hz, which previously repainted this full canvas on
+            // every refresh throughout a long provider job.
+            timer = setTimeout(() => {
+                timer = null;
+                frame = requestAnimationFrame(animate);
+            }, 1000 / 30);
+        };
         const animate = () => {
             if (disposed) return;
             frame = null;
@@ -38,12 +48,13 @@ export const useTimelineRenderEffects = ({
                     [...previous].filter(([, value]) => now - value.startTime < 800),
                 ));
             }
-            if (isProcessing || active) frame = requestAnimationFrame(animate);
+            if (isProcessing || active) schedule();
         };
         frame = requestAnimationFrame(animate);
         return () => {
             disposed = true;
             if (frame !== null) cancelAnimationFrame(frame);
+            if (timer !== null) clearTimeout(timer);
         };
     }, [isProcessing, newSegments, setNewSegments, animationTimeRef]);
 

@@ -4,6 +4,7 @@ import { useTimelineRenderEffects } from './useTimelineRenderEffects';
 const ref = current => ({ current });
 let observers, frames, nextId;
 beforeEach(() => {
+  vi.useFakeTimers();
   observers = []; frames = new Map(); nextId = 0;
   vi.stubGlobal('ResizeObserver', class {
     constructor(callback) { this.callback = callback; this.disconnected = false; observers.push(this); }
@@ -13,7 +14,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', callback => { const id = ++nextId; frames.set(id, callback); return id; });
   vi.stubGlobal('cancelAnimationFrame', id => frames.delete(id));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 const options = () => {
   const container = document.createElement('div');
@@ -29,6 +30,7 @@ const options = () => {
   };
 };
 const tick = () => act(() => {
+  vi.advanceTimersByTime(34);
   const pending = [...frames.values()]; frames.clear();
   pending.forEach(callback => callback(performance.now()));
 });
@@ -65,4 +67,22 @@ it('keeps processing animation outside React state and cancels its single loop',
   tick();
   expect(frames.size).toBe(0);
   hook.unmount();
+});
+
+it('caps processing canvas paints below a high-refresh animation clock', () => {
+  const base = options(); const draw = vi.fn();
+  const hook = renderHook(props => useTimelineRenderEffects(props), {
+    initialProps: { ...base, renderTimeline: draw, isProcessing: true },
+  });
+  const initial = draw.mock.calls.length;
+  for (let elapsed = 0; elapsed < 1000; elapsed += 10) {
+    act(() => {
+      vi.advanceTimersByTime(10);
+      const pending = [...frames.values()]; frames.clear();
+      pending.forEach(callback => callback(performance.now()));
+    });
+  }
+  expect(draw.mock.calls.length - initial).toBeLessThanOrEqual(31);
+  hook.unmount();
+  expect(frames.size).toBe(0);
 });
