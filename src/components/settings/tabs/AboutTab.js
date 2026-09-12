@@ -13,7 +13,10 @@ const AboutTab = ({ backgroundType }) => {
   const [versionInfo, setVersionInfo] = useState(null);
   const [latestVersionInfo, setLatestVersionInfo] = useState(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  // The signed native check already compares release versions, including prereleases.
+  const updateAvailable = latestVersionInfo?.source === 'tauri-updater'
+    || (versionInfo && latestVersionInfo?.source === 'github-commits'
+      && compareVersions(latestVersionInfo.version, versionInfo.version) > 0);
 
   // Load version information on component mount
   useEffect(() => {
@@ -52,14 +55,6 @@ const AboutTab = ({ backgroundType }) => {
     const unsubscribe = subscribeDesktopUpdateStatus(() => checkForUpdates());
     return unsubscribe;
   }, []); // Run once on mount and whenever the shared native status is refreshed
-
-  // Separate effect to compare versions when both are available
-  useEffect(() => {
-    if (versionInfo && latestVersionInfo) {
-      const isNewer = compareVersions(latestVersionInfo.version, versionInfo.version);
-      setUpdateAvailable(isNewer > 0);
-    }
-  }, [versionInfo, latestVersionInfo]);
 
   // Determine the background class based on the backgroundType
   const getBackgroundClass = () => {

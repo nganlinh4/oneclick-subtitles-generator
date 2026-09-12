@@ -13,6 +13,9 @@ vi.mock('../platform/updateService', () => ({
   getDesktopAppVersion: vi.fn(),
 }));
 
+// Canvas animation is outside this native update-state check; jsdom has no canvas renderer.
+vi.mock('../components/common/LoadingIndicator', () => ({ default: () => null }));
+
 const originalTauri = window.isTauri;
 const originalFetch = global.fetch;
 
@@ -109,17 +112,21 @@ test('About still reports a genuine updater failure', async () => {
   expect(screen.queryByText('You are using the latest version!')).not.toBeInTheDocument();
 });
 
-test('About offers the native install action instead of obsolete script instructions', async () => {
+test.each([
+  ['2.0.0', '2.1.0'],
+  ['2.0.0-rc.1', '2.0.0'],
+])('About offers the native update from %s to %s', async (currentVersion, nextVersion) => {
   const install = vi.spyOn(updateCoordinator, 'beginDesktopUpdateInstall').mockImplementation(() => {});
+  getDesktopAppVersion.mockResolvedValue(currentVersion);
   checkDesktopUpdate.mockResolvedValue({
     configured: true,
-    currentVersion: '2.0.0',
-    update: { version: '2.1.0', publishedAt: '2026-09-12T00:00:00Z', notes: null },
+    currentVersion,
+    update: { version: nextVersion, publishedAt: '2026-09-12T00:00:00Z', notes: null },
   });
   const { container } = render(<AboutTab />);
   fireEvent.click(await screen.findByRole('button', { name: 'Install update' }));
 
-  expect(install).toHaveBeenCalledExactlyOnceWith({ version: '2.1.0' });
+  expect(install).toHaveBeenCalledExactlyOnceWith({ version: nextVersion });
   expect(container).not.toHaveTextContent('OSG_installer_Windows.bat');
 });
 

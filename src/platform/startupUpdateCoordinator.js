@@ -10,6 +10,7 @@ const INSTALL_TOAST_DURATION = 30 * 60 * 1000;
 let startupCheck = null;
 let cachedStatus;
 let startupCheckInFlight = false;
+let activeInstallController = null;
 const statusListeners = new Set();
 
 const addToast = (message, type, duration, key, button) => {
@@ -60,24 +61,37 @@ export const beginDesktopUpdateInstall = (update, {
   checkpoint = flushDurableLyricsHistory,
   showToast = addToast,
 } = {}) => {
+  // About and the update toast share the same native install and cancellation control.
+  if (activeInstallController !== null) return activeInstallController;
   const controller = new AbortController();
   const cancelButton = {
     text: t('common.cancel', 'Cancel'),
     onClick: () => controller.abort(),
   };
-  showToast(
-    t('settings.updatePreparing', 'Preparing the signed update…'),
-    'info',
-    INSTALL_TOAST_DURATION,
-    INSTALL_TOAST_KEY,
-    cancelButton,
-  );
+  activeInstallController = controller;
+  try {
+    showToast(
+      t('settings.updatePreparing', 'Preparing the signed update…'),
+      'info',
+      INSTALL_TOAST_DURATION,
+      INSTALL_TOAST_KEY,
+      cancelButton,
+    );
+  } catch (error) {
+    activeInstallController = null;
+    throw error;
+  }
   let stage = 'checkpoint';
   const run = async () => {
     // The updater can restart the process without asking the main window to close. Treat it as the
     // same destructive boundary: no installer may start while an editor revision is only queued in
     // the WebView's debounce/serialization chain.
     await checkpoint();
+    if (controller.signal.aborted) {
+      throw Object.assign(new Error('The application update was cancelled'), {
+        code: 'updaterCancelled',
+      });
+    }
     stage = 'install';
     await install(update.version, {
       onProgress: ({ basisPoints }) => {
@@ -114,6 +128,8 @@ export const beginDesktopUpdateInstall = (update, {
       INSTALL_TOAST_KEY,
       null,
     );
+  }).finally(() => {
+    if (activeInstallController === controller) activeInstallController = null;
   });
   return controller;
 };
@@ -175,6 +191,8 @@ export const refreshDesktopUpdateCheck = ({
 };
 
 export const resetStartupUpdateCheckForTests = () => {
+  activeInstallController?.abort();
+  activeInstallController = null;
   startupCheck = null;
   cachedStatus = undefined;
   startupCheckInFlight = false;

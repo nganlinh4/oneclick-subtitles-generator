@@ -203,3 +203,59 @@ test('a failed subtitle checkpoint leaves the update unstarted and the app runni
   ));
   expect(install).not.toHaveBeenCalled();
 });
+
+test.each(['failure', 'cancellation'])('duplicate install actions share the active update through %s and permit retry', async (outcome) => {
+  const pending = Promise.withResolvers();
+  const install = vi.fn()
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValue(undefined);
+  const checkpoint = vi.fn().mockResolvedValue(undefined);
+  const toasts = [];
+  const options = { install, checkpoint, showToast: (...args) => toasts.push(args) };
+  const first = beginDesktopUpdateInstall({ version: '1.0.1' }, options);
+  const duplicate = beginDesktopUpdateInstall({ version: '1.0.1' }, options);
+  try {
+    expect(duplicate).toBe(first);
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+    install.mock.calls[0][1].onProgress({ basisPoints: 2500 });
+    expect(beginDesktopUpdateInstall({ version: '1.0.1' }, options)).toBe(first);
+    expect(toasts.at(-1)[0]).toContain('25%');
+    expect(toasts.at(-1)[4]).not.toBeNull();
+    if (outcome === 'cancellation') {
+      toasts.at(-1)[4].onClick();
+      expect(first.signal.aborted).toBe(true);
+      expect(install.mock.calls[0][2].signal).toBe(first.signal);
+    }
+  } finally {
+    pending.reject(Object.assign(new Error('native operation settled'), {
+      code: outcome === 'cancellation' ? 'updaterCancelled' : 'updaterUnavailable',
+    }));
+    // Drain the terminal catch and its lease cleanup before attempting another operation.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(toasts.at(-1)[1]).toBe(outcome === 'cancellation' ? 'info' : 'error');
+  const retry = beginDesktopUpdateInstall({ version: '1.0.1' }, options);
+  expect(retry).not.toBe(first);
+  await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(2));
+});
+
+test('cancelling a pending checkpoint never starts the native installer', async () => {
+  const pending = Promise.withResolvers();
+  const checkpoint = vi.fn(() => pending.promise);
+  const install = vi.fn();
+  const showToast = vi.fn();
+  const options = { checkpoint, install, showToast };
+  const controller = beginDesktopUpdateInstall({ version: '1.0.1' }, options);
+  controller.abort();
+  try {
+    expect(beginDesktopUpdateInstall({ version: '1.0.1' }, options)).toBe(controller);
+  } finally {
+    pending.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(install).not.toHaveBeenCalled();
+  expect(showToast).toHaveBeenLastCalledWith(
+    'Application update cancelled.', 'info', 6000, 'app-update-install', null,
+  );
+});
