@@ -15,7 +15,7 @@ const WORKFLOW = 'gemini-translation-success';
 const TARGET_LANGUAGE = 'Vietnamese';
 const SOURCE_FIXTURE = 'cues-translation-multichunk.srt';
 const SOURCE_TIMINGS = Object.freeze(Array.from({ length: 12 }, (_, index) => Object.freeze({
-  start: index * 15 + 0.5,
+  start: index === 0 ? 0.5 : index * 15,
   end: index * 15 + 10,
 })));
 
