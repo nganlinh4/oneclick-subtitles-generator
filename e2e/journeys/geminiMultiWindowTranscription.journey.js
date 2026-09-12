@@ -219,7 +219,7 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     const firstFinished = diagnostics.findIndex(({ event }) => event === 'transcribe.live.finished');
     const startsBeforeAnyFinished = diagnostics
       .slice(0, firstFinished < 0 ? diagnostics.length : firstFinished)
-      .filter(({ event, attempt }) => event === 'transcribe.live.started' && Number(attempt) === 0);
+      .filter(({ event }) => event === 'transcribe.live.started');
     assert.equal(startsBeforeAnyFinished.length, expectedWindows,
       `the ${expectedWindows} requested windows were silently serialized before provider admission`);
     assert.equal(new Set(startsBeforeAnyFinished.map(({ window: index }) => Number(index))).size,
