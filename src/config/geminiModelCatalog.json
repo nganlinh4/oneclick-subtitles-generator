@@ -3,7 +3,7 @@
   "source": {
     "repository": "oneclick-subtitles-generator",
     "catalog": "src/config/geminiModelCatalog.json",
-    "syncedAt": "2026-09-06"
+    "syncedAt": "2026-09-12"
   },
   "quotaReference": {
     "tier": "free",
@@ -20,7 +20,7 @@
     "backgroundPrompt": "gemini-3.5-flash-lite",
     "fastText": "gemini-3.5-flash-lite",
     "imageGeneration": "gemini-3.1-flash-image",
-    "liveAudio": "gemini-3.1-flash-live-preview"
+    "speech": "gemini-3.1-flash-tts-preview"
   },
   "legacyMigrations": {
     "gemini-pro": "gemini-3.1-flash-lite",
@@ -156,22 +156,13 @@
       "modalities": ["video", "image", "text"]
     }
   ],
-  "liveAudioModels": [
+  "speechModels": [
     {
-      "id": "gemini-3.1-flash-live-preview",
-      "displayName": "Gemini 3.1 Flash Live Preview",
-      "modalities": ["audio"],
-      "thinking": { "type": "level", "default": "minimal" },
-      "maxOutputTokens": 65536,
-      "automaticActivityDetection": true
-    },
-    {
-      "id": "gemini-2.5-flash-native-audio-preview-12-2025",
-      "displayName": "Gemini 2.5 Flash Native Audio Preview 12-2025",
-      "modalities": ["audio"],
-      "thinking": { "type": "budget", "default": 0 },
-      "maxOutputTokens": 8192,
-      "automaticActivityDetection": false
+      "id": "gemini-3.1-flash-tts-preview",
+      "displayName": "Gemini 3.1 Flash TTS Preview",
+      "modalities": ["text-input", "audio-output"],
+      "transport": "interactions",
+      "maxOutputTokens": 16384
     }
   ]
 }

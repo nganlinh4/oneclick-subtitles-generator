@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Validate the shared catalog, with optional live generateContent smoke tests. */
+/* Validate the shared catalog, with optional live Interactions API smoke tests. */
 const fs = require('fs');
 const path = require('path');
 const catalog = require('../src/config/geminiModelCatalog.json');
@@ -72,28 +72,27 @@ const assertCatalog = () => {
       throw new Error(`${model.id} has an invalid thinking-level contract`);
     }
   });
-  catalog.liveAudioModels.forEach((model) => {
-    if (!model.modalities?.includes('audio')) {
-      throw new Error(`${model.id} is not an audio-capable Live model`);
-    }
-  });
+  if (catalog.speechModels.length !== 1
+      || catalog.defaults.speech !== catalog.speechModels[0].id
+      || catalog.speechModels[0].transport !== 'interactions') {
+    throw new Error('Gemini speech must use the reviewed Interactions TTS model');
+  }
 };
 
-const thinkingConfigFor = (model) => model.thinking.type === 'level'
-  ? { thinkingLevel: model.thinking.default.toUpperCase() }
-  : { thinkingBudget: model.thinking.default };
+const thinkingLevelFor = (model) => model.thinking.type === 'level'
+  ? model.thinking.default
+  : undefined;
 
-const readProbe = (filePath, mimeType) => ({
-  inlineData: {
-    mimeType,
-    data: fs.readFileSync(path.resolve(filePath)).toString('base64')
-  }
+const readProbe = (filePath, mimeType, modality) => ({
+  type: modality,
+  mime_type: mimeType,
+  data: fs.readFileSync(path.resolve(filePath)).toString('base64')
 });
 
 const loadLiveProbes = () => {
   const probes = [];
-  if (audioFile) probes.push({ modality: 'audio', part: readProbe(audioFile, 'audio/wav') });
-  if (videoFile) probes.push({ modality: 'video', part: readProbe(videoFile, 'video/mp4') });
+  if (audioFile) probes.push({ modality: 'audio', part: readProbe(audioFile, 'audio/wav', 'audio') });
+  if (videoFile) probes.push({ modality: 'video', part: readProbe(videoFile, 'video/mp4', 'video') });
   if (!probes.length) {
     throw new Error('Live catalog validation requires --audio-file PATH and/or --video-file PATH');
   }
@@ -104,24 +103,24 @@ const smokeModel = async (model, apiKey, probe) => {
   if (!model.modalities.includes(probe.modality)) {
     throw new Error(`${model.id} does not declare ${probe.modality} input support`);
   }
-  const parts = [
+  const input = [
     probe.part,
-    { text: `Inspect this ${probe.modality} and return JSON with ok=true.` }
+    { type: 'text', text: `Inspect this ${probe.modality} and return JSON with ok=true.` }
   ];
   const body = {
-    contents: [{ role: 'user', parts }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseJsonSchema: {
-        type: 'object',
-        properties: { ok: { type: 'boolean' } },
-        required: ['ok']
-      },
-      thinkingConfig: thinkingConfigFor(model)
-    }
+    model: model.id,
+    input,
+    stream: false,
+    store: false,
+    generation_config: { thinking_level: thinkingLevelFor(model) },
+    response_format: {
+      type: 'text',
+      mime_type: 'application/json',
+      schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] }
+    },
   };
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent`,
+    'https://generativelanguage.googleapis.com/v1beta/interactions',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -134,15 +133,16 @@ const smokeModel = async (model, apiKey, probe) => {
     throw new Error(`HTTP ${response.status}: ${responseText.slice(0, 400)}`);
   }
   const data = JSON.parse(responseText);
-  if (!data.candidates?.[0]?.content?.parts?.some((part) => part.text || part.thought)) {
-    throw new Error('Response contained no candidate content');
+  if (!data.steps?.some((step) => step.type === 'model_output'
+      && step.content?.some((content) => content.type === 'text' && content.text))) {
+    throw new Error('Interaction contained no model text output');
   }
   return probe.modality;
 };
 
 const main = async () => {
   assertCatalog();
-  console.log(`Catalog OK: ${catalog.models.length} ordinary, ${catalog.liveAudioModels.length} Live, ${catalog.imageGenerationModels.length} image model(s).`);
+  console.log(`Catalog OK: ${catalog.models.length} ordinary, ${catalog.speechModels.length} speech, ${catalog.imageGenerationModels.length} image model(s).`);
   if (!isLive) return;
 
   const fileEnvironment = envFile ? parseEnvFile(path.resolve(envFile)) : {};

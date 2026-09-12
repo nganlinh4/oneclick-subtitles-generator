@@ -40,15 +40,19 @@ for (let slot = 0; slot < slots; slot++) for (const fixture of fixtures) {
   const started = Date.now();
   const report = { fixture: fixture.id, slot: slot + 1, model: 'gemini-3.5-transcribe',
     sourceSha256: fixture.fixture.sha256, audioSha256: fixture.audioSha256,
-    transport: 'generateContent SSE', input: '16-kHz mono WAV; independent provider check',
+    transport: 'Interactions SSE', input: '16-kHz mono WAV; independent provider check',
     observations: [] };
   try {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:streamGenerateContent?alt=sse', {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
       method: 'POST', signal: AbortSignal.timeout(120_000),
       headers: { 'x-goog-api-key': pool[slot].value, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ contents: [{ parts: [{ inlineData: {
-        mimeType: 'audio/wav', data: fixture.bytes.toString('base64'),
-      } }] }], generationConfig: { audioTranscriptionConfig: { wordTimestamp: true } } }),
+      body: JSON.stringify({
+        model: 'gemini-3.5-transcribe', stream: true, store: false,
+        input: [{ type: 'audio', mime_type: 'audio/wav', data: fixture.bytes.toString('base64') }],
+        generation_config: { transcription_config: {
+          mode: { type: 'verbatim', timestamp_granularities: ['word'] },
+        } },
+      }),
     });
     report.httpStatus = response.status;
     assert.ok(response.ok, `Provider HTTP ${response.status}`);
@@ -58,17 +62,21 @@ for (let slot = 0; slot < slots; slot++) for (const fixture of fixtures) {
     const consume = line => {
       if (!line.startsWith('data:') || line.slice(5).trim() === '[DONE]') return;
       const event = JSON.parse(line.slice(5));
-      assert.ok(!event.promptFeedback?.blockReason, 'Provider blocked the request');
-      const candidate = event.candidates?.[0];
-      const next = (candidate?.content?.parts ?? []).flatMap(part => part.audioTranscription?.words ?? []);
+      if (event.event_type === 'error') throw new Error('Provider stream error');
+      const next = event.event_type === 'step.delta'
+        ? (event.delta?.annotations ?? []).filter(annotation => annotation.type === 'word_info')
+        : event.event_type === 'step.start'
+          ? (event.step?.content ?? []).flatMap(content => content.annotations ?? [])
+            .filter(annotation => annotation.type === 'word_info')
+          : [];
       assert.ok(!stopped || next.length === 0, 'Words arrived after completion');
-      if (candidate?.finishReason) {
-        assert.equal(candidate.finishReason, 'STOP', 'Provider did not complete normally');
+      if (event.event_type === 'interaction.completed') {
+        assert.equal(event.interaction?.status, 'completed', 'Provider did not complete normally');
         stopped = true;
       }
       words.push(...next);
       report.observations.push({ elapsedMs: Date.now() - started, words: next.length,
-        finishReason: candidate?.finishReason ?? null });
+        eventType: event.event_type });
     };
     for await (const chunk of response.body) {
       size += chunk.byteLength;
@@ -88,7 +96,7 @@ for (let slot = 0; slot < slots; slot++) for (const fixture of fixtures) {
       return Number(value.slice(0, -1)) * 1000;
     };
     const cues = words.map(word => {
-      const cue = { text: word.word, start_ms: offset(word.startOffset), end_ms: offset(word.endOffset) };
+      const cue = { text: word.text, start_ms: offset(word.start_offset), end_ms: offset(word.end_offset) };
       assert.ok(typeof cue.text === 'string' && cue.text.trim() && cue.start_ms <= cue.end_ms
         && cue.end_ms <= fixture.fixture.durationSeconds * 1000 + 100, 'Invalid timed word');
       return cue;

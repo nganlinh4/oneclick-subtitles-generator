@@ -9,8 +9,10 @@ const { build } = require('esbuild');
 
 const {
   assertProductionTransportBoundary,
+  assertNativeGeminiBoundary,
   assertReachableWebViewTransportBoundary,
   inspectProductionTransport,
+  inspectNativeGeminiBoundary,
   inspectReachableWebViewTransports,
   parseArguments,
 } = require('./check-production-transport');
@@ -128,6 +130,27 @@ test('rejects direct Gemini REST and WebSocket provider transports', () => {
       /Production web artifacts cross the native transport boundary/,
     );
   });
+});
+
+test('native provider code rejects retired Gemini generation endpoints', () => {
+  withSourceGraph({
+    'crates/example/src/lib.rs': 'const URL: &str = "v1beta/models/gemini-x:generateContent";',
+    'apps/desktop/src/main.rs': 'fn main() {}',
+    'crates/provider/worker.py': 'await client.aio.live.connect(model=model)',
+  }, (root) => {
+    assert.deepEqual(inspectNativeGeminiBoundary(root).violations, [
+      { file: 'crates/example/src/lib.rs', id: 'legacy-gemini-generation-endpoint', count: 1 },
+      { file: 'crates/provider/worker.py', id: 'legacy-gemini-generation-endpoint', count: 1 },
+    ]);
+    assert.throws(
+      () => assertNativeGeminiBoundary(root),
+      /bypasses the Gemini Interactions boundary/,
+    );
+  });
+});
+
+test('current native source has no retired Gemini generation endpoint', () => {
+  assert.deepEqual(assertNativeGeminiBoundary().violations, []);
 });
 
 test('rejects every retired fixed service origin and legacy API routes', () => {

@@ -396,7 +396,7 @@ pub const GEMINI_35_TRANSCRIBE: ModelSpec = ModelSpec {
     toolbox_thinking: ThinkingLevel::Minimal,
     toolbox_role: "dedicated speech transcription with native word timestamps and optional diarization",
     verified_at: "2026-09-06",
-    evidence_url: "https://ai.google.dev/gemini-api/docs/generate-content/transcribe",
+    evidence_url: "https://ai.google.dev/gemini-api/docs/transcribe",
 };
 
 pub const TRANSCRIPTION_MODELS: &[ModelSpec] = &[GEMINI_35_TRANSCRIBE];

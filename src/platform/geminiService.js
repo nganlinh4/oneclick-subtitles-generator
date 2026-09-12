@@ -6,7 +6,7 @@ import {
   isCustomGeminiModelId,
   modelAcceptsMedia,
 } from '../config/geminiModels';
-import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { invokeDesktop } from './desktopRuntime';
 
 export const GEMINI_TASKS = Object.freeze([
   'transcribe',
@@ -170,11 +170,6 @@ const invalidRequest = () => new GeminiServiceError(
 const invalidResponse = () => new GeminiServiceError(
   'invalidGeminiResponse',
   'The desktop host returned invalid Gemini job data'
-);
-
-const browserFallbackRequired = () => new GeminiServiceError(
-  'browserGeminiFallbackRequired',
-  'A browser-only Gemini fallback is required outside the desktop runtime'
 );
 
 const requireUuidV7 = (value) => {
@@ -462,7 +457,6 @@ const normalizeHandlers = (handlers) => {
 export const createNativeGeminiService = ({
   invokeCommand = invokeDesktop,
   ChannelConstructor = Channel,
-  isNativeRuntime = isDesktopRuntime,
 } = {}) => {
   const activeChannels = new Map();
 
@@ -579,24 +573,9 @@ export const createNativeGeminiService = ({
     return snapshot;
   };
 
-  const runGeminiWithBrowserFallback = ({
-    nativeRequest,
-    handlers,
-    browserFallback,
-  } = {}) => {
-    if (isNativeRuntime()) {
-      // A native invocation never falls back after an error: doing so would expose a credential or
-      // contact Gemini from the WebView precisely when the privileged path is unavailable.
-      return startGeminiJob(nativeRequest, handlers);
-    }
-    if (typeof browserFallback !== 'function') return Promise.reject(browserFallbackRequired());
-    return Promise.resolve().then(browserFallback);
-  };
-
   return Object.freeze({
     startGeminiJob,
     cancelGeminiJob,
-    runGeminiWithBrowserFallback,
   });
 };
 
@@ -604,4 +583,3 @@ const geminiService = createNativeGeminiService();
 
 export const startGeminiJob = geminiService.startGeminiJob;
 export const cancelGeminiJob = geminiService.cancelGeminiJob;
-export const runGeminiWithBrowserFallback = geminiService.runGeminiWithBrowserFallback;

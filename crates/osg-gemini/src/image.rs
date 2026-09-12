@@ -40,9 +40,7 @@ pub enum ImageAspectRatio {
 impl ImageAspectRatio {
     const fn wire_value(self) -> &'static str {
         match self {
-            // The v1 REST schema uses protobuf enum names. The human-readable "16:9" accepted by
-            // SDK convenience layers is rejected by the raw endpoint as INVALID_ARGUMENT.
-            Self::Landscape16By9 => "ASPECT_RATIO_SIXTEEN_BY_NINE",
+            Self::Landscape16By9 => "16:9",
         }
     }
 }
@@ -57,7 +55,7 @@ pub enum ImageSize {
 impl ImageSize {
     const fn wire_value(self) -> &'static str {
         match self {
-            Self::OneK => "IMAGE_SIZE_ONE_K",
+            Self::OneK => "1K",
         }
     }
 }
@@ -169,24 +167,19 @@ impl fmt::Debug for GeneratedImage {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct WireImageRequest {
-    contents: Vec<WireContent>,
-    generation_config: WireImageGenerationConfig,
+    model: &'static str,
+    input: Vec<WireInput>,
+    response_format: WireImageFormat,
+    store: bool,
 }
 
 #[derive(Serialize)]
-struct WireContent {
-    role: &'static str,
-    parts: Vec<WirePart>,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum WirePart {
-    InlineData {
-        #[serde(rename = "inlineData")]
-        inline_data: WireInlineData,
+#[serde(tag = "type", rename_all = "snake_case")]
+enum WireInput {
+    Image {
+        mime_type: &'static str,
+        data: String,
     },
     Text {
         text: String,
@@ -194,61 +187,34 @@ enum WirePart {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireInlineData {
-    mime_type: &'static str,
-    data: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireImageGenerationConfig {
-    response_modalities: [&'static str; 1],
-    response_format: WireResponseFormat,
-}
-
-#[derive(Serialize)]
-struct WireResponseFormat {
-    image: WireImageFormat,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct WireImageFormat {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    mime_type: &'static str,
     aspect_ratio: &'static str,
     image_size: &'static str,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct WireImageResponse {
     #[serde(default)]
-    candidates: Vec<WireCandidate>,
-    prompt_feedback: Option<crate::PromptFeedback>,
+    steps: Vec<WireStep>,
 }
 
 #[derive(Deserialize)]
-struct WireCandidate {
-    content: Option<WireResponseContent>,
-}
-
-#[derive(Deserialize)]
-struct WireResponseContent {
+struct WireStep {
+    #[serde(rename = "type")]
+    kind: String,
     #[serde(default)]
-    parts: Vec<WireResponsePart>,
+    content: Vec<WireResponsePart>,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct WireResponsePart {
-    inline_data: Option<WireResponseInlineData>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireResponseInlineData {
-    mime_type: String,
-    data: String,
+    #[serde(rename = "type")]
+    kind: String,
+    mime_type: Option<String>,
+    data: Option<String>,
 }
 
 impl GeminiClient {
@@ -270,10 +236,7 @@ impl GeminiClient {
             });
         }
 
-        let endpoint = self.endpoint(&format!(
-            "v1/models/{}:generateContent",
-            request.model.api_id()
-        ))?;
+        let endpoint = self.endpoint(crate::interactions::PATH)?;
         let response = self
             .send_with_retry(
                 "image generation",
@@ -304,58 +267,47 @@ fn validate_request(request: &ImageGenerateRequest) -> Result<()> {
 
 fn build_payload(request: &ImageGenerateRequest) -> WireImageRequest {
     WireImageRequest {
-        contents: vec![WireContent {
-            role: "user",
-            parts: vec![
-                WirePart::InlineData {
-                    inline_data: WireInlineData {
-                        mime_type: request.reference.mime_type,
-                        data: BASE64_STANDARD.encode(&request.reference.bytes),
-                    },
-                },
-                WirePart::Text {
-                    text: request.prompt.clone(),
-                },
-            ],
-        }],
-        generation_config: WireImageGenerationConfig {
-            response_modalities: ["IMAGE"],
-            response_format: WireResponseFormat {
-                image: WireImageFormat {
-                    aspect_ratio: request.aspect_ratio.wire_value(),
-                    image_size: request.image_size.wire_value(),
-                },
+        model: request.model.api_id(),
+        input: vec![
+            WireInput::Image {
+                mime_type: request.reference.mime_type,
+                data: BASE64_STANDARD.encode(&request.reference.bytes),
             },
+            WireInput::Text {
+                text: request.prompt.clone(),
+            },
+        ],
+        response_format: WireImageFormat {
+            kind: "image",
+            mime_type: "image/jpeg",
+            aspect_ratio: request.aspect_ratio.wire_value(),
+            image_size: request.image_size.wire_value(),
         },
+        store: false,
     }
 }
 
 fn decode_response(body: &[u8]) -> Result<GeneratedImage> {
     let response: WireImageResponse =
         serde_json::from_slice(body).map_err(|_| Error::Transport(crate::TransportKind::Decode))?;
-    if response
-        .prompt_feedback
-        .as_ref()
-        .and_then(|feedback| feedback.block_reason.as_deref())
-        .is_some()
-    {
-        return Err(Error::ImageOutputBlocked);
-    }
     let inline = response
-        .candidates
-        .first()
-        .and_then(|candidate| candidate.content.as_ref())
-        .and_then(|content| {
-            content
-                .parts
-                .iter()
-                .find_map(|part| part.inline_data.as_ref())
-        })
+        .steps
+        .iter()
+        .filter(|step| step.kind == "model_output")
+        .flat_map(|step| &step.content)
+        .find(|part| part.kind == "image")
         .ok_or(Error::NoImageOutput)?;
-    let mime_type = canonical_image_mime(&inline.mime_type)
-        .ok_or_else(|| Error::UnsupportedMimeType(inline.mime_type.to_ascii_lowercase()))?;
+    let wire_mime = inline.mime_type.as_deref().ok_or(Error::NoImageOutput)?;
+    let mime_type = canonical_image_mime(wire_mime)
+        .ok_or_else(|| Error::UnsupportedMimeType(wire_mime.to_ascii_lowercase()))?;
     let bytes = BASE64_STANDARD
-        .decode(inline.data.as_bytes())
+        .decode(
+            inline
+                .data
+                .as_deref()
+                .ok_or(Error::NoImageOutput)?
+                .as_bytes(),
+        )
         .map_err(|_| Error::InvalidImageOutput)?;
     if bytes.is_empty()
         || bytes.len() > MAX_GENERATED_BYTES
@@ -409,15 +361,14 @@ mod tests {
     fn payload_uses_only_the_stable_video_capable_image_model_contract() {
         let value = serde_json::to_value(build_payload(&request())).expect("serializes");
         assert_eq!(ImageModel::Gemini31FlashImage.api_id(), IMAGE_MODEL_ID);
-        assert_eq!(value["generationConfig"]["responseModalities"][0], "IMAGE");
-        assert_eq!(
-            value["generationConfig"]["responseFormat"]["image"]["aspectRatio"],
-            "ASPECT_RATIO_SIXTEEN_BY_NINE"
-        );
-        assert_eq!(
-            value["generationConfig"]["responseFormat"]["image"]["imageSize"],
-            "IMAGE_SIZE_ONE_K"
-        );
+        assert_eq!(value["model"], IMAGE_MODEL_ID);
+        assert_eq!(value["store"], false);
+        assert_eq!(value["input"][0]["type"], "image");
+        assert_eq!(value["response_format"]["type"], "image");
+        assert_eq!(value["response_format"]["mime_type"], "image/jpeg");
+        assert_eq!(value["response_format"]["aspect_ratio"], "16:9");
+        assert_eq!(value["response_format"]["image_size"], "1K");
+        assert!(value.get("generationConfig").is_none());
     }
 
     #[test]
@@ -425,12 +376,12 @@ mod tests {
         assert!(ReferenceImage::new("image/png", png()).is_ok());
         assert!(ReferenceImage::new("image/png", Bytes::from_static(b"not png")).is_err());
         let response = serde_json::json!({
-            "candidates": [{"content": {"parts": [{
-                "inlineData": {
-                    "mimeType": "image/png",
-                    "data": BASE64_STANDARD.encode(png())
-                }
-            }]}}]
+            "status": "completed",
+            "steps": [{"type": "model_output", "content": [{
+                "type": "image",
+                "mime_type": "image/png",
+                "data": BASE64_STANDARD.encode(png())
+            }]}]
         });
         let image = decode_response(&serde_json::to_vec(&response).expect("serializes"))
             .expect("valid output");

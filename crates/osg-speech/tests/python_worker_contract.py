@@ -105,9 +105,37 @@ class WorkerContractTests(unittest.TestCase):
     def test_gemini_catalog_is_closed_and_matches_the_app_catalog(self):
         worker = load_worker()
         self.assertEqual(worker.GEMINI_MODELS, {
-            "gemini-3.1-flash-live-preview",
-            "gemini-2.5-flash-native-audio-preview-12-2025",
+            "gemini-3.1-flash-tts-preview",
         })
+
+    def test_gemini_speech_uses_stateless_interactions_audio_output(self):
+        worker = load_worker()
+        create = mock.Mock(return_value=SimpleNamespace(
+            output_audio=SimpleNamespace(data=base64.b64encode(b"\x01\x00\x02\x00").decode()),
+        ))
+        client = mock.MagicMock()
+        client.__enter__.return_value = SimpleNamespace(
+            interactions=SimpleNamespace(create=create),
+        )
+        google = ModuleType("google")
+        google.genai = SimpleNamespace(Client=mock.Mock(return_value=client))
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            sys.modules, {"google": google},
+        ), mock.patch.object(worker, "_PROVIDER_SECRET", "secret"):
+            output = Path(directory) / "speech.wav"
+            worker._synthesize_gemini("Hello", {
+                "model": "gemini-3.1-flash-tts-preview",
+                "voice": "Kore",
+                "language": "en-US",
+            }, output)
+            self.assertTrue(output.is_file())
+        arguments = create.call_args.kwargs
+        self.assertEqual(arguments["model"], "gemini-3.1-flash-tts-preview")
+        self.assertEqual(arguments["response_format"], {"type": "audio"})
+        self.assertEqual(arguments["generation_config"], {
+            "speech_config": [{"voice": "Kore", "language": "en-US"}],
+        })
+        self.assertFalse(arguments["store"])
 
     def test_multilingual_chatterbox_resolves_cangjie_only_from_managed_root(self):
         worker = load_worker()
@@ -994,28 +1022,6 @@ class IncompatibleTorchConversion:
         finally:
             worker._MODEL_ROOT_VALUE = old_value
             worker._MODEL_ROOT = old_root
-
-    def test_gemini_pcm_chunks_require_the_declared_24khz_contract(self):
-        worker = load_worker()
-        encoded = base64.b64encode(b"\x00\x00").decode("ascii")
-        self.assertEqual(
-            worker._decode_pcm_inline(SimpleNamespace(
-                data=encoded,
-                mime_type="audio/pcm;rate=24000",
-            )),
-            b"\x00\x00",
-        )
-        with self.assertRaisesRegex(worker.WorkerFailure, "encoding_failed"):
-            worker._decode_pcm_inline(SimpleNamespace(
-                data=encoded,
-                mime_type="audio/mpeg",
-            ))
-        with self.assertRaisesRegex(worker.WorkerFailure, "encoding_failed"):
-            worker._decode_pcm_inline(SimpleNamespace(
-                data="not base64!",
-                mime_type="audio/pcm;rate=24000",
-            ))
-
 
 if __name__ == "__main__":
     unittest.main()

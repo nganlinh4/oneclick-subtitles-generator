@@ -17,7 +17,7 @@ use serde_json::json;
 use url::Url;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{method, path, query_param},
+    matchers::{method, path},
 };
 
 fn challenge_client(server: &MockServer, retry: RetryPolicy) -> GeminiClient {
@@ -426,7 +426,7 @@ async fn mock_quota_429_transient_retry_succeeds_and_clears_cooldown() {
     // Call 1: 429 with short Retry-After: 0.02s
     // Call 2: 200 OK with valid response
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(move |_: &wiremock::Request| {
             let n = hit_clone.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
@@ -441,24 +441,16 @@ async fn mock_quota_429_transient_retry_succeeds_and_clears_cooldown() {
                     }))
             } else {
                 ResponseTemplate::new(200).set_body_json(json!({
-                    "candidates": [{
-                        "content": {
-                            "role": "model",
-                            "parts": [{
-                                "audioTranscription": {
-                                    "words": [{
-                                        "word": "success_after_quota",
-                                        "startOffset": "0.100s",
-                                        "endOffset": "0.500s"
-                                    }]
-                                }
-                            }]
-                        },
-                        "finishReason": "STOP",
-                        "index": 0
-                    }],
-                    "usageMetadata": {"promptTokenCount": 20, "totalTokenCount": 20},
-                    "modelVersion": "gemini-3.5-transcribe"
+                    "id": "v1_quota_recovered",
+                    "model": "gemini-3.5-transcribe",
+                    "status": "completed",
+                    "steps": [{"type":"model_output","content":[{
+                        "type":"text","text":"success_after_quota","annotations":[{
+                            "type":"word_info","text":"success_after_quota",
+                            "start_offset":"0.100s","end_offset":"0.500s"
+                        }]
+                    }]}],
+                    "usage": {"total_input_tokens":20,"total_tokens":20}
                 }))
             }
         })
@@ -505,7 +497,7 @@ async fn mock_quota_429_large_retry_after_fails_fast_with_cooldown() {
 
     // 429 with retry-after = 120s (> max_delay)
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("retry-after", "120")
@@ -560,7 +552,7 @@ async fn mock_quota_429_exhausts_max_retries() {
 
     // Always returns 429 with small retry-after: 0.005s
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("retry-after", "0.005")
@@ -602,31 +594,21 @@ async fn mock_503_service_unavailable_transient_retry_succeeds() {
     let hit_clone = Arc::clone(&hit_counter);
 
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(move |_: &wiremock::Request| {
             let n = hit_clone.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
                 ResponseTemplate::new(503).set_body_raw("Service Unavailable", "text/plain")
             } else {
                 ResponseTemplate::new(200).set_body_json(json!({
-                    "candidates": [{
-                        "content": {
-                            "role": "model",
-                            "parts": [{
-                                "audioTranscription": {
-                                    "words": [{
-                                        "word": "recovered",
-                                        "startOffset": "0.100s",
-                                        "endOffset": "0.300s"
-                                    }]
-                                }
-                            }]
-                        },
-                        "finishReason": "STOP",
-                        "index": 0
-                    }],
-                    "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 10},
-                    "modelVersion": "gemini-3.5-transcribe"
+                    "id":"v1_recovered","model":"gemini-3.5-transcribe","status":"completed",
+                    "steps":[{"type":"model_output","content":[{
+                        "type":"text","text":"recovered","annotations":[{
+                            "type":"word_info","text":"recovered",
+                            "start_offset":"0.100s","end_offset":"0.300s"
+                        }]
+                    }]}],
+                    "usage":{"total_input_tokens":10,"total_tokens":10}
                 }))
             }
         })
@@ -656,7 +638,7 @@ async fn mock_cancellation_aborts_quota_retry_sleep_promptly() {
 
     // Server returns 429 with 0.8s retry delay
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("retry-after", "0.80")
@@ -704,10 +686,7 @@ async fn mock_transcribe_stream_429_quota_refusal_sets_cooldown() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
-        .and(path(
-            "/v1beta/models/gemini-3.5-transcribe:streamGenerateContent",
-        ))
-        .and(query_param("alt", "sse"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("retry-after", "90")
@@ -766,7 +745,7 @@ async fn mock_api_key_redaction_in_provider_error() {
     let secret_key = "adversarial-secret-key-12345";
 
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(ResponseTemplate::new(403).set_body_json(json!({
             "error": {
                 "code": 403,

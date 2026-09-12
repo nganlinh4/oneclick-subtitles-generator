@@ -88,12 +88,7 @@ export async function generateBackgroundPrompt(
   const template = localStorage.getItem('background_prompt_one') || DEFAULT_PROMPT_ONE;
   const content = renderTemplate(template, { lyrics, songName });
 
-  if (!isDesktopRuntime()) {
-    const { generateBrowserBackgroundPrompt } = await import('./imageGenerationBrowserService');
-    return promptResult(normalizeGeneratedPrompt(
-      await generateBrowserBackgroundPrompt({ content, model })
-    ));
-  }
+  if (!isDesktopRuntime()) throw new Error('Gemini image prompting requires the desktop runtime.');
 
   const thinking = getThinkingBudget(model);
   const result = await runNativeGeminiText({
@@ -119,24 +114,13 @@ export async function generateBackgroundImage(prompt, albumArtUrl, { signal } = 
   const promptTemplate = localStorage.getItem('background_prompt_two') || DEFAULT_PROMPT_TWO;
   const finalPrompt = renderTemplate(promptTemplate, { prompt });
 
-  if (isDesktopRuntime()) {
-    const generated = await generateNativeGeminiImage({
-      referencePlaybackUrl: albumArtUrl,
-      prompt: finalPrompt,
-      model,
-      signal,
-    });
-    return generated.image;
-  }
-
-  // Browser compatibility stays in a separate lazy module. The production desktop fold removes
-  // this import and its inline-image/provider implementation from the emitted WebView graph.
-  const { generateBrowserBackgroundImage } = await import('./imageGenerationBrowserService');
-  return generateBrowserBackgroundImage({
+  if (!isDesktopRuntime()) throw new Error('Gemini image generation requires the desktop runtime.');
+  const generated = await generateNativeGeminiImage({
+    referencePlaybackUrl: albumArtUrl,
     prompt: finalPrompt,
-    albumArtUrl,
     model,
     signal,
   });
+  return generated.image;
 }
 

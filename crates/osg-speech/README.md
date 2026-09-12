@@ -13,7 +13,7 @@ must construct these values from an approved native project/file capability.
 ## Legacy capability audit
 
 The rewrite audit covered both implementations of Edge/gTTS, the F5 service,
-the Chatterbox service and UI client, Gemini Live narration, reference handling,
+the Chatterbox service and UI client, Gemini TTS narration, reference handling,
 every narration audio route, and the aligned-audio pipeline.
 
 | Legacy area | Useful behavior retained by this crate | Legacy liability removed at this boundary |
@@ -22,7 +22,7 @@ every narration audio route, and the aligned-audio pipeline.
 | Chatterbox | English/multilingual language selection, reference voice, exaggeration, CFG, fixed worker-side model behavior, and voice conversion | Unauthenticated localhost FastAPI/CORS surface, multipart temp-file handling, UI-owned health/wake-up retries |
 | Edge TTS | Voice inventory, voice selection, rate/volume/pitch, MP3 artifacts, batched native orchestration | Generated temporary Python source, raw string controls, SSML interpolation, per-subtitle process spawn, unbounded child output |
 | gTTS | Language inventory through the generic inventory command, all 13 legacy TLDs, slow mode, MP3 artifacts | Generated temporary Python source, arbitrary language/domain strings, temporary-file leakage, per-subtitle process spawn |
-| Gemini Live TTS | Typed model/voice/language, native-only provider credential, WAV artifact contract, app-controlled parallel worker instances | Browser-held API keys, browser WebSocket pool, base64 PCM round trip, prompt/text logging, cancellation that only cleared a JS flag |
+| Gemini TTS | Typed model/voice/language, native-only provider credential, stateless Interactions audio output, WAV artifact contract, app-controlled parallel worker instances | Browser-held API keys, browser WebSocket pool, legacy Live-preview models, prompt/text logging, cancellation that only cleared a JS flag |
 | Reference audio | Canonical native file capabilities, approved-root option, change detection, segment trim/resample/stereo/padding plan | 5 GiB multipart/base64 HTTP uploads, returned absolute paths, common-install/PATH FFmpeg guessing, overwrite-by-default |
 | Speed/trim | 0.25x-4x typed speed, normalized trim, timestamp reset, FFmpeg-safe 0.5x-2x tempo-stage decomposition, deterministic output duration | Inconsistent endpoint limits, in-place mutation and `backup_` conventions, raw filenames and filter construction in routes |
 | Duration/metadata | Typed measured durations on artifacts and deterministic plan inputs | JSON sidecars and duplicated WAV/ffprobe duration logic; exact probing belongs to `osg-media` |
@@ -156,7 +156,7 @@ not copied. Playback and waveform generation are separate media/UI concerns.
 ## Deliberate remaining parity gaps
 
 - The unified Python adapter implements F5, Chatterbox TTS/voice conversion,
-  Edge TTS, gTTS, Gemini Live audio, voice inventory, and F5 reference
+  Edge TTS, gTTS, Gemini Interactions audio, voice inventory, and F5 reference
   preparation. Release builds still fail closed until compatible pinned Python
   runtimes and packages are installed or bundled for the selected backend.
 - Model install/update/remove/download and GPU/device selection remain outside

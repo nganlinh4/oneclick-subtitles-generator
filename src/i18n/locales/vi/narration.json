@@ -182,7 +182,7 @@
   "geminiGeneratingProgress": "Đã tạo {{progress}} trên {{total}} thuyết minh với Gemini...",
   "geminiGenerationComplete": "Tạo thuyết minh Gemini hoàn tất",
   "geminiGenerationError": "Lỗi khi tạo thuyết minh với Gemini",
-  "geminiMethod": "Gemini Live API",
+  "geminiMethod": "Gemini TTS",
   "narrationMethod": "Phương pháp thuyết minh",
   "f5ttsUnavailable": "(Không khả dụng — cài trong Cài đặt → Engine)",
   "geminiUnavailable": "(Không khả dụng - Kiểm tra khóa API trong cài đặt)",

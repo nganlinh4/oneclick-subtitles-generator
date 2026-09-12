@@ -24,7 +24,7 @@ use crate::{
 pub type GenerateStream = Pin<Box<dyn Stream<Item = Result<GenerateResponse>> + Send + 'static>>;
 
 impl GeminiClient {
-    /// Opens `streamGenerateContent` and yields each SSE response exactly once.
+    /// Opens a stateless streaming Interaction and yields model-output deltas exactly once.
     ///
     /// Transient failures may be retried only while opening the HTTP response.
     /// Once a successful streaming response has been accepted, body failures are
@@ -45,11 +45,7 @@ impl GeminiClient {
             });
         }
 
-        let mut endpoint = self.endpoint(&format!(
-            "v1beta/models/{}:streamGenerateContent",
-            request.model.api_id()
-        ))?;
-        endpoint.query_pairs_mut().append_pair("alt", "sse");
+        let endpoint = self.endpoint(crate::interactions::PATH)?;
         let response = self
             .open_stream_with_retry(&endpoint, &payload, request.model, cancel)
             .await?;
@@ -96,7 +92,7 @@ impl GeminiClient {
         Ok(Box::pin(output))
     }
 
-    /// Opens `streamGenerateContent` with `AudioTranscriptionConfig` and yields each SSE response exactly once.
+    /// Opens a streaming transcription Interaction and yields word annotations exactly once.
     pub async fn transcribe_stream(
         &self,
         request: TranscribeRequest,
@@ -113,11 +109,7 @@ impl GeminiClient {
             });
         }
 
-        let mut endpoint = self.endpoint(&format!(
-            "v1beta/models/{}:streamGenerateContent",
-            request.model.api_id()
-        ))?;
-        endpoint.query_pairs_mut().append_pair("alt", "sse");
+        let endpoint = self.endpoint(crate::interactions::PATH)?;
         let response = self
             .open_stream_with_retry(&endpoint, &payload, request.model, cancel)
             .await?;
@@ -369,11 +361,10 @@ impl SseDecoder {
         if data == b"[DONE]" {
             return Ok(Some(DecodedEvent::Done));
         }
-        serde_json::from_slice(&data)
-            .map(Box::new)
-            .map(DecodedEvent::Response)
-            .map(Some)
-            .map_err(|_| Error::Transport(crate::TransportKind::Decode))
+        let event: crate::interactions::InteractionEvent = serde_json::from_slice(&data)
+            .map_err(|_| Error::Transport(crate::TransportKind::Decode))?;
+        crate::interactions::event_response(event)
+            .map(|response| response.map(Box::new).map(DecodedEvent::Response))
     }
 }
 
@@ -386,11 +377,11 @@ mod tests {
     fn decoder_handles_fragmented_crlf_multiline_and_done() {
         let mut decoder = SseDecoder::new(1_024);
         let first = decoder
-            .push(b": keepalive\r\ndata: {\"candidates\":\r\n")
+            .push(b": keepalive\r\ndata: {\"event_type\":\"step.delta\",\r\n")
             .expect("first fragment");
         assert!(first.is_empty());
         let second = decoder
-            .push(b"data: [{\"content\":{\"parts\":[{\"text\":\"hello\"}]}}]}\r\n\r\ndata: [DO")
+            .push(b"data: \"delta\":{\"type\":\"text\",\"text\":\"hello\"}}\r\n\r\ndata: [DO")
             .expect("second fragment");
         assert_eq!(second.len(), 1);
         let DecodedEvent::Response(response) = &second[0] else {

@@ -360,44 +360,6 @@ it('validates and invokes generic native job cancellation', async () => {
     .rejects.toMatchObject({ code: 'invalidGeminiRequest' });
 });
 
-it('uses an explicit legacy fallback only in a browser and never after a native failure', async () => {
-  const browserFallback = vi.fn().mockResolvedValue('legacy result');
-  const browserInvoke = vi.fn();
-  const browserService = createNativeGeminiService({
-    invokeCommand: browserInvoke,
-    ChannelConstructor: TestChannel,
-    isNativeRuntime: () => false,
-  });
-  await expect(browserService.runGeminiWithBrowserFallback({
-    nativeRequest: nativeRequest(),
-    browserFallback,
-  })).resolves.toBe('legacy result');
-  expect(browserInvoke).not.toHaveBeenCalled();
-
-  const nativeInvoke = vi.fn().mockRejectedValue(new Error('native unavailable'));
-  const nativeFallback = vi.fn();
-  const nativeService = createNativeGeminiService({
-    invokeCommand: nativeInvoke,
-    ChannelConstructor: TestChannel,
-    isNativeRuntime: () => true,
-  });
-  await expect(nativeService.runGeminiWithBrowserFallback({
-    nativeRequest: nativeRequest(),
-    browserFallback: nativeFallback,
-  })).rejects.toThrow('native unavailable');
-  expect(nativeFallback).not.toHaveBeenCalled();
-});
-
-it('requires an explicit fallback in a browser', async () => {
-  const service = createNativeGeminiService({
-    invokeCommand: vi.fn(),
-    ChannelConstructor: TestChannel,
-    isNativeRuntime: () => false,
-  });
-  await expect(service.runGeminiWithBrowserFallback({ nativeRequest: nativeRequest() }))
-    .rejects.toMatchObject({ code: 'browserGeminiFallbackRequired' });
-});
-
 it('rejects malformed job snapshots at the trust boundary', () => {
   expect(() => normalizeJobSnapshot(jobSnapshot({ sequence: -1 })))
     .toThrow(GeminiServiceError);

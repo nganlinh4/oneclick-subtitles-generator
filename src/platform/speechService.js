@@ -1,5 +1,6 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { GEMINI_SPEECH_MODEL_IDS } from '../config/geminiModels';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 
 export const SPEECH_BACKENDS = Object.freeze([
@@ -10,10 +11,7 @@ export const SPEECH_BACKENDS = Object.freeze([
   'geminiTts',
 ]);
 
-export const GEMINI_SPEECH_MODELS = Object.freeze([
-  'gemini-3.1-flash-live-preview',
-  'gemini-2.5-flash-native-audio-preview-12-2025',
-]);
+export const GEMINI_SPEECH_MODELS = Object.freeze([...GEMINI_SPEECH_MODEL_IDS]);
 
 export const GEMINI_SPEECH_VOICES = Object.freeze([
   'Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede',

@@ -1,18 +1,15 @@
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use futures_util::StreamExt;
 use reqwest::{StatusCode, header::HeaderMap};
-use serde::Serialize;
-use serde_json::Value;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
-    ApiKey, AudioTranscriptionConfig, Error, GenerateRequest, GenerateResponse, MediaInput, Model,
-    Result, RetryPolicy, TranscribeRequest,
+    ApiKey, Error, GenerateRequest, GenerateResponse, MediaInput, Model, Result, RetryPolicy,
+    TranscribeRequest,
     retry::{parse_provider_error, retry_delay, transport_kind},
     types::is_loopback_host,
 };
@@ -210,7 +207,7 @@ impl GeminiClient {
         Self::builder(api_key).build()
     }
 
-    /// Sends one bounded `generateContent` request. Dropping this future or
+    /// Sends one bounded, stateless Interactions API request. Dropping this future or
     /// cancelling the supplied token stops in-flight I/O, cooldown waits, and
     /// retry sleeps.
     pub async fn generate(
@@ -222,11 +219,7 @@ impl GeminiClient {
         self.wait_for_cooldown(request.model, cancel).await?;
         let _permit = self.acquire(cancel).await?;
 
-        let payload = build_generate_payload(&request);
-        let payload =
-            Arc::new(serde_json::to_vec(&payload).map_err(|_| {
-                Error::InvalidRequest("failed to encode Gemini request".to_owned())
-            })?);
+        let payload = Arc::new(crate::interactions::encode_generate(&request, false)?);
         if payload.len() > self.inner.options.max_inline_request_bytes {
             return Err(Error::InlineRequestTooLarge {
                 actual_bytes: payload.len(),
@@ -234,10 +227,7 @@ impl GeminiClient {
             });
         }
 
-        let endpoint = self.endpoint(&format!(
-            "v1beta/models/{}:generateContent",
-            request.model.api_id()
-        ))?;
+        let endpoint = self.endpoint(crate::interactions::PATH)?;
         let body = self
             .send_with_retry(
                 "generation",
@@ -254,10 +244,10 @@ impl GeminiClient {
             .await?
             .body;
         self.inner.cooldowns.lock().await.remove(&request.model);
-        serde_json::from_slice(&body).map_err(|_| Error::Transport(crate::TransportKind::Decode))
+        crate::interactions::decode_interaction(&body)
     }
 
-    /// Sends one bounded `generateContent` transcription request with `AudioTranscriptionConfig`.
+    /// Sends one bounded native transcription request through the Interactions API.
     pub async fn transcribe(
         &self,
         request: TranscribeRequest,
@@ -267,10 +257,7 @@ impl GeminiClient {
         self.wait_for_cooldown(request.model, cancel).await?;
         let _permit = self.acquire(cancel).await?;
 
-        let payload = build_transcribe_payload(&request);
-        let payload = Arc::new(serde_json::to_vec(&payload).map_err(|_| {
-            Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
-        })?);
+        let payload = Arc::new(crate::interactions::encode_transcribe(&request, false)?);
         if payload.len() > self.inner.options.max_inline_request_bytes {
             return Err(Error::InlineRequestTooLarge {
                 actual_bytes: payload.len(),
@@ -278,10 +265,7 @@ impl GeminiClient {
             });
         }
 
-        let endpoint = self.endpoint(&format!(
-            "v1beta/models/{}:generateContent",
-            request.model.api_id()
-        ))?;
+        let endpoint = self.endpoint(crate::interactions::PATH)?;
         let body = self
             .send_with_retry(
                 "transcription",
@@ -298,7 +282,7 @@ impl GeminiClient {
             .await?
             .body;
         self.inner.cooldowns.lock().await.remove(&request.model);
-        serde_json::from_slice(&body).map_err(|_| Error::Transport(crate::TransportKind::Decode))
+        crate::interactions::decode_interaction(&body)
     }
 
     pub(crate) fn endpoint(&self, path: &str) -> Result<Url> {
@@ -463,201 +447,12 @@ pub(crate) struct ResponseData {
     pub body: Vec<u8>,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireGenerateRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system_instruction: Option<WireContent>,
-    contents: Vec<WireContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    generation_config: Option<WireGenerationConfig>,
-}
-
-#[derive(Serialize)]
-struct WireContent {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<&'static str>,
-    parts: Vec<WirePart>,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum WirePart {
-    Text {
-        text: String,
-    },
-    InlineData {
-        #[serde(rename = "videoMetadata", skip_serializing_if = "Option::is_none")]
-        video_metadata: Option<WireVideoMetadata>,
-        #[serde(rename = "inlineData")]
-        inline_data: WireInlineData,
-    },
-    FileData {
-        #[serde(rename = "videoMetadata", skip_serializing_if = "Option::is_none")]
-        video_metadata: Option<WireVideoMetadata>,
-        #[serde(rename = "fileData")]
-        file_data: WireFileData,
-    },
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireInlineData {
-    mime_type: String,
-    data: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireFileData {
-    mime_type: String,
-    file_uri: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireGenerationConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_output_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking_config: Option<WireThinkingConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    media_resolution: Option<crate::MediaResolution>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    response_mime_type: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    response_json_schema: Option<Value>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WireThinkingConfig {
-    thinking_level: crate::ThinkingLevel,
-}
-
-#[derive(Serialize)]
-struct WireVideoMetadata {
-    fps: f64,
-}
-
-fn video_metadata(mime_type: &str, fps: Option<f64>) -> Option<WireVideoMetadata> {
-    fps.filter(|_| mime_type.starts_with("video/"))
-        .map(|fps| WireVideoMetadata { fps })
-}
-
-fn build_generate_payload(request: &GenerateRequest) -> WireGenerateRequest {
-    let mut parts = Vec::with_capacity(request.media.len().saturating_add(1));
-    for media in &request.media {
-        match media {
-            MediaInput::Inline(media) => parts.push(WirePart::InlineData {
-                video_metadata: video_metadata(media.mime_type(), request.generation.video_fps),
-                inline_data: WireInlineData {
-                    mime_type: media.mime_type().to_owned(),
-                    data: BASE64_STANDARD.encode(media.bytes()),
-                },
-            }),
-            MediaInput::Uploaded(media) => parts.push(WirePart::FileData {
-                video_metadata: video_metadata(media.mime_type(), request.generation.video_fps),
-                file_data: WireFileData {
-                    mime_type: media.mime_type().to_owned(),
-                    file_uri: media.uri().as_str().to_owned(),
-                },
-            }),
-        }
-    }
-    parts.push(WirePart::Text {
-        text: request.prompt.clone(),
-    });
-
-    let schema = request.generation.response_json_schema.clone();
-    let has_generation = request.generation.max_output_tokens.is_some()
-        || request.generation.thinking_level.is_some()
-        || request.generation.media_resolution.is_some()
-        || schema.is_some();
-    WireGenerateRequest {
-        system_instruction: request
-            .system_instruction
-            .as_ref()
-            .map(|instruction| WireContent {
-                role: None,
-                parts: vec![WirePart::Text {
-                    text: instruction.clone(),
-                }],
-            }),
-        contents: vec![WireContent {
-            role: Some("user"),
-            parts,
-        }],
-        generation_config: has_generation.then_some(WireGenerationConfig {
-            max_output_tokens: request.generation.max_output_tokens,
-            thinking_config: request
-                .generation
-                .thinking_level
-                .map(|thinking_level| WireThinkingConfig { thinking_level }),
-            media_resolution: request.generation.media_resolution,
-            response_mime_type: schema.as_ref().map(|_| "application/json"),
-            response_json_schema: schema,
-        }),
-    }
-}
-
 pub(crate) fn encode_generate_request(request: &GenerateRequest) -> Result<Vec<u8>> {
-    serde_json::to_vec(&build_generate_payload(request))
-        .map_err(|_| Error::InvalidRequest("failed to encode Gemini request".to_owned()))
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct WireTranscribeRequest {
-    contents: Vec<WireContent>,
-    generation_config: WireTranscribeGenerationConfig,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct WireTranscribeGenerationConfig {
-    max_output_tokens: u32,
-    audio_transcription_config: AudioTranscriptionConfig,
-}
-
-pub(crate) fn build_transcribe_payload(request: &TranscribeRequest) -> WireTranscribeRequest {
-    let part = match &request.media {
-        MediaInput::Inline(media) => WirePart::InlineData {
-            video_metadata: None,
-            inline_data: WireInlineData {
-                mime_type: media.mime_type().to_owned(),
-                data: BASE64_STANDARD.encode(media.bytes()),
-            },
-        },
-        MediaInput::Uploaded(media) => WirePart::FileData {
-            video_metadata: None,
-            file_data: WireFileData {
-                mime_type: media.mime_type().to_owned(),
-                file_uri: media.uri().as_str().to_owned(),
-            },
-        },
-    };
-
-    WireTranscribeRequest {
-        contents: vec![WireContent {
-            role: None,
-            parts: vec![part],
-        }],
-        generation_config: WireTranscribeGenerationConfig {
-            // The provider's model-dependent default is too small for dense word annotations: a
-            // sub-minute song can otherwise terminate with MAX_TOKENS after returning valid words.
-            // Pin the documented model ceiling so completion is governed by the requested audio
-            // window, not an opaque server default.
-            max_output_tokens: request.model.output_token_limit(),
-            audio_transcription_config: request.config.clone(),
-        },
-    }
+    crate::interactions::encode_generate(request, true)
 }
 
 pub(crate) fn encode_transcribe_request(request: &TranscribeRequest) -> Result<Vec<u8>> {
-    serde_json::to_vec(&build_transcribe_payload(request)).map_err(|_| {
-        Error::InvalidRequest("failed to encode Gemini transcription request".to_owned())
-    })
+    crate::interactions::encode_transcribe(request, true)
 }
 
 pub(crate) fn validate_generate_request(request: &GenerateRequest) -> Result<()> {
@@ -799,19 +594,12 @@ mod tests {
                 ..crate::GenerationConfig::default()
             },
         };
-        let value = serde_json::to_value(build_generate_payload(&request)).unwrap();
-        assert_eq!(
-            value["generationConfig"]["thinkingConfig"]["thinkingLevel"],
-            "MINIMAL"
-        );
-        assert_eq!(
-            value["generationConfig"]["responseMimeType"],
-            "application/json"
-        );
-        assert_eq!(
-            value["contents"][0]["parts"][0]["inlineData"]["mimeType"],
-            "audio/mpeg"
-        );
+        let value: serde_json::Value =
+            serde_json::from_slice(&crate::interactions::encode_generate(&request, false).unwrap())
+                .unwrap();
+        assert_eq!(value["generation_config"]["thinking_level"], "minimal");
+        assert_eq!(value["response_format"]["mime_type"], "application/json");
+        assert_eq!(value["input"][0]["mime_type"], "audio/mpeg");
         assert!(value.get("temperature").is_none());
     }
 
@@ -830,13 +618,17 @@ mod tests {
                     ..crate::GenerationConfig::default()
                 },
             };
-            let value = serde_json::to_value(build_generate_payload(&request)).unwrap();
-            let metadata = &value["contents"][0]["parts"][0]["videoMetadata"];
-            assert_eq!(metadata.is_object(), expected);
+            let value: serde_json::Value = serde_json::from_slice(
+                &crate::interactions::encode_generate(&request, false).unwrap(),
+            )
+            .unwrap();
+            let processing = &value["input"][0]["processing"];
+            assert_eq!(processing.is_object(), expected);
             if expected {
-                assert_eq!(metadata["fps"], 0.25);
+                assert_eq!(processing["type"], "static");
+                assert_eq!(processing["fps"], 0.25);
             }
-            assert!(value.get("generationConfig").is_none());
+            assert!(value.get("generation_config").is_none());
         }
     }
 
@@ -877,21 +669,22 @@ mod tests {
             crate::InlineMedia::new("audio/wav", Bytes::from_static(b"RIFF....WAVEfmt ")).unwrap(),
         );
         let req = TranscribeRequest::new(media).with_config(
-            AudioTranscriptionConfig::new()
+            crate::AudioTranscriptionConfig::new()
                 .with_diarization(true)
                 .with_language_hints(["en", "ko"]),
         );
-        let payload = build_transcribe_payload(&req);
-        let json = serde_json::to_value(&payload).unwrap();
-        let asr_config = &json["generationConfig"]["audioTranscriptionConfig"];
+        let json: serde_json::Value =
+            serde_json::from_slice(&crate::interactions::encode_transcribe(&req, false).unwrap())
+                .unwrap();
+        let asr_config = &json["generation_config"]["transcription_config"];
 
-        assert_eq!(json["generationConfig"]["maxOutputTokens"], 32_768);
-        assert_eq!(asr_config["wordTimestamp"], true);
-        assert_eq!(asr_config["diarization"], true);
-        assert_eq!(asr_config["languageCodes"], serde_json::json!(["en", "ko"]));
-        assert!(
-            asr_config.get("languageHints").is_none(),
-            "payload must never serialize obsolete languageHints"
+        assert_eq!(json["generation_config"]["max_output_tokens"], 32_768);
+        assert_eq!(asr_config["mode"]["type"], "verbatim");
+        assert_eq!(asr_config["mode"]["diarization_mode"], "speaker");
+        assert_eq!(asr_config["mode"]["timestamp_granularities"][0], "word");
+        assert_eq!(
+            asr_config["language_codes"],
+            serde_json::json!(["en", "ko"])
         );
     }
 }

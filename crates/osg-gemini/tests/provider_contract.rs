@@ -19,7 +19,7 @@ use tempfile::NamedTempFile;
 use url::Url;
 use wiremock::{
     Mock, MockServer, Request, Respond, ResponseTemplate,
-    matchers::{header, method, path, query_param},
+    matchers::{header, method, path},
 };
 
 fn fast_retry() -> RetryPolicy {
@@ -66,19 +66,14 @@ fn client(server: &MockServer) -> GeminiClient {
 async fn generate_uses_header_auth_exact_media_wire_shape_and_typed_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+        .and(path("/v1beta/interactions"))
         .and(header("x-goog-api-key", "contract-test-secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "candidates": [{
-                "content": {"role": "model", "parts": [
-                    {"text": "private reasoning", "thought": true},
-                    {"text": "[{\"start\":0,\"text\":\"hello\"}]"}
-                ]},
-                "finishReason": "STOP",
-                "index": 0
-            }],
-            "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 15},
-            "modelVersion": "gemini-3.5-flash-lite"
+            "id":"v1_text","model":"gemini-3.5-flash-lite","status":"completed",
+            "steps":[{"type":"thought"},{"type":"model_output","content":[
+                {"type":"text","text":"[{\"start\":0,\"text\":\"hello\"}]"}
+            ]}],
+            "usage":{"total_input_tokens":10,"total_output_tokens":5,"total_tokens":15}
         })))
         .expect(1)
         .mount(&server)
@@ -99,25 +94,12 @@ async fn generate_uses_header_auth_exact_media_wire_shape_and_typed_response() {
     assert!(requests[0].url.query().is_none());
     assert!(!requests[0].url.as_str().contains("contract-test-secret"));
     let body: Value = requests[0].body_json().unwrap();
-    assert_eq!(
-        body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
-        "MINIMAL"
-    );
-    assert_eq!(
-        body["generationConfig"]["responseMimeType"],
-        "application/json"
-    );
-    assert_eq!(
-        body["contents"][0]["parts"][0]["inlineData"]["mimeType"],
-        "audio/mpeg"
-    );
-    assert_eq!(
-        body["contents"][0]["parts"][0]["inlineData"]["data"],
-        "bW9jayBhdWRpbw=="
-    );
-    assert!(body["generationConfig"].get("temperature").is_none());
-    assert!(body["generationConfig"].get("topP").is_none());
-    assert!(body["generationConfig"].get("topK").is_none());
+    assert_eq!(body["generation_config"]["thinking_level"], "minimal");
+    assert_eq!(body["response_format"]["mime_type"], "application/json");
+    assert_eq!(body["input"][0]["mime_type"], "audio/mpeg");
+    assert_eq!(body["input"][0]["data"], "bW9jayBhdWRpbw==");
+    assert!(body["generation_config"].get("temperature").is_none());
+    assert_eq!(body["store"], false);
 }
 
 #[tokio::test]
@@ -125,15 +107,13 @@ async fn image_generation_uses_stable_video_capable_model_and_bounded_binary_out
     let server = MockServer::start().await;
     let png = b"\x89PNG\r\n\x1a\ngenerated";
     Mock::given(method("POST"))
-        .and(path("/v1/models/gemini-3.1-flash-image:generateContent"))
+        .and(path("/v1beta/interactions"))
         .and(header("x-goog-api-key", "contract-test-secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "candidates": [{"content": {"parts": [{
-                "inlineData": {
-                    "mimeType": "image/png",
-                    "data": "iVBORw0KGgpnZW5lcmF0ZWQ="
-                }
-            }]}}]
+            "id":"v1_image","model":"gemini-3.1-flash-image","status":"completed",
+            "steps":[{"type":"model_output","content":[{
+                "type":"image","mime_type":"image/png","data":"iVBORw0KGgpnZW5lcmF0ZWQ="
+            }]}]
         })))
         .expect(1)
         .mount(&server)
@@ -159,31 +139,24 @@ async fn image_generation_uses_stable_video_capable_model_and_bounded_binary_out
     assert!(requests[0].url.query().is_none());
     assert!(!requests[0].url.as_str().contains("contract-test-secret"));
     let body: Value = requests[0].body_json().unwrap();
-    assert_eq!(body["generationConfig"]["responseModalities"][0], "IMAGE");
-    assert_eq!(
-        body["generationConfig"]["responseFormat"]["image"]["aspectRatio"],
-        "ASPECT_RATIO_SIXTEEN_BY_NINE"
-    );
-    assert_eq!(
-        body["generationConfig"]["responseFormat"]["image"]["imageSize"],
-        "IMAGE_SIZE_ONE_K"
-    );
+    assert_eq!(body["model"], "gemini-3.1-flash-image");
+    assert_eq!(body["response_format"]["type"], "image");
+    assert_eq!(body["response_format"]["aspect_ratio"], "16:9");
+    assert_eq!(body["response_format"]["image_size"], "1K");
 }
 
 #[tokio::test]
 async fn streaming_generation_uses_sse_header_auth_and_yields_each_chunk_once() {
     let server = MockServer::start().await;
     let body = concat!(
-        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"first\"}]}}]}\r\n\r\n",
+        "event: step.delta\r\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"first\"}}\r\n\r\n",
         ": heartbeat\r\n",
-        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"second\"}]}}]}\r\n\r\n",
+        "event: step.delta\r\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"second\"}}\r\n\r\n",
+        "event: interaction.completed\r\ndata: {\"event_type\":\"interaction.completed\",\"interaction\":{\"id\":\"v1_stream\",\"model\":\"gemini-3.5-flash-lite\",\"status\":\"completed\"}}\r\n\r\n",
         "data: [DONE]\r\n\r\n"
     );
     Mock::given(method("POST"))
-        .and(path(
-            "/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent",
-        ))
-        .and(query_param("alt", "sse"))
+        .and(path("/v1beta/interactions"))
         .and(header("x-goog-api-key", "contract-test-secret"))
         .and(header("accept", "text/event-stream"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
@@ -197,13 +170,15 @@ async fn streaming_generation_uses_sse_header_auth_and_yields_each_chunk_once() 
         .unwrap();
     let mut text = Vec::new();
     while let Some(response) = stream.next().await {
-        text.push(response.unwrap().required_text().unwrap());
+        if let Some(chunk) = response.unwrap().text() {
+            text.push(chunk);
+        }
     }
     assert_eq!(text, ["first".to_owned(), "second".to_owned()]);
 
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].url.query(), Some("alt=sse"));
+    assert!(requests[0].url.query().is_none());
     assert!(!requests[0].url.as_str().contains("contract-test-secret"));
 }
 
@@ -211,9 +186,7 @@ async fn streaming_generation_uses_sse_header_auth_and_yields_each_chunk_once() 
 async fn streaming_generation_rejects_a_non_sse_success_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path(
-            "/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent",
-        ))
+        .and(path("/v1beta/interactions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "candidates": [{"content": {"parts": [{"text": "not SSE"}]}}]
         })))
@@ -243,7 +216,8 @@ impl Respond for FailThenSucceed {
             }))
         } else {
             ResponseTemplate::new(200).set_body_json(json!({
-                "candidates": [{"content": {"parts": [{"text": "ok"}]}}]
+                "id":"v1_ok","model":"gemini-3.5-flash-lite","status":"completed",
+                "steps":[{"type":"model_output","content":[{"type":"text","text":"ok"}]}]
             }))
         }
     }
@@ -254,7 +228,7 @@ async fn transient_503_is_retried_with_a_fresh_request() {
     let server = MockServer::start().await;
     let calls = Arc::new(AtomicUsize::new(0));
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(FailThenSucceed {
             calls: Arc::clone(&calls),
         })
@@ -274,7 +248,7 @@ async fn transient_503_is_retried_with_a_fresh_request() {
 async fn long_quota_retry_sets_fail_fast_model_cooldown() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(ResponseTemplate::new(429).set_body_json(json!({
             "error": {
                 "code": 429,
@@ -307,7 +281,7 @@ async fn long_quota_retry_sets_fail_fast_model_cooldown() {
 async fn cancellation_interrupts_retry_backoff() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-flash-lite:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(ResponseTemplate::new(503).set_body_json(json!({
             "error": {"status": "UNAVAILABLE", "message": "overloaded"}
         })))
@@ -482,38 +456,17 @@ async fn local_size_limits_reject_before_network_io() {
 async fn transcribe_wire_shape_strict_separation() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .and(header("x-goog-api-key", "contract-test-secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "candidates": [{
-                "content": {
-                    "role": "model",
-                    "parts": [{
-                        "text": "Hello world",
-                        "audioTranscription": {
-                            "text": "Hello world",
-                            "words": [
-                                {
-                                    "word": "Hello",
-                                    "startOffset": "0.120s",
-                                    "endOffset": "0.450s",
-                                    "speakerLabel": "1"
-                                },
-                                {
-                                    "word": "world",
-                                    "startOffset": "0.500s",
-                                    "endOffset": "0.900s",
-                                    "speakerLabel": "1"
-                                }
-                            ]
-                        }
-                    }]
-                },
-                "finishReason": "STOP",
-                "index": 0
-            }],
-            "usageMetadata": {"promptTokenCount": 50, "totalTokenCount": 50},
-            "modelVersion": "gemini-3.5-transcribe"
+            "id":"v1_transcribe","model":"gemini-3.5-transcribe","status":"completed",
+            "steps":[{"type":"model_output","content":[{
+                "type":"text","text":"Hello world","annotations":[
+                    {"type":"word_info","text":"Hello","start_offset":"0.120s","end_offset":"0.450s","speaker":"1"},
+                    {"type":"word_info","text":"world","start_offset":"0.500s","end_offset":"0.900s","speaker":"1"}
+                ]
+            }]}],
+            "usage":{"total_input_tokens":50,"total_tokens":50}
         })))
         .expect(1)
         .mount(&server)
@@ -549,43 +502,41 @@ async fn transcribe_wire_shape_strict_separation() {
     let body: Value = requests[0].body_json().unwrap();
 
     // Verify wire shape & strict provider separation
-    let parts = body["contents"][0]["parts"].as_array().unwrap();
-    assert_eq!(parts.len(), 1);
-    assert_eq!(parts[0]["inlineData"]["mimeType"], "audio/wav");
-    assert!(parts[0]["text"].is_null());
+    let input = body["input"].as_array().unwrap();
+    assert_eq!(input.len(), 1);
+    assert_eq!(input[0]["type"], "audio");
+    assert_eq!(input[0]["mime_type"], "audio/wav");
 
-    let gen_config = &body["generationConfig"];
-    assert_eq!(gen_config["maxOutputTokens"], 32_768);
-    let asr_config = &gen_config["audioTranscriptionConfig"];
-    assert_eq!(asr_config["wordTimestamp"], true);
-    assert_eq!(asr_config["diarization"], true);
-    assert_eq!(asr_config["languageCodes"], json!(["en", "vi"]));
-    assert!(
-        asr_config["languageHints"].is_null(),
-        "obsolete languageHints must not be emitted"
+    let gen_config = &body["generation_config"];
+    assert_eq!(gen_config["max_output_tokens"], 32_768);
+    let asr_config = &gen_config["transcription_config"];
+    assert_eq!(asr_config["mode"]["type"], "verbatim");
+    assert_eq!(asr_config["mode"]["diarization_mode"], "speaker");
+    assert_eq!(
+        asr_config["mode"]["timestamp_granularities"],
+        json!(["word"])
     );
+    assert_eq!(asr_config["language_codes"], json!(["en", "vi"]));
 
     // Strict separation: forbidden text generation fields
-    assert!(gen_config["thinkingConfig"].is_null());
-    assert!(gen_config["responseJsonSchema"].is_null());
-    assert!(gen_config["responseMimeType"].is_null());
-    assert!(gen_config["mediaResolution"].is_null());
-    assert!(body["systemInstruction"].is_null());
+    assert!(gen_config["thinking_level"].is_null());
+    assert!(body["response_format"].is_null());
+    assert!(body["system_instruction"].is_null());
+    assert_eq!(body["store"], false);
 }
 
 #[tokio::test]
 async fn transcribe_streaming_sse_words_deserialization() {
     let server = MockServer::start().await;
     let sse_body = concat!(
-        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"audioTranscription\":{\"words\":[{\"word\":\"Hello\",\"startOffset\":\"0.100s\",\"endOffset\":\"0.400s\",\"speakerLabel\":\"0\"}]}}]}}]}\n\n",
-        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"audioTranscription\":{\"words\":[{\"word\":\"world\",\"startOffset\":\"0.450s\",\"endOffset\":\"0.800s\",\"speakerLabel\":\"0\"}]}}]},\"finishReason\":\"STOP\"}]}\n\n",
+        "event: step.delta\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"text_annotation_delta\",\"annotations\":[{\"type\":\"word_info\",\"text\":\"Hello\",\"start_offset\":\"0.100s\",\"end_offset\":\"0.400s\",\"speaker\":\"0\"}]}}\n\n",
+        "event: step.delta\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"text_annotation_delta\",\"annotations\":[{\"type\":\"word_info\",\"text\":\"world\",\"start_offset\":\"0.450s\",\"end_offset\":\"0.800s\",\"speaker\":\"0\"}]}}\n\n",
+        "event: interaction.completed\ndata: {\"event_type\":\"interaction.completed\",\"interaction\":{\"id\":\"v1_transcribe_stream\",\"model\":\"gemini-3.5-transcribe\",\"status\":\"completed\"}}\n\n",
+        "data: [DONE]\n\n",
     );
 
     Mock::given(method("POST"))
-        .and(path(
-            "/v1beta/models/gemini-3.5-transcribe:streamGenerateContent",
-        ))
-        .and(query_param("alt", "sse"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
@@ -625,7 +576,7 @@ async fn transcribe_streaming_sse_words_deserialization() {
 async fn transcribe_quota_429_fail_fast_cooldown() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1beta/models/gemini-3.5-transcribe:generateContent"))
+        .and(path("/v1beta/interactions"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("retry-after", "120")

@@ -82,7 +82,7 @@ fn synthesis_request(package: SpeechPackageId) -> SynthesisRequest {
             false,
         )),
         SpeechPackageId::GeminiTts => SynthesisSettings::GeminiLive(GeminiSettings::new(
-            ModelId::new("gemini-3.1-flash-live-preview").unwrap(),
+            ModelId::new("gemini-3.1-flash-tts-preview").unwrap(),
             VoiceId::new("Aoede").unwrap(),
             LanguageTag::new("en-US").unwrap(),
         )),

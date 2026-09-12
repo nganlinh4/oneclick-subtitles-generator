@@ -162,7 +162,7 @@
   "saveError": "Error saving audio to server",
   "narrationMethod": "Narration Method",
   "f5ttsMethod": "F5-TTS",
-  "geminiMethod": "Gemini Live API",
+  "geminiMethod": "Gemini TTS",
   "alignedMode": "Use Aligned Narration",
   "enabled": "Enabled",
   "disabled": "Disabled",

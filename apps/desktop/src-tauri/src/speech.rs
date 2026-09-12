@@ -1113,11 +1113,7 @@ impl SpeechProfileRequest {
                 language,
                 ..
             } => {
-                if !matches!(
-                    model.as_str(),
-                    "gemini-3.1-flash-live-preview"
-                        | "gemini-2.5-flash-native-audio-preview-12-2025"
-                ) {
+                if !matches!(model.as_str(), "gemini-3.1-flash-tts-preview") {
                     return Err(SpeechError::InvalidOption(
                         "unsupported Gemini speech model ID",
                     ));
@@ -7499,7 +7495,7 @@ mod tests {
     fn gemini_models_are_closed_to_the_synced_audio_catalog() {
         let valid = SpeechProfileRequest::GeminiTts {
             credential_id: CredentialId::new(),
-            model: "gemini-3.1-flash-live-preview".to_owned(),
+            model: "gemini-3.1-flash-tts-preview".to_owned(),
             voice: "Aoede".to_owned(),
             language: "en-US".to_owned(),
             max_concurrency: 5,

@@ -171,7 +171,7 @@
   "geminiGeneratingProgress": "Gemini로 {{total}}개 중 {{progress}}개 나레이션 생성됨...",
   "geminiGenerationComplete": "Gemini 나레이션 생성 완료",
   "geminiGenerationError": "Gemini로 나레이션 생성 오류",
-  "geminiMethod": "Gemini Live API",
+  "geminiMethod": "Gemini TTS",
   "narrationMethod": "나레이션 방식",
   "geminiUnavailable": "(사용 불가 - 설정에서 API 키 확인)",
   "downloadAligned": "타임라인에 정렬된 상태로 다운로드",

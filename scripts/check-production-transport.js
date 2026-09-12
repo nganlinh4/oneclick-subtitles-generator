@@ -68,6 +68,8 @@ const FORBIDDEN_WEB_ARTIFACTS = Object.freeze(new Map([
   }],
 ]));
 
+const LEGACY_NATIVE_GEMINI_ENDPOINT = /(?:models\/[^"'`\s]+:(?:stream)?generateContent|streamGenerateContent\?alt=sse|\.models\.(?:generate_content|generate_content_stream)\s*\(|\.aio\.live\.connect\s*\()/gi;
+
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -89,6 +91,51 @@ function walkWebArtifacts(directory) {
   }
 
   return files.sort();
+}
+
+function walkSourceFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  const files = [];
+  const pending = [directory];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const candidate = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!['node_modules', 'target'].includes(entry.name)) pending.push(candidate);
+      } else if (entry.isFile() && /\.(?:js|mjs|py|rs)$/.test(entry.name)) {
+        files.push(candidate);
+      }
+    }
+  }
+  return files.sort();
+}
+
+function inspectNativeGeminiBoundary(repositoryRoot = REPOSITORY_ROOT) {
+  const violations = [];
+  for (const root of ['apps', 'crates', 'src']) {
+    for (const file of walkSourceFiles(path.join(repositoryRoot, root))) {
+      const count = countMatches(fs.readFileSync(file, 'utf8'), LEGACY_NATIVE_GEMINI_ENDPOINT);
+      if (count > 0) {
+        violations.push({
+          file: path.relative(repositoryRoot, file).replaceAll('\\', '/'),
+          id: 'legacy-gemini-generation-endpoint',
+          count,
+        });
+      }
+    }
+  }
+  return { violations };
+}
+
+function assertNativeGeminiBoundary(repositoryRoot = REPOSITORY_ROOT) {
+  const report = inspectNativeGeminiBoundary(repositoryRoot);
+  invariant(
+    report.violations.length === 0,
+    `Native source bypasses the Gemini Interactions boundary: ${report.violations
+      .map(({ file, count }) => `${file} (${count})`).join('; ')}`,
+  );
+  return report;
 }
 
 function countMatches(source, pattern) {
@@ -211,6 +258,7 @@ function main() {
     const { buildDirectory } = parseArguments(process.argv.slice(2));
     const report = assertProductionTransportBoundary(buildDirectory);
     const sourceReport = assertReachableWebViewTransportBoundary();
+    assertNativeGeminiBoundary();
     console.log(
       `Production transport boundary passed (${report.fileCount} web artifacts; ${sourceReport.moduleCount} reachable source modules).`,
     );
@@ -226,8 +274,10 @@ module.exports = {
   FORBIDDEN_TRANSPORTS,
   FORBIDDEN_WEB_ARTIFACTS,
   assertProductionTransportBoundary,
+  assertNativeGeminiBoundary,
   assertReachableWebViewTransportBoundary,
   inspectProductionTransport,
+  inspectNativeGeminiBoundary,
   inspectReachableWebViewTransports,
   parseArguments,
 };

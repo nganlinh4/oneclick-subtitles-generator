@@ -6,7 +6,7 @@ import HelpIcon from '../../common/HelpIcon';
 import '../../../styles/narration/geminiConcurrentClientsSlider.css';
 
 /**
- * Component for controlling the number of concurrent WebSocket clients for Gemini narration
+ * Component for controlling parallel Gemini narration requests.
  * @param {Object} props - Component props
  * @param {number} props.concurrentClients - Current number of concurrent clients
  * @param {Function} props.setConcurrentClients - Function to set concurrent clients

@@ -36,8 +36,7 @@ PROVIDER_READ_TIMEOUT_SECONDS = 30
 BACKENDS = {"f5_tts", "chatterbox", "edge_tts", "gtts", "gemini_live"}
 FORMATS = {"f5_tts": "wav", "chatterbox": "wav", "edge_tts": "mp3", "gtts": "mp3", "gemini_live": "wav"}
 GEMINI_MODELS = {
-    "gemini-3.1-flash-live-preview",
-    "gemini-2.5-flash-native-audio-preview-12-2025",
+    "gemini-3.1-flash-tts-preview",
 }
 GEMINI_VOICES = (
     "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
@@ -1002,25 +1001,7 @@ def _synthesize_gtts(text: str, settings: dict[str, Any], output: Path) -> None:
         raise WorkerFailure("provider_unavailable", retryable=True) from None
 
 
-def _decode_pcm_inline(inline: Any) -> bytes | None:
-    if inline is None:
-        return None
-    data = getattr(inline, "data", None)
-    if data is None:
-        return None
-    if getattr(inline, "mime_type", None) != "audio/pcm;rate=24000":
-        raise WorkerFailure("encoding_failed")
-    if isinstance(data, str):
-        try:
-            data = base64.b64decode(data, validate=True)
-        except (binascii.Error, ValueError):
-            raise WorkerFailure("encoding_failed") from None
-    if not isinstance(data, (bytes, bytearray)):
-        raise WorkerFailure("encoding_failed")
-    return bytes(data)
-
-
-async def _synthesize_gemini_async(text: str, settings: dict[str, Any], output: Path) -> None:
+def _synthesize_gemini(text: str, settings: dict[str, Any], output: Path) -> None:
     _require_keys(settings, {"model", "voice", "language"})
     model = _require_string(settings["model"], maximum_bytes=160)
     voice = _require_identifier(settings["voice"], 128)
@@ -1032,41 +1013,31 @@ async def _synthesize_gemini_async(text: str, settings: dict[str, Any], output: 
         raise WorkerFailure("authentication_failed")
     try:
         from google import genai
-        from google.genai import types
     except ImportError:
         raise WorkerFailure("provider_unavailable") from None
-    config = {
-        "response_modalities": ["AUDIO"],
-        "speech_config": {
-            "voice_config": {"prebuilt_voice_config": {"voice_name": voice}},
-            "language_code": language,
-        },
-        "system_instruction": "Read the supplied text exactly. Do not add, omit, translate, or explain words.",
-    }
-    pcm = bytearray()
-    turn_completed = False
+    pcm = b""
     try:
-        client = genai.Client(api_key=secret)
-        async with client.aio.live.connect(model=model, config=config) as session:
-            await session.send_client_content(
-                turns=types.Content(role="user", parts=[types.Part(text=text)]),
-                turn_complete=True,
+        with genai.Client(api_key=secret) as client:
+            interaction = client.interactions.create(
+                model=model,
+                input=f"Read the following text exactly. Do not add, omit, translate, or explain words.\n\n{text}",
+                response_format={"type": "audio"},
+                generation_config={
+                    "speech_config": [{"voice": voice, "language": language}],
+                },
+                store=False,
             )
-            async for response in session.receive():
-                content = getattr(response, "server_content", None)
-                if content is not None and getattr(content, "interrupted", False):
-                    raise WorkerFailure("provider_unavailable", retryable=True)
-                turn = getattr(content, "model_turn", None) if content is not None else None
-                for part in getattr(turn, "parts", ()) if turn is not None else ():
-                    inline = getattr(part, "inline_data", None)
-                    data = _decode_pcm_inline(inline)
-                    if data is not None:
-                        if len(pcm) + len(data) > MAX_ARTIFACT_BYTES - 44:
-                            raise WorkerFailure("encoding_failed")
-                        pcm.extend(data)
-                if content is not None and getattr(content, "turn_complete", False):
-                    turn_completed = True
-                    break
+        output_audio = getattr(interaction, "output_audio", None)
+        data = getattr(output_audio, "data", None)
+        if isinstance(data, str):
+            try:
+                pcm = base64.b64decode(data, validate=True)
+            except (binascii.Error, ValueError):
+                raise WorkerFailure("encoding_failed") from None
+        elif isinstance(data, (bytes, bytearray)):
+            pcm = bytes(data)
+        else:
+            raise WorkerFailure("encoding_failed")
     except WorkerFailure:
         raise
     except Exception as error:
@@ -1078,9 +1049,7 @@ async def _synthesize_gemini_async(text: str, settings: dict[str, Any], output: 
         raise WorkerFailure("provider_unavailable", retryable=True) from None
     finally:
         secret = ""
-    if not turn_completed:
-        raise WorkerFailure("provider_unavailable", retryable=True)
-    if not pcm or len(pcm) % 2:
+    if not pcm or len(pcm) % 2 or len(pcm) > MAX_ARTIFACT_BYTES - 44:
         raise WorkerFailure("encoding_failed")
     try:
         with wave.open(str(output), "wb") as writer:
@@ -1090,12 +1059,6 @@ async def _synthesize_gemini_async(text: str, settings: dict[str, Any], output: 
             writer.writeframes(pcm)
     except (OSError, wave.Error):
         raise WorkerFailure("encoding_failed") from None
-
-
-def _synthesize_gemini(text: str, settings: dict[str, Any], output: Path) -> None:
-    asyncio.run(_synthesize_gemini_async(text, settings, output))
-
-
 def _synthesize(request_id: int, request: dict[str, Any], backend: str) -> None:
     _require_keys(request, {"protocol", "request_id", "command", "backend", "segment_id", "text", "settings", "reference_path", "output_path", "output_format"})
     if request["command"] != "synthesize" or request["backend"] != backend:

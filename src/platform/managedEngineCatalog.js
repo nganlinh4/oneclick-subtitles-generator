@@ -25,7 +25,7 @@ export const MANAGED_SPEECH_ENGINE_BINDINGS = Object.freeze([
   }),
   Object.freeze({
     engineId: 'gemini-tts',
-    label: 'Gemini Live TTS',
+    label: 'Gemini TTS',
     packageBackend: 'gemini-tts',
     runtimeBackend: 'geminiTts',
   }),

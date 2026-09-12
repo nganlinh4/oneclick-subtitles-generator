@@ -69,10 +69,11 @@ export const DEFAULT_ANALYSIS_MODEL_ID = catalog.defaults.analysis;
 export const DEFAULT_BACKGROUND_PROMPT_MODEL_ID = catalog.defaults.backgroundPrompt;
 export const DEFAULT_FAST_TEXT_MODEL_ID = catalog.defaults.fastText;
 export const DEFAULT_IMAGE_GENERATION_MODEL_ID = catalog.defaults.imageGeneration;
-export const DEFAULT_LIVE_AUDIO_MODEL_ID = catalog.defaults.liveAudio;
+export const DEFAULT_SPEECH_MODEL_ID = catalog.defaults.speech;
 
 export const IMAGE_GENERATION_MODELS = sortModelsForDisplay(catalog.imageGenerationModels);
-export const LIVE_AUDIO_MODELS = sortModelsForDisplay(catalog.liveAudioModels);
+export const GEMINI_SPEECH_MODEL_CATALOG = sortModelsForDisplay(catalog.speechModels);
+export const GEMINI_SPEECH_MODEL_IDS = GEMINI_SPEECH_MODEL_CATALOG.map(({ id }) => id);
 export const MEDIA_INPUT_MODALITIES = ['audio', 'video'];
 
 /** Menu-only quota metadata; the closed control keeps its model name alone. */
@@ -94,7 +95,6 @@ export const buildGeminiModelOption = (model, t) => {
 };
 
 export const getModelById = (id) => GEMINI_MODELS.find((model) => model.id === id);
-export const getLiveAudioModelById = (id) => LIVE_AUDIO_MODELS.find((model) => model.id === id);
 export const modelAcceptsMedia = (id) => {
   const model = getModelById(catalog.legacyMigrations[id] || id);
   return Boolean(model?.modalities.some((modality) => MEDIA_INPUT_MODALITIES.includes(modality)));

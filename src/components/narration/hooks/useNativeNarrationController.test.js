@@ -45,7 +45,7 @@ vi.mock('../../../platform/credentialStateController', () => ({
   initializeCredentialState: vi.fn(async () => undefined),
 }));
 vi.mock('../../../platform/speechService', () => ({
-  GEMINI_SPEECH_MODELS: ['gemini-3.1-flash-live-preview'],
+  GEMINI_SPEECH_MODELS: ['gemini-3.1-flash-tts-preview'],
   getSpeechLifecycleSnapshot: speechMocks.getSpeechLifecycleSnapshot,
 }));
 const ARTIFACT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a2';
@@ -287,7 +287,7 @@ test('routes all five narration engines through the native job contract', async 
     reference: null,
     settings: {
       credentialId: 'opaque-credential-id',
-      model: 'gemini-3.1-flash-live-preview',
+      model: 'gemini-3.1-flash-tts-preview',
       maxConcurrency: 5,
     },
   });

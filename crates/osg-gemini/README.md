@@ -26,8 +26,13 @@ provider API IDs above, avoiding alias drift.
 
 ## Wire and resilience policy
 
-- `v1beta ...:generateContent` with `x-goog-api-key` header auth; keys never
-  appear in URLs.
+- Stateless `v1beta/interactions` requests with `store: false` and
+  `x-goog-api-key` header auth; keys never appear in URLs. Ordinary text,
+  structured output, audio/video understanding, image generation, and native
+  transcription share this one typed Rust transport.
+- Files API remains the upload companion for large media. Live transcription,
+  Live speech synthesis, and Live Music retain their documented WebSocket
+  protocols; they are separate products, not fallbacks for an Interaction.
 - Maximum 20,000,000-byte serialized inline request and 15,000,000 bytes per
   inline media blob. The final serialized size includes Base64 expansion,
   prompts, instructions, and schema.
@@ -47,7 +52,9 @@ provider API IDs above, avoiding alias drift.
 
 Primary protocol references:
 
-- Generate Content: <https://ai.google.dev/api/generate-content>
+- Interactions API: <https://ai.google.dev/gemini-api/docs/interactions-overview>
+- Migrating to Interactions: <https://ai.google.dev/gemini-api/docs/migrate-to-interactions>
+- Interactions streaming: <https://ai.google.dev/gemini-api/docs/streaming>
 - Files API: <https://ai.google.dev/gemini-api/docs/files>
 - Audio input: <https://ai.google.dev/gemini-api/docs/audio>
 - Video input: <https://ai.google.dev/gemini-api/docs/video-understanding>
