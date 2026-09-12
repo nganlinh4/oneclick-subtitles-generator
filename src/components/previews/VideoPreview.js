@@ -32,6 +32,7 @@ import '../../styles/narration/index.css';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 import { useProjectRenderScene } from '../../platform/projectRenderScene';
 import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
+import { showInfoToast } from '../../utils/toastUtils';
 
 export const admittedPlaybackSourceUrl = (committedSource, requestedUrl) => (
   committedSource !== null
@@ -88,6 +89,20 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   const [showSeekIndicator, setShowSeekIndicator] = useState(false);
   const [seekDirection, setSeekDirection] = useState('');
   const [isCompactMode, setIsCompactMode] = useState(false);
+
+  useEffect(() => {
+    const key = 'preview-video-download';
+    if (isDownloading && downloadProgress > 0) {
+      showInfoToast(
+        `${t('preview.downloading', 'Downloading video...')} (${downloadProgress}%)`,
+        3_600_000,
+        key
+      );
+    } else {
+      window.removeToastByKey?.(key);
+    }
+    return () => window.removeToastByKey?.(key);
+  }, [downloadProgress, isDownloading, t]);
   const [canvasPreviewState, setCanvasPreviewState] = useState({ status: 'idle', code: null });
   const [canvasPreviewRetryToken, setCanvasPreviewRetryToken] = useState(0);
 
@@ -456,18 +471,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
         data-osg-preview={subtitlePreviewState}
         data-osg-preview-code={canvasPreviewState.code ?? ''}
       >
-        {/* Only show downloading UI if we're actually downloading and have progress > 0 */}
-        {isDownloading && downloadProgress > 0 && (
-          <div className="video-downloading">
-            <div className="download-progress">
-              <div className="progress-bar" style={{ width: `${downloadProgress}%` }}></div>
-            </div>
-            <div className="download-text">
-              {t('preview.downloading', 'Downloading video...')} ({downloadProgress}%)
-            </div>
-          </div>
-        )}
-
         {/* Always show video player if we have a URL, regardless of download state */}
         {videoUrl ? (
           <div

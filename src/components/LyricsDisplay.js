@@ -22,6 +22,9 @@ import LyricsDownloadAndOutput from './LyricsDownloadAndOutput';
 import { saveCompleteDocumentResult } from './lyrics/documentProcessingResult';
 import { subtitleImportFileNameForCache } from '../platform/subtitleImportProvenance';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
+import { showErrorToast, showInfoToast } from '../utils/toastUtils';
+
+const CONSOLIDATION_PROGRESS_TOAST_KEY = 'document-processing-progress';
 
 const LyricsDisplay = ({
   matchedLyrics,
@@ -91,8 +94,6 @@ const LyricsDisplay = ({
       targetLanguages
     };
   };
-  const [consolidationStatus, setConsolidationStatus] = useState('');
-
   const [showWaveformLongVideos, setShowWaveformLongVideos] = useState(() => {
     // Load from localStorage, default to false if not set
     return localStorage.getItem('show_waveform_long_videos') === 'true';
@@ -157,14 +158,8 @@ const LyricsDisplay = ({
   useEffect(() => {
     const handleConsolidationStatus = (event) => {
       if (event.detail && event.detail.message) {
-        setConsolidationStatus(event.detail.message);
-
-        if (event.detail.phase === 'complete') {
-          // Clear the status after a delay
-          setTimeout(() => {
-            setConsolidationStatus('');
-          }, 3000);
-        }
+        showInfoToast(event.detail.message, 3_600_000, CONSOLIDATION_PROGRESS_TOAST_KEY);
+        if (event.detail.phase === 'complete') window.removeToastByKey?.(CONSOLIDATION_PROGRESS_TOAST_KEY);
       }
     };
 
@@ -172,6 +167,7 @@ const LyricsDisplay = ({
 
     return () => {
       window.removeEventListener('consolidation-status', handleConsolidationStatus);
+      window.removeToastByKey?.(CONSOLIDATION_PROGRESS_TOAST_KEY);
     };
   }, []);
 
@@ -290,8 +286,7 @@ const LyricsDisplay = ({
     // Update the state
     setSplitDuration(splitDurationToUse);
 
-    // Clear any previous status
-    setConsolidationStatus('');
+    window.removeToastByKey?.(CONSOLIDATION_PROGRESS_TOAST_KEY);
 
     try {
       let result;
@@ -305,7 +300,7 @@ const LyricsDisplay = ({
         );
         if (documentResult.status !== 'complete') {
           const failedChunks = documentResult.failedChunkIds.join(', ');
-          setConsolidationStatus(t(
+          showErrorToast(t(
             'consolidation.error',
             'Error processing document: {{message}}',
             {
@@ -387,8 +382,7 @@ const LyricsDisplay = ({
     } catch (error) {
       console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);
 
-      // Show error status
-      setConsolidationStatus(t('consolidation.error', 'Error processing document: {{message}}', { message: error.message }));
+      showErrorToast(t('consolidation.error', 'Error processing document: {{message}}', { message: error.message }));
       throw error;
     }
   };
@@ -549,7 +543,6 @@ const LyricsDisplay = ({
         <LyricsDownloadAndOutput
           lyrics={lyrics}
           translatedSubtitles={translatedSubtitles}
-          consolidationStatus={consolidationStatus}
           isModalOpen={isModalOpen}
           onOpenModal={() => setIsModalOpen(true)}
           onCloseModal={() => setIsModalOpen(false)}

@@ -204,15 +204,3 @@
   animation-fill-mode: both;
   animation-delay: 600ms;
 }
-
-/* Animation for translation status */
-.translation-status {
-  animation: slideUp var(--md-duration-medium2) var(--md-easing-standard);
-  animation-fill-mode: both;
-}
-
-/* Animation for translation error */
-.translation-error {
-  animation: slideUp var(--md-duration-medium2) var(--md-easing-standard);
-  animation-fill-mode: both;
-}

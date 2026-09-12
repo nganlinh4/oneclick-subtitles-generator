@@ -1,11 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import DownloadOptionsModal from './DownloadOptionsModal';
 
-// Download button + consolidation status + download options modal. Pure UI; props only.
+// Download button + download options modal. Operation status is owned by the global toast panel.
 const LyricsDownloadAndOutput = ({
   lyrics,
   translatedSubtitles,
-  consolidationStatus,
   isModalOpen,
   onOpenModal,
   onCloseModal,
@@ -26,14 +25,6 @@ const LyricsDownloadAndOutput = ({
         <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
         <span>{t('download.downloadCenter', 'Download Center')}</span>
       </button>
-
-      {/* Show consolidation status if available */}
-      {consolidationStatus && (
-        <div className="consolidation-status">
-          <div className="status-spinner"></div>
-          <span>{consolidationStatus}</span>
-        </div>
-      )}
 
       {/* Download Options Modal */}
       <DownloadOptionsModal

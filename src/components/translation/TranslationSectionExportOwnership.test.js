@@ -114,7 +114,6 @@ const buildTranslationState = (translatedSubtitles) => ({
   rulesAvailable: false,
   hasUserProvidedSubtitles: false,
   loadedFromCache: false,
-  statusRef: { current: null },
   handleModelSelect: vi.fn(),
   handleSavePrompt: vi.fn(),
   handleTranslate: vi.fn(),

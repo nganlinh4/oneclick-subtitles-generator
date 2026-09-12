@@ -251,7 +251,7 @@ it('canonicalizes the blank editor target out of a format-only run and durable r
     false,
     null,
     runnable,
-    'main',
+    null,
     false,
     expect.any(Object)
   );
@@ -289,7 +289,7 @@ it('canonicalizes blank editor targets out of a translated run and durable recor
     false,
     null,
     runnable,
-    'main',
+    null,
     false,
     expect.any(Object)
   );

@@ -1,23 +1,25 @@
 
-/**
- * Translation status component
- * @param {Object} props - Component props
- * @param {string} props.status - Status message
- * @param {React.RefObject} props.statusRef - Reference to the status element
- * @returns {JSX.Element|null} - Rendered component or null if no status
- */
-const TranslationStatus = ({ status, statusRef }) => {
-  if (!status) return null;
+import { useEffect } from 'react';
+import { showInfoToast } from '../../utils/toastUtils';
 
-  return (
-    <div className="translation-row status-row">
-      <div className="row-content">
-        <div className="translation-status" ref={statusRef}>
-          {status}
-        </div>
-      </div>
-    </div>
-  );
+const TRANSLATION_PROGRESS_TOAST_KEY = 'translation-progress';
+const ACTIVE_PROGRESS_DURATION_MS = 60 * 60 * 1000;
+
+/** Publishes progress through the global notification surface and owns no inline UI. */
+const TranslationStatus = ({ status }) => {
+  useEffect(() => {
+    if (status) {
+      showInfoToast(status, ACTIVE_PROGRESS_DURATION_MS, TRANSLATION_PROGRESS_TOAST_KEY);
+    } else {
+      window.removeToastByKey?.(TRANSLATION_PROGRESS_TOAST_KEY);
+    }
+  }, [status]);
+
+  useEffect(() => () => {
+    window.removeToastByKey?.(TRANSLATION_PROGRESS_TOAST_KEY);
+  }, []);
+
+  return null;
 };
 
 export default TranslationStatus;

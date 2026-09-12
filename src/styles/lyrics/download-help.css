@@ -37,28 +37,6 @@
   flex-wrap: wrap;
 }
 
-/* Consolidation status */
-.consolidation-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background-color: var(--md-tertiary-container);
-  color: var(--md-on-tertiary-container);
-  border-radius: var(--md-shape-pill);
-  font-size: var(--md-label-medium-size);
-  box-shadow: var(--md-elevation-level1);
-  animation: pulse 2s infinite;
-}
-
-/* Old spinner styles removed - now using LoadingIndicator component */
-
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
-}
-
 /* Document completion container */
 .document-completion-container {
   display: flex;

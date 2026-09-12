@@ -80,7 +80,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     rulesAvailable,
     hasUserProvidedSubtitles,
     loadedFromCache,
-    statusRef,
     handleModelSelect,
     handleSavePrompt,
     handleTranslate: translate,
@@ -358,7 +357,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
             {(isTranslating || isBulkTranslating) && (
               <TranslationStatus
                 status={translationStatus}
-                statusRef={statusRef}
               />
             )}
           </>

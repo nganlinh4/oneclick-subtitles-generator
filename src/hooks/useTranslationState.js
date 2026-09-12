@@ -191,7 +191,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   const [userProvidedSubtitles, setUserProvidedSubtitles] = useState('');
   const hasUserProvidedSubtitles = userProvidedSubtitles.trim() !== '';
 
-  const statusRef = useRef(null);
   const mountedRef = useRef(true);
   const activeLeaseRef = useRef(null);
   const hydrationControllerRef = useRef(null);
@@ -673,11 +672,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
           setTranslationStatus(message);
           await assertRunOwned(context);
         },
-        statusOwner: {
-          runId: context.runId,
-          projectId: context.projectId,
-          sourceFingerprint: context.sourceFingerprint,
-        },
         restTime,
       };
       if (hasBulkFiles) {
@@ -708,7 +702,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         useParentheses,
         bracketStyle,
         normalizedChain,
-        'main',
+        null,
         false,
         ownership
       ));
@@ -954,11 +948,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
           setTranslationStatus(message);
           await assertRunOwned(context);
         },
-        statusOwner: {
-          runId: context.runId,
-          projectId: context.projectId,
-          sourceFingerprint: context.sourceFingerprint,
-        },
         restTime: 0,
       };
       const translationResult = requireCompleteTranslationResult(await translateSubtitles(
@@ -972,7 +961,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         options.useParentheses,
         options.bracketStyle,
         record.languageChain,
-        'retry',
+        null,
         false,
         ownership
       ));
@@ -1076,7 +1065,6 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     rulesAvailable,
     hasUserProvidedSubtitles,
     loadedFromCache,
-    statusRef,
     handleModelSelect,
     handleSavePrompt,
     handleTranslate,

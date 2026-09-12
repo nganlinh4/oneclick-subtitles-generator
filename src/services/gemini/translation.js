@@ -141,16 +141,6 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
         await assertBoundary();
         await publishOwnedStatus(message);
         await assertBoundary();
-        try {
-            window.dispatchEvent(new CustomEvent('translation-status', {
-                detail: {
-                    message,
-                    ...(ownership.statusOwner ?? {}),
-                }
-            }));
-        } catch {
-            // Status notifications are compatibility-only and cannot own the run.
-        }
         await assertBoundary();
     };
     await assertBoundary();
