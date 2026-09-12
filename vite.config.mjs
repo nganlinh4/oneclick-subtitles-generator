@@ -4,6 +4,7 @@ import managedBuildContext from './scripts/managed-build-context.js';
 import { defineConfig, loadEnv, transformWithOxc } from 'vite';
 
 import { createFrozenCssCompatibilityPlugin } from './scripts/frozen-css-compatibility.mjs';
+import { createDevFreshnessPlugin } from './scripts/vite-dev-freshness.mjs';
 import {
   FRONTEND_CHUNK_WARNING_LIMIT_KB,
   createFrontendBundleBoundaryPlugin,
@@ -307,6 +308,7 @@ export default defineConfig(({ mode }) => {
     },
   },
   plugins: [
+    createDevFreshnessPlugin(),
     immutableE2eVersionMetadata(),
     createFrozenCssCompatibilityPlugin(),
     ...(mode === 'production'
@@ -320,6 +322,8 @@ export default defineConfig(({ mode }) => {
     host: '127.0.0.1',
     port: 3030,
     strictPort: true,
+    // Coalesce chunked editor writes before HMR reads an intermediate source file.
+    watch: { awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 } },
   },
   };
 });

@@ -35,7 +35,7 @@
     "lint:native": "eslint src/platform src/components/lyrics/useNarrationTimelineData.js src/components/lyrics/NarrationLaneControls.js src/components/VideoRenderingSection/useNarration.js vite.config.mjs vitest.config.mjs --max-warnings=0",
     "test": "vitest run",
     "test:gemini-catalog": "node scripts/verify-gemini-catalog.js",
-    "test:frontend-env": "node --test scripts/vite-public-env.test.mjs",
+    "test:frontend-env": "node --test scripts/vite-public-env.test.mjs scripts/vite-dev-freshness.test.mjs",
     "test:e2e-frontend-publication": "node --test scripts/e2e-build-metadata.test.js scripts/e2e-frontend-snapshot.test.js scripts/build-e2e-frontend.test.js",
     "test:e2e-build-publication": "node --test scripts/e2e-build-metadata.test.js scripts/e2e-frontend-snapshot.test.js scripts/build-e2e-frontend.test.js scripts/e2e-application-publication.test.js scripts/build-e2e-binary.test.js",
     "cache:status": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Status",

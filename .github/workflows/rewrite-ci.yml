@@ -94,6 +94,9 @@ jobs:
       - name: Lint the complete frontend
         run: npm run lint
 
+      - name: Test frontend environment and debug reload freshness
+        run: npm run test:frontend-env
+
       - name: Test native Python worker contracts
         run: npm run test:python-workers
 
