@@ -28,6 +28,9 @@ const projectMocks = vi.hoisted(() => ({
 const narrationStoreMocks = vi.hoisted(() => ({
   saveProjectNarration: vi.fn(),
 }));
+const credentialMocks = vi.hoisted(() => ({
+  acquireGeminiCredential: vi.fn(),
+}));
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
 vi.mock('../../../platform/managedEngineService', () => ({
@@ -48,7 +51,7 @@ vi.mock('../../../platform/projectNarrationStore', () => ({
   saveProjectNarration: narrationStoreMocks.saveProjectNarration,
 }));
 vi.mock('../../../platform/credentialStateController', () => ({
-  getActiveGeminiCredentialId: () => 'opaque-credential-id',
+  acquireGeminiCredential: credentialMocks.acquireGeminiCredential,
   initializeCredentialState: vi.fn(async () => undefined),
 }));
 vi.mock('../../../platform/speechService', () => ({
@@ -61,6 +64,8 @@ const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  credentialMocks.acquireGeminiCredential
+    .mockResolvedValue('018f4c22-f0f1-7c09-a4d5-120d7b6f84aa');
   vi.mocked(cancelNativeNarrationJob).mockResolvedValue(false);
   speechMocks.getSpeechLifecycleSnapshot.mockReturnValue({
     epoch: 7,
@@ -298,7 +303,7 @@ test('routes all five narration engines through the native job contract', async 
   expect(runNativeNarrationJob.mock.calls[4][0]).toMatchObject({
     reference: null,
     settings: {
-      credentialId: 'opaque-credential-id',
+      credentialIds: ['018f4c22-f0f1-7c09-a4d5-120d7b6f84aa'],
       model: 'gemini-3.1-flash-tts-preview',
       maxConcurrency: 5,
     },
@@ -319,6 +324,28 @@ test('routes all five narration engines through the native job contract', async 
   });
   expect(result.current.isGenerating).toBe(false);
   expect(result.current.error).toBe('');
+});
+
+test('admits a distinct Gemini credential for every requested concurrent client', async () => {
+  const credentialIds = [
+    '018f4c22-f0f1-7c09-a4d5-120d7b6f84aa',
+    '018f4c22-f0f1-7c09-a4d5-120d7b6f84ab',
+    '018f4c22-f0f1-7c09-a4d5-120d7b6f84ac',
+  ];
+  credentialMocks.acquireGeminiCredential
+    .mockResolvedValueOnce(credentialIds[0])
+    .mockResolvedValueOnce(credentialIds[1])
+    .mockResolvedValueOnce(credentialIds[2]);
+  runNativeNarrationJob.mockResolvedValue({ status: 'completed', results: [] });
+  const { result } = renderHook(() => useHarness({ concurrentClients: 3 }));
+
+  await act(async () => result.current.controller.handleGeminiNarration());
+
+  expect(credentialMocks.acquireGeminiCredential).toHaveBeenCalledTimes(3);
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({ settings: expect.objectContaining({ credentialIds, maxConcurrency: 3 }) }),
+    expect.any(Object),
+  );
 });
 
 test('regenerating one cue preserves its ordinal and every sibling narration result', async () => {

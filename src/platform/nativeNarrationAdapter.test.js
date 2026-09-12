@@ -105,14 +105,17 @@ describe('legacy-to-native speech settings', () => {
     });
   });
 
-  test('Gemini requires a credential ID and rejects browser-held keys', () => {
+  test('Gemini requires a unique credential pool and rejects browser-held keys', () => {
     expect(createNativeSpeechProfile('gemini', {
-      credentialId: JOB_ID,
+      credentialIds: [JOB_ID],
       voice: 'Kore',
-    })).toMatchObject({ backend: 'geminiTts', credentialId: JOB_ID, voice: 'Kore' });
+    })).toMatchObject({ backend: 'geminiTts', credentialIds: [JOB_ID], voice: 'Kore' });
     expect(() => createNativeSpeechProfile('gemini', {
-      credentialId: JOB_ID,
+      credentialIds: [JOB_ID],
       apiKey: 'browser-secret',
+    })).toThrow('invalid');
+    expect(() => createNativeSpeechProfile('gemini', {
+      credentialIds: [JOB_ID, JOB_ID],
     })).toThrow('invalid');
   });
 

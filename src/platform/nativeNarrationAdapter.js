@@ -45,7 +45,7 @@ const settingKeys = Object.freeze({
     'voice', 'ratePercent', 'rate', 'volumePercent', 'volume', 'pitchHz', 'pitch',
   ]),
   gtts: new Set(['language', 'lang', 'domain', 'tld', 'slow']),
-  geminiTts: new Set(['credentialId', 'model', 'voice', 'language', 'maxConcurrency']),
+  geminiTts: new Set(['credentialIds', 'model', 'voice', 'language', 'maxConcurrency']),
 });
 
 const referenceKeys = new Set([
@@ -299,12 +299,12 @@ export const createNativeSpeechProfile = (methodInput, rawSettings = {}) => {
       const voice = settings.voice ?? 'Aoede';
       if (!GEMINI_SPEECH_MODELS.includes(model)
           || !GEMINI_SPEECH_VOICES.includes(voice)
-          || typeof settings.credentialId !== 'string') {
+          || !Array.isArray(settings.credentialIds)) {
         throw invalid();
       }
       return normalizeSpeechProfile({
         backend,
-        credentialId: settings.credentialId,
+        credentialIds: settings.credentialIds,
         model,
         voice,
         language: settings.language ?? 'en-US',

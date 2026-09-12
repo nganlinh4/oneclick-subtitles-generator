@@ -990,7 +990,7 @@ enum SpeechProfileRequest {
         slow: bool,
     },
     GeminiTts {
-        credential_id: CredentialId,
+        credential_ids: Vec<CredentialId>,
         model: String,
         voice: String,
         language: String,
@@ -1019,10 +1019,10 @@ impl SpeechProfileRequest {
         }
     }
 
-    fn credential_id(&self) -> Option<CredentialId> {
+    fn credential_ids(&self) -> Vec<CredentialId> {
         match self {
-            Self::GeminiTts { credential_id, .. } => Some(*credential_id),
-            _ => None,
+            Self::GeminiTts { credential_ids, .. } => credential_ids.clone(),
+            _ => Vec::new(),
         }
     }
 
@@ -1217,7 +1217,7 @@ struct ValidatedSpeechStart {
     lifecycle_epoch: u64,
     requests: Vec<SynthesisRequest>,
     reference: Option<AudioAsset>,
-    credential_id: Option<CredentialId>,
+    credential_ids: Vec<CredentialId>,
     max_concurrency: usize,
 }
 
@@ -1242,11 +1242,24 @@ impl SpeechStartRequest {
                 "reference capability does not match the speech backend",
             ));
         }
-        let credential_id = self.profile.credential_id();
+        let credential_ids = self.profile.credential_ids();
         let max_concurrency = self.profile.max_concurrency();
         if !(1..=10).contains(&max_concurrency) {
             return Err(SpeechError::InvalidInput(
                 "narration concurrency is outside the supported range",
+            ));
+        }
+        if backend == SpeechBackendRequest::GeminiTts
+            && (credential_ids.is_empty()
+                || credential_ids.len() > 10
+                || credential_ids
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+                    != credential_ids.len())
+        {
+            return Err(SpeechError::InvalidInput(
+                "Gemini narration credential pool is invalid",
             ));
         }
         let settings = self.profile.into_native()?;
@@ -1280,7 +1293,7 @@ impl SpeechStartRequest {
             lifecycle_epoch: self.lifecycle_epoch,
             requests,
             reference,
-            credential_id,
+            credential_ids,
             max_concurrency,
         })
     }
@@ -3810,24 +3823,24 @@ fn command_join_result<T, E>(
     })
 }
 
-async fn resolve_prepared_batch_worker(
+async fn resolve_prepared_batch_workers(
     context: &SpeechBatchContext<'_>,
     validated: &mut ValidatedSpeechStart,
     work: &OwnedStagingDirectory,
     cancellation: &CancellationToken,
-) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
-    let worker = resolve_batch_worker(
+) -> Result<Vec<Arc<ManagedSpeechWorker>>, SpeechFailureCode> {
+    let workers = resolve_batch_workers(
         context,
         validated.backend,
         validated.lifecycle_epoch,
-        validated.credential_id,
+        &validated.credential_ids,
     )
     .await?;
     if validated.backend != SpeechBackendRequest::F5Tts {
-        return Ok(worker);
+        return Ok(workers);
     }
     validated.requests = prepare_f5_requests(
-        &worker,
+        &workers[0],
         work,
         std::mem::take(&mut validated.requests),
         validated
@@ -3837,7 +3850,7 @@ async fn resolve_prepared_batch_worker(
         cancellation.clone(),
     )
     .await?;
-    Ok(worker)
+    Ok(workers)
 }
 
 async fn run_speech_batch(
@@ -3850,7 +3863,7 @@ async fn run_speech_batch(
         .runtime
         .work_directory()
         .map_err(|_| SpeechFailureCode::RuntimeUnavailable)?;
-    let worker = match resolve_prepared_batch_worker(
+    let workers = match resolve_prepared_batch_workers(
         context,
         &mut validated,
         &work,
@@ -3878,10 +3891,11 @@ async fn run_speech_batch(
         let batch_start = results.len();
         let prepared = join_all(batch.iter().cloned().enumerate().map(|(offset, request)| {
             let index = batch_start + offset + 1;
+            let worker = &workers[(index - 1) % workers.len()];
             synthesize_segment(
                 context,
                 &work,
-                &worker,
+                worker,
                 request,
                 ownership.clone(),
                 SegmentRun {
@@ -3961,37 +3975,45 @@ enum PreparedSegmentResult {
     },
 }
 
-async fn resolve_batch_worker(
+async fn resolve_batch_workers(
     context: &SpeechBatchContext<'_>,
     backend: SpeechBackendRequest,
     lifecycle_epoch: u64,
-    credential_id: Option<CredentialId>,
-) -> Result<Arc<ManagedSpeechWorker>, SpeechFailureCode> {
-    let Some(credential_id) = credential_id else {
+    credential_ids: &[CredentialId],
+) -> Result<Vec<Arc<ManagedSpeechWorker>>, SpeechFailureCode> {
+    if credential_ids.is_empty() {
         let runtime = context.runtime.clone();
         let joined = tauri::async_runtime::spawn_blocking(move || {
             runtime.enabled_worker_for_epoch(backend, lifecycle_epoch)
         })
         .await;
-        return worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
-            .map_err(|error| speech_failure(&error).0);
-    };
-    let credentials = context.credentials.clone();
-    let joined = tauri::async_runtime::spawn_blocking(move || {
-        credentials.resolve(credential_id, CredentialPurpose::GeminiApiKey)
-    })
-    .await;
-    let secret = worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
-        .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
-    let secret = SecretValue::new(secret.expose_secret().to_owned())
-        .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
-    let runtime = context.runtime.clone();
-    let joined = tauri::async_runtime::spawn_blocking(move || {
-        runtime.provider_worker_for_epoch(backend, lifecycle_epoch, secret)
-    })
-    .await;
-    worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
-        .map_err(|error| speech_failure(&error).0)
+        let worker = worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
+            .map_err(|error| speech_failure(&error).0)?;
+        return Ok(vec![worker]);
+    }
+
+    let mut workers = Vec::with_capacity(credential_ids.len());
+    for credential_id in credential_ids.iter().copied() {
+        let credentials = context.credentials.clone();
+        let joined = tauri::async_runtime::spawn_blocking(move || {
+            credentials.resolve(credential_id, CredentialPurpose::GeminiApiKey)
+        })
+        .await;
+        let secret = worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
+            .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
+        let secret = SecretValue::new(secret.expose_secret().to_owned())
+            .map_err(|_| SpeechFailureCode::AuthenticationFailed)?;
+        let runtime = context.runtime.clone();
+        let joined = tauri::async_runtime::spawn_blocking(move || {
+            runtime.provider_worker_for_epoch(backend, lifecycle_epoch, secret)
+        })
+        .await;
+        workers.push(
+            worker_join_result(context.runtime, backend, lifecycle_epoch, joined)?
+                .map_err(|error| speech_failure(&error).0)?,
+        );
+    }
+    Ok(workers)
 }
 
 async fn prepare_f5_requests(
@@ -7494,7 +7516,7 @@ mod tests {
     #[test]
     fn gemini_models_are_closed_to_the_synced_audio_catalog() {
         let valid = SpeechProfileRequest::GeminiTts {
-            credential_id: CredentialId::new(),
+            credential_ids: vec![CredentialId::new()],
             model: "gemini-3.1-flash-tts-preview".to_owned(),
             voice: "Aoede".to_owned(),
             language: "en-US".to_owned(),
@@ -7504,7 +7526,7 @@ mod tests {
         assert!(valid.into_native().is_ok());
 
         let invalid = SpeechProfileRequest::GeminiTts {
-            credential_id: CredentialId::new(),
+            credential_ids: vec![CredentialId::new()],
             model: "text-only-model".to_owned(),
             voice: "Aoede".to_owned(),
             language: "en-US".to_owned(),

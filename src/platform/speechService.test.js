@@ -153,7 +153,7 @@ describe('native speech request validation', () => {
     })).toEqual({ backend: 'gtts', language: 'en', domain: 'com', slow: false });
     expect(normalizeSpeechProfile({
       backend: 'geminiTts',
-      credentialId: JOB_ID,
+      credentialIds: [JOB_ID],
     })).toMatchObject({
       model: GEMINI_SPEECH_MODELS[0],
       voice: 'Aoede',
@@ -161,7 +161,7 @@ describe('native speech request validation', () => {
       maxConcurrency: 5,
     });
     expect(normalizeSpeechProfile({
-      backend: 'geminiTts', credentialId: JOB_ID, maxConcurrency: 10,
+      backend: 'geminiTts', credentialIds: [JOB_ID], maxConcurrency: 10,
     }).maxConcurrency).toBe(10);
   });
 
@@ -222,7 +222,7 @@ describe('native speech request validation', () => {
     })).toThrow('invalid');
     expect(() => normalizeSpeechProfile({
       backend: 'geminiTts',
-      credentialId: JOB_ID,
+      credentialIds: [JOB_ID],
       apiKey: 'must-not-cross',
     })).toThrow('invalid');
   });

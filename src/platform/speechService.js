@@ -281,7 +281,7 @@ const profileKeys = Object.freeze({
   chatterbox: new Set(['backend', 'language', 'exaggerationMilli', 'cfgWeightMilli']),
   edgeTts: new Set(['backend', 'voice', 'ratePercent', 'volumePercent', 'pitchHz']),
   gtts: new Set(['backend', 'language', 'domain', 'slow']),
-  geminiTts: new Set(['backend', 'credentialId', 'model', 'voice', 'language', 'maxConcurrency']),
+  geminiTts: new Set(['backend', 'credentialIds', 'model', 'voice', 'language', 'maxConcurrency']),
 });
 
 export const normalizeSpeechProfile = (profile) => {
@@ -357,9 +357,14 @@ export const normalizeSpeechProfile = (profile) => {
       const model = profile.model ?? GEMINI_SPEECH_MODELS[0];
       const voice = profile.voice ?? 'Aoede';
       if (!geminiModelSet.has(model) || !geminiVoiceSet.has(voice)) throw invalidRequest();
+      if (!Array.isArray(profile.credentialIds)
+          || profile.credentialIds.length === 0
+          || profile.credentialIds.length > 10) throw invalidRequest();
+      const credentialIds = profile.credentialIds.map((id) => requireUuid(id, 7));
+      if (new Set(credentialIds).size !== credentialIds.length) throw invalidRequest();
       return Object.freeze({
         backend: 'geminiTts',
-        credentialId: requireUuid(profile.credentialId, 7),
+        credentialIds: Object.freeze(credentialIds),
         model,
         voice,
         language: requireLanguage(profile.language ?? 'en-US'),

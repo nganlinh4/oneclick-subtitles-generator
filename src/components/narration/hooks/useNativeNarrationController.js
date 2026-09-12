@@ -5,7 +5,7 @@ import {
   getSpeechLifecycleSnapshot,
 } from '../../../platform/speechService';
 import {
-  getActiveGeminiCredentialId,
+  acquireGeminiCredential,
   initializeCredentialState,
 } from '../../../platform/credentialStateController';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
@@ -156,17 +156,23 @@ const nativeMethodSettings = async (method, state) => {
       };
     case 'gemini': {
       await initializeCredentialState();
-      const credentialId = getActiveGeminiCredentialId();
-      if (!credentialId) throw new Error('Gemini credential unavailable');
+      const maxConcurrency = Math.max(1, Math.min(10, Math.round(finite(state.concurrentClients, 5))));
+      const credentialIds = [];
+      for (let index = 0; index < maxConcurrency; index += 1) {
+        const credentialId = await acquireGeminiCredential();
+        if (!credentialId || credentialIds.includes(credentialId)) break;
+        credentialIds.push(credentialId);
+      }
+      if (credentialIds.length === 0) throw new Error('Gemini credential unavailable');
       const language = state.subtitleSource === 'translated'
         ? state.translatedLanguage?.languageCode
         : state.originalLanguage?.languageCode;
       return {
-        credentialId,
+        credentialIds,
         model: GEMINI_SPEECH_MODELS[0],
         voice: state.selectedVoice,
         language: language || 'en-US',
-        maxConcurrency: Math.max(1, Math.min(10, Math.round(finite(state.concurrentClients, 5)))),
+        maxConcurrency,
       };
     }
     default:
