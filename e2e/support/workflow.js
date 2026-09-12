@@ -76,9 +76,9 @@ export const selectStagedMediaFile = async () => {
  * see. The drop handler is the same component reading the same bytes with the same reader, so the
  * import is the product's own; only the gesture differs.
  */
-export const importSubtitles = async (fixture = SUBTITLE_FIXTURE) => {
+export const importSubtitles = async (fixture = SUBTITLE_FIXTURE, expectedCue = FIRST_CUE) => {
   const subtitles = readFileSync(join(FIXTURE_ROOT, fixture), 'utf8');
-  await importSubtitleDocument(subtitles, fixture, FIRST_CUE);
+  await importSubtitleDocument(subtitles, fixture, expectedCue);
 };
 
 /**

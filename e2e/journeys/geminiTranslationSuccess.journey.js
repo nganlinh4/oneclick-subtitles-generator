@@ -24,7 +24,7 @@ describe('a customer translates a real subtitle track through Gemini', () => {
     assert.ok(root, 'the Gemini success journey requires an isolated root');
 
     await openProjectWithMedia();
-    await importSubtitles(SOURCE_FIXTURE);
+    await importSubtitles(SOURCE_FIXTURE, 'Welcome to this practical review');
     const enrollment = await enrollGeminiCredentials({ limit: 20 });
     assert.equal(enrollment.enrolled, 20, 'the complete reviewed Gemini pool was not enrolled');
 

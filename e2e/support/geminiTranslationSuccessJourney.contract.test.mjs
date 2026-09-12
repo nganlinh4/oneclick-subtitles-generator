@@ -8,7 +8,7 @@ const source = readFileSync(join(import.meta.dirname, '..', 'journeys', 'geminiT
 test('the Gemini translation success journey uses public credential and translation controls', () => {
   assert.match(source, /enrollGeminiCredentials\(\{ limit: 20 \}\)/u);
   assert.match(source, /openProjectWithMedia\(\)/u);
-  assert.match(source, /importSubtitles\(SOURCE_FIXTURE\)/u);
+  assert.match(source, /importSubtitles\(SOURCE_FIXTURE, 'Welcome to this practical review'\)/u);
   assert.match(source, /split-duration-slider/u);
   assert.match(source, /visibleCounts\.some\(\(count\) => count > 0 && count < 12\)/u);
   assert.match(source, /three requested translation windows did not overlap/u);
