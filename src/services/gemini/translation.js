@@ -315,10 +315,12 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     }), languageIds, sourceSubtitles);
 
     try {
-        const responseSchema = createTranslationSchema({
-            languageIds: [...languageIds],
-            sourceIds: sourceSubtitles.map((subtitle) => subtitle.originalId),
-        });
+        // Keep the provider grammar constant-size. Gemini rejects otherwise-valid structured
+        // output schemas once per-row enum/cardinality constraints grow beyond its grammar
+        // complexity limit (ordinary 10-minute subtitle chunks can exceed it). The response
+        // parser below remains the authority for exact language/row identity, ordering, and
+        // cardinality, so relaxing only the provider hint does not relax our acceptance contract.
+        const responseSchema = createTranslationSchema();
 
         const executeTranslationRequest = async (prompt) => {
             await assertBoundary();

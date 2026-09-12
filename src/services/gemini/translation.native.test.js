@@ -104,6 +104,35 @@ test('native translation retries a structurally short response through Rust only
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
+test('keeps the provider schema constant-size for large subtitle chunks', async () => {
+  const subtitles = Array.from({ length: 128 }, (_, index) => ({
+    id: index + 1,
+    start: index,
+    end: index + 0.8,
+    text: `Source row ${index + 1}`,
+  }));
+  runNativeGeminiText.mockResolvedValue({
+    text: providerText(subtitles, {
+      Korean: subtitles.map((_, index) => `Translated row ${index + 1}`),
+    }),
+    usage: null,
+  });
+
+  await expect(translateSubtitles(
+    subtitles,
+    'Korean',
+    'gemini-3.5-flash-lite'
+  )).resolves.toMatchObject({ status: 'complete' });
+
+  const schema = runNativeGeminiText.mock.calls[0][0].responseJsonSchema;
+  const encoded = JSON.stringify(schema);
+  expect(encoded).not.toContain('number:1');
+  expect(encoded).not.toContain('Source row');
+  expect(encoded).not.toContain('minItems');
+  expect(encoded).not.toContain('maxItems');
+  expect(encoded.length).toBeLessThan(1_500);
+});
+
 test('preserves every native delivery across invalid-response retries without acknowledging it', async () => {
   const subtitles = [
     { id: 1, start: 0, end: 1, text: 'One' },

@@ -104,38 +104,30 @@ export const createSubtitleSchema = (isUserProvided = false) => {
  * uses one shape for one or many languages; the response parser additionally verifies exact
  * ordering, cardinality, source IDs, echoed source text, and non-blank translated text.
  *
- * @param {{languageIds: string[], sourceIds: string[]}} contract
  * @returns {Object} Schema for an identity-preserving translation response
  */
-export const createTranslationSchema = ({ languageIds, sourceIds }) => ({
+export const createTranslationSchema = () => ({
     type: "object",
     properties: {
         schemaVersion: {
             type: "integer",
-            enum: [1],
         },
         translations: {
             type: "array",
-            minItems: languageIds.length,
-            maxItems: languageIds.length,
             items: {
                 type: "object",
                 properties: {
                     languageId: {
                         type: "string",
-                        enum: languageIds,
                         description: "An exact requested language ID"
                     },
                     rows: {
                         type: "array",
-                        minItems: sourceIds.length,
-                        maxItems: sourceIds.length,
                         items: {
                             type: "object",
                             properties: {
                                 sourceId: {
                                     type: "string",
-                                    enum: sourceIds,
                                     description: "The exact source row ID"
                                 },
                                 original: {
