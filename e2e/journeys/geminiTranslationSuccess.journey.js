@@ -6,6 +6,7 @@ import process from 'node:process';
 import { durableState, durableTranslations } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
+import { actuateNativeRange } from '../support/nativeRange.js';
 import { collectTopDocumentToasts } from '../support/providerRefusalOracle.js';
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -28,9 +29,12 @@ describe('a customer translates a real subtitle track through Gemini', () => {
     const enrollment = await enrollGeminiCredentials({ limit: 20 });
     assert.equal(enrollment.enrolled, 20, 'the complete reviewed Gemini pool was not enrolled');
 
-    const splitDuration = await $('#split-duration-slider');
-    await splitDuration.waitForDisplayed({ timeout: 15_000 });
-    await splitDuration.setValue(1);
+    await actuateNativeRange({
+      driver: browser,
+      selector: '#split-duration-slider',
+      value: 1,
+      label: 'translation split duration',
+    });
     await browser.waitUntil(async () => browser.execute(() => (
       document.querySelectorAll('.segment-preview-compact .segment-pill').length === 3
       && window.localStorage.getItem('translation_split_duration') === '1'
