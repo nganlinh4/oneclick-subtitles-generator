@@ -120,22 +120,25 @@ test('bulk translations are React state, not a durable SQLite track like the mai
   assert.doesNotMatch(useTranslationBulk, /persistTranslationForIdentity/u);
 });
 
-test('a credential-missing bulk file is still caught per-file (never rethrown mid-loop) -- but a TOTAL credential failure now reaches setError once', () => {
+test('bulk files run concurrently, preserve per-file failures and refuse a total failure once', () => {
   assert.match(nativeGeminiJobLifecycle, /fixedError\('geminiCredentialUnavailable'\)/u);
   // With no ready credential, getCredentialId() resolves null and the loop breaks BEFORE
   // runAttempt (the only call site of `start`, i.e. startGeminiJob) is ever reached.
   assert.match(nativeGeminiJobLifecycle, /if \(credentialId === null \|\| attemptedCredentials\.has\(credentialId\)\) break;/u);
   const runnerSource = nativeGeminiJobLifecycle.slice(nativeGeminiJobLifecycle.indexOf('const run = async'));
   assert.doesNotMatch(runnerSource.split('throw lastError;')[0], /startGeminiJob|start\(/u);
-  // Still caught and pushed per file -- required to keep a PARTIAL failure reporting 'complete'.
+  assert.match(useTranslationBulk, /Promise\.allSettled\(bulkFiles\.map/u);
+  // Still caught and returned per file -- required to preserve a partial result without rejecting
+  // sibling provider calls that are already in flight.
   assert.match(useTranslationBulk, /catch \(fileError\) \{/u);
-  assert.match(useTranslationBulk, /results\.push\(\{\s*\n\s*originalFile: bulkFile,\s*\n\s*error: fileError\.message/u);
+  assert.match(useTranslationBulk, /return \{\s*\n\s*originalFile: bulkFile,\s*\n\s*error: fileError\.message/u);
   assert.doesNotMatch(useTranslationBulk, /throw fileError/u);
   // The total-refusal detection added by this fix: only fires when NOTHING succeeded and EVERY
   // failure carries the exact 'geminiCredentialUnavailable' signature.
   assert.match(useTranslationBulk, /isCredentialMissing = \(result\) => !result\.success && result\.code === 'geminiCredentialUnavailable'/u);
-  assert.match(useTranslationBulk, /successfulBulkFiles === 0 && results\.every\(isCredentialMissing\)/u);
-  assert.match(useTranslationBulk, /setError\(results\[results\.length - 1\]\.error\)/u);
+  assert.match(useTranslationBulk, /results\.length > 0 && successfulBulkFiles === 0/u);
+  assert.match(useTranslationBulk, /results\.every\(isCredentialMissing\)/u);
+  assert.match(useTranslationBulk, /setError\(terminalError\)/u);
   assert.match(useTranslationBulk, /return \{ status: 'failed', results \};/u);
 });
 

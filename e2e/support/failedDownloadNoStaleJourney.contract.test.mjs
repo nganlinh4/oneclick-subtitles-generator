@@ -37,7 +37,7 @@ test('the failed-download journey stays public-UI, toast-only, and durability-ba
   const config = readFileSync(configPath, 'utf8');
   assert.match(config, /process\.env\.OSG_E2E_WORKFLOW === 'failed-download-no-stale'/u);
   assert.match(config,
-    /label: 'c', path: verifiedDownloadIdentityVideo\(\), rejectGetAfter: 1/u,
+    /label: 'c', path: sourceB, rejectGetAfter: 1/u,
     'the application did not receive the exact deterministic failure capability before launch');
 });
 

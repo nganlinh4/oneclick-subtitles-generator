@@ -17,7 +17,7 @@ import { strict as assert } from 'node:assert';
  * Tools." (U+2192 RIGHTWARDS ARROW). The customer-visible copy is the loaded resource, not the
  * in-code fallback, so this pins the resource's exact text. */
 export const REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = (
-  'This narration engine is not ready. Install or start it in Settings → Tools.'
+  'This narration engine could not be prepared automatically. Try generating again.'
 );
 
 /**

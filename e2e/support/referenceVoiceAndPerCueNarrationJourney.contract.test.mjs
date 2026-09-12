@@ -90,7 +90,7 @@ test('ground truth: F5-TTS/Chatterbox method radios are really disabled, not jus
   assert.match(narrationMethodSelection, /className=\{`method-chatterbox \$\{!isChatterboxAvailable \? 'unavailable' : ''\}`\}/u);
   assert.match(
     narrationMethodSelection,
-    /'This narration engine is not ready\. Install or start it in Settings > Tools\.'/u,
+    /'This narration engine cannot be prepared automatically right now\.'/u,
   );
   // The handler itself refuses to switch to an unavailable method even if a click were dispatched.
   assert.match(narrationMethodSelection, /availableMethods\[method\] === true/u);
@@ -145,9 +145,9 @@ test('the oracle pins the LOADED i18n resource text (which i18next prefers), not
   // ever used if the key were missing. The resource is what a customer actually sees.
   assert.equal(
     narrationLocaleEn.engineUnavailableMessage,
-    'This narration engine is not ready. Install or start it in Settings → Tools.',
+    'This narration engine could not be prepared automatically. Try generating again.',
   );
-  assert.match(oracle, /REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = \(\s*\n\s*'This narration engine is not ready\. Install or start it in Settings → Tools\.'/u);
+  assert.match(oracle, /REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE = \(\s*\n\s*'This narration engine could not be prepared automatically\. Try generating again\.'/u);
 });
 
 test('this journey follows the same durable-checkpoint oracle shape narrationGeneration.journey.js already proves', () => {

@@ -164,5 +164,5 @@ test('the unavailable-engine tooltip text is pinned to the shipped i18n default'
   assert.equal(REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE, narration.engineUnavailableMessage);
   // The arrow is the whole point of the correction, so assert it explicitly: a regression that
   // reverted the shipped copy to '>' would otherwise still satisfy the equality above.
-  assert.match(REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE, /Settings → Tools\.$/u);
+  assert.match(REFERENCE_VOICE_ENGINE_UNAVAILABLE_MESSAGE, /prepared automatically/u);
 });

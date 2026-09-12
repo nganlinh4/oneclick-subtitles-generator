@@ -170,10 +170,7 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     }, {
       timeout: 420_000,
       interval: 1_000,
-      timeoutMsg: () => {
-        const state = durableState(root);
-        return `Restarted transcription never reached succeeded state with captions. Jobs: ${JSON.stringify(state.jobs)}`;
-      },
+      timeoutMsg: 'Restarted transcription never reached succeeded state with captions',
     });
 
     const restartedDurable = durableState(root);
@@ -227,10 +224,7 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     }, {
       timeout: 30_000,
       interval: 250,
-      timeoutMsg: () => {
-        const state = durableState(root);
-        return `Second transcription on project A never entered running state. Jobs: ${JSON.stringify(state.jobs)}`;
-      },
+      timeoutMsg: 'Second transcription on project A never entered running state',
     });
 
     // While operation on Project A is active, switch to media/project B through normal controls
@@ -288,4 +282,3 @@ describe('Customer Journey 6: Cancel, restart, and project switching without lea
     });
   });
 });
-
