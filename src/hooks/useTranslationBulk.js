@@ -82,28 +82,12 @@ export const useTranslationBulk = ({
     await publishOwnedState(() => setBulkTranslations([]));
     await publishOwnedState(() => setCurrentBulkFileIndex(0));
 
-    const results = [];
-
     try {
-      // Process each file sequentially
-      for (let i = 0; i < bulkFiles.length; i++) {
+      let completedFiles = 0;
+      const totalFiles = bulkFiles.length + (hasMainSubtitles ? 1 : 0);
+      const outcomes = await Promise.allSettled(bulkFiles.map(async (bulkFile) => {
         await assertBoundary();
-
-        await publishOwnedState(() => setCurrentBulkFileIndex(i));
-        const bulkFile = bulkFiles[i];
-
-        // Update status - include main file in total count if it exists
-        const totalFiles = bulkFiles.length + (hasMainSubtitles ? 1 : 0);
-        await publishOwnedState(() => {
-          setTranslationStatus(t(
-            'translation.bulk.processing',
-            'Processing file {{current}}/{{total}}: {{filename}}',
-            { current: i + 1, total: totalFiles, filename: bulkFile.name }
-          ));
-        });
-
         try {
-          // Use the same translation settings but skip context rules
           const result = requireOwnedTranslationResult(await translateSubtitles(
             bulkFile.subtitles,
             languages.length === 1 ? languages[0] : languages,
@@ -122,7 +106,7 @@ export const useTranslationBulk = ({
           await assertBoundary();
 
           if (result.rows.length > 0) {
-            results.push({
+            return {
               originalFile: bulkFile,
               translatedSubtitles: result.rows,
               success: true,
@@ -135,14 +119,13 @@ export const useTranslationBulk = ({
                   : 'pendingDurableExport',
                 pending: result.deliveries,
               }),
-            });
-          } else {
-            results.push({
-              originalFile: bulkFile,
-              error: t('translation.emptyResult', 'Translation returned no results'),
-              success: false
-            });
+            };
           }
+          return {
+            originalFile: bulkFile,
+            error: t('translation.emptyResult', 'Translation returned no results'),
+            success: false,
+          };
         } catch (fileError) {
           console.error(`Error translating file ${bulkFile.name}:`, fileError);
 
@@ -152,16 +135,27 @@ export const useTranslationBulk = ({
             throw createTranslationAbortError();
           }
 
-          results.push({
+          return {
             originalFile: bulkFile,
             error: fileError.message || t('translation.error', 'Error translating subtitles'),
             success: false,
             code: fileError?.code ?? null
+          };
+        } finally {
+          completedFiles += 1;
+          await publishOwnedState(() => {
+            setCurrentBulkFileIndex(completedFiles - 1);
+            setTranslationStatus(t(
+              'translation.bulk.processingParallel',
+              'Translated {{current}}/{{total}} files',
+              { current: completedFiles, total: totalFiles }
+            ));
           });
         }
-
-        await assertBoundary();
-      }
+      }));
+      const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+      if (rejected) throw rejected.reason;
+      const results = outcomes.map((outcome) => outcome.value);
 
       await assertBoundary();
       await publishOwnedState(() => setBulkTranslations(results));
@@ -186,7 +180,7 @@ export const useTranslationBulk = ({
       }
 
       // Calculate total files including main file if it exists
-      const totalFiles = results.length + (hasMainSubtitles ? 1 : 0);
+      const finalTotalFiles = results.length + (hasMainSubtitles ? 1 : 0);
 
       if (hasMainSubtitles) {
         // If there's a main file to translate, show intermediate status
@@ -198,7 +192,7 @@ export const useTranslationBulk = ({
               success: successfulBulkFiles,
               bulkTotal: results.length,
               current: successfulBulkFiles,
-              total: totalFiles,
+              total: finalTotalFiles,
             }
           ));
         });
@@ -208,7 +202,7 @@ export const useTranslationBulk = ({
           setTranslationStatus(t(
             'translation.bulk.complete',
             'Bulk translation complete: {{success}}/{{total}} files processed successfully',
-            { success: successfulBulkFiles, total: totalFiles }
+            { success: successfulBulkFiles, total: finalTotalFiles }
           ));
         });
       }
@@ -229,7 +223,7 @@ export const useTranslationBulk = ({
           ));
         });
       }
-      return { status: 'failed', results };
+      return { status: 'failed', results: [] };
     } finally {
       try {
         await publishOwnedState(() => setIsBulkTranslating(false));
