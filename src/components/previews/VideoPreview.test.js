@@ -129,6 +129,7 @@ describe('the editor preview compositor boundary', () => {
       customPositionY: 90,
     });
     expect(captured.props.subtitles).toEqual(originals);
+    expect(captured.props.videoUnderlay).toBe(false);
   });
 
   it('routes a small lyric command to the media element and exposes the seek lifecycle to Canvas', async () => {

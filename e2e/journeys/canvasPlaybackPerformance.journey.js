@@ -1,4 +1,5 @@
-// Continuous playback must stay on the WebView's direct video -> canvas path without starving input.
+// Continuous playback must leave hardware video presentation direct and keep the WYSIWYG canvas
+// limited to subtitle pixels, without starving input.
 
 import { strict as assert } from 'node:assert';
 
@@ -41,6 +42,7 @@ describe('continuous subtitle preview playback', () => {
         revisionStartedAt: Number(canvas.dataset.osgFrameRevision ?? 0),
         overlayRebuildsStartedAt: Number(canvas.dataset.osgOverlayRebuilds ?? 0),
         heapStartedAt: Number(performance.memory?.usedJSHeapSize ?? Number.NaN),
+        qualityStartedAt: video.getVideoPlaybackQuality?.() ?? null,
         cueSamples: 0,
         cueGaps: [],
       };
@@ -99,6 +101,7 @@ describe('continuous subtitle preview playback', () => {
       video.pause();
       const elapsedMs = performance.now() - sample.startedAt;
       const heapNow = Number(performance.memory?.usedJSHeapSize ?? Number.NaN);
+      const qualityNow = video.getVideoPlaybackQuality?.() ?? null;
       return {
         elapsedMs,
         mediaAdvancedSeconds: video.currentTime - sample.mediaStartedAt,
@@ -112,11 +115,18 @@ describe('continuous subtitle preview playback', () => {
         heapGrowthBytes: Number.isFinite(heapNow) && Number.isFinite(sample.heapStartedAt)
           ? heapNow - sample.heapStartedAt
           : null,
+        decodedVideoFrames: qualityNow && sample.qualityStartedAt
+          ? qualityNow.totalVideoFrames - sample.qualityStartedAt.totalVideoFrames
+          : null,
+        droppedVideoFrames: qualityNow && sample.qualityStartedAt
+          ? qualityNow.droppedVideoFrames - sample.qualityStartedAt.droppedVideoFrames
+          : null,
         cueSamples: sample.cueSamples,
         cueGaps: sample.cueGaps,
         canvas: [canvas.width, canvas.height],
         previewState: document.querySelector('[data-osg-preview]')
           ?.getAttribute('data-osg-preview') ?? null,
+        videoUnderlay: canvas.dataset.osgVideoUnderlay ?? null,
       };
     });
 
@@ -125,9 +135,21 @@ describe('continuous subtitle preview playback', () => {
       result.mediaAdvancedSeconds >= 5,
       `playback failed to advance in real time: ${JSON.stringify({ started, result })}`,
     );
+    assert.equal(
+      result.videoUnderlay,
+      'direct',
+      `the editor copied decoded video through its subtitle canvas: ${JSON.stringify(result)}`,
+    );
     // The real source is 15 fps. Allow decode jitter, but require substantially more than the old
     // 10 fps IPC/PNG scheduler could publish under ideal conditions.
     assert.ok(result.compositorFrames >= 70, `too few real video frames reached canvas: ${JSON.stringify(result)}`);
+    if (result.decodedVideoFrames !== null && result.droppedVideoFrames !== null) {
+      assert.ok(result.decodedVideoFrames >= 70, `too few source frames decoded: ${JSON.stringify(result)}`);
+      assert.ok(
+        result.droppedVideoFrames <= Math.max(3, result.decodedVideoFrames * 0.1),
+        `hardware video playback dropped too many frames: ${JSON.stringify(result)}`,
+      );
+    }
     assert.ok(result.maxLongTaskMs < 500, `one preview task froze the UI: ${JSON.stringify(result)}`);
     assert.ok(result.totalLongTaskMs < 1_000, `preview monopolised the UI thread: ${JSON.stringify(result)}`);
     assert.ok(

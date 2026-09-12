@@ -188,6 +188,48 @@ it('publishes a complete preview frame with one visible-canvas paint', () => {
   }
 });
 
+it('uses the hardware video surface directly when configured as a subtitle-only overlay', () => {
+  const contexts = new Map();
+  const requests = [];
+  const original = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = vi.fn(function getContext(_kind, options) {
+    requests.push({ canvas: this, options });
+    if (!contexts.has(this)) contexts.set(this, contextFor(this));
+    return contexts.get(this);
+  });
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = 540;
+    const video = { videoWidth: 1920, videoHeight: 1080, readyState: 4 };
+    const renderer = createCanvasSubtitleRenderer(canvas, { drawVideo: false });
+
+    const result = renderer.draw({
+      video,
+      composition: { width: 1920, height: 1080 },
+      crop: { x: 0, y: 0, width: 100, height: 100 },
+      atlasEntry: null,
+      customization: null,
+      active: null,
+      cueTransform: { x: 0, y: 0, scale: 1, rotate: 0, rotateY: 0 },
+    });
+
+    expect(result.drewVideo).toBe(true);
+    expect(requests[0]).toEqual({ canvas, options: { alpha: true } });
+    expect([...contexts.values()].some(context => context.drawImage.mock.calls.some(
+      call => call[0] === video,
+    ))).toBe(false);
+    const visible = contexts.get(canvas);
+    expect(visible.drawImage).toHaveBeenCalledTimes(1);
+    expect(visible.propertyWrites).toContainEqual({
+      property: 'globalCompositeOperation', value: 'copy',
+    });
+  } finally {
+    HTMLCanvasElement.prototype.getContext = original;
+  }
+});
+
 it('preserves the last visible frame while the video decoder has no replacement', () => {
   const contexts = new Map();
   const original = HTMLCanvasElement.prototype.getContext;

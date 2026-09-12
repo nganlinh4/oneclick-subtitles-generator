@@ -116,9 +116,10 @@ export const previewSceneTime = (transportTime, frameRate, trimStart = 0) => {
 /**
  * Persistent, display-resolution preview compositor.
  *
- * The video frame is copied directly from the live `<video>` element and the subtitle is painted
- * from the same shaped line atlas staged for native export. No frame bytes cross IPC, no PNG is
- * encoded or decoded, and React is not involved in the playback loop.
+ * The subtitle is painted from the same shaped line atlas staged for native export. The editor can
+ * leave the hardware-decoded `<video>` visible underneath this transparent canvas; render-preview
+ * surfaces can instead ask the canvas to composite the underlay for exact crop/backfill inspection.
+ * No frame bytes cross IPC, no PNG is encoded or decoded, and React is not involved in playback.
  */
 const CanvasVideoPreview = ({
   active = true,
@@ -136,6 +137,7 @@ const CanvasVideoPreview = ({
   trimEnd = 0,
   onStateChange = null,
   retryToken = 0,
+  videoUnderlay = true,
   className = '',
   style = null,
 }) => {
@@ -231,6 +233,7 @@ const CanvasVideoPreview = ({
     trimEnd,
     sceneKey,
     sourceKey,
+    videoUnderlay,
   };
 
   useLayoutEffect(() => {
@@ -285,7 +288,7 @@ const CanvasVideoPreview = ({
       return undefined;
     }
     try {
-      rendererRef.current = createCanvasSubtitleRenderer(canvas);
+      rendererRef.current = createCanvasSubtitleRenderer(canvas, { drawVideo: videoUnderlay });
       rendererFailureRef.current = null;
     } catch (error) {
       const failure = canvasPreviewFailure(error);
@@ -312,7 +315,7 @@ const CanvasVideoPreview = ({
       window.removeEventListener('resize', resize);
       rendererRef.current = null;
     };
-  }, [publish, retryToken]);
+  }, [publish, retryToken, videoUnderlay]);
 
   useEffect(() => {
     let videoFrameHandle = null;
@@ -343,6 +346,17 @@ const CanvasVideoPreview = ({
     publishedSceneRef.current = { sourceKey, time: null };
 
     const captureCandidate = (video, metadata, generation) => {
+      if (!latestRef.current?.videoUnderlay) {
+        return Object.freeze({
+          generation,
+          video,
+          sourceKey,
+          source: null,
+          mediaTime: Number.isFinite(metadata?.mediaTime) ? metadata.mediaTime : null,
+          transportTime: Number.isFinite(video.currentTime) ? video.currentTime : null,
+          provenance: Number.isFinite(metadata?.mediaTime) ? 'rvfc' : 'settled-transport',
+        });
+      }
       const retained = Object.is(committedPixelFrameRef.current.sourceKey, sourceKey)
         ? committedPixelFrameRef.current.source
         : null;
@@ -400,7 +414,8 @@ const CanvasVideoPreview = ({
       // readback per seek generation rejects the surface and lets the next frame publish; after
       // two rejections the picture is accepted as real black content, and after a generation's
       // first accepted frame the check never runs again.
-      if (!publishedFrameThisGeneration
+      if (snapshot?.videoUnderlay
+          && !publishedFrameThisGeneration
           && blackSkipsThisGeneration < 2
           && rendererRef.current?.captureLooksBlack?.(candidate.source) === true) {
         blackSkipsThisGeneration += 1;
@@ -734,7 +749,7 @@ const CanvasVideoPreview = ({
           ? committedPixelFrameRef.current
           : null;
         const pixelFrame = presentedPixels ?? desiredPixels?.source ?? committedPixels?.source ?? null;
-        if (hasFrameCallback && pixelFrame === null) {
+        if (hasFrameCallback && snapshot.videoUnderlay && pixelFrame === null) {
           // No pixels to compose and, while paused, no future video frame to deliver any. Returning
           // silently here left the published state frozen (a customer-visible stuck "pending" after
           // a paused seek raced a lifecycle reset). The bounded capture retry re-snapshots the
@@ -780,7 +795,7 @@ const CanvasVideoPreview = ({
           }
         }
         const result = renderer.draw({
-          video: hasFrameCallback ? pixelFrame : video,
+          video: snapshot.videoUnderlay && hasFrameCallback ? pixelFrame : video,
           composition: snapshot.composition,
           crop: snapshot.crop,
           atlasEntry: entry,
@@ -791,7 +806,7 @@ const CanvasVideoPreview = ({
         const drewVideo = result?.drewVideo === true;
         const canvas = canvasRef.current;
         if (canvas !== null && drewVideo) {
-          if (hasFrameCallback) {
+          if (hasFrameCallback && snapshot.videoUnderlay) {
             committedPixelFrameRef.current = {
               sourceKey: snapshot.sourceKey,
               source: pixelFrame,
@@ -1061,7 +1076,7 @@ const CanvasVideoPreview = ({
       const published = publishedSceneRef.current;
       if (!Object.is(published.sourceKey, snapshot?.sourceKey)
           || !Object.is(published.time, sceneTime)) {
-        if (typeof video?.requestVideoFrameCallback === 'function') {
+        if (typeof video?.requestVideoFrameCallback === 'function' && snapshot?.videoUnderlay) {
           const pixels = desiredPixelFrameRef.current;
           if (Object.is(pixels.sourceKey, snapshot?.sourceKey) && pixels.source !== null) {
             drawRef.current({
@@ -1123,6 +1138,7 @@ const CanvasVideoPreview = ({
       ref={canvasRef}
       className={`canvas-video-preview ${className}`.trim()}
       data-osg-preview-engine="canvas-atlas"
+      data-osg-video-underlay={videoUnderlay ? 'canvas' : 'direct'}
       aria-hidden="true"
       style={{
         position: 'absolute',
@@ -1132,7 +1148,7 @@ const CanvasVideoPreview = ({
         // The backing store has this same ratio; contain is therefore a no-op except while a resize
         // is settling, when it prevents one transient distorted frame.
         objectFit: 'contain',
-        backgroundColor: '#000',
+        backgroundColor: videoUnderlay ? '#000' : 'transparent',
         display: 'block',
         pointerEvents: 'none',
         zIndex: 2,

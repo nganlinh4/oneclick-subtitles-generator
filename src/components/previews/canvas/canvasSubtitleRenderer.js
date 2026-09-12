@@ -154,6 +154,14 @@ const drawVideoUnderlay = (context, video, viewport, crop) => {
   return true;
 };
 
+const videoIsDrawable = (video) => {
+  const image = video?.image ?? video;
+  const sourceWidth = video?.videoWidth ?? image?.videoWidth ?? image?.width ?? 0;
+  const sourceHeight = video?.videoHeight ?? image?.videoHeight ?? image?.height ?? 0;
+  const ready = video?.readyState === undefined || video.readyState >= 2;
+  return image !== null && image !== undefined && sourceWidth > 0 && sourceHeight > 0 && ready;
+};
+
 const setCompositionTransform = (context, viewport, geometry, cueTransform) => {
   const centreX = geometry.border.left + geometry.border.width / 2;
   const centreY = geometry.border.top + geometry.border.height / 2;
@@ -563,18 +571,18 @@ export const createAtlasCanvas = (atlas) => {
   return canvas;
 };
 
-export const createCanvasSubtitleRenderer = (canvas) => {
+export const createCanvasSubtitleRenderer = (canvas, { drawVideo = true } = {}) => {
   // The visible canvas is a presentation surface, not a work surface. A desynchronised context may
   // expose the intermediate video-only paint before the subtitle pass completes, which looks like
   // the subtitle blinking even though the cue and atlas never changed.
-  const context = canvas.getContext('2d', { alpha: false });
+  const context = canvas.getContext('2d', { alpha: !drawVideo });
   if (context === null) throw new Error('canvasPreviewUnavailable');
   const frame = document.createElement('canvas');
   const mask = document.createElement('canvas');
   const scratch = document.createElement('canvas');
   const staticOverlay = document.createElement('canvas');
   const sourceFrames = [document.createElement('canvas'), document.createElement('canvas')];
-  const frameContext = frame.getContext('2d', { alpha: false });
+  const frameContext = frame.getContext('2d', { alpha: !drawVideo });
   const maskContext = mask.getContext('2d', { alpha: true });
   const scratchContext = scratch.getContext('2d', { alpha: true });
   const staticOverlayContext = staticOverlay.getContext('2d', { alpha: true });
@@ -666,10 +674,16 @@ export const createCanvasSubtitleRenderer = (canvas) => {
       frameContext.setTransform(1, 0, 0, 1, 0, 0);
       frameContext.globalAlpha = 1;
       frameContext.filter = 'none';
-      frameContext.fillStyle = '#000';
-      frameContext.fillRect(0, 0, width, height);
       const viewport = fitContain(width, height, composition.width, composition.height);
-      const videoReady = drawVideoUnderlay(frameContext, video, viewport, crop);
+      let videoReady;
+      if (drawVideo) {
+        frameContext.fillStyle = '#000';
+        frameContext.fillRect(0, 0, width, height);
+        videoReady = drawVideoUnderlay(frameContext, video, viewport, crop);
+      } else {
+        frameContext.clearRect(0, 0, width, height);
+        videoReady = videoIsDrawable(video);
+      }
       // The work canvas begins black. Publishing it while the decoder is between frames replaces a
       // valid visible composition with a transient blank one (most visibly during seeks). Leave the
       // presentation canvas untouched until an entire replacement frame can be composed.
@@ -716,7 +730,12 @@ export const createCanvasSubtitleRenderer = (canvas) => {
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.globalAlpha = 1;
       context.filter = 'none';
+      // `copy` replaces the complete presentation bitmap in one operation, including transparent
+      // pixels. With a direct-video underlay, source-over would retain subtitle pixels from the
+      // prior cue anywhere the new transparent overlay does not repaint.
+      context.globalCompositeOperation = 'copy';
       context.drawImage(frame, 0, 0);
+      context.globalCompositeOperation = 'source-over';
       return { drewVideo: videoReady, viewport, overlayRebuilt };
     },
   });

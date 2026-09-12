@@ -528,6 +528,7 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   resolution={EDITOR_PREVIEW_RESOLUTION}
                   onStateChange={setCanvasPreviewState}
                   retryToken={canvasPreviewRetryToken}
+                  videoUnderlay={false}
                 />
 
                 <SeekIndicator showSeekIndicator={showSeekIndicator} seekDirection={seekDirection} />
