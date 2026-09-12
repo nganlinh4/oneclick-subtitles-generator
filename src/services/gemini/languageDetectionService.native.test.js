@@ -1,4 +1,4 @@
-import { detectSubtitleLanguage } from './languageDetectionService';
+import { detectSubtitleLanguage, representativeSubtitleSample } from './languageDetectionService';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
 const projectMocks = vi.hoisted(() => ({
@@ -88,6 +88,16 @@ test('native language detection uses structured Rust Gemini output', async () =>
   expect(failed).not.toHaveBeenCalled();
   window.removeEventListener('language-detection-complete', completed);
   window.removeEventListener('language-detection-error', failed);
+});
+
+test('language sampling represents the beginning, middle, and end of a long track', () => {
+  const subtitles = Array.from({ length: 101 }, (_, index) => ({ text: `row-${index}` }));
+  const sample = representativeSubtitleSample(subtitles);
+  expect(sample).toContain('row-0');
+  expect(sample).toContain('row-48');
+  expect(sample).toContain('row-52');
+  expect(sample).toContain('row-100');
+  expect(sample.split('\n')).toHaveLength(24);
 });
 
 test('native provider failure returns null and emits an error without fake completion', async () => {

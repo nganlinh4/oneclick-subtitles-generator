@@ -1,9 +1,6 @@
 import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
 import { runNativeGeminiMediaAnalysis } from '../platform/nativeGeminiMediaAnalysis';
-import {
-  inspectMediaPipelineAsset,
-  runMediaPipeline,
-} from '../platform/mediaPipelineService';
+import { inspectMediaPipelineAsset, runMediaPipeline } from '../platform/mediaPipelineService';
 import { callGeminiApiWithFilesApiForAnalysis } from './gemini';
 import { analyzeVideoWithGemini } from './videoAnalysisService';
 
@@ -23,7 +20,6 @@ vi.mock('./gemini', () => ({
 }));
 
 const ASSET_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
-const CLIP_ID = '01890f39-7b62-7c4e-8c9a-000000000102';
 const JOB_ID = '01890f39-7b62-7c4e-8c9a-000000000103';
 const DELIVERY_ID = '01890f39-7b62-7c4e-8c9a-000000000104';
 const PROJECT_AUTHORITY = Object.freeze({
@@ -97,21 +93,17 @@ test('checks captured ownership immediately before and after native analysis', a
     .toBeGreaterThan(runNativeGeminiMediaAnalysis.mock.invocationCallOrder[0]);
 });
 
-test('clips only the centered thirty-minute sample before native analysis', async () => {
+test('analyzes an hour-long source in full instead of silently sampling its middle', async () => {
   inspectMediaPipelineAsset.mockResolvedValue({ durationUs: 3_600_000_000 });
-  runMediaPipeline.mockResolvedValue({ media: { asset: { id: CLIP_ID } } });
 
   await analyzeVideoWithGemini({ __nativeMedia: true }, vi.fn(), PROJECT_AUTHORITY);
 
-  expect(runMediaPipeline).toHaveBeenCalledWith({
-    operation: 'analysisClip',
-    assetId: ASSET_ID,
-    range: { start: 900, end: 2700 },
-  }, { signal: expect.any(AbortSignal) });
+  expect(runMediaPipeline).not.toHaveBeenCalled();
   expect(runNativeGeminiMediaAnalysis).toHaveBeenCalledWith(expect.objectContaining({
-    assetId: CLIP_ID,
-    prompt: expect.stringContaining('30-minute sample from the middle'),
+    assetId: ASSET_ID,
   }));
+  expect(runNativeGeminiMediaAnalysis.mock.calls[0][0].prompt)
+    .not.toContain('sample from the middle');
 });
 
 test('fails closed when the value is not an authorized native media descriptor', async () => {

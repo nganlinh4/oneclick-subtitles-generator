@@ -7,10 +7,7 @@ import { DEFAULT_ANALYSIS_MODEL_ID, normalizeMediaModelId } from '../config/gemi
 import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { runNativeGeminiMediaAnalysis } from '../platform/nativeGeminiMediaAnalysis';
-import {
-  inspectMediaPipelineAsset,
-  runMediaPipeline,
-} from '../platform/mediaPipelineService';
+import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 import { createVideoAnalysisSchema } from '../utils/videoAnalysisSchema';
 
 // Translation function shorthand
@@ -219,46 +216,9 @@ Provide your analysis in a structured format that can be used to guide the trans
       analysisPrompt: analysisPrompt
     };
 
-    // Limit analysis to max 30 minutes (1800 seconds) centered around video middle
-    const MAX_ANALYSIS_DURATION = 1800; // 30 minutes in seconds
-
-    if (videoDuration > MAX_ANALYSIS_DURATION) {
-      // Calculate center-based offsets for videos longer than 30 minutes
-      const centerTime = videoDuration / 2;
-      const halfAnalysisDuration = MAX_ANALYSIS_DURATION / 2;
-
-      // Calculate start and end times, ensuring they stay within video bounds
-      const startOffset = Math.max(0, Math.floor(centerTime - halfAnalysisDuration));
-      const endOffset = Math.min(videoDuration, Math.floor(centerTime + halfAnalysisDuration));
-
-      // Add video metadata with offsets
-      analysisOptions.videoMetadata.start_offset = `${startOffset}s`;
-      analysisOptions.videoMetadata.end_offset = `${endOffset}s`;
-
-      console.log(`[VideoAnalysis] Limiting analysis to 30 minutes: ${startOffset}s to ${endOffset}s (video duration: ${videoDuration}s)`);
-
-      // Update the analysis prompt to mention we're analyzing a sample
-      analysisOptions.analysisPrompt = `You are analyzing a 30-minute sample from the middle of this video (from ${Math.floor(startOffset/60)}:${(startOffset%60).toString().padStart(2,'0')} to ${Math.floor(endOffset/60)}:${(endOffset%60).toString().padStart(2,'0')} of a ${Math.round(videoDuration/60)}-minute video). ${analysisPrompt}`;
-    }
-
-    let analysisAssetId = nativeAssetId;
-    if (videoDuration > MAX_ANALYSIS_DURATION) {
-      const centerTime = videoDuration / 2;
-      const halfAnalysisDuration = MAX_ANALYSIS_DURATION / 2;
-      const clip = await runMediaPipeline({
-        operation: 'analysisClip',
-        assetId: nativeAssetId,
-        range: {
-          start: Math.max(0, Math.floor(centerTime - halfAnalysisDuration)),
-          end: Math.min(videoDuration, Math.floor(centerTime + halfAnalysisDuration)),
-        },
-      }, { signal });
-      analysisAssetId = clip.media.asset.id;
-    }
-
     if (validateOwnership) await validateOwnership();
     const nativeResult = await runNativeGeminiMediaAnalysis({
-      assetId: analysisAssetId,
+      assetId: nativeAssetId,
       model: MODEL,
       prompt: analysisOptions.analysisPrompt,
       responseJsonSchema: createVideoAnalysisSchema(),

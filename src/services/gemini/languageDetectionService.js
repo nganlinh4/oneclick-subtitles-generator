@@ -29,6 +29,33 @@ const publishDetection = (result, source) => {
     return result;
 };
 
+const LANGUAGE_SAMPLE_ROWS = 24;
+const LANGUAGE_SAMPLE_CHARACTERS = 12_000;
+
+export const representativeSubtitleSample = (subtitles) => {
+    if (!Array.isArray(subtitles) || subtitles.length === 0) return '';
+    const count = Math.min(LANGUAGE_SAMPLE_ROWS, subtitles.length);
+    const indices = count === 1
+        ? [0]
+        : Array.from({ length: count }, (_, index) => (
+            Math.round(index * (subtitles.length - 1) / (count - 1))
+        ));
+    const rows = [];
+    let characters = 0;
+    for (const index of [...new Set(indices)]) {
+        const text = subtitles[index]?.text;
+        if (typeof text !== 'string') throw new Error('Subtitles are malformed for language detection');
+        const trimmed = text.trim();
+        if (!trimmed) continue;
+        const remaining = LANGUAGE_SAMPLE_CHARACTERS - characters;
+        if (remaining <= 0) break;
+        const bounded = [...trimmed].slice(0, remaining).join('');
+        rows.push(bounded);
+        characters += [...bounded].length;
+    }
+    return rows.join('\n');
+};
+
 /**
  * Detect language of text using Gemini API
  * @param {Array} subtitles - Array of subtitles to detect language from
@@ -53,16 +80,7 @@ export const detectSubtitleLanguage = async (subtitles, source = 'original', mod
             sourceType: source,
             subtitles,
         });
-        // Take the first 3 subtitles for language detection
-        const sampleSubtitles = subtitles.slice(0, 3);
-        if (sampleSubtitles.some((subtitle) => (
-            !subtitle
-            || typeof subtitle !== 'object'
-            || typeof subtitle.text !== 'string'
-        ))) {
-            throw new Error('Subtitles are malformed for language detection');
-        }
-        const sampleText = sampleSubtitles.map(subtitle => subtitle.text.trim()).filter(Boolean).join('\n');
+        const sampleText = representativeSubtitleSample(subtitles);
         if (sampleText.length === 0) {
             throw new Error('Subtitle text is empty for language detection');
         }
