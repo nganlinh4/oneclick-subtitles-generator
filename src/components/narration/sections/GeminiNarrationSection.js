@@ -96,6 +96,7 @@ const GeminiNarrationSection = ({
 
       {/* Generate Button */}
       <GenerateButton
+        narrationMethod="gemini"
         handleGenerateNarration={handleGeminiNarration}
         isGenerating={isGenerating}
         referenceAudio={null}
