@@ -1,4 +1,7 @@
 {
+  "requestsPerDay": "{{count}}회/일",
+  "freeDailyQuotaHelp": "Google 프로젝트별 무료 등급 참고 한도이며 키나 동영상별 한도가 아닙니다. 각 구간과 재시도는 요청을 사용하며 실제 프로젝트 한도는 다를 수 있습니다.",
+  "unknownDailyQuota": "이 모델의 일일 요청 한도가 확인되지 않았습니다.",
   "gemini35FlashLite": "Gemini 3.5 Flash Lite",
   "gemini35FlashLiteDescription": "GG 좋음 · 빠르고 강하며 할당량이 높은 일상 기본 모델",
   "gemini36Flash": "Gemini 3.6 Flash",

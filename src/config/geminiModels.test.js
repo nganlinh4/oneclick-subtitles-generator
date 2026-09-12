@@ -49,7 +49,7 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.6-flash': 20,
       'gemini-3.5-flash': 20,
       'gemini-3.1-flash-lite': 500,
-      'gemini-3.8-flash': null
+      'gemini-3.8-flash': 20
     });
     expect(GEMINI_MODELS.map((model) => model.profileLabels.en)).toEqual([
       'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast', 'GG New'

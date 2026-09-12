@@ -75,6 +75,24 @@ export const IMAGE_GENERATION_MODELS = sortModelsForDisplay(catalog.imageGenerat
 export const LIVE_AUDIO_MODELS = sortModelsForDisplay(catalog.liveAudioModels);
 export const MEDIA_INPUT_MODALITIES = ['audio', 'video'];
 
+/** Menu-only quota metadata; the closed control keeps its model name alone. */
+export const buildGeminiModelOption = (model, t) => {
+  const requests = model.quota?.requestsPerDay;
+  const hasDailyLimit = Number.isSafeInteger(requests) && requests >= 0;
+  return {
+    value: model.id,
+    label: model.isCustom
+      ? `${model.name} (${t('models.customLabel', 'Custom')})`
+      : t(model.nameKey, model.nameDefault),
+    trailingLabel: hasDailyLimit
+      ? t('models.requestsPerDay', '{{count}} requests/day', { count: requests })
+      : '—',
+    trailingTitle: hasDailyLimit
+      ? t('models.freeDailyQuotaHelp', 'Free-tier reference per Google project, not per key or video. Each chunk and retry uses a request; actual project limits may differ.')
+      : t('models.unknownDailyQuota', 'Daily request limit not verified for this model.'),
+  };
+};
+
 export const getModelById = (id) => GEMINI_MODELS.find((model) => model.id === id);
 export const getLiveAudioModelById = (id) => LIVE_AUDIO_MODELS.find((model) => model.id === id);
 export const modelAcceptsMedia = (id) => {

@@ -1,4 +1,7 @@
 {
+  "requestsPerDay": "{{count}} requests/day",
+  "freeDailyQuotaHelp": "Free-tier reference per Google project, not per key or video. Each chunk and retry uses a request; actual project limits may differ.",
+  "unknownDailyQuota": "Daily request limit not verified for this model.",
   "gemini35FlashLite": "Gemini 3.5 Flash Lite",
   "gemini35FlashLiteDescription": "GG Good · Best everyday default: fast, strong, and high quota",
   "gemini36Flash": "Gemini 3.6 Flash",

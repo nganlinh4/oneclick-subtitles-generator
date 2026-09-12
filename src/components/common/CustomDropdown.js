@@ -194,7 +194,8 @@ const CustomDropdown = ({
         if (actualHeight > 0) optionHeight = Math.ceil(actualHeight);
         allOptions.forEach(option => {
           const originalWidth = option.style.width;
-          option.style.width = 'auto'; option.style.whiteSpace = 'nowrap';
+          option.style.width = option.querySelector('.dropdown-option-detail') ? 'max-content' : 'auto';
+          option.style.whiteSpace = 'nowrap';
           maxOptionWidth = Math.max(maxOptionWidth, option.scrollWidth);
           option.style.width = originalWidth; option.style.whiteSpace = '';
         });
@@ -532,7 +533,14 @@ const CustomDropdown = ({
                     onMouseLeave={(e) => { if (isDraggingRef.current) e.currentTarget.classList.remove('hover-preview'); }}
                     style={{ opacity: isDisabled ? 0.7 : 0.999 }}
                   >
-                    {option.label}
+                    {option.trailingLabel != null ? (
+                      <>
+                        <span className="dropdown-option-label">{option.label}</span>{' '}
+                        <span className="dropdown-option-detail" title={option.trailingTitle}>
+                          {option.trailingLabel}
+                        </span>
+                      </>
+                    ) : option.label}
                   </button>
                 );
               })}

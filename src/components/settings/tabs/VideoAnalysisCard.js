@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ANALYSIS_MODEL_IDS, getModelById } from '../../../config/geminiModels';
+import { ANALYSIS_MODELS, buildGeminiModelOption } from '../../../config/geminiModels';
 import { VideoAnalysisIcon } from '../icons/TabIcons';
 import CustomDropdown from '../../common/CustomDropdown';
 
@@ -10,19 +10,6 @@ const VideoAnalysisCard = ({
   setVideoAnalysisTimeout
 }) => {
   const { t } = useTranslation();
-
-  // Helper function to get analysis models (subset of all models)
-  const getAnalysisModels = () => {
-    const builtInAnalysisModels = ANALYSIS_MODEL_IDS.map(id => {
-      const m = getModelById(id);
-      return {
-        id: m.id,
-        name: t(m.nameKey, m.nameDefault)
-      };
-    });
-
-    return builtInAnalysisModels;
-  };
 
   return (
     <div className="settings-card analysis-card">
@@ -49,10 +36,7 @@ const VideoAnalysisCard = ({
           <CustomDropdown
             value={videoAnalysisModel}
             onChange={(value) => setVideoAnalysisModel(value)}
-            options={getAnalysisModels().map((model) => ({
-              value: model.id,
-              label: model.name
-            }))}
+            options={ANALYSIS_MODELS.map((model) => buildGeminiModelOption(model, t))}
             placeholder={t('settings.selectAnalysisModel', 'Select Analysis Model')}
           />
         </div>

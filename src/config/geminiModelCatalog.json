@@ -5,6 +5,13 @@
     "catalog": "src/config/geminiModelCatalog.json",
     "syncedAt": "2026-09-06"
   },
+  "quotaReference": {
+    "tier": "free",
+    "scope": "project",
+    "observedAt": "2026-09-12",
+    "sourceUrl": "https://aistudio.google.com/rate-limit",
+    "description": "Daily request ceilings observed in a signed-in free-tier project; not remaining usage or a guarantee for every project."
+  },
   "defaults": {
     "ordinary": "gemini-3.1-flash-lite",
     "transcription": "gemini-3.1-flash-lite",
@@ -129,7 +136,7 @@
       "verifiedAt": "2026-09-06",
       "profileLabels": { "en": "GG New", "vi": "GG Mới", "ko": "GG 신규" },
       "dailyUse": "Opt-in multimodal model; subtitle benchmark pending",
-      "quota": { "requestsPerDay": null },
+      "quota": { "requestsPerDay": 20 },
       "intelligenceTier": 7,
       "supportsSearch": true,
       "searchEnabledByDefault": false,

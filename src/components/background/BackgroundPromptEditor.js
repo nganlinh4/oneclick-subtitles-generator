@@ -8,6 +8,7 @@ import '../../styles/PromptEditor.css';
 import '../../styles/background/BackgroundPromptEditor.css';
 import {
   BACKGROUND_PROMPT_MODELS,
+  buildGeminiModelOption,
   DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
   DEFAULT_IMAGE_GENERATION_MODEL_ID,
   IMAGE_GENERATION_MODELS,
@@ -227,10 +228,7 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
               <CustomDropdown
                 value={promptModel}
                 onChange={(value) => setPromptModel(value)}
-                options={BACKGROUND_PROMPT_MODELS.map((model) => ({
-                  value: model.id,
-                  label: `${model.displayName} · ${model.profileLabels.en}`
-                }))}
+                options={BACKGROUND_PROMPT_MODELS.map((model) => buildGeminiModelOption(model, t))}
                 placeholder={t('promptEditor.selectModel', 'Select Model')}
               />
             </div>

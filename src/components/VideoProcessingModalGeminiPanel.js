@@ -141,11 +141,7 @@ const VideoProcessingModalGeminiPanel = ({
                             value={selectedModel}
                             id="generation-model"
                             onChange={(value) => setSelectedModel(value)}
-                            options={modelOptions.map(option => ({
-                                value: option.value,
-                                label: option.label,
-                                disabled: option.disabled
-                            }))}
+                            options={modelOptions}
                             placeholder={t('processing.selectModel', 'Select Model')}
                             style={{ maxWidth: '250px' }}
                         />

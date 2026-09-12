@@ -1,5 +1,5 @@
 import { PROMPT_PRESETS, getUserPromptPresets } from '../services/gemini';
-import { TRANSCRIPTION_MODELS } from '../config/geminiModels';
+import { TRANSCRIPTION_MODELS, buildGeminiModelOption } from '../config/geminiModels';
 import { formatTime } from '../utils/timeFormatter';
 
 /**
@@ -20,8 +20,7 @@ export const buildResolutionOptions = (t) => ([
 export const buildModelOptions = (t) => (
     [
         ...TRANSCRIPTION_MODELS.map(m => ({
-            value: m.id,
-            label: t(m.nameKey, m.nameDefault),
+            ...buildGeminiModelOption(m, t),
             maxTokens: m.maxTokens
         }))
     ]

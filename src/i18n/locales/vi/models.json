@@ -1,4 +1,7 @@
 {
+  "requestsPerDay": "{{count}} lượt/ngày",
+  "freeDailyQuotaHelp": "Mức tham khảo gói miễn phí theo dự án Google, không theo khóa hay video. Mỗi đoạn và lần thử lại dùng một yêu cầu; hạn mức thực tế có thể khác.",
+  "unknownDailyQuota": "Chưa xác minh hạn mức yêu cầu mỗi ngày của mô hình này.",
   "gemini35FlashLite": "Gemini 3.5 Flash Lite",
   "gemini35FlashLiteDescription": "GG Tốt · Mặc định hằng ngày tốt nhất: nhanh, mạnh và hạn mức cao",
   "gemini36Flash": "Gemini 3.6 Flash",

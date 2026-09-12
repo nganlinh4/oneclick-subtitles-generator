@@ -5,6 +5,7 @@ import {
   DEFAULT_GEMINI_MODEL_ID,
   DOCUMENT_MODELS,
   TRANSLATION_MODELS,
+  buildGeminiModelOption,
   normalizeCustomGeminiModels,
   sortModelsForDisplay,
 } from '../config/geminiModels';
@@ -36,12 +37,8 @@ const ModelDropdown = ({
   }, []);
 
   const models = isTranslationSection ? TRANSLATION_MODELS : DOCUMENT_MODELS;
-  const options = sortModelsForDisplay([...models, ...customModels]).map((model) => ({
-    value: model.id,
-    label: model.isCustom
-      ? `${model.name} (${t('models.customLabel', 'Custom')})`
-      : t(model.nameKey, model.nameDefault),
-  }));
+  const options = sortModelsForDisplay([...models, ...customModels])
+    .map((model) => buildGeminiModelOption(model, t));
 
   return (
     <CustomDropdown

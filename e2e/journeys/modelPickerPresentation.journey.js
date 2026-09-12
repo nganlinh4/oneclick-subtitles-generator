@@ -4,19 +4,32 @@ import { clickSettingsControl, revealSettingsSection } from '../support/settings
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
-/* global $, $$, browser, describe, document, it */
+/* global $, browser, describe, document, it */
 
 const EXPECTED = ['Gemini 3.8 Flash', 'Gemini 3.7 Flash', 'Gemini 3.6 Flash',
   'Gemini 3.5 Flash', 'Gemini 3.5 Flash Lite', 'Gemini 3.1 Flash Lite'];
 
 const inspectMenu = async (step) => {
   await $('.custom-dropdown-clipper.is-open [role="listbox"]').waitForDisplayed();
-  const labels = await $$('[role="listbox"] [role="option"]').map(option => option.getText());
-  assert.deepEqual(labels, EXPECTED, 'the visible model rows must contain only names in numeric order');
+  await browser.waitUntil(() => browser.execute(() =>
+    document.querySelector('.custom-dropdown-clipper').getAnimations({ subtree: true })
+      .every(animation => animation.playState !== 'running')));
+  const rows = await browser.execute(() => [...document.querySelectorAll('[role="listbox"] [role="option"]')].map(option => {
+    const label = option.querySelector('.dropdown-option-label');
+    const detail = option.querySelector('.dropdown-option-detail');
+    return { label: label?.textContent, quota: detail?.textContent, title: detail?.title,
+      clipped: label.scrollWidth > label.clientWidth + 1 || detail.scrollWidth > detail.clientWidth + 1,
+      overlaps: label.getBoundingClientRect().right > detail.getBoundingClientRect().left + 1 };
+  }));
+  assert.deepEqual(rows.map(row => row.label), EXPECTED, 'the model names must retain numeric order');
+  assert.deepEqual(rows.map(row => row.quota), ['20 requests/day', '20 requests/day', '20 requests/day',
+    '20 requests/day', '500 requests/day', '500 requests/day']);
+  assert.ok(rows.every(row => !row.clipped && !row.overlaps && row.title.includes('Free-tier')),
+    `model names and project quota references must fit without overlap: ${JSON.stringify(rows)}`);
   assert.equal(await $('.model-options-dropdown').isExisting(), false, 'the retired menu is still mounted');
   await captureWorkflowStep({ workflow: 'model-picker-presentation', step,
-    description: 'Real model menu: shared dropdown, numeric order, names only.',
-    focusSelector: '.custom-dropdown-clipper', details: { labels } });
+    description: 'Real model menu: sorted names and compact project daily request limits, no descriptions.',
+    focusSelector: '.custom-dropdown-clipper', details: { rows } });
 };
 
 const closeMenu = async () => {
@@ -60,5 +73,15 @@ describe('consistent model pickers in the real editor', () => {
     assert.equal(await $('.settings-modal').isDisplayed(), true,
       'dismissing the model menu must not also close Settings');
     await clickControl('[data-settings-action="close"]');
+
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await clickControl('.subtitle-timeline');
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    await clickControl('[data-transcription-method="new"]');
+    await clickControl('#generation-model');
+    await inspectMenu('04-generation-models');
+    await closeMenu();
+    assert.equal(await $('.video-processing-modal').isDisplayed(), true);
+    await browser.keys('Escape');
   });
 });
