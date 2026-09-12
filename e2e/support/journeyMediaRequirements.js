@@ -16,6 +16,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'editorCueCrudAndHistory.journey.js',
   'editPersistRelaunch.journey.js',
   'exportAnimationParityMatrix.journey.js',
+  'frontendResponsiveness.journey.js',
   'geminiCredentialBoundary.journey.js',
   'geminiDocumentSuccess.journey.js',
   'geminiOutputPreview.journey.js',
