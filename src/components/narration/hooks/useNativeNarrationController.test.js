@@ -116,6 +116,7 @@ const useHarness = (overrides = {}) => {
     gttsTld: 'com',
     gttsSlow: false,
     selectedVoice: 'Aoede',
+    concurrentClients: 5,
     generationResults,
     setGenerationResults,
     generationResultSource: 'original',
@@ -287,6 +288,7 @@ test('routes all five narration engines through the native job contract', async 
     settings: {
       credentialId: 'opaque-credential-id',
       model: 'gemini-3.1-flash-live-preview',
+      maxConcurrency: 5,
     },
   });
   expect(result.current.generationResults).toEqual([

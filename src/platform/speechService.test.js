@@ -158,7 +158,11 @@ describe('native speech request validation', () => {
       model: GEMINI_SPEECH_MODELS[0],
       voice: 'Aoede',
       language: 'en-US',
+      maxConcurrency: 5,
     });
+    expect(normalizeSpeechProfile({
+      backend: 'geminiTts', credentialId: JOB_ID, maxConcurrency: 10,
+    }).maxConcurrency).toBe(10);
   });
 
   test('requires an opaque reference only for reference-based engines', () => {

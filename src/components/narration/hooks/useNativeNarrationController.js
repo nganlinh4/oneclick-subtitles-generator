@@ -158,6 +158,7 @@ const nativeMethodSettings = async (method, state) => {
         model: GEMINI_SPEECH_MODELS[0],
         voice: state.selectedVoice,
         language: language || 'en-US',
+        maxConcurrency: Math.max(1, Math.min(10, Math.round(finite(state.concurrentClients, 5)))),
       };
     }
     default:

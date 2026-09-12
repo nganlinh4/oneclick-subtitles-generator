@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
+use futures_util::future::join_all;
 use osg_domain::{
     AssetId, JobId, JobKind, JobProgress, JobSnapshot, JobState, JobUpdate, ProjectId,
 };
@@ -993,6 +994,7 @@ enum SpeechProfileRequest {
         model: String,
         voice: String,
         language: String,
+        max_concurrency: usize,
     },
 }
 
@@ -1021,6 +1023,15 @@ impl SpeechProfileRequest {
         match self {
             Self::GeminiTts { credential_id, .. } => Some(*credential_id),
             _ => None,
+        }
+    }
+
+    const fn max_concurrency(&self) -> usize {
+        match self {
+            Self::GeminiTts {
+                max_concurrency, ..
+            } => *max_concurrency,
+            _ => 1,
         }
     }
 
@@ -1211,6 +1222,7 @@ struct ValidatedSpeechStart {
     requests: Vec<SynthesisRequest>,
     reference: Option<AudioAsset>,
     credential_id: Option<CredentialId>,
+    max_concurrency: usize,
 }
 
 impl SpeechStartRequest {
@@ -1235,6 +1247,12 @@ impl SpeechStartRequest {
             ));
         }
         let credential_id = self.profile.credential_id();
+        let max_concurrency = self.profile.max_concurrency();
+        if !(1..=10).contains(&max_concurrency) {
+            return Err(SpeechError::InvalidInput(
+                "narration concurrency is outside the supported range",
+            ));
+        }
         let settings = self.profile.into_native()?;
         let maximum_characters = backend.maximum_text_characters();
         let mut total_bytes = 0_usize;
@@ -1267,6 +1285,7 @@ impl SpeechStartRequest {
             requests,
             reference,
             credential_id,
+            max_concurrency,
         })
     }
 }
@@ -3857,56 +3876,68 @@ async fn run_speech_batch(
 
     let total = validated.requests.len();
     let mut results = Vec::with_capacity(total);
-    for (offset, request) in validated.requests.into_iter().enumerate() {
+    let requests = validated.requests;
+    for batch in requests.chunks(validated.max_concurrency) {
         ownership.ensure_owned(context.runtime, context.database)?;
-        let index = offset + 1;
-        let prepared = synthesize_segment(
-            context,
-            &work,
-            &worker,
-            request,
-            ownership.clone(),
-            SegmentRun {
-                backend: validated.backend,
-                lifecycle_epoch: validated.lifecycle_epoch,
-                index,
+        let batch_start = results.len();
+        let prepared = join_all(batch.iter().cloned().enumerate().map(|(offset, request)| {
+            let index = batch_start + offset + 1;
+            synthesize_segment(
+                context,
+                &work,
+                &worker,
+                request,
+                ownership.clone(),
+                SegmentRun {
+                    backend: validated.backend,
+                    lifecycle_epoch: validated.lifecycle_epoch,
+                    index,
+                    total,
+                },
+            )
+        }))
+        .await;
+        for (offset, prepared) in prepared.into_iter().enumerate() {
+            let index = batch_start + offset + 1;
+            let prepared = prepared?;
+            let (stored, invalidate_backend) = match prepared {
+                PreparedSegmentResult::Completed(stored) => (stored, false),
+                PreparedSegmentResult::Failed {
+                    result,
+                    invalidate_backend,
+                } => {
+                    commit_failed_segment(context, &ownership, result.clone(), index, total)
+                        .await?;
+                    (result, invalidate_backend)
+                }
+            };
+            let terminal_failure = match &stored {
+                StoredSpeechResult::Failed { code, .. } if batch_terminal_failure(*code) => {
+                    Some(*code)
+                }
+                _ => None,
+            };
+            results.push(stored);
+            if let Some(code) = terminal_failure {
+                if invalidate_backend {
+                    let _ = context.runtime.invalidate_backend_runtime(
+                        validated.backend,
+                        Some(validated.lifecycle_epoch),
+                    );
+                }
+                return Err(code);
+            }
+            report_batch_progress(
+                context.runtime,
+                &ownership,
+                context.database,
+                context.jobs,
+                context.job_id,
+                results.len(),
                 total,
-            },
-        )
-        .await?;
-        let (stored, invalidate_backend) = match prepared {
-            PreparedSegmentResult::Completed(stored) => (stored, false),
-            PreparedSegmentResult::Failed {
-                result,
-                invalidate_backend,
-            } => {
-                commit_failed_segment(context, &ownership, result.clone(), index, total).await?;
-                (result, invalidate_backend)
-            }
-        };
-        let terminal_failure = match &stored {
-            StoredSpeechResult::Failed { code, .. } if batch_terminal_failure(*code) => Some(*code),
-            _ => None,
-        };
-        results.push(stored);
-        if let Some(code) = terminal_failure {
-            if invalidate_backend {
-                let _ = context
-                    .runtime
-                    .invalidate_backend_runtime(validated.backend, Some(validated.lifecycle_epoch));
-            }
-            return Err(code);
+            )
+            .await?;
         }
-        report_batch_progress(
-            context.runtime,
-            &ownership,
-            context.database,
-            context.jobs,
-            context.job_id,
-            index,
-            total,
-        )
-        .await?;
     }
     if results
         .iter()
@@ -7471,7 +7502,9 @@ mod tests {
             model: "gemini-3.1-flash-live-preview".to_owned(),
             voice: "Aoede".to_owned(),
             language: "en-US".to_owned(),
+            max_concurrency: 5,
         };
+        assert_eq!(valid.max_concurrency(), 5);
         assert!(valid.into_native().is_ok());
 
         let invalid = SpeechProfileRequest::GeminiTts {
@@ -7479,6 +7512,7 @@ mod tests {
             model: "text-only-model".to_owned(),
             voice: "Aoede".to_owned(),
             language: "en-US".to_owned(),
+            max_concurrency: 5,
         };
         assert!(invalid.into_native().is_err());
     }

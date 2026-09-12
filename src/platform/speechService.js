@@ -283,7 +283,7 @@ const profileKeys = Object.freeze({
   chatterbox: new Set(['backend', 'language', 'exaggerationMilli', 'cfgWeightMilli']),
   edgeTts: new Set(['backend', 'voice', 'ratePercent', 'volumePercent', 'pitchHz']),
   gtts: new Set(['backend', 'language', 'domain', 'slow']),
-  geminiTts: new Set(['backend', 'credentialId', 'model', 'voice', 'language']),
+  geminiTts: new Set(['backend', 'credentialId', 'model', 'voice', 'language', 'maxConcurrency']),
 });
 
 export const normalizeSpeechProfile = (profile) => {
@@ -365,6 +365,7 @@ export const normalizeSpeechProfile = (profile) => {
         model,
         voice,
         language: requireLanguage(profile.language ?? 'en-US'),
+        maxConcurrency: requireInteger(profile.maxConcurrency ?? 5, 1, 10),
       });
     }
     default:

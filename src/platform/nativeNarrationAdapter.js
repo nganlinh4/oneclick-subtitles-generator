@@ -45,7 +45,7 @@ const settingKeys = Object.freeze({
     'voice', 'ratePercent', 'rate', 'volumePercent', 'volume', 'pitchHz', 'pitch',
   ]),
   gtts: new Set(['language', 'lang', 'domain', 'tld', 'slow']),
-  geminiTts: new Set(['credentialId', 'model', 'voice', 'language']),
+  geminiTts: new Set(['credentialId', 'model', 'voice', 'language', 'maxConcurrency']),
 });
 
 const referenceKeys = new Set([
@@ -308,6 +308,7 @@ export const createNativeSpeechProfile = (methodInput, rawSettings = {}) => {
         model,
         voice,
         language: settings.language ?? 'en-US',
+        maxConcurrency: settings.maxConcurrency ?? 5,
       });
     }
     default:
