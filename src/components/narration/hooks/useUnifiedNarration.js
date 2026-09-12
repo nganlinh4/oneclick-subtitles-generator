@@ -313,13 +313,6 @@ const useUnifiedNarration = ({
     nativeNarrationHandlers
   });
 
-  const allServicesUnavailable = !isCheckingAvailability
-    && !isAvailable
-    && !isGeminiAvailable
-    && !isChatterboxAvailable
-    && !isEdgeTTSAvailable
-    && !isGTTSAvailable;
-
   return {
     // Method state
     narrationMethod, setNarrationMethod,
@@ -328,8 +321,6 @@ const useUnifiedNarration = ({
     isCheckingAvailability,
     geminiUnavailableReason,
     isAvailable,
-    allServicesUnavailable,
-
     // Gemini settings
     selectedVoice, setSelectedVoice,
     concurrentClients, setConcurrentClients,

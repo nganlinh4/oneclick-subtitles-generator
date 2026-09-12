@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import useAvailabilityCheck, {
   checkNativeNarrationAvailability,
   getGeminiCredentialAvailability,
+  managedNativeNarrationAvailability,
 } from './useAvailabilityCheck';
 
 const mocks = vi.hoisted(() => ({
@@ -106,7 +107,7 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
-it('fails every method closed on a fresh install without probing missing packages', async () => {
+it('keeps catalog-deliverable methods selectable on a fresh install without starting workers', async () => {
   const adapter = {
     getStatus: vi.fn().mockResolvedValue(status()),
     probe: vi.fn(),
@@ -114,11 +115,9 @@ it('fails every method closed on a fresh install without probing missing package
   };
 
   const result = await checkNativeNarrationAvailability(adapter, { probeInstalled: true });
-  Object.values(result).forEach((entry) => {
-    expect(entry).toEqual({
-      available: false, reason: 'not-installed', message: 'SERVICE_UNAVAILABLE',
-    });
-  });
+  Object.values(result).forEach((entry) => expect(entry).toEqual({
+    available: true, reason: 'installable',
+  }));
   expect(adapter.probe).not.toHaveBeenCalled();
   expect(adapter.getStatus).toHaveBeenCalledTimes(1);
 });
@@ -146,8 +145,8 @@ it('probes installed backends and accepts only the verified ready-and-warm snaps
   expect(result.f5Status.available).toBe(true);
   expect(result.edgeTtsStatus.available).toBe(true);
   expect(result.geminiTtsStatus.available).toBe(true);
-  expect(result.chatterboxStatus.reason).toBe('not-installed');
-  expect(result.gttsStatus.reason).toBe('not-installed');
+  expect(result.chatterboxStatus.reason).toBe('installable');
+  expect(result.gttsStatus.reason).toBe('installable');
   expect(adapter.probe.mock.calls.map(([name]) => name)).toEqual([
     'f5Tts', 'edgeTts', 'geminiTts',
   ]);
@@ -176,14 +175,14 @@ it('isolates probe failures and native health changes by backend', async () => {
   };
 
   const result = await checkNativeNarrationAvailability(adapter, { probeInstalled: true });
-  expect(result.edgeTtsStatus.reason).toBe('probe-failed');
-  expect(result.gttsStatus.reason).toBe('not-ready');
+  expect(result.edgeTtsStatus.reason).toBe('cold');
+  expect(result.gttsStatus.reason).toBe('cold');
   expect(result.f5Status.available).toBe(true);
   expect(result.chatterboxStatus.available).toBe(true);
   expect(result.geminiTtsStatus.available).toBe(true);
 });
 
-it('fails closed on a late-probe snapshot without mutating lifecycle state', async () => {
+it('keeps an installed engine selectable after a late cold probe', async () => {
   const adapter = {
     getStatus: vi.fn()
       .mockResolvedValueOnce(status({ edgeTts: { installed: true } }))
@@ -195,9 +194,7 @@ it('fails closed on a late-probe snapshot without mutating lifecycle state', asy
   };
 
   const result = await checkNativeNarrationAvailability(adapter, { probeInstalled: true });
-  expect(result.edgeTtsStatus).toEqual({
-    available: false, reason: 'not-ready', message: 'SERVICE_UNAVAILABLE',
-  });
+  expect(result.edgeTtsStatus).toEqual({ available: true, reason: 'cold' });
   expect(adapter.stopRuntime).not.toHaveBeenCalled();
 });
 
@@ -212,9 +209,9 @@ it('uses status-only readiness polling without restarting stopped engines', asyn
   };
 
   const result = await checkNativeNarrationAvailability(adapter, { probeInstalled: false });
-  expect(result.f5Status.reason).toBe('not-ready');
+  expect(result.f5Status.reason).toBe('cold');
   expect(result.chatterboxStatus.available).toBe(true);
-  expect(result.gttsStatus.reason).toBe('not-ready');
+  expect(result.gttsStatus.reason).toBe('cold');
   expect(adapter.probe).not.toHaveBeenCalled();
 });
 
@@ -274,7 +271,7 @@ it('never starts stopped engines on mount or narration-method changes', async ()
   );
 
   await waitFor(() => expect(setters.setIsCheckingAvailability).toHaveBeenLastCalledWith(false));
-  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(false);
+  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
   rerender({ method: 'gtts' });
   expect(setters.setIsGTTSAvailable).toHaveBeenLastCalledWith(true);
   expect(mocks.probe).not.toHaveBeenCalled();
@@ -282,7 +279,7 @@ it('never starts stopped engines on mount or narration-method changes', async ()
   unmount();
 });
 
-it('applies a Tools Stop lifecycle event immediately without waiting for the private poll', async () => {
+it('keeps an installed engine selectable after a Tools Stop lifecycle event', async () => {
   mocks.getStatus.mockResolvedValueOnce(status({
     edgeTts: { epoch: 5, installed: true, ready: true, warm: true },
   }));
@@ -304,7 +301,7 @@ it('applies a Tools Stop lifecycle event immediately without waiting for the pri
     }));
   });
 
-  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(false);
+  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
   expect(mocks.getStatus).toHaveBeenCalledTimes(1);
   expect(mocks.probe).not.toHaveBeenCalled();
   unmount();
@@ -339,7 +336,7 @@ it('does not let an in-flight stale status overwrite a newer Stop epoch', async 
     await Promise.resolve();
   });
 
-  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(false);
+  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
   expect(mocks.probe).not.toHaveBeenCalled();
   unmount();
 });
@@ -364,6 +361,45 @@ it('marks every method unavailable on an unsupported non-desktop platform', asyn
   unmount();
 });
 
+it('keeps compile-time managed methods selectable when transient worker status inspection fails', async () => {
+  mocks.getStatus.mockRejectedValueOnce(new Error('worker status unavailable'));
+  const setters = setterHarness();
+  const { unmount } = renderHook(() => useAvailabilityCheck({
+    ...setters,
+    t: (_key, fallback) => fallback,
+  }));
+
+  await waitFor(() => expect(setters.setIsCheckingAvailability).toHaveBeenLastCalledWith(false));
+  expect(managedNativeNarrationAvailability().gttsStatus).toEqual({
+    available: true,
+    reason: 'installable',
+  });
+  expect(setters.setIsGTTSAvailable).toHaveBeenLastCalledWith(true);
+  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
+  expect(setters.setIsChatterboxAvailable).toHaveBeenLastCalledWith(true);
+  expect(setters.setIsAvailable).toHaveBeenLastCalledWith(true);
+  unmount();
+});
+
+it('does not publish a false unavailable frame while the first native status request is pending', async () => {
+  let resolveStatus;
+  mocks.getStatus.mockImplementationOnce(() => new Promise((resolve) => {
+    resolveStatus = resolve;
+  }));
+  const setters = setterHarness();
+  const { unmount } = renderHook(() => useAvailabilityCheck({
+    ...setters,
+    t: (_key, fallback) => fallback,
+  }));
+
+  expect(setters.setIsGTTSAvailable).toHaveBeenLastCalledWith(true);
+  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
+  resolveStatus(status());
+  await waitFor(() => expect(setters.setIsCheckingAvailability).toHaveBeenLastCalledWith(false));
+  expect(setters.setIsGTTSAvailable).toHaveBeenLastCalledWith(true);
+  unmount();
+});
+
 it('observes an installed-and-started package on the next non-invasive poll', async () => {
   vi.useFakeTimers();
   try {
@@ -383,7 +419,7 @@ it('observes an installed-and-started package on the next non-invasive poll', as
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(false);
+    expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });

@@ -20,6 +20,7 @@ import {
   cancelManagedEnginePackageJob,
   getManagedEngineBinding,
   getManagedEnginePackageStatus,
+  ensureManagedEngineReady,
   installManagedEnginePackage,
   removeManagedEnginePackage,
   startManagedEngineRuntime,
@@ -186,4 +187,40 @@ it('fails closed for unsupported IDs and incomplete native status without invoki
   expect(installEnginePackage).not.toHaveBeenCalled();
   expect(installSpeechPackage).not.toHaveBeenCalled();
   expect(getEnginePackagesStatus).not.toHaveBeenCalled();
+});
+
+it('starts an installed cold speech engine as part of the requested action', async () => {
+  getSpeechPackagesStatus.mockResolvedValueOnce({ packages: [
+    { id: 'edge-tts', installed: true, state: 'installed', deliveryAvailable: true, operation: null },
+  ] });
+
+  await expect(ensureManagedEngineReady('edge-tts')).resolves.toEqual({
+    status: { ready: true }, voices: [],
+  });
+
+  expect(installSpeechPackage).not.toHaveBeenCalled();
+  expect(probeSpeechBackend).toHaveBeenCalledWith('edgeTts');
+});
+
+it('installs a missing verified speech package and then starts it without a Tools detour', async () => {
+  getSpeechPackagesStatus
+    .mockResolvedValueOnce({ packages: [{
+      id: 'gtts', installed: false, state: 'missing', deliveryAvailable: true, operation: null,
+    }] })
+    .mockResolvedValueOnce({ packages: [{
+      id: 'gtts', installed: true, state: 'installed', deliveryAvailable: true, operation: null,
+    }] });
+  installSpeechPackage.mockImplementationOnce(async (_backend, handlers) => {
+    queueMicrotask(() => handlers.onCompleted({ event: 'completed' }));
+    return { id: 'speech-job' };
+  });
+
+  await ensureManagedEngineReady('gtts');
+
+  expect(installSpeechPackage).toHaveBeenCalledWith(
+    'gtts',
+    expect.objectContaining({ onProgress: expect.any(Function), onCompleted: expect.any(Function) }),
+    { signal: undefined },
+  );
+  expect(probeSpeechBackend).toHaveBeenCalledWith('gtts');
 });

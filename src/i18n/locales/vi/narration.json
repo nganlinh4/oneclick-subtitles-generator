@@ -419,5 +419,9 @@
   "subtitleGroupingExplanationTranslated": "Bảng này hiển thị cách phụ đề đã dịch được nhóm thành các câu hoàn chỉnh hơn để thuyết minh tốt hơn. Mỗi hàng đại diện cho một phụ đề đã dịch, và cột đã nhóm cho thấy cách chúng được kết hợp.",
   "subtitleNotFoundError": "Không tìm thấy phụ đề để thử lại.",
   "installingVoiceSamples": "Đang cài đặt bản xem trước giọng nói… {{percent}}%",
-  "voiceSampleUnavailable": "Không thể phát bản xem trước giọng nói. Vui lòng thử lại."
+  "voiceSampleUnavailable": "Không thể phát bản xem trước giọng nói. Vui lòng thử lại.",
+  "preparingEngine": "Đang chuẩn bị engine thuyết minh…",
+  "installingEngineProgress": "Đang chuẩn bị engine thuyết minh… {{percent}}%",
+  "engineStartFailedMessage": "Không thể khởi động engine thuyết minh. Hãy thử tạo lại.",
+  "enginePreparationFailedMessage": "Không thể tự động chuẩn bị engine thuyết minh. Hãy kiểm tra kết nối và thử lại."
 }

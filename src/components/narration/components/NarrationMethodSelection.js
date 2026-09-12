@@ -30,7 +30,7 @@ const NarrationMethodSelection = ({
   const { t } = useTranslation();
   const unavailableTitle = t(
     'narration.engineUnavailableMessage',
-    'This narration engine is not ready. Install or start it in Settings > Tools.'
+    'This narration engine cannot be prepared automatically right now.'
   );
   const availableMethods = {
     f5tts: isF5Available,

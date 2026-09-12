@@ -9,6 +9,7 @@ import {
   initializeCredentialState,
 } from '../../../platform/credentialStateController';
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
+import { ensureManagedEngineReady } from '../../../platform/managedEngineService';
 import { flushDurableLyricsHistory } from '../../../platform/durableLyricsCheckpoint';
 import {
   cancelNativeNarrationJob,
@@ -36,6 +37,13 @@ const backendByMethod = Object.freeze({
   'edge-tts': 'edgeTts',
   gtts: 'gtts',
   gemini: 'geminiTts',
+});
+const engineByMethod = Object.freeze({
+  f5tts: 'f5tts',
+  chatterbox: 'chatterbox',
+  'edge-tts': 'edge-tts',
+  gtts: 'gtts',
+  gemini: 'gemini-tts',
 });
 
 const speechRuntimeStopped = () => Object.assign(
@@ -229,6 +237,7 @@ const useNativeNarrationController = (state) => {
   const native = isDesktopRuntime();
   const stateRef = useRef(state);
   const editInFlightRef = useRef(false);
+  const preparationRef = useRef(null);
   stateRef.current = state;
 
   const selectedSubtitlePlan = useCallback(() => {
@@ -263,14 +272,7 @@ const useNativeNarrationController = (state) => {
       return false;
     }
     const backend = backendByMethod[method];
-    const lifecycle = backend ? getSpeechLifecycleSnapshot(backend) : null;
-    if (!lifecycle?.enabled || !lifecycle.warm) {
-      current.setError(current.t(
-        'narration.engineUnavailableMessage',
-        'This narration engine is not ready. Install or start it in Settings > Tools.'
-      ));
-      return false;
-    }
+    let lifecycle = null;
     const ownsLifecycle = () => {
       const latest = getSpeechLifecycleSnapshot(backend);
       return latest?.epoch === lifecycle.epoch && latest.enabled && latest.warm;
@@ -373,6 +375,26 @@ const useNativeNarrationController = (state) => {
     current.setGenerationResults(stagedResults);
 
     try {
+      const preparation = new AbortController();
+      preparationRef.current = preparation;
+      current.setGenerationStatus(current.t(
+        'narration.preparingEngine',
+        'Preparing narration engine…',
+      ));
+      const prepared = await ensureManagedEngineReady(engineByMethod[method], {
+        signal: preparation.signal,
+        onProgress: (event) => {
+          const basisPoints = event?.operation?.basisPoints;
+          if (!Number.isSafeInteger(basisPoints)) return;
+          current.setGenerationStatus(current.t(
+            'narration.installingEngineProgress',
+            'Preparing narration engine… {{percent}}%',
+            { percent: Math.floor(basisPoints / 100) },
+          ));
+        },
+      });
+      lifecycle = prepared?.status || getSpeechLifecycleSnapshot(backend);
+      if (!lifecycle?.enabled || !lifecycle.warm) throw speechRuntimeStopped();
       const settings = await nativeMethodSettings(method, current);
       requireLifecycleOwnership();
       requireProjectOwnership();
@@ -439,6 +461,20 @@ const useNativeNarrationController = (state) => {
           || error?.code === 'staleProjectVersion') {
         return publishProjectChanged();
       }
+      if (error?.code === 'managedEnginePreparationCancelled') {
+        current.setGenerationResults((previous) => finalizeRequestedResults(
+          previous,
+          [],
+          subtitles,
+          'cancelled',
+        ));
+        current.setGenerationStatus(current.t(
+          'narration.generationCancelled',
+          'Narration generation cancelled by user',
+        ));
+        current.setError('');
+        return true;
+      }
       if (error?.code === 'speechRuntimeStopped') {
         current.setGenerationResults((previous) => finalizeRequestedResults(
           previous,
@@ -447,8 +483,25 @@ const useNativeNarrationController = (state) => {
           'speechRuntimeStopped',
         ));
         current.setError(current.t(
-          'narration.engineUnavailableMessage',
-          'This narration engine is not ready. Install or start it in Settings > Tools.'
+          'narration.engineStartFailedMessage',
+          'The narration engine could not start. Try generating again.'
+        ));
+        return false;
+      }
+      if (typeof error?.code === 'string' && (
+        error.code.startsWith('managedEngine')
+        || error.code.startsWith('package')
+        || error.code.startsWith('speechPackage')
+      )) {
+        current.setGenerationResults((previous) => finalizeRequestedResults(
+          previous,
+          [],
+          subtitles,
+          error.code,
+        ));
+        current.setError(current.t(
+          'narration.enginePreparationFailedMessage',
+          'The narration engine could not be prepared automatically. Check your connection and try again.',
         ));
         return false;
       }
@@ -496,6 +549,7 @@ const useNativeNarrationController = (state) => {
       ));
       return false;
     } finally {
+      preparationRef.current = null;
       current.setIsGenerating(false);
     }
   }, [native, selectedSubtitlePlan]);
@@ -539,7 +593,10 @@ const useNativeNarrationController = (state) => {
 
   const cancel = useCallback(async (method) => {
     if (!native) return false;
-    return cancelNativeNarrationJob(method).catch(() => false);
+    const preparing = preparationRef.current;
+    preparing?.abort();
+    const cancelled = await cancelNativeNarrationJob(method).catch(() => false);
+    return cancelled || preparing !== null;
   }, [native]);
 
   useEffect(() => {

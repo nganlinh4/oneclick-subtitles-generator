@@ -50,15 +50,18 @@ const EdgeTTSControls = ({
     if (snapshot.backend === 'edgeTts') setLifecycle(snapshot);
   }), []);
 
-  // Voice inventory is requested only for an already-running engine. Tools owns Start/Stop.
+  // Generation prepares cold engines on demand. Preserve a previously loaded inventory while the
+  // worker is cold so cancellation never makes the controls appear to lose their configuration.
   useEffect(() => {
     const sequence = voiceRequestSequence.current + 1;
     voiceRequestSequence.current = sequence;
-    if (!isServiceAvailable
-        || !lifecycle?.enabled
-        || !lifecycle.warm) {
+    if (!isServiceAvailable) {
       setVoices([]);
       setInventoryAvailable(false);
+      setLoading(false);
+      return () => { voiceRequestSequence.current += 1; };
+    }
+    if (!lifecycle?.enabled || !lifecycle.warm) {
       setLoading(false);
       return () => { voiceRequestSequence.current += 1; };
     }

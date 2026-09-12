@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
 
 import {
+  cancelNativeNarrationJob,
   restorePersistedNativeNarration,
   runNativeNarrationJob,
 } from '../../../platform/nativeNarrationFlow';
@@ -18,6 +19,9 @@ const checkpointMocks = vi.hoisted(() => ({
 const speechMocks = vi.hoisted(() => ({
   getSpeechLifecycleSnapshot: vi.fn(),
 }));
+const engineMocks = vi.hoisted(() => ({
+  ensureManagedEngineReady: vi.fn(),
+}));
 const projectMocks = vi.hoisted(() => ({
   getActiveProjectSnapshot: vi.fn(),
 }));
@@ -26,6 +30,9 @@ const narrationStoreMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../platform/desktopRuntime', () => ({ isDesktopRuntime: () => true }));
+vi.mock('../../../platform/managedEngineService', () => ({
+  ensureManagedEngineReady: engineMocks.ensureManagedEngineReady,
+}));
 vi.mock('../../../platform/durableLyricsCheckpoint', () => ({
   flushDurableLyricsHistory: checkpointMocks.flushDurableLyricsHistory,
 }));
@@ -54,10 +61,15 @@ const PROJECT_ID = '018f4c22-f0f1-7c09-a4d5-120d7b6f84a4';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(cancelNativeNarrationJob).mockResolvedValue(false);
   speechMocks.getSpeechLifecycleSnapshot.mockReturnValue({
     epoch: 7,
     enabled: true,
     warm: true,
+  });
+  engineMocks.ensureManagedEngineReady.mockResolvedValue({
+    status: { epoch: 7, enabled: true, warm: true },
+    voices: [],
   });
   checkpointMocks.flushDurableLyricsHistory.mockResolvedValue(undefined);
   narrationStoreMocks.saveProjectNarration.mockResolvedValue({
@@ -133,7 +145,7 @@ const useHarness = (overrides = {}) => {
     t: (_key, fallback) => fallback,
     ...stateOverrides,
   });
-  return { controller, generationResults, isGenerating, error };
+  return { controller, generationResults, isGenerating, generationStatus, error };
 };
 
 const originalEditedResult = {
@@ -506,19 +518,70 @@ test.each(['en', 'en-US', 'zh', 'zh-CN'])(
   }
 );
 
-test('rejects generation immediately when Tools has stopped the owned lifecycle', async () => {
+test('reports an actionable retry when on-demand preparation cannot warm the engine', async () => {
   speechMocks.getSpeechLifecycleSnapshot.mockReturnValue({
     epoch: 8,
     enabled: false,
     warm: false,
+  });
+  engineMocks.ensureManagedEngineReady.mockResolvedValueOnce({
+    status: { epoch: 8, enabled: false, warm: false },
   });
   const { result } = renderHook(() => useHarness());
 
   await act(async () => result.current.controller.handleGTTSNarration());
 
   expect(runNativeNarrationJob).not.toHaveBeenCalled();
-  expect(result.current.error).toContain('not ready');
+  expect(result.current.error).toContain('could not start');
   expect(result.current.isGenerating).toBe(false);
+});
+
+test('starts a cold installed engine on demand before generating', async () => {
+  let lifecycle = { epoch: 8, enabled: false, warm: false };
+  speechMocks.getSpeechLifecycleSnapshot.mockImplementation(() => lifecycle);
+  engineMocks.ensureManagedEngineReady.mockImplementationOnce(async () => {
+    lifecycle = { epoch: 9, enabled: true, warm: true };
+    return { status: lifecycle, voices: [] };
+  });
+  runNativeNarrationJob.mockResolvedValue({ status: 'completed', results: [] });
+  const { result } = renderHook(() => useHarness());
+
+  await act(async () => result.current.controller.handleGTTSNarration());
+
+  expect(engineMocks.ensureManagedEngineReady).toHaveBeenCalledWith('gtts', expect.objectContaining({
+    signal: expect.any(AbortSignal),
+    onProgress: expect.any(Function),
+  }));
+  expect(runNativeNarrationJob).toHaveBeenCalledWith(
+    expect.objectContaining({ lifecycleEpoch: 9, method: 'gtts' }),
+    expect.any(Object),
+  );
+});
+
+test('cancels dependency preparation without locking or erroring the narration UI', async () => {
+  engineMocks.ensureManagedEngineReady.mockImplementationOnce((_engine, { signal }) => (
+    new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(
+      new Error('cancelled'),
+      { code: 'managedEnginePreparationCancelled' },
+    )), { once: true }))
+  ));
+  const { result } = renderHook(() => useHarness());
+
+  let generation;
+  await act(async () => {
+    generation = result.current.controller.handleGTTSNarration();
+    await vi.waitFor(() => expect(engineMocks.ensureManagedEngineReady).toHaveBeenCalledTimes(1));
+  });
+  expect(result.current.isGenerating).toBe(true);
+  await act(async () => {
+    await expect(result.current.controller.cancelGTTSGeneration()).resolves.toBe(true);
+    await expect(generation).resolves.toBe(true);
+  });
+
+  expect(cancelNativeNarrationJob).toHaveBeenCalledWith('gtts');
+  expect(result.current.isGenerating).toBe(false);
+  expect(result.current.error).toBe('');
+  expect(result.current.generationStatus).toContain('cancelled');
 });
 
 test('does not publish or persist a completed result after Stop and restart changes the epoch', async () => {
@@ -567,7 +630,7 @@ test('does not publish or persist a completed result after Stop and restart chan
   ]);
   expect(result.current.generationResults[0]).not.toHaveProperty('nativeArtifactId');
   expect(narrationStoreMocks.saveProjectNarration).not.toHaveBeenCalled();
-  expect(result.current.error).toContain('not ready');
+  expect(result.current.error).toContain('could not start');
 });
 
 test('does not publish or persist a completed result after the same project advances a revision', async () => {

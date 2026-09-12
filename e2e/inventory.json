@@ -677,8 +677,8 @@
       "capability": "Narration audio is generated durably for every subtitle cue.",
       "chain": [
         "open a real downloaded video and import real subtitle cues",
-        "install and start gTTS through the reviewed speech package",
-        "generate through the customer-facing narration controls",
+        "select gTTS without visiting Settings or starting a worker",
+        "generate through the customer-facing controls, which install and start the reviewed package on demand",
         "publish one project-owned durable MP3 artifact for every successful cue"
       ],
       "oracles": [

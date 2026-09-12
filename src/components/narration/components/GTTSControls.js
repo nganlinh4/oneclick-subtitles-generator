@@ -48,15 +48,18 @@ const GTTSControls = ({
     if (snapshot.backend === 'gtts') setLifecycle(snapshot);
   }), []);
 
-  // Language inventory is requested only for an already-running engine. Tools owns Start/Stop.
+  // Generation prepares cold engines on demand. Preserve a previously loaded inventory while the
+  // worker is cold so cancellation never makes the controls appear to lose their configuration.
   useEffect(() => {
     const sequence = languageRequestSequence.current + 1;
     languageRequestSequence.current = sequence;
-    if (!isServiceAvailable
-        || !lifecycle?.enabled
-        || !lifecycle.warm) {
+    if (!isServiceAvailable) {
       setLanguages([]);
       setInventoryAvailable(false);
+      setLoading(false);
+      return () => { languageRequestSequence.current += 1; };
+    }
+    if (!lifecycle?.enabled || !lifecycle.warm) {
       setLoading(false);
       return () => { languageRequestSequence.current += 1; };
     }

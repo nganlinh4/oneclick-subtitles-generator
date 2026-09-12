@@ -30,9 +30,11 @@ const useNarrationState = (initialReferenceAudio) => {
     setNarrationMethodState(normalizeNarrationMethod(method));
   }, []);
   const [isGeminiAvailable, setIsGeminiAvailable] = useState(false);
-  const [isChatterboxAvailable, setIsChatterboxAvailable] = useState(false); // Start as unavailable, will be updated by availability check
-  const [isEdgeTTSAvailable, setIsEdgeTTSAvailable] = useState(false);
-  const [isGTTSAvailable, setIsGTTSAvailable] = useState(false);
+  // Managed engines are selectable capabilities from the first frame. Their verified package and
+  // worker state is resolved on demand when the customer asks to generate.
+  const [isChatterboxAvailable, setIsChatterboxAvailable] = useState(true);
+  const [isEdgeTTSAvailable, setIsEdgeTTSAvailable] = useState(true);
+  const [isGTTSAvailable, setIsGTTSAvailable] = useState(true);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
   // Gemini-specific settings
@@ -131,7 +133,7 @@ const useNarrationState = (initialReferenceAudio) => {
   const [isRecognizing, setIsRecognizing] = useState(false);
 
   // Narration Generation state
-  const [isAvailable, setIsAvailable] = useState(false);
+  const [isAvailable, setIsAvailable] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
   const [generationResults, setGenerationResults] = useState([]);

@@ -10,7 +10,6 @@ import process from 'node:process';
 
 import { durableRenderScenes, durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
-import { ensureEngineReady } from '../support/engines.js';
 import {
   listMediaFiles,
   measureAudioSignal,
@@ -169,15 +168,14 @@ describe('a customer generates narration from subtitles', () => {
     await openProjectWithMedia();
     await importSubtitles();
     await waitForDurableCues(root);
-    await ensureEngineReady(ENGINE, {
-      onReady: async (state) => captureWorkflowStep({
-        workflow: WORKFLOW,
-        step: '01-engine-ready',
-        description: 'The reviewed gTTS package is visibly installed, running, and ready.',
-        details: { ...state, proofClass: 'network-dependent gTTS provider smoke' },
-      }),
+    await browser.waitUntil(async () => browser.execute(() => {
+      const input = document.querySelector('#method-gtts');
+      return input !== null && input.disabled === false;
+    }), {
+      timeout: 30_000,
+      interval: 100,
+      timeoutMsg: 'gTTS was not selectable from the narration surface',
     });
-
     await clickControl('label[for="method-gtts"]');
     const generateSelector = '[data-osg-action="generate-narration"][data-narration-method="gtts"]';
     const generate = await $(generateSelector);
@@ -195,7 +193,7 @@ describe('a customer generates narration from subtitles', () => {
     }, {
       timeout: 120_000,
       interval: 500,
-      diagnostic: () => `gTTS never became ready to generate: ${JSON.stringify(generateState)}`,
+      diagnostic: () => `gTTS never became selectable for automatic preparation: ${JSON.stringify(generateState)}`,
     });
 
     await dismissToasts();

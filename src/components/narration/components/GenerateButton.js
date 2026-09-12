@@ -65,25 +65,11 @@ const GenerateButton = ({
             <button
               className="pill-button danger cancel-btn"
               onClick={cancelGeneration}
-              disabled={narrationMethod === 'f5tts' || narrationMethod === 'chatterbox'}
-              style={(narrationMethod === 'f5tts' || narrationMethod === 'chatterbox') ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-              title={
-                narrationMethod === 'f5tts'
-                  ? t('narration.f5ttsCancelNotSupported', 'F5-TTS library doesn\'t support cancellation during audio generation')
-                  : narrationMethod === 'chatterbox'
-                  ? t('narration.chatterboxCancelNotSupported', 'Chatterbox library doesn\'t support cancellation during audio generation')
-                  : ''
-              }
             >
               <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 close
               </span>
               {t('narration.cancel', 'Cancel Generation')}
-              {(narrationMethod === 'f5tts' || narrationMethod === 'chatterbox') && (
-                <span className="material-symbols-rounded" style={{ fontSize: 14, display: 'inline-block', marginLeft: '4px', opacity: 0.7 }}>
-                  info
-                </span>
-              )}
             </button>
           ) : (
             <button

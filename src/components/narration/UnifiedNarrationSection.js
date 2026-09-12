@@ -51,7 +51,6 @@ const UnifiedNarrationSection = ({
     isGeminiAvailable, isChatterboxAvailable,
     isEdgeTTSAvailable, isGTTSAvailable,
     isAvailable,
-    allServicesUnavailable,
     geminiUnavailableReason,
 
     // Gemini settings
@@ -164,7 +163,7 @@ const UnifiedNarrationSection = ({
 
   const engineUnavailableMessage = t(
     'narration.engineUnavailableMessage',
-    'This narration engine is not ready. Install or start it in Settings > Tools.'
+    'This narration engine cannot be prepared automatically right now.'
   );
   const geminiCredentialUnavailableMessage = t(
     'narration.geminiCredentialUnavailableMessage',
@@ -173,34 +172,6 @@ const UnifiedNarrationSection = ({
   const geminiUnavailableMessage = geminiUnavailableReason === 'credential'
     ? geminiCredentialUnavailableMessage
     : engineUnavailableMessage;
-  const allServicesUnavailableMessage = geminiUnavailableReason === 'credential'
-    ? t(
-      'narration.allServicesUnavailableCredentialMessage',
-      'Gemini narration needs a usable API key in Settings > API Keys. Other narration engines can be installed or started in Settings > Tools.'
-    )
-    : t(
-      'narration.allServicesUnavailableMessage',
-      'All narration engines are unavailable. Install or start one in Settings > Tools.'
-    );
-
-  if (allServicesUnavailable) {
-    return (
-      <div className="narration-section setup-required" ref={sectionRef}>
-        <div className="narration-header">
-          <h3>{t('narration.title', 'Generate Narration')}</h3>
-        </div>
-        <div className="narration-setup-message">
-          <div className="setup-icon">
-            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>info</span>
-          </div>
-          <div className="message">
-            {allServicesUnavailableMessage}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="narration-section" ref={sectionRef}>
       <div className="narration-header">

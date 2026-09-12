@@ -133,7 +133,7 @@ it.each([
   ['edge-tts', 'edgeTts', () => <EdgeTTSControls {...edgeProps()} />],
   ['gtts', 'gtts', () => <GTTSControls {...gttsProps()} />],
 ])(
-  'propagates production Tools Stop for %s into the mounted control without a rerender',
+  'preserves the loaded %s controls when Tools stops only the transient worker',
   async (engineId, backend, renderControl) => {
     await startManagedEngineRuntime(engineId);
     const { container, unmount } = render(renderControl());
@@ -142,7 +142,7 @@ it.each([
 
     await act(async () => { await stopManagedEngineRuntime(engineId); });
 
-    await waitFor(() => expect(container.querySelector('.model-dropdown-btn')).toBeDisabled());
+    await waitFor(() => expect(container.querySelector('.model-dropdown-btn')).toBeEnabled());
     expect(native.commands.filter(([command]) => command === 'speech_probe')).toHaveLength(
       probesBeforeStop
     );

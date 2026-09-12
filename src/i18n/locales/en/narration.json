@@ -341,5 +341,9 @@
   "detectLanguage": "Detect language",
   "errorParsingRecentLanguages": "Error parsing recent languages",
   "installingVoiceSamples": "Installing voice previews… {{percent}}%",
-  "voiceSampleUnavailable": "Voice preview is unavailable. Please try again."
+  "voiceSampleUnavailable": "Voice preview is unavailable. Please try again.",
+  "preparingEngine": "Preparing narration engine…",
+  "installingEngineProgress": "Preparing narration engine… {{percent}}%",
+  "engineStartFailedMessage": "The narration engine could not start. Try generating again.",
+  "enginePreparationFailedMessage": "The narration engine could not be prepared automatically. Check your connection and try again."
 }

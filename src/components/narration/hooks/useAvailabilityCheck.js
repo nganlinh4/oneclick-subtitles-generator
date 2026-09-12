@@ -22,6 +22,8 @@ const unavailable = (reason) => Object.freeze({
   message: 'SERVICE_UNAVAILABLE',
 });
 const available = Object.freeze({ available: true, reason: 'ready' });
+const cold = Object.freeze({ available: true, reason: 'cold' });
+const installable = Object.freeze({ available: true, reason: 'installable' });
 const checkingCredential = Object.freeze({
   checked: false,
   available: false,
@@ -30,6 +32,9 @@ const checkingCredential = Object.freeze({
 
 export const unavailableNativeNarrationAvailability = () => Object.freeze(
   Object.fromEntries(availabilityBackends.map(({ key }) => [key, unavailable('unavailable')]))
+);
+export const managedNativeNarrationAvailability = () => Object.freeze(
+  Object.fromEntries(availabilityBackends.map(({ key }) => [key, installable]))
 );
 
 const findBackend = (status, backend) => (
@@ -41,6 +46,13 @@ const isReadyAndWarm = (snapshot) => (
   && snapshot.ready === true
   && snapshot.warm === true
 );
+const capability = (snapshot) => {
+  if (isReadyAndWarm(snapshot)) return available;
+  if (snapshot?.installed) return cold;
+  // Every binding here comes from the compile-time managed speech catalog. The explicit Generate
+  // action checks delivery health; transient package inspection must never lock the method UI.
+  return installable;
+};
 
 export const checkNativeNarrationAvailability = async (
   adapter = nativeNarrationAdapter,
@@ -50,9 +62,7 @@ export const checkNativeNarrationAvailability = async (
   if (!probeInstalled) {
     return Object.freeze(Object.fromEntries(availabilityBackends.map(({ key, backend }) => {
       const snapshot = findBackend(initialStatus, backend);
-      return [key, isReadyAndWarm(snapshot)
-        ? available
-        : unavailable(snapshot?.installed ? 'not-ready' : 'not-installed')];
+      return [key, capability(snapshot)];
     })));
   }
 
@@ -71,23 +81,14 @@ export const checkNativeNarrationAvailability = async (
     }
   }));
 
-  if (![...probeOutcomes.values()].includes('probed')) {
-    return Object.freeze(Object.fromEntries(availabilityBackends.map(({ key, backend }) => (
-      [key, unavailable(probeOutcomes.get(backend))]
-    ))));
-  }
-
-  // Re-read authoritative state after the explicit probe. Native lifecycle epochs make a
-  // concurrent Stop final, so this layer only reports the verified snapshot and never repairs or
-  // restarts engine state on its own.
-  const verifiedStatus = await adapter.getStatus();
+  // Re-read only when probing could have changed a lifecycle. Package capability remains usable
+  // even when no worker was started.
+  const verifiedStatus = [...probeOutcomes.values()].includes('probed')
+    ? await adapter.getStatus()
+    : initialStatus;
   const entries = availabilityBackends.map(({ key, backend }) => {
-    const outcome = probeOutcomes.get(backend);
-    if (outcome === 'not-installed') return [key, unavailable('not-installed')];
-    if (outcome !== 'probed') return [key, unavailable('probe-failed')];
     const snapshot = findBackend(verifiedStatus, backend);
-    if (isReadyAndWarm(snapshot)) return [key, available];
-    return [key, unavailable(snapshot?.installed ? 'not-ready' : 'not-installed')];
+    return [key, capability(snapshot)];
   });
   return Object.freeze(Object.fromEntries(entries));
 };
@@ -125,9 +126,11 @@ const useAvailabilityCheck = ({
   setIsGTTSAvailable,
   setIsCheckingAvailability,
 }) => {
-  const [nativeAvailability, setNativeAvailability] = useState(
-    unavailableNativeNarrationAvailability
-  );
+  const [nativeAvailability, setNativeAvailability] = useState(() => (
+    isDesktopRuntime()
+      ? managedNativeNarrationAvailability()
+      : unavailableNativeNarrationAvailability()
+  ));
   const [nativeChecking, setNativeChecking] = useState(true);
   const [credentialAvailability, setCredentialAvailability] = useState(checkingCredential);
 
@@ -142,9 +145,9 @@ const useAvailabilityCheck = ({
       if (!disposed && binding) {
         setNativeAvailability((current) => Object.freeze({
           ...current,
-          [binding.key]: isReadyAndWarm(snapshot)
-            ? available
-            : unavailable(snapshot.installed ? 'not-ready' : 'not-installed'),
+          [binding.key]: snapshot.installed
+            ? (isReadyAndWarm(snapshot) ? available : cold)
+            : current[binding.key],
         }));
       }
     });
@@ -161,7 +164,9 @@ const useAvailabilityCheck = ({
           : unavailableNativeNarrationAvailability();
       } catch (error) {
         console.error('Error checking service availability:', error);
-        next = unavailableNativeNarrationAvailability();
+        next = isDesktopRuntime()
+          ? managedNativeNarrationAvailability()
+          : unavailableNativeNarrationAvailability();
       }
       if (!disposed && lifecycleRevision === requestRevision) setNativeAvailability(next);
     };
@@ -173,8 +178,7 @@ const useAvailabilityCheck = ({
         schedulePoll();
       }, POLL_INTERVAL_MS);
     };
-    // Starting a speech worker is an explicit Settings > Tools action. Availability inspection is
-    // status-only so mounting or switching narration methods can never restart a stopped engine.
+    // Passive inspection never starts a worker. Generation owns on-demand install/start.
     checkAvailability({ probeInstalled: false }).finally(() => {
       if (!disposed) setNativeChecking(false);
       schedulePoll();
