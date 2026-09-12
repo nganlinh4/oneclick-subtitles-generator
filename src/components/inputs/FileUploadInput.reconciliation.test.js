@@ -216,3 +216,25 @@ test('removing browser media cannot resurrect SRT-only mode from the stale globa
   await waitFor(() => expect(setUploadedFile).toHaveBeenCalledWith(null));
   expect(setIsSrtOnlyMode).not.toHaveBeenCalledWith(true);
 });
+
+test('the selected file card follows replacements while the upload tab stays mounted', async () => {
+  const first = new File(['first'], 'first.mp4', { type: 'video/mp4' });
+  const second = new File(['second'], 'second.mp3', { type: 'audio/mpeg' });
+  const props = { setUploadedFile: vi.fn(), isSrtOnlyMode: false };
+  const { container, rerender } = render(<FileUploadInput {...props} uploadedFile={first} />);
+  expect(await screen.findByText('first.mp4')).toBeInTheDocument();
+
+  rerender(<FileUploadInput {...props} uploadedFile={second} />);
+  expect(container.querySelector('.file-name')).toHaveTextContent('second.mp3');
+  expect(container.querySelector('.file-badge')).toHaveTextContent('Audio');
+  expect(screen.queryByText('first.mp4')).not.toBeInTheDocument();
+});
+
+test('a native Matroska video remains a video in the selected file card', async () => {
+  const media = { ...RELEASE_MEDIA, name: 'clip.mkv', type: 'video/x-matroska' };
+  const { container } = render(<FileUploadInput uploadedFile={media} setUploadedFile={vi.fn()} />);
+
+  expect(await screen.findByText('clip.mkv')).toBeInTheDocument();
+  expect(container.querySelector('.file-badge')).toHaveTextContent('Video');
+  expect(container.querySelector('.file-type-icon')).toHaveTextContent('videocam');
+});

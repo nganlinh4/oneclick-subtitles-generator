@@ -1,7 +1,6 @@
 import {
   downloadJSON,
   downloadSRT,
-  downloadTXT,
   generateJsonContent,
   generateSrtContent,
 } from '../../../utils/fileUtils';
@@ -83,39 +82,6 @@ export const getNamingInfo = (videoTitle, targetLanguages) => {
     videoName: videoTitle,
     targetLanguages
   };
-};
-
-/**
- * Handle download request from modal.
- * @param {string} source - 'translated' or 'original'
- * @param {string} format - 'srt' | 'json' | 'txt'
- * @param {Object} namingInfo - Optional naming info override
- * @param {Object} ctx - { translatedSubtitles, subtitles, videoTitle, targetLanguages, setTxtContent }
- */
-export const handleDownload = async (source, format, namingInfo = {}, ctx) => {
-  const { translatedSubtitles, subtitles, videoTitle, targetLanguages, setTxtContent } = ctx;
-  const subtitlesToUse = source === 'translated' ? translatedSubtitles : subtitles;
-
-  if (subtitlesToUse && subtitlesToUse.length > 0) {
-    // Use provided naming info or get it from local state
-    const finalNamingInfo = Object.keys(namingInfo).length > 0 ? namingInfo : getNamingInfo(videoTitle, targetLanguages);
-    const baseFilename = generateFilename(source, finalNamingInfo, videoTitle);
-
-    switch (format) {
-      case 'srt':
-        return downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
-      case 'json':
-        return downloadJSON(subtitlesToUse, `${baseFilename}.json`);
-      case 'txt': {
-        const result = await downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
-        if (result.status === 'saved') setTxtContent(result.content);
-        return result;
-      }
-      default:
-        throw new TypeError('Unsupported subtitle format');
-    }
-  }
-  throw new TypeError('Subtitles are required');
 };
 
 /**

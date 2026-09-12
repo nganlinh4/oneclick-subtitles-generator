@@ -58,7 +58,6 @@ vi.mock('../hooks/useNarrationAudioSpeed', () => ({
 }));
 vi.mock('../utils/narrationAudioDownload', () => ({
   downloadAudio: vi.fn(),
-  saveAudioToServer: vi.fn(async () => undefined),
 }));
 vi.mock('../../../utils/functionalScrollbar', () => ({}));
 
@@ -73,7 +72,6 @@ const makeProps = (overrides = {}) => ({
   playAudio: vi.fn(),
   currentAudio: null,
   isPlaying: false,
-  getAudioUrl: vi.fn(),
   onRetry: vi.fn(),
   retryingSubtitleId: null,
   onRetryFailed: vi.fn(),

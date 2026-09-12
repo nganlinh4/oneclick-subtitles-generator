@@ -29,7 +29,6 @@ import {
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
 import '../../styles/narration/index.css';
-import { SERVER_URL } from '../../config';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 import { useProjectRenderScene } from '../../platform/projectRenderScene';
 import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
@@ -446,7 +445,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
           translatedNarrations={translatedNarrationResults}
           alignedNarrations={narrationResultsForAlignment}
           narrationCues={narrationCuesForAlignment}
-          getAudioUrl={(filename) => `${SERVER_URL}/narration/audio/${filename || 'test.wav'}`}
           onRenderVideo={onRenderVideo}
           volume={volume}
           setVolume={setVolume}

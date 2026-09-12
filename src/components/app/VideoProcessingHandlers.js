@@ -1,11 +1,8 @@
 import { downloadNativeVideo } from '../../platform/nativeUrlDownloadAdapter';
 import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
-import { runMediaPipeline } from '../../platform/mediaPipelineService';
 import {
   clearMedia,
-  createNativeMediaDescriptor,
   getSelectedMedia,
-  isNativeMediaDescriptor,
   openMediaAsset,
 } from '../../platform/mediaService';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
@@ -51,7 +48,10 @@ const withdrawVisibleMediaForUrlIntent = async ({
     'split_result',
     'current_video_url',
   ]) localStorage.removeItem(key);
-  await forgetNativeMediaSessionDurably();
+  const cleared = await forgetNativeMediaSessionDurably();
+  // The native clear is conditional, and its reply may arrive after a newer URL has already
+  // activated. Only its current owner may withdraw the browser project or proceed to download.
+  if (cleared !== true || !ownsPresentation()) throw new AutoGenerationOwnershipError();
   clearSubtitleProjectBinding();
   deactivateProject();
 
@@ -72,51 +72,6 @@ const withdrawVisibleMediaForUrlIntent = async ({
       // A stale browser blob is already unusable and needs no further cleanup.
     }
     forgetBrowserMediaBlob(replacedFileUrl);
-  }
-};
-
-export const ensureVideoCompatibility = async (videoFile) => {
-  if (!isNativeMediaDescriptor(videoFile)) {
-    throw new Error('Select the media again before preparing it for playback.');
-  }
-  const result = await runMediaPipeline({
-    operation: 'preparePlayback',
-    assetId: videoFile.assetId,
-  });
-  if (result?.kind !== 'media') {
-    throw new Error('The native media pipeline returned no playable video.');
-  }
-  return createNativeMediaDescriptor(result.media);
-};
-
-/**
- * Legacy entry point retained for callers that have not adopted direct native clipping yet.
- * It intentionally rejects instead of reviving the removed split server.
- */
-export const prepareVideoForSegments = async (
-  videoFile,
-  setStatus,
-  _setVideoSegments,
-  _setSegmentsStatus,
-  t = (_key, defaultValue) => defaultValue
-) => {
-  try {
-    if (!isNativeMediaDescriptor(videoFile)) {
-      throw new Error('Select the media again before preparing video segments.');
-    }
-    setStatus({
-      message: t('output.preparingVideo', 'Preparing video for segment processing...'),
-      type: 'loading',
-    });
-    throw new Error('Video splitting is deprecated. Please enable "Use Simplified Processing" in settings for better performance.');
-  } catch (error) {
-    setStatus({
-      message: t('errors.videoPreparationFailed', 'Video preparation failed: {{message}}', {
-        message: error.message,
-      }),
-      type: 'error',
-    });
-    throw error;
   }
 };
 
@@ -289,7 +244,7 @@ export const downloadAndPrepareYouTubeVideo = async (
     )) {
       throw error;
     }
-    if (!ownsPresentation()) return undefined;
+    if (!ownsPresentation() || error instanceof AutoGenerationOwnershipError) return undefined;
     setDownloadProgress(0);
     const downloaderDetails = {
       downloaderAuthenticationRequired: t(

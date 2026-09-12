@@ -24,6 +24,7 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
+  const viewGenerationRef = useRef(0);
   const nativeAbortRef = useRef(null);
   const nativeJobIdRef = useRef(null);
   const nativeGenerationRef = useRef(0);
@@ -31,19 +32,24 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   const pollFailuresRef = useRef(0);
 
   const stopPolling = useCallback(() => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (pollRef.current) { clearInterval(pollRef.current.timer); pollRef.current = null; }
   }, []);
 
-  // Read the native package manager's current progress. Returns whether any operation is running.
+  // Null means the reply belongs to a previous view or operation and must not control its poller.
   const readProgress = useCallback(async () => {
+    const generation = nativeGenerationRef.current;
+    const viewGeneration = viewGenerationRef.current;
+    const isCurrent = () => mountedRef.current
+      && viewGeneration === viewGenerationRef.current
+      && generation === nativeGenerationRef.current;
+    if (!isCurrent()) return null;
     try {
-      const generation = nativeGenerationRef.current;
       const engine = await getManagedEnginePackageStatus(id);
+      if (!isCurrent()) return null;
       const operation = engine.operation ?? null;
       pollFailuresRef.current = 0;
       const packageRunning = operation !== null
         && (operation.action === 'install' || operation.action === 'update');
-      if (generation !== nativeGenerationRef.current) return operation !== null;
       if (operation) observedOperationRef.current = true;
       else if (observedOperationRef.current) {
         observedOperationRef.current = false;
@@ -57,7 +63,8 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
         setInstalling(packageRunning);
       }
       return operation !== null;
-    } catch (e) {
+    } catch {
+      if (!isCurrent()) return null;
       pollFailuresRef.current += 1;
       const operationExpected = observedOperationRef.current || nativeJobIdRef.current !== null;
       if (operationExpected && pollFailuresRef.current < 20) return true;
@@ -74,21 +81,32 @@ export const useEngineInstall = (id, { reconnect = true, onStatusChanged } = {})
   }, [id, onStatusChanged]);
 
   const ensurePolling = useCallback(() => {
-    if (pollRef.current) return;
-    pollRef.current = setInterval(async () => {
+    if (!mountedRef.current || pollRef.current) return;
+    const poll = { timer: null, reading: false };
+    pollRef.current = poll;
+    poll.timer = setInterval(async () => {
+      // Hashing a large installed package can outlast the interval. One observer owns one read.
+      if (pollRef.current !== poll || poll.reading) return;
+      poll.reading = true;
       const running = await readProgress();
-      if (!running) stopPolling();
+      poll.reading = false;
+      if (pollRef.current === poll && running === false) stopPolling();
     }, 1500);
   }, [readProgress, stopPolling]);
 
   // On mount, reconnect to any in-flight server-side install (survives reload / navigation).
   useEffect(() => {
     mountedRef.current = true;
-    if (!reconnect) return () => { mountedRef.current = false; stopPolling(); };
-    (async () => {
-      if (await readProgress()) ensurePolling();
-    })();
-    return () => { mountedRef.current = false; stopPolling(); };
+    if (reconnect) {
+      (async () => {
+        if (await readProgress()) ensurePolling();
+      })();
+    }
+    return () => {
+      mountedRef.current = false;
+      viewGenerationRef.current += 1;
+      stopPolling();
+    };
   }, [readProgress, ensurePolling, reconnect, stopPolling]);
 
   const install = useCallback(async () => {

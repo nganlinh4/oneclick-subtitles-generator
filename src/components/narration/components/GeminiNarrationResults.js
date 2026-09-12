@@ -6,7 +6,7 @@ import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
 
 // Import utility functions and config
-import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
+import { plannedNarrationResults } from '../utils/plannedNarrationResults';
 
 // Extracted siblings
 import GeminiResultRow from './GeminiResultRow';
@@ -120,45 +120,7 @@ const GeminiNarrationResults = ({
       const plan = Array.isArray(plannedSubtitles) ? plannedSubtitles : [];
       if (plan.length === 0) return [];
 
-      const completedIds = new Set();
-      const failedIds = new Set();
-
-      // Track completed and failed results
-      if (generationResults && generationResults.length > 0) {
-        generationResults.forEach(result => {
-          if (result.success) {
-            completedIds.add(result.subtitle_id);
-          } else if (!result.pending) {
-            failedIds.add(result.subtitle_id);
-          }
-        });
-      }
-
-      // Create results for all subtitles
-      const results = plan.map((subtitle, index) => {
-        // Use shared ID derivation for consistency across all methods
-        const subtitleId = deriveSubtitleId(subtitle, index);
-        const existingResult = generationResults?.find(r => idsEqual(r.subtitle_id, subtitleId));
-
-        if (existingResult) {
-          // Use existing result
-          return existingResult;
-        } else {
-          // Create pending result
-          return {
-            subtitle_id: subtitleId,
-            text: subtitle.text || '',
-            success: false,
-            pending: true,
-            start: subtitle.start,
-            end: subtitle.end,
-            original_ids: subtitle.original_ids || (subtitle.id ? [subtitle.id] : [])
-          };
-        }
-      });
-
-  // Preserve planned order to keep alignment with timeline after edits/deletes
-  return results;
+      return plannedNarrationResults(plan, generationResults);
     }
 
     // Fallback: show generation results if no planned subtitles

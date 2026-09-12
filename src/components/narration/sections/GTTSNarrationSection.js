@@ -4,8 +4,6 @@ import GTTSControls from '../components/GTTSControls';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
 
-const getAudioUrl = () => null;
-
 /**
  * gTTS narration UI branch. Pure, props-driven component.
  * @param {Object} props - Props forwarded from UnifiedNarrationSection
@@ -136,7 +134,6 @@ const GTTSNarrationSection = ({
          currentAudio={currentAudio}
          isPlaying={isPlaying}
          playAudio={playAudio}
-         getAudioUrl={getAudioUrl}
          subtitleSource={subtitleSource}
          isGenerating={isGenerating}
          plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)

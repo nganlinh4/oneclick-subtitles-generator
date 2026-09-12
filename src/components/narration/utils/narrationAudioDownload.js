@@ -1,16 +1,12 @@
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { downloadNativeNarration } from '../../../platform/nativeNarrationArtifacts';
-import {
-  getNativeNarrationArtifactId,
-  isNativeNarrationResult,
-} from '../../../platform/nativeNarrationCapabilities';
+import { isNativeNarrationResult } from '../../../platform/nativeNarrationCapabilities';
 import { showErrorToast } from '../../../utils/toastUtils';
 
 /**
  * Export one native narration artifact through the host-owned save dialog.
- * The retained parameters keep the render-facing call contract stable.
  */
-export const downloadAudio = async (result, _getAudioUrl, t) => {
+export const downloadAudio = async (result, t) => {
   try {
     if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
       throw new Error('Native narration audio is unavailable');
@@ -23,14 +19,3 @@ export const downloadAudio = async (result, _getAudioUrl, t) => {
     ));
   }
 };
-
-/**
- * Native generation publishes immutable artifacts before returning to React, so there is no
- * browser-owned PCM/base64 payload to persist. This compatibility helper only confirms that a
- * result already owns a durable artifact.
- */
-export const saveAudioToServer = async (result) => (
-  isDesktopRuntime() && getNativeNarrationArtifactId(result)
-    ? result.filename
-    : null
-);

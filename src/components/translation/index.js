@@ -1,15 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { completeDocument, summarizeDocument } from '../../services/geminiService';
-import { downloadTextDocument } from '../../utils/fileUtils';
 import useTranslationState from '../../hooks/useTranslationState';
 import useLanguageChain from '../../hooks/useLanguageChain';
 import usePostSplitSubtitles from './hooks/usePostSplitSubtitles';
 import { handleRetrySegment as retrySegment } from './handlers/retryHandlers';
 import {
-  generateFilename as buildFilename,
   getNamingInfo as buildNamingInfo,
-  handleDownload as downloadSubtitles,
   handleBulkDownloadAll as bulkDownloadAll,
   handleBulkDownloadZip as bulkDownloadZip,
   runOwnedBulkExport
@@ -45,12 +41,6 @@ import '../../styles/translation/languageChain.css';
  */
 const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) => {
   const { t } = useTranslation();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [txtContent, setTxtContent] = useState(null);
-  // eslint-disable-next-line no-unused-vars
-  const [isProcessing, setIsProcessing] = useState(false);
-  // eslint-disable-next-line no-unused-vars
-  const [processedDocument, setProcessedDocument] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportPendingRef = useRef(false);
 
@@ -200,21 +190,8 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
     }
   };
 
-  // Generate comprehensive filename based on priority system
-  const generateFilename = (source, namingInfo = {}) => buildFilename(source, namingInfo, videoTitle);
-
   // Get naming information for downloads
   const getNamingInfo = () => buildNamingInfo(videoTitle, targetLanguages);
-
-  // Handle download request from modal
-  const handleDownload = async (source, format, namingInfo = {}) =>
-    downloadSubtitles(source, format, namingInfo, {
-      translatedSubtitles: presentedSubtitles,
-      subtitles,
-      videoTitle,
-      targetLanguages,
-      setTxtContent
-    });
 
   // Handle bulk download all (includes main translation + bulk translations)
   const reportExportFailure = useCallback((exportError) => {
@@ -241,109 +218,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   // Handle bulk download as ZIP
   const handleBulkDownloadZip = () => runBulkExport(() =>
     bulkDownloadZip({ translatedSubtitles: presentedSubtitles, bulkTranslations, videoTitle, targetLanguages }));
-
-  // Handle process request from modal
-  const handleProcess = async (source, processType, model, splitDurationParam, customPrompt, namingInfo = {}) => {
-    const subtitlesToUse = source === 'translated' ? translatedSubtitles : subtitles;
-
-    if (!subtitlesToUse || subtitlesToUse.length === 0) return;
-
-    // First, get the text content if we don't have it yet
-    let textContent = txtContent;
-    if (!textContent) {
-      textContent = subtitlesToUse.map(subtitle => subtitle.text).join('\\n\\n');
-      setTxtContent(textContent);
-    }
-
-    setIsProcessing(true);
-    try {
-      let result;
-      // For multi-language translations, use the first non-empty language or null
-      let targetLang = null;
-      if (source === 'translated') {
-        if (targetLanguages.length > 1) {
-          // For multi-language, we'll use the first valid language
-          const validLanguage = targetLanguages.find(lang => lang.value?.trim() !== '');
-          targetLang = validLanguage?.value || null;
-        } else {
-          targetLang = targetLanguages[0]?.value || null;
-        }
-      }
-
-      if (processType === 'consolidate') {
-        result = await completeDocument(textContent, selectedModel, targetLang);
-      } else if (processType === 'summarize') {
-        result = await summarizeDocument(textContent, selectedModel, targetLang);
-      }
-
-      // Check if the result is JSON and extract plain text
-      if (result && typeof result === 'string' && (result.trim().startsWith('{') || result.trim().startsWith('['))) {
-        try {
-          const jsonResult = JSON.parse(result);
-
-
-          // For summarize feature
-          if (jsonResult.summary) {
-            let plainText = jsonResult.summary;
-
-            // Add key points if available
-            if (jsonResult.keyPoints && Array.isArray(jsonResult.keyPoints) && jsonResult.keyPoints.length > 0) {
-              plainText += '\\n\\nKey Points:\\n';
-              jsonResult.keyPoints.forEach((point, index) => {
-                plainText += `\\n${index + 1}. ${point}`;
-              });
-            }
-
-            result = plainText;
-
-          }
-          // For consolidate feature
-          else if (jsonResult.content) {
-            result = jsonResult.content;
-
-          }
-          // For any other JSON structure
-          else if (jsonResult.text) {
-            result = jsonResult.text;
-
-          }
-        } catch (e) {
-
-          // Keep the original result if parsing fails
-        }
-      }
-
-      setProcessedDocument(result);
-
-      // Download the processed document
-      // Use provided naming info or get it from local state
-      const finalNamingInfo = Object.keys(namingInfo).length > 0 ? namingInfo : getNamingInfo();
-      const baseFilename = generateFilename(source, finalNamingInfo);
-      const processTypeSuffix = processType === 'consolidate' ? 'completed' : 'summary';
-      const filename = `${baseFilename}_${processTypeSuffix}.txt`;
-
-      const saved = await downloadTextDocument(result, filename);
-      if (saved.status === 'saved') {
-        try {
-          window.addToast?.(
-            processType === 'consolidate'
-              ? t('output.documentCompleted', 'Document completed successfully')
-              : t('output.summaryCompleted', 'Summary completed successfully'),
-            'success',
-            3000
-          );
-        } catch {
-          // Notification failure cannot reverse an acknowledged document save.
-        }
-      }
-      return saved;
-    } catch (error) {
-      console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);
-      throw error;
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   return (
     <div className="translation-section" ref={containerRef}>
@@ -382,15 +256,6 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
         {translatedSubtitles ? (
           <TranslationComplete
             onReset={() => (isExporting ? { status: 'busy' } : handleReset())}
-            isModalOpen={isModalOpen}
-            setIsModalOpen={setIsModalOpen}
-            onDownload={handleDownload}
-            onProcess={handleProcess}
-            hasTranslation={translatedSubtitles && translatedSubtitles.length > 0}
-            hasOriginal={subtitles && subtitles.length > 0}
-            sourceSubtitleName={getNamingInfo().sourceSubtitleName}
-            videoName={getNamingInfo().videoName}
-            targetLanguages={getNamingInfo().targetLanguages}
             hasBulkTranslations={bulkTranslations.length > 0 && bulkTranslations.some(bt => bt.success)}
             onDownloadAll={handleBulkDownloadAll}
             onDownloadZip={handleBulkDownloadZip}

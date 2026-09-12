@@ -100,12 +100,10 @@ export const releaseSelectedNativeMedia = async ({
 
 const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
-  const [fileInfo, setFileInfo] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const lastSelectedFileRef = useRef(null);
   const nativeOperationRef = useRef(0);
   const nativeHydratedRef = useRef(false);
   const nativeLoadingRef = useRef(false);
@@ -114,39 +112,25 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
   // Maximum file size in MB (5GB = 5120MB)
   const MAX_FILE_SIZE_MB = 5120;
 
-  // Supported file formats - wrapped in useMemo to avoid dependency issues
-  const SUPPORTED_VIDEO_FORMATS = useMemo(() => [
-    "video/mp4",
-    "video/mpeg",
-    "video/mov",           // This might be incorrect
-    "video/avi",
-    "video/x-flv",
-    "video/mpg",
-    "video/webm",
-    "video/wmv",
-    "video/3gpp",
-    "video/quicktime"      // Add this - correct MIME type for .mov files
-  ], []);
-
   const SUPPORTED_AUDIO_EXTENSIONS = useMemo(() => [
     ".wav", ".mp3", ".aiff", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".opus",
     ".amr", ".au", ".caf", ".dts", ".ac3", ".ape", ".mka", ".ra", ".webm"
   ], []);
 
   const SUPPORTED_VIDEO_EXTENSIONS = useMemo(() => [
-    ".mp4", ".mpeg", ".mpg", ".mov", ".avi", ".flv", ".webm", ".wmv", ".3gp", ".3gpp"
+    ".mp4", ".mpeg", ".mpg", ".mov", ".avi", ".flv", ".webm", ".wmv", ".3gp", ".3gpp", ".mkv"
   ], []);
 
   // Check if file is a video - wrapped in useCallback to avoid dependency issues
   const isVideoFile = useCallback((mimeType, fileName = '') => {
     // First check MIME type
-    if (SUPPORTED_VIDEO_FORMATS.includes(mimeType)) {
+    if (mimeType.startsWith('video/')) {
       return true;
     }
     // Fallback to file extension check
     const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
     return SUPPORTED_VIDEO_EXTENSIONS.includes(extension);
-  }, [SUPPORTED_VIDEO_FORMATS, SUPPORTED_VIDEO_EXTENSIONS]);
+  }, [SUPPORTED_VIDEO_EXTENSIONS]);
 
   // Check if file is an audio - wrapped in useCallback to avoid dependency issues
   const isAudioFile = useCallback((mimeType, fileName = '') => {
@@ -159,31 +143,13 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     return SUPPORTED_AUDIO_EXTENSIONS.includes(extension);
   }, [SUPPORTED_AUDIO_EXTENSIONS]);
 
-  // Display file information - wrapped in useCallback to avoid dependency issues
-  const displayFileInfo = useCallback((file, originalFile = null) => {
-    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
-    // If we have an original audio file, use its information for display
-    // This maintains the illusion that we're still working with an audio file
-    if (originalFile && originalFile.type.startsWith('audio/')) {
-      setFileInfo({
-        // Keep the original audio filename
-        name: originalFile.name,
-        // Keep the original audio type
-        type: originalFile.type,
-        size: `${fileSizeMB} MB`,
-        mediaType: 'Audio'
-      });
-    } else {
-      const mediaType = isVideoFile(file.type, file.name) ? 'Video' : 'Audio';
-      setFileInfo({
-        name: file.name,
-        type: file.type,
-        size: `${fileSizeMB} MB`,
-        mediaType
-      });
-    }
-  }, [isVideoFile]);
+  // Media owns its metadata. A second state copy kept A's name/type when the parent selected B.
+  const fileInfo = uploadedFile ? {
+    name: uploadedFile.name,
+    type: uploadedFile.type,
+    size: `${(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB`,
+    mediaType: isVideoFile(uploadedFile.type, uploadedFile.name) ? 'Video' : 'Audio',
+  } : null;
 
   // `isCurrent` is re-checked after the durable ownership commit, because that await lets a newer
   // selection supersede this one before the media is published to React.
@@ -215,13 +181,11 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
     if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(media);
-    displayFileInfo(media);
 
     // Media ownership does not imply subtitle-track readiness. In particular, this callback can
     // still observe source A's React cue array while transactional activation has already made
     // source B current. The subtitle project/hydration owner publishes its own authoritative state.
   }, [
-    displayFileInfo,
     isSrtOnlyMode,
     onVideoSelect,
     setIsSrtOnlyMode,
@@ -356,7 +320,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
               if (onVideoSelect) onVideoSelect(null);
               if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
               if (setUploadedFileData) setUploadedFileData(null);
-              displayFileInfo(selected);
             },
           });
         }
@@ -372,20 +335,12 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     return () => { mounted = false; };
   }, [
     activateNativeMedia,
-    displayFileInfo,
     isSrtOnlyMode,
     onVideoSelect,
     setIsSrtOnlyMode,
     setUploadedFile,
     setUploadedFileData,
   ]);
-
-  // Update fileInfo when uploadedFile changes (for auto-downloaded files)
-  useEffect(() => {
-    if (uploadedFile && !fileInfo) {
-      displayFileInfo(uploadedFile);
-    }
-  }, [uploadedFile, fileInfo, displayFileInfo]);
 
   // Validate file type and size
   const validateFile = (file) => {
@@ -414,9 +369,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
   // Process the file with improved handling for large files
   const processFile = async (file) => {
     if (file) {
-        // Remember the last selected file so we can retry without Multer if needed
-        lastSelectedFileRef.current = file;
-
       if (validateFile(file)) {
         // Set loading state immediately
         setIsLoading(true);
@@ -459,14 +411,10 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
         if (setUploadedFileData) setUploadedFileData(null);
         setUploadedFile(processedFile);
 
-        // Display file info for all file types (both audio and video)
-        displayFileInfo(processedFile);
-
         // Clear loading state after processing is complete
         setIsLoading(false);
       } else {
         setUploadedFile(null);
-        setFileInfo(null);
         // Clear the file input value to allow re-uploading the same file
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -529,7 +477,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
             setUploadedFile(error.restoredMedia);
             if (setUploadedFileData) setUploadedFileData(null);
             localStorage.setItem('current_file_url', error.restoredMedia.playbackUrl);
-            displayFileInfo(error.restoredMedia);
           }
           const message = error?.message || t('fileUpload.releaseError', 'Could not release the selected media.');
           if (setStatus) setStatus({ message, type: 'error' });
@@ -541,7 +488,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     }
     if (nativeOperationRef.current !== operation) return;
 
-    setFileInfo(null);
     if (setUploadedFileData) setUploadedFileData(null);
     setUploadedFile(null);
     if (!desktopRuntime) {
@@ -664,21 +610,9 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
               <span className="file-info-size">{fileInfo ? fileInfo.size : ''}</span>
             </div>
 
-            {fileInfo && fileInfo.copying ? (
-              <div className="converting-indicator">
-                <LoadingIndicator
-                  theme="dark"
-                  showContainer={false}
-                  size={16}
-                  className="file-converting-loading"
-                  style={{ marginRight: '6px' }}
-                />
-                {`${t('fileUpload.copying', 'Copying large file...')} ${fileInfo.copyProgress || 0}%`}
-              </div>
-            ) : null}
           </div>
 
-          {fileInfo && !(fileInfo.converting || fileInfo.copying) ? (
+          {fileInfo ? (
             <button
               className="remove-file-btn"
               onClick={handleRemoveFile}

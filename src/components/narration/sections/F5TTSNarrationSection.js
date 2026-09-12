@@ -6,8 +6,6 @@ import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
 import { getF5TtsLanguageSupport } from '../../../platform/nativeNarrationCapabilities';
 
-const getAudioUrl = () => null;
-
 /**
  * F5-TTS narration UI branch. Pure, props-driven component.
  * @param {Object} props - Props forwarded from UnifiedNarrationSection
@@ -213,7 +211,6 @@ const F5TTSNarrationSection = ({
         playAudio={playAudio}
         currentAudio={currentAudio}
         isPlaying={isPlaying}
-        getAudioUrl={getAudioUrl}
         onRetry={retryF5TTSNarration}
         retryingSubtitleId={retryingSubtitleId}
         onRetryFailed={retryFailedNarrations}

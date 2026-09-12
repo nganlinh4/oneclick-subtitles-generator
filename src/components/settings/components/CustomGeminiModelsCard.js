@@ -43,7 +43,6 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
 
     const updatedModels = [...customGeminiModels, newModel];
     setCustomGeminiModels(updatedModels);
-    localStorage.setItem('custom_gemini_models', JSON.stringify(updatedModels));
 
     // Reset form
     setNewModelId('');
@@ -83,7 +82,6 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
     );
 
     setCustomGeminiModels(updatedModels);
-    localStorage.setItem('custom_gemini_models', JSON.stringify(updatedModels));
 
     // Reset form
     setNewModelId('');
@@ -98,11 +96,9 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
       message: t('settings.customModels.confirmDelete', 'Are you sure you want to delete this custom model?'),
       confirmText: t('common.confirm', 'Confirm'),
       key: `custom-model-delete:${modelId}`,
-      onConfirm: () => setCustomGeminiModels((currentModels) => {
-        const updatedModels = currentModels.filter((model) => model.id !== modelId);
-        localStorage.setItem('custom_gemini_models', JSON.stringify(updatedModels));
-        return updatedModels;
-      }),
+      onConfirm: () => setCustomGeminiModels((currentModels) => (
+        currentModels.filter((model) => model.id !== modelId)
+      )),
     });
   };
 

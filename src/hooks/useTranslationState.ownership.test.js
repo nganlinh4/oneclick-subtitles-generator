@@ -28,6 +28,10 @@ const mocks = vi.hoisted(() => ({
   setIsBulkTranslating: vi.fn(),
   setCurrentBulkFileIndex: vi.fn(),
   handleBulkTranslate: vi.fn(),
+  t: (_key, fallback, values = {}) => String(fallback).replace(
+    /{{(\w+)}}/g,
+    (_match, key) => String(values[key] ?? '')
+  ),
 }));
 
 const scopeError = () => Object.assign(new Error('project changed'), {
@@ -44,10 +48,7 @@ const issueReceipt = (record) => {
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
-    t: (_key, fallback, values = {}) => String(fallback).replace(
-      /{{(\w+)}}/g,
-      (_match, key) => String(values[key] ?? '')
-    ),
+    t: mocks.t,
   }),
 }));
 
@@ -375,6 +376,37 @@ it('cannot publish project A after switching to B during its checkpoint', async 
   view.unmount();
 });
 
+it.each(['resolved', 'rejected'])('loads the new project translation after the old request %s', async (outcome) => {
+  const view = await mount();
+  const provider = deferred();
+  mocks.translate.mockReturnValueOnce(provider.promise);
+  let pending;
+  act(() => { pending = start(view.result); });
+  await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
+  const rowsB = translatedRows(sourceB.map((row, sourceOrder) => ({
+    ...row,
+    originalId: `string:${row.id}`,
+    sourceOrder,
+  })));
+  mocks.hydratedRecord = completeRecord(rowsB, 1, await fingerprintTranslationSource(sourceB));
+
+  act(() => {
+    mocks.activeCacheId = 'cache-b';
+    mocks.cacheListener?.('cache-b', 'cache-a');
+    view.rerender({ rows: sourceB });
+  });
+  await act(async () => {
+    if (outcome === 'resolved') provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
+    else provider.reject(new Error('The cancelled provider closed its connection'));
+    await expect(pending).resolves.toEqual({ status: 'cancelled' });
+  });
+
+  await waitFor(() => expect(view.result.current.translatedSubtitles).toEqual(rowsB));
+  expect(view.result.current.loadedFromCache).toBe(true);
+  expect(mocks.persist).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 it('rejects a provider response after Stop even when the provider ignores abort', async () => {
   const view = await mount();
   const provider = deferred();
@@ -578,6 +610,40 @@ it('acknowledges native deliveries only after the exact durable project/source r
     })
   );
   expect(acknowledge).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+it('cannot clear a newer project result when an older request finally returns', async () => {
+  const view = await mount();
+  const provider = deferred();
+  mocks.translate.mockReturnValueOnce(provider.promise);
+  let oldRun;
+  act(() => { oldRun = start(view.result); });
+  await waitFor(() => expect(mocks.translate).toHaveBeenCalledTimes(1));
+
+  act(() => {
+    mocks.activeCacheId = 'cache-b';
+    mocks.cacheListener?.('cache-b', 'cache-a');
+    view.rerender({ rows: sourceB });
+  });
+  // Reset legitimately replaces the cancelled lease; a new translation then owns project B.
+  await act(async () => {
+    await expect(view.result.current.handleReset()).resolves.toMatchObject({ status: 'cleared' });
+  });
+  await act(async () => {
+    await expect(start(view.result)).resolves.toMatchObject({ status: 'complete' });
+  });
+  const publishedB = view.result.current.translatedSubtitles;
+  expect(publishedB).toEqual([expect.objectContaining({ text: 'T:Other' })]);
+  view.onComplete.mockClear();
+
+  await act(async () => {
+    provider.resolve(translationResult(mocks.translate.mock.calls[0][0]));
+    await expect(oldRun).resolves.toEqual({ status: 'cancelled' });
+  });
+  expect(view.result.current.translatedSubtitles).toEqual(publishedB);
+  expect(view.onComplete).not.toHaveBeenCalled();
+  expect(mocks.persist).toHaveBeenCalledTimes(1);
   view.unmount();
 });
 

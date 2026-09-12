@@ -6,34 +6,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key, fallback) => fallback }),
 }));
 
-vi.mock('../DownloadOptionsModal', () => ({
-  default: ({ isOpen, onClose, onDownload, onProcess }) => (isOpen ? (
-    <div data-testid="download-options-modal">
-      <button type="button" onClick={onClose}>modal escape close</button>
-      <button type="button" onClick={onClose}>modal overlay close</button>
-      <button
-        type="button"
-        onClick={() => onDownload('original', 'srt', { videoName: 'video' })}
-      >
-        modal download
-      </button>
-      <button
-        type="button"
-        onClick={() => onProcess(
-          'original',
-          'consolidate',
-          'model',
-          0,
-          null,
-          { videoName: 'video' }
-        )}
-      >
-        modal process
-      </button>
-    </div>
-  ) : null),
-}));
-
 vi.mock('./BulkTranslationPool', () => ({
   default: ({
     onBulkFilesChange,
@@ -148,10 +120,6 @@ test('TranslationComplete reset is same-tick inert under the shared export owner
   const { container } = render(
     <TranslationComplete
       onReset={onReset}
-      isModalOpen={false}
-      setIsModalOpen={vi.fn()}
-      onDownload={vi.fn()}
-      onProcess={vi.fn()}
       hasBulkTranslations
       onDownloadAll={onDownloadAll}
       onDownloadZip={vi.fn()}
@@ -169,65 +137,10 @@ test('TranslationComplete reset is same-tick inert under the shared export owner
   expect(onReset).toHaveBeenCalledOnce();
 });
 
-test('TranslationComplete guards every modal callback with the same same-tick export owner', async () => {
-  const pending = deferred();
-  const exportPendingRef = { current: false };
-  const setIsModalOpen = vi.fn();
-  const onDownload = vi.fn();
-  const onProcess = vi.fn();
-  const onDownloadAll = vi.fn(() => {
-    exportPendingRef.current = true;
-    return pending.promise.finally(() => {
-      exportPendingRef.current = false;
-    });
-  });
-  const { container, getByRole } = render(
-    <TranslationComplete
-      onReset={vi.fn()}
-      isModalOpen
-      setIsModalOpen={setIsModalOpen}
-      onDownload={onDownload}
-      onProcess={onProcess}
-      hasBulkTranslations
-      onDownloadAll={onDownloadAll}
-      onDownloadZip={vi.fn()}
-      exportPendingRef={exportPendingRef}
-    />
-  );
-
-  fireEvent.click(container.querySelector('.download-all-button'));
-  fireEvent.click(getByRole('button', { name: 'modal escape close' }));
-  fireEvent.click(getByRole('button', { name: 'modal overlay close' }));
-  fireEvent.click(getByRole('button', { name: 'modal download' }));
-  fireEvent.click(getByRole('button', { name: 'modal process' }));
-  expect(setIsModalOpen).not.toHaveBeenCalled();
-  expect(onDownload).not.toHaveBeenCalled();
-  expect(onProcess).not.toHaveBeenCalled();
-
-  await act(async () => pending.resolve({ status: 'cancelled' }));
-  fireEvent.click(getByRole('button', { name: 'modal escape close' }));
-  fireEvent.click(getByRole('button', { name: 'modal download' }));
-  fireEvent.click(getByRole('button', { name: 'modal process' }));
-  expect(setIsModalOpen).toHaveBeenCalledWith(false);
-  expect(onDownload).toHaveBeenCalledWith('original', 'srt', { videoName: 'video' });
-  expect(onProcess).toHaveBeenCalledWith(
-    'original',
-    'consolidate',
-    'model',
-    0,
-    null,
-    { videoName: 'video' }
-  );
-});
-
 test('TranslationComplete renders reset disabled while exporting', () => {
   const { container } = render(
     <TranslationComplete
       onReset={vi.fn()}
-      isModalOpen={false}
-      setIsModalOpen={vi.fn()}
-      onDownload={vi.fn()}
-      onProcess={vi.fn()}
       isExporting
       exportPendingRef={{ current: true }}
     />

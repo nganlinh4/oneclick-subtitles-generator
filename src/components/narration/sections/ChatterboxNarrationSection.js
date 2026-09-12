@@ -4,8 +4,6 @@ import ChatterboxControls from '../components/ChatterboxControls';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
 
-const getAudioUrl = () => null;
-
 /**
  * Chatterbox narration UI branch. Pure, props-driven component.
  * @param {Object} props - Props forwarded from UnifiedNarrationSection
@@ -158,7 +156,6 @@ const ChatterboxNarrationSection = ({
          currentAudio={currentAudio}
          isPlaying={isPlaying}
          playAudio={playAudio}
-         getAudioUrl={getAudioUrl}
          subtitleSource={subtitleSource}
          isGenerating={isGenerating}
          plannedSubtitles={(useGroupedSubtitles && groupedSubtitles && groupedSubtitles.length > 0)

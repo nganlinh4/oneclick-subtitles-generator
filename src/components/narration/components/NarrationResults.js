@@ -4,7 +4,7 @@ import SliderWithValue from '../../common/SliderWithValue';
 // Removed PlayPauseMorphType4 import - replaced with simple material symbols
 import '../../../utils/functionalScrollbar';
 import { VariableSizeList as List } from 'react-window';
-import { deriveSubtitleId, idsEqual } from '../../../utils/subtitle/idUtils';
+import { plannedNarrationResults } from '../utils/plannedNarrationResults';
 import ResultRow from './ResultRow';
 import { downloadAudio as downloadAudioFile } from '../utils/narrationAudioDownload';
 import useNarrationAudioSpeed from '../hooks/useNarrationAudioSpeed';
@@ -19,7 +19,6 @@ import { useProjectNarrationState } from '../../../platform/projectNarrationStat
  * @param {Function} props.playAudio - Function to play audio
  * @param {Object} props.currentAudio - Current audio being played
  * @param {boolean} props.isPlaying - Whether audio is playing
- * @param {Function} props.getAudioUrl - Function to get audio URL
  * @param {Function} props.onRetry - Function to retry generation for a specific subtitle
  * @param {number|null} props.retryingSubtitleId - ID of the subtitle currently being retried
  * @param {Function} props.onRetryFailed - Function to retry all failed narrations
@@ -30,7 +29,6 @@ const NarrationResults = ({
   playAudio,
   currentAudio,
   isPlaying,
-  getAudioUrl,
   onRetry,
   retryingSubtitleId,
   onRetryFailed,
@@ -105,44 +103,7 @@ const NarrationResults = ({
   const displayedResults = (() => {
     // Always show all planned subtitles, with status based on generation results
     if (trueSubtitles.length > 0) {
-      const completedIds = new Set();
-      const failedIds = new Set();
-
-      // Track completed and failed results
-      if (generationResults && generationResults.length > 0) {
-        generationResults.forEach(result => {
-          if (result.success) {
-            completedIds.add(result.subtitle_id);
-          } else if (!result.pending) {
-            failedIds.add(result.subtitle_id);
-          }
-        });
-      }
-
-      // Create results for all subtitles
-      const results = trueSubtitles.map((subtitle, index) => {
-        const subtitleId = deriveSubtitleId(subtitle, index);
-        const existingResult = generationResults?.find(r => idsEqual(r.subtitle_id, subtitleId));
-
-        if (existingResult) {
-          // Use existing result
-          return existingResult;
-        } else {
-          // Create pending result
-          return {
-            subtitle_id: subtitleId,
-            text: subtitle.text || '',
-            success: false,
-            pending: true,
-            start: subtitle.start,
-            end: subtitle.end,
-            original_ids: subtitle.original_ids || (subtitle.id ? [subtitle.id] : [])
-          };
-        }
-      });
-
-  // Preserve planned order to keep alignment with timeline after edits/deletes
-  return results;
+      return plannedNarrationResults(trueSubtitles, generationResults);
     }
 
     // Fallback: show generation results if no planned subtitles
@@ -176,7 +137,7 @@ const NarrationResults = ({
   }, [durationFetchKey, fetchDurationsBatch]);
 
   // Download audio as WAV file
-  const downloadAudio = (result) => downloadAudioFile(result, getAudioUrl, t);
+  const downloadAudio = (result) => downloadAudioFile(result, t);
 
   // Check if there are any failed narrations (exclude pending items)
   const hasFailedNarrations = generationResults && generationResults.some(result => !result.success && !result.pending);
@@ -326,7 +287,6 @@ const NarrationResults = ({
               currentAudio,
               isPlaying,
               playAudio,
-              getAudioUrl,
               downloadAudio,
               // per-item trim and speed control
               itemTrims,

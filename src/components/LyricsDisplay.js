@@ -48,7 +48,6 @@ const LyricsDisplay = ({
   const rowHeights = useRef({});
   const listRef = useRef(null);
 
-  const [txtContent, setTxtContent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [splitDuration, setSplitDuration] = useState(() => {
     // Get the split duration from localStorage or use default (0 = no split)
@@ -269,11 +268,8 @@ const LyricsDisplay = ({
           return downloadSRT(subtitlesToUse, `${baseFilename}.srt`);
         case 'json':
           return downloadJSON(subtitlesToUse, `${baseFilename}.json`);
-        case 'txt': {
-          const result = await downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
-          if (result.status === 'saved') setTxtContent(result.content);
-          return result;
-        }
+        case 'txt':
+          return downloadTXT(subtitlesToUse, `${baseFilename}.txt`);
         default:
           throw new TypeError('Unsupported subtitle format');
       }
@@ -290,12 +286,8 @@ const LyricsDisplay = ({
 
     if (!subtitlesToUse || subtitlesToUse.length === 0) return;
 
-    // First, get the text content if we don't have it yet
-    let textContent = txtContent;
-    if (!textContent) {
-      textContent = subtitlesToUse.map(subtitle => subtitle.text).join('\n\n');
-      setTxtContent(textContent);
-    }
+    // A new request always captures the selected source's current cue text.
+    const textContent = subtitlesToUse.map(subtitle => subtitle.text).join('\n\n');
 
     // Use the provided split duration or the state value
     const splitDurationToUse = splitDurationParam !== undefined ? splitDurationParam : splitDuration;
@@ -406,8 +398,6 @@ const LyricsDisplay = ({
       // Show error status
       setConsolidationStatus(t('consolidation.error', 'Error processing document: {{message}}', { message: error.message }));
       throw error;
-    } finally {
-      // Processing is complete
     }
   };
 

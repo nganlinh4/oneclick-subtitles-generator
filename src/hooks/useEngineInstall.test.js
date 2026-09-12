@@ -68,7 +68,88 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
   delete global.fetch;
+});
+
+it('does not restart view polling when mount status resolves after unmount', async () => {
+  vi.useFakeTimers();
+  let resolveStatus;
+  getManagedEnginePackageStatus.mockImplementationOnce(() => new Promise((resolve) => {
+    resolveStatus = resolve;
+  }));
+  const { unmount } = renderHook(() => useEngineInstall('parakeet'));
+  unmount();
+
+  await act(async () => { resolveStatus(packageStatus(activeOperation())); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(6_000); });
+
+  expect(getManagedEnginePackageStatus).toHaveBeenCalledTimes(1);
+  expect(cancelManagedEnginePackageJob).not.toHaveBeenCalled();
+});
+
+it('keeps a native install alive without polling a closed view after registration', async () => {
+  vi.useFakeTimers();
+  let resolveInstall;
+  let signal;
+  installManagedEnginePackage.mockImplementationOnce((_id, _handlers, options) => {
+    signal = options.signal;
+    return new Promise((resolve) => { resolveInstall = resolve; });
+  });
+  const { result, unmount } = renderHook(() => useEngineInstall('parakeet', { reconnect: false }));
+  let installation;
+  act(() => { installation = result.current.install(); });
+  unmount();
+
+  await act(async () => {
+    resolveInstall(jobSnapshot());
+    await installation;
+    await vi.advanceTimersByTimeAsync(6_000);
+  });
+
+  expect(signal.aborted).toBe(false);
+  expect(cancelManagedEnginePackageJob).not.toHaveBeenCalled();
+  expect(getManagedEnginePackageStatus).not.toHaveBeenCalled();
+});
+
+it('waits for a slow native status read instead of accumulating overlapping polls', async () => {
+  vi.useFakeTimers();
+  let resolvePoll;
+  const slowStatus = new Promise((resolve) => { resolvePoll = resolve; });
+  getManagedEnginePackageStatus.mockResolvedValueOnce(packageStatus(activeOperation()));
+  getManagedEnginePackageStatus.mockReturnValue(slowStatus);
+  const { result, unmount } = renderHook(() => useEngineInstall('parakeet'));
+  await act(async () => {});
+  await act(async () => { await vi.advanceTimersByTimeAsync(6_000); });
+
+  expect(getManagedEnginePackageStatus).toHaveBeenCalledTimes(2);
+  await act(async () => { resolvePoll(packageStatus(activeOperation({ basisPoints: 5_000 }))); });
+  expect(result.current.percent).toBe(50);
+  unmount();
+});
+
+it('does not let a previous engine poll overwrite or stop the current engine observer', async () => {
+  vi.useFakeTimers();
+  let resolveOldPoll;
+  const oldPoll = new Promise((resolve) => { resolveOldPoll = resolve; });
+  getManagedEnginePackageStatus
+    .mockResolvedValueOnce(packageStatus(activeOperation()))
+    .mockReturnValueOnce(oldPoll)
+    .mockResolvedValue(packageStatus(activeOperation({ engine: 'f5tts', basisPoints: 7_500 })));
+  const { result, rerender, unmount } = renderHook(({ id }) => useEngineInstall(id), {
+    initialProps: { id: 'parakeet' },
+  });
+  await act(async () => {});
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+  rerender({ id: 'f5tts' });
+  await act(async () => {});
+
+  await act(async () => { resolveOldPoll(packageStatus()); });
+  expect(result.current.operation?.engine).toBe('f5tts');
+  expect(result.current.percent).toBe(75);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+  expect(getManagedEnginePackageStatus.mock.calls.filter(([id]) => id === 'f5tts')).toHaveLength(2);
+  unmount();
 });
 
 it('reconnects to a durable native install and maps basis points to legacy percent', async () => {

@@ -195,10 +195,22 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   const mountedRef = useRef(true);
   const activeLeaseRef = useRef(null);
   const hydrationControllerRef = useRef(null);
+  const pendingHydrationRef = useRef(false);
   const sourcePayloadRef = useRef('');
   const sourceRowsRef = useRef(subtitles);
   const completionRef = useRef(onTranslationComplete);
   completionRef.current = onTranslationComplete;
+  const releaseLease = useCallback((lease) => {
+    if (activeLeaseRef.current !== lease) return false;
+    activeLeaseRef.current = null;
+    // A scope change can request hydration while an aborted native operation is still settling.
+    // Refs do not schedule effects, so resume that read explicitly once its write lease is free.
+    if (mountedRef.current && pendingHydrationRef.current) {
+      pendingHydrationRef.current = false;
+      setScopeEpoch((value) => value + 1);
+    }
+    return true;
+  }, []);
   const abortForBulkSourceMutation = useCallback(() => {
     if (activeLeaseRef.current?.kind === 'translation') {
       activeLeaseRef.current.controller.abort(
@@ -334,7 +346,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     if (!mountedRef.current || activeLeaseRef.current !== lease || lease.controller.signal.aborted
         || cacheChanged || sourceChanged) {
       if (sourceChanged || cacheChanged) {
-        if (mountedRef.current) {
+        if (mountedRef.current && activeLeaseRef.current === lease) {
           clearPublishedState();
           setBulkTranslations([]);
         }
@@ -355,7 +367,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     } catch (ownershipError) {
       context.lease.controller.abort(createTranslationAbortError('Translation project changed'));
       if (ownershipError?.code === 'projectScopeMismatch') {
-        if (mountedRef.current) {
+        if (mountedRef.current && activeLeaseRef.current === context.lease) {
           clearPublishedState();
           setBulkTranslations([]);
         }
@@ -438,9 +450,13 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
 
   // Hydrate only the exact active project/source. Starting another hydration aborts the old one.
   useEffect(() => {
+    pendingHydrationRef.current = false;
     if (!renderedCacheId || !renderedSourcePayload
         || renderedSourcePayload === '!invalid-translation-source') return undefined;
-    if (activeLeaseRef.current !== null) return undefined;
+    if (activeLeaseRef.current !== null) {
+      pendingHydrationRef.current = true;
+      return undefined;
+    }
     const controller = new AbortController();
     const lease = Object.freeze({
       runId: nextRunId(),
@@ -515,7 +531,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
           console.error('Error hydrating the active project translation:', hydrationError);
         }
       } finally {
-        if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+        releaseLease(lease);
       }
     })();
     return () => {
@@ -525,6 +541,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   }, [
     assertRunOwned,
     publishComplete,
+    releaseLease,
     renderedCacheId,
     renderedSourcePayload,
     scopeEpoch,
@@ -816,8 +833,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       }
       return { status: 'failed', error: terminalError };
     } finally {
-      if (activeLeaseRef.current === lease) {
-        activeLeaseRef.current = null;
+      if (releaseLease(lease)) {
         if (mountedRef.current) {
           setIsTranslating(false);
           setIsBulkTranslating(false);
@@ -833,6 +849,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     handleBulkTranslate,
     includeRules,
     publishComplete,
+    releaseLease,
     restTime,
     selectedModel,
     setCurrentBulkFileIndex,
@@ -880,9 +897,9 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       }
       return { status: isAbort(resetError) ? 'cancelled' : 'failed', error: resetError };
     } finally {
-      if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+      releaseLease(lease);
     }
-  }, [assertRunOwned, captureRunContext, clearPublishedState, t]);
+  }, [assertRunOwned, captureRunContext, clearPublishedState, releaseLease, t]);
 
   const retryMainTranslation = useCallback(async (segment) => {
     if (activeLeaseRef.current?.kind === 'hydration') {
@@ -1021,7 +1038,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       }
       return { status: 'failed', error: retryError };
     } finally {
-      if (activeLeaseRef.current === lease) activeLeaseRef.current = null;
+      releaseLease(lease);
     }
   }, [
     assertRunOwned,
@@ -1029,6 +1046,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     customTranslationPrompt,
     includeRules,
     publishComplete,
+    releaseLease,
     t,
   ]);
 

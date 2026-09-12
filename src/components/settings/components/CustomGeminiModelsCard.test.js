@@ -29,7 +29,7 @@ beforeEach(() => {
   window.addToast = vi.fn();
 });
 
-it('adds, persists, displays, and selects a future Gemini model as custom text', () => {
+it('keeps an added model in the settings draft until the form is saved', () => {
   const onModelSelect = vi.fn();
   render(<Host onModelSelect={onModelSelect} />);
 
@@ -42,16 +42,12 @@ it('adds, persists, displays, and selects a future Gemini model as custom text',
   });
   fireEvent.click(screen.getByRole('button', { name: 'Add Model' }));
 
-  expect(JSON.parse(localStorage.getItem('custom_gemini_models'))).toEqual([{
-    id: 'gemini-custom-test',
-    name: 'Custom test model',
-    isCustom: true,
-  }]);
+  expect(screen.getByText('Custom test model')).toBeInTheDocument();
+  expect(localStorage.getItem('custom_gemini_models')).toBeNull();
 
   fireEvent.click(screen.getByTitle('Select model'));
-  fireEvent.click(screen.getByRole('menuitem', { name: /Custom test model \(Custom\)/ }));
-  expect(onModelSelect).toHaveBeenCalledOnce();
-  expect(onModelSelect).toHaveBeenCalledWith('gemini-custom-test');
+  expect(screen.queryByRole('menuitem', { name: /Custom test model \(Custom\)/ })).not.toBeInTheDocument();
+  expect(onModelSelect).not.toHaveBeenCalled();
 });
 
 it('rejects a provider path instead of persisting it as a model ID', () => {
@@ -92,9 +88,17 @@ it('confirms deletion without blocking and cannot erase a model added while conf
 
   expect(screen.queryByText('Gemini 3.7 Flash')).not.toBeInTheDocument();
   expect(screen.getAllByText('gemini-custom-test')).toHaveLength(2);
-  expect(JSON.parse(localStorage.getItem('custom_gemini_models'))).toEqual([{
-    id: 'gemini-custom-test',
-    name: 'gemini-custom-test',
-    isCustom: true,
-  }]);
+  expect(localStorage.getItem('custom_gemini_models')).toBeNull();
+});
+
+it('does not publish a renamed model when the settings form is discarded', () => {
+  const original = [{ id: 'gemini-custom-test', name: 'Saved model', isCustom: true }];
+  localStorage.setItem('custom_gemini_models', JSON.stringify(original));
+  const { unmount } = render(<Host initialModels={original} />);
+  fireEvent.click(screen.getByTitle('Edit model'));
+  fireEvent.change(screen.getByLabelText('Display Name'), { target: { value: 'Unsaved name' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Update Model' }));
+  expect(screen.getByText('Unsaved name')).toBeInTheDocument();
+  unmount();
+  expect(JSON.parse(localStorage.getItem('custom_gemini_models'))).toEqual(original);
 });
