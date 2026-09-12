@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "829f389db5ff76a9a2a8e1886115f5d0d4fc7436",
+  "baselineRevision": "5e111ef12eccc4ff9590c2691bdefebb811aa29b",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -1638,7 +1638,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "d49b4b0a2da62d2c86442c6b8bab7ae4a57f09bea6734e5a1b611959f25198a3",
+      "hash": "6915669f33b993334c503fb5e1ebb1b6efedfec5ddfc8a0d89e63332b9680f0e",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4251,7 +4251,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "53a952c126abf821ac339b8f3f2d136b69a2cafde2150390016fd790a3efc71d",
+      "hash": "db69d3e2ea3cb1481a3864b905f679efc2c44b2acb97f93763ef9a52f1be823c",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -7036,7 +7036,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "44a2a9116285b10ba415b393cd8713e4cd31666a35968240602123491e15ec27",
+      "hash": "044ce092a164e32304e9e1856788ce14b91f4bcfcb612073f06ec8ebc1e10c4e",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -9239,17 +9239,17 @@
       ]
     },
     "src/components/settings/tabs/AboutTab.js": {
-      "hash": "870e5eda469b3cc6cca891f11e3450c72874ea1ca0602a4c120e9de733dc0103",
+      "hash": "acd32d95f88efa4628ca07e1fff33e9b5486a60c0a57959440564c1c0961a951",
       "rootCount": 1,
       "roots": [
-        "f56677ac1cd15eb59427b51fb2a5312fe8f226d29488d467ad22c6b7cc58ca82"
+        "eb6691fb798d4204172c32c63fdc8fd80c1396255985a67c4fb3e45a71b08da5"
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "cee803d298587f3b3fb04fbcbc9978e40e2b1fd69b67688d2169282c233f6f25",
+      "hash": "2d3a8e2381cc9a081a6c95df62223cd84344e279c4898c126cf5fa8a89a250e0",
       "rootCount": 1,
       "roots": [
-        "69463ab5713feaa8781f7adf12abd82b184b982563a1aab6e377cde4ef85f81d"
+        "440c44c1240c5c79b0b5f5ad68e2b2bd692b05749d7941daffd585d97bec21b3"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {

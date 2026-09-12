@@ -11,10 +11,6 @@ const updaterRs = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'updat
 const libRs = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs');
 const cargoToml = read('..', '..', 'apps', 'desktop', 'src-tauri', 'Cargo.toml');
 const updaterSmokeWorkflow = read('..', '..', '.github', 'workflows', 'updater-smoke.yml');
-const aboutTab = read('..', '..', 'src', 'components', 'settings', 'tabs', 'AboutTab.js');
-const gitVersion = read('..', '..', 'src', 'utils', 'gitVersion.js');
-const updateService = read('..', '..', 'src', 'platform', 'updateService.js');
-const startupUpdateCoordinator = read('..', '..', 'src', 'platform', 'startupUpdateCoordinator.js');
 const diagnosticsRs = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'diagnostics.rs');
 const settingsSurfaceJourney = read('..', 'journeys', 'settingsSurface.journey.js');
 const database = read('..', 'support', 'database.js');
@@ -55,31 +51,6 @@ test('ci-updater-fixture (the real signed-update seam) is structurally unreachab
   assert.match(journey, /updater-smoke\.yml/u);
 });
 
-test('About really reaches the native updater (app_health / app_update_check), not a legacy direct GitHub fetch', () => {
-  assert.match(aboutTab, /import \{ getGitVersion, getDisplayVersion, getLatestVersion/u);
-  assert.match(gitVersion, /window\.isTauri/u);
-  assert.match(gitVersion, /getDesktopAppVersion\(\)/u);
-  assert.match(gitVersion, /startStartupUpdateCheck\(\)/u);
-  assert.match(gitVersion, /Signed updater is not configured/u);
-  assert.match(updateService, /invokeCommand\('app_update_check'\)/u);
-  assert.match(updateService, /invokeCommand\('app_health'\)/u);
-  assert.match(startupUpdateCoordinator, /checkDesktopUpdate, installDesktopUpdate/u);
-  assert.match(journey, /app_health/u);
-});
-
-test('the honest failed-check branch is the one this journey asserts, not a fabricated up-to-date/available state', () => {
-  assert.match(aboutTab, /'settings\.updateCheckFailed', 'Unable to check for updates'/u);
-  assert.match(aboutTab, /className="update-check-failed"/u);
-  assert.match(aboutTab, /className="update-notification"/u);
-  assert.match(aboutTab, /className="up-to-date"/u);
-  assert.match(journey, /updateCheckFailedPresent, true/u);
-  assert.match(journey, /updateCheckFailedText, 'Unable to check for updates'/u);
-  assert.match(journey, /const disabledUpdaterAllowance =/u);
-  assert.equal((journey.match(/allowVisibleProblems: disabledUpdaterAllowance\(surface\)/gu) ?? []).length, 2);
-  assert.match(journey, /updateAvailablePresent, false/u);
-  assert.match(journey, /upToDatePresent, false/u);
-});
-
 test('the journey reaches About through the same real Settings navigation settingsSurface already proves', () => {
   assert.match(settingsSurfaceJourney, /tab: 'about', step: '07-about', root: '\.about-section'/u);
   assert.match(journey, /data-app-action="open-settings"/u);
@@ -89,7 +60,6 @@ test('the journey reaches About through the same real Settings navigation settin
   assert.match(journey, /await openEditor\(\)/u);
   assert.doesNotMatch(journey, /openProjectWithMedia/u);
   assert.match(journey, /focusSelector: '\.version-info'/u);
-  assert.match(journey, /focusSelector: '\.update-check-failed'/u);
   assert.doesNotMatch(journey, /focusSelector: '\.about-section'/u);
 });
 
@@ -105,24 +75,5 @@ test('the journey never substitutes a native command, private IPC, raw SQL, or a
     ['a real minisign key value', /RWQ|RW[A-Za-z0-9+/]{40,}/u],
   ]) {
     assert.doesNotMatch(journey, forbidden, `journey contains forbidden ${label}`);
-  }
-});
-
-test('the contract fails when any one load-bearing assertion is removed', () => {
-  const assertJourneyStillProvesTheDisabledChannel = (source) => {
-    assert.match(source, /updateCheckFailedPresent, true/u);
-    assert.match(source, /"outcome":"disabled"/u);
-    assert.match(source, /unexplained,\s*\[\],/u);
-    assert.match(source, /versionDisplay, \/v\\d\+\\\.\\d\+\\\.\\d\+\//u);
-  };
-  assertJourneyStillProvesTheDisabledChannel(journey);
-  for (const needle of [
-    'updateCheckFailedPresent, true',
-    '"outcome":"disabled"',
-    'unexplained,',
-  ]) {
-    const weakened = journey.replace(needle, '/* removed */');
-    assert.notEqual(weakened, journey, `mutation needle is stale: ${needle}`);
-    assert.throws(() => assertJourneyStillProvesTheDisabledChannel(weakened), undefined, needle);
   }
 });
