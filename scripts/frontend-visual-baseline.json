@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "30458ad00e582e9ea313dc911ea2cfc72a5ebc3b",
+  "baselineRevision": "da54b220bd9039e85485868b18fd54c802d8f900",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -104,7 +104,7 @@
     "src/styles/components/youtube-search.css": "d74819159255177644a8f1187864008e87729f0bd1732d627da1c6078eb47b17",
     "src/styles/components/youtube-url.css": "166fe00484d0bf1f1d04e4963951cee79dca9c7a925ab09435eb5df6a5f68286",
     "src/styles/DownloadOnlyModal.css": "3a34f4e3040622612a8a616d1f774a5e53265f8d6e261ef384d3538aa9773461",
-    "src/styles/DownloadOptionsModal.css": "d3aac5c5ce0391d3e6de3322a8984b6356bc95acadc5a192bc75cee83244d7f3",
+    "src/styles/DownloadOptionsModal.css": "d4df3d0a5f9cb8a7aecd155a4e1011cfaef64a0f1893334e5e6615329b1055ee",
     "src/styles/FileUploadInput.css": "d42b41de661b3a58bd7e8e4d66788e817f351fafa6420e474d52275504092e4b",
     "src/styles/floating-scrollbar.css": "8d712dd7a6ba9d0a6bc351f74fdab97ed86d5905d097c7fdea11c8f428b4b9dc",
     "src/styles/font-overrides.css": "64a9279148c8a5699e89a275ef962820723609981ae524f502f01fe2c4347e3f",
@@ -127,7 +127,7 @@
     "src/styles/lyrics/volume-visualizer.css": "9decdaa4412a1f6acfd922410d588ca6ab2f1eb7aa7b21b7af157bb4e528a02b",
     "src/styles/LyricsDisplay.css": "301f973c2451eaa87b946387dd8221a114a8a2f1193cc110b3489babd26ff673",
     "src/styles/material-tokens.css": "440877c03b5d9854e6f179e2bfb504e3507be34feb1d68d3c444acb539815af7",
-    "src/styles/ModelDropdown.css": "ddeb9c9ba36bfb48d9947483256fb3977f88802bf4bc22f829d628c314f8ca73",
+    "src/styles/ModelDropdown.css": "8191c1d92770448a6a6d0724ae565b575fe2e8d36cbd56cf09bf160962e703ab",
     "src/styles/narration/advancedSettingsModal.css": "640996f89422a21306f981d313a062a949775c5b21a528ec623cc3d3e59f3364",
     "src/styles/narration/alignedNarration.css": "92315a0fd6358e4e90deaa75a892d4ae6463af3f26615057bbc4ce790e86c5b1",
     "src/styles/narration/chatterboxSliderFixes.css": "3a4d2b29833371155b858f1cebb600f2ece3c0b83d69fdd8a4ffcb4276aefaa9",
@@ -213,7 +213,7 @@
     "src/styles/translation/animations.css": "142d003995f68ac7a3ec8b9444a2f4a5b94a486272d71a31d04c2d9a24780e23",
     "src/styles/translation/base.css": "d6f709de6f227b21b9810ca5f9a6d93429eb6dc26495e33b1bd0ad316a086a4e",
     "src/styles/translation/bulk-translation.css": "f33e9920bccffdec0f6d9b9742f8a47360cdf76f3d75f04abb926c4006337229",
-    "src/styles/translation/buttons.css": "764f9ec0608bd36a2577f88b65376a8dac2d576323e738732f7ff26a98d789f8",
+    "src/styles/translation/buttons.css": "51164fa723ea9beea9bd5a427e35d8c5ada0dd7c4d26e2b757a230cc557ba9b4",
     "src/styles/translation/delimiters.css": "271a8485f17f543ee55f9c41f33274d58cd0476e5423b3c8d63addd740f1f7a7",
     "src/styles/translation/header.css": "05154ac0864f51131c468533002e20d7103130e256fb31bae8fbdadd6c55cb01",
     "src/styles/translation/index.css": "f961d3d6359e0fe3600d4dc4f71e26f29c8b1c247732997c96bc2349407cf586",
@@ -8744,12 +8744,10 @@
       ]
     },
     "src/components/ModelDropdown.js": {
-      "hash": "14ffe46f052b10257f08498e965bd14e00fc88cd4639d07efa73d40dc53c4327",
-      "rootCount": 3,
+      "hash": "45f229c498dc85ef1a2f0d26503cc7ab05cfc4f63d9ea360467cb1afc080b703",
+      "rootCount": 1,
       "roots": [
-        "b201872aa6684ad9815f5a81200207a0237cebf3e7474a6fecf118b37571b940",
-        "44a99865b1cff7ab09818e31677d3c501cea29f93d863de6fa72dcd2261e3a7d",
-        "07282d931dbe401ba8f7674d4231bd575d1326445d8a5f74de676ad164727cba"
+        "cd047ea0286ea8bf15e44f3fef52304b2274fb930c5319769c68156ab79e2961"
       ]
     },
     "src/components/narration/components/AdvancedSettingsModal.js": {
@@ -9274,10 +9272,10 @@
       ]
     },
     "src/components/settings/tabs/ThinkingBudgetCard.js": {
-      "hash": "5ff47546d5edd82626333559917ec633b81394858d871085cd60b363df83545e",
+      "hash": "05d2ecd2681dd026d5424e00b27582fa86210788a4fe707416aa5ef9263abd17",
       "rootCount": 1,
       "roots": [
-        "18c17a702f7e0c5c814c6e476e0707ba3870cb2d3d091412579a6da01c6137a0"
+        "1222c2ebb3b855e94f22f0fce7a64a26e4ce0840745fc2accc14cb04ccffe647"
       ]
     },
     "src/components/settings/tabs/VideoAnalysisCard.js": {
