@@ -123,13 +123,21 @@ export const updateParticleElements = (particles) => {
   particles.forEach(particle => {
     if (!particle.element) return;
 
+    const opacity = particle.isActive ? '1' : '0';
+    if (particle.element.style.opacity !== opacity) particle.element.style.opacity = opacity;
+    if (!particle.isActive) {
+      particle.trailParticles?.forEach(trail => {
+        if (trail.element.style.opacity !== '0') trail.element.style.opacity = '0';
+      });
+      return;
+    }
+
     // Update position and rotation
     particle.element.style.left = `${particle.x}%`;
     particle.element.style.top = `${particle.y}%`;
     particle.element.style.transform = `rotate(${particle.rotation}deg)`;
 
     // Update opacity based on active state - higher default opacity
-    particle.element.style.opacity = particle.isActive ? '1' : '0';
 
     // Update trail particles if they exist
     if (particle.trailParticles && particle.isActive) {

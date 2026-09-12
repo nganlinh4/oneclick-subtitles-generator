@@ -8,6 +8,7 @@ import process from 'node:process';
 import { durableState, durableTranscriptWords } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import { FOUR_WINDOW_ASR_FIXTURE } from '../support/fourWindowAsrFixture.js';
+import { startFrontendSample, finishFrontendSample } from '../support/frontendPerformance.js';
 import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { actuateNativeRange } from '../support/nativeRange.js';
 import { openProjectWithMedia } from '../support/workflow.js';
@@ -90,6 +91,7 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       selectedRange: document.querySelector('#transcribe-window')?.value ?? null,
       modalText: (document.querySelector('.video-processing-modal')?.innerText || '').slice(0, 500),
     })));
+    await startFrontendSample();
     await clickControl('[data-osg-action="process-subtitles"]');
     const processingStartedAt = Date.now();
     milestone('process-clicked');
@@ -102,7 +104,11 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     let terminalFailure = null;
     let sawCuesWhileRunning = false;
     let firstCueElapsedMs = null;
-    await browser.waitUntil(async () => {
+    let streamingScreenshot = false;
+    let settingsLatencyMs = null;
+    let generationPerformance;
+    try {
+      await browser.waitUntil(async () => {
       durable = durableState(root);
       jobs = durable.jobs.filter(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
       surface = await browser.execute(() => ({
@@ -129,6 +135,20 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       if (jobs.some(({ state }) => state === 'running') && surface.visibleCueCount > 0) {
         sawCuesWhileRunning = true;
         firstCueElapsedMs ??= Date.now() - processingStartedAt;
+        if (!streamingScreenshot) {
+          streamingScreenshot = true;
+          await captureWorkflowStep({ workflow: WORKFLOW, step: '01-subtitles-while-running',
+            description: 'Real model results are already painted while the native job is still running.',
+            details: { firstCueElapsedMs, expectedWindows }, focusSelector: '.timeline-container' });
+          const interactionStarted = Date.now();
+          await clickControl('[data-app-action="open-settings"]');
+          await $('.settings-modal').waitForDisplayed({ timeout: 10_000 });
+          settingsLatencyMs = Date.now() - interactionStarted;
+          await captureWorkflowStep({ workflow: WORKFLOW, step: '02-settings-during-generation',
+            description: 'The real settings modal remains usable during parallel provider generation.',
+            details: { settingsLatencyMs }, focusSelector: '.settings-modal' });
+          await clickControl('[data-settings-action="close"]');
+        }
       }
       if (Date.now() - lastProgressTrace >= 10_000) {
         lastProgressTrace = Date.now();
@@ -162,7 +182,15 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       timeout: Math.max(90_000, Math.ceil(expectedWindows / 4) * 75_000),
       interval: 2_000,
       timeoutMsg: 'the real four-window Gemini Live run did not complete its native job',
-    });
+      });
+    } finally {
+      generationPerformance = await finishFrontendSample();
+      milestone('frontend-performance', generationPerformance);
+      await captureWorkflowStep({ workflow: WORKFLOW, step: '03-generation-performance',
+        description: 'Measured WebView work and timeline arrivals for the actual provider run, including failures.',
+        details: { ...generationPerformance, settingsLatencyMs, expectedWindows },
+        focusSelector: '.timeline-container' });
+    }
     if (terminalFailure !== null) throw new Error(terminalFailure);
 
     const ranges = witness.ranges.find((entry) => entry.length === expectedWindows);
@@ -171,6 +199,14 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
       'genuine Live transcription persisted no subtitle coverage in the latter half');
     assert.equal(sawCuesWhileRunning, true,
       'no subtitle segment became visible before the native transcription job completed');
+    const populatedTimelineCounts = new Set(generationPerformance.subtitleArrivals
+      .filter(({ count }) => count > 0).map(({ count }) => count));
+    assert.ok(populatedTimelineCounts.size >= 3,
+      'the actual timeline must paint several growing subtitle batches, not just the completed track');
+    assert.ok(generationPerformance.maxLongTaskMs < 250,
+      `parallel generation blocked the WebView for ${generationPerformance.maxLongTaskMs} ms`);
+    assert.ok(settingsLatencyMs !== null && settingsLatencyMs < 2_000,
+      `settings interaction during generation took ${settingsLatencyMs} ms`);
     assert.ok(firstCueElapsedMs !== null && firstCueElapsedMs <= 30_000,
       `the first streamed subtitle took ${firstCueElapsedMs ?? 'unknown'} ms (maximum 30000 ms)`);
     const completionElapsedMs = Date.now() - processingStartedAt;
@@ -180,6 +216,18 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     assert.deepEqual(witness.errors, [], 'the WebView recorded a provider runtime rejection');
     assert.equal(durable.latestRevision?.cue_count, durable.counts.cues);
     const diagnostics = transcriptionDiagnostics(root);
+    // A scheduled task may still be awaiting its credential. Count only sessions that have
+    // delivered a real final and have not finished yet: an observed concurrency lower bound.
+    const respondingWindows = new Set();
+    let observedRespondingConcurrency = 0;
+    for (const { event, window: windowIndex } of diagnostics) {
+      if (event === 'transcribe.live.first_final') respondingWindows.add(windowIndex);
+      if (event === 'transcribe.live.finished') respondingWindows.delete(windowIndex);
+      observedRespondingConcurrency = Math.max(observedRespondingConcurrency, respondingWindows.size);
+    }
+    milestone('observed-provider-concurrency', { observedRespondingConcurrency, expectedWindows });
+    assert.ok(observedRespondingConcurrency >= 2,
+      'multiple planned windows are not proof of concurrent provider responses');
     assert.ok(diagnostics.some(({ event }) => event === 'transcribe.live.first_final'),
       'the run completed without a genuine Gemini Live final transcription event');
     assert.equal(diagnostics.some(({ event }) => event.includes('recovery')
@@ -218,7 +266,7 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
     });
     await captureWorkflowStep({
       workflow: WORKFLOW,
-      step: '01-four-live-windows-complete',
+      step: '04-live-windows-complete',
       description: `The public one-minute setting split ${Math.ceil(duration)} seconds of real media into ${ranges.length} Live windows and merged their streamed cues durably.`,
       details: {
         durationSeconds: duration,
@@ -226,6 +274,14 @@ describe('Gemini Transcribe Live handles the real customer workflow', () => {
         cueCount: durable.counts.cues,
         firstCueElapsedMs,
         completionElapsedMs,
+        generationPerformance,
+        settingsLatencyMs,
+        observedRespondingConcurrency,
+        providerFirstFinals: diagnostics.filter(({ event }) => event === 'transcribe.live.first_final')
+          .map(({ window: windowIndex, elapsed_ms: elapsedMs, timestampMs }) => ({
+            windowIndex: Number(windowIndex), elapsedMs: Number(elapsedMs),
+            sinceProcessClickMs: Number(timestampMs) - processingStartedAt,
+          })),
       },
       focusSelector: '.timeline-container',
     });

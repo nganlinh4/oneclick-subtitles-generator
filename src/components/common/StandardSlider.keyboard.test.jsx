@@ -8,6 +8,21 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('StandardSlider public keyboard contract', () => {
+  it('only owns global drag listeners during a gesture and releases them on blur', () => {
+    const added = vi.spyOn(document, 'addEventListener');
+    const removed = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = render(<StandardSlider ariaLabel="Drag" />);
+    const types = ['mousemove', 'mouseup', 'touchmove', 'touchend', 'touchcancel'];
+    expect(added.mock.calls.filter(([type]) => types.includes(type))).toHaveLength(0);
+    fireEvent.mouseDown(screen.getByRole('slider', { name: 'Drag' }), { button: 0, clientX: 20 });
+    expect(added.mock.calls.filter(([type]) => types.includes(type)).length).toBeGreaterThan(0);
+    fireEvent.blur(window);
+    unmount();
+    for (const [type, handler] of added.mock.calls.filter(([type]) => types.includes(type))) {
+      expect(removed.mock.calls.some(([removedType, removedHandler]) => removedType === type && removedHandler === handler)).toBe(true);
+    }
+    added.mockRestore(); removed.mockRestore();
+  });
   it('exposes the existing visible track as a named, bounded slider', () => {
     render(<StandardSlider id="font-size-slider" ariaLabel="Font size" value={72} min={8} max={240} />);
     const slider = screen.getByRole('slider', { name: 'Font size' });

@@ -311,7 +311,7 @@ const StandardSlider = ({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || isDisabled) return;
+    if (!container || isDisabled || !isDragging) return;
 
     const handleMouseMove = (e) => { if (isDragging) handleSmoothDrag({ clientX: e.clientX, clientY: e.clientY }); };
     const handleTouchMove = (e) => { if (isDragging && e.touches.length > 0) handleSmoothDrag({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); };

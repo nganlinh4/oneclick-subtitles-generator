@@ -15,7 +15,7 @@ import { setupButtonObserver, initializeButton, setupButtonEventListeners } from
 let particles = [];
 
 // Set to track initialized buttons to prevent duplicate initialization
-const initializedButtons = new Set();
+let initializedButtons = new WeakSet();
 
 // Flag to track if the observer is already set up
 let observerInitialized = false;
@@ -23,6 +23,12 @@ let observerInitialized = false;
 // Track cursor position for interactions
 const cursorPosition = { x: 0, y: 0 };
 const isHovering = { value: false };
+
+const wakeParticles = () => {
+  if (!window.geminiAnimationFrameId && localStorage.getItem('enable_gemini_effects') !== 'false') {
+    window.geminiAnimationFrameId = requestAnimationFrame(animateParticles);
+  }
+};
 
 /**
  * Initialize Gemini button effects
@@ -66,13 +72,11 @@ export function initGeminiButtonEffects() {
     particles = initializeButton(button, initializedButtons, particles);
 
     // Set up event listeners for the button
-    setupButtonEventListeners(button, particles, cursorPosition, isHovering);
+    setupButtonEventListeners(button, () => particles, cursorPosition, isHovering, wakeParticles);
   });
 
   // Start the animation loop if it's not already running
-  if (!window.geminiAnimationFrameId) {
-    window.geminiAnimationFrameId = requestAnimationFrame(animateParticles);
-  }
+  wakeParticles();
 };
 
 /**
@@ -112,7 +116,7 @@ export const resetAllGeminiButtonEffects = () => {
   }
 
   // Clear the initialized buttons set
-  initializedButtons.clear();
+  initializedButtons = new WeakSet();
 
   // Re-initialize the effects
   initGeminiButtonEffects();
@@ -122,14 +126,17 @@ export const resetAllGeminiButtonEffects = () => {
  * Animate all particles
  */
 const animateParticles = () => {
+  window.geminiAnimationFrameId = null;
+  particles = cleanupParticles(particles);
+  const moving = particles.some(particle => particle.isActive || particle.returnToOrigin);
   // Update all particles
-  updateParticles(particles, cursorPosition, isHovering.value);
+  if (moving) updateParticles(particles, cursorPosition, isHovering.value);
 
   // Update DOM elements to match particle states
   updateParticleElements(particles);
 
-  // Continue animation loop
-  window.geminiAnimationFrameId = requestAnimationFrame(animateParticles);
+  // Hover events wake the loop again. Invisible, settled particles need no frames or grid work.
+  if (particles.some(particle => particle.isActive || particle.returnToOrigin)) wakeParticles();
 };
 
 // Export the initialization function
@@ -150,4 +157,8 @@ export const disableGeminiButtonEffects = () => {
   // Remove icon containers
   const containers = document.querySelectorAll('.gemini-icon-container');
   containers.forEach(c => c.remove());
+  particles = [];
+  initializedButtons = new WeakSet();
+  clearTimeout(window.cursorTimeout);
+  isHovering.value = false;
 };

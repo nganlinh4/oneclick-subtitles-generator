@@ -72,10 +72,13 @@ export const initializeButton = (button, initializedButtons, particles) => {
   }
 
   // Check if this button has already been initialized
-  const isInitialized = initializedButtons.has(button.dataset.geminiButtonId);
+  const isInitialized = initializedButtons.has(button);
 
   // Check if the button already has a gemini-icon-container
   let iconContainer = button.querySelector('.gemini-icon-container');
+  if (isInitialized && iconContainer && particles.some(particle => iconContainer.contains(particle.element))) {
+    return particles;
+  }
 
   // If not, create a new one
   if (!iconContainer) {
@@ -131,7 +134,7 @@ export const initializeButton = (button, initializedButtons, particles) => {
   });
 
   // Mark this button as initialized
-  initializedButtons.add(button.dataset.geminiButtonId);
+  initializedButtons.add(button);
 
   return [...particles, ...buttonParticles];
 };
@@ -143,7 +146,13 @@ export const initializeButton = (button, initializedButtons, particles) => {
  * @param {Object} cursorPosition - Cursor position object
  * @param {Object} isHovering - Hovering state object
  */
-export const setupButtonEventListeners = (button, particles, cursorPosition, isHovering) => {
+const buttonBindings = new WeakMap();
+
+export const setupButtonEventListeners = (button, getParticles, cursorPosition, isHovering, wake) => {
+  const previous = buttonBindings.get(button);
+  if (previous) { previous.getParticles = getParticles; return; }
+  const binding = { getParticles };
+  buttonBindings.set(button, binding);
   // Add mouse move event listener for cursor tracking
   button.addEventListener('mousemove', (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -173,7 +182,7 @@ export const setupButtonEventListeners = (button, particles, cursorPosition, isH
     if (!button.disabled) {
       // Find all particles belonging to this button
       const iconContainer = button.querySelector('.gemini-icon-container');
-      const currentParticles = particles.filter(p => {
+      const currentParticles = binding.getParticles().filter(p => {
         return p.element.parentNode === iconContainer ||
                (p.element.parentNode && p.element.parentNode.parentNode === iconContainer);
       });
@@ -190,13 +199,14 @@ export const setupButtonEventListeners = (button, particles, cursorPosition, isH
         particle.vx = Math.cos(angle) * speed;
         particle.vy = Math.sin(angle) * speed;
       });
+      wake();
     }
   });
 
   button.addEventListener('mouseleave', () => {
     // Find all particles belonging to this button
     const iconContainer = button.querySelector('.gemini-icon-container');
-    const currentParticles = particles.filter(p => {
+    const currentParticles = binding.getParticles().filter(p => {
       return p.element.parentNode === iconContainer ||
              (p.element.parentNode && p.element.parentNode.parentNode === iconContainer);
     });
@@ -207,5 +217,6 @@ export const setupButtonEventListeners = (button, particles, cursorPosition, isH
       // Gradually return to origin
       particle.returnToOrigin = true;
     });
+    wake();
   });
 };

@@ -7,6 +7,7 @@ export const startFrontendSample = () => browser.execute(() => {
   const stats = {
     elapsedMs: 0, frames: 0, timelinePaints: 0, progressWrites: 0,
     resizeObservations: {}, longTasks: [], maxFrameGapMs: 0,
+    subtitleArrivals: [],
   };
   const started = performance.now();
   const heap = performance.memory?.usedJSHeapSize ?? null;
@@ -40,7 +41,14 @@ export const startFrontendSample = () => browser.execute(() => {
   };
   const observer = new MutationObserver((records) => {
     for (const record of records) {
-      if (record.attributeName === 'data-osg-painted-subtitle-count') stats.timelinePaints += 1;
+      if (record.attributeName === 'data-osg-painted-subtitle-count') {
+        stats.timelinePaints += 1;
+        const count = Number(record.target.dataset.osgPaintedSubtitleCount);
+        if (Number.isFinite(count) && stats.subtitleArrivals.at(-1)?.count !== count
+            && stats.subtitleArrivals.length < 2048) {
+          stats.subtitleArrivals.push({ elapsedMs: performance.now() - started, count });
+        }
+      }
       if (record.attributeName === 'style'
           && record.target.classList.contains('progress-indicator')) stats.progressWrites += 1;
     }

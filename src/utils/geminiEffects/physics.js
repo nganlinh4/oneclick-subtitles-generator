@@ -92,7 +92,7 @@ export const applyCursorInteraction = (particle, cursorPosition) => {
   const distance = Math.sqrt(dx * dx + dy * dy);
 
   // Apply force if within cursor radius
-  if (distance < PHYSICS.cursorRadius) {
+  if (distance > 0 && distance < PHYSICS.cursorRadius) {
     // Calculate force based on distance (stronger when closer)
     const force = (1 - distance / PHYSICS.cursorRadius) * PHYSICS.cursorForce;
 
@@ -197,7 +197,7 @@ export const updateParticles = (particles, cursorPosition, isHovering) => {
     applyReturnToOrigin(particle);
 
     // Apply cursor interaction if hovering
-    if (isHovering && cursorPosition) {
+    if (particle.isActive && isHovering && cursorPosition) {
       applyCursorInteraction(particle, cursorPosition);
     }
   });

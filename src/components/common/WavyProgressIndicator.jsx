@@ -56,6 +56,25 @@ const WavyProgressIndicator = forwardRef(({
     const amplitudeAnimatableRef = useRef(null);
     const progressAnimationRef = useRef(null);
     const drawRef = useRef(null);
+    const drawFrameRef = useRef(null);
+    const scheduleDraw = useCallback(() => {
+        if (drawFrameRef.current !== null) return;
+        drawFrameRef.current = requestAnimationFrame(() => {
+            drawFrameRef.current = null;
+            drawRef.current?.();
+        });
+    }, []);
+
+    useEffect(() => () => {
+        if (drawFrameRef.current !== null) cancelAnimationFrame(drawFrameRef.current);
+        if (progressAnimationRef.current !== null) cancelAnimationFrame(progressAnimationRef.current);
+        amplitudeAnimatableRef.current?.stop();
+        if (amplitudeAnimatableRef.current) amplitudeAnimatableRef.current.onUpdate = null;
+        amplitudeAnimatableRef.current = null;
+        drawFrameRef.current = null;
+        progressAnimationRef.current = null;
+        drawRef.current = null;
+    }, []);
     const lastWidthRef = useRef(null);
     const lastHeightRef = useRef(null);
     const lastDPRRef = useRef(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
@@ -178,25 +197,23 @@ const WavyProgressIndicator = forwardRef(({
         // Initial measurement after a short delay to ensure layout is complete
         const initialTimeout = setTimeout(() => {
             setupHighDPICanvas();
-            const fn = drawRef.current;
-            if (typeof fn === 'function') requestAnimationFrame(() => fn());
+            scheduleDraw();
         }, 10);
 
         // Additional measurement after longer delay for complex layouts
         const secondTimeout = setTimeout(() => {
             setupHighDPICanvas();
-            const fn = drawRef.current;
-            if (typeof fn === 'function') requestAnimationFrame(() => fn());
+            scheduleDraw();
         }, 100);
 
         // Debounced resize handler to prevent ResizeObserver loop
         let resizeTimeout;
+        let viewportTimeout;
         const debouncedResize = () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 setupHighDPICanvas();
-                const fn = drawRef.current;
-                if (typeof fn === 'function') requestAnimationFrame(() => fn());
+                scheduleDraw();
             }, 16); // ~60fps
         };
 
@@ -212,12 +229,11 @@ const WavyProgressIndicator = forwardRef(({
             // Handle window resize and fullscreen change events to avoid stretched frames during transitions
             const handleViewportChange = () => {
                 setupHighDPICanvas();
-                const fn = drawRef.current;
-                if (typeof fn === 'function') requestAnimationFrame(() => fn());
-                setTimeout(() => {
+                scheduleDraw();
+                clearTimeout(viewportTimeout);
+                viewportTimeout = setTimeout(() => {
                     setupHighDPICanvas();
-                    const fn2 = drawRef.current;
-                    if (typeof fn2 === 'function') requestAnimationFrame(() => fn2());
+                    scheduleDraw();
                 }, 50);
             };
             window.addEventListener('resize', handleViewportChange);
@@ -231,6 +247,7 @@ const WavyProgressIndicator = forwardRef(({
                 clearTimeout(initialTimeout);
                 clearTimeout(secondTimeout);
                 clearTimeout(resizeTimeout);
+                clearTimeout(viewportTimeout);
                 ro.disconnect();
             };
         }
@@ -241,17 +258,12 @@ const WavyProgressIndicator = forwardRef(({
             clearTimeout(resizeTimeout);
             ro.disconnect();
         };
-    }, [setupHighDPICanvas, hasExplicitWidth]);
+    }, [setupHighDPICanvas, hasExplicitWidth, scheduleDraw]);
     
     useEffect(() => {
         setupHighDPICanvas();
     }, [setupHighDPICanvas]);
     
-    // Re-initialize canvas when size props change
-    useEffect(() => {
-        setupHighDPICanvas();
-    }, [setupHighDPICanvas]);
-
     // Wave offset animation using rAF for smoothness and continuity
     useEffect(() => {
         let rafId = null;
@@ -262,13 +274,13 @@ const WavyProgressIndicator = forwardRef(({
             setWaveOffset(prev => (prev + (dt / 1000) * Math.max(0, waveSpeed)) % 1);
             rafId = requestAnimationFrame(animate);
         };
-        if (waveSpeed > 0) {
+        if (waveSpeed > 0 && !forceFlat && !hasDisappeared) {
             rafId = requestAnimationFrame(animate);
         } else {
             setWaveOffset(0);
         }
         return () => { if (rafId) cancelAnimationFrame(rafId); };
-    }, [waveSpeed]);
+    }, [waveSpeed, forceFlat, hasDisappeared]);
 
     // Stable progress animation
     const animateProgress = useCallback((targetProgress) => {
@@ -322,8 +334,7 @@ const WavyProgressIndicator = forwardRef(({
             amplitudeAnimatableRef.current = new Animatable(targetAmplitudePx);
             amplitudeAnimatableRef.current.onUpdate = () => {
                 // Schedule a draw on the next frame using the latest draw function reference
-                const fn = drawRef.current;
-                if (typeof fn === 'function') requestAnimationFrame(() => fn());
+                scheduleDraw();
             };
         }
 
@@ -334,7 +345,7 @@ const WavyProgressIndicator = forwardRef(({
                 : AnimationSpecs.decreasingAmplitude;
             currentAmplitudeAnimatable.animateTo(targetAmplitudePx, animationSpec);
         }
-    }, []);
+    }, [scheduleDraw]);
 
     // Drawing function with proper track receding logic
     const drawProgress = useCallback(() => {
@@ -477,10 +488,10 @@ const WavyProgressIndicator = forwardRef(({
 
             ctx.restore();
 
-            if (keepAnimating) requestAnimationFrame(() => { const fn = drawRef.current || drawProgress; fn(); });
+            if (keepAnimating) scheduleDraw();
         } else if (keepAnimating) {
             // Nothing to draw but continue the animation loop until finished
-            requestAnimationFrame(() => { const fn = drawRef.current || drawProgress; fn(); });
+            scheduleDraw();
         }
 
         // Draw stop indicator only when visible
@@ -514,7 +525,7 @@ const WavyProgressIndicator = forwardRef(({
                 ctx.shadowOffsetY = 0;
             }
         }
-    }, [currentProgress, waveOffset, effectiveColor, effectiveTrackColor, stopIndicatorColor, wavelength, showStopIndicator, isAnimatingEntrance, isAnimatingDisappearance, hasDisappeared, entranceStartTime, disappearanceStartTime, progressShadow, progressShadowBleed, progressShadowColor, progressShadowBlur, progressShadowOffsetX, progressShadowOffsetY, forceFlat, gapSize, stopSize, strokeWidth, updateAmplitudeAnimation]);
+    }, [currentProgress, waveOffset, effectiveColor, effectiveTrackColor, stopIndicatorColor, wavelength, showStopIndicator, isAnimatingEntrance, isAnimatingDisappearance, hasDisappeared, entranceStartTime, disappearanceStartTime, progressShadow, progressShadowBleed, progressShadowColor, progressShadowBlur, progressShadowOffsetX, progressShadowOffsetY, forceFlat, gapSize, stopSize, strokeWidth, updateAmplitudeAnimation, scheduleDraw]);
 
     // Keep latest draw function in a ref to avoid TDZ issues in callbacks above
     useEffect(() => {
