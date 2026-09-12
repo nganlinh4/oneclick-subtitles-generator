@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "b32e42149b78e87b6d9263ab07a9f1e62e6e1ea4",
+  "baselineRevision": "829f389db5ff76a9a2a8e1886115f5d0d4fc7436",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8587,10 +8587,10 @@
       ]
     },
     "src/components/inputs/FileUploadInput.js": {
-      "hash": "d5ab5d728ce1b16f2857f262eb13f2a90212d127c4aed724967cc43461c5dfd2",
+      "hash": "0724a159427fd30bf234b3628d5f2a6233f8efcfd370aa2acc4fa63be6b4cffe",
       "rootCount": 1,
       "roots": [
-        "6c80f8539797395f383a433bfc931383d07a1892ebdda86a43398e3a268f644a"
+        "e7a6a8c9a7e73cf30acf41a4be8f5b559f3640b15763d3f24c161228494fc817"
       ]
     },
     "src/components/inputs/UnifiedUrlInput.js": {
@@ -8876,10 +8876,10 @@
       ]
     },
     "src/components/narration/components/NarrationResults.js": {
-      "hash": "5a298e7c04f59a4e1b2fe4d1d3adb0483f70476fafd3d8d77a00f9b061ced8f1",
+      "hash": "84ee73bad37ae96deef989d765b57063235643966f716cfaf6c8cba42fc2efb7",
       "rootCount": 1,
       "roots": [
-        "ef3b3278a0add0982944484ff787a161cf38fe7bf37cd040841e44b6e18b5df1"
+        "323f9ec68feadaf9581fd97b9ecfebb2c2e988bdec7265972b9391fc7298bc4e"
       ]
     },
     "src/components/narration/components/ReferenceAudioSection.js": {
@@ -8925,24 +8925,24 @@
       ]
     },
     "src/components/narration/sections/ChatterboxNarrationSection.js": {
-      "hash": "e7cac9ccd8fa7b7a848495eaa5a4a2a35d005e37376ad02b61e77a5a73ffc55a",
+      "hash": "62d55bb61763908fee5c03934b0b8a9235907140622816794865512aecf67bb6",
       "rootCount": 1,
       "roots": [
-        "6f2ece4a0d60c6092738915cb6e9e4021ebec02ba30661de5ed6f0a39c5cdd84"
+        "2524c5fc73e8bc899e137d13f0b8431877f566f49081b3a2325b04677c60ea41"
       ]
     },
     "src/components/narration/sections/EdgeTTSNarrationSection.js": {
-      "hash": "c17acd08daa7fb5fa721fe966844e9ad3eec46b3bbacb46960b60df4ebbe401c",
+      "hash": "551ec0181b1238eb4877a4d867298bc7a4980f62ebb2da66c79bc4ab6995836b",
       "rootCount": 1,
       "roots": [
-        "aa7124e818f4f77fbd5c771a1c38457890dc63bbfb12e8b20fe50d6347ed70bc"
+        "8907f421b0f6fe26e7eac566644208e82bb1aef5963685f03845c6b648a2e6d8"
       ]
     },
     "src/components/narration/sections/F5TTSNarrationSection.js": {
-      "hash": "9a83419cb6e72b0386881f29b134226e4b67602539908f41d876ccc6af45286c",
+      "hash": "693cfd4a374f107cfce8d9174c3def295c8047a35e0d38762a9a6456a59adb9a",
       "rootCount": 1,
       "roots": [
-        "17e597126fcc5bdcd32e5e70418d3e374ab90586ad6fa6e6a41cdd6171516e89"
+        "22606abed7f3454f428ec92c97a13723098be7ca6335df5ed1a9b4175009e4b2"
       ]
     },
     "src/components/narration/sections/GeminiNarrationSection.js": {
@@ -8953,10 +8953,10 @@
       ]
     },
     "src/components/narration/sections/GTTSNarrationSection.js": {
-      "hash": "5b128b4d972847581e6bba2ced70de6eba90d28f499a73df4634c9b2d5e0dfba",
+      "hash": "acf959d429d61da45968607ec2219ffcebac404e15454dcf9ecc756ea136a7f2",
       "rootCount": 1,
       "roots": [
-        "69aadeb826eebb84ab59774a21054bd9c56eb3529fb1a3afade277d9f2e371de"
+        "c2bb3c735106829e59e9a03526786ac34eecb26b05f3c77fb4dad305a68c15ea"
       ]
     },
     "src/components/narration/SimpleNarrationMenu.js": {
@@ -9113,10 +9113,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "69c8af9375c23b43740aa5c0cb1113e3d990d52e7f476e74ec2dad188dd2dfb9",
+      "hash": "0f5791f968c736fa8742184a66366af4788aa4053bc0b05a6947714b24cf667e",
       "rootCount": 1,
       "roots": [
-        "22de27b7fbd03ae2137516482f18c82b29fa61818e2b86c66ce47cb420fa3f83"
+        "f5de7523d8e32f659d8155178aae46a6b4c5c8514b7b82b7852192382744eb6d"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9527,10 +9527,10 @@
       ]
     },
     "src/components/translation/index.js": {
-      "hash": "30defb023255c87ac6a5ea056b9fa7e6b8ce7007db076d0f16f6ce7af0a2fde0",
+      "hash": "347db7eaf8879181c862f35b74262993faff2a69d03213c8425aa9d2a865992d",
       "rootCount": 1,
       "roots": [
-        "e241e16b594aaaedca3611620dbc24474524d43c6434f758d4fdc28eae4aae9b"
+        "b263de1cc57897ea7b2c22155a583c0dbf0aef401e473803cda85946dd534a47"
       ]
     },
     "src/components/translation/LanguageChain.js": {
@@ -9598,10 +9598,10 @@
       ]
     },
     "src/components/translation/TranslationComplete.js": {
-      "hash": "b8f982d73dfa5101c4bed14ff132099588b3e7ef81053ae73d89564fc019c062",
+      "hash": "de3c96fa656f870b8d71af1823a9acb2990f922fc057a99df8ef9068381744aa",
       "rootCount": 1,
       "roots": [
-        "fc790a7aa8a90778e21aa498c2e2cb920ead296e7ad5cc511d53143da4289f91"
+        "9d56614e9428e46962ff4331f373d91c1462a74927022f859bad75a5526e5bd6"
       ]
     },
     "src/components/translation/TranslationHeader.js": {
