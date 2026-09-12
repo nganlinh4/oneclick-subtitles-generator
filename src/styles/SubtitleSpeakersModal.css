@@ -1,7 +1,13 @@
-.subtitle-speakers-options { display: grid; gap: 16px; color: var(--md-on-surface); }
-.subtitle-speakers-options > label { display: grid; gap: 8px; }
+.subtitle-speakers-options { display: grid; gap: 20px; color: var(--md-on-surface); }
+.subtitle-speakers-description { margin: 0; color: var(--md-on-surface-variant); line-height: 1.45; }
+.subtitle-speakers-identities, .subtitle-speakers-controls { display: grid; gap: 14px; }
+.subtitle-speakers-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.subtitle-speakers-identities > label, .subtitle-speakers-controls > label { display: grid; gap: 8px; min-width: 0; }
 .subtitle-speakers-options input { font: inherit; color: var(--md-on-surface); background: var(--md-surface-container-high); border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-medium); padding: 10px 14px; width: 100%; box-sizing: border-box; }
-.speaker-label-example { white-space: pre-wrap; color: var(--md-on-surface-variant); }
+.speaker-label-preview { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--md-shape-large); background: var(--md-surface-container); }
+.speaker-label-preview > span { color: var(--md-on-surface-variant); font-size: 12px; font-weight: 700; }
+.speaker-label-example { margin: 0; white-space: pre-wrap; color: var(--md-on-surface); }
 .speaker-apply-btn { background: var(--md-primary); color: var(--md-on-primary); border: 0; border-radius: var(--md-shape-medium); padding: 8px 16px; cursor: pointer; font: inherit; }
 .speaker-apply-btn:disabled { opacity: .4; cursor: not-allowed; }
 .middle-row-buttons:has([data-osg-action="subtitle-speakers"]) { gap: 8px; }
+@media (max-width: 720px) { .subtitle-speakers-controls { grid-template-columns: 1fr; } }

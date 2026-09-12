@@ -44,11 +44,14 @@ export default function SubtitleSpeakersModal({ lyrics, selectedRange, onApply, 
   return <CustomModelDialog isOpen onClose={onClose} title={t('lyrics.speakersTitle')}
     footer={<button className="apply-btn speaker-apply-btn" disabled={!valid} onClick={() => { onApply(lyrics.map(transform)); onClose(); }}>{t('subtitleSplit.apply')}</button>}>
     <div className="subtitle-speakers-options">
-      <p>{t('lyrics.speakersDescription')}</p>
+      <p className="subtitle-speakers-description">{t('lyrics.speakersDescription')}</p>
+      <div className="subtitle-speakers-identities">
       {speakers.map((speaker, index) => <label key={speaker.id}>
         <span>{t('lyrics.speakerName', { number: index + 1 })}</span>
         <input value={names[speaker.id] ?? speaker.name} maxLength={200} onChange={(event) => setNames({ ...names, [speaker.id]: event.target.value })} />
       </label>)}
+      </div>
+      <div className="subtitle-speakers-controls">
       <label><span>{t('lyrics.speakerScope')}</span>
         <CustomDropdown id="speaker-scope" value={scope} onChange={setScope} options={[
           { value: 'all', label: t('lyrics.speakerAll') },
@@ -70,7 +73,11 @@ export default function SubtitleSpeakersModal({ lyrics, selectedRange, onApply, 
           ...SPEAKER_LABEL_STYLES.map((value) => ({ value, label: t(`lyrics.speakerStyle_${value}`) })),
         ]} />
       </label>
-      {example && <p className="speaker-label-example">{example}</p>}
+      </div>
+      {example && <div className="speaker-label-preview">
+        <span>{t('lyrics.speakerPreview')}</span>
+        <p className="speaker-label-example">{example}</p>
+      </div>}
     </div>
   </CustomModelDialog>;
 }

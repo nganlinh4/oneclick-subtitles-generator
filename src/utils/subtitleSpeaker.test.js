@@ -1,4 +1,4 @@
-import { normalizeSpeaker, subtitleDisplayText } from './subtitleSpeaker';
+import { hasSpeakerData, normalizeSpeaker, subtitleDisplayText } from './subtitleSpeaker';
 import { canonicalTrackToLegacyRows, legacyRowsToCanonicalTrack } from '../platform/projectSnapshotAdapter';
 import { previewCueList } from '../components/previews/native/nativePreviewScene';
 import { serializeSrtDocument } from './subtitleDocumentSerializer';
@@ -23,4 +23,11 @@ test('provider identity defaults to hidden and invalid names never enter snapsho
   let calls = 0;
   expect(() => normalizeSpeaker({ id: 'a', get name() { calls++; return 'x'; } })).toThrow();
   expect(calls).toBe(0);
+});
+
+test('speaker controls are available only for tracks carrying valid speaker metadata', () => {
+  expect(hasSpeakerData([{ text: 'ordinary cue', speaker: null }])).toBe(false);
+  expect(hasSpeakerData([{ text: 'legacy cue without the field' }])).toBe(false);
+  expect(hasSpeakerData([{ text: 'spoken cue', speaker: { id: 'w0:1', name: 'Min' } }])).toBe(true);
+  expect(hasSpeakerData([{ text: 'damaged cue', speaker: { id: '', name: '' } }])).toBe(false);
 });

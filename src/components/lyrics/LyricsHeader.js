@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import SubtitleSplitModal from './SubtitleSplitModal';
 import SubtitleSpeakersModal from './SubtitleSpeakersModal';
 import '../../styles/SubtitleSpeakersModal.css';
 import { cueOverlapsTimelineRange } from './utils/timelineDomain';
+import { hasSpeakerData } from '../../utils/subtitleSpeaker';
 
 const LyricsHeader = ({
   allowEditing,
@@ -29,6 +30,11 @@ const LyricsHeader = ({
   const { t } = useTranslation();
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showSpeakersModal, setShowSpeakersModal] = useState(false);
+  const trackHasSpeakers = useMemo(() => hasSpeakerData(lyrics), [lyrics]);
+
+  useEffect(() => {
+    if (!trackHasSpeakers) setShowSpeakersModal(false);
+  }, [trackHasSpeakers]);
   
   // Check if there are subtitles in the selected range
   const hasSubtitlesInRange = () => {
@@ -155,11 +161,11 @@ const LyricsHeader = ({
       <div className="controls-middle-row">
         {allowEditing && (
           <div className="middle-row-buttons">
-            <button className="split-sub-btn" data-osg-action="subtitle-speakers"
-              onClick={() => setShowSpeakersModal(true)} disabled={!lyrics?.length}
+            {trackHasSpeakers && <button className="split-sub-btn" data-osg-action="subtitle-speakers"
+              onClick={() => setShowSpeakersModal(true)}
               title={t('lyrics.speakersTitle')} aria-label={t('lyrics.speakersTitle')}>
               <span className="material-symbols-rounded" style={{ fontSize: 16 }}>record_voice_over</span>
-            </button>
+            </button>}
             <button
               className="split-sub-btn"
               data-osg-action="split-subtitles"
@@ -261,7 +267,7 @@ const LyricsHeader = ({
       </div>
 
       {/* Subtitle Split Modal */}
-      {showSpeakersModal && <SubtitleSpeakersModal lyrics={lyrics} selectedRange={selectedRange}
+      {showSpeakersModal && trackHasSpeakers && <SubtitleSpeakersModal lyrics={lyrics} selectedRange={selectedRange}
         onApply={onSpeakerUpdate} onClose={() => setShowSpeakersModal(false)} />}
       <SubtitleSplitModal
         isOpen={showSplitModal}

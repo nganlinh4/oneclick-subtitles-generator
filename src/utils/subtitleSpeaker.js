@@ -25,6 +25,17 @@ export function normalizeSpeaker(value) {
   return { id: speaker.id, name: speaker.name, labelStyle };
 }
 
+export function hasSpeakerData(cues) {
+  if (!Array.isArray(cues)) return false;
+  return cues.some((cue) => {
+    try {
+      return normalizeSpeaker(cue?.speaker) !== null;
+    } catch {
+      return false;
+    }
+  });
+}
+
 export function subtitleDisplayText(cue) {
   const speaker = normalizeSpeaker(cue?.speaker);
   if (!speaker || speaker.labelStyle === 'hidden') return cue?.text;
