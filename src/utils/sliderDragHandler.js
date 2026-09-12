@@ -12,6 +12,15 @@ export const initializeSliderDragHandlers = () => {
   // Handle dynamically added sliders using MutationObserver
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
+      mutation.removedNodes.forEach((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE || node.isConnected) return;
+        const sliders = [...node.querySelectorAll('.custom-slider-container, .standard-slider-container')];
+        if (node.matches('.custom-slider-container, .standard-slider-container')) sliders.unshift(node);
+        sliders.forEach(slider => {
+          slider._cleanupDragHandler?.();
+          delete slider._cleanupDragHandler;
+        });
+      });
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           // Check if the added node is a slider container (legacy or new)
@@ -74,6 +83,7 @@ const addSliderDragHandler = (sliderContainer) => {
   
   // Clean up function (store on element for potential cleanup)
   sliderContainer._cleanupDragHandler = () => {
+    stopDragging();
     input.removeEventListener('mousedown', startDragging);
     input.removeEventListener('touchstart', startDragging);
     document.removeEventListener('mouseup', handleGlobalEnd);

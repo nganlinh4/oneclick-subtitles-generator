@@ -11,12 +11,32 @@ export const startFrontendSample = () => browser.execute(() => {
   const started = performance.now();
   const heap = performance.memory?.usedJSHeapSize ?? null;
   const NativeResizeObserver = window.ResizeObserver;
+  const observed = new Map();
   window.ResizeObserver = class extends NativeResizeObserver {
     observe(target, options) {
+      if (!observed.has(this)) observed.set(this, new Set());
+      observed.get(this).add(target);
       const key = String(target.className || target.tagName).slice(0, 150);
       stats.resizeObservations[key] = (stats.resizeObservations[key] || 0) + 1;
       return super.observe(target, options);
     }
+    unobserve(target) { observed.get(this)?.delete(target); return super.unobserve(target); }
+    disconnect() { observed.delete(this); return super.disconnect(); }
+  };
+  const addListener = document.addEventListener;
+  const removeListener = document.removeEventListener;
+  const listeners = [];
+  const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
+  document.addEventListener = function(type, callback, options) {
+    if (!listeners.some(item => item.type === type && item.callback === callback && item.capture === capture(options))) {
+      listeners.push({ type, callback, capture: capture(options) });
+    }
+    return addListener.call(this, type, callback, options);
+  };
+  document.removeEventListener = function(type, callback, options) {
+    const index = listeners.findIndex(item => item.type === type && item.callback === callback && item.capture === capture(options));
+    if (index >= 0) listeners.splice(index, 1);
+    return removeListener.call(this, type, callback, options);
   };
   const observer = new MutationObserver((records) => {
     for (const record of records) {
@@ -49,6 +69,8 @@ export const startFrontendSample = () => browser.execute(() => {
     observer.disconnect();
     longTasks?.disconnect();
     window.ResizeObserver = NativeResizeObserver;
+    document.addEventListener = addListener;
+    document.removeEventListener = removeListener;
     delete window.__OSG_FRONTEND_SAMPLE__;
     const totalLongTaskMs = stats.longTasks.reduce((sum, value) => sum + value, 0);
     return {
@@ -56,6 +78,9 @@ export const startFrontendSample = () => browser.execute(() => {
       heapGrowthBytes: heap === null ? null : performance.memory.usedJSHeapSize - heap,
       totalLongTaskMs,
       maxLongTaskMs: Math.max(0, ...stats.longTasks),
+      activeResizeObservations: [...observed.values()].reduce((count, targets) => count + targets.size, 0),
+      detachedResizeObservations: [...observed.values()].flatMap(targets => [...targets]).filter(target => !target.isConnected).length,
+      retainedDocumentListeners: listeners.reduce((counts, { type }) => ({ ...counts, [type]: (counts[type] || 0) + 1 }), {}),
       visibleRows: document.querySelectorAll('.lyric-item[data-lyric-index]').length,
       domElements: document.querySelectorAll('*').length,
     };

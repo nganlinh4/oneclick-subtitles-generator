@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import useTranslationState from '../../hooks/useTranslationState';
 import useLanguageChain from '../../hooks/useLanguageChain';
@@ -404,4 +404,5 @@ const TranslationSection = ({ subtitles, videoTitle, onTranslationComplete }) =>
   );
 };
 
-export default TranslationSection;
+// The parent's playhead ticks are not translation inputs. Internal state and locale still update.
+export default memo(TranslationSection);

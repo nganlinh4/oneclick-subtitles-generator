@@ -303,8 +303,9 @@ export function initializeFunctionalScrollbars() {
 /**
  * Clean up all functional scrollbars (based on data attribute)
  */
-export function cleanupFunctionalScrollbars() {
-  const initializedContainers = document.querySelectorAll('[data-fs-initialized]');
+export function cleanupFunctionalScrollbars(root = document) {
+  const initializedContainers = [...root.querySelectorAll('[data-fs-initialized]')];
+  if (root.matches?.('[data-fs-initialized]')) initializedContainers.unshift(root);
   initializedContainers.forEach((container) => {
     if (container._functionalScrollbar) {
       container._functionalScrollbar.destroy();
@@ -322,12 +323,18 @@ if (typeof document !== 'undefined') {
     initializeFunctionalScrollbars();
   }
 
-  // Re-initialize when new content is added
+  // Coalesce mounts, and release observers when virtualized rows or modals leave the document.
+  let initializationTimer = null;
   const observer = new MutationObserver((mutations) => {
     let shouldReinit = false;
 
     mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
+        mutation.removedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE && !node.isConnected) {
+            cleanupFunctionalScrollbars(node);
+          }
+        });
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.classList?.contains('reference-text-container') ||
@@ -343,8 +350,11 @@ if (typeof document !== 'undefined') {
       }
     });
 
-    if (shouldReinit) {
-      setTimeout(initializeFunctionalScrollbars, 100);
+    if (shouldReinit && initializationTimer === null) {
+      initializationTimer = setTimeout(() => {
+        initializationTimer = null;
+        initializeFunctionalScrollbars();
+      }, 100);
     }
   });
 

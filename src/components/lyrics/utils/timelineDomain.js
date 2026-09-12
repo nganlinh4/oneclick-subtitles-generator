@@ -6,15 +6,6 @@ const finiteNonNegative = (value) => (
     : 0
 );
 
-const finiteCueTimes = (lyrics) => {
-  if (!Array.isArray(lyrics)) return [];
-  return lyrics.flatMap((lyric) => {
-    const start = finiteNonNegative(lyric?.start);
-    const end = finiteNonNegative(lyric?.end);
-    return end >= start ? [{ start, end }] : [];
-  });
-};
-
 /**
  * One time-domain description shared by drawing, zooming, selection and seeking.
  *
@@ -26,14 +17,18 @@ const finiteCueTimes = (lyrics) => {
  * and genuinely out-of-bounds cues remain visible for repair.
  */
 export const createTimelineDomain = (lyrics, mediaDuration) => {
-  const cues = finiteCueTimes(lyrics);
   const seekableEnd = finiteNonNegative(mediaDuration);
-  const cueStart = cues.length > 0
-    ? Math.min(...cues.map((cue) => cue.start))
-    : null;
-  const cueEnd = cues.length > 0
-    ? Math.max(...cues.map((cue) => cue.end))
-    : 0;
+  let cueStart = null;
+  let cueEnd = 0;
+  if (Array.isArray(lyrics)) {
+    for (const lyric of lyrics) {
+      const start = finiteNonNegative(lyric?.start);
+      const end = finiteNonNegative(lyric?.end);
+      if (end < start) continue;
+      cueStart = cueStart === null ? start : Math.min(cueStart, start);
+      cueEnd = Math.max(cueEnd, end);
+    }
+  }
   const selectableEnd = seekableEnd > 0 ? seekableEnd : cueEnd;
   const contentEnd = Math.max(seekableEnd, cueEnd);
   const viewEnd = contentEnd > 0 ? contentEnd : EMPTY_VIEW_SECONDS;

@@ -90,4 +90,25 @@ describe('CustomDropdown option activation', () => {
       document.removeEventListener('keydown', modalKeydown);
     }
   });
+
+  it('opening and unmounting overflowing menus leaves no document drag listeners behind', () => {
+    const added = vi.spyOn(document, 'addEventListener');
+    const removed = vi.spyOn(document, 'removeEventListener');
+    for (let count = 0; count < 8; count++) {
+      const dropdown = render(<CustomDropdown value={700} onChange={() => {}} options={OPTIONS} ariaLabel="Font weight" />);
+      openDropdown();
+      const list = screen.getByRole('listbox');
+      Object.defineProperties(list, { scrollHeight: { value: 800 }, clientHeight: { value: 200 } });
+      act(() => vi.runAllTimers());
+      expect(document.querySelector('.custom-scrollbar-thumb')).not.toBeNull();
+      dropdown.unmount();
+      act(() => vi.runAllTimers());
+    }
+    const residual = added.mock.calls.filter(([type, handler, options]) =>
+      ['mousemove', 'mouseup'].includes(type)
+      && !removed.mock.calls.some(([removedType, removedHandler, removedOptions]) =>
+        type === removedType && handler === removedHandler && options === removedOptions));
+    added.mockRestore(); removed.mockRestore();
+    expect(residual).toHaveLength(0);
+  });
 });

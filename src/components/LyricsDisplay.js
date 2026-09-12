@@ -126,14 +126,6 @@ const LyricsDisplay = ({
   };
 
 
-  // Reset row heights when lyrics change
-  useEffect(() => {
-    rowHeights.current = {};
-    if (listRef.current) {
-      listRef.current.resetAfterIndex(0);
-    }
-  }, [matchedLyrics]);
-
   // Listen for changes to the waveform settings in localStorage
   useEffect(() => {
     const handleStorageChange = (event) => {

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import useUnifiedNarration from './hooks/useUnifiedNarration';
 
@@ -470,4 +470,5 @@ const UnifiedNarrationSection = ({
   );
 };
 
-export default UnifiedNarrationSection;
+// Do not rebuild voice controls/results on unrelated video playhead ticks.
+export default memo(UnifiedNarrationSection);

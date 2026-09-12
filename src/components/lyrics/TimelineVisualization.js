@@ -79,13 +79,9 @@ const TimelineVisualization = ({
 
     // Streaming/animation state + its event-bus and new-segment-tracking effects
     const {
-        animationTime,
-        setAnimationTime,
-        processingAnimationRef,
         newSegments,
         setNewSegments,
         isStreamingActive,
-        newSegmentAnimationRef,
         segmentProcessingStartTimes,
         processingRanges
     } = useTimelineStreamingState({ lyrics });
@@ -128,8 +124,7 @@ const TimelineVisualization = ({
 
 
     const timelineRef = useRef(null);
-    const lastTimeRef = useRef(0);
-    const animationFrameRef = useRef(null);
+    const animationTimeRef = useRef(0);
     // Initialize currentZoomRef with the correct zoom level
     const currentZoomRef = useRef(zoom);
 
@@ -138,7 +133,6 @@ const TimelineVisualization = ({
         // Use zoom directly without minimum restriction
         currentZoomRef.current = zoom;
     }, [zoom, duration]);
-    const autoScrollRef = useRef(null);
     const isScrollingRef = useRef(false);
     const canvasWidthRef = useRef(0);
 
@@ -148,8 +142,6 @@ const TimelineVisualization = ({
     // Flag to completely disable auto-scrolling
     const disableAutoScroll = useRef(false);
 
-    // Debug counter to track state updates
-    const debugCounter = useRef(0);
     // Refs to manage smooth zoom-drag with strict playhead-centering
     const zoomDragRafRef = useRef(null);
     const zoomDragActiveRef = useRef(false);
@@ -160,7 +152,7 @@ const TimelineVisualization = ({
 
 
     // Calculate visible time range - simplified without zoom centering logic
-    const getTimeRange = useCallback(() => {
+    const visibleTimeRange = useMemo(() => {
         const { start, end, total: timelineEnd, effectiveZoom } = getVisibleTimeRange(lyrics, duration, panOffset, zoom, currentZoomRef.current);
 
         // Update currentZoomRef to match effective zoom
@@ -168,6 +160,7 @@ const TimelineVisualization = ({
 
         return { start, end, total: timelineEnd };
     }, [lyrics, duration, panOffset, zoom]);
+    const getTimeRange = useCallback(() => visibleTimeRange, [visibleTimeRange]);
 
     // Function to center the timeline view on a specific time
     const centerTimelineOnTime = useCallback((time) => {
@@ -204,31 +197,6 @@ const TimelineVisualization = ({
     const isRangeMoveDraggingRef = useRef(false);
     const moveDragOffsetPxRef = useRef(0);
 
-    // Handle processing animation.
-    useEffect(() => {
-        const anyProcessing = isProcessingSegment || isStreamingActive;
-        if (anyProcessing) {
-            const startTime = performance.now();
-            const animate = () => {
-                const elapsed = performance.now() - startTime;
-                setAnimationTime(elapsed);
-                processingAnimationRef.current = requestAnimationFrame(animate);
-            };
-            processingAnimationRef.current = requestAnimationFrame(animate);
-            return () => {
-                if (processingAnimationRef.current) {
-                    cancelAnimationFrame(processingAnimationRef.current);
-                }
-            };
-        } else {
-            // Reset animation when processing stops
-            setAnimationTime(0);
-            if (processingAnimationRef.current) {
-                cancelAnimationFrame(processingAnimationRef.current);
-            }
-        }
-    }, [isProcessingSegment, isStreamingActive, processingAnimationRef, setAnimationTime]);
-
 
     const isClickingInsideRef = useRef(false); // Track if we're clicking inside the range
 
@@ -257,12 +225,18 @@ const TimelineVisualization = ({
         setLaneCursor,
     });
 
+    const narrationForDraw = useMemo(() => {
+        // Async duration changes invalidate placements even when lyrics and getter are unchanged.
+        void narrationSegments;
+        return getSegmentsFor(lyrics, placementStarts, globalSpeed, perLineWeight);
+    }, [narrationSegments, getSegmentsFor, lyrics, placementStarts, globalSpeed, perLineWeight]);
+
     // Draw the timeline visualization with optimizations
     const renderTimeline = useCallback((tempPanOffset = null) => {
         const canvas = timelineRef.current;
         if (!canvas) return;
 
-        const effectiveDuration = createTimelineDomain(lyrics, duration).seekableEnd;
+        const effectiveDuration = timelineDomain.seekableEnd;
 
         canvasWidthRef.current = canvas.clientWidth;
 
@@ -287,13 +261,12 @@ const TimelineVisualization = ({
             dragCurrentTime,
             isProcessing: !!isProcessingSegment,
             selectedIsProcessing: !!isProcessingSegment,
-            animationTime,
+            animationTime: animationTimeRef.current,
             newSegments: newSegments, // Pass new segments for animation
             processingRanges: Array.isArray(processingRanges) ? processingRanges : []
         };
 
         // Subtitle band = real lyrics; narration lane = staged placement + global speed.
-        const narrationForDraw = getSegmentsFor(lyrics, placementStarts, globalSpeed, perLineWeight);
 
         // Draw the timeline
         drawTimeline(
@@ -317,45 +290,29 @@ const TimelineVisualization = ({
         );
 
 
-    }, [lyrics, placementStarts, globalSpeed, perLineWeight, currentTime, duration, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, boundedSelectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, animationTime, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, getSegmentsFor, videoSource, processingRanges]);
+    }, [lyrics, narrationForDraw, currentTime, timelineDomain, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, boundedSelectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, videoSource, processingRanges]);
 
     // Render-coordination side effects (new-segment animation, resize, zoom,
     // timeline updates, playhead auto-scroll, unmount cleanup)
     useTimelineRenderEffects({
         renderTimeline,
         timelineRef,
-        animationFrameRef,
+        animationTimeRef,
+        isProcessing: isProcessingSegment || isStreamingActive,
         newSegments,
         setNewSegments,
-        newSegmentAnimationRef,
         zoom,
         currentZoomRef,
         duration,
         panOffset,
         setPanOffset,
         currentTime,
-        lyrics,
-        selectedSegment: boundedSelectedSegment,
-        onSegmentSelect,
         videoSource,
-        isDraggingSegment,
-        dragStartTime,
-        dragCurrentTime,
-        lastTimeRef,
         lastManualPanTime,
         disableAutoScroll,
         getTimeRange,
         isScrollingRef,
-        debugCounter,
-        autoScrollRef
     });
-
-    // Repaint when the narration lane changes — its segments arrive asynchronously (after the
-    // duration refetch that follows a retime), so they land after the lyrics-driven redraw.
-    useEffect(() => {
-        renderTimeline();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [narrationSegments]);
 
     // Keyboard shortcuts (Alt+S auto-scroll toggle, Ctrl+A select-all range)
     useTimelineKeyboardShortcuts({
@@ -507,7 +464,7 @@ const TimelineVisualization = ({
                     <VolumeVisualizer
                         audioSource={videoSource}
                         duration={(typeof duration === 'number' && duration > 0 ? duration : (durationRef.current || 0))}
-                        visibleTimeRange={getTimeRange()}
+                        visibleTimeRange={visibleTimeRange}
                         height={30}
                     />
                 )}

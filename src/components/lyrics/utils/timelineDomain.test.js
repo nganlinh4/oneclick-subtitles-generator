@@ -18,6 +18,11 @@ const measuredBoundaryCue = [{
   text: 'last cue',
 }];
 
+it('handles large subtitle documents without spreading every cue into function arguments', () => {
+  const cues = Array.from({ length: 150_000 }, (_, start) => ({ start, end: start + 1 }));
+  expect(createTimelineDomain(cues, 0)).toMatchObject({ cueStart: 0, cueEnd: 150_000 });
+});
+
 it('separates seekable/selectable media from repairable cue content without phantom ruler time', () => {
   const domain = createTimelineDomain(measuredBoundaryCue, 214.274);
 

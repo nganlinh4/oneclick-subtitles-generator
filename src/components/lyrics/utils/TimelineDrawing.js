@@ -43,15 +43,16 @@ export const drawTimeline = (
 
     // Set canvas dimensions with proper DPR handling
     const dpr = window.devicePixelRatio || 1;
-    const scaledWidth = displayWidth * dpr;
-    const scaledHeight = displayHeight * dpr;
+    const scaledWidth = Math.round(displayWidth * dpr);
+    const scaledHeight = Math.round(displayHeight * dpr);
 
     // Only resize canvas if dimensions have changed
     if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
         canvas.width = scaledWidth;
         canvas.height = scaledHeight;
-        ctx.scale(dpr, dpr);
     }
+    // Backing dimensions are integers; fractional Windows scaling must not resize on every draw.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Get computed colors from the container element for theme support
     const computedStyle = getComputedStyle(canvas.parentElement);

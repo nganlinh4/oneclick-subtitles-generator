@@ -67,6 +67,7 @@ const CUSTOM_STAGED_MEDIA = new Set([
 ]);
 
 const NO_STAGED_MEDIA = new Set([
+  'largeSubtitleResponsiveness.journey.js',
   'aboutAndUpdaterLifecycle.journey.js',
   'alternateProviderDownload.journey.js',
   'alternateLocalAsrMatrix.journey.js',

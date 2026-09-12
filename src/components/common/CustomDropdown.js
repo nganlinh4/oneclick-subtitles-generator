@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { createDropdownScrollbar } from './dropdownScrollbar';
 
 import '../../styles/common/CustomDropdown.css';
 
@@ -38,6 +39,7 @@ const CustomDropdown = ({
   }));
   const dropdownRef = useRef(null);
   const menuRef = useRef(null);
+  const scrollbarRef = useRef(null);
   const isDraggingRef = useRef(false);
   const hoveredIndexRef = useRef(null);
   const pendingSelectionRef = useRef(null);
@@ -94,48 +96,17 @@ const CustomDropdown = ({
   }, [isOpen, dropdownPosition.height]);
 
   const initializeDropdownScrollbar = (container) => {
-    if (!container) return;
-    const optionsList = container.querySelector('.dropdown-options-list');
-    if (!optionsList) return;
-    const existingThumb = container.querySelector('.custom-scrollbar-thumb');
-    if (existingThumb) existingThumb.remove();
-    container.classList.remove('has-scrollable-content');
-    if (optionsList.scrollHeight <= optionsList.clientHeight) return;
-    const thumb = document.createElement('div');
-    thumb.className = 'custom-scrollbar-thumb';
-    container.appendChild(thumb);
-    container.classList.add('has-scrollable-content');
-    const updateThumb = () => {
-      const scrollHeight = optionsList.scrollHeight;
-      const clientHeight = optionsList.clientHeight;
-      if (scrollHeight <= clientHeight) {
-        thumb.style.display = 'none';
-        return;
-      }
-      thumb.style.display = 'block';
-      const scrollRatio = optionsList.scrollTop / (scrollHeight - clientHeight);
-      const thumbHeight = Math.max(20, (clientHeight / scrollHeight) * clientHeight);
-      const thumbTop = scrollRatio * (clientHeight - thumbHeight);
-      thumb.style.height = `${thumbHeight}px`;
-      thumb.style.top = `${thumbTop + 8}px`;
-    };
-    updateThumb();
-    optionsList.addEventListener('scroll', updateThumb);
-    let isDragging = false, dragStartY = 0, dragStartScrollTop = 0;
-    thumb.addEventListener('mousedown', (e) => {
-      isDragging = true; dragStartY = e.clientY; dragStartScrollTop = optionsList.scrollTop;
-      thumb.classList.add('dragging'); e.preventDefault();
-    });
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const deltaY = e.clientY - dragStartY;
-      const scrollRatio = deltaY / (optionsList.clientHeight - thumb.offsetHeight);
-      optionsList.scrollTop = Math.max(0, Math.min(dragStartScrollTop + scrollRatio * (optionsList.scrollHeight - optionsList.clientHeight), optionsList.scrollHeight - optionsList.clientHeight));
-    });
-    document.addEventListener('mouseup', () => {
-      if (isDragging) { isDragging = false; thumb.classList.remove('dragging'); }
-    });
+    if (!container?.isConnected) return;
+    if (scrollbarRef.current?.container !== container) {
+      scrollbarRef.current?.destroy();
+      scrollbarRef.current = createDropdownScrollbar(container);
+    } else scrollbarRef.current.update();
   };
+
+  useEffect(() => () => {
+    scrollbarRef.current?.destroy();
+    scrollbarRef.current = null;
+  }, [isOpen]);
 
   useEffect(() => {
     const handleEscape = (event) => {

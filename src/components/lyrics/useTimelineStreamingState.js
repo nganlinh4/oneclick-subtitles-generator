@@ -2,32 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 
 import { EVENTS, subscribe } from '../../events/bus';
 
-// Owns the timeline's streaming/animation state and the two effects that feed
-// it: the event-bus listeners (streaming start/complete, processing ranges,
-// per-segment delay) and the new-segment tracker that flags freshly arrived
-// lyrics for the pop-in animation. The RAF loops that actually drive the
-// animations live in the host (they depend on renderTimeline / retry state),
-// so the refs and setters are returned for the host to use.
+// Streaming data changes React state; the render coordinator owns the animation clock.
 export const useTimelineStreamingState = ({ lyrics }) => {
-    // Animation state for processing
-    const [animationTime, setAnimationTime] = useState(0);
-    const processingAnimationRef = useRef(null);
-
     // Track new segments for animation (only during streaming)
     const [newSegments, setNewSegments] = useState(new Map());
     const [isStreamingActive, setIsStreamingActive] = useState(false);
     const previousLyricsRef = useRef([]);
-    const newSegmentAnimationRef = useRef(null);
 
     // Track segment processing start times (for delayed segment processing)
     const [segmentProcessingStartTimes, setSegmentProcessingStartTimes] = useState(new Map()); // key: "start-end", value: { actualStartTime, delaySeconds }
 
     const [processingRanges, setProcessingRanges] = useState([]);
+    const completionTimer = useRef(null);
 
     // Listen for streaming events and processing ranges
     useEffect(() => {
         const handleStreamingStart = (_event) => {
-            // console.log('[Timeline] Streaming started - enabling segment animations');
+            clearTimeout(completionTimer.current);
+            completionTimer.current = null;
             setIsStreamingActive(true);
         };
 
@@ -48,7 +40,6 @@ export const useTimelineStreamingState = ({ lyrics }) => {
                     });
                 });
 
-                console.log('[Timeline] Received segment delay info for', segments.length, 'segments with', delaySeconds, 'second delay');
                 setSegmentProcessingStartTimes(startTimes);
             }
         };
@@ -59,9 +50,10 @@ export const useTimelineStreamingState = ({ lyrics }) => {
         };
 
         const handleStreamingComplete = () => {
-            // console.log('[Timeline] Streaming complete - disabling segment animations');
             // Keep animations active for a bit after streaming completes
-            setTimeout(() => {
+            clearTimeout(completionTimer.current);
+            completionTimer.current = setTimeout(() => {
+                completionTimer.current = null;
                 setIsStreamingActive(false);
                 setNewSegments(new Map());
                 setProcessingRanges([]);
@@ -82,6 +74,7 @@ export const useTimelineStreamingState = ({ lyrics }) => {
         window.addEventListener('streaming-segment-delay', handleDirectSegmentDelay);
 
         return () => {
+            clearTimeout(completionTimer.current);
             un1(); un2(); un3(); un4();
             window.removeEventListener('streaming-segment-delay', handleDirectSegmentDelay);
         };
@@ -98,13 +91,20 @@ export const useTimelineStreamingState = ({ lyrics }) => {
         const previousLyrics = previousLyricsRef.current;
         const newSegmentMap = new Map();
 
+        // Exact start/end/text identity, without scanning all previous cues for every new cue.
+        // Nested maps avoid delimiter collisions in arbitrary subtitle text.
+        const previousIndex = new Map();
+        previousLyrics.forEach(({ start, end, text }) => {
+            if (Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(text)) return;
+            if (!previousIndex.has(start)) previousIndex.set(start, new Map());
+            const byEnd = previousIndex.get(start);
+            if (!byEnd.has(end)) byEnd.set(end, new Set());
+            byEnd.get(end).add(text);
+        });
+
         // Find segments that are new (not in previous lyrics)
         lyrics.forEach(lyric => {
-            const isNew = !previousLyrics.some(prev =>
-                prev.start === lyric.start &&
-                prev.end === lyric.end &&
-                prev.text === lyric.text
-            );
+            const isNew = !previousIndex.get(lyric.start)?.get(lyric.end)?.has(lyric.text);
 
             if (isNew) {
                 // Mark this segment as new with current timestamp
@@ -144,13 +144,9 @@ export const useTimelineStreamingState = ({ lyrics }) => {
     }, [lyrics, isStreamingActive]);
 
     return {
-        animationTime,
-        setAnimationTime,
-        processingAnimationRef,
         newSegments,
         setNewSegments,
         isStreamingActive,
-        newSegmentAnimationRef,
         segmentProcessingStartTimes,
         processingRanges,
         setProcessingRanges
