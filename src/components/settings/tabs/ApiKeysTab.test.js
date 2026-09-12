@@ -30,11 +30,6 @@ vi.mock('react-i18next', () => ({
     },
   }),
 }));
-vi.mock('../../common/CloseButton', () => ({
-  default: ({ onClick, ariaLabel }) => (
-    <button type="button" aria-label={ariaLabel} onClick={onClick}>close</button>
-  ),
-}));
 vi.mock('./GeminiKeysManager', () => ({
   default: () => <div data-testid="gemini-keys-manager" />,
   useGeminiKeys: () => ({ geminiApiKeys: [] }),
@@ -76,21 +71,33 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-it('keeps the product notice without rendering or persisting the removed UDBM promotion', () => {
-  localStorage.setItem('udbmMessageClosed', 'true');
-
+it.each([null, 'true'])('omits the announcement area regardless of its old dismissal state: %s', (dismissed) => {
+  if (dismissed !== null) localStorage.setItem('gemini25ProPausedMessageClosed', dismissed);
   const { container } = render(<ApiKeysTab {...defaultProps} />);
 
-  expect(screen.getByText('settings.gemini25ProPaused')).toBeInTheDocument();
+  expect(container.querySelector('.gemini-paused-message')).toBeNull();
+  expect(container.querySelector('.notification-messages-container')).toBeNull();
+  expect(container.querySelector('.notification-placeholder')).toBeNull();
+  expect(screen.queryByText('settings.gemini25ProPaused')).not.toBeInTheDocument();
+  expect(screen.queryByText('settings.noNewNotifications')).not.toBeInTheDocument();
+  expect(localStorage.getItem('gemini25ProPausedMessageClosed')).toBe(dismissed);
+});
+
+it('places the compact usage link beside the key heading without changing key management', () => {
+  const { container } = render(<ApiKeysTab {...defaultProps} />);
+  const usage = screen.getByRole('link', { name: 'Gemini API usage' });
+  expect(usage).toHaveAttribute('href',
+    'https://aistudio.google.com/usage?timeRange=last-1-day&tab=rate-limit');
+  expect(usage).toHaveAttribute('target', '_blank');
+  expect(usage).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(usage.parentElement).toBe(container.querySelector('.gemini-key-header'));
+  expect(usage.previousElementSibling).toHaveAttribute('for', 'new-gemini-key-input');
+  expect(usage.previousElementSibling).toHaveTextContent('Gemini API Keys');
+  expect(usage.previousElementSibling).toHaveTextContent('Not Set');
+  expect(screen.getByTestId('gemini-keys-manager')).toBeInTheDocument();
   expect(screen.getByText(
     'Add multiple keys and OSG will distribute parallel Gemini work across them, rotating when a request can be retried.'
   )).toBeInTheDocument();
-  expect(container.querySelector('.udbm-message')).toBeNull();
-  expect(container.querySelector('a[href*="/udbm/"]')).toBeNull();
-
-  fireEvent.click(screen.getByRole('button', { name: 'settings.closeMessage' }));
-  expect(screen.getByText('settings.noNewNotifications')).toBeInTheDocument();
-  expect(localStorage.getItem('udbmMessageClosed')).toBe('true');
 });
 
 it('offers confirmed removal for an already-saved Genius credential', async () => {

@@ -72,6 +72,44 @@
   color: var(--warning-color);
 }
 
+.gemini-key-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 0.5rem;
+}
+
+.gemini-key-header label {
+  margin-bottom: 0;
+}
+
+.gemini-usage-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  padding: 4px 8px;
+  min-height: 28px;
+  box-sizing: border-box;
+  border-radius: var(--md-shape-pill);
+  color: var(--md-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--md-duration-short2) var(--md-easing-standard);
+}
+
+.gemini-usage-link .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.gemini-usage-link:hover {
+  background-color: var(--md-surface-2);
+}
+
 .input-with-toggle {
   display: flex;
   position: relative;

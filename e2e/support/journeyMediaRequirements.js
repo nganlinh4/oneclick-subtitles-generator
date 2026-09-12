@@ -83,6 +83,7 @@ const NO_STAGED_MEDIA = new Set([
   'nativeToolsInstall.journey.js',
   'playlistWatchSelection.journey.js',
   'promptDjMidiInput.journey.js',
+  'settingsApiKeysPresentation.journey.js',
   'settingsAppearancePersistence.journey.js',
   'settingsCredentialLifecycle.journey.js',
   'settingsDraftIsolation.journey.js',

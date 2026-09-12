@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import CloseButton from '../../common/CloseButton';
 import { removeSingletonCredential } from '../../../platform/credentialStateController';
 import { showConfirmationToast, showErrorToast } from '../../../utils/toastUtils';
 import { animateToggle } from '../utils/keyVisibilityAnimation';
@@ -63,22 +62,6 @@ const ApiKeysTab = ({
   // Gemini multi-key state + handlers
   const geminiKeys = useGeminiKeys({ setGeminiApiKey, setApiKeysSet });
 
-  // Notification message visibility
-  const [showGeminiPausedMessage, setShowGeminiPausedMessage] = useState(true);
-
-  // Restore dismissed-notification state on mount
-  useEffect(() => {
-    if (localStorage.getItem('gemini25ProPausedMessageClosed') === 'true') {
-      setShowGeminiPausedMessage(false);
-    }
-  }, []);
-
-  // Handle closing the Gemini paused message
-  const handleCloseGeminiPausedMessage = () => {
-    setShowGeminiPausedMessage(false);
-    localStorage.setItem('gemini25ProPausedMessageClosed', 'true');
-  };
-
   // Refs for editable fields
   const geniusKeyRef = useRef(null);
 
@@ -91,61 +74,29 @@ const ApiKeysTab = ({
 
   return (
     <div className="settings-section api-key-section">
-      {/* Notification Messages and API Link Row - Layout Fixed */}
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', width: '100%' }}>
-          {/* notification-messages-container: Added flex: 1, display: flex, flexDirection: column, and gap for correct stacking and horizontal filling */}
-          <div
-            className="notification-messages-container"
-            style={{ flex: '1', display: 'flex', flexDirection: 'column'}}
-          >
-              {/* Local-transcription availability notice */}
-              {showGeminiPausedMessage && (
-                <div className="gemini-paused-message">
-                  <div className="message-content">
-                    <span>{t('settings.gemini25ProPaused')}</span>
-                  </div>
-                  <CloseButton
-                    onClick={handleCloseGeminiPausedMessage}
-                    variant="default"
-                    size="small"
-                    ariaLabel={t('settings.closeMessage')}
-                  />
-                </div>
-              )}
-
-              {/* Placeholder when no notifications are visible */}
-              {!showGeminiPausedMessage && (
-                <div className="notification-placeholder">
-                  <div className="placeholder-content">
-                    <span>{t('settings.noNewNotifications')}</span>
-                  </div>
-                </div>
-              )}
-
-          </div>
-          {/* oauth-authenticate-btn: Added flexShrink: '0' for robust fixed-size positioning */}
-          <button
-            className="oauth-authenticate-btn"
-            onClick={() => window.open('https://aistudio.google.com/usage?timeRange=last-1-day&tab=rate-limit', '_blank')}
-            style={{ width: '85px', height: '85px', marginBottom: '16px', flexShrink: '0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: '2px' }}
-            title="View Gemini API usage"
-          >
-            <span className="material-symbols-rounded">analytics</span>
-            <span style={{ fontSize: '10px', marginTop: '4px', whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4', overflow: 'hidden' }}>{t('settings.geminiApiUsage', 'Gemini API usage')}</span>
-          </button>
-        </div>
       {/* Grid layout for API keys */}
       <div className="api-keys-grid">
         {/* Gemini API Keys - Left column (spans two rows) */}
         <div className="api-key-input gemini-column">
-          <label htmlFor="gemini-api-keys">
-            {t('settings.geminiApiKeys', 'Gemini API Keys')}
-            <span className={`api-key-status ${apiKeysSet.gemini ? 'set' : 'not-set'}`}>
-              {apiKeysSet.gemini
-                ? t('settings.keysSet', {count: geminiKeys.geminiApiKeys.length})
-                : t('settings.keyNotSet', 'Not Set')}
-            </span>
-          </label>
+          <div className="gemini-key-header">
+            <label htmlFor="new-gemini-key-input">
+              {t('settings.geminiApiKeys', 'Gemini API Keys')}
+              <span className={`api-key-status ${apiKeysSet.gemini ? 'set' : 'not-set'}`}>
+                {apiKeysSet.gemini
+                  ? t('settings.keysSet', {count: geminiKeys.geminiApiKeys.length})
+                  : t('settings.keyNotSet', 'Not Set')}
+              </span>
+            </label>
+            <a
+              className="gemini-usage-link"
+              href="https://aistudio.google.com/usage?timeRange=last-1-day&tab=rate-limit"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="material-symbols-rounded" aria-hidden="true">analytics</span>
+              <span>{t('settings.geminiApiUsage', 'Gemini API usage')}</span>
+            </a>
+          </div>
 
           {/* Multiple Gemini API keys list */}
           <GeminiKeysManager {...geminiKeys} />

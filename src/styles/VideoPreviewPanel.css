@@ -428,9 +428,14 @@
   border-radius: 48px;
   margin: 56px;
   height: -webkit-fill-available;
+  gap: 8px;
+  font-size: 1.1rem;
+  line-height: 1.3;
+  font-stretch: ultra-expanded;
 }
 
 .video-preview-panel .placeholder-icon {
+  font-size: 1.1em;
   margin-bottom: 16px;
   opacity: 0.5;
   display: flex;
@@ -441,6 +446,12 @@
 .video-preview-panel .placeholder-icon svg {
   color: var(--text-secondary);
   transition: color 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .video-preview-panel .placeholder-content {
+    font-size: 0.85rem;
+  }
 }
 
 .video-preview-panel .video-preview-info {
