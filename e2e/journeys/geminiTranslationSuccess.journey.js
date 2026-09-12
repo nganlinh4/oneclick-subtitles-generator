@@ -51,9 +51,9 @@ describe('a customer translates a real subtitle track through Gemini', () => {
     await browser.execute(() => {
       const observed = [];
       const sample = () => {
-        const count = [...document.querySelectorAll('.translation-preview .preview-text')]
-          .filter((node) => node.getBoundingClientRect().height > 0)
-          .length;
+        const raw = document.querySelector('.translation-preview-stats strong')?.textContent ?? '';
+        const count = Number.parseInt(raw, 10);
+        if (!Number.isSafeInteger(count)) return;
         if (observed.at(-1) !== count) observed.push(count);
       };
       sample();
@@ -115,9 +115,10 @@ describe('a customer translates a real subtitle track through Gemini', () => {
     );
 
     await browser.waitUntil(async () => browser.execute(
-      () => [...document.querySelectorAll('.translation-preview .preview-text')]
-        .filter((node) => node.getBoundingClientRect().height > 0)
-        .length >= 12,
+      () => Number.parseInt(
+        document.querySelector('.translation-preview-stats strong')?.textContent ?? '',
+        10,
+      ) === 12,
     ), {
       timeout: 60_000,
       interval: 250,
