@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CONFIGURABLE_THINKING_MODELS } from '../../../config/geminiModels';
+import { CONFIGURABLE_THINKING_MODELS, sortModelsForDisplay } from '../../../config/geminiModels';
 import SliderWithValue from '../../common/SliderWithValue';
 import CustomDropdown from '../../common/CustomDropdown';
 
@@ -76,7 +76,7 @@ const ThinkingBudgetCard = ({ thinkingBudgets, setThinkingBudgets }) => {
           <CustomDropdown
             value={model.id}
             onChange={setSelectedModelId}
-            options={CONFIGURABLE_THINKING_MODELS.map((entry) => ({
+            options={sortModelsForDisplay(CONFIGURABLE_THINKING_MODELS).map((entry) => ({
               value: entry.id,
               label: t(entry.nameKey, entry.nameDefault)
             }))}

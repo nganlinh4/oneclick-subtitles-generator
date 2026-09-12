@@ -73,69 +73,6 @@
   transform: rotate(180deg);
 }
 
-/* Model options dropdown */
-.model-options-dropdown {
-  position: fixed; /* Fixed position to avoid layout issues */
-  width: 415px;
-  background-color: var(--md-surface-1);
-  border-radius: 12px;
-  box-shadow: var(--md-elevation-level3);
-  border: 1px solid var(--border-color);
-  z-index: 99999; /* Very high z-index to ensure it appears above other elements */
-  overflow: hidden;
-}
-
-/* Header for the dropdown */
-.model-options-header {
-  padding: 12px 16px;
-  font-size: var(--md-body-medium-size);
-  font-weight: var(--md-body-medium-weight);
-  color: var(--md-on-surface);
-  border-bottom: 1px solid var(--md-outline-variant);
-  background-color: var(--md-surface-3);
-  text-align: center;
-}
-
-/* List of model options */
-.model-options-list {
-  max-height: 300px;
-  overflow-y: auto;
-  font-family: 'Open Sans', sans-serif;
-}
-
-/* Individual model option button */
-.model-option-btn {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 12px 16px;
-  background-color: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  position: relative;
-  overflow: hidden;
-  color: var(--md-on-surface);
-  transition: background-color 0.2s;
-}
-
-.model-option-btn:hover {
-  background-color: var(--md-surface-2);
-}
-
-.model-option-btn.selected {
-  background-color: var(--model-bg-color, rgba(var(--md-primary-rgb), 0.1));
-}
-
-.model-option-btn.selected::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background-color: var(--model-color, var(--md-primary));
-}
 
 /* Model icon container */
 .model-option-icon {
@@ -216,10 +153,6 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .model-options-dropdown {
-    width: 220px;
-  }
-
   .model-name {
     max-width: 80px;
   }

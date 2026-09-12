@@ -12,7 +12,8 @@ import {
   modelAcceptsMedia,
   normalizeCustomGeminiModelId,
   normalizeCustomGeminiModels,
-  normalizeMediaModelId
+  normalizeMediaModelId,
+  sortModelsForDisplay
 } from './geminiModels';
 
 const EXPECTED_MODELS = [
@@ -22,6 +23,11 @@ const EXPECTED_MODELS = [
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3.8-flash'
+];
+
+const DISPLAY_MODELS = [
+  'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
+  'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
 ];
 
 describe('Gemini model catalog contract', () => {
@@ -53,9 +59,20 @@ describe('Gemini model catalog contract', () => {
   test('keeps every ordinary model stable and audio/video capable', () => {
     GEMINI_MODELS.forEach((model) => expect(modelAcceptsMedia(model.id)).toBe(true));
     GEMINI_MODELS.forEach((model) => expect(model.lifecycle).toBe('stable'));
-    expect(ANALYSIS_MODEL_IDS).toEqual(EXPECTED_MODELS);
-    expect(TRANSLATION_MODELS.map(({ id }) => id)).toEqual(EXPECTED_MODELS);
-    expect(BACKGROUND_PROMPT_MODELS.map(({ id }) => id)).toEqual(EXPECTED_MODELS);
+    expect(ANALYSIS_MODEL_IDS).toEqual(DISPLAY_MODELS);
+    expect(TRANSLATION_MODELS.map(({ id }) => id)).toEqual(DISPLAY_MODELS);
+    expect(BACKGROUND_PROMPT_MODELS.map(({ id }) => id)).toEqual(DISPLAY_MODELS);
+  });
+
+  test('numeric display order handles future versions and custom IDs without mutating its source', () => {
+    const ids = ['gemini-custom', 'gemini-3.9-flash', 'gemini-3.10-flash-lite',
+      'gemini-4.0-flash', 'gemini-3.10-flash'];
+    const models = Object.freeze(ids.map(id => Object.freeze({ id })));
+    expect(sortModelsForDisplay(models).map(({ id }) => id)).toEqual([
+      'gemini-4.0-flash', 'gemini-3.10-flash', 'gemini-3.10-flash-lite',
+      'gemini-3.9-flash', 'gemini-custom',
+    ]);
+    expect(models.map(({ id }) => id)).toEqual(ids);
   });
 
   test('derives exact default thinking values from the catalog', () => {

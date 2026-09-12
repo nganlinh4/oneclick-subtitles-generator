@@ -26,6 +26,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'localFileImport.journey.js',
   'mainPreviewControlsAndFullscreen.journey.js',
   'mainPreviewRenderHandoff.journey.js',
+  'modelPickerPresentation.journey.js',
   'manualLyricsAndGeniusBoundary.journey.js',
   'narrationGeneration.journey.js',
   'nativeExportDecoded.journey.js',

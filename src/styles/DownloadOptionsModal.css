@@ -308,10 +308,6 @@
 /* Model dropdown in modal */
 .modal-model-dropdown {
   width: 100%;
-  height: 40px;
-  background-color: var(--md-surface-3);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-medium);
 }
 
 /* Responsive adjustments */

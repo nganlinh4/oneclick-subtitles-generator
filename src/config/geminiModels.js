@@ -6,6 +6,21 @@
  */
 import catalog from './geminiModelCatalog.json';
 
+const modelNumberOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+/** Newest numeric version first; never reorder the catalog or change a saved/default choice. */
+export const sortModelsForDisplay = (models) => [...models].sort((left, right) => {
+  const leftVersion = left.id.match(/^gemini-(\d+(?:\.\d+)*)/)?.[1];
+  const rightVersion = right.id.match(/^gemini-(\d+(?:\.\d+)*)/)?.[1];
+  if (leftVersion && rightVersion) {
+    const versionOrder = modelNumberOrder.compare(rightVersion, leftVersion);
+    if (versionOrder) return versionOrder;
+  } else if (leftVersion || rightVersion) {
+    return leftVersion ? -1 : 1;
+  }
+  return modelNumberOrder.compare(left.id, right.id);
+});
+
 const UI_ICONS = [
   { symbol: 'bolt', className: 'model-icon zap-icon' },
   { symbol: 'auto_awesome', className: 'model-icon activity-icon' },
@@ -56,8 +71,8 @@ export const DEFAULT_FAST_TEXT_MODEL_ID = catalog.defaults.fastText;
 export const DEFAULT_IMAGE_GENERATION_MODEL_ID = catalog.defaults.imageGeneration;
 export const DEFAULT_LIVE_AUDIO_MODEL_ID = catalog.defaults.liveAudio;
 
-export const IMAGE_GENERATION_MODELS = catalog.imageGenerationModels;
-export const LIVE_AUDIO_MODELS = catalog.liveAudioModels;
+export const IMAGE_GENERATION_MODELS = sortModelsForDisplay(catalog.imageGenerationModels);
+export const LIVE_AUDIO_MODELS = sortModelsForDisplay(catalog.liveAudioModels);
 export const MEDIA_INPUT_MODALITIES = ['audio', 'video'];
 
 export const getModelById = (id) => GEMINI_MODELS.find((model) => model.id === id);
@@ -67,7 +82,7 @@ export const modelAcceptsMedia = (id) => {
   return Boolean(model?.modalities.some((modality) => MEDIA_INPUT_MODALITIES.includes(modality)));
 };
 export const getModelsForFeature = (feature) =>
-  GEMINI_MODELS.filter((model) => model.features.includes(feature));
+  sortModelsForDisplay(GEMINI_MODELS.filter((model) => model.features.includes(feature)));
 export const modelSupportsFeature = (id, feature) => {
   const model = getModelById(catalog.legacyMigrations[id] || id);
   return model ? model.features.includes(feature) : true;

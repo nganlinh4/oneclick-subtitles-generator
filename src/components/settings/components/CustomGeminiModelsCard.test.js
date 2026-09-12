@@ -26,8 +26,11 @@ const Host = ({ onModelSelect = () => {}, initialModels = [] }) => {
 beforeEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   window.addToast = vi.fn();
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 it('keeps an added model in the settings draft until the form is saved', () => {
   const onModelSelect = vi.fn();
@@ -45,8 +48,9 @@ it('keeps an added model in the settings draft until the form is saved', () => {
   expect(screen.getByText('Custom test model')).toBeInTheDocument();
   expect(localStorage.getItem('custom_gemini_models')).toBeNull();
 
-  fireEvent.click(screen.getByTitle('Select model'));
-  expect(screen.queryByRole('menuitem', { name: /Custom test model \(Custom\)/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Select model' }));
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /Custom test model \(Custom\)/ })).not.toBeInTheDocument();
   expect(onModelSelect).not.toHaveBeenCalled();
 });
 

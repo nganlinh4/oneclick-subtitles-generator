@@ -195,11 +195,8 @@
 
 /* Style for the model dropdown in translation section */
 .translate-model-dropdown {
-  background-color: var(--md-surface-3);
-  border-color: var(--md-outline-variant);
   width: 100%;
   max-width: 400px;
-  /* Font family inherited from global styles */
 }
 
 /* Gemini effects removed from translate button to reduce lag */
