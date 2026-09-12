@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
@@ -3853,6 +3853,10 @@ async fn resolve_prepared_batch_workers(
     Ok(workers)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the batch coordinator keeps lifecycle checks, durable publication, and its one concurrency receipt in one auditable order"
+)]
 async fn run_speech_batch(
     context: &SpeechBatchContext<'_>,
     mut validated: ValidatedSpeechStart,
@@ -3886,6 +3890,7 @@ async fn run_speech_batch(
     let total = validated.requests.len();
     let mut results = Vec::with_capacity(total);
     let requests = validated.requests;
+    let concurrency = SynthesisConcurrencyProbe::default();
     for batch in requests.chunks(validated.max_concurrency) {
         ownership.ensure_owned(context.runtime, context.database)?;
         let batch_start = results.len();
@@ -3904,6 +3909,7 @@ async fn run_speech_batch(
                     index,
                     total,
                 },
+                concurrency.clone(),
             )
         }))
         .await;
@@ -3935,6 +3941,13 @@ async fn run_speech_batch(
                         Some(validated.lifecycle_epoch),
                     );
                 }
+                record_speech_concurrency(
+                    context.job_id,
+                    validated.backend,
+                    validated.max_concurrency,
+                    workers.len(),
+                    concurrency.peak(),
+                );
                 return Err(code);
             }
             report_batch_progress(
@@ -3953,10 +3966,43 @@ async fn run_speech_batch(
         .iter()
         .all(|result| matches!(result, StoredSpeechResult::Failed { .. }))
     {
+        record_speech_concurrency(
+            context.job_id,
+            validated.backend,
+            validated.max_concurrency,
+            workers.len(),
+            concurrency.peak(),
+        );
         Err(SpeechFailureCode::SynthesisFailed)
     } else {
+        record_speech_concurrency(
+            context.job_id,
+            validated.backend,
+            validated.max_concurrency,
+            workers.len(),
+            concurrency.peak(),
+        );
         Ok(results)
     }
+}
+
+fn record_speech_concurrency(
+    job_id: JobId,
+    backend: SpeechBackendRequest,
+    configured: usize,
+    workers: usize,
+    observed_peak: usize,
+) {
+    diagnostics::record(
+        "speech.concurrency_observed",
+        &[
+            ("job", job_id.to_string()),
+            ("backend", format!("{backend:?}")),
+            ("configured", configured.to_string()),
+            ("workers", workers.to_string()),
+            ("observedPeak", observed_peak.to_string()),
+        ],
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -3965,6 +4011,36 @@ struct SegmentRun {
     lifecycle_epoch: u64,
     index: usize,
     total: usize,
+}
+
+#[derive(Clone, Default)]
+struct SynthesisConcurrencyProbe {
+    active: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
+}
+
+impl SynthesisConcurrencyProbe {
+    fn enter(&self) -> ActiveSynthesisGuard {
+        let active = self.active.fetch_add(1, Ordering::AcqRel) + 1;
+        self.peak.fetch_max(active, Ordering::AcqRel);
+        ActiveSynthesisGuard {
+            active: Arc::clone(&self.active),
+        }
+    }
+
+    fn peak(&self) -> usize {
+        self.peak.load(Ordering::Acquire)
+    }
+}
+
+struct ActiveSynthesisGuard {
+    active: Arc<AtomicUsize>,
+}
+
+impl Drop for ActiveSynthesisGuard {
+    fn drop(&mut self) {
+        self.active.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 enum PreparedSegmentResult {
@@ -4068,6 +4144,7 @@ async fn synthesize_segment(
     request: SynthesisRequest,
     ownership: SpeechLifecycleOwnership,
     run: SegmentRun,
+    concurrency: SynthesisConcurrencyProbe,
 ) -> Result<PreparedSegmentResult, SpeechFailureCode> {
     let segment_id = request.segment_id().as_str().to_owned();
     let format = request.output_format();
@@ -4089,6 +4166,7 @@ async fn synthesize_segment(
     let progress_ownership = ownership.clone();
     let worker_cancellation = ownership.cancellation.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
+        let _active_synthesis = concurrency.enter();
         let control = RunControl::new(SPEECH_TIMEOUT)?
             .with_cancellation(worker_cancellation)
             .with_progress(move |progress: &SpeechProgress| {
@@ -5967,6 +6045,19 @@ fn speech_failure_code_command_error(code: SpeechFailureCode) -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn synthesis_concurrency_probe_tracks_overlap_and_releases_every_slot() {
+        let probe = SynthesisConcurrencyProbe::default();
+        let first = probe.enter();
+        let second = probe.enter();
+        assert_eq!(probe.peak(), 2);
+        assert_eq!(probe.active.load(Ordering::Acquire), 2);
+        drop(first);
+        drop(second);
+        assert_eq!(probe.active.load(Ordering::Acquire), 0);
+        assert_eq!(probe.peak(), 2);
+    }
 
     #[test]
     fn production_constructor_creates_the_optional_f5_model_store_before_canonicalizing_it() {

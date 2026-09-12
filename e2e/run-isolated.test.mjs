@@ -108,6 +108,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'freshInstallVisual.journey.js',
     'frontendResponsiveness.journey.js',
     'geminiCredentialBoundary.journey.js',
+    'geminiNarrationGeneration.journey.js',
     'geminiOutputPreview.journey.js',
     'largeSubtitleResponsiveness.journey.js',
     'localAsrGeneration.journey.js',

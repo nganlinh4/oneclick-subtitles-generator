@@ -694,6 +694,30 @@
       "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
     },
     {
+      "name": "geminiNarrationGeneration",
+      "kind": "workflow",
+      "file": "journeys/geminiNarrationGeneration.journey.js",
+      "capability": "Gemini narration automatically prepares its provider package, distributes concurrent cues across the customer-selected key pool, and publishes durable decoded audio.",
+      "chain": [
+        "open real media and import real subtitle cues",
+        "enrol three live Gemini credentials through the public Settings surface",
+        "select Gemini narration and set its visible concurrency control to three",
+        "let the product install and start Gemini TTS on demand",
+        "synthesize three cues concurrently through three distinct provider workers",
+        "publish one project-owned durable MP3 artifact for every cue"
+      ],
+      "oracles": [
+        "visible per-cue narration result state",
+        "the application's own SQLite jobs and artifact ownership, read only",
+        "independent FFmpeg decoding and non-silence measurement of every MP3",
+        "one redacted native concurrency receipt proving configured workers and observed overlap"
+      ],
+      "runsAgainst": "e2e-binary with live Gemini credentials",
+      "status": "unproven",
+      "evidenceWorkflow": "gemini-narration-generation",
+      "note": "The journey and safe concurrency receipt exist, but this entry remains unproven until a real provider run writes a retained success receipt. Unit tests and package availability do not satisfy this claim."
+    },
+    {
       "name": "narrationAlignment",
       "kind": "workflow",
       "file": "journeys/narrationGeneration.journey.js",

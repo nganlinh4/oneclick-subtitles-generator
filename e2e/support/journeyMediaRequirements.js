@@ -18,6 +18,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'exportAnimationParityMatrix.journey.js',
   'frontendResponsiveness.journey.js',
   'geminiCredentialBoundary.journey.js',
+  'geminiNarrationGeneration.journey.js',
   'geminiDocumentSuccess.journey.js',
   'geminiOutputPreview.journey.js',
   'geminiTranscriptionSuccess.journey.js',
