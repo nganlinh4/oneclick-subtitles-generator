@@ -26,9 +26,13 @@ test.each([true, false])('shared model picker has compact quotas, sorted names, 
   expect(screen.getAllByRole('option').map(node => node.querySelector('.dropdown-option-label').textContent)).toEqual([
     'Gemini 3.8 Flash', 'Gemini 3.7 Flash', 'Gemini 3.6 Flash',
     'Gemini 3.5 Flash', 'Gemini 3.5 Flash Lite', 'Gemini 3.1 Flash Lite',
+    'Gemini 3 Flash Preview', 'Gemini Robotics-ER 2 Preview',
   ]);
   expect(screen.getAllByRole('option').map(node => node.querySelector('.dropdown-option-detail').textContent))
-    .toEqual(['20 requests/day', '20 requests/day', '20 requests/day', '20 requests/day', '500 requests/day', '500 requests/day']);
+    .toEqual([
+      '20 requests/day', '20 requests/day', '20 requests/day', '20 requests/day',
+      '500 requests/day', '500 requests/day', '20 requests/day', '20 requests/day',
+    ]);
   expect(button).not.toHaveTextContent('requests/day');
   expect(container.querySelector('.custom-dropdown')).not.toBeNull();
   expect(document.querySelector('.model-options-dropdown')).toBeNull();

@@ -1,6 +1,6 @@
 # OSG subtitle benchmark
 
-This opt-in benchmark compares every stable Gemini media model shipped by OSG
+This opt-in benchmark compares every explicitly lifecycle-tagged Gemini media model shipped by OSG
 on work the product actually performs. It uses the production `osg-gemini`
 upload and streaming transports, a versioned manifest, exact fixture hashes,
 round-major scheduling, stable credential rotation, and append-only attempt

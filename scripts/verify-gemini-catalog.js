@@ -21,6 +21,8 @@ const nativeOrdinaryModels = [
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-robotics-er-2-preview',
   'gemini-3.8-flash',
 ];
 
@@ -54,8 +56,8 @@ const assertCatalog = () => {
     }
   });
   catalog.models.forEach((model) => {
-    if (model.lifecycle !== 'stable') {
-      throw new Error(`${model.id} is not a stable ordinary endpoint`);
+    if (!['stable', 'preview'].includes(model.lifecycle)) {
+      throw new Error(`${model.id} has an unsupported lifecycle`);
     }
     if (model.request.sampling !== 'provider-default') {
       throw new Error(`${model.id} must use provider-default sampling`);

@@ -346,12 +346,10 @@ async fn generate(
         media: uploaded.into_iter().map(MediaInput::Uploaded).collect(),
         generation: GenerationConfig {
             max_output_tokens: Some(8_192),
-            thinking_level: Some(
-                model
-                    .spec()
-                    .expect("benchmark models must come from the reviewed catalog")
-                    .toolbox_thinking,
-            ),
+            thinking_level: model
+                .spec()
+                .filter(|spec| spec.thinking)
+                .map(|spec| spec.toolbox_thinking),
             media_resolution: None,
             video_fps: None,
             response_json_schema: Some(schema),

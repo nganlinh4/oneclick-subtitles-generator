@@ -5,12 +5,14 @@ use osg_gemini::{
 };
 use tokio_util::sync::CancellationToken;
 
-const MODELS: [Model; 5] = [
+const MODELS: [Model; 7] = [
     Model::Gemini35FlashLite,
     Model::Gemini37Flash,
     Model::Gemini36Flash,
     Model::Gemini35Flash,
     Model::Gemini31FlashLite,
+    Model::Gemini3FlashPreview,
+    Model::GeminiRoboticsEr2Preview,
 ];
 
 fn selected_model() -> Result<Option<Model>, &'static str> {
@@ -23,6 +25,8 @@ fn selected_model() -> Result<Option<Model>, &'static str> {
         "gemini-3.6-flash" => Ok(Some(Model::Gemini36Flash)),
         "gemini-3.5-flash" => Ok(Some(Model::Gemini35Flash)),
         "gemini-3.1-flash-lite" => Ok(Some(Model::Gemini31FlashLite)),
+        "gemini-3-flash-preview" => Ok(Some(Model::Gemini3FlashPreview)),
+        "gemini-robotics-er-2-preview" => Ok(Some(Model::GeminiRoboticsEr2Preview)),
         _ => Err("OSG_GEMINI_SMOKE_MODEL is not an allowed model"),
     }
 }
@@ -98,12 +102,10 @@ async fn run() -> Result<(), &'static str> {
                 )],
                 generation: GenerationConfig {
                     max_output_tokens: Some(256),
-                    thinking_level: Some(
-                        model
-                            .spec()
-                            .expect("live-smoke models come from the reviewed catalog")
-                            .toolbox_thinking,
-                    ),
+                    thinking_level: model
+                        .spec()
+                        .filter(|spec| spec.thinking)
+                        .map(|spec| spec.toolbox_thinking),
                     ..GenerationConfig::default()
                 },
             };

@@ -17,7 +17,7 @@
   "geminiRoboticsEr16Preview": "Gemini Robotics ER 1.6 Preview",
   "geminiRoboticsEr16PreviewDescription": "GG 정밀 · 정밀한 멀티모달 장면 및 공간 분석",
   "geminiRoboticsEr2Preview": "Gemini Robotics ER 2 Preview",
-  "geminiRoboticsEr2PreviewDescription": "GG 정밀+ · 비디오 및 이미지 분석 전용",
+  "geminiRoboticsEr2PreviewDescription": "GG 정밀+ · 공간 정확도가 높은 비디오, 이미지 및 오디오 이해",
   "customModel": "사용자 지정 모델",
   "customLabel": "사용자 지정",
   "dailyQuota": "{{count}}회/일"

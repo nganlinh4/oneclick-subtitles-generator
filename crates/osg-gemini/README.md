@@ -4,12 +4,12 @@ Backend-only Gemini media transport for the Tauri rewrite. The API key, local
 path, raw bytes, upload-session URL, and provider file URI are never serializable
 frontend DTOs.
 
-## Frozen model policy (verified 2026-08-14)
+## Frozen model policy (verified 2026-09-13)
 
-The OSG-owned allowlist is reviewed against the official stable, daily-use REST
-endpoints and applies the strict rule that every exposed model must accept audio
-or video. Each retained
-model officially supports **both** audio and video input and text output:
+The OSG-owned allowlist is reviewed against the provider model inventory and
+live production-transport probes. Stable and preview lifecycles are explicit;
+preview models remain opt-in and never silently replace a stable default. Every
+retained ordinary model accepts **both** audio and video input and text output:
 
 | API model | Toolbox role | Official evidence |
 | --- | --- | --- |
@@ -18,11 +18,16 @@ model officially supports **both** audio and video input and text output:
 | `gemini-3.6-flash` | strongest current multimodal analysis | <https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash> |
 | `gemini-3.5-flash` | stable strong fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash> |
 | `gemini-3.1-flash-lite` | stable low-cost compatibility fallback | <https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite> |
+| `gemini-3-flash-preview` | fast preview multimodal understanding and subtitle generation | <https://ai.google.dev/api/models> |
+| `gemini-robotics-er-2-preview` | preview media understanding with strong spatial reasoning | <https://ai.google.dev/api/models> |
+| `gemini-3.8-flash` | opt-in newest multimodal model pending broader benchmark evidence | <https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash> |
 
 Intentionally excluded: text/image-only or output-generation models, embedding
-models, robotics previews, Live API previews, deprecated/shut-down endpoints,
-and presentation aliases such as `google-...-vision`. The crate accepts only the
-provider API IDs above, avoiding alias drift.
+models, Live API previews, deprecated/shut-down endpoints, and presentation
+aliases such as `google-...-vision`. Live models require their documented
+bidirectional session protocol and therefore cannot be inserted into this
+ordinary Interactions upload picker. The crate accepts only the provider API IDs
+above, avoiding alias drift.
 
 ## Wire and resilience policy
 

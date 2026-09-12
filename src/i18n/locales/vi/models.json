@@ -17,7 +17,7 @@
   "geminiRoboticsEr16Preview": "Gemini Robotics ER 1.6 Preview",
   "geminiRoboticsEr16PreviewDescription": "GG Chuẩn · Phân tích cảnh và không gian đa phương thức chính xác",
   "geminiRoboticsEr2Preview": "Gemini Robotics ER 2 Preview",
-  "geminiRoboticsEr2PreviewDescription": "GG Chuẩn+ · Chỉ dùng để phân tích video và hình ảnh",
+  "geminiRoboticsEr2PreviewDescription": "GG Chuẩn+ · Hiểu video, hình ảnh và âm thanh với độ chính xác không gian cao",
   "customModel": "Mô hình tùy chỉnh",
   "customLabel": "Tùy chỉnh",
   "dailyQuota": "{{count}} lượt/ngày"

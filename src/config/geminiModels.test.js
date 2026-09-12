@@ -22,12 +22,15 @@ const EXPECTED_MODELS = [
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-robotics-er-2-preview',
   'gemini-3.8-flash'
 ];
 
 const DISPLAY_MODELS = [
   'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash',
   'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview', 'gemini-robotics-er-2-preview',
 ];
 
 describe('Gemini model catalog contract', () => {
@@ -49,16 +52,19 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.6-flash': 20,
       'gemini-3.5-flash': 20,
       'gemini-3.1-flash-lite': 500,
+      'gemini-3-flash-preview': 20,
+      'gemini-robotics-er-2-preview': 20,
       'gemini-3.8-flash': 20
     });
     expect(GEMINI_MODELS.map((model) => model.profileLabels.en)).toEqual([
-      'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast', 'GG New'
+      'GG Good', 'GG Latest', 'GG Strong', 'GG Strong, slow', 'GG Fast',
+      'GG Versatile', 'GG Precise+', 'GG New'
     ]);
   });
 
-  test('keeps every ordinary model stable and audio/video capable', () => {
+  test('keeps every ordinary model explicitly lifecycle-tagged and audio/video capable', () => {
     GEMINI_MODELS.forEach((model) => expect(modelAcceptsMedia(model.id)).toBe(true));
-    GEMINI_MODELS.forEach((model) => expect(model.lifecycle).toBe('stable'));
+    GEMINI_MODELS.forEach((model) => expect(['stable', 'preview']).toContain(model.lifecycle));
     expect(ANALYSIS_MODEL_IDS).toEqual(DISPLAY_MODELS);
     expect(TRANSLATION_MODELS.map(({ id }) => id)).toEqual(DISPLAY_MODELS);
     expect(BACKGROUND_PROMPT_MODELS.map(({ id }) => id)).toEqual(DISPLAY_MODELS);
@@ -82,13 +88,14 @@ describe('Gemini model catalog contract', () => {
       'gemini-3.6-flash': 'minimal',
       'gemini-3.5-flash': 'minimal',
       'gemini-3.1-flash-lite': 'minimal',
+      'gemini-3-flash-preview': 'minimal',
       'gemini-3.8-flash': 'low'
     });
   });
 
   test('migrates retired built-ins without rejecting unknown custom models', () => {
     expect(migrateGeminiModelId('gemini-3.1-flash-lite-preview')).toBe('gemini-3.1-flash-lite');
-    expect(migrateGeminiModelId('gemini-robotics-er-2-preview')).toBe('gemini-3.6-flash');
+    expect(migrateGeminiModelId('gemini-robotics-er-2-preview')).toBe('gemini-robotics-er-2-preview');
     expect(migrateGeminiModelId('models/gemini-2.5-flash')).toBe(DEFAULT_GEMINI_MODEL_ID);
     expect(migrateGeminiModelId('my-private-gemini-endpoint')).toBe('my-private-gemini-endpoint');
     expect(normalizeMediaModelId('my-private-gemini-endpoint')).toBe(DEFAULT_GEMINI_MODEL_ID);

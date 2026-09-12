@@ -17,7 +17,7 @@
   "geminiRoboticsEr16Preview": "Gemini Robotics ER 1.6 Preview",
   "geminiRoboticsEr16PreviewDescription": "GG Precise · Precise multimodal scene and spatial analysis",
   "geminiRoboticsEr2Preview": "Gemini Robotics ER 2 Preview",
-  "geminiRoboticsEr2PreviewDescription": "GG Precise+ · Video and image analysis only",
+  "geminiRoboticsEr2PreviewDescription": "GG Precise+ · Spatially precise video, image, and audio understanding",
   "customModel": "Custom model",
   "customLabel": "Custom",
   "dailyQuota": "{{count}} requests/day"

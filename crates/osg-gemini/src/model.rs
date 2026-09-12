@@ -13,6 +13,8 @@ pub enum ModelKind {
     Gemini36Flash,
     Gemini35Flash,
     Gemini31FlashLite,
+    Gemini3FlashPreview,
+    GeminiRoboticsEr2Preview,
     Gemini35Transcribe,
     Custom {
         bytes: [u8; MAX_CUSTOM_MODEL_ID_BYTES],
@@ -42,6 +44,8 @@ impl Model {
     pub const Gemini36Flash: Self = Self(ModelKind::Gemini36Flash);
     pub const Gemini35Flash: Self = Self(ModelKind::Gemini35Flash);
     pub const Gemini31FlashLite: Self = Self(ModelKind::Gemini31FlashLite);
+    pub const Gemini3FlashPreview: Self = Self(ModelKind::Gemini3FlashPreview);
+    pub const GeminiRoboticsEr2Preview: Self = Self(ModelKind::GeminiRoboticsEr2Preview);
     pub const Gemini35Transcribe: Self = Self(ModelKind::Gemini35Transcribe);
 
     #[must_use]
@@ -59,6 +63,8 @@ impl Model {
             "gemini-3.6-flash" => Some(Self::Gemini36Flash),
             "gemini-3.5-flash" => Some(Self::Gemini35Flash),
             "gemini-3.1-flash-lite" => Some(Self::Gemini31FlashLite),
+            "gemini-3-flash-preview" => Some(Self::Gemini3FlashPreview),
+            "gemini-robotics-er-2-preview" => Some(Self::GeminiRoboticsEr2Preview),
             "gemini-3.5-transcribe" => Some(Self::Gemini35Transcribe),
             _ => None,
         };
@@ -86,6 +92,8 @@ impl Model {
             ModelKind::Gemini36Flash => "gemini-3.6-flash",
             ModelKind::Gemini35Flash => "gemini-3.5-flash",
             ModelKind::Gemini31FlashLite => "gemini-3.1-flash-lite",
+            ModelKind::Gemini3FlashPreview => "gemini-3-flash-preview",
+            ModelKind::GeminiRoboticsEr2Preview => "gemini-robotics-er-2-preview",
             ModelKind::Gemini35Transcribe => "gemini-3.5-transcribe",
             ModelKind::Custom { bytes, len } => str::from_utf8(&bytes[..usize::from(*len)])
                 .expect("custom model IDs are constructed from validated ASCII"),
@@ -162,12 +170,13 @@ fn is_valid_custom_model_id(value: &str) -> bool {
             .all(|byte| is_alphanumeric(*byte) || matches!(byte, b'-' | b'.'))
 }
 
-/// Provider lifecycle. Preview and experimental endpoints are intentionally
-/// unrepresentable in this crate's model catalog.
+/// Provider lifecycle. Preview endpoints are explicit so the UI never presents
+/// their weaker stability promise as a stable model.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Lifecycle {
     Stable,
+    Preview,
 }
 
 /// Input modalities relevant to this application.
@@ -313,6 +322,38 @@ const MODELS: &[ModelSpec] = &[
         verified_at: "2026-08-12",
         evidence_url: "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
     },
+    ModelSpec {
+        model: Model::Gemini3FlashPreview,
+        api_id: "gemini-3-flash-preview",
+        lifecycle: Lifecycle::Preview,
+        input_modalities: MEDIA_INPUTS,
+        output_text: true,
+        structured_output: true,
+        thinking: true,
+        thinking_levels: ALL_THINKING_LEVELS,
+        input_token_limit: 1_048_576,
+        output_token_limit: 65_536,
+        toolbox_thinking: ThinkingLevel::Minimal,
+        toolbox_role: "fast preview multimodal understanding and subtitle generation",
+        verified_at: "2026-09-13",
+        evidence_url: "https://ai.google.dev/gemini-api/docs/models",
+    },
+    ModelSpec {
+        model: Model::GeminiRoboticsEr2Preview,
+        api_id: "gemini-robotics-er-2-preview",
+        lifecycle: Lifecycle::Preview,
+        input_modalities: MEDIA_INPUTS,
+        output_text: true,
+        structured_output: true,
+        thinking: false,
+        thinking_levels: &[],
+        input_token_limit: 131_072,
+        output_token_limit: 65_536,
+        toolbox_thinking: ThinkingLevel::Minimal,
+        toolbox_role: "spatially precise preview media understanding",
+        verified_at: "2026-09-13",
+        evidence_url: "https://ai.google.dev/gemini-api/docs/models",
+    },
     GEMINI_38,
 ];
 
@@ -420,6 +461,8 @@ pub const fn model_spec(model: Model) -> Option<&'static ModelSpec> {
         ModelKind::Gemini36Flash => Some(&MODELS[2]),
         ModelKind::Gemini35Flash => Some(&MODELS[3]),
         ModelKind::Gemini31FlashLite => Some(&MODELS[4]),
+        ModelKind::Gemini3FlashPreview => Some(&MODELS[5]),
+        ModelKind::GeminiRoboticsEr2Preview => Some(&MODELS[6]),
         ModelKind::Gemini35Transcribe => Some(&GEMINI_35_TRANSCRIBE),
         ModelKind::Custom { .. } => None,
     }
@@ -433,7 +476,10 @@ mod tests {
     fn catalog_is_stable_media_only_and_unique() {
         let mut ids = std::collections::HashSet::new();
         for spec in supported_models() {
-            assert_eq!(spec.lifecycle, Lifecycle::Stable);
+            assert!(matches!(
+                spec.lifecycle,
+                Lifecycle::Stable | Lifecycle::Preview
+            ));
             assert!(spec.input_modalities.contains(&InputModality::Audio));
             assert!(spec.input_modalities.contains(&InputModality::Video));
             assert!(ids.insert(spec.api_id));
@@ -516,7 +562,10 @@ mod tests {
         assert_eq!(frontend_ids, native_ids);
         assert_eq!(catalog["defaults"]["ordinary"], DEFAULT_MODEL.api_id());
         for model in catalog["models"].as_array().expect("models array") {
-            assert_eq!(model["lifecycle"], "stable");
+            assert!(matches!(
+                model["lifecycle"].as_str(),
+                Some("stable" | "preview")
+            ));
             let modalities = model["modalities"].as_array().expect("modalities array");
             assert!(modalities.iter().any(|value| value == "audio"));
             assert!(modalities.iter().any(|value| value == "video"));
