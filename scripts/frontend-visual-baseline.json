@@ -2,7 +2,7 @@
   "schemaVersion": 5,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "da54b220bd9039e85485868b18fd54c802d8f900",
+  "baselineRevision": "5308c79993b42ea051a65b1d30216c2fe86adad8",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -85,7 +85,7 @@
     "src/styles/ButtonTextBalance.css": "98c82a97dc4c7668ace8b8001e2ed36deb825b66dba6d50295e7cc512cee02db",
     "src/styles/CollapsibleSection.css": "d9feae332c92f6a5dcd7432de0ada19ecbb5156507249a8006a7760ce9b2183a",
     "src/styles/common/custom-scrollbar-textarea.css": "c81eb1fdbb7b34750b44ad890ddc871b4732f7d2a34b0989adbc3482c22b8afc",
-    "src/styles/common/CustomDropdown.css": "fdf14839d19b0634ca35dbcef77782c7e157b2aa5444b246050fcb160a37b60f",
+    "src/styles/common/CustomDropdown.css": "42639d3df00f3b36237aaf7c40bb51d5cce0acc50bcb5ea875f29980bb0b6f01",
     "src/styles/common/material-switch.css": "9fc8bb666ab927343af2529810e32e4e004e96ceb04a25d46941946841add44f",
     "src/styles/common/PulsingEffect.css": "14c03815ebcf66cd375f668a13597a90fe85910e040246970af417e728c14a98",
     "src/styles/common/tooltip.css": "fd2ff475e5b8f40093b6b651503354670bde1dcc1d3875a6922f60e9b8558b49",
@@ -783,11 +783,12 @@
       ]
     },
     "src/i18n/locales/en/models.json": {
-      "hash": "9d708ea17bb68aaf85dc442ae6b912fa00957b5ddb125e63f5b1374548d7aa76",
+      "hash": "89ac13424f4345ae1c5d60d3515a72f5d159a12667e301552216ac4c18ed94bf",
       "keys": [
         "customLabel",
         "customModel",
         "dailyQuota",
+        "freeDailyQuotaHelp",
         "gemini25FlashLite",
         "gemini25FlashLiteDescription",
         "gemini31FlashLite",
@@ -803,7 +804,9 @@
         "geminiRoboticsEr16Preview",
         "geminiRoboticsEr16PreviewDescription",
         "geminiRoboticsEr2Preview",
-        "geminiRoboticsEr2PreviewDescription"
+        "geminiRoboticsEr2PreviewDescription",
+        "requestsPerDay",
+        "unknownDailyQuota"
       ]
     },
     "src/i18n/locales/en/narration.json": {
@@ -3281,11 +3284,12 @@
       ]
     },
     "src/i18n/locales/ko/models.json": {
-      "hash": "e5a308eae920c44684cb75061bb75924bf704804d2a4d44bbd3ae033b81430bd",
+      "hash": "92da0362da0a15bf5d769bea54911abc7494114f12266470ccba3410fa015cf1",
       "keys": [
         "customLabel",
         "customModel",
         "dailyQuota",
+        "freeDailyQuotaHelp",
         "gemini25FlashLite",
         "gemini25FlashLiteDescription",
         "gemini31FlashLite",
@@ -3301,7 +3305,9 @@
         "geminiRoboticsEr16Preview",
         "geminiRoboticsEr16PreviewDescription",
         "geminiRoboticsEr2Preview",
-        "geminiRoboticsEr2PreviewDescription"
+        "geminiRoboticsEr2PreviewDescription",
+        "requestsPerDay",
+        "unknownDailyQuota"
       ]
     },
     "src/i18n/locales/ko/narration.json": {
@@ -6062,11 +6068,12 @@
       ]
     },
     "src/i18n/locales/vi/models.json": {
-      "hash": "99881357f45fde902dbc4cedc7eaff337230f7e82f81055231b92704dff0388c",
+      "hash": "49396e94e8353d26dc2fc666a10a5df3ef2a79296fc7394c7a52e116efd25aae",
       "keys": [
         "customLabel",
         "customModel",
         "dailyQuota",
+        "freeDailyQuotaHelp",
         "gemini25FlashLite",
         "gemini25FlashLiteDescription",
         "gemini31FlashLite",
@@ -6082,7 +6089,9 @@
         "geminiRoboticsEr16Preview",
         "geminiRoboticsEr16PreviewDescription",
         "geminiRoboticsEr2Preview",
-        "geminiRoboticsEr2PreviewDescription"
+        "geminiRoboticsEr2PreviewDescription",
+        "requestsPerDay",
+        "unknownDailyQuota"
       ]
     },
     "src/i18n/locales/vi/narration.json": {
@@ -8278,10 +8287,10 @@
       ]
     },
     "src/components/background/BackgroundPromptEditor.js": {
-      "hash": "a0a7a650222adff608a3f5bc6e0a859af4185b96b7bc3dfe57797e6f994176e8",
+      "hash": "36c806b303e24443ac46a21409e50478449f1beb583f4cd68ad5d4e0470a8a78",
       "rootCount": 1,
       "roots": [
-        "06d7d9e379af23644b376f119acdf52864bd7bb8d3d603f3c8927525aca5961c"
+        "67abb5234a34d1abe75159586af9799779e36cf759bc750d5c205ac98aef7fe4"
       ]
     },
     "src/components/background/BackgroundPromptEditorButton.js": {
@@ -8343,10 +8352,10 @@
       ]
     },
     "src/components/common/CustomDropdown.js": {
-      "hash": "f5c30004771c0798acbd6bb7befa9eb86e37cd729bdf9fe20d825267c5cfd6ce",
+      "hash": "76b4c342c092698eaffe59cfcc7c76197beb1fe8ee617fa6e5911c92d00c4bbe",
       "rootCount": 4,
       "roots": [
-        "e1f1e4e714938f67a341172ed4b298473e4b07a95921c787422afd79098e0e20",
+        "0432c24eb71bfaaac0b86af4d94fc52af0d9092467d009a145e4d95295993ae2",
         "1e409cac4a5122a75e8d22caafdd7a54b4a625f132b4542d1988f5dbed229972",
         "975b3a278a98e430f1247edcfe7e3dd646574f24894d33f52d6a9961f1558d64",
         "1fb3c2379bef5cf6d7b842fc4a81a16be3b38c769c82662549916ff78d89be9c"
@@ -9272,17 +9281,17 @@
       ]
     },
     "src/components/settings/tabs/ThinkingBudgetCard.js": {
-      "hash": "05d2ecd2681dd026d5424e00b27582fa86210788a4fe707416aa5ef9263abd17",
+      "hash": "7a5684720cbfe56d3230a02655818f58f473fcbb8490f5ac8865716789f43b68",
       "rootCount": 1,
       "roots": [
-        "1222c2ebb3b855e94f22f0fce7a64a26e4ce0840745fc2accc14cb04ccffe647"
+        "4cb1f34ec5674166d2e3a4016662cd7cb2a9e5d8596b7ae5d3d08d2328fca41b"
       ]
     },
     "src/components/settings/tabs/VideoAnalysisCard.js": {
-      "hash": "ef1c54e02d5f6ea0d144b7dd832f6268ba027ffc0fae430cd557b4f0ad6d5614",
+      "hash": "a9ec28f398b57e0537e6d0d9224f3bdcdae02befc6725e13a2d7b562e5b8363c",
       "rootCount": 1,
       "roots": [
-        "7a247fd4dc4d6edc0555cb96a48d0f35dee1663f41a8d6108f1f1fc489996afe"
+        "a4114a2852820ca97f0e34a447832b41982d800e3793c3fcc87c57b5615b6f8a"
       ]
     },
     "src/components/settings/tabs/VideoProcessingTab.js": {
@@ -9654,10 +9663,10 @@
       ]
     },
     "src/components/VideoProcessingModalGeminiPanel.js": {
-      "hash": "066aa7f797eabe32dca679e9c6ecff5702ee5042a0c373677b62f2880f3c2ce6",
+      "hash": "60f6f42ac8435dcec91ebfa76e82bc3ffdfebca7d8ccde075c2a3c85fad6ee4d",
       "rootCount": 1,
       "roots": [
-        "b9dcae9200771b6d043b18735552c58d8e591e5630f0ccb5a00319d49cb00656"
+        "1b50c65672f2525aaf5867dcd5f8b67b6446bd62227958697b2fbe287cc172a5"
       ]
     },
     "src/components/VideoProcessingModalMethodSelector.js": {
