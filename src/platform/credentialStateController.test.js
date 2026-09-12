@@ -246,6 +246,61 @@ it('does not allow a singleton purpose to be overwritten without an atomic backe
   expect(credentialApi.setCredential).not.toHaveBeenCalled();
 });
 
+it('atomically round-robins concurrent Gemini admissions without changing the selected key', async () => {
+  const first = status('geminiApiKey', { last4: '1111' });
+  const second = status('geminiApiKey', { last4: '2222' });
+  const third = status('geminiApiKey', { last4: '3333' });
+  const { controller, getSelection } = createHarness({
+    initialCredentials: [first, second, third],
+    storedSelection: { activeId: second.id, cooldowns: [] },
+  });
+  await controller.initialize();
+
+  await expect(Promise.all([
+    controller.acquireGeminiCredential(),
+    controller.acquireGeminiCredential(),
+    controller.acquireGeminiCredential(),
+    controller.acquireGeminiCredential(),
+  ])).resolves.toEqual([first.id, second.id, third.id, first.id]);
+
+  expect(controller.getSnapshot().gemini.activeCredentialId).toBe(second.id);
+  expect(getSelection().activeId).toBe(second.id);
+});
+
+it('never admits a cooling credential and resumes it after the bounded cooldown', async () => {
+  const first = status('geminiApiKey', { last4: '1111' });
+  const second = status('geminiApiKey', { last4: '2222' });
+  let currentTime = 1_000_000;
+  const credentials = [first, second];
+  let storedSelection = { activeId: first.id, cooldowns: [] };
+  const credentialApi = {
+    getCredentialStatus: vi.fn(async () => ({ store: 'available', credentials })),
+    setCredential: vi.fn(),
+    upsertCredential: vi.fn(),
+    replaceCredential: vi.fn(),
+    deleteCredential: vi.fn(),
+  };
+  const invokeCommand = vi.fn(async (command, args) => {
+    if (command === 'setting_get') return storedSelection;
+    if (command === 'setting_set') { storedSelection = args.value; return undefined; }
+    if (command === 'setting_delete') return true;
+    throw new Error(`Unexpected command ${command}`);
+  });
+  const controller = createCredentialStateController({
+    credentialApi,
+    invokeCommand,
+    storage: createStorage(),
+    now: () => currentTime,
+  });
+  await controller.initialize();
+  await controller.rotateGeminiCredential({ cooldownCredentialId: first.id, cooldownMs: 100 });
+
+  await expect(controller.acquireGeminiCredential()).resolves.toBe(second.id);
+  await expect(controller.acquireGeminiCredential()).resolves.toBe(second.id);
+  currentTime += 101;
+  await expect(controller.acquireGeminiCredential()).resolves.toBe(first.id);
+});
+
 it('removes a singleton credential by purpose without exposing its secret', async () => {
   const genius = status('geniusAccessToken');
   const youtube = status('youtubeApiKey');

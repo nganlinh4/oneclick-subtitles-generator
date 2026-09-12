@@ -2,7 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import {
-  getActiveGeminiCredentialId,
+  acquireGeminiCredential,
   getCredentialStateSnapshot,
   refreshCredentialState,
   rotateGeminiCredential,
@@ -370,7 +370,7 @@ const requireExportName = (value) => {
 
 export const createNativeGeminiImage = ({
   prepareCredentials = refreshCredentialState,
-  getCredentialId = getActiveGeminiCredentialId,
+  getCredentialId = acquireGeminiCredential,
   getCredentialSnapshot = getCredentialStateSnapshot,
   rotateCredential = rotateGeminiCredential,
   importImage = importReferenceImage,

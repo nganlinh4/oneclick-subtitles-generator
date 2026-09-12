@@ -1,5 +1,5 @@
 import {
-  getActiveGeminiCredentialId,
+  acquireGeminiCredential,
   getCredentialStateSnapshot,
   refreshCredentialState,
   rotateGeminiCredential,
@@ -168,7 +168,7 @@ const runAttempt = async ({
 
 export const createNativeGeminiJobRunner = ({
   prepareCredentials = refreshCredentialState,
-  getCredentialId = getActiveGeminiCredentialId,
+  getCredentialId = acquireGeminiCredential,
   getCredentialSnapshot = getCredentialStateSnapshot,
   rotateCredential = rotateGeminiCredential,
   start = startGeminiJob,

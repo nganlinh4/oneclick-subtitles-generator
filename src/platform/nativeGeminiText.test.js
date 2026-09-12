@@ -1,6 +1,7 @@
 import { createNativeGeminiText } from './nativeGeminiText';
 
 vi.mock('./credentialStateController', () => ({
+  acquireGeminiCredential: vi.fn(),
   getActiveGeminiCredentialId: vi.fn(),
   getCredentialStateSnapshot: vi.fn(),
   initializeCredentialState: vi.fn(),

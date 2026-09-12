@@ -217,6 +217,10 @@ export const createCredentialStateController = ({
 } = {}) => {
   let snapshot = defaultSnapshot();
   let selection = { activeId: null, cooldowns: new Map() };
+  // Provider work is admitted independently from the key highlighted in Settings. Keeping an
+  // opaque last-admitted ID lets concurrent callers round-robin atomically without persisting a
+  // preference write for every request or exposing secret material to the WebView.
+  let lastAdmittedGeminiId = null;
   let operationTail = Promise.resolve();
   let initialization = null;
   const subscribers = new Set();
@@ -486,6 +490,29 @@ export const createCredentialStateController = ({
     });
   };
 
+  const acquireGeminiCredential = async () => {
+    await initialize();
+    return enqueue(async () => {
+      const ready = snapshot.credentials.filter((credential) => (
+        credential.purpose === GEMINI_PURPOSE && credential.state === 'ready'
+      ));
+      if (snapshot.store !== 'available' || ready.length === 0) return null;
+      const readyIds = new Set(ready.map(({ id }) => id));
+      const currentTime = now();
+      for (const [id, untilMs] of selection.cooldowns) {
+        if (!readyIds.has(id) || untilMs <= currentTime) selection.cooldowns.delete(id);
+      }
+      const previous = ready.findIndex(({ id }) => id === lastAdmittedGeminiId);
+      const ordered = previous < 0
+        ? ready
+        : [...ready.slice(previous + 1), ...ready.slice(0, previous + 1)];
+      const next = ordered.find(({ id }) => !selection.cooldowns.has(id));
+      if (!next) return null;
+      lastAdmittedGeminiId = next.id;
+      return next.id;
+    });
+  };
+
   const clearCredentials = async () => {
     await initialize();
     return enqueue(async () => {
@@ -531,6 +558,7 @@ export const createCredentialStateController = ({
     replaceGeminiCredential,
     removeSingletonCredential,
     selectGeminiCredential,
+    acquireGeminiCredential,
     rotateGeminiCredential,
     clearCredentials,
     getActiveGeminiCredentialId: () => {
@@ -556,6 +584,7 @@ export const removeGeminiCredential = credentialStateController.removeGeminiCred
 export const replaceGeminiCredential = credentialStateController.replaceGeminiCredential;
 export const removeSingletonCredential = credentialStateController.removeSingletonCredential;
 export const selectGeminiCredential = credentialStateController.selectGeminiCredential;
+export const acquireGeminiCredential = credentialStateController.acquireGeminiCredential;
 export const rotateGeminiCredential = credentialStateController.rotateGeminiCredential;
 export const clearCredentials = credentialStateController.clearCredentials;
 export const getActiveGeminiCredentialId = credentialStateController.getActiveGeminiCredentialId;

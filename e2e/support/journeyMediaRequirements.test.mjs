@@ -36,6 +36,7 @@ test('every journey has exactly the media classification its shipping actions re
     'geminiBackgroundImageSuccess.journey.js',
     'geminiMediaBenchmark.journey.js',
     'geminiMultiWindowTranscription.journey.js',
+    'geminiTranslationSuccess.journey.js',
     'longMediaOperationRecovery.journey.js',
     'longMediaResourceBounds.journey.js',
     'multiWindowAsrPersistence.journey.js',

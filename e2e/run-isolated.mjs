@@ -167,13 +167,14 @@ export const runContainedJourneyOperation = ({
 
 const loadLaunchRuntime = async () => {
   const [
-    environment, applicationLease, cacheMaintenance, evidenceLease, journeyMedia, longMedia,
-    realMedia, stagingLease, workflowEvidence,
+    environment, applicationLease, cacheMaintenance, evidenceLease, fourWindowMedia,
+    journeyMedia, longMedia, realMedia, stagingLease, workflowEvidence,
   ] = await Promise.all([
     import('./support/environment.js'),
     import('./support/applicationLease.js'),
     import('./support/cacheMaintenance.js'),
     import('./support/evidenceLease.js'),
+    import('./support/fourWindowAsrFixture.js'),
     import('./support/journeyMediaRequirements.js'),
     import('./support/longSyntheticMediaFixture.js'),
     import('./support/realMedia.js'),
@@ -185,6 +186,7 @@ const loadLaunchRuntime = async () => {
     ...applicationLease,
     ...cacheMaintenance,
     ...evidenceLease,
+    ...fourWindowMedia,
     ...journeyMedia,
     ...longMedia,
     ...realMedia,
@@ -199,7 +201,7 @@ export const run = async ({ repeat, journeys }) => {
     beginWorkflowEvidence, createRunRoot, finalizeWorkflowEvidence, preserveRunRootEvidence,
     recordWorkflowDiagnostic,
     createE2eCacheMaintenanceBatch,
-    ensureLongSyntheticMedia, ensureRealVideo, ensureSourceSwitchVideo,
+    ensureFourWindowAsrVideo, ensureLongSyntheticMedia, ensureRealVideo, ensureSourceSwitchVideo,
     verifiedDownloadIdentityVideo,
     JOURNEY_MEDIA_REQUIREMENT, journeyMediaRequirement,
     readVerifiedCurrentPublishedApplication, refreshWorkflowEvidenceIndex, removeRunRoot,
@@ -276,6 +278,9 @@ export const run = async ({ repeat, journeys }) => {
                   const preparedLongMedia = journeyName === 'longMediaResourceBounds.journey.js'
                     ? ensureLongSyntheticMedia({ applicationLease })
                     : null;
+                  const preparedFourWindowMedia = journeyName === 'geminiTranslationSuccess.journey.js'
+                    ? ensureFourWindowAsrVideo({ applicationLease })
+                    : null;
                   const inheritedApplication = serializeInheritedApplicationLease({
                     lease: applicationLease,
                     publication,
@@ -297,6 +302,12 @@ export const run = async ({ repeat, journeys }) => {
                     };
                     if (preparedRealMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedRealMedia);
+                    }
+                    if (preparedFourWindowMedia !== null) {
+                      environment.OSG_E2E_MEDIA_SELECTION = stageMedia(
+                        preparedFourWindowMedia,
+                        'translation-',
+                      );
                     }
                     if (journeyName === 'mainPreviewControlsAndFullscreen.journey.js'
                         || journeyName === 'wordNativeCancelRetrySwitch.journey.js') {

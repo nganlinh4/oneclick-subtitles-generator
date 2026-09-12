@@ -1,0 +1,47 @@
+1
+00:00:00,500 --> 00:00:10,000
+Welcome to this practical review of reliable subtitle translation.
+
+2
+00:00:15,000 --> 00:00:25,000
+We will compare several choices and explain why each one matters.
+
+3
+00:00:30,000 --> 00:00:40,000
+The first section introduces the problem in clear everyday language.
+
+4
+00:00:45,000 --> 00:00:55,000
+Accurate timing keeps the translated text connected to the original speech.
+
+5
+00:01:00,000 --> 00:01:10,000
+Long recordings are divided into independent requests for dependable processing.
+
+6
+00:01:15,000 --> 00:01:25,000
+Each completed request should become visible without waiting for every other request.
+
+7
+00:01:30,000 --> 00:01:40,000
+Temporary provider limits must not erase work that has already completed.
+
+8
+00:01:45,000 --> 00:01:55,000
+Results still need to return in the same order as the source captions.
+
+9
+00:02:00,000 --> 00:02:10,000
+The final section checks persistence, readability, and consistent presentation.
+
+10
+00:02:15,000 --> 00:02:25,000
+A relaunch should restore the exact translated track selected by the customer.
+
+11
+00:02:30,000 --> 00:02:40,000
+No successful segment should disappear because a neighboring request finishes later.
+
+12
+00:02:45,000 --> 00:02:55,000
+This closing caption confirms that the complete source range was preserved.
