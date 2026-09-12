@@ -691,7 +691,7 @@ it('attempts all acknowledgements after persistence and reports failed acknowled
   view.unmount();
 });
 
-it('persists partial chunk terminal metadata without a success projection', async () => {
+it('publishes successful chunks from a partial result and can durably fill the missing rows', async () => {
   const view = await mount();
   const acknowledge = vi.fn(async () => {});
   const completed = [{
@@ -720,7 +720,11 @@ it('persists partial chunk terminal metadata without a success projection', asyn
   });
   mocks.translate.mockRejectedValueOnce(partialError);
 
-  await expect(start(view.result)).resolves.toMatchObject({ status: 'partial' });
+  let partialOutcome;
+  await act(async () => {
+    partialOutcome = await start(view.result);
+  });
+  expect(partialOutcome).toMatchObject({ status: 'partial' });
   expect(mocks.persist).toHaveBeenCalledWith(
     expect.objectContaining({ projectId: 'project-a' }),
     expect.objectContaining({
@@ -731,8 +735,35 @@ it('persists partial chunk terminal metadata without a success projection', asyn
 })
   );
   expect(view.onComplete).not.toHaveBeenCalledWith(expect.any(Array));
-  expect(view.result.current.translatedSubtitles).toBeNull();
+  expect(view.result.current.translatedSubtitles).toEqual([
+    completed[0],
+    expect.objectContaining({
+      id: 'a-2',
+      originalId: 'string:a-2',
+      sourceOrder: 1,
+      text: 'World',
+      translationFailed: true,
+      translationErrorCode: 'providerFailed',
+    }),
+  ]);
   expect(acknowledge).toHaveBeenCalledTimes(1);
+
+  mocks.translate.mockImplementationOnce(async (input) => translationResult(input, 'R:'));
+  let retryOutcome;
+  await act(async () => {
+    retryOutcome = await view.result.current.retryMainTranslation({ originalId: 'string:a-2' });
+  });
+  expect(retryOutcome).toMatchObject({ status: 'complete' });
+  expect(mocks.hydratedRecord).toMatchObject({
+    status: 'complete',
+    failedChunks: [],
+    baseSubtitles: [
+      completed[0],
+      expect.objectContaining({ originalId: 'string:a-2', text: 'R:World' }),
+    ],
+  });
+  expect(view.result.current.translatedSubtitles).toEqual(mocks.hydratedRecord.baseSubtitles);
+  expect(view.onComplete).toHaveBeenLastCalledWith(mocks.hydratedRecord.baseSubtitles);
   view.unmount();
 });
 

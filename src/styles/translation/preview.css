@@ -442,6 +442,24 @@
   opacity: 1;
 }
 
+.preview-subtitle-row.translation-failed {
+  box-shadow: inset 3px 0 0 var(--md-error);
+}
+
+.translation-failed-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--md-error);
+  font-size: var(--md-label-small-size);
+  font-weight: 600;
+}
+
+.translation-failed-label .material-symbols-rounded {
+  font-size: 16px;
+}
+
 /* Bulk preview file selector */
 .bulk-preview-selector {
   margin-bottom: 1rem;

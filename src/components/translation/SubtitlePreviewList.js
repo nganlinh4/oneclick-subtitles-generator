@@ -67,6 +67,7 @@ const SubtitleRow = ({ index, style, data }) => {
   const { t } = useTranslation();
   const { translatedSubtitles, segments, onRetrySegment, onRetrySubtitle, retryingSegments, fileId } = data;
   const subtitle = translatedSubtitles[index];
+  const translationFailed = subtitle?.translationFailed === true;
 
   // Find which segment this subtitle belongs to
   const currentSegment = segments.find(segment =>
@@ -109,7 +110,7 @@ const SubtitleRow = ({ index, style, data }) => {
   return (
     <div 
       style={style} 
-      className={`preview-subtitle-row ${isRetrying || isSubtitleRetrying ? 'retrying' : ''}`}
+      className={`preview-subtitle-row ${translationFailed ? 'translation-failed' : ''} ${isRetrying || isSubtitleRetrying ? 'retrying' : ''}`.trim()}
       role="row"
       aria-label={`${t('translation.subtitle', 'Subtitle')} ${index + 1}`}
       data-segment-number={currentSegment?.segmentNumber}
@@ -180,6 +181,12 @@ const SubtitleRow = ({ index, style, data }) => {
           {startTimeDisplay} → {endTimeDisplay}
         </span>
         <span className="preview-text" aria-label={`${t('translation.subtitleText', 'Subtitle text')}`}>
+          {translationFailed && (
+            <span className="translation-failed-label">
+              <span className="material-symbols-rounded" aria-hidden="true">warning</span>
+              {t('translation.failedOriginalShown', 'Translation failed — original text shown')}
+            </span>
+          )}
           {subtitle.text.split('\n').map((line, lineIndex) => (
             <React.Fragment key={lineIndex}>
               {lineIndex > 0 && <br />}

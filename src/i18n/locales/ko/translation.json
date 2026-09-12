@@ -44,6 +44,7 @@
   "splittingSubtitles": "{{count}}개의 자막을 {{duration}}분 청크로 분할 중",
   "splitComplete": "{{count}}개의 자막을 {{chunks}}개의 청크로 분할 완료",
   "translatingChunk": "청크 {{current}}/{{total}} ({{count}}개의 자막) 번역 중",
+  "failedOriginalShown": "번역 실패 — 원문 표시 중",
   "translationComplete": "모든 {{count}}개의 청크 번역 완료",
   "formattingSubtitles": "{{count}}개의 자막 포맷팅 중",
   "formattingComplete": "포맷팅 완료",

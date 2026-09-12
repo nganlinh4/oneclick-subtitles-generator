@@ -101,6 +101,44 @@ const buildTerminal = ({
   failedChunks: failures,
 });
 
+const partialRowsForPresentation = (record, sourceSubtitles) => {
+  const translatedByOrder = new Map(record.baseSubtitles.map((row) => [row.sourceOrder, row]));
+  const failureByOrder = new Map();
+  for (const failure of record.failedChunks) {
+    for (let order = failure.startOrder; order <= failure.endOrder; order += 1) {
+      failureByOrder.set(order, failure.errorCode);
+    }
+  }
+  return sourceSubtitles.map((source, sourceOrder) => translatedByOrder.get(sourceOrder) ?? {
+    ...source,
+    sourceOrder,
+    translationFailed: true,
+    translationErrorCode: failureByOrder.get(sourceOrder) ?? 'translationChunkFailed',
+  });
+};
+
+const failuresAfterRetry = (record, replacements) => {
+  const replacedOrders = new Set(replacements.map((row) => row.sourceOrder));
+  const remaining = [];
+  for (const failure of record.failedChunks) {
+    let rangeStart = null;
+    for (let order = failure.startOrder; order <= failure.endOrder + 1; order += 1) {
+      const remainsFailed = order <= failure.endOrder && !replacedOrders.has(order);
+      if (remainsFailed && rangeStart === null) rangeStart = order;
+      if (!remainsFailed && rangeStart !== null) {
+        remaining.push({
+          chunkIndex: remaining.length,
+          startOrder: rangeStart,
+          endOrder: order - 1,
+          errorCode: failure.errorCode,
+        });
+        rangeStart = null;
+      }
+    }
+  }
+  return remaining;
+};
+
 const requireCompleteTranslationResult = (value) => {
   if (!value || value.status !== 'complete'
       || !Array.isArray(value.rows)
@@ -447,6 +485,20 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     await assertRunOwned(context);
   }, [assertRunOwned]);
 
+  const publishPartial = useCallback(async (context, acknowledged, {
+    loaded = false,
+  } = {}) => {
+    const rows = partialRowsForPresentation(acknowledged.record, context.sourceSubtitles);
+    await assertRunOwned(context);
+    setTranslatedSubtitles(rows);
+    await assertRunOwned(context);
+    setLoadedFromCache(loaded);
+    await assertRunOwned(context);
+    // A mixed translated/original projection must never become the editor/export translation.
+    callCompletion(completionRef.current, null);
+    await assertRunOwned(context);
+  }, [assertRunOwned]);
+
   // Hydrate only the exact active project/source. Starting another hydration aborts the old one.
   useEffect(() => {
     pendingHydrationRef.current = false;
@@ -511,6 +563,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
           lease,
         });
         if (record.status === 'partial') {
+          await publishPartial(context, { record }, { loaded: true });
           await assertRunOwned(context);
           setTranslationStatus(t(
             'translation.partialResult',
@@ -540,6 +593,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   }, [
     assertRunOwned,
     publishComplete,
+    publishPartial,
     releaseLease,
     renderedCacheId,
     renderedSourcePayload,
@@ -785,7 +839,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
             partialResult.deliveries
           );
           await assertRunOwned(context);
-          setTranslatedSubtitles(null);
+          await publishPartial(context, acknowledged);
           await assertRunOwned(context);
           setTranslationStatus(t(
             'translation.partialResult',
@@ -843,6 +897,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     handleBulkTranslate,
     includeRules,
     publishComplete,
+    publishPartial,
     releaseLease,
     restTime,
     selectedModel,
@@ -927,7 +982,8 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       await assertRunOwned(context);
       const record = await readTranslationForIdentity(context.identity);
       await assertRunOwned(context);
-      if (record?.status !== 'complete' || record.sourceFingerprint !== context.sourceFingerprint
+      if ((record?.status !== 'complete' && record?.status !== 'partial')
+          || record.sourceFingerprint !== context.sourceFingerprint
           || record.revision !== revision.revision) {
         throw new Error('The durable translation changed before retry');
       }
@@ -974,14 +1030,18 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
           || requestedIds.some((id) => !replacement.has(id))) {
         throw new Error('Retry result lost its original subtitle identity');
       }
-      const rows = record.baseSubtitles.map((row) => replacement.get(row.originalId) ?? row);
+      const rows = [...record.baseSubtitles.filter((row) => !replacement.has(row.originalId)),
+        ...translationResult.rows].sort((left, right) => left.sourceOrder - right.sourceOrder);
+      const failures = failuresAfterRetry(record, translationResult.rows);
+      const nextStatus = failures.length === 0 ? 'complete' : 'partial';
       const terminal = buildTerminal({
         sourceFingerprint: context.sourceFingerprint,
         sourceEntryCount: context.sourceSubtitles.length,
         languageChain: record.languageChain,
         model: record.model,
-        status: 'complete',
+        status: nextStatus,
         rows,
+        failures,
       });
       assertTranslationTerminalMatchesSource(terminal, context.sourceSubtitles);
       await assertRunOwned(context);
@@ -990,19 +1050,29 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
       const acknowledged = assertTranslationPersistenceReceipt(receipt, context.identity, {
         revision: record.revision + 1,
         sourceFingerprint: context.sourceFingerprint,
-        status: 'complete',
+        status: nextStatus,
       });
       await assertRunOwned(context);
       const deliveryAcknowledgement = await acknowledgePersistedDeliveries(
         translationResult.deliveries
       );
       await assertRunOwned(context);
-      await publishComplete(context, acknowledged);
+      if (nextStatus === 'complete') {
+        await publishComplete(context, acknowledged);
+      } else {
+        await publishPartial(context, acknowledged);
+      }
       await assertRunOwned(context);
-      setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
+      setTranslationStatus(nextStatus === 'complete'
+        ? t('translation.translationComplete', 'Translation complete')
+        : t(
+          'translation.partialResult',
+          'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
+          { count: failures.length }
+        ));
       await assertRunOwned(context);
       return {
-        status: 'complete',
+        status: nextStatus,
         receipt,
         pendingDeliveryCount: deliveryAcknowledgement.pending,
       };
@@ -1035,6 +1105,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     customTranslationPrompt,
     includeRules,
     publishComplete,
+    publishPartial,
     releaseLease,
     t,
   ]);

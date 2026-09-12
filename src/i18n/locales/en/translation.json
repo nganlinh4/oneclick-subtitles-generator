@@ -44,6 +44,7 @@
   "splittingSubtitles": "Splitting {{count}} subtitles into {{duration}} minute chunks",
   "splitComplete": "Split {{count}} subtitles into {{chunks}} chunks complete",
   "translatingChunk": "Translating chunk {{current}}/{{total}} ({{count}} subtitles)",
+  "failedOriginalShown": "Translation failed — original text shown",
   "translationComplete": "All {{count}} chunks translated successfully",
   "formattingSubtitles": "Formatting {{count}} subtitles",
   "formattingComplete": "Formatting complete",

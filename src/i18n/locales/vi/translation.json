@@ -44,6 +44,7 @@
   "splittingSubtitles": "Đang chia {{count}} phụ đề thành các phần {{duration}} phút",
   "splitComplete": "Đã chia {{count}} phụ đề thành {{chunks}} phần",
   "translatingChunk": "Đang dịch phần {{current}}/{{total}} với {{count}} phụ đề",
+  "failedOriginalShown": "Dịch thất bại — đang hiển thị văn bản gốc",
   "translationComplete": "Đã hoàn thành dịch tất cả {{count}} phần",
   "formattingSubtitles": "Đang định dạng {{count}} phụ đề",
   "formattingComplete": "Định dạng hoàn tất",
