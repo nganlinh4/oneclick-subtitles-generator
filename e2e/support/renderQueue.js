@@ -160,6 +160,11 @@ export const chooseRenderSetting = async (dropdownIndex, optionIndex, expectedPr
     timeout: 30_000,
     timeoutMsg: `render dropdown ${dropdownIndex} never became clickable`,
   });
+  const currentLabel = (await button.$('.dropdown-value').getText()).trim().replace(/\s+/g, ' ');
+  // Re-selecting the current row is not a customer action and races the dropdown's morph animation.
+  // Read the public value first so persistence journeys remain deterministic when their requested
+  // setting is already the project default.
+  if (currentLabel.startsWith(expectedPrefix)) return currentLabel;
   await button.click();
   const menu = await $('.custom-dropdown-clipper');
   await menu.waitForDisplayed({
