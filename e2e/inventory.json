@@ -713,9 +713,11 @@
         "one redacted native concurrency receipt proving configured workers and observed overlap"
       ],
       "runsAgainst": "e2e-binary with live Gemini credentials",
-      "status": "unproven",
+      "status": "green",
       "evidenceWorkflow": "gemini-narration-generation",
-      "note": "The journey and safe concurrency receipt exist, but this entry remains unproven until a real provider run writes a retained success receipt. Unit tests and package availability do not satisfy this claim."
+      "attemptId": "20260913001905169-25152-10e6f538",
+      "binaryDigest": "fcdf51fcd4c0cb3048987cc9a2f0e6c793beec03e27ab5bcaa663566e89be824",
+      "note": "Green 2026-09-13 against commit 5f271309. The clean hidden app enrolled three real credentials through Settings, selected concurrency 3, automatically prepared Gemini TTS, and generated three durable WAV artifacts. Independent FFmpeg probes measured 2.28s/109,484 bytes, 3.12s/149,804 bytes, and 2.56s/122,924 bytes; all were non-silent. The redacted native receipt recorded configured=3, workers=3, observedPeak=3. Two prior attempts found shipping UI defects (missing method identity and missing result lifecycle metadata), and a third rejected an MP3-only oracle assumption; none were hidden or reclassified as product success."
     },
     {
       "name": "narrationAlignment",
