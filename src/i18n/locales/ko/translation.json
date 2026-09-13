@@ -110,6 +110,7 @@
     "subtitleCount": "자막 {{count}}개",
     "noFiles": "일괄 번역을 위해 추가된 파일이 없습니다",
     "processing": "파일 처리 중 {{current}}/{{total}}: {{filename}}",
+    "processingParallel": "{{current}}/{{total}}개 파일 번역됨",
     "complete": "일괄 번역 완료: {{success}}/{{total}} 파일이 성공적으로 처리되었습니다",
     "completeWithMain": "일괄 파일 완료: {{success}}/{{bulkTotal}} 일괄 파일 처리됨, 메인 파일 다음 ({{current}}/{{total}} 전체)",
     "allFailed": "일괄 번역 실패: 번역된 파일이 없습니다",

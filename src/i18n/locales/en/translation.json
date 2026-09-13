@@ -110,6 +110,7 @@
     "subtitleCount": "{{count}} subtitles",
     "noFiles": "No files added for bulk translation",
     "processing": "Processing file {{current}}/{{total}}: {{filename}}",
+    "processingParallel": "Translated {{current}}/{{total}} files",
     "complete": "Bulk translation complete: {{success}}/{{total}} files processed successfully",
     "completeWithMain": "Bulk files complete: {{success}}/{{bulkTotal}} bulk files processed, main file next ({{current}}/{{total}} total)",
     "allFailed": "Bulk translation failed: no files were translated",

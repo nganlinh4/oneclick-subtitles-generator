@@ -110,6 +110,7 @@
     "subtitleCount": "{{count}} phụ đề",
     "noFiles": "Không có tệp nào được thêm để dịch hàng loạt",
     "processing": "Đang xử lý tệp {{current}}/{{total}}: {{filename}}",
+    "processingParallel": "Đã dịch {{current}}/{{total}} tệp",
     "complete": "Dịch hàng loạt hoàn thành: {{success}}/{{total}} tệp được xử lý thành công",
     "completeWithMain": "Tệp hàng loạt hoàn thành: {{success}}/{{bulkTotal}} tệp hàng loạt đã xử lý, tệp chính tiếp theo ({{current}}/{{total}} tổng)",
     "allFailed": "Dịch hàng loạt thất bại: không có tệp nào được dịch",
