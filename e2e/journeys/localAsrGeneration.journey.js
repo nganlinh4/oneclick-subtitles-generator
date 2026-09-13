@@ -19,13 +19,13 @@ const WORKFLOW = 'local-asr-generation';
 /* global $, browser, describe, document, it */
 
 describe('a customer generates subtitles with local ASR', () => {
-  it('installs and starts the real engine, transcribes real media, persists and draws the cues', async () => {
+  it('installs the real engine, starts it on demand, transcribes real media, persists and draws the cues', async () => {
     await openProjectWithMedia();
     await ensureEngineReady(ENGINE, {
       onReady: async (state) => captureWorkflowStep({
         workflow: WORKFLOW,
         step: '01-engine-ready',
-        description: 'The reviewed local ASR engine is visibly installed, running, and ready.',
+        description: 'The reviewed local ASR engine is visibly installed and available on demand.',
         details: state,
       }),
     });

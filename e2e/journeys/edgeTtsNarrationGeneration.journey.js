@@ -29,7 +29,7 @@ describe('a customer generates narration with the Edge TTS provider', () => {
       onReady: async (state) => captureWorkflowStep({
         workflow: WORKFLOW,
         step: '01-engine-ready',
-        description: 'The reviewed Edge TTS package is visibly installed, running, and ready.',
+        description: 'The reviewed Edge TTS package is visibly installed and available on demand.',
         details: { ...state, proofClass: 'network-dependent Edge TTS provider proof' },
       }),
     });

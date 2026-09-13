@@ -106,7 +106,9 @@ export const ensureEngineReady = async (id, {
     }
     await clickControl(`${selector} .engine-card__btn`);
     last = await waitForEngineState(id, state => (
-      state?.state === 'installed-stopped' || state?.state === 'ready'
+      state?.state === 'installed-on-demand'
+        || state?.state === 'installed-stopped'
+        || state?.state === 'ready'
     ), {
       timeout: ENGINE_TIMEOUT_MS,
       interval: 2_000,
@@ -123,7 +125,10 @@ export const ensureEngineReady = async (id, {
     });
   }
 
-  if (last.state !== 'ready') {
+  // Current engines own their process lifecycle. `installed-on-demand` is therefore runnable: the
+  // customer action under test must start it, and cancelling that action must not leave a manual
+  // Start/Stop prerequisite behind. `installed-stopped` is retained only for old package catalogs.
+  if (last.state !== 'ready' && last.state !== 'installed-on-demand') {
     throw new Error(`${id} is not runnable: ${JSON.stringify(last)}`);
   }
   await onReady(last);

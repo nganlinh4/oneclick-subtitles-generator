@@ -202,7 +202,7 @@ describe('a customer toggles the narration mix on the same rendered project', ()
       onReady: async (state) => captureWorkflowStep({
         workflow: WORKFLOW,
         step: '03-engine-ready',
-        description: 'The reviewed gTTS package is visibly installed, running, and ready.',
+        description: 'The reviewed gTTS package is visibly installed and available on demand.',
         details: { ...state, proofClass: 'network-dependent gTTS provider smoke' },
       }),
     });
