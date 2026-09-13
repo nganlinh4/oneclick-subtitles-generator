@@ -186,7 +186,10 @@ export const clickControl = async (selector, { timeout = 30_000 } = {}) => {
     const scrolled = await browser.execute((target) => {
       const node = document.querySelector(target);
       if (node === null) return false;
-      node.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+      // `nearest` is allowed to preserve an ancestor's current scroll position even when a
+      // transformed descendant's hit point remains outside the WebView viewport. Centering is
+      // deterministic and is only used for controls already proven to be off-screen.
+      node.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
       return true;
     }, selector);
     if (!scrolled) throw new Error(`${selector} disappeared before it could be scrolled into view`);
