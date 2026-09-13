@@ -757,6 +757,55 @@ fn stress_test_merge_cues_comprehensive_boundaries() {
     assert_eq!(final_cue.end_ms, 1500);
 }
 
+fn assert_word_cannot_belong_to_multiple_turns(
+    rev_id: TranscriptRevisionId,
+    w1: &TimedWord,
+    w2: &TimedWord,
+) {
+    let t_dup1 = TranscriptTurn::restore(
+        TurnId::new(),
+        rev_id,
+        1,
+        None,
+        100,
+        200,
+        "w1".into(),
+        vec![w1.id()],
+    )
+    .unwrap();
+    let t_dup2 = TranscriptTurn::restore(
+        TurnId::new(),
+        rev_id,
+        2,
+        None,
+        100,
+        300,
+        "w1 w2".into(),
+        vec![w1.id(), w2.id()],
+    )
+    .unwrap();
+
+    let result = TranscriptRevision::restore(
+        rev_id,
+        ProjectId::new(),
+        None,
+        0,
+        1000,
+        "gemini".into(),
+        "gemini-3.5-transcribe".into(),
+        1,
+        CompletionState::Completed,
+        "fp".into(),
+        1000,
+        vec![w1.clone(), w2.clone()],
+        vec![t_dup1, t_dup2],
+    );
+    assert!(matches!(
+        result,
+        Err(TranscriptError::WordInMultipleTurns(_))
+    ));
+}
+
 #[test]
 fn stress_test_restore_validation_boundary_conditions() {
     let rev_id = TranscriptRevisionId::new();
@@ -828,49 +877,8 @@ fn stress_test_restore_validation_boundary_conditions() {
         Err(TranscriptError::UnsortedWords { .. })
     ));
 
-    // 3. Word referenced in multiple turns rejected:
-    let t_dup1 = TranscriptTurn::restore(
-        TurnId::new(),
-        rev_id,
-        1,
-        None,
-        100,
-        200,
-        "w1".into(),
-        vec![w1.id()],
-    )
-    .unwrap();
-    let t_dup2 = TranscriptTurn::restore(
-        TurnId::new(),
-        rev_id,
-        2,
-        None,
-        100,
-        300,
-        "w1 w2".into(),
-        vec![w1.id(), w2.id()], // w1 claimed again!
-    )
-    .unwrap();
-
-    let res_multi_turn = TranscriptRevision::restore(
-        rev_id,
-        ProjectId::new(),
-        None,
-        0,
-        1000,
-        "gemini".into(),
-        "gemini-3.5-transcribe".into(),
-        1,
-        CompletionState::Completed,
-        "fp".into(),
-        1000,
-        vec![w1.clone(), w2.clone()],
-        vec![t_dup1, t_dup2],
-    );
-    assert!(matches!(
-        res_multi_turn,
-        Err(TranscriptError::WordInMultipleTurns(_))
-    ));
+    // 3. A word referenced in multiple turns is rejected.
+    assert_word_cannot_belong_to_multiple_turns(rev_id, &w1, &w2);
 }
 
 #[test]
