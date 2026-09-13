@@ -38,6 +38,17 @@ const rowCases = [
   ['failed', { subtitle_id: 3, text: 'Failed', success: false, pending: false }, 'Retry generation'],
 ];
 
+it.each([
+  ['succeeded', rowCases[0][1]],
+  ['pending', rowCases[1][1]],
+  ['failed', rowCases[2][1]],
+])('publishes the shared %s narration result state', (state, item) => {
+  const { container } = render(
+    <GeminiResultRow index={0} style={{}} data={makeData(item, { isServiceAvailable: true })} />
+  );
+  expect(container.firstChild).toHaveAttribute('data-narration-result-state', state);
+});
+
 it.each(rowCases)('blocks the %s row action after Gemini becomes unavailable', (_name, item) => {
   const data = makeData(item, { isServiceAvailable: false });
   render(<GeminiResultRow index={0} style={{}} data={data} />);

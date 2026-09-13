@@ -45,6 +45,7 @@ const GeminiResultRow = ({ index, style, data }) => {
   return (
     <div
       style={style}
+      data-narration-result-state={item.success ? 'succeeded' : item.pending ? 'pending' : 'failed'}
       className={`result-item
         ${item.success ? 'success' : 'failed'}
         ${item.pending ? 'pending' : ''}
