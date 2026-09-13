@@ -20,6 +20,7 @@ test('Gemini narration uses public credential enrollment and the visible concurr
   assert.match(source, /enrollGeminiCredentials\(\{ limit: CONCURRENCY \}\)/u);
   assert.match(source, /selector: '#gemini-concurrent-clients'/u);
   assert.match(source, /method: 'gemini'/u);
+  assert.match(source, /expectedFormat: 'wav'/u);
   assert.doesNotMatch(source, /GEMINI_API_KEY/u);
   assert.match(section, /<GenerateButton\s+\n?\s*narrationMethod="gemini"/u);
   assert.match(resultRow, /data-narration-result-state=/u);

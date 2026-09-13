@@ -21,6 +21,14 @@ const looksLikeMp3 = (bytes) => (
   && ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)
     || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0))
 );
+const looksLikeWav = (bytes) => (
+  bytes.length >= 12
+  && bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+  && bytes.subarray(8, 12).toString('ascii') === 'WAVE'
+);
+const hasExpectedSignature = (bytes, format) => (
+  format === 'mp3' ? looksLikeMp3(bytes) : format === 'wav' ? looksLikeWav(bytes) : false
+);
 
 async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
   try {
@@ -42,6 +50,7 @@ export const runProviderNarrationGeneration = async ({
   method,
   workflow,
   providerLabel,
+  expectedFormat = 'mp3',
   timeoutMs = 300_000,
   prepare = async () => {},
   afterGeneration = async () => ({}),
@@ -137,8 +146,8 @@ export const runProviderNarrationGeneration = async ({
     assert.equal(statSync(path).size, binding.artifact.size_bytes, (
       `artifact size disagrees with SQLite: ${binding.artifact.relative_path}`
     ));
-    assert.equal(looksLikeMp3(readFileSync(path).subarray(0, 3)), true, (
-      `${method} narration artifact is not MP3 audio: ${binding.artifact.relative_path}`
+    assert.equal(hasExpectedSignature(readFileSync(path).subarray(0, 12), expectedFormat), true, (
+      `${method} narration artifact is not ${expectedFormat.toUpperCase()} audio: ${binding.artifact.relative_path}`
     ));
     const probe = probeMedia(path);
     const audioStreams = probe.streams.filter(({ codec_type: type }) => type === 'audio');
@@ -159,6 +168,7 @@ export const runProviderNarrationGeneration = async ({
       artifactId: binding.artifact.id,
       bytes: binding.artifact.size_bytes,
       durationSeconds,
+      format: expectedFormat,
       meanVolumeDb: signal.meanVolumeDb,
       peakVolumeDb: signal.peakVolumeDb,
     }));

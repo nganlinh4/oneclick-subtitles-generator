@@ -41,6 +41,7 @@ describe('a customer generates narration with Gemini TTS', () => {
       method: 'gemini',
       workflow: WORKFLOW,
       providerLabel: 'Gemini TTS',
+      expectedFormat: 'wav',
       timeoutMs: 900_000,
       prepare: async () => {
         const range = await actuateNativeRange({

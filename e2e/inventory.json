@@ -704,12 +704,12 @@
         "select Gemini narration and set its visible concurrency control to three",
         "let the product install and start Gemini TTS on demand",
         "synthesize three cues concurrently through three distinct provider workers",
-        "publish one project-owned durable MP3 artifact for every cue"
+        "publish one project-owned durable WAV artifact for every cue"
       ],
       "oracles": [
         "visible per-cue narration result state",
         "the application's own SQLite jobs and artifact ownership, read only",
-        "independent FFmpeg decoding and non-silence measurement of every MP3",
+        "independent FFmpeg decoding and non-silence measurement of every WAV",
         "one redacted native concurrency receipt proving configured workers and observed overlap"
       ],
       "runsAgainst": "e2e-binary with live Gemini credentials",

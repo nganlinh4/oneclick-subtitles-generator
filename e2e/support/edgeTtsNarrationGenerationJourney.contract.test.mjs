@@ -30,7 +30,7 @@ test('generation cannot pass on partial cues before its owned native batch succe
 });
 
 test('every cue artifact is independently re-decoded, not merely trusted from SQLite', () => {
-  assert.match(shared, /looksLikeMp3\(readFileSync\(path\)\.subarray\(0, 3\)\)/u);
+  assert.match(shared, /hasExpectedSignature\(readFileSync\(path\)\.subarray\(0, 12\), expectedFormat\)/u);
   assert.match(shared, /probeMedia\(path\)/u);
   assert.match(shared, /measureAudioSignal\(path\)/u);
   assert.match(shared, /peakVolumeDb > -50/u);
