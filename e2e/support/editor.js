@@ -190,6 +190,14 @@ export const clickControl = async (selector, { timeout = 30_000 } = {}) => {
       // transformed descendant's hit point remains outside the WebView viewport. Centering is
       // deterministic and is only used for controls already proven to be off-screen.
       node.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+      const rect = node.getBoundingClientRect();
+      const centreY = rect.top + rect.height / 2;
+      if (centreY < 0 || centreY >= window.innerHeight) {
+        // Chromium can ignore scrollIntoView while a previous scripted scroll animation still
+        // owns the document. An explicit scroll delta models the user's wheel movement and
+        // guarantees that the requested hit point, rather than merely its layout box, is visible.
+        window.scrollBy({ top: centreY - window.innerHeight / 2, behavior: 'instant' });
+      }
       return true;
     }, selector);
     if (!scrolled) throw new Error(`${selector} disappeared before it could be scrolled into view`);
