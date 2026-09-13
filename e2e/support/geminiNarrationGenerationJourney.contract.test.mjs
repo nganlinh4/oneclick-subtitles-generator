@@ -28,6 +28,7 @@ test('Gemini narration uses public credential enrollment and the visible concurr
 
 test('Gemini narration proves real overlap and distinct workers without exposing their identities', () => {
   assert.match(source, /speech\.concurrency_observed/u);
+  assert.match(source, /sameIdentifier\(job, generation\.job\.id\)/u);
   assert.match(source, /workers: CONCURRENCY/u);
   assert.match(source, /observedPeak: CONCURRENCY/u);
   assert.doesNotMatch(source, /credentialId/u);

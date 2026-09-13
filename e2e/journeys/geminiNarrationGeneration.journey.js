@@ -21,6 +21,9 @@ const diagnostics = (root) => readFileSync(join(root, 'logs', 'osg.log'), 'utf8'
   .split(/\r?\n/u)
   .filter(Boolean)
   .map((line) => JSON.parse(line));
+const sameIdentifier = (left, right) => (
+  String(left).replaceAll('-', '').toLowerCase() === String(right).replaceAll('-', '').toLowerCase()
+);
 
 describe('a customer generates narration with Gemini TTS', () => {
   it('auto-prepares the engine and really synthesizes cues across the requested key pool', async () => {
@@ -61,7 +64,7 @@ describe('a customer generates narration with Gemini TTS', () => {
       },
       afterGeneration: async ({ generation }) => {
         const observed = diagnostics(root).filter(({ event, job }) => (
-          event === 'speech.concurrency_observed' && job === generation.job.id
+          event === 'speech.concurrency_observed' && sameIdentifier(job, generation.job.id)
         ));
         assert.equal(observed.length, 1, 'Gemini narration has no single concurrency receipt');
         const [receipt] = observed;
