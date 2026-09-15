@@ -33,6 +33,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'nativeExportDecoded.journey.js',
   'providerBoundaries.journey.js',
   'reconnaissance.journey.js',
+  'responsiveVisualAudit.journey.js',
   'referenceVoiceAndPerCueNarration.journey.js',
   'renderAudioNarrationMix.journey.js',
   'renderCancelRetryExport.journey.js',
