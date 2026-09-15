@@ -116,8 +116,10 @@ describe('visual survey across real appearance settings', () => {
     await capture('vi-enlarged-model-selected', '.video-processing-modal');
     await clickControl('#generation-model');
     await browser.keys('Escape');
+    await $('[role="listbox"]').waitForExist({ reverse: true });
     assert.equal(await $('.video-processing-modal').isDisplayed(), true);
     await browser.keys('Escape');
+    await $('.video-processing-modal').waitForExist({ reverse: true });
     await clickControl('[data-app-action="open-settings"]');
     for (let index = 0; index < 4; index += 1) {
       const before = await $('.app-ui-scale output').getText();
@@ -129,6 +131,7 @@ describe('visual survey across real appearance settings', () => {
     await clickControl('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button');
     await capture('vi-small-footer-menu', '.custom-dropdown-clipper');
     await browser.keys('Escape');
+    await $('[role="listbox"]').waitForExist({ reverse: true });
     await clickControl('[data-settings-action="close"]');
     await $('.settings-modal').waitForExist({ reverse: true });
     await capture('vi-small-editor', '.video-preview');
