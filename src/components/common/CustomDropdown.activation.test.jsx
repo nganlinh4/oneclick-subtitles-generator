@@ -26,8 +26,22 @@ describe('CustomDropdown option activation', () => {
     });
   });
   afterEach(() => {
+    document.documentElement.style.removeProperty('zoom');
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it.each([80, 100, 120])('anchors its portal in layout pixels at UI scale %s%%', (percent) => {
+    const scale = percent / 100;
+    document.documentElement.style.zoom = `${percent}%`;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 600 * scale, top: 200 * scale, width: 120 * scale, height: 42 * scale,
+      right: 720 * scale, bottom: 242 * scale,
+    });
+    render(<CustomDropdown value={700} onChange={vi.fn()} options={OPTIONS} ariaLabel="Font weight" />);
+    openDropdown();
+    expect(document.querySelector('.custom-dropdown-clipper').style.left).toBe('600px');
   });
 
   it('commits semantic click and keyboard-style activation without a preceding pointer gesture', () => {

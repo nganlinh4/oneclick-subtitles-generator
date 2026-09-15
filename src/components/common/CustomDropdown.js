@@ -5,6 +5,18 @@ import { createDropdownScrollbar } from './dropdownScrollbar';
 
 import '../../styles/common/CustomDropdown.css';
 
+// Portals inherit the root UI zoom. Fixed-position CSS and animation offsets
+// therefore need layout pixels, not the zoomed viewport coordinates of DOMRects.
+const rootUiScale = () => {
+  const zoom = getComputedStyle(document.documentElement).zoom || '1';
+  return (parseFloat(zoom) / (zoom.endsWith('%') ? 100 : 1)) || 1;
+};
+const layoutRect = (element, scale) => {
+  const rect = element.getBoundingClientRect();
+  return { left: rect.left / scale, top: rect.top / scale,
+    width: rect.width / scale, height: rect.height / scale };
+};
+
 const CustomDropdown = ({
   value,
   onChange,
@@ -172,13 +184,15 @@ const CustomDropdown = ({
         });
       }
     }
-    const buttonRect = dropdownRef.current.getBoundingClientRect();
+    const scale = rootUiScale();
+    const buttonRect = layoutRect(dropdownRef.current, scale);
+    const viewportWidth = window.innerWidth / scale;
     if (maxOptionWidth === 0) maxOptionWidth = Math.max(buttonRect.width, 200); else maxOptionWidth += 32;
-    const availableWidth = window.innerWidth - buttonRect.left - 8;
+    const availableWidth = viewportWidth - buttonRect.left - 8;
     if (maxOptionWidth > availableWidth) maxOptionWidth = availableWidth;
     const borderCompensation = 2, menuPadding = 4, extraBuffer = 2, maxMenuHeight = 400, spacing = 4;
     const centerY = buttonRect.top + buttonRect.height / 2;
-    const viewportHeight = window.innerHeight;
+    const viewportHeight = window.innerHeight / scale;
     const selectedIndex = Math.max(0, options.findIndex(o => o.value === value));
     const spaceAbove = centerY - spacing; const spaceBelow = viewportHeight - centerY - spacing;
     const maxUp = Math.floor(spaceAbove / optionHeight); const maxDown = Math.floor(spaceBelow / optionHeight);
@@ -199,8 +213,8 @@ const CustomDropdown = ({
     const topPosition = centerY - (upCount + 0.5) * optionHeight;
     const revealMode = (upCount === 0 && downCount > 0) ? 'down' : (downCount === 0 && upCount > 0) ? 'up' : 'center';
     let leftPosition = buttonRect.left;
-    if (leftPosition + maxOptionWidth > window.innerWidth - spacing) {
-      leftPosition = Math.max(spacing, window.innerWidth - maxOptionWidth - spacing);
+    if (leftPosition + maxOptionWidth > viewportWidth - spacing) {
+      leftPosition = Math.max(spacing, viewportWidth - maxOptionWidth - spacing);
     }
     setDropdownPosition({
       top: Math.max(spacing, Math.min(topPosition, viewportHeight - menuHeight - spacing)), left: leftPosition,
@@ -355,9 +369,10 @@ const CustomDropdown = ({
     menuRef.current.classList.add('is-closing-with-selection');
     dropdownRef.current.classList.add('is-animating-selection');
 
-    const selectedRect = selectedBtn.getBoundingClientRect();
-    const buttonRect = dropdownRef.current.getBoundingClientRect();
-    const menuRect = menuRef.current.getBoundingClientRect();
+    const scale = rootUiScale();
+    const selectedRect = layoutRect(selectedBtn, scale);
+    const buttonRect = layoutRect(dropdownRef.current, scale);
+    const menuRect = layoutRect(menuRef.current, scale);
 
     // THIS IS THE FIX: Calculate translation based on the item's position, not the menu's.
     const translateX = buttonRect.left - selectedRect.left;

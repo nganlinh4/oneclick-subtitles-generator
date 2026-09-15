@@ -22,7 +22,7 @@ async function capture(step, focusSelector) {
         const node = document.querySelector(target);
         if (!node) return { target, absent: true };
         const style = getComputedStyle(node);
-        return { target, background: style.backgroundColor, color: style.color,
+        return { target, background: style.backgroundColor, color: style.color, fontFamily: style.fontFamily,
           surface: style.getPropertyValue('--md-surface'), mask: style.maskImage,
           animations: node.getAnimations().map(animation => ({ state: animation.playState, frames: animation.effect.getKeyframes() })) };
       }),
@@ -67,6 +67,8 @@ describe('visual survey across real appearance settings', () => {
     await clickControl('.settings-footer-controls .theme-toggle');
     await clickControl('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button');
     await clickControl('[role="option"][data-value="google-sans"]');
+    await browser.waitUntil(async () =>
+      (await $('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button').getAttribute('data-value')) === 'google-sans');
     await clickControl(languageButton);
     const options = await $$('[role="option"]');
     for (const option of options) {
@@ -108,8 +110,27 @@ describe('visual survey across real appearance settings', () => {
     });
     assert.ok(anchor.menuLeft <= anchor.buttonLeft + 3 && anchor.menuRight <= anchor.viewport,
       `enlarged model menu drifted away from its control: ${JSON.stringify(anchor)}`);
+    await clickControl('[role="option"][data-value="gemini-3.8-flash"]');
+    await browser.waitUntil(async () => (await $('#generation-model').getAttribute('data-value')) === 'gemini-3.8-flash');
+    await $('[role="listbox"]').waitForExist({ reverse: true });
+    await capture('vi-enlarged-model-selected', '.video-processing-modal');
+    await clickControl('#generation-model');
     await browser.keys('Escape');
     assert.equal(await $('.video-processing-modal').isDisplayed(), true);
     await browser.keys('Escape');
+    await clickControl('[data-app-action="open-settings"]');
+    for (let index = 0; index < 4; index += 1) {
+      const before = await $('.app-ui-scale output').getText();
+      await clickControl('.settings-footer .app-ui-scale button:first-child');
+      await browser.waitUntil(async () => (await $('.app-ui-scale output').getText()) !== before);
+    }
+    assert.match(await $('.app-ui-scale output').getText(), /80%/);
+    await capture('vi-small-settings', '.settings-modal');
+    await clickControl('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button');
+    await capture('vi-small-footer-menu', '.custom-dropdown-clipper');
+    await browser.keys('Escape');
+    await clickControl('[data-settings-action="close"]');
+    await $('.settings-modal').waitForExist({ reverse: true });
+    await capture('vi-small-editor', '.video-preview');
   });
 });
