@@ -249,16 +249,8 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     await downloadModal.waitForDisplayed({ timeout: 30_000, timeoutMsg: 'the Download Center modal never opened' });
     await clickTabLabelled('.download-tabs', 'Process Text'); // consolidate active by default
 
-    // Split Duration is entirely local chunk-count arithmetic (no provider call) -- a genuinely
-    // credential-free customer control, proven positively before it is reset for the clean
-    // (unsplit) refusal path below. GROUND TRUTH: a NONZERO split duration takes
-    // src/services/gemini/consolidationService.js's completeDocumentByChunks path, which CATCHES
-    // each chunk's NativeGeminiError internally and resolves a `{status:'refused'|'partial'}`
-    // object instead of throwing -- LyricsDisplay.js's handleProcess then only updates the inline
-    // `.consolidation-status` line and returns without re-throwing, so DownloadOptionsModal never
-    // shows a toast for that path. This journey deliberately keeps Split Duration at its default
-    // (0, "No Split") for the toast-based refusal assertions below, which is the one path that
-    // throws directly and produces the actionable toast this journey checks.
+    // Exercise both rejection and incomplete-result paths. Both must retire
+    // processing notifications and leave one error toast without saving output.
     const splitSlider = '#consolidation-split-duration-slider';
     await actuateNativeRange({ driver: browser, selector: splitSlider, value: 5, label: 'consolidation-split-duration-slider' });
     const splitLabel = await browser.execute(() => document.querySelector('.split-duration-slider-container .slider-value-display')?.textContent ?? null);
@@ -272,7 +264,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       focusSelector: '.download-options-modal',
     });
 
-    const runDocumentRefusal = async (stepName, description) => {
+    const runDocumentRefusal = async (stepName, description, expectedMessage = NATIVE_GEMINI_REFUSAL_MESSAGE) => {
       const before = durableState(root);
       const beforeArtifacts = before.counts.artifacts;
       await clickControl('.process-button');
@@ -288,8 +280,20 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       });
       const after = durableState(root);
       await assertCleanTextRefusal({
-        toasts, expectedMessage: NATIVE_GEMINI_REFUSAL_MESSAGE, before, after, label: stepName,
+        toasts, expectedMessage, before, after, label: stepName,
       });
+      await browser.waitUntil(() => browser.execute(() =>
+        document.querySelectorAll('.toast-item.live .toast.toast-info').length === 0),
+      { timeout: 5000, timeoutMsg: 'document failure left its processing toast alive' });
+      const footer = await browser.execute(() => {
+        const root = document.querySelector('.download-options-modal').getBoundingClientRect();
+        return [...document.querySelectorAll('.download-options-modal > .modal-footer button')].map(button => {
+          const rect = button.getBoundingClientRect();
+          return { top: rect.top, bottomGap: root.bottom - rect.bottom, rightGap: root.right - rect.right };
+        });
+      });
+      assert.ok(footer.every(button => button.bottomGap >= 12 && button.rightGap >= 12), 'footer actions touch the modal edge');
+      assert.ok(Math.abs(footer[0].top - footer[1].top) <= 2, 'desktop footer actions are unexpectedly stacked');
       assert.equal(after.counts.artifacts, beforeArtifacts, `${stepName}: a missing credential produced a durable document artifact`);
       await captureWorkflowStep({
         workflow: WORKFLOW,
@@ -314,6 +318,11 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       '04-document-consolidate-refused',
       'Complete Document processing refuses through one bounded, actionable toast, with no durable artifact and no provider job.',
     );
+    await actuateNativeRange({ driver: browser, selector: splitSlider, value: 5, label: 'split document refusal' });
+    await runDocumentRefusal('04b-split-document-refused',
+      'A split request reports one incomplete-result error and retires progress without saving an artifact.',
+      'Error processing document: No usable output was returned. Retry the document.');
+    await actuateNativeRange({ driver: browser, selector: splitSlider, value: 0, label: 'restore unsplit document control' });
     await clickTabLabelled('.process-tabs', 'Summarize (TXT)');
     await runDocumentRefusal(
       '05-document-summarize-refused',
@@ -370,8 +379,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
 
     // ================================================================================
     // PART D -- Gemini background image generation: the lyrics-to-prompt call refuses through
-    // its generic fallback toast (its friendly-error matcher does not recognize this raw
-    // message), leaving no generated prompt/image state and both image-generate buttons
+    // its missing-credential toast, leaving no generated prompt/image state and both image-generate buttons
     // honestly disabled because they still require a prompt this refusal never produced.
     // ================================================================================
     await clickControl('.background-generator-container .collapse-button');
@@ -397,7 +405,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     });
     const afterD = durableState(root);
     await assertCleanTextRefusal({
-      toasts: refusalD, expectedMessage: 'Generation failed', before: beforeD, after: afterD, label: 'background prompt generation',
+      toasts: refusalD, expectedMessage: 'Gemini API key not set. Please set it in settings.', before: beforeD, after: afterD, label: 'background prompt generation',
     });
     assert.equal(afterD.counts.artifacts, beforeD.counts.artifacts, 'a missing credential produced a durable generated-image artifact');
     const generatedPromptValue = await browser.execute(() => document.querySelector('.prompt-container textarea')?.value ?? null);
@@ -411,7 +419,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '07-background-image-prompt-refused',
-      description: 'Background-image prompt generation refuses through its generic fallback toast; no prompt/image is produced and both image-generate buttons remain honestly disabled.',
+      description: 'Background-image prompt generation names the missing credential; no prompt/image is produced and both image-generate buttons remain disabled.',
       details: { errorToasts: refusalD.errorToasts, imageButtonsDisabled },
       focusSelector: '.background-generator-container',
       allowVisibleProblems: {

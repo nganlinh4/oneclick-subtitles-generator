@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { clickControl } from '../support/editor.js';
 import { openProjectWithMedia, importSubtitles } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
+import { selectAlternateDropdownOption } from '../support/settingsAppearance.js';
 
 /* global $, $$, browser, describe, it, document, window, getComputedStyle */
 
@@ -56,6 +57,16 @@ describe('visual survey across real appearance settings', () => {
     await openProjectWithMedia();
     await importSubtitles();
     await clickControl('[data-app-action="open-settings"]');
+    // Repeat the combined theme/font/language transition that looked wrong in
+    // the first visual pass, not merely the easier theme-only transition.
+    await clickControl('[data-settings-tab="about"]');
+    await clickControl('.settings-footer-controls .theme-toggle');
+    await selectAlternateDropdownOption('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button');
+    await selectAlternateDropdownOption(languageButton);
+    await capture('light-about-after-font-and-language-change', '.settings-modal');
+    await clickControl('.settings-footer-controls .theme-toggle');
+    await clickControl('.settings-footer-controls > .app-font-dropdown > .custom-dropdown-button');
+    await clickControl('[role="option"][data-value="google-sans"]');
     await clickControl(languageButton);
     const options = await $$('[role="option"]');
     for (const option of options) {
@@ -79,14 +90,6 @@ describe('visual survey across real appearance settings', () => {
     await clickControl('.settings-footer-controls .theme-toggle');
     await browser.pause(1500);
     await capture('vi-light-about', '.settings-modal');
-    // Diagnostic A/B: preserve the product screenshot first, then isolate the masked layer.
-    await browser.execute(() => {
-      document.querySelector('.settings-modal > .settings-content').style.maskImage = 'none';
-    });
-    await capture('diagnostic-light-about-without-mask', '.settings-modal');
-    await browser.execute(() => {
-      document.querySelector('.settings-modal > .settings-content').style.removeProperty('mask-image');
-    });
     await clickControl('[data-settings-action="close"]');
     await $('.settings-modal').waitForExist({ reverse: true });
     await capture('vi-enlarged-editor', '.video-preview');
@@ -98,6 +101,13 @@ describe('visual survey across real appearance settings', () => {
     await capture('vi-enlarged-generation', '.video-processing-modal');
     await clickControl('#generation-model');
     await capture('vi-enlarged-model-menu', '.custom-dropdown-clipper');
+    const anchor = await browser.execute(() => {
+      const button = document.querySelector('#generation-model').getBoundingClientRect();
+      const menu = document.querySelector('.custom-dropdown-clipper').getBoundingClientRect();
+      return { buttonLeft: button.left, menuLeft: menu.left, menuRight: menu.right, viewport: window.innerWidth };
+    });
+    assert.ok(anchor.menuLeft <= anchor.buttonLeft + 3 && anchor.menuRight <= anchor.viewport,
+      `enlarged model menu drifted away from its control: ${JSON.stringify(anchor)}`);
     await browser.keys('Escape');
     assert.equal(await $('.video-processing-modal').isDisplayed(), true);
     await browser.keys('Escape');

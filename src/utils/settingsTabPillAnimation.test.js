@@ -59,13 +59,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('remeasures the same active tab when translated or re-fonted tab geometry changes', () => {
+it.each([1, 1.2])('remeasures translated or re-fonted tabs in layout pixels at zoom %s', (zoom) => {
   const { activeTab, container, precedingTab } = createTabs();
   let activeGeometry = rect({ left: 120, width: 60 });
   let naturalWidth = 54;
 
-  container.getBoundingClientRect = () => rect({ left: 20, width: 300 });
-  activeTab.getBoundingClientRect = () => activeGeometry;
+  container.getBoundingClientRect = () => rect({ left: 20 * zoom, width: 300 * zoom });
+  activeTab.getBoundingClientRect = () => rect({ left: activeGeometry.left * zoom, width: activeGeometry.width * zoom });
+  Object.defineProperty(activeTab, 'offsetLeft', { get: () => activeGeometry.left - 20 });
+  Object.defineProperty(activeTab, 'offsetWidth', { get: () => activeGeometry.width });
+  Object.defineProperty(container, 'offsetWidth', { get: () => 300 });
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function measure() {
+    return this.classList.contains('settings-tab') && this.parentElement === document.body ? naturalWidth : 0;
+  });
   precedingTab.getBoundingClientRect = () => rect({ left: 30, width: 80 });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function measure() {
     if (this.classList.contains('settings-tab') && this.parentElement === document.body) {

@@ -385,6 +385,10 @@ const LyricsDisplay = ({
       // DownloadOptionsModal owns notification for rejected actions. Reporting
       // here as well shows two different error toasts for the same operation.
       throw error;
+    } finally {
+      // Split requests report progress through events, including partial/refused
+      // results. Every terminal path must retire that long-lived progress toast.
+      window.removeToastByKey?.(CONSOLIDATION_PROGRESS_TOAST_KEY);
     }
   };
 

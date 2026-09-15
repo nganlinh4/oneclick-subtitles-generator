@@ -253,6 +253,15 @@
 }
 
 
+/* Own this footer rather than depending on another modal's stylesheet. */
+.download-options-modal > .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 16px 16px 24px;
+  flex: 0 0 auto;
+}
+
 /* Buttons */
 .cancel-button {
   padding: 8px 16px;

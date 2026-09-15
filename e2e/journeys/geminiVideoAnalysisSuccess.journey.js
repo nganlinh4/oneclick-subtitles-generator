@@ -62,6 +62,16 @@ describe('live Gemini video analysis becomes durable transcription guidance', ()
       'the persisted analysis does not own the succeeded provider job');
     assert.ok(Object.keys(rows[0].transcriptionRules).length > 0,
       'the provider analysis persisted an empty rule object');
+    const footer = await browser.execute(() => {
+      const root = document.querySelector('.rules-editor-modal').getBoundingClientRect();
+      return [...document.querySelectorAll('.rules-editor-modal > .modal-footer button')].map(button => {
+        const rect = button.getBoundingClientRect();
+        return { top: rect.top, bottomGap: root.bottom - rect.bottom, rightGap: root.right - rect.right };
+      });
+    });
+    assert.equal(footer.length, 2);
+    assert.ok(footer.every(button => button.bottomGap >= 12 && button.rightGap >= 12), 'rules footer actions touch the modal edge');
+    assert.ok(Math.abs(footer[0].top - footer[1].top) <= 2, 'rules footer actions are unexpectedly stacked');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-live-analysis-rules',

@@ -35,6 +35,14 @@
   contain: layout;
 }
 
+.rules-editor-modal > .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 16px 16px 24px;
+  flex: 0 0 auto;
+}
+
 .rules-editor-modal.closing {
   transform: scale(0.95) translateY(20px);
   opacity: 0;

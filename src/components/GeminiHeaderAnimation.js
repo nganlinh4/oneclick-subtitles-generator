@@ -275,16 +275,16 @@ const GeminiHeaderAnimation = () => {
     };
 
     const resizeCanvas = () => {
-      const rect = canvas.parentElement.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const effectiveDpr = Math.max(1, dpr);
-      const canvasWidth = Math.max(1, Math.round(rect.width));
-      const canvasHeight = Math.max(1, Math.round(rect.height));
+      // CSS owns the canvas box (100% of the header). Only its backing buffer
+      // is measured here; freezing a viewport width as inline CSS double-scales
+      // it when the user changes the application UI scale.
+      const rect = canvas.getBoundingClientRect();
+      const canvasWidth = Math.max(1, canvas.clientWidth);
+      const canvasHeight = Math.max(1, canvas.clientHeight);
+      const effectiveDpr = Math.max(1, (window.devicePixelRatio || 1) * rect.width / canvasWidth);
 
       canvas.width = canvasWidth * effectiveDpr;
       canvas.height = canvasHeight * effectiveDpr;
-      canvas.style.width = `${canvasWidth}px`;
-      canvas.style.height = `${canvasHeight}px`;
       
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(effectiveDpr, effectiveDpr);
@@ -297,8 +297,8 @@ const GeminiHeaderAnimation = () => {
     
     const handleMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
-      mouseRef.current.x = e.clientX - rect.left;
-      mouseRef.current.y = e.clientY - rect.top;
+      mouseRef.current.x = (e.clientX - rect.left) * canvas.clientWidth / rect.width;
+      mouseRef.current.y = (e.clientY - rect.top) * canvas.clientHeight / rect.height;
     };
     const handleMouseLeave = () => { mouseRef.current.x = null; mouseRef.current.y = null; mouseRef.current.isClicked = false; };
     const handleMouseDown = () => { mouseRef.current.isClicked = true; };
@@ -311,6 +311,8 @@ const GeminiHeaderAnimation = () => {
 
     // Event listeners
     window.addEventListener('resize', resizeCanvas);
+    const resizeObserver = new ResizeObserver(resizeCanvas);
+    resizeObserver.observe(canvas.parentElement);
     window.addEventListener('storage', handleThemeChange);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseleave', handleMouseLeave);
@@ -323,6 +325,7 @@ const GeminiHeaderAnimation = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resizeCanvas);
+      resizeObserver.disconnect();
       window.removeEventListener('storage', handleThemeChange);
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
