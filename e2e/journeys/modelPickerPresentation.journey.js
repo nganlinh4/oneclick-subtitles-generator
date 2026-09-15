@@ -7,7 +7,8 @@ import { captureWorkflowStep } from '../support/workflowEvidence.js';
 /* global $, browser, describe, document, it */
 
 const EXPECTED = ['Gemini 3.8 Flash', 'Gemini 3.7 Flash', 'Gemini 3.6 Flash',
-  'Gemini 3.5 Flash', 'Gemini 3.5 Flash Lite', 'Gemini 3.1 Flash Lite'];
+  'Gemini 3.5 Flash', 'Gemini 3.5 Flash Lite', 'Gemini 3.1 Flash Lite',
+  'Gemini 3 Flash Preview', 'Gemini Robotics ER 2 Preview'];
 
 const inspectMenu = async (step) => {
   await $('.custom-dropdown-clipper.is-open [role="listbox"]').waitForDisplayed();
@@ -23,7 +24,7 @@ const inspectMenu = async (step) => {
   }));
   assert.deepEqual(rows.map(row => row.label), EXPECTED, 'the model names must retain numeric order');
   assert.deepEqual(rows.map(row => row.quota), ['20 requests/day', '20 requests/day', '20 requests/day',
-    '20 requests/day', '500 requests/day', '500 requests/day']);
+    '20 requests/day', '500 requests/day', '500 requests/day', '20 requests/day', '20 requests/day']);
   assert.ok(rows.every(row => !row.clipped && !row.overlaps && row.title.includes('Free-tier')),
     `model names and project quota references must fit without overlap: ${JSON.stringify(rows)}`);
   assert.equal(await $('.model-options-dropdown').isExisting(), false, 'the retired menu is still mounted');

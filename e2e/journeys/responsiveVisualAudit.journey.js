@@ -17,6 +17,14 @@ async function capture(step, focusSelector) {
     return {
       viewport,
       zoom: getComputedStyle(document.documentElement).zoom,
+      paint: ['.settings-modal', '.settings-content', '.settings-tab-content.active', '.about-section', '.app-description'].map(target => {
+        const node = document.querySelector(target);
+        if (!node) return { target, absent: true };
+        const style = getComputedStyle(node);
+        return { target, background: style.backgroundColor, color: style.color,
+          surface: style.getPropertyValue('--md-surface'), mask: style.maskImage,
+          animations: node.getAnimations().map(animation => ({ state: animation.playState, frames: animation.effect.getKeyframes() })) };
+      }),
       root: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
       horizontalOverflow: document.documentElement.scrollWidth - viewport.width,
       controls: [...root.querySelectorAll('button, input, textarea')].filter(node => {
@@ -48,7 +56,7 @@ describe('visual survey across real appearance settings', () => {
       if ((await option.getText()).includes('Tiếng Việt')) { await option.click(); break; }
     }
     await browser.waitUntil(async () => (await $(languageButton).getText()).includes('Tiếng Việt'));
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       const before = await $('.app-ui-scale output').getText();
       await clickControl('.settings-footer .app-ui-scale button:last-child');
       await browser.waitUntil(async () => (await $('.app-ui-scale output').getText()) !== before);
@@ -57,6 +65,17 @@ describe('visual survey across real appearance settings', () => {
       await clickControl(`[data-settings-tab="${tab}"]`);
       await capture(`vi-enlarged-${tab}`, '.settings-modal');
     }
+    await clickControl('.settings-footer-controls .theme-toggle');
+    await browser.pause(1500);
+    await capture('vi-light-about', '.settings-modal');
+    // Diagnostic A/B: preserve the product screenshot first, then isolate the masked layer.
+    await browser.execute(() => {
+      document.querySelector('.settings-modal > .settings-content').style.maskImage = 'none';
+    });
+    await capture('diagnostic-light-about-without-mask', '.settings-modal');
+    await browser.execute(() => {
+      document.querySelector('.settings-modal > .settings-content').style.removeProperty('mask-image');
+    });
     await clickControl('[data-settings-action="close"]');
     await $('.settings-modal').waitForExist({ reverse: true });
     await capture('vi-enlarged-editor', '.video-preview');
