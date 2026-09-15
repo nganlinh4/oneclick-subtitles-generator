@@ -10,7 +10,7 @@ const EXPECTED = ['Gemini 3.8 Flash', 'Gemini 3.7 Flash', 'Gemini 3.6 Flash',
   'Gemini 3.5 Flash', 'Gemini 3.5 Flash Lite', 'Gemini 3.1 Flash Lite',
   'Gemini 3 Flash Preview', 'Gemini Robotics ER 2 Preview'];
 
-const inspectMenu = async (step) => {
+const inspectMenu = async (step, expected = EXPECTED) => {
   await $('.custom-dropdown-clipper.is-open [role="listbox"]').waitForDisplayed();
   await browser.waitUntil(() => browser.execute(() =>
     document.querySelector('.custom-dropdown-clipper').getAnimations({ subtree: true })
@@ -22,9 +22,9 @@ const inspectMenu = async (step) => {
       clipped: label.scrollWidth > label.clientWidth + 1 || detail.scrollWidth > detail.clientWidth + 1,
       overlaps: label.getBoundingClientRect().right > detail.getBoundingClientRect().left + 1 };
   }));
-  assert.deepEqual(rows.map(row => row.label), EXPECTED, 'the model names must retain numeric order');
+  assert.deepEqual(rows.map(row => row.label), expected, 'the model names must retain numeric order');
   assert.deepEqual(rows.map(row => row.quota), ['20 requests/day', '20 requests/day', '20 requests/day',
-    '20 requests/day', '500 requests/day', '500 requests/day', '20 requests/day', '20 requests/day']);
+    '20 requests/day', '500 requests/day', '500 requests/day', '20 requests/day', '20 requests/day'].slice(0, expected.length));
   assert.ok(rows.every(row => !row.clipped && !row.overlaps && row.title.includes('Free-tier')),
     `model names and project quota references must fit without overlap: ${JSON.stringify(rows)}`);
   assert.equal(await $('.model-options-dropdown').isExisting(), false, 'the retired menu is still mounted');
@@ -69,7 +69,8 @@ describe('consistent model pickers in the real editor', () => {
     await clickControl('[data-settings-tab="video-processing"]');
     await revealSettingsSection('.thinking-card');
     await clickSettingsControl('.thinking-card .custom-dropdown-button');
-    await inspectMenu('03-thinking-models');
+    // Robotics has no configurable thinking control in the shipping catalog.
+    await inspectMenu('03-thinking-models', EXPECTED.slice(0, -1));
     await closeMenu();
     assert.equal(await $('.settings-modal').isDisplayed(), true,
       'dismissing the model menu must not also close Settings');

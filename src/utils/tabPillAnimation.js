@@ -44,9 +44,7 @@ const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
   if (!sim) {
     const computed = getComputedStyle(blob);
     const w0 = parseFloat(computed.width) || targetWidth;
-    const bRect = blob.getBoundingClientRect();
-    const oRect = overlay.getBoundingClientRect();
-    let x0 = bRect.left - oRect.left;
+    let x0 = parseFloat(computed.left);
     if (!Number.isFinite(x0)) x0 = targetLeft;
     sim = { x: x0, v: 0, w: w0, vw: 0, targetX: targetLeft, targetW: targetWidth, raf: 0 };
     gooSims.set(tabContainer, sim);
@@ -143,11 +141,9 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
           tabContainer.style.removeProperty('--press-pill-width');
           return;
         }
-        const tabRect = btn.getBoundingClientRect();
-        const containerRect = tabContainer.getBoundingClientRect();
-        const left = tabRect.left - containerRect.left + tabContainer.scrollLeft;
+        const left = btn.offsetLeft;
         const pillPadding = 8;
-        const naturalWidth = tabRect.width;
+        const naturalWidth = btn.offsetWidth;
         const pressWidth = naturalWidth + pillPadding;
         tabContainer.style.setProperty('--press-pill-width', `${pressWidth}px`);
         tabContainer.style.setProperty('--press-pill-left', `${left - (pillPadding / 2)}px`);
@@ -200,9 +196,8 @@ const positionPillForActiveTab = (tabContainer) => {
   activeTab.dataset.wasActive = 'true';
   activeTab.dataset.lastActive = 'true';
 
-  const tabRect = activeTab.getBoundingClientRect();
-  const containerRect = tabContainer.getBoundingClientRect();
-  let left = tabRect.left - containerRect.left + tabContainer.scrollLeft;
+  // Keep all animation geometry in unzoomed layout pixels.
+  let left = activeTab.offsetLeft;
   const pillPadding = 8;
 
   const tabClone = activeTab.cloneNode(true);
@@ -213,11 +208,11 @@ const positionPillForActiveTab = (tabContainer) => {
   tabClone.classList.remove('active');
   document.body.appendChild(tabClone);
 
-  const naturalWidth = tabClone.getBoundingClientRect().width;
+  const naturalWidth = tabClone.offsetWidth;
   document.body.removeChild(tabClone);
 
   const pillWidth = naturalWidth + pillPadding;
-  const widthDifference = tabRect.width - (naturalWidth);
+  const widthDifference = activeTab.offsetWidth - naturalWidth;
   left = left + (widthDifference / 2);
 
   const newLeftVal = left - (pillPadding / 2);

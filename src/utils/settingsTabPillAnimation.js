@@ -42,9 +42,7 @@ const startSettingsGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
   if (!sim) {
     const computed = getComputedStyle(blob);
     const w0 = parseFloat(computed.width) || targetWidth;
-    const bRect = blob.getBoundingClientRect();
-    const oRect = overlay.getBoundingClientRect();
-    let x0 = bRect.left - oRect.left;
+    let x0 = parseFloat(computed.left);
     if (!Number.isFinite(x0)) x0 = targetLeft;
     sim = { x: x0, v: 0, w: w0, vw: 0, targetX: targetLeft, targetW: targetWidth, raf: 0 };
     settingsGooSims.set(tabContainer, sim);
@@ -215,9 +213,9 @@ export const positionPillForActiveTab = (tabContainer) => {
   activeTab.dataset.wasActive = 'true';
   activeTab.dataset.lastActive = 'true';
 
-  const tabRect = activeTab.getBoundingClientRect();
-  const containerRect = tabContainer.getBoundingClientRect();
-  let left = tabRect.left - containerRect.left + tabContainer.scrollLeft;
+  // CSS left/width use layout pixels, not the zoomed viewport pixels returned
+  // by getBoundingClientRect. Mixing them scales the highlight twice.
+  let left = activeTab.offsetLeft;
   
   // *** THE FIRST FIX IS HERE ***
   // Revert to your original "tight" padding for the settings pill.
@@ -230,11 +228,11 @@ export const positionPillForActiveTab = (tabContainer) => {
   tabClone.style.display = 'flex';
   tabClone.classList.remove('active');
   document.body.appendChild(tabClone);
-  const naturalWidth = tabClone.getBoundingClientRect().width;
+  const naturalWidth = tabClone.offsetWidth;
   document.body.removeChild(tabClone);
 
   const pillWidth = naturalWidth + pillPadding;
-  const widthDifference = tabRect.width - (naturalWidth);
+  const widthDifference = activeTab.offsetWidth - naturalWidth;
   left = left + (widthDifference / 2);
 
   const newLeftVal = left - (pillPadding / 2);

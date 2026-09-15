@@ -28,13 +28,14 @@ export const scrollActiveSettingsTab = (tabs, activeButton) => {
   if (!tabs || !activeButton) return null;
   const containerRect = tabs.getBoundingClientRect();
   const activeRect = activeButton.getBoundingClientRect();
+  const scale = tabs.offsetWidth > 0 ? containerRect.width / tabs.offsetWidth : 1;
   const target = settingsTabScrollTarget({
     clientWidth: tabs.clientWidth,
     scrollWidth: tabs.scrollWidth,
     scrollLeft: tabs.scrollLeft,
-    containerLeft: containerRect.left,
-    activeLeft: activeRect.left,
-    activeWidth: activeRect.width,
+    containerLeft: 0,
+    activeLeft: (activeRect.left - containerRect.left) / (scale || 1),
+    activeWidth: activeRect.width / (scale || 1),
   });
   if (target === null) return null;
 

@@ -382,7 +382,8 @@ const LyricsDisplay = ({
     } catch (error) {
       console.error(`Error ${processType === 'consolidate' ? 'completing' : 'summarizing'} document:`, error);
 
-      showErrorToast(t('consolidation.error', 'Error processing document: {{message}}', { message: error.message }));
+      // DownloadOptionsModal owns notification for rejected actions. Reporting
+      // here as well shows two different error toasts for the same operation.
       throw error;
     }
   };

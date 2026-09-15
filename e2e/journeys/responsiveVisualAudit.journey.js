@@ -27,6 +27,12 @@ async function capture(step, focusSelector) {
       }),
       root: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
       horizontalOverflow: document.documentElement.scrollWidth - viewport.width,
+      overflowingNodes: [...document.querySelectorAll('body *')].map(node => {
+        const box = node.getBoundingClientRect();
+        return { tag: node.tagName, class: String(node.className).slice(0, 180),
+          left: box.left, right: box.right, width: box.width,
+          layoutWidth: node.offsetWidth, position: getComputedStyle(node).position };
+      }).filter(node => node.right > window.innerWidth + 2 && node.width > 0).slice(0, 30),
       controls: [...root.querySelectorAll('button, input, textarea')].filter(node => {
         const box = node.getBoundingClientRect();
         return box.width > 0 && box.height > 0;
@@ -63,6 +69,11 @@ describe('visual survey across real appearance settings', () => {
     }
     for (const tab of ['api-keys', 'video-processing', 'prompts', 'cache', 'model-management', 'tools', 'about']) {
       await clickControl(`[data-settings-tab="${tab}"]`);
+      await browser.waitUntil(() => browser.execute(() => {
+        const tab = document.querySelector('.settings-tab.active').getBoundingClientRect();
+        const pill = document.querySelector('.settings-tabs .goo-blob').getBoundingClientRect();
+        return Math.abs((tab.left + tab.right - pill.left - pill.right) / 2) < 3;
+      }), { timeout: 5000, timeoutMsg: 'the selected tab highlight is not centered at enlarged UI scale' });
       await capture(`vi-enlarged-${tab}`, '.settings-modal');
     }
     await clickControl('.settings-footer-controls .theme-toggle');
