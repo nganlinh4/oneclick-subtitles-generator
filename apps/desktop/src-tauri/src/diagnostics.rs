@@ -944,6 +944,12 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
+    // macOS exposes its temporary parent through /var -> /private/var. Use its physical
+    // spelling for fixtures; production log admission must still reject redirecting ancestors.
+    fn canonical_tempdir() -> io::Result<tempfile::TempDir> {
+        tempfile::tempdir_in(fs::canonicalize(env::temp_dir())?)
+    }
+
     #[cfg(windows)]
     use super::recover_interrupted_rotation;
     use super::{
@@ -1041,7 +1047,7 @@ mod tests {
 
     #[test]
     fn running_log_allows_the_exact_bound_then_rotates_before_one_more_byte() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         let record = vec![b'a'; MAX_RECORD_BYTES];
         let record_count = MAX_LOG_BYTES / u64::try_from(MAX_RECORD_BYTES).expect("bounded record");
@@ -1067,7 +1073,7 @@ mod tests {
 
     #[test]
     fn startup_rotation_occurs_at_the_exact_bound_but_not_one_byte_below() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let below = temporary.path().join("below");
         fs::create_dir(&below).expect("create below-bound directory");
         fs::write(
@@ -1113,7 +1119,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let temporary = tempfile::tempdir().expect("temporary root");
+            let temporary = canonical_tempdir().expect("temporary root");
             let directory = temporary.path().join(format!("state-{index}"));
             fs::create_dir(&directory).expect("create interrupted log directory");
             let current = directory.join(LOG_FILE_NAME);
@@ -1158,7 +1164,7 @@ mod tests {
             RotationPoint::CurrentCreated,
             RotationPoint::BeforeCommit,
         ] {
-            let directory = tempfile::tempdir().expect("temporary log directory");
+            let directory = canonical_tempdir().expect("temporary log directory");
             let current = directory.path().join(LOG_FILE_NAME);
             let previous = directory.path().join(PREVIOUS_LOG_FILE_NAME);
             let backup = directory.path().join(ROTATION_BACKUP_FILE_NAME);
@@ -1193,7 +1199,7 @@ mod tests {
 
     #[test]
     fn running_log_rotates_repeatedly_and_keeps_two_log_files_plus_the_lock() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         let first = vec![b'a'; usize::try_from(MAX_LOG_BYTES - 2).expect("bounded fixture")];
         for record in first.chunks(MAX_RECORD_BYTES) {
@@ -1240,7 +1246,7 @@ mod tests {
 
     #[test]
     fn running_log_rejects_one_oversized_record_without_writing_it() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         let oversized = vec![b'x'; MAX_RECORD_BYTES + 1];
         assert_eq!(
@@ -1256,7 +1262,7 @@ mod tests {
 
     #[test]
     fn partial_write_with_unknown_disk_length_disables_the_logger() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         let error = log
             .append_with_io(
@@ -1284,7 +1290,7 @@ mod tests {
 
     #[test]
     fn partial_write_with_a_stale_measured_length_uses_the_full_record_upper_bound() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         log.append_with_io(
             b"abcdef",
@@ -1306,7 +1312,7 @@ mod tests {
 
     #[test]
     fn reopened_file_with_unknown_length_disables_the_logger() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         log.file = None;
         let replacement = OpenOptions::new()
@@ -1325,7 +1331,7 @@ mod tests {
 
     #[test]
     fn registry_reinitialization_fails_before_mutating_same_or_different_directory() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let first = temporary.path().join("first");
         let second = temporary.path().join("second");
         let registry = DiagnosticRegistry::new();
@@ -1364,7 +1370,7 @@ mod tests {
 
     #[test]
     fn concurrent_registry_initialization_has_one_owner_and_no_loser_directory() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directories = [temporary.path().join("one"), temporary.path().join("two")];
         let registry = Arc::new(DiagnosticRegistry::new());
         let barrier = Arc::new(Barrier::new(3));
@@ -1400,7 +1406,7 @@ mod tests {
 
     #[test]
     fn process_lock_contention_cannot_rotate_or_append_logs() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut owner = DiagnosticLog::open(directory.path()).expect("first process owner");
         owner.append(b"owned").expect("owner append");
         let before = directory_snapshot(directory.path());
@@ -1419,7 +1425,7 @@ mod tests {
 
         const FILE_SHARE_READ: u32 = 0x0000_0001;
 
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let current = directory.path().join(LOG_FILE_NAME);
         let previous = directory.path().join(PREVIOUS_LOG_FILE_NAME);
         let backup = directory.path().join(ROTATION_BACKUP_FILE_NAME);
@@ -1504,7 +1510,7 @@ mod tests {
 
     #[test]
     fn existing_lock_data_is_never_truncated_or_deleted() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let lock = directory.path().join(LOCK_FILE_NAME);
         fs::write(&lock, b"unknown-owner-data").expect("seed lock data");
         let log = DiagnosticLog::open(directory.path()).expect("open with existing lock data");
@@ -1517,7 +1523,7 @@ mod tests {
 
     #[test]
     fn file_symlinks_are_rejected_without_touching_their_targets() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directory = temporary.path().join("logs");
         fs::create_dir(&directory).expect("create log directory");
         let external = temporary.path().join("external.log");
@@ -1538,7 +1544,7 @@ mod tests {
 
     #[test]
     fn lock_symlinks_are_rejected_without_touching_their_targets() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directory = temporary.path().join("logs");
         fs::create_dir(&directory).expect("create log directory");
         let external = temporary.path().join("external.lock");
@@ -1560,7 +1566,7 @@ mod tests {
 
     #[test]
     fn replacing_the_open_log_path_disables_logging_before_writing_the_replacement() {
-        let directory = tempfile::tempdir().expect("temporary log directory");
+        let directory = canonical_tempdir().expect("temporary log directory");
         let mut log = DiagnosticLog::open(directory.path()).expect("open diagnostic log");
         log.append(b"owned").expect("owner append");
         let current = directory.path().join(LOG_FILE_NAME);
@@ -1586,7 +1592,7 @@ mod tests {
 
     #[test]
     fn directory_symlinks_are_rejected_before_creating_any_log_entry() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let target = temporary.path().join("target");
         let alias = temporary.path().join("alias");
         fs::create_dir(&target).expect("create target directory");
@@ -1603,7 +1609,7 @@ mod tests {
 
     #[test]
     fn symlinked_directory_ancestor_is_rejected_before_creating_any_log_entry() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let target = temporary.path().join("target");
         let alias = temporary.path().join("alias");
         fs::create_dir(&target).expect("create target directory");
@@ -1621,7 +1627,7 @@ mod tests {
 
     #[test]
     fn previous_log_symlink_blocks_rotation_without_touching_external_data() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directory = temporary.path().join("logs");
         fs::create_dir(&directory).expect("create log directory");
         fs::write(
@@ -1653,7 +1659,7 @@ mod tests {
 
     #[test]
     fn unsafe_rotation_target_created_during_runtime_disables_logging() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directory = temporary.path().join("logs");
         let mut log = DiagnosticLog::open(&directory).expect("open diagnostic log");
         let record = vec![b'x'; MAX_RECORD_BYTES];
@@ -1690,7 +1696,7 @@ mod tests {
     #[cfg(any(unix, windows))]
     #[test]
     fn existing_hardlinked_current_previous_and_lock_paths_are_rejected() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         for file_name in [LOG_FILE_NAME, PREVIOUS_LOG_FILE_NAME, LOCK_FILE_NAME] {
             let directory = temporary.path().join(file_name.replace('.', "_"));
             fs::create_dir(&directory).expect("create log directory");
@@ -1715,7 +1721,7 @@ mod tests {
     #[cfg(any(unix, windows))]
     #[test]
     fn hardlink_added_after_open_is_rejected_before_the_next_write() {
-        let temporary = tempfile::tempdir().expect("temporary root");
+        let temporary = canonical_tempdir().expect("temporary root");
         let directory = temporary.path().join("logs");
         let mut log = DiagnosticLog::open(&directory).expect("open diagnostic log");
         let current = directory.join(LOG_FILE_NAME);
