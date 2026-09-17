@@ -11,7 +11,9 @@
 //! that wants to read its own export back has to compose at a size the encoder does not pad.
 
 use std::collections::HashMap;
+#[cfg(windows)]
 use std::path::PathBuf;
+#[cfg(windows)]
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use osg_domain::{AssetId, ProjectId};
@@ -22,6 +24,7 @@ use osg_scene::glyph::{
 };
 use osg_scene::scene::ResolvedFace;
 use serde_json::{Value, json};
+#[cfg(windows)]
 use tempfile::TempDir;
 
 use crate::error::CommandResult;
@@ -38,8 +41,10 @@ use super::text::{EXPORT_TEXT_SCHEMA_VERSION, ExportTextRequest, StagedAtlases};
 ///
 /// It used to say the product never has that concurrency. It does — see the correction in
 /// `crates/osg-export/tests/support/media.rs`.
+#[cfg(windows)]
 static PLATFORM: Mutex<()> = Mutex::new(());
 
+#[cfg(windows)]
 pub(super) fn platform() -> MutexGuard<'static, ()> {
     PLATFORM.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -52,14 +57,21 @@ pub(super) const WEIGHT: u16 = 600;
 ///
 /// Both edges are multiples of sixteen for the same reason the composition's are: `osg-decode`
 /// refuses a file whose coded size the platform decoder pads, and the export reads this clip.
+#[cfg(windows)]
 pub(super) const SOURCE_WIDTH: u32 = 256;
+#[cfg(windows)]
 pub(super) const SOURCE_HEIGHT: u32 = 144;
+#[cfg(windows)]
 pub(super) const SOURCE_FPS: u32 = 30;
+#[cfg(windows)]
 pub(super) const SOURCE_FRAMES: u32 = 60;
 /// The composition the fixture request converts to: 720p at the source's 16:9 aspect.
+#[cfg(windows)]
 pub(super) const COMPOSITION_WIDTH: u32 = 1_280;
+#[cfg(windows)]
 pub(super) const COMPOSITION_HEIGHT: u32 = 720;
 /// How many output frames the fixture request exports: one second of the clip.
+#[cfg(windows)]
 pub(super) const EXPORT_FRAMES: u32 = 30;
 
 const ATLAS_WIDTH: u32 = 16;
@@ -72,6 +84,7 @@ pub(super) const INK_CELL: u32 = 1;
 pub(super) const ATLAS_CONTENT_HASH: &str = "0000abcd";
 
 /// The render request exactly as the `WebView` sends it, over one second of the synthetic clip.
+#[cfg(windows)]
 pub(super) fn request_json() -> Value {
     let mut value: Value = serde_json::from_str(REQUEST_TEXT).expect("the fixture request is JSON");
     value["sourceAssetId"] = json!(AssetId::new());
@@ -79,6 +92,7 @@ pub(super) fn request_json() -> Value {
     value
 }
 
+#[cfg(windows)]
 const REQUEST_TEXT: &str = r##"{
   "sourceAssetId": null,
   "projectId": null,
@@ -336,6 +350,7 @@ pub(super) fn export_text(atlas_id: AssetId, cues: usize) -> ExportTextRequest {
 /// Four flat quadrants: they survive compression well enough to be read back as a number, and being
 /// far apart in luma makes a missing or wrongly framed underlay unmistakable rather than a judgement
 /// call.
+#[cfg(windows)]
 pub(super) fn source_clip(directory: &TempDir, name: &str) -> PathBuf {
     use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
 
@@ -365,6 +380,7 @@ pub(super) fn source_clip(directory: &TempDir, name: &str) -> PathBuf {
 /// The ramp is what makes "the export shows the frame the timeline names" an assertion rather than
 /// a hope: every source frame is a different picture, so composing two different output instants
 /// cannot accidentally produce the same image.
+#[cfg(windows)]
 fn frame_pixels(index: u32) -> Vec<u8> {
     let ramp = u8::try_from(16 + index * 2).expect("sixty steps of two stay inside a byte");
     let levels = [ramp, 96_u8, 160, 224];

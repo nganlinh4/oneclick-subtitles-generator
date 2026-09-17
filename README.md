@@ -15,6 +15,8 @@ branch. The existing GitHub v2.6.1 release is the legacy application, not this n
 
 The 1.0.0 release targets **Windows x64**, using Tauri, WebView2 and Rust.
 The packaged application does not need Node.js or a development server.
+Native video export requires a compatible Direct3D GPU and driver; software-only Windows VMs
+do not provide the required video-device path.
 Linux and macOS are not supported releases.
 
 ## Features

@@ -41,6 +41,15 @@ the older remote branch or treat the compile-only macOS/Linux matrix as runtime 
 Standard hosted Windows runners are not a substitute for representative GPU/hardware testing:
 retain the local native-render evidence and report that limitation separately.
 
+Measured on 2026-09-17: hosted Windows run `35195158987` rejected both GPU export tests at
+`D3d11Device`, HRESULT `0x887A0004` (`DXGI_ERROR_UNSUPPORTED`). The same three desktop export
+tests and the complete Rust workspace (including the 25-case native parity suite) pass on the
+local Windows GPU. Do not replace those failures with a software fallback or describe the
+hosted run as green. Microsoft documents that WARP does not support video encode/decode:
+https://learn.microsoft.com/en-us/windows/win32/direct3d11/direct3d-11-1-features.
+The hosted installer/update jobs and local GPU checks provide different evidence; neither alone
+certifies all hardware. Full hosted matrix remains red until its hardware requirements are met.
+
 The updater secrets already exist in repository Actions settings (names checked 2026-09-17).
 Their presence is not proof of a valid matching key: the signed-updater job must verify it.
 Updater signatures are distinct from Windows Authenticode publisher signatures.

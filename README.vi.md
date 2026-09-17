@@ -14,6 +14,8 @@
 
 Phiên bản 1.0.0 dành cho **Windows x64**, sử dụng Tauri, WebView2 và Rust.
 Bản đóng gói không cần Node.js hay máy chủ phát triển. Chưa hỗ trợ phát hành cho Linux/macOS.
+Xuất video native cần GPU và driver Direct3D tương thích; máy ảo Windows chỉ có bộ dựng hình
+phần mềm không cung cấp đường xử lý video cần thiết.
 
 ## Chức năng
 

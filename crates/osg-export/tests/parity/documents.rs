@@ -206,6 +206,7 @@ const PAGED_CELLS_PER_CUE: usize = 45;
 /// For the cases that need a document but are not about paging — the trim case, which needs cues
 /// that draw *distinguishably* different pictures so a frame at one instant cannot be confused with
 /// a frame at another, and needs them from the frozen input rather than invented.
+#[cfg(windows)]
 pub(crate) fn cycled(
     matrix: &ParityMatrix,
     id: &str,

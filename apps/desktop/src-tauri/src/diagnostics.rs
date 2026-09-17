@@ -944,12 +944,13 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
+    #[cfg(windows)]
+    use super::recover_interrupted_rotation;
     use super::{
         DiagnosticLog, DiagnosticRegistry, LOCK_FILE_NAME, LOG_FILE_NAME, MAX_FIELD_BYTES,
         MAX_LOG_BYTES, MAX_RECORD_BYTES, PREVIOUS_LOG_FILE_NAME, ProcessLock,
         ROTATION_BACKUP_FILE_NAME, RotationPoint, new_app_instance_id, open_log_directory,
-        record_receipt_write_degraded_with, recover_interrupted_rotation, rotate_paths_with_hook,
-        sanitize,
+        record_receipt_write_degraded_with, rotate_paths_with_hook, sanitize,
     };
     use uuid::Uuid;
 

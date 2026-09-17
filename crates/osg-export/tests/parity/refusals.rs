@@ -31,7 +31,9 @@
 //! frontend mapping of that refusal, and it is untested here because it lives in another crate.
 
 use osg_compositor::{AdapterSelection, Compositor, CompositorError};
-use osg_export::{ExportError, StagedText};
+use osg_export::ExportError;
+#[cfg(windows)]
+use osg_export::StagedText;
 
 /// The three compositor refusals the frontend shows as a lost graphics device.
 fn device_refusals() -> Vec<CompositorError> {
