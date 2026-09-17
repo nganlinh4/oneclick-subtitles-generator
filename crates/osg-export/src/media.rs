@@ -22,6 +22,7 @@ use osg_encode::{AudioBlock, AudioConfig, ChannelCount, SampleRate};
 #[cfg(windows)]
 use osg_gpu_video::GpuVideoPipeline;
 
+#[cfg(windows)]
 use crate::cancel::ExportCancel;
 use crate::convert::ExportPlan;
 use crate::error::ExportError;
