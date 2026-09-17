@@ -432,9 +432,10 @@ export async function waitForToolDomState(read, expected, options = {}) {
   }
 }
 
-const waitForDom = (client, expected, delayMs = 500) => waitForToolDomState(
+const waitForDom = (client, expected, delayMs = 500,
+  timeoutMs = expected === 'installed' ? DEFAULT_TIMEOUT_MS : 60_000) => waitForToolDomState(
   () => evaluate(client, DOM_STATE_EXPRESSION), expected,
-  { delay: () => new Promise((resolve) => setTimeout(resolve, delayMs)) },
+  { timeoutMs, delay: () => new Promise((resolve) => setTimeout(resolve, delayMs)) },
 );
 
 async function runInstalledNativeTools(options) {
@@ -453,7 +454,7 @@ async function runInstalledNativeTools(options) {
     );
     invariant(await evaluate(client, ACTIVATE_TOOLS_EXPRESSION) === true,
       'Installed native-tool flow could not activate Tools');
-    await waitForDom(client, 'installed');
+    await waitForDom(client, 'installed', 500, 30_000);
     assertNativeToolsStatus(await evaluate(client, NATIVE_STATUS_EXPRESSION), 'installed');
 
     assertClickedActions(
