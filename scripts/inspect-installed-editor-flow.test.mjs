@@ -53,6 +53,22 @@ const snapshot = () => ({
   undoButtonCount: 1,
 });
 
+test('a stalled editor reports the failed invariant and bounded state without cue contents', async () => {
+  let tick = 0;
+  const wrong = { ...snapshot(), text: 'private customer subtitle', canUndo: false };
+  await assert.rejects(waitForValue(async () => wrong, value => {
+    assertEditorSnapshot(value, { text: 'OSG durable editor smoke', canUndo: true, canRedo: false });
+    return true;
+  }, { stage: 'visible-edited', timeoutMs: 10, now: () => ++tick * 5, delay: async () => {} }), error => {
+    assert.match(error.message, /visible-edited/);
+    assert.match(error.message, /wrong subtitle rows/);
+    assert.match(error.message, /"textKind":"other"/);
+    assert.match(error.message, /"canUndo":false/);
+    assert.equal(error.message.includes('private customer subtitle'), false);
+    return true;
+  });
+});
+
 const nativeHistory = () => ({
   cacheIdValid: true,
   cueCount: 1,

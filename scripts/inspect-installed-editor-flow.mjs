@@ -124,15 +124,32 @@ export async function waitForValue(read, accept, {
   timeoutMs = DEFAULT_TIMEOUT_MS,
   delay = () => new Promise((resolve) => setTimeout(resolve, 250)),
   now = Date.now,
+  stage = 'state',
 } = {}) {
   const deadline = now() + timeoutMs;
   let lastValue;
+  let refusal = null;
   do {
     lastValue = await read();
-    if (accept(lastValue)) return lastValue;
+    try {
+      if (accept(lastValue)) return lastValue;
+    } catch (error) {
+      refusal = sanitizeEditorError(error);
+    }
     await delay();
   } while (now() < deadline);
-  throw new Error('Installed editor flow timed out before reaching the reviewed state');
+  const summary = {
+    itemCount: Number.isSafeInteger(lastValue?.itemCount) ? lastValue.itemCount : null,
+    editButtonCount: Number.isSafeInteger(lastValue?.editButtonCount) ? lastValue.editButtonCount : null,
+    textInputCount: Number.isSafeInteger(lastValue?.textInputCount) ? lastValue.textInputCount : null,
+    canUndo: typeof lastValue?.canUndo === 'boolean' ? lastValue.canUndo : null,
+    canRedo: typeof lastValue?.canRedo === 'boolean' ? lastValue.canRedo : null,
+    textKind: lastValue?.text === ORIGINAL_TEXT ? 'original'
+      : lastValue?.text === EDITED_TEXT ? 'edited' : 'other',
+    matchingEntryCount: Number.isSafeInteger(lastValue?.matchingEntryCount) ? lastValue.matchingEntryCount : null,
+    matchingTrackCount: Number.isSafeInteger(lastValue?.matchingTrackCount) ? lastValue.matchingTrackCount : null,
+  };
+  throw new Error(`Installed editor flow timed out (${stage}): ${refusal ?? 'condition unmet'}; ${JSON.stringify(summary)}`);
 }
 
 const evaluate = async (client, expression) => {
@@ -265,25 +282,19 @@ export const NATIVE_HISTORY_EXPRESSION = `
 const waitForSnapshot = (client, expected) => waitForValue(
   () => evaluate(client, SNAPSHOT_EXPRESSION),
   (value) => {
-    try {
-      assertEditorSnapshot(value, expected);
-      return true;
-    } catch {
-      return false;
-    }
+    assertEditorSnapshot(value, expected);
+    return true;
   },
+  { stage: `visible-${expected.text === ORIGINAL_TEXT ? 'original' : 'edited'}` },
 );
 
 const waitForNativeHistory = (client, expected) => waitForValue(
   () => evaluate(client, NATIVE_HISTORY_EXPRESSION),
   (value) => {
-    try {
-      assertNativeHistorySnapshot(value, expected);
-      return true;
-    } catch {
-      return false;
-    }
+    assertNativeHistorySnapshot(value, expected);
+    return true;
   },
+  { stage: `durable-${expected.text === ORIGINAL_TEXT ? 'original' : 'edited'}` },
 );
 
 const reloadAndWait = async (client, expected, nativeExpected) => {
@@ -373,6 +384,23 @@ async function runInstalledEditorFlow(options) {
       screenshotSha256: crypto.createHash('sha256').update(bytes).digest('hex'),
       undoRedoCycles: 1,
     };
+  } catch (error) {
+    try {
+      await evaluate(client, `(async () => {
+        document.querySelector('.lyrics-container-wrapper')?.scrollIntoView({ block: 'center', behavior: 'instant' });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
+      const capture = await client.send('Page.captureScreenshot', {
+        format: 'png', captureBeyondViewport: false, fromSurface: true,
+      });
+      if (typeof capture.data === 'string') {
+        fs.writeFileSync(options.screenshot.replace(/\.png$/i, '-failure.png'),
+          Buffer.from(capture.data, 'base64'), { flag: 'wx' });
+      }
+    } catch {
+      // Preserve the original assertion even if the WebView has exited.
+    }
+    throw error;
   } finally {
     client.close();
   }
