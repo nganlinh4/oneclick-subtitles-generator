@@ -119,6 +119,7 @@ test('About can retry a failed check through its visible Refresh action', async 
   render(<AboutTab />);
   await screen.findByText('Unable to check for updates');
   const refresh = screen.getByRole('button', { name: 'Refresh' });
+  expect(refresh).toHaveClass('btn-base', 'btn-outlined');
   fireEvent.click(refresh);
   await waitFor(() => expect(refresh).toBeDisabled());
   fireEvent.click(refresh);
@@ -141,7 +142,9 @@ test.each([
     update: { version: nextVersion, publishedAt: '2026-09-12T00:00:00Z', notes: null },
   });
   const { container } = render(<AboutTab />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Install update' }));
+  const installButton = await screen.findByRole('button', { name: 'Install update' });
+  expect(installButton).toHaveClass('btn-base', 'btn-primary');
+  fireEvent.click(installButton);
 
   expect(install).toHaveBeenCalledExactlyOnceWith({ version: nextVersion });
   expect(container).not.toHaveTextContent('OSG_installer_Windows.bat');

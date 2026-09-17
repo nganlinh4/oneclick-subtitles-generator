@@ -142,7 +142,7 @@ const AboutTab = ({ backgroundType }) => {
                 {latestVersionInfo?.configured !== false && (
                   <button
                     type="button"
-                    className="installer-option primary-installer"
+                    className="btn-base btn-small btn-outlined"
                     data-app-update-refresh
                     onClick={handleRefreshUpdate}
                     disabled={isCheckingUpdate}
@@ -173,7 +173,7 @@ const AboutTab = ({ backgroundType }) => {
                         {latestVersionInfo.source === 'tauri-updater' ? (
                           <button
                             type="button"
-                            className="installer-option primary-installer"
+                            className="btn-base btn-small btn-primary"
                             onClick={() => beginDesktopUpdateInstall({ version: latestVersionInfo.version })}
                           >
                             {t('settings.installUpdate', 'Install update')}

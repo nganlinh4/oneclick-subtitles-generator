@@ -264,6 +264,21 @@ async function inspectUpdater(options) {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       })()`);
       await captureScreenshot(client, options.screenshot.replace(/\.png$/i, '-about.png'));
+      const controlsStyled = await evaluate(client, `(() => {
+        const refresh = document.querySelector('[data-app-update-refresh]');
+        const install = document.querySelector('.update-notification button');
+        if (!refresh || !install) return false;
+        const outlined = getComputedStyle(refresh);
+        const filled = getComputedStyle(install);
+        return parseFloat(outlined.borderTopWidth) >= 1
+          && outlined.borderTopStyle !== 'none'
+          && filled.backgroundColor !== 'rgba(0, 0, 0, 0)'
+          && filled.backgroundColor !== 'transparent'
+          && filled.color !== filled.backgroundColor
+          && refresh.getBoundingClientRect().height >= 32
+          && install.getBoundingClientRect().height >= 32;
+      })()`);
+      invariant(controlsStyled === true, 'Installed About update controls lost their button styling');
       await evaluate(client, `document.querySelector('.settings-modal .close-button-settings').click()`);
       await waitForUi(`document.querySelector('.settings-modal') === null`);
     }
