@@ -246,7 +246,7 @@ function Write-CloseEvidence {
   $diagnosticDeltasUnclamped = $CloseEventDelta -in -512..512 `
     -and $ExitRequestedEventDelta -in -512..512 `
     -and $ExitEventDelta -in -512..512
-  $diagnosticLifecycleExact = $CloseEventDelta -eq 1 `
+  $diagnosticLifecycleExact = $CloseEventDelta -eq 2 `
     -and $ExitRequestedEventDelta -eq 1 `
     -and $ExitEventDelta -eq 1
   $record = [ordered]@{
@@ -395,8 +395,9 @@ function Stop-Gracefully {
   if (-not $cleanExit) {
     throw "Application exited with code $exitCode after the graceful close request"
   }
-  if ($closeEventsAfter -ne ($closeEventsBefore + 1)) {
-    throw 'Application did not flush exactly one graceful-close diagnostic'
+  # One request starts the durable checkpoint; its completion issues the actual native close.
+  if ($closeEventsAfter -ne ($closeEventsBefore + 2)) {
+    throw "Application close checkpoint expected 2 native close events, observed $($closeEventsAfter - $closeEventsBefore)"
   }
   if ($exitRequestedEventsAfter -ne ($exitRequestedEventsBefore + 1) `
       -or $exitEventsAfter -ne ($exitEventsBefore + 1)) {

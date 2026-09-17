@@ -2156,7 +2156,7 @@ function assertInstalledSmokeScript(script) {
     "Get-DiagnosticEventCount -LogPath $LogPath -Name 'app.close_requested'",
     '$Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding',
     '$Process.ExitCode -ne 0',
-    '$closeEventsAfter -ne ($closeEventsBefore + 1)',
+    '$closeEventsAfter -ne ($closeEventsBefore + 2)',
     'Stop-Application -Process $first.Process -LogPath $logPath',
     'Stop-Application -Process $second.Process -LogPath $logPath',
     'Stop-Application -Process $third.Process -LogPath $logPath',
@@ -2210,8 +2210,8 @@ function assertInstalledSmokeScript(script) {
       && /\$Process\.CloseMainWindow\(\)/.test(stopFunction)
       && /\$Process\.WaitForExit\(30000\)/.test(stopFunction)
       && /if\s*\(\$Process\.ExitCode\s+-ne\s+0\)\s*\{\s*throw/.test(stopFunction)
-      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(stopFunction),
-    'Installed Windows smoke must close only a live responsive app and prove one clean flushed close',
+      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+2\)/.test(stopFunction),
+    'Installed Windows smoke must close only a live responsive app and prove the two-stage checkpoint close',
   );
   const mediaFlowFunctionStart = script.indexOf('function Inspect-InstalledMediaFlow {');
   const mediaFlowFunctionEnd = script.indexOf('\nfunction ', mediaFlowFunctionStart + 1);
@@ -3545,7 +3545,7 @@ function assertSignedUpdaterScript(script) {
       && /\$cleanExit\s*=\s*\$null\s+-ne\s+\$exitCode\s+-and\s+\$exitCode\s+-eq\s+0/.test(gracefulFunction)
       && /if\s*\(\$null\s+-eq\s+\$exitCode\)\s*\{\s*throw/.test(gracefulFunction)
       && /if\s*\(-not\s+\$cleanExit\)\s*\{\s*throw/.test(gracefulFunction)
-      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
+      && /\$closeEventsAfter\s+-ne\s+\(\$closeEventsBefore\s+\+\s+2\)/.test(gracefulFunction)
       && /\$exitRequestedEventsAfter\s+-ne\s+\(\$exitRequestedEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
       && /\$exitEventsAfter\s+-ne\s+\(\$exitEventsBefore\s+\+\s+1\)/.test(gracefulFunction)
       && /\$closeRecord\s*=\s*Write-CloseEvidence[\s\S]*?-Outcome\s+'exited'[\s\S]*?-CleanExit\s+\$cleanExit/.test(gracefulFunction)
@@ -3579,7 +3579,7 @@ function assertSignedUpdaterScript(script) {
   );
   const cleanExitAssertionIndex = gracefulFunction.indexOf('if (-not $cleanExit)', exitedRecordIndex);
   const closeDeltaAssertionIndex = gracefulFunction.indexOf(
-    'if ($closeEventsAfter -ne ($closeEventsBefore + 1))',
+    'if ($closeEventsAfter -ne ($closeEventsBefore + 2))',
     exitedRecordIndex,
   );
   const exitDeltaAssertionIndex = gracefulFunction.indexOf(

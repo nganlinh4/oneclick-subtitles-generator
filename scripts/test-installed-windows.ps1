@@ -318,8 +318,10 @@ function Stop-Application {
     throw "Installed application exited with code $($Process.ExitCode) after the graceful close request"
   }
   $closeEventsAfter = Get-DiagnosticEventCount -LogPath $LogPath -Name 'app.close_requested'
-  if ($closeEventsAfter -ne ($closeEventsBefore + 1)) {
-    throw 'Installed application did not flush exactly one graceful-close diagnostic'
+  # app_close.rs prevents the user request until the durable checkpoint completes, then
+  # WebviewWindow::close issues the second native request. Both are recorded by the window hook.
+  if ($closeEventsAfter -ne ($closeEventsBefore + 2)) {
+    throw "Installed application close checkpoint expected 2 native close events, observed $($closeEventsAfter - $closeEventsBefore)"
   }
 }
 
