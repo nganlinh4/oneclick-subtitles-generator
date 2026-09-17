@@ -245,7 +245,13 @@ function createTauriProductionBuildFixture() {
       + '    .set_parent(&window)\n'
       + '    .set_title(title)\n'
       + '    .add_filter(filter_label, extensions);\n'
-      + '  tauri::async_runtime::spawn_blocking(move || dialog.pick_file()).await\n'
+      + '  tauri::async_runtime::spawn_blocking(move || {\n'
+      + '    crate::diagnostics::record("media-picker.worker-started", &[]);\n'
+      + '    dialog.pick_file()\n'
+      + '  }).await.map_err(|_| {\n'
+      + '    crate::diagnostics::record("media-picker.worker-failed", &[]);\n'
+      + '    CommandError::internal("picker stopped")\n'
+      + '  })\n'
       + '}\n'
       + '#[cfg(feature = "e2e-automation")]\n'
       + 'pub(crate) fn pick_file() {}\n',
@@ -3472,8 +3478,8 @@ test('Tauri production build contract rejects dev-server releases and weakened n
 
   const unstartedSource = weaken(
     readMutableSource(unstartedWorker, 'apps/desktop/src-tauri/src/dialog_paths.rs'),
-    '  staged_media_selection().map(Some)\n',
-    '  Ok(None)\n',
+    '    crate::diagnostics::record("media-picker.worker-started", &[]);\n',
+    '',
     { expected: 1 },
   );
   writeFile(unstartedWorker, 'apps/desktop/src-tauri/src/dialog_paths.rs', unstartedSource);

@@ -4295,6 +4295,8 @@ function assertTauriProductionBuildContract(rootDirectory = REPOSITORY_ROOT) {
       && productionPicker.includes('.add_filter(filter_label, extensions)')
       && productionPicker.includes('tauri::async_runtime::spawn_blocking')
       && productionPicker.includes('dialog.pick_file()')
+      && productionPicker.includes('crate::diagnostics::record("media-picker.worker-started", &[])')
+      && productionPicker.includes('crate::diagnostics::record("media-picker.worker-failed", &[])')
       && automationPicker.includes('staged_media_selection().map(Some)')
       && (dialogPathsSource.match(/rfd::FileDialog::new\(\)/g) || []).length === 1
       && !commandsSource.includes('rfd::FileDialog')

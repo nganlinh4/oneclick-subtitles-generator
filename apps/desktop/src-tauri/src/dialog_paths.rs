@@ -174,9 +174,15 @@ pub(crate) async fn pick_file_with_window(
         .set_parent(&window)
         .set_title(title)
         .add_filter(filter_label, extensions);
-    tauri::async_runtime::spawn_blocking(move || dialog.pick_file())
-        .await
-        .map_err(|_| CommandError::internal("the file picker task stopped unexpectedly"))
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::diagnostics::record("media-picker.worker-started", &[]);
+        dialog.pick_file()
+    })
+    .await
+    .map_err(|_| {
+        crate::diagnostics::record("media-picker.worker-failed", &[]);
+        CommandError::internal("the file picker task stopped unexpectedly")
+    })
 }
 
 #[cfg(feature = "e2e-automation")]
