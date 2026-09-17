@@ -63,9 +63,9 @@ const TAURI_NSIS_BOOTSTRAP_SHA256 =
 const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
   '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
-  'e53207922c58e449705282a11da2975bdeaf2754d1f204a504fcca424d16df61';
+  '96f2655f2f5497aa233dc18f9b4f99202bb6d293263c6bc2f4b46de505c87413';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  '445afb72c4f40ed848956803399f715a60c28cb49ae3f2b826c3fbca2e66b31f';
+  'd51c82ba4d6f2060bd30f826321b7446c3b61e08d092379176510500392d16f5';
 const DOWNLOAD_HANDLERS_SHA256 =
   '2324a6e9acbb2decb06ab5b51eee3d9dd600c07048522ba1421b3b6dbc252875';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
@@ -1545,7 +1545,7 @@ function assertInstalledLocalMediaInspector(script, inputMethodsSource) {
         "tabActivation === 'already-active' || tabActivation === 'activated'",
       )
       && priorGuard.includes(
-        "tabActivation === 'already-active' ? priorAssetId : null",
+        'const expectedRendererAssetId = priorAssetId;',
       )
       && priorGuard.includes('value.assetId === expectedRendererAssetId')
       && priorGuard.includes('value.sessionMediaId === priorAssetId')

@@ -775,9 +775,7 @@ async function runInstalledMediaFlow(options) {
         }
       },
       { failureCode: 'terminal-state-timeout' },
-    ).catch((error) => {
-      throw new Error(`${sanitizeInspectorError(error)}; ${lastStateRefusal}`);
-    });
+    );
     assertMediaFlowState(state, flowGuard);
     const result = {
       ...state,
