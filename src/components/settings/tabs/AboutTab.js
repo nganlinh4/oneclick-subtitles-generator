@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getGitVersion, getDisplayVersion, getLatestVersion, compareVersions, getInstallerFilename } from '../../../utils/gitVersion';
 import {
   beginDesktopUpdateInstall,
+  refreshDesktopUpdateCheck,
   subscribeDesktopUpdateStatus,
 } from '../../../platform/startupUpdateCoordinator';
 import LoadingIndicator from '../../common/LoadingIndicator';
@@ -55,6 +56,19 @@ const AboutTab = ({ backgroundType }) => {
     const unsubscribe = subscribeDesktopUpdateStatus(() => checkForUpdates());
     return unsubscribe;
   }, []); // Run once on mount and whenever the shared native status is refreshed
+
+  const handleRefreshUpdate = async () => {
+    if (isCheckingUpdate) return;
+    setIsCheckingUpdate(true);
+    try {
+      await refreshDesktopUpdateCheck();
+      setLatestVersionInfo(await getLatestVersion());
+    } catch {
+      setLatestVersionInfo(null);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   // Determine the background class based on the backgroundType
   const getBackgroundClass = () => {
@@ -125,6 +139,17 @@ const AboutTab = ({ backgroundType }) => {
 
               {/* Latest Version Check */}
               <div className="latest-version-check">
+                {latestVersionInfo?.configured !== false && (
+                  <button
+                    type="button"
+                    className="installer-option primary-installer"
+                    data-app-update-refresh
+                    onClick={handleRefreshUpdate}
+                    disabled={isCheckingUpdate}
+                  >
+                    {t('settings.refresh', 'Refresh')}
+                  </button>
+                )}
                 {isCheckingUpdate ? (
                   <div className="checking-update">
                     <LoadingIndicator size={16} theme="dark" showContainer={false} />

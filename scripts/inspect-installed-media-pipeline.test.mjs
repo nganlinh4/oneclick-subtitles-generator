@@ -133,6 +133,7 @@ const validResult = () => {
   const waveform = {
     kind: 'waveform',
     assetId: SOURCE_ID,
+    cacheHit: false,
     waveform: {
       durationUs: 4_000_000,
       sourceSampleRateHz: 400,
@@ -259,6 +260,19 @@ test('accepts the complete path-free installed native media pipeline', () => {
   });
   assert.doesNotMatch(JSON.stringify(summary),
     /(?:token|playback|localhost|127\.0\.0\.1|file:\/\/|[A-Za-z]:[\\/]|\\\\)/i);
+});
+
+test('accepts fresh and cached waveforms but rejects missing or malformed cache provenance', () => {
+  for (const cacheHit of [false, true]) {
+    const result = validResult();
+    result.generateWaveform.events.at(-1).result.cacheHit = cacheHit;
+    assert.equal(assertMediaPipelineResult(result, SOURCE_NAME), result);
+  }
+  for (const cacheHit of [undefined, null, 'false', 0]) {
+    const result = validResult();
+    result.generateWaveform.events.at(-1).result.cacheHit = cacheHit;
+    assert.throws(() => assertMediaPipelineResult(result, SOURCE_NAME), /bounded pyramid/);
+  }
 });
 
 test('rejects filesystem leakage before accepting otherwise plausible output', () => {

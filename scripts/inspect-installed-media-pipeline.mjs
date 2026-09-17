@@ -268,9 +268,10 @@ const assertMediaResult = (result, playbackProbe, {
 };
 
 const assertWaveform = (result, sourceId) => {
-  invariant(hasExactKeys(result, ['kind', 'assetId', 'waveform'])
+  invariant(hasExactKeys(result, ['kind', 'assetId', 'cacheHit', 'waveform'])
     && result.kind === 'waveform'
     && result.assetId === sourceId
+    && typeof result.cacheHit === 'boolean'
     && hasExactKeys(result.waveform, ['durationUs', 'sourceSampleRateHz', 'levels'])
     && isBoundedInteger(
       result.waveform.durationUs,

@@ -229,6 +229,39 @@ async function inspectUpdater(options) {
         () => evaluate(client, offerExpression(options.updatedVersion, false)),
         options.updatedVersion,
       );
+      const waitForUi = async (expression) => {
+        const deadline = Date.now() + 30_000;
+        do {
+          if (await evaluate(client, expression)) return;
+          await setTimeout(250);
+        } while (Date.now() < deadline);
+        throw new Error('Installed updater About UI did not reach the expected state');
+      };
+      await waitForUi(`(() => {
+        const button = document.querySelector('button.settings-button');
+        if (!button || button.disabled) return false;
+        button.click(); return true;
+      })()`);
+      await waitForUi(`(() => {
+        const button = document.querySelector('[data-settings-tab="about"]');
+        if (!button || button.disabled) return false;
+        button.click(); return true;
+      })()`);
+      await waitForUi(`(() => {
+        const button = document.querySelector('[data-app-update-refresh]');
+        if (!button || button.disabled) return false;
+        button.click(); return true;
+      })()`);
+      await waitForUi(`(() => {
+        const button = document.querySelector('[data-app-update-refresh]');
+        const version = document.querySelector('.latest-version-display');
+        return button && !button.disabled
+          && version?.textContent?.includes(${JSON.stringify(options.updatedVersion)})
+          && document.querySelector('.update-notification button') !== null;
+      })()`);
+      await captureScreenshot(client, options.screenshot.replace(/\.png$/i, '-about.png'));
+      await evaluate(client, `document.querySelector('.settings-modal .close-button-settings').click()`);
+      await waitForUi(`document.querySelector('.settings-modal') === null`);
     }
     const screenshot = await captureScreenshot(client, options.screenshot);
     if (options.mode === 'trigger') {

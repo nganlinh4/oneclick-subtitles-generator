@@ -112,6 +112,23 @@ test('About still reports a genuine updater failure', async () => {
   expect(screen.queryByText('You are using the latest version!')).not.toBeInTheDocument();
 });
 
+test('About can retry a failed check through its visible Refresh action', async () => {
+  let finish;
+  checkDesktopUpdate.mockRejectedValueOnce(new Error('endpoint unavailable'))
+    .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  render(<AboutTab />);
+  await screen.findByText('Unable to check for updates');
+  const refresh = screen.getByRole('button', { name: 'Refresh' });
+  fireEvent.click(refresh);
+  await waitFor(() => expect(refresh).toBeDisabled());
+  fireEvent.click(refresh);
+  expect(checkDesktopUpdate).toHaveBeenCalledTimes(2);
+  finish({ configured: true, currentVersion: '2.0.0', update: null });
+  await screen.findByText('You are using the latest version!');
+  expect(screen.queryByText('Unable to check for updates')).not.toBeInTheDocument();
+  expect(refresh).toBeEnabled();
+});
+
 test.each([
   ['2.0.0', '2.1.0'],
   ['2.0.0-rc.1', '2.0.0'],
