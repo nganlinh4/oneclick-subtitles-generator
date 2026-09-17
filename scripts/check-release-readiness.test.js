@@ -1482,11 +1482,11 @@ test('installed URL media flow preserves A while staging B and commits only nati
       ),
     ],
     [
-      'initial-only SRT upload widened to replacement',
+      'replacement staging check applied to the wrong phase',
       weaken(
         INSTALLED_MEDIA_FLOW_INSPECTOR,
+        '    if (options.priorAssetId !== null) {',
         '    if (options.priorAssetId === null) {',
-        '    if (true) {',
       ),
     ],
     [
@@ -1517,7 +1517,7 @@ test('installed URL media flow preserves A while staging B and commits only nati
       'staged subtitle ownership equality weakened',
       weaken(
         INSTALLED_MEDIA_FLOW_INSPECTOR,
-        '    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId',
+        '    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo?.cacheId',
         '    && after?.uploadedSrtInfo !== null',
       ),
     ],

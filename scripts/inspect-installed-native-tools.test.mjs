@@ -12,6 +12,7 @@ import {
   assertToolDomState,
   parseArguments,
   waitForValue,
+  waitForToolDomState,
 } from './inspect-installed-native-tools.mjs';
 
 const toolIds = ['deno', 'media-tools', 'yt-dlp'];
@@ -220,4 +221,27 @@ test('bounds a stalled UI state', async () => {
     (value) => value.state === 'installed',
     { timeoutMs: 2, now: () => time++, delay: async () => {} },
   ), /timed out/);
+});
+
+test('tool UI errors fail immediately without logging arbitrary UI content', async () => {
+  let reads = 0;
+  await assert.rejects(() => waitForToolDomState(async () => {
+    reads += 1;
+    return { ...domState('installed'), errorCount: 1, secret: 'private-token' };
+  }, 'missing', { delay: async () => assert.fail('terminal errors must not poll') }),
+  (error) => error.message.includes('ui-error; expected=missing')
+    && error.message.includes('deno=installed') && !error.message.includes('private-token'));
+  assert.equal(reads, 1);
+});
+
+test('tool timeout records bounded row states and still requires the exact DOM contract', async () => {
+  let time = 0;
+  const value = domState('installed');
+  value.rows[0].state = 'private-token';
+  await assert.rejects(() => waitForToolDomState(async () => value, 'installed', {
+    timeoutMs: 2, now: () => time++, delay: async () => {},
+  }), (error) => error.message.includes('unsettled; expected=installed')
+    && error.message.includes('deno=unknown') && !error.message.includes('private-token'));
+  assert.deepEqual(await waitForToolDomState(async () => domState('installed'), 'installed'),
+    domState('installed'));
 });

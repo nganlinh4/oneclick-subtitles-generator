@@ -438,8 +438,9 @@ test('stages replacement input without mutating the active media and subtitle tr
     'evaluate(client, CONFIGURE_MEDIA_PHASE_EXPRESSION(mediaPreferences))',
     'const activeState = options.priorAssetId === null',
     'evaluate(client, URL_STAGED_EXPRESSION)',
-    'if (options.priorAssetId === null) {',
+    'if (options.priorAssetId !== null) {',
     'assertStagedReplacementPreservesActiveMedia(',
+    "client.send('DOM.setFileInputFiles'",
     'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'client, START_EXPRESSION(mediaPreferences, priorCacheId)',
@@ -538,6 +539,21 @@ test('rejects every staged replacement mutation before native activation succeed
       label,
     );
   }
+});
+
+test('staging preserves a local project that has no inherited subtitle upload', () => {
+  const before = validResult();
+  before.assetId = PRIOR_ASSET_ID;
+  before.session.media.id = PRIOR_ASSET_ID;
+  before.workspace.mediaId = PRIOR_ASSET_ID;
+  before.uploadedSrtInfo = null;
+  before.subtitleMarkerVisible = false;
+  const unchanged = structuredClone(before);
+  assert.equal(assertStagedReplacementPreservesActiveMedia(before, unchanged, PRIOR_ASSET_ID), unchanged);
+  const contaminated = structuredClone(before);
+  contaminated.uploadedSrtInfo = validResult().uploadedSrtInfo;
+  assert.throws(() => assertStagedReplacementPreservesActiveMedia(before, contaminated, PRIOR_ASSET_ID),
+    /mutated the active media or subtitle identity/);
 });
 
 test('requires immediate native activity after the real media action', () => {

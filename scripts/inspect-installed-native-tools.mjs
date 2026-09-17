@@ -292,7 +292,8 @@ const DOM_STATE_EXPRESSION = `
   const ids = ${JSON.stringify(TOOL_IDS)};
   const rows = ids.map((id) => {
     const row = document.querySelector('[data-native-tool-id="' + id + '"]');
-    const state = ['missing', 'installing', 'installed'].find(
+    const state = ['missing', 'installing', 'installed', 'removing', 'corrupt',
+      'unavailable', 'pending-removal', 'restart-required'].find(
       (candidate) => row?.classList.contains('engine-card--' + candidate),
     ) ?? null;
     return {
@@ -400,16 +401,39 @@ const captureScreenshot = async (client, destination) => {
   });
 };
 
-const waitForDom = (client, expected, delayMs = 500) => waitForValue(
-  () => evaluate(client, DOM_STATE_EXPRESSION),
-  (value) => {
-    try {
-      assertToolDomState(value, expected);
-      return true;
-    } catch {
-      return false;
-    }
-  },
+export async function waitForToolDomState(read, expected, options = {}) {
+  let lastState = null;
+  try {
+    return await waitForValue(read, (value) => {
+      lastState = value;
+      invariant(!(Number.isSafeInteger(value?.errorCount) && value.errorCount > 0),
+        'Installed native-tool UI reported an error');
+      try {
+        assertToolDomState(value, expected);
+        return true;
+      } catch {
+        return false;
+      }
+    }, options);
+  } catch (error) {
+    // Only fixed enums/booleans escape: never include UI text, paths or provider details.
+    const states = new Set(['missing', 'installing', 'installed', 'removing', 'corrupt',
+      'unavailable', 'pending-removal', 'restart-required']);
+    const rows = TOOL_IDS.map((id) => {
+      const row = Array.isArray(lastState?.rows)
+        ? lastState.rows.find((candidate) => candidate?.id === id) : null;
+      return `${id}=${states.has(row?.state) ? row.state : 'unknown'}`;
+    }).join(',');
+    const reason = Number.isSafeInteger(lastState?.errorCount) && lastState.errorCount > 0
+      ? 'ui-error' : 'unsettled';
+    throw new Error(`Installed native-tool ${reason}; expected=${states.has(expected) ? expected : 'unknown'}; `
+      + `settings=${lastState?.settingsOpen === true}; panel=${lastState?.panelActive === true}; ${rows}`,
+    { cause: error });
+  }
+}
+
+const waitForDom = (client, expected, delayMs = 500) => waitForToolDomState(
+  () => evaluate(client, DOM_STATE_EXPRESSION), expected,
   { delay: () => new Promise((resolve) => setTimeout(resolve, delayMs)) },
 );
 
@@ -485,6 +509,15 @@ async function runInstalledNativeTools(options) {
       installingScreenshot,
       installedScreenshot,
     };
+  } catch (error) {
+    try {
+      await captureScreenshot(client, path.join(
+        path.dirname(options.installedScreenshot), 'osg-installed-tools-failure.png',
+      ));
+    } catch {
+      // Preserve the original failure even if the WebView has already exited.
+    }
+    throw error;
   } finally {
     client.close();
   }

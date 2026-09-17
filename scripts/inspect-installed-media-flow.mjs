@@ -368,8 +368,7 @@ export function assertStagedReplacementPreservesActiveMedia(before, after, prior
     'Installed media-flow staged replacement identity is invalid');
   invariant(before?.assetId === priorAssetId
     && before?.session?.media?.id === priorAssetId
-    && before?.workspace?.mediaId === priorAssetId
-    && before?.uploadedSrtInfo?.cacheId === before?.workspace?.cacheId,
+    && before?.workspace?.mediaId === priorAssetId,
   'Installed media flow did not begin from one coherent prior asset');
   invariant(after?.assetId === before.assetId
     && after?.currentFileName === before.currentFileName
@@ -378,8 +377,8 @@ export function assertStagedReplacementPreservesActiveMedia(before, after, prior
     && after?.session?.playback?.id === before.session.playback?.id
     && after?.workspace?.cacheId === before.workspace?.cacheId
     && after?.workspace?.projectId === before.workspace?.projectId
-    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId
-    && after?.uploadedSrtInfo?.fileName === before.uploadedSrtInfo.fileName
+    && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo?.cacheId
+    && after?.uploadedSrtInfo?.fileName === before.uploadedSrtInfo?.fileName
     && after?.subtitleMarkerVisible === before.subtitleMarkerVisible,
   'Staging replacement media mutated the active media or subtitle identity');
   return after;
@@ -723,7 +722,15 @@ async function runInstalledMediaFlow(options) {
       (value) => value === true,
       { timeoutMs: 60_000, failureCode: 'url-stage-timeout' },
     );
-    if (options.priorAssetId === null) {
+    if (options.priorAssetId !== null) {
+      const stagedState = await evaluate(client, MEDIA_RESULT_EXPRESSION);
+      assertStagedReplacementPreservesActiveMedia(
+        activeState, stagedState, options.priorAssetId,
+      );
+    }
+    // Import explicitly for this project. Native local-media activation intentionally does not
+    // inherit the preceding URL project's captions or its uploaded-SRT provenance.
+    {
       const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
       const inputs = await client.send('DOM.querySelectorAll', {
         nodeId: documentNode.root.nodeId,
@@ -735,11 +742,6 @@ async function runInstalledMediaFlow(options) {
       await client.send('DOM.setFileInputFiles', {
         files: [options.srt], nodeId: inputs.nodeIds[0],
       });
-    } else {
-      const stagedState = await evaluate(client, MEDIA_RESULT_EXPRESSION);
-      assertStagedReplacementPreservesActiveMedia(
-        activeState, stagedState, options.priorAssetId,
-      );
     }
     await waitForValue(
       () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId)),

@@ -61,11 +61,11 @@ const DESKTOP_CLOSE_CHECKPOINT_SHA256 =
 const TAURI_NSIS_BOOTSTRAP_SHA256 =
   '930bef57b7bccd22ba36ce8a045eabdcb92b74eaeeaa0273cbb45e2a7471d41b';
 const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
-  '3167ddbddd723a1b6bf0200d0f7061f2c545c067de971c77d5c5cef58b22965b';
+  '2cfe24db4cbe6af6ba61b0d53fb85f07056a77094743ec0f1e36e33112c330e7';
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   '96f2655f2f5497aa233dc18f9b4f99202bb6d293263c6bc2f4b46de505c87413';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  '717de96d1a550b95b9fd3a188ba34713136a37aff1cf1502de895eb493208b2b';
+  '664de831bc41de67f19e8df1719c0913646861e2ef8d4985943c37ed37f86ff7';
 const DOWNLOAD_HANDLERS_SHA256 =
   '2324a6e9acbb2decb06ab5b51eee3d9dd600c07048522ba1421b3b6dbc252875';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
@@ -1646,8 +1646,9 @@ function assertInstalledMediaFlowInspector(
     'const activeState = options.priorAssetId === null',
     'evaluate(client, SET_URL_EXPRESSION)',
     'evaluate(client, URL_STAGED_EXPRESSION)',
-    'if (options.priorAssetId === null) {',
+    'if (options.priorAssetId !== null) {',
     'assertStagedReplacementPreservesActiveMedia(',
+    "client.send('DOM.setFileInputFiles'",
     'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'const baselineDownloadJobIds = collectDownloadJobIds(baselineState)',
@@ -1779,18 +1780,18 @@ function assertInstalledMediaFlowInspector(
       && run.includes("failureCode: 'srt-readiness-timeout'"),
     'Installed media-flow inspector must prove exact retained-or-fresh SRT state before enabling one start action',
   );
-  const initialUploadStart = run.indexOf('if (options.priorAssetId === null) {');
+  const replacementCheckStart = run.indexOf('if (options.priorAssetId !== null) {');
   const stagedIdentityCheck = run.indexOf('assertStagedReplacementPreservesActiveMedia(');
   const srtReadinessWait = run.indexOf(
     'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
   );
   invariant(
     (run.match(/DOM\.setFileInputFiles/g) || []).length === 1
-      && initialUploadStart >= 0
-      && run.indexOf("client.send('DOM.setFileInputFiles'", initialUploadStart) > initialUploadStart
-      && stagedIdentityCheck > initialUploadStart
-      && srtReadinessWait > stagedIdentityCheck,
-    'Installed media-flow inspector must upload SRT only initially and preserve it during replacement',
+      && replacementCheckStart >= 0
+      && stagedIdentityCheck > replacementCheckStart
+      && run.indexOf("client.send('DOM.setFileInputFiles'") > stagedIdentityCheck
+      && srtReadinessWait > run.indexOf("client.send('DOM.setFileInputFiles'"),
+    'Installed media-flow inspector must prove staging preserves identity before explicitly importing SRT for each project',
   );
   invariant(
     (start.match(/buttons\[0\]\.click\(\);/g) || []).length === 1
@@ -1879,13 +1880,12 @@ function assertInstalledMediaFlowInspector(
     stagedIdentityGuard.includes('before?.assetId === priorAssetId')
       && stagedIdentityGuard.includes('before?.session?.media?.id === priorAssetId')
       && stagedIdentityGuard.includes('before?.workspace?.mediaId === priorAssetId')
-      && stagedIdentityGuard.includes('before?.uploadedSrtInfo?.cacheId === before?.workspace?.cacheId')
       && stagedIdentityGuard.includes('after?.assetId === before.assetId')
       && stagedIdentityGuard.includes('after?.currentFileUrl === before.currentFileUrl')
       && stagedIdentityGuard.includes('after?.session?.media?.id === before.session.media.id')
       && stagedIdentityGuard.includes('after?.session?.playback?.id === before.session.playback?.id')
       && stagedIdentityGuard.includes(
-        'after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId',
+        'after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo?.cacheId',
       ),
     'Installed media-flow inspector must reject staged mutations of active media identity',
   );
