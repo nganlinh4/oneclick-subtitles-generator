@@ -234,7 +234,18 @@ pub(crate) fn run(
     )
     .map_err(|error| {
         // ExportError and its nested pipeline errors contain no paths, text or credentials.
-        crate::diagnostics::record("render.pipeline-refused", &[("reason", error.to_string())]);
+        let reason: String = format!("{error:?}")
+            .chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || "._:-".contains(character) {
+                    character
+                } else {
+                    '-'
+                }
+            })
+            .take(128)
+            .collect();
+        crate::diagnostics::record("render.pipeline-refused", &[("reason", reason)]);
         #[cfg(test)]
         eprintln!("render.pipeline-refused: {error:?}");
         stopped(control).unwrap_or_else(|| refusal::from_export(&error))
