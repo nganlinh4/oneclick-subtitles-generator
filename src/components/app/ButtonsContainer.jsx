@@ -91,9 +91,9 @@ const ButtonsContainer = ({
   }, [isDownloading]);
 
   // Acquisition intent follows the selected input tab, just like handleGenerateSubtitles.
-  // The old loaded file deliberately remains playable while a replacement URL is staged.
-  const hasUrlAndSrtOnly = (activeTab === 'unified-url' || activeTab?.includes('youtube')) &&
-                          selectedVideo &&
+  // Existing captions belong to the retained media; only SRT-first input can accompany a new URL.
+  const hasSelectedUrl = (activeTab === 'unified-url' || activeTab?.includes('youtube')) && selectedVideo;
+  const hasUrlAndSrtOnly = hasSelectedUrl && !uploadedFile &&
                           subtitlesData && subtitlesData.length > 0 &&
                           !isSrtOnlyMode;
   const generationMode = isSrtOnlyMode
@@ -184,7 +184,7 @@ const ButtonsContainer = ({
                 </span>
               ) : isSrtOnlyMode ? t('output.srtOnlyMode', 'Working with SRT only') :
                 hasUrlAndSrtOnly ? t('output.downloadAndViewWithSrt', 'Download + View with Uploaded SRT') :
-                selectedVideo && !uploadedFile ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
+                hasSelectedUrl ? t('output.downloadAndGenerateSemiAuto', 'Download + Generate (semi-auto)') :
                 t('output.semiAutoGenerate', 'Semi-auto')}
             </button>
           </Tooltip>

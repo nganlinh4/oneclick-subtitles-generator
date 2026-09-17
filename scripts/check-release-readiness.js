@@ -65,7 +65,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   '96f2655f2f5497aa233dc18f9b4f99202bb6d293263c6bc2f4b46de505c87413';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  '8473e02d72325a91b2c616da9d20e4a8f26e2596b30031f7823758bd71d6d184';
+  'c768527b2a6e7f252807cd90f48b9432be54a7b35fce9dfe6ae1b2c51e29ea1f';
 const DOWNLOAD_HANDLERS_SHA256 =
   '2324a6e9acbb2decb06ab5b51eee3d9dd600c07048522ba1421b3b6dbc252875';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
@@ -1774,7 +1774,7 @@ function assertInstalledMediaFlowInspector(
       && ready.includes("':scope .generate-btn.semi-auto'")
       && ready.includes('startButtons[0] instanceof HTMLButtonElement')
       && ready.includes('!startButtons[0].disabled')
-      && ready.includes("startButtons[0].dataset.generationMode === 'url-with-srt'")
+      && ready.includes("startButtons[0].dataset.generationMode === ${JSON.stringify(expectedCacheId === null ? 'url-with-srt' : 'other')}")
       && run.includes("selector: '.buttons-container .srt-upload-buttons-group input[type=\"file\"][accept=\".srt,.json\"]'")
       && run.includes('Array.isArray(inputs.nodeIds) && inputs.nodeIds.length === 1')
       && run.includes("failureCode: 'srt-readiness-timeout'"),
@@ -1815,7 +1815,7 @@ function assertInstalledMediaFlowInspector(
       && start.includes('buttons.length !== 1')
       && start.includes("':scope .generate-btn.semi-auto'")
       && start.includes('buttons[0].disabled')
-      && start.includes("buttons[0].dataset.generationMode !== 'url-with-srt'")
+      && start.includes("buttons[0].dataset.generationMode !== ${JSON.stringify(expectedCacheId === null ? 'url-with-srt' : 'other')}")
       && !script.includes('.generate-btn.semi-auto[data-generation-mode=')
       && start.indexOf('buttons.length !== 1') < start.indexOf('buttons[0].click();')
       && run.split('client, START_EXPRESSION(mediaPreferences, priorCacheId)').length === 2,
@@ -1859,7 +1859,9 @@ function assertInstalledMediaFlowInspector(
     ? run.slice(terminalWaitStart, terminalWaitEnd + '\n    );'.length)
     : '';
   invariant(
-    terminalWait.includes('() => evaluate(client, MEDIA_RESULT_EXPRESSION)')
+    terminalWait.includes('const value = await evaluate(client, MEDIA_RESULT_EXPRESSION)')
+      && terminalWait.includes('!replacementImportComplete && hasCompletedReplacementForImport(value, flowGuard)')
+      && terminalWait.includes('await importSubtitles()')
       && terminalWait.includes("{ failureCode: 'terminal-state-timeout' }")
       && (terminalWait.match(/failureCode:/g) || []).length === 1,
     'Installed media-flow inspector must bind the terminal wait to its exact fixed failure category',

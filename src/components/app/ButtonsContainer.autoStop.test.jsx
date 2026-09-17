@@ -146,10 +146,9 @@ test.each(['unified-url', 'youtube-search', 'file-upload'])(
       subtitlesData: [{ id: 'one', start: 0, end: 1, text: 'Imported subtitle' }] };
     const { container } = render(<ButtonsContainer {...props} />);
     const button = container.querySelector('.generate-btn.semi-auto');
-    expect(button).toHaveAttribute('data-generation-mode',
-      activeTab === 'file-upload' ? 'other' : 'url-with-srt');
+    expect(button).toHaveAttribute('data-generation-mode', 'other');
     if (activeTab !== 'file-upload') {
-      expect(button).toHaveTextContent('Download + View with Uploaded SRT');
+      expect(button).toHaveTextContent('Download + Generate (semi-auto)');
     }
     fireEvent.click(button);
     expect(props.handleGenerateSubtitles).toHaveBeenCalledTimes(1);

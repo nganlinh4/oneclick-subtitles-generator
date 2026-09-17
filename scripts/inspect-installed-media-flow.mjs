@@ -144,6 +144,17 @@ const newDownloadJobs = (value, baselineDownloadJobIds) => {
   ));
 };
 
+export const hasCompletedReplacementForImport = (value, { priorAssetId, baselineDownloadJobIds }) => {
+  const downloads = newDownloadJobs(value, baselineDownloadJobIds);
+  return priorAssetId !== null && downloads.length === 1 && downloads[0].state === 'succeeded'
+    && UUID_V7.test(value?.assetId ?? '') && value.assetId !== priorAssetId
+    && value.workspace?.mediaId === value.assetId
+    && value.session?.media?.id === value.assetId
+    && value.video?.readyState >= 1
+    && value.currentFileUrl === value.session?.playback?.playbackUrl
+    && value.video?.currentSrc === value.currentFileUrl;
+};
+
 export function sanitizeInspectorError(error, fallback = 'Installed media flow failed') {
   const raw = error instanceof Error && typeof error.message === 'string'
     ? error.message
@@ -578,7 +589,7 @@ const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `
     && startButtons.length === 1
     && startButtons[0] instanceof HTMLButtonElement
     && !startButtons[0].disabled
-    && startButtons[0].dataset.generationMode === 'url-with-srt';
+    && startButtons[0].dataset.generationMode === ${JSON.stringify(expectedCacheId === null ? 'url-with-srt' : 'other')};
 })()`;
 
 const START_EXPRESSION = (preferences, expectedCacheId) => `
@@ -638,7 +649,7 @@ const START_EXPRESSION = (preferences, expectedCacheId) => `
       || !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
       || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)
       || buttons[0].disabled
-      || buttons[0].dataset.generationMode !== 'url-with-srt') return false;
+      || buttons[0].dataset.generationMode !== ${JSON.stringify(expectedCacheId === null ? 'url-with-srt' : 'other')}) return false;
   buttons[0].click();
   return true;
 })()`;
@@ -730,7 +741,7 @@ async function runInstalledMediaFlow(options) {
     }
     // Import explicitly for this project. Native local-media activation intentionally does not
     // inherit the preceding URL project's captions or its uploaded-SRT provenance.
-    {
+    const importSubtitles = async () => {
       const documentNode = await client.send('DOM.getDocument', { depth: -1, pierce: true });
       const inputs = await client.send('DOM.querySelectorAll', {
         nodeId: documentNode.root.nodeId,
@@ -742,7 +753,8 @@ async function runInstalledMediaFlow(options) {
       await client.send('DOM.setFileInputFiles', {
         files: [options.srt], nodeId: inputs.nodeIds[0],
       });
-    }
+    };
+    await importSubtitles();
     await waitForValue(
       () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId)),
       (value) => value === true,
@@ -769,8 +781,18 @@ async function runInstalledMediaFlow(options) {
     );
     let completedAt = null;
     let lastStateRefusal = 'No accepted media state';
+    let replacementImportComplete = options.priorAssetId === null;
     const state = await waitForValue(
-      () => evaluate(client, MEDIA_RESULT_EXPRESSION),
+      async () => {
+        const value = await evaluate(client, MEDIA_RESULT_EXPRESSION);
+        if (!replacementImportComplete && hasCompletedReplacementForImport(value, flowGuard)) {
+          // The first import belongs to A. Explicitly import into B only after its native
+          // activation and visible player agree; provenance must never leak across projects.
+          await importSubtitles();
+          replacementImportComplete = true;
+        }
+        return value;
+      },
       (value) => {
         hasMediaFlowStarted(value, flowGuard);
         try {

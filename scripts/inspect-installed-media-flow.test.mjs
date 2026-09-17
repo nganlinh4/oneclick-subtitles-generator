@@ -14,6 +14,7 @@ import {
   assertStagedReplacementPreservesActiveMedia,
   collectDownloadJobIds,
   hasMediaFlowStarted,
+  hasCompletedReplacementForImport,
   mediaPreferencesForPhase,
   parseArguments,
   readPlaybackCapability,
@@ -224,6 +225,26 @@ test('routes each exact media phase to a distinct reviewed adapter key', () => {
 test('accepts the complete native media, subtitle, tool, and job result', () => {
   assert.equal(assertMediaFlowResult(validResult()).video.width, 640);
   assert.deepEqual(collectDownloadJobIds(validResult()), [DOWNLOAD_JOB_A]);
+});
+
+test('replacement imports require completed download and matching native and visible B', () => {
+  const guard = { priorAssetId: PRIOR_ASSET_ID, baselineDownloadJobIds: [] };
+  assert.equal(hasCompletedReplacementForImport(validResult(), guard), true);
+  assert.equal(hasCompletedReplacementForImport(validResult(), {
+    ...guard, baselineDownloadJobIds: [DOWNLOAD_JOB_A],
+  }), false);
+  for (const mutate of [
+    (value) => { value.assetId = PRIOR_ASSET_ID; },
+    (value) => { value.jobs[0].state = 'running'; },
+    (value) => { value.workspace.mediaId = PRIOR_ASSET_ID; },
+    (value) => { value.session.media.id = PRIOR_ASSET_ID; },
+    (value) => { value.video.readyState = 0; },
+    (value) => { value.video.currentSrc = 'stale'; },
+  ]) {
+    const value = validResult();
+    mutate(value);
+    assert.equal(hasCompletedReplacementForImport(value, guard), false);
+  }
 });
 
 test('requires a replaced asset and exactly one successful download created after baseline', () => {
