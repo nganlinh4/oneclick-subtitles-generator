@@ -16,7 +16,9 @@ use std::path::PathBuf;
 #[cfg(windows)]
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use osg_domain::{AssetId, ProjectId};
+use osg_domain::AssetId;
+#[cfg(windows)]
+use osg_domain::ProjectId;
 use osg_scene::glyph::{
     AtlasFace, AtlasGeometry, AtlasGlyph, AtlasLayout, AtlasLine, AtlasMetrics, CellAdvanceVerdict,
     Direction, FaceProbe, FaceStyle, GLYPH_ATLAS_VERSION, GlyphAtlasDescriptor, LayoutRefusal,

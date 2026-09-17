@@ -17,7 +17,6 @@ fn opening_an_encoder_is_refused_rather_than_substituted() {
         VideoConfig::new(1920, 1080, 30, 1, 30).expect("a supported configuration"),
     );
     let error = open_encoder(Path::new("/tmp/opaque-id.mp4"), config)
-        .err()
-        .expect("this platform has no audited backend");
+        .expect_err("this platform has no audited backend");
     assert_eq!(error, EncodeError::UnsupportedPlatform);
 }
