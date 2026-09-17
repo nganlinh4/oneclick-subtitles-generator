@@ -53,6 +53,7 @@ pub struct EncodeOutcome {
 }
 
 impl EncodeOutcome {
+    #[cfg(windows)]
     pub(crate) const fn new(
         frames_written: u32,
         audio_samples_written: u64,

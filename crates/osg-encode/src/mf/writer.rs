@@ -11,10 +11,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFByteStream, IMFDXGIDeviceManager, IMFMediaType, IMFSample, IMFSinkWriter,
-    MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_SINK_WRITER_D3D_MANAGER,
-    MF_SINK_WRITER_DISABLE_THROTTLING, MF_TRANSCODE_CONTAINERTYPE, MFCreateAttributes,
-    MFCreateSinkWriterFromURL, MFTranscodeContainerType_MPEG4,
+    CODECAPI_AVEncMPVDefaultBPictureCount, IMFAttributes, IMFByteStream, IMFDXGIDeviceManager,
+    IMFMediaType, IMFSample, IMFSinkWriter, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
+    MF_SINK_WRITER_D3D_MANAGER, MF_SINK_WRITER_DISABLE_THROTTLING, MF_TRANSCODE_CONTAINERTYPE,
+    MFCreateAttributes, MFCreateSinkWriterFromURL, MFTranscodeContainerType_MPEG4,
 };
 use windows::core::PCWSTR;
 
@@ -151,11 +151,12 @@ impl MediaFoundationEncoder {
         self.set_input_type(
             self.video_stream,
             &media_type::uncompressed_video_type(video)?,
+            Some(&video_encoding_parameters()?),
         )?;
 
         if let Some(audio) = self.config.audio() {
             let stream = self.add_stream(&media_type::encoded_audio_type(audio)?)?;
-            self.set_input_type(stream, &media_type::uncompressed_audio_type(audio)?)?;
+            self.set_input_type(stream, &media_type::uncompressed_audio_type(audio)?, None)?;
             self.audio_stream = Some(stream);
         }
         Ok(())
@@ -169,11 +170,16 @@ impl MediaFoundationEncoder {
             .map_err(|error| platform_error(MfStage::AddStream, &error))
     }
 
-    fn set_input_type(&self, stream: u32, uncompressed: &IMFMediaType) -> Result<(), EncodeError> {
+    fn set_input_type(
+        &self,
+        stream: u32,
+        uncompressed: &IMFMediaType,
+        parameters: Option<&IMFAttributes>,
+    ) -> Result<(), EncodeError> {
         let writer = self.writer()?;
-        // SAFETY: both interfaces are live for the duration of the call; `None` declares that no
-        // extra encoding parameters are supplied.
-        unsafe { writer.SetInputMediaType(stream, uncompressed, None::<&IMFAttributes>) }
+        // SAFETY: all supplied interfaces are live for this call. The writer consumes the
+        // encoder parameters while negotiating the input type, before any samples are sent.
+        unsafe { writer.SetInputMediaType(stream, uncompressed, parameters) }
             .map_err(|error| platform_error(MfStage::InputMediaType, &error))
     }
 
@@ -382,6 +388,28 @@ impl Drop for MediaFoundationEncoder {
 /// Hardware transforms are enabled so the encode uses the machine's video encoder when it has one.
 /// Throttling is disabled because this is an offline export, not a live capture: there is no
 /// wall clock to keep up with and no reason to pace the writer to one.
+fn video_encoding_parameters() -> Result<IMFAttributes, EncodeError> {
+    let mut store = None;
+    // SAFETY: the output slot is live and receives an owned COM reference.
+    unsafe { MFCreateAttributes(&raw mut store, 1) }
+        .map_err(|error| platform_error(MfStage::WriterAttributes, &error))?;
+    let store = store.ok_or(EncodeError::MediaFoundation {
+        stage: MfStage::WriterAttributes,
+        code: 0,
+    })?;
+    // The hosted software encoder defaults to reordering: independently probed output began
+    // one frame late (333333 ticks at 30fps). Specify an IP-only stream before negotiation,
+    // preserving our authored zero-based presentation timeline without post-hoc timestamp shifts.
+    // This is intentionally narrower than low-latency mode, which also changes quality policy.
+    media_type::set_u32(
+        &store,
+        &CODECAPI_AVEncMPVDefaultBPictureCount,
+        0,
+        MfStage::WriterAttributes,
+    )?;
+    Ok(store)
+}
+
 fn writer_attributes(manager: Option<&IMFDXGIDeviceManager>) -> Result<IMFAttributes, EncodeError> {
     let mut store: Option<IMFAttributes> = None;
     // SAFETY: the out-parameter is a live local for the duration of the call, and the count is the
