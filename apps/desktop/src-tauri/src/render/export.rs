@@ -232,7 +232,13 @@ pub(crate) fn run(
         },
         progress,
     )
-    .map_err(|error| stopped(control).unwrap_or_else(|| refusal::from_export(&error)))?;
+    .map_err(|error| {
+        // ExportError and its nested pipeline errors contain no paths, text or credentials.
+        crate::diagnostics::record("render.pipeline-refused", &[("reason", error.to_string())]);
+        #[cfg(test)]
+        eprintln!("render.pipeline-refused: {error:?}");
+        stopped(control).unwrap_or_else(|| refusal::from_export(&error))
+    })?;
 
     // The length is the timeline's, and the `WebView` was told that number before the first frame
     // was drawn. A file of another length is refused rather than published under it.

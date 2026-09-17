@@ -168,6 +168,10 @@ pub(crate) fn from_export(error: &ExportError) -> CommandError {
             "The native video render could not write its output file.",
         ),
         ExportError::CompositionRejected { reason } => from_composition(reason),
+        ExportError::GpuVideoUnavailable { .. } => CommandError::render_refusal(
+            "renderDeviceLost",
+            "No usable graphics device is available to render this video.",
+        ),
         // The scene, the timeline and the derived output size, plus whatever a later export adds:
         // all of them mean the composition this request describes is not one that can be drawn.
         _ => scene_rejected(),
