@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
 
 import {
   assertInspection,
+  INSPECTION_EXPRESSION,
   assertPersistence,
   assertVisualSettled,
   parseArguments,
@@ -10,6 +12,34 @@ import {
   selectTauriTarget,
   waitForInspection,
 } from './inspect-installed-webview.mjs';
+
+test('the installed probe reads the current native readiness record, not retired flags', async () => {
+  const window = {
+    __OSG_FONT_READINESS__: {
+      schema: 1, epoch: 1, state: 'ready', family: 'Google Sans',
+      version: 'v22-ui4', reason: null, retryable: false,
+    },
+    __TAURI_INTERNALS__: { invoke: async () => validInspection.health },
+  };
+  const context = vm.createContext({
+    window,
+    document: {
+      readyState: 'complete', body: {},
+      fonts: { ready: Promise.resolve(), check: () => true },
+      documentElement: { classList: { contains: () => true } },
+      getElementById: () => ({
+        childElementCount: 1, getBoundingClientRect: () => ({ width: 1400, height: 900 }),
+      }),
+    },
+    getComputedStyle: () => ({ fontFamily: 'Google Sans' }),
+  });
+  assertInspection(await vm.runInContext(INSPECTION_EXPRESSION, context), '1.0.0-rc.1');
+  delete window.__OSG_FONT_READINESS__;
+  window.__OSG_MANAGED_UI_FONT__ = true;
+  const stale = await vm.runInContext(INSPECTION_EXPRESSION, context);
+  assert.equal(stale.managedFont, false);
+  assert.throws(() => assertInspection(stale, '1.0.0-rc.1'), /font bootstrap/);
+});
 
 test('installed persistence supplies a stable namespaced project-create identity', () => {
   const expression = persistenceExpression({

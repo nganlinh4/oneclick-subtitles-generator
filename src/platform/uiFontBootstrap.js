@@ -1,5 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isDesktopRuntime } from './runtimeEnvironment';
+import { fontCapabilitySnapshot } from '../services/fontCapability';
 
 const FONT_READY_TIMEOUT_MS = 3000;
 const MANAGED_UI_FONT_FAMILY = 'Google Sans';
@@ -10,7 +11,7 @@ const FONT_COVERAGE_PROBES = Object.freeze([
 ]);
 
 const managedFontIsAvailable = () => (
-  typeof window !== 'undefined' && window.__OSG_MANAGED_UI_FONT__ === true
+  fontCapabilitySnapshot().managedPackInstalled
 );
 
 const boundedWait = async (operation, timeoutMs, fallback) => {
@@ -32,13 +33,6 @@ const waitForFont = async ({
   timeoutMs = FONT_READY_TIMEOUT_MS,
 } = {}) => {
   if (!managedFontIsAvailable() || typeof fonts?.load !== 'function') return false;
-
-  const styleReady = await boundedWait(
-    window.__OSG_MANAGED_UI_FONT_READY__ ?? true,
-    timeoutMs,
-    false,
-  ).catch(() => false);
-  if (styleReady !== true) return false;
 
   const descriptor = `400 16px "${MANAGED_UI_FONT_FAMILY}"`;
   const loadedFaces = await boundedWait(

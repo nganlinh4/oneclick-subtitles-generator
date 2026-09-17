@@ -308,7 +308,7 @@ export async function discoverTarget(port, timeoutMs = DEFAULT_TIMEOUT_MS) {
   throw new Error(`Installed WebView DevTools target was unavailable: ${lastFailure}`);
 }
 
-const INSPECTION_EXPRESSION = `
+export const INSPECTION_EXPRESSION = `
 (async () => {
   await document.fonts.ready;
   const root = document.getElementById('root');
@@ -320,7 +320,11 @@ const INSPECTION_EXPRESSION = `
     rootChildren: root?.childElementCount ?? 0,
     rootWidth: Math.round(bounds?.width ?? 0),
     rootHeight: Math.round(bounds?.height ?? 0),
-    managedFont: window.__OSG_MANAGED_UI_FONT__ === true,
+    managedFont: window.__OSG_FONT_READINESS__?.schema === 1
+      && window.__OSG_FONT_READINESS__?.state === 'ready'
+      && window.__OSG_FONT_READINESS__?.family === 'Google Sans'
+      && window.__OSG_FONT_READINESS__?.version === 'v22-ui4'
+      && window.__OSG_FONT_READINESS__?.reason === null,
     managedFontStyle: document.getElementById('osg-managed-ui-font') !== null,
     fontReadyClass: document.documentElement.classList.contains('osg-managed-ui-font-ready'),
     fontLoaded: document.fonts.check(descriptor, 'OSG Tiếng Việt ă đ ơ ư'),
