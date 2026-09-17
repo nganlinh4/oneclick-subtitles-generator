@@ -15,7 +15,7 @@ import {
   waitForValue,
 } from './inspect-installed-editor-flow.mjs';
 
-test('executed history probe resolves the native workspace rather than a removed browser mirror', async () => {
+test('executed history probe resolves the native workspace and typed alias store, not retired settings', async () => {
   const id = '019ff572-2132-7ba1-9e9c-5a29894963bf';
   const context = {
     localStorage: { getItem() { throw new Error('legacy media storage is not authority'); } },
@@ -23,7 +23,8 @@ test('executed history probe resolves the native workspace rather than a removed
       if (command === 'active_workspace_get') return {
         initialized: true, workspace: { cacheId: 'site_fixture_project_alias', projectId: id },
       };
-      if (command === 'setting_get') return {
+      if (command === 'setting_get') throw new Error('project aliases no longer live in generic app settings');
+      if (command === 'subtitle_project_index_get') return {
         entries: [{ cacheId: 'site_fixture_project_alias', projectId: id }],
       };
       if (command === 'project_load') return {
@@ -217,7 +218,8 @@ test('wait failures and evaluation diagnostics cannot serialize inspected state'
   );
   assert.doesNotMatch(source, /JSON\.stringify\(lastValue\)/);
   assert.doesNotMatch(source, /exceptionDetails\?\.text/);
-  assert.match(source, /project\.subtitleCacheIndex\.v1/);
+  assert.match(source, /subtitle_project_index_get/);
+  assert.doesNotMatch(source, /invoke\('setting_get'/);
   assert.match(source, /project_track_history_status/);
 });
 

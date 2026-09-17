@@ -11,7 +11,6 @@ import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
 const ORIGINAL_TEXT = 'OSG installed media smoke';
 const EDITED_TEXT = 'OSG durable editor smoke';
 const EDITOR_REASON = 'OSG lyrics editor v1: text';
-const SUBTITLE_INDEX_KEY = 'project.subtitleCacheIndex.v1';
 const SUBTITLE_TRACK_LABEL = 'Cached subtitles';
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000;
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -237,7 +236,7 @@ export const NATIVE_HISTORY_EXPRESSION = `
   const workspaceState = await invoke('active_workspace_get');
   const workspace = workspaceState?.initialized === true ? workspaceState.workspace : null;
   const cacheId = workspace?.cacheId ?? null;
-  const index = await invoke('setting_get', { key: ${JSON.stringify(SUBTITLE_INDEX_KEY)} });
+  const index = await invoke('subtitle_project_index_get');
   const entries = Array.isArray(index?.entries) ? index.entries : [];
   const matchingEntries = entries.filter((entry) => entry?.cacheId === cacheId
     && entry?.projectId === workspace?.projectId);
