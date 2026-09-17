@@ -13,6 +13,7 @@ osg-decode = { workspace = true }
 osg-encode = { workspace = true }
 osg-scene = { workspace = true }
 thiserror.workspace = true
+[target.'cfg(windows)'.dependencies]
 wgpu = { version = "=30.0.0", default-features = false, features = ["std", "dx12"] }
 windows = { version = "=0.62.2", features = [
   "Win32_Foundation",

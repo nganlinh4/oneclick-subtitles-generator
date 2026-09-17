@@ -73,6 +73,7 @@ pub enum GpuVideoError {
     Compose(#[from] CompositorError),
 }
 
+#[cfg(windows)]
 impl GpuVideoError {
     pub(crate) fn windows(stage: InteropStage, error: &windows::core::Error) -> Self {
         Self::Interop {
