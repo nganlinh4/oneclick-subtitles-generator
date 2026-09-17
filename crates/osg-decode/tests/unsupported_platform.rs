@@ -19,7 +19,6 @@ fn opening_a_decoder_is_refused_rather_than_substituted() {
         Path::new("/tmp/opaque-id.mp4"),
         DecoderConfig::new(timeline),
     )
-    .err()
-    .expect("this platform has no audited backend");
+    .expect_err("this platform has no audited backend");
     assert_eq!(error, DecodeError::UnsupportedPlatform);
 }
