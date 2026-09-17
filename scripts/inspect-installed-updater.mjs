@@ -259,6 +259,10 @@ async function inspectUpdater(options) {
           && version?.textContent?.includes(${JSON.stringify(options.updatedVersion)})
           && document.querySelector('.update-notification button') !== null;
       })()`);
+      await evaluate(client, `(async () => {
+        document.querySelector('.version-info').scrollIntoView({ block: 'start', behavior: 'instant' });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
       await captureScreenshot(client, options.screenshot.replace(/\.png$/i, '-about.png'));
       await evaluate(client, `document.querySelector('.settings-modal .close-button-settings').click()`);
       await waitForUi(`document.querySelector('.settings-modal') === null`);
