@@ -11,6 +11,8 @@
 //! hold whatever the encoder left there. So the fix carries the surface and the picture rectangle
 //! separately, and these tests check the picture — its size, and that the padding never reaches it.
 
+#![cfg(windows)]
+
 use std::path::{Path, PathBuf};
 
 use osg_decode::{DecoderConfig, VideoDecoder};
