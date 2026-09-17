@@ -994,7 +994,11 @@ function assertWorkflowCommands(workflow) {
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-*.png') &&
       branchInstalledSmoke.includes('${{ runner.temp }}/osg-installed-branch-result.json') &&
       pickerEvidenceUpload.test(branchInstalledSmoke) &&
-      !branchWithoutInstalledMediaFixture.includes('/releases/download/'),
+      // Manifest generation writes a future asset URL; it does not download that installer.
+      !branchWithoutInstalledMediaFixture.replace(
+        /^\s*node scripts\/build-updater-manifest\.js --bundle-root target --base-url "https:\/\/github\.com\/nganlinh4\/oneclick-subtitles-generator\/releases\/download\/v\$expectedVersion" --platform windows-x86_64-nsis --notes "OSG \$expectedVersion native Windows candidate" --output osg-desktop-updater-v2\.json\s*$/m,
+        '',
+      ).includes('/releases/download/'),
     'installed-smoke must build, validate, install, and launch the current branch without downloading a published release',
   );
   const branchBootstrapRuns = exactWorkflowRunMatches(
@@ -4146,7 +4150,7 @@ function assertDevelopmentCacheContract(rootDirectory = REPOSITORY_ROOT) {
     'Workflow evidence retention must remain journal-authorized and recoverable',
   );
 
-  const rootReadme = readText(rootDirectory, 'README.md');
+  const rootReadme = readText(rootDirectory, 'docs/DEVELOPMENT.md');
   const cacheGuide = readText(rootDirectory, 'docs/rewrite/DEVELOPMENT_CACHE.md');
   const desktopReadme = readText(rootDirectory, 'apps/desktop/README.md');
   invariant(
@@ -4155,7 +4159,7 @@ function assertDevelopmentCacheContract(rootDirectory = REPOSITORY_ROOT) {
       && rootReadme.includes('three newest immutable attempts plus its latest successful proof')
       && rootReadme.includes('inner `apps/desktop` Tauri entry points reject unmanaged local invocations')
       && rootReadme.includes('use a recoverable journaled quarantine'),
-    'Root README must describe the bounded external cache, guarded Tauri entry points, retention, and journals',
+    'Development guide must describe the bounded external cache, guarded Tauri entry points, retention, and journals',
   );
   invariant(
     cacheGuide.includes('The defaults are 28 GiB and 14 inactive days.')

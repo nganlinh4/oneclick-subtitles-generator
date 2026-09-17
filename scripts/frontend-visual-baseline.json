@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "65e7e93b0d78a1b77228b9e99a4b08240f727dd4",
+  "baselineRevision": "28b2495b12f5a257c1812de5d1b7e8e19f182515",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -104,7 +104,7 @@
     "src/styles/components/youtube-search.css": "d74819159255177644a8f1187864008e87729f0bd1732d627da1c6078eb47b17",
     "src/styles/components/youtube-url.css": "166fe00484d0bf1f1d04e4963951cee79dca9c7a925ab09435eb5df6a5f68286",
     "src/styles/DownloadOnlyModal.css": "3a34f4e3040622612a8a616d1f774a5e53265f8d6e261ef384d3538aa9773461",
-    "src/styles/DownloadOptionsModal.css": "d4df3d0a5f9cb8a7aecd155a4e1011cfaef64a0f1893334e5e6615329b1055ee",
+    "src/styles/DownloadOptionsModal.css": "1bfb60857a2549ee30acdccf466ca9e15fbcc334e401839936503654ee417b54",
     "src/styles/FileUploadInput.css": "d42b41de661b3a58bd7e8e4d66788e817f351fafa6420e474d52275504092e4b",
     "src/styles/floating-scrollbar.css": "8d712dd7a6ba9d0a6bc351f74fdab97ed86d5905d097c7fdea11c8f428b4b9dc",
     "src/styles/font-overrides.css": "64a9279148c8a5699e89a275ef962820723609981ae524f502f01fe2c4347e3f",
@@ -119,7 +119,7 @@
     "src/styles/lyrics/base.css": "e026f3c4948571dd26f27e45974a79e6fef4fc154630ec41ce82bbf3b54f69b5",
     "src/styles/lyrics/between-lyrics.css": "82687fe19aac56ce87b906653ae080231e7636438e38a6133c5aa03ab499bc11",
     "src/styles/lyrics/controls.css": "af72b45aea2af3a9d43acb852edeef9a8971663ccc01844bb7cbafcc2e1c36c1",
-    "src/styles/lyrics/download-help.css": "84c7504972420c82c2d91d521c410b56e712dffcb0a5c7dcb273ac7799aa04d9",
+    "src/styles/lyrics/download-help.css": "40f59af14d60355b9bed208a0da59dd73d801b49ce7d75ee487b0ce830d5fb63",
     "src/styles/lyrics/layout.css": "1f6dba7bfb790be7ee02cac84ab4a0504ebaef580384eaf6f25ccb65a841b093",
     "src/styles/lyrics/lyric-items.css": "8f3adb41e94aebc5d1fe06188fd70b3037290a74e69370b9032c3edc90729e82",
     "src/styles/lyrics/save-message.css": "386edf9e88216fb868f96d36308aac92ec4b7758a8ce43a953d96f2311a778c7",
@@ -207,26 +207,25 @@
     "src/styles/SubtitleCustomizationPanel.css": "b28834ee351332696f1938997aeb9c1885c995b435e8bf4eae451dda757e7233",
     "src/styles/SubtitleSettings.css": "0519eeb00ca37e84e56b799ce54f545c79ba64958daa792f015252681c0567b9",
     "src/styles/SubtitlesInputModal.css": "ac78eb750d90bc92053d110cb07d174dd20bd7cead209d0ae89616f7c13ab9bd",
-    "src/styles/SubtitleSpeakersModal.css": "b17a96842d9f76595b93e972c57f699a2fb0700134da227361097525d2f74d04",
-    "src/styles/TranscriptionRulesEditor.css": "5a98f09556b6cbc0a8cadd3de12e5e2c8876c4a15947bb51aeee0ba5289e749b",
-    "src/styles/translation/animations.css": "142d003995f68ac7a3ec8b9444a2f4a5b94a486272d71a31d04c2d9a24780e23",
+    "src/styles/SubtitleSpeakersModal.css": "a85872a7562e3b69b7b5d8af871c262412a9d86c522de21569541dfc64713135",
+    "src/styles/TranscriptionRulesEditor.css": "663a4fcb1651e934a96cb068952fa63e4706345059565a1cc3ec95f5e6e8672b",
+    "src/styles/translation/animations.css": "600e4e84369eaa5580b754dd6331658fcb782b7d4198e86d25f0c68d56da9d8a",
     "src/styles/translation/base.css": "d6f709de6f227b21b9810ca5f9a6d93429eb6dc26495e33b1bd0ad316a086a4e",
     "src/styles/translation/bulk-translation.css": "f33e9920bccffdec0f6d9b9742f8a47360cdf76f3d75f04abb926c4006337229",
     "src/styles/translation/buttons.css": "51164fa723ea9beea9bd5a427e35d8c5ada0dd7c4d26e2b757a230cc557ba9b4",
     "src/styles/translation/delimiters.css": "271a8485f17f543ee55f9c41f33274d58cd0476e5423b3c8d63addd740f1f7a7",
     "src/styles/translation/header.css": "05154ac0864f51131c468533002e20d7103130e256fb31bae8fbdadd6c55cb01",
-    "src/styles/translation/index.css": "f961d3d6359e0fe3600d4dc4f71e26f29c8b1c247732997c96bc2349407cf586",
+    "src/styles/translation/index.css": "3a8adad4bf796bfdda751edd4358f80d8f54be0b63c26429595dc74a93682966",
     "src/styles/translation/inputs.css": "269152f7e71f89e7d32bcd90d6d6f9f12c42c03bb4de91bb6544e83563e014dc",
     "src/styles/translation/languageChain.css": "b15b921e326fb415af4358b673e9701eb523a9bd850219b011410ca7775240d4",
-    "src/styles/translation/preview.css": "7466dae8c2ceb30af082b524f865b9de5c4a37b4e9c6c7628fdba554497d0279",
+    "src/styles/translation/preview.css": "0c7c87fd51169cf47d57802d45f26c8bdcd85ace1f1e0f6644fa818fdf90dc0d",
     "src/styles/translation/slider-fixes.css": "65991848138c48f32a4301531538bbff247b228ed20f50bff4bc97fe028b669f",
     "src/styles/translation/slider.css": "9540758818b343dc83d0e2c4c21b29d3f0ce9503eed401610e92a2c34baedcb4",
-    "src/styles/translation/status.css": "3c8ce6b10a4ff4e04e0b4e813a3021cbbd5076c30ae23bac4a865b99ca132714",
     "src/styles/translation/toggle.css": "56d594e4acba4f2f1103fc357ce7a5edb9ea17fabed41bfb4dad0667d5d42fa8",
     "src/styles/video-player-dark-theme.css": "1bad18fc8a6ba479f8bd0068aac8b245809afea378ec763d444b9fed58fe0501",
     "src/styles/VideoAnalysisButton.css": "3a0129a7716bd08ab8cd6829a0c3ee84845929fda6a291504c89620dd712e65e",
     "src/styles/VideoCropControls.css": "66acfb873cb964f56dff4f41531446368148c26638391d71fdfd79c247b705eb",
-    "src/styles/VideoPreview.css": "7b29b749d70ab953ea739c4a43ee77c2a27c416bb2f33ca48df385f700ca88e9",
+    "src/styles/VideoPreview.css": "d33d0f246b4630d692aa0e1a0be4d6c91ed4c4fe1195eb34ae448b583a2a9daa",
     "src/styles/VideoPreviewPanel.css": "28c0d791916d8a36c31a7111ef3a1d54b7d09fea045d1103dc9e7e909cc05d6e",
     "src/styles/VideoProcessingOptionsModal.css": "9f690d57082b4529cc563c90f0e3f14e0d33b893a14a202496a963e34eebfd68",
     "src/styles/VideoQualityModal.css": "50a5d913e1a85ff120420f331fc173fdf927a389148294d7041b8aca419a3c31",
@@ -447,7 +446,7 @@
       ]
     },
     "src/i18n/locales/en/engines.json": {
-      "hash": "ad5f4dd44bb0d37c20270f95948300488cb99a53078d33a000d3f175bc20fb10",
+      "hash": "56fe0fc507182505f52fd58356f94a57e935a3a54758b4016a0de9e174862435",
       "keys": [
         "availableCount",
         "cancel",
@@ -509,6 +508,7 @@
         "state.checking",
         "state.corrupt",
         "state.included",
+        "state.installed-on-demand",
         "state.installed-stopped",
         "state.not-installed",
         "state.ready",
@@ -738,7 +738,7 @@
       ]
     },
     "src/i18n/locales/en/lyrics.json": {
-      "hash": "ad681d3faf19f7b8ba0693d0f2f8a2fb513e693007068bf64fa9dd078977cdd7",
+      "hash": "693cc83af814b4ea7d926d85b0f0068a5142ca69c822eb276d05263f09d212a0",
       "keys": [
         "addFirst",
         "autoScroll",
@@ -765,6 +765,7 @@
         "speakerName",
         "speakerNew",
         "speakerNone",
+        "speakerPreview",
         "speakerScope",
         "speakersDescription",
         "speakerSelection",
@@ -782,7 +783,7 @@
       ]
     },
     "src/i18n/locales/en/models.json": {
-      "hash": "89ac13424f4345ae1c5d60d3515a72f5d159a12667e301552216ac4c18ed94bf",
+      "hash": "34e7f516f459cbaeb52aff249bb36ce30e7743fb3e303f38f8abcade8162cc13",
       "keys": [
         "customLabel",
         "customModel",
@@ -809,7 +810,7 @@
       ]
     },
     "src/i18n/locales/en/narration.json": {
-      "hash": "b87eafce62ec75472a83c31dec8e6ffdaae1c6cfbfd6cf10d12b2bdc4df1ada5",
+      "hash": "841a88765abdd276e1f82314e9f783fbcf141097d9e683d81ca31ce4336d93eb",
       "keys": [
         "advancedSettings",
         "advancedSettingsToggle",
@@ -898,6 +899,8 @@
         "edgeTTSVolume",
         "enabled",
         "endTime",
+        "enginePreparationFailedMessage",
+        "engineStartFailedMessage",
         "engineUnavailableMessage",
         "errorParsingRecentLanguages",
         "exaggeration",
@@ -966,6 +969,7 @@
         "gttsUnavailable",
         "id",
         "initializingService",
+        "installingEngineProgress",
         "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
@@ -1046,6 +1050,7 @@
         "playbackError",
         "playing",
         "preparingDownload",
+        "preparingEngine",
         "preparingGeminiGeneration",
         "preparingGeneration",
         "preparingNarration",
@@ -1162,7 +1167,7 @@
       ]
     },
     "src/i18n/locales/en/output.json": {
-      "hash": "8844924ffa40f92e2c39bf7e4a481deafc771843639d6db070ea9e6436f41797",
+      "hash": "191d46ffb9c1a532809583effcf7147781fad57957c8a783441437f618e20fe6",
       "keys": [
         "analyzingVideo",
         "audioFpsDisabled",
@@ -1215,6 +1220,7 @@
         "parakeetTranscriptionComplete",
         "pending",
         "pendingProcessing",
+        "preparingLocalEngine",
         "preparingProcessing",
         "processing",
         "processingAllSegments",
@@ -1310,7 +1316,7 @@
       ]
     },
     "src/i18n/locales/en/processing.json": {
-      "hash": "cac50e1319b6bddaccd6b3b1f602a23782fb5b816b49bca422012467b28fab12",
+      "hash": "9914e0d2ea87803bce04c41b1108c70e13342d6c1e579416041c8014ca88a032",
       "keys": [
         "actualNote",
         "actualTokens",
@@ -2205,7 +2211,7 @@
       ]
     },
     "src/i18n/locales/en/translation.json": {
-      "hash": "9ab6f53504f794bb5a22cd5774359bdd0eb7b0e886e102e01d8e13a522bcec63",
+      "hash": "0e85c2f449fa3f2eb25aa647db8aa3734449e2784733798e68695424a2f6447c",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -2225,6 +2231,7 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.processingParallel",
         "bulk.rejectedDuplicate",
         "bulk.rejectedInvalidType",
         "bulk.rejectedMore",
@@ -2265,6 +2272,7 @@
         "downloadJSON",
         "downloadSRT",
         "error",
+        "failedOriginalShown",
         "format",
         "formattingComplete",
         "formattingSubtitles",
@@ -2924,7 +2932,7 @@
       ]
     },
     "src/i18n/locales/ko/engines.json": {
-      "hash": "427a6f86115708a5b00ff2bd238a211ec687b128dac7211bf21726ea4de0a5b4",
+      "hash": "d3e59e427d9a2b157d1b4febb9c0c7ab72acf079955c9fe8099a2755eb13d5de",
       "keys": [
         "availableCount",
         "cancel",
@@ -2986,6 +2994,7 @@
         "state.checking",
         "state.corrupt",
         "state.included",
+        "state.installed-on-demand",
         "state.installed-stopped",
         "state.not-installed",
         "state.ready",
@@ -3236,7 +3245,7 @@
       ]
     },
     "src/i18n/locales/ko/lyrics.json": {
-      "hash": "c742bd4ea9dbb949cfe30f7bc842059ba5f5523ddf126bd8200a5e5b7249d0b2",
+      "hash": "7b114da58a5636cb517f814cf73d26bd424bf06a2ae0d8269d75a8d681912bdb",
       "keys": [
         "addFirst",
         "autoScroll",
@@ -3263,6 +3272,7 @@
         "speakerName",
         "speakerNew",
         "speakerNone",
+        "speakerPreview",
         "speakerScope",
         "speakersDescription",
         "speakerSelection",
@@ -3280,7 +3290,7 @@
       ]
     },
     "src/i18n/locales/ko/models.json": {
-      "hash": "92da0362da0a15bf5d769bea54911abc7494114f12266470ccba3410fa015cf1",
+      "hash": "1c179e48224d09cf3909c5cd3e5a188621f37f505632ef076f864a7c1b49fbf6",
       "keys": [
         "customLabel",
         "customModel",
@@ -3307,7 +3317,7 @@
       ]
     },
     "src/i18n/locales/ko/narration.json": {
-      "hash": "ba0e951cb994e1b2a773dbe35129180f97a959e887cee2245fb26406920c1e47",
+      "hash": "92bcb748d6b6526999bd88af92315691e09eae4928b8949dd20b72c3976c5b96",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -3409,6 +3419,8 @@
         "edgeTTSVolume",
         "enabled",
         "endTime",
+        "enginePreparationFailedMessage",
+        "engineStartFailedMessage",
         "engineUnavailableMessage",
         "errorParsingRecentLanguages",
         "exaggeration",
@@ -3496,6 +3508,7 @@
         "gttsUnavailable",
         "id",
         "initializingService",
+        "installingEngineProgress",
         "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
@@ -3592,6 +3605,7 @@
         "playing",
         "playVoiceSample",
         "preparingDownload",
+        "preparingEngine",
         "preparingGeminiGeneration",
         "preparingGeneration",
         "preparingNarration",
@@ -3735,7 +3749,7 @@
       ]
     },
     "src/i18n/locales/ko/output.json": {
-      "hash": "bc34b5cb4f2a7db5b1db9256dc767482572ae6be0e8b108fafab938f9248457a",
+      "hash": "6c872e592bd4b7fd453af402251edec6831e1331e159e639bbaf2d33edea3ace",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -3794,6 +3808,7 @@
         "parakeetTranscriptionComplete",
         "pending",
         "pendingProcessing",
+        "preparingLocalEngine",
         "preparingProcessing",
         "preparingVideo",
         "processing",
@@ -3905,7 +3920,7 @@
       ]
     },
     "src/i18n/locales/ko/processing.json": {
-      "hash": "96f4ef8c1be9cdea7332ade4981852853373629e934bac4c34b662ad9e310e11",
+      "hash": "135d82cc6679dc8e5a5fd942be58b66fb5ca184c762398084c1c41b3cc35ca82",
       "keys": [
         "actualNote",
         "actualTokens",
@@ -4253,7 +4268,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "0b9b4d50f1ef021c7afd6e103063f0a74e27e34f1b28cb2206e2cf2265f369d9",
+      "hash": "5e81572f0d7d0e3472e23a24194224fd70659330e6f6a99dab2a24be24d79b29",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4884,7 +4899,7 @@
       ]
     },
     "src/i18n/locales/ko/translation.json": {
-      "hash": "fb57a8f99e5323a9b829f26ded4f34778f5a7daa090b0bfa47b2b1b3133ad23a",
+      "hash": "a44605a9d1ed0ea9889027f236c10333b761b3e404100d2eaf7226125db08e90",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -4905,6 +4920,7 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.processingParallel",
         "bulk.rejectedDuplicate",
         "bulk.rejectedInvalidType",
         "bulk.rejectedMore",
@@ -4947,6 +4963,7 @@
         "downloadSRT",
         "emptyResult",
         "error",
+        "failedOriginalShown",
         "format",
         "formattingComplete",
         "formattingSubtitles",
@@ -5663,7 +5680,7 @@
       ]
     },
     "src/i18n/locales/vi/engines.json": {
-      "hash": "03e7ae607bcdf8d335a33c0b04cfa73e310f2ae3ebd1b1f99445687611036286",
+      "hash": "b11cb339f2bfba5e4464cba9245cd9f420a8f112047e130a9d22629de788642c",
       "keys": [
         "availableCount",
         "cancel",
@@ -5725,6 +5742,7 @@
         "state.checking",
         "state.corrupt",
         "state.included",
+        "state.installed-on-demand",
         "state.installed-stopped",
         "state.not-installed",
         "state.ready",
@@ -6017,7 +6035,7 @@
       ]
     },
     "src/i18n/locales/vi/lyrics.json": {
-      "hash": "63e415ff947d060a53ac4ceb3a062d8d31e910b43913a7952883da31c5c0af7c",
+      "hash": "a8e1ec404caa93d68fff881b084e6244d989ffe745a277ed94fb019ad40da904",
       "keys": [
         "addFirst",
         "autoScroll",
@@ -6044,6 +6062,7 @@
         "speakerName",
         "speakerNew",
         "speakerNone",
+        "speakerPreview",
         "speakerScope",
         "speakersDescription",
         "speakerSelection",
@@ -6061,7 +6080,7 @@
       ]
     },
     "src/i18n/locales/vi/models.json": {
-      "hash": "49396e94e8353d26dc2fc666a10a5df3ef2a79296fc7394c7a52e116efd25aae",
+      "hash": "35e8b0b66d2b8603ae30d7eb4a775d80e71126196cf92799d13f8db33f4dd4a6",
       "keys": [
         "customLabel",
         "customModel",
@@ -6088,7 +6107,7 @@
       ]
     },
     "src/i18n/locales/vi/narration.json": {
-      "hash": "d2c585ce0c1b4d90c62f9d9917bece3ef88eb245a84423fd7b1a0f037f646e03",
+      "hash": "fca86d4b2daba3f885059690ea8a5581ac9efa962116c808084aac0d53711b35",
       "keys": [
         "adjustSearch",
         "advancedSettings",
@@ -6190,6 +6209,8 @@
         "edgeTTSVolume",
         "enabled",
         "endTime",
+        "enginePreparationFailedMessage",
+        "engineStartFailedMessage",
         "engineUnavailableMessage",
         "errorParsingRecentLanguages",
         "exaggeration",
@@ -6278,6 +6299,7 @@
         "higherValuesImproveQuality",
         "id",
         "initializingService",
+        "installingEngineProgress",
         "installingVoiceSamples",
         "intensityAggressive",
         "intensityBalanced",
@@ -6376,6 +6398,7 @@
         "playing",
         "playVoiceSample",
         "preparingDownload",
+        "preparingEngine",
         "preparingGeminiGeneration",
         "preparingGeneration",
         "preparingNarration",
@@ -6520,7 +6543,7 @@
       ]
     },
     "src/i18n/locales/vi/output.json": {
-      "hash": "48a5a11d5e21606db91281df0e89b023ff4b71a0a6a683b69fff522ba4675866",
+      "hash": "7d1fb0b2153afe3bfc53ded3f2b460f8f47883c7496f8f7070981e3fc06e41e3",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -6579,6 +6602,7 @@
         "parakeetTranscriptionComplete",
         "pending",
         "pendingProcessing",
+        "preparingLocalEngine",
         "preparingProcessing",
         "preparingVideo",
         "processing",
@@ -6690,7 +6714,7 @@
       ]
     },
     "src/i18n/locales/vi/processing.json": {
-      "hash": "b7cadafd175be3492ab9c76788553ad4bfb0e6ae5dcd5af1a538df9cc385dd89",
+      "hash": "89f626ed94fd0955f78817d42ed5a0ccabe6cbc467a94e946ada11b9be7af20d",
       "keys": [
         "actualNote",
         "actualTokens",
@@ -7038,7 +7062,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "f9d30b495e83397b609daf1f0a556e271ce00625d5916adfc9029e85533c5cdc",
+      "hash": "7f91e8f152072635a9a67240af8028ad8cbab4dfd827ac1b592645c0c3ebea66",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -7674,7 +7698,7 @@
       ]
     },
     "src/i18n/locales/vi/translation.json": {
-      "hash": "0412cebcb1a277c31a193c55069b544a1c814eef5e221e21e41fe7b1cb1fae68",
+      "hash": "654640df785f404d2b81d7d2958e1da1275f1f4d093fb4bec120dc7692f79203",
       "keys": [
         "addDelimiter",
         "addLanguage",
@@ -7695,6 +7719,7 @@
         "bulk.noFiles",
         "bulk.optional",
         "bulk.processing",
+        "bulk.processingParallel",
         "bulk.rejectedDuplicate",
         "bulk.rejectedInvalidType",
         "bulk.rejectedMore",
@@ -7737,6 +7762,7 @@
         "downloadSRT",
         "emptyResult",
         "error",
+        "failedOriginalShown",
         "format",
         "formattingComplete",
         "formattingSubtitles",
@@ -8451,13 +8477,6 @@
         "29c57c3f06818d187c078b965b3708997eb160383f2d7a97d7505a4e79afc0ef"
       ]
     },
-    "src/components/common/StreamingProgress.js": {
-      "hash": "08e80cfeb326d12dec8c4e05d615d2663e01caa8520ac1e55d44f0d310adbe65",
-      "rootCount": 1,
-      "roots": [
-        "4eb09bb5fc4181bed8a013ec41e7bfc433a90a5d837623d825cb34d872763e44"
-      ]
-    },
     "src/components/common/ToastPanel.js": {
       "hash": "d18bfdd9b1109b550988b9f4fc72e6a71e1b3fbb757cdb79b4110012fbb23ef1",
       "rootCount": 1,
@@ -8501,23 +8520,20 @@
       ]
     },
     "src/components/engines/EngineCard.js": {
-      "hash": "47a28e5f12195b7f7e930d4bd8fc82eefb2809795b0b2e4136ae7e9265a24159",
-      "rootCount": 15,
+      "hash": "e8fd54ad6fce0c9789bfb6b6b7df6d2772b8bb9aedcd8525ffbef5723f992ee8",
+      "rootCount": 12,
       "roots": [
         "81adfe9b9a0b7365ca7e03789c94d143ced05157fa553c17d5bb4c7adbeeccca",
         "86657dc038198f1a062e84dcd12b438daccd1778f697876e3b857b38f8668036",
         "639024f8b604e58805b5d4172e5ae8968bfcf5870326a51aee4a5447866db840",
         "72572405c6006cdfa5d193eb0367dcbdd402a8cdd9e431a1ca29ba4e3af25f9b",
         "ed2c20556c1f58d63296cb4688cc7219a28f46cb9fc9011b96c65ce957d607cb",
-        "828500f1effa58daa0a54a26762031b191b8206c36cd5aa6fb77a99884f0a610",
         "d2cc87b4dd1c4c362436235446ce8ecd152b21e71ea8cd7de97d4dc2e13b8af7",
         "5d13e15706bf06e9265df937cd1cd6ed98cb263f1e4d8fd9fc801aac6eba8a4b",
         "f6298aa8ce41ff392fbb4726a8aa193a8a7ad69b5d928bc2857f7260b6b31a04",
         "93cae63f3d72d932263713a5ea4139b68096bad1b14fc6e3c4cbe064fc6e8309",
         "3ac9593db1f3ed3291780ade3a0f26ddcb854c3c77c57338c5e1ca1e04f3f878",
         "6e8467b47c19ab9be121aa4613c00ceb38521e7b96a17e0da922cdf2c3310c1e",
-        "5c5d87d76d9218db5df1cc8eeac7021cd144c12ee7f4da058113c87ba41ae312",
-        "07d7706b4fed7378a98e6f1b4f2a8e68e581f3ccfc02c28e165e9124d21a077e",
         "440002b5bed2026a4d134580b584e1302306f7403a342a2feb41438765b9604d"
       ]
     },
@@ -8650,10 +8666,10 @@
       ]
     },
     "src/components/lyrics/LyricsHeader.js": {
-      "hash": "98f82e2bee5326d1b48a63bfeaa5c054310cab5f4a34101cfaad77cef824fdf7",
+      "hash": "509bc6bd7995b4188a3d006bc05d5c25a374c0464d0cbaee47191d551e182dfa",
       "rootCount": 1,
       "roots": [
-        "61b29fcee5daf97a690ed37041bbfd8477501d1e48f7074b0bb0cf81c12c1f31"
+        "a6ecd5ce9a872cf5a0cbce705b2cddc132673ef92580088513fb701a8ea997f0"
       ]
     },
     "src/components/lyrics/NarrationLaneControls.js": {
@@ -8664,10 +8680,10 @@
       ]
     },
     "src/components/lyrics/SubtitleSpeakersModal.jsx": {
-      "hash": "4d40f1fbed71c97710d7524b8477809a95276eed1d1e681cdba3dedb82f2c6a3",
+      "hash": "fade13d6f62ae9842641b3e22f2276135ad3f2fa614ab3aabd2be55f4c7a0c53",
       "rootCount": 1,
       "roots": [
-        "919c190b75c00dd90351448a99ab14a9883bc43160f5fdfd596ac61cd2579d0c"
+        "1216fb96eaca9f8567ce489ad908921ddfe3ac6f3d63dc88a5306f22b5d2af53"
       ]
     },
     "src/components/lyrics/SubtitleSplitModal.js": {
@@ -8720,17 +8736,17 @@
       ]
     },
     "src/components/LyricsDisplay.js": {
-      "hash": "aa7d6e4b9629d57d1000d4fa73bcb2a66897bfc6a2c0168d89d6d5dc79066035",
+      "hash": "74ee2c96d72a08903bb691a06163fad1452d873d81a52cf275f9982f19ebf003",
       "rootCount": 1,
       "roots": [
-        "e26e84151dec5ff5c2b2b597e303669b5d1a87358d2cec24d164143d28460424"
+        "f7f6e78599e7ca4d5c6bfb991900b35eb90f0d97fcfba090287cc15924c77112"
       ]
     },
     "src/components/LyricsDownloadAndOutput.js": {
-      "hash": "78174e15361c44fa10d2f3304cf479b65cc3a35087823f6219d6c745d50910f2",
+      "hash": "ecbf43fe1d290beaf40f1615a3525023f1ff233515c373521d990f42fb57a5e2",
       "rootCount": 1,
       "roots": [
-        "726b75c0c19b60026aeed8b93b7e33cf6ca2cf43839ff83c188ee2ee06aa8904"
+        "c3cfd47611d0341b22575cdf3add8eed7d9c4ef417efef56099383f97a71d759"
       ]
     },
     "src/components/LyricsInputSection.js": {
@@ -8812,10 +8828,10 @@
       ]
     },
     "src/components/narration/components/GeminiResultRow.js": {
-      "hash": "79ade6e967fff8a1ec2b361d55a20f27cac7107861c895c8d506240a772bd372",
+      "hash": "e59f15be26cf2e31e6c169909e9a71c37fd17d444c0f92864986da45e4bee827",
       "rootCount": 1,
       "roots": [
-        "0684a6fa6015f81e5f9b33634fc40576e9529a71a392d3af194c61afff3acaea"
+        "7e8165e4e674f15a1ed364efe2946d611124e6b99cb687e8c5a31d79f4c4e4a3"
       ]
     },
     "src/components/narration/components/GeminiSubtitleSourceSelection.js": {
@@ -8837,10 +8853,10 @@
       ]
     },
     "src/components/narration/components/GenerateButton.js": {
-      "hash": "cb7a40436db890c907c0db09bb1cc65211ae9a4390da4839b19323d37218a834",
+      "hash": "d431038ebe2bb7960db44f385e47a780a24593afd7b8348e0b700c3a9c365a3e",
       "rootCount": 1,
       "roots": [
-        "6e9b60954d2f4362904521450a77ba072212197dc99dc6ce01473620f57431c9"
+        "e84c1f8c65e2764781a3c52a4c63056b1707c5663b1f25be2339f5d9ac26d6b7"
       ]
     },
     "src/components/narration/components/GTTSControls.js": {
@@ -8872,10 +8888,10 @@
       ]
     },
     "src/components/narration/components/NarrationMethodSelection.js": {
-      "hash": "7423854ae52d610a0d6f0c965eed5ada68c21a51b0d246a944db08b9fb7abef7",
+      "hash": "e391c9f736e3488f2e3fcc897b5fc77849724d11d5fb2ad5eee63eee36a00176",
       "rootCount": 1,
       "roots": [
-        "34d8a6aace494b5cde62a08b5513cf45c4197ea0d8fcf807e34183df714e8819"
+        "54e53a60e60baa0e4034f739f4202f89941f0b3d3aabcbd0cae49fdf3fc83aa1"
       ]
     },
     "src/components/narration/components/NarrationResults.js": {
@@ -8928,38 +8944,38 @@
       ]
     },
     "src/components/narration/sections/ChatterboxNarrationSection.js": {
-      "hash": "62d55bb61763908fee5c03934b0b8a9235907140622816794865512aecf67bb6",
+      "hash": "03876ab91b1bac2efff12fc02e8506fa96da04edb7496ef4ba4721dd3fd447f5",
       "rootCount": 1,
       "roots": [
-        "2524c5fc73e8bc899e137d13f0b8431877f566f49081b3a2325b04677c60ea41"
+        "14d14575185073b8ddc393d4edf706c8c76f13dec8129c0144c69e0887af57af"
       ]
     },
     "src/components/narration/sections/EdgeTTSNarrationSection.js": {
-      "hash": "551ec0181b1238eb4877a4d867298bc7a4980f62ebb2da66c79bc4ab6995836b",
+      "hash": "73efaacee77d4b684f7741285a4ec11d63b8079e79b577bc2c98d96f990dc95f",
       "rootCount": 1,
       "roots": [
-        "8907f421b0f6fe26e7eac566644208e82bb1aef5963685f03845c6b648a2e6d8"
+        "75cfe19503de239919f471587a904d75d2e19bbdb0c216e1a3463620374f8f1d"
       ]
     },
     "src/components/narration/sections/F5TTSNarrationSection.js": {
-      "hash": "693cfd4a374f107cfce8d9174c3def295c8047a35e0d38762a9a6456a59adb9a",
+      "hash": "21aadca946ba575bc5b50808b66d2e9dc4d812e3dc61ce58de4e08642338c8cd",
       "rootCount": 1,
       "roots": [
-        "22606abed7f3454f428ec92c97a13723098be7ca6335df5ed1a9b4175009e4b2"
+        "3d5649ca16608fe6ee6a4f10ba6ae4936d6d403eed525126668ef1c98c876bcc"
       ]
     },
     "src/components/narration/sections/GeminiNarrationSection.js": {
-      "hash": "067200169083ddfb62c28d04d1eab5318178eb6722c16de820c80b5ad68cd60c",
+      "hash": "538815017221bdc131ddb7ccc9c093bc8796ef26cc805c5d3f8926a77c94a847",
       "rootCount": 1,
       "roots": [
-        "4a9a36037d3ae718279169d627a9eea34fcec496cbe8f21a63727663d9f49116"
+        "2ec8261420352728fb305c8b0e09cc5dd123d85f9da4ce589365ebf1d4ad1d88"
       ]
     },
     "src/components/narration/sections/GTTSNarrationSection.js": {
-      "hash": "acf959d429d61da45968607ec2219ffcebac404e15454dcf9ecc756ea136a7f2",
+      "hash": "1e67437e795a6285d25f53c00475abec5e3f0b5aa37bc20a4f5f37c05b740535",
       "rootCount": 1,
       "roots": [
-        "c2bb3c735106829e59e9a03526786ac34eecb26b05f3c77fb4dad305a68c15ea"
+        "08b930b50a8f0d5544db6e767fbe815228a1bf60e67f2863ad8bc19e2d9947a1"
       ]
     },
     "src/components/narration/SimpleNarrationMenu.js": {
@@ -8970,10 +8986,9 @@
       ]
     },
     "src/components/narration/UnifiedNarrationSection.js": {
-      "hash": "62b1a4ba55b48baa785875ab3a7879ba0c9ece038fec5dc63b8bd96123745ef9",
-      "rootCount": 2,
+      "hash": "d3b19fe00eac7f51715efb0d033975f1d1547df71bffa3c4a05cb39b41cb64e3",
+      "rootCount": 1,
       "roots": [
-        "45ccfca9d45f01aad8cc766b4e175c8288ca09874cf46c09204332e5cebe7df4",
         "f4f9979fe0309741cc873b0481dfa8a26aa2bb487b3fa43aa04a0caa1d7065f9"
       ]
     },
@@ -9045,10 +9060,10 @@
       ]
     },
     "src/components/previews/canvas/CanvasVideoPreview.js": {
-      "hash": "afa6a75ce14e0020c2535c11479ade41f5a929a72dce49a33a71a7a0fe00684b",
+      "hash": "f0be2583b1d0f6b287a2b23dde0d899b08343df3d488d9592197e84dd156089f",
       "rootCount": 1,
       "roots": [
-        "995a10748d4a53d831a24aa5248f9857fab4bc9f60a47771d9610cc900fb3d67"
+        "cef10a0cff3a450725f00e20d7e89d050f0bb7829d38f232dd56d1d45c28bc65"
       ]
     },
     "src/components/previews/controls/ActionButtons.js": {
@@ -9116,10 +9131,10 @@
       ]
     },
     "src/components/previews/VideoPreview.js": {
-      "hash": "0f5791f968c736fa8742184a66366af4788aa4053bc0b05a6947714b24cf667e",
+      "hash": "4aaf77920e3feb79de2c6641cda65b36491200b4a5d98b130e8954f6e7f1dc7e",
       "rootCount": 1,
       "roots": [
-        "f5de7523d8e32f659d8155178aae46a6b4c5c8514b7b82b7852192382744eb6d"
+        "c580c7d1466923b3da13293cb616f96fe644873c2fb1dbcb92b94f6b750545a6"
       ]
     },
     "src/components/previews/VideoTopsideButtons.js": {
@@ -9530,10 +9545,10 @@
       ]
     },
     "src/components/translation/index.js": {
-      "hash": "347db7eaf8879181c862f35b74262993faff2a69d03213c8425aa9d2a865992d",
+      "hash": "bb1d35e42a8b7d881bf21b82c3913b1adf42a0dcaa51138492bd9ee354fb69f6",
       "rootCount": 1,
       "roots": [
-        "b263de1cc57897ea7b2c22155a583c0dbf0aef401e473803cda85946dd534a47"
+        "4b158f26eda858d9015e3edf501b3aae01b1efbafafed6f4615fbfe6ac4955af"
       ]
     },
     "src/components/translation/LanguageChain.js": {
@@ -9586,11 +9601,11 @@
       ]
     },
     "src/components/translation/SubtitlePreviewList.js": {
-      "hash": "2e9016f61372964e863e04f7711e4ec91778abbb3504a9de12f47d1a38e1d342",
+      "hash": "4fd0916f780e33b33de35862cb06f5e61f0b9922dea93d18d5d401e379c04f53",
       "rootCount": 2,
       "roots": [
         "2b09dc7d418f8f7a88452dfa95e565ce03ee3974d312c0367ca4583e54323d89",
-        "85ad17670488a457a5e3e79e996b65b359726e27bdaa4d4a73513f480fbe4af2"
+        "ed3d905d3081f222c7ba667c889cf1f498742738fc193a97687a601a62b5be27"
       ]
     },
     "src/components/translation/TranslationActions.js": {
@@ -9628,13 +9643,6 @@
         "edffcc69de0f944cf8f13e0e8c2a23c709abba2ed50b7c39bed0f44c72bb2214"
       ]
     },
-    "src/components/translation/TranslationStatus.js": {
-      "hash": "42f98f1c7004c44936799799823b7775ef105c4003892c19f0637924570a1846",
-      "rootCount": 1,
-      "roots": [
-        "40150ae4337e74a33cc79178aa4e49b057f7dcfe3fa2ca7b60fae5ab3257cd2b"
-      ]
-    },
     "src/components/VideoAnalysisButton.js": {
       "hash": "e9efaa21e095282aa339c247b630ea99b6d8292bbb269add8d00228cd4c48cf6",
       "rootCount": 2,
@@ -9659,10 +9667,10 @@
       ]
     },
     "src/components/VideoProcessingModalGeminiPanel.js": {
-      "hash": "60f6f42ac8435dcec91ebfa76e82bc3ffdfebca7d8ccde075c2a3c85fad6ee4d",
+      "hash": "f133658b8fbcbf29645670bb323b792a803948ed7dd14af5f4d639c6e41857e8",
       "rootCount": 1,
       "roots": [
-        "1b50c65672f2525aaf5867dcd5f8b67b6446bd62227958697b2fbe287cc172a5"
+        "368879be3b4bb84e76674a1cfbba38e3e68b9344dd2106838692fc4658e1760f"
       ]
     },
     "src/components/VideoProcessingModalMethodSelector.js": {

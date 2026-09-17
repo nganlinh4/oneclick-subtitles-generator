@@ -6,10 +6,21 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  assertFrozenCssBuildOutput,
   inspectFrozenCssParity,
   verifyFrozenCssArtifact,
   verifyFrozenCssArtifacts,
 } from './check-frozen-css-output.mjs';
+
+test('checks the selected managed output instead of a stale repository build', (context) => {
+  const fixture = createFixture(context);
+  // The repository need not contain build/assets at all. Reaching the artifact-set check
+  // (rather than "directory is missing") proves the explicit managed output was inspected.
+  assert.throws(
+    () => assertFrozenCssBuildOutput(join(fixture.assets, 'not-the-repository'), join(fixture.assets, '..')),
+    /frozen CSS artifact set drifted.*index-test\.css/,
+  );
+});
 
 function createFixture(context, contents = 'frozen css') {
   const root = mkdtempSync(join(tmpdir(), 'osg-frozen-css-output-'));

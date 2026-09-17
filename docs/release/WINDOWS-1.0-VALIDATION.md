@@ -1,5 +1,63 @@
 # OSG Windows 1.0 release validation
 
+## Current candidate: September 2026
+
+Owner direction (2026-09-17): prepare **a draft only**, from the native branch. Do not merge into
+`main`, change the default branch, publish the draft, or change GitHub Latest. Legacy batch users
+still consume `main` and `releases/latest/download/OSG_installer_Windows.bat`. Replacing main and
+promoting the native release are future decisions, not part of preparing this draft.
+
+`rewrite/tauri-rust` is the canonical application branch. Legacy `main` is not a visual or
+functional acceptance baseline. The owner approved the current branch's intentional visual
+improvements on 2026-09-17; preserve that UI rather than reverting it to the original port.
+
+The August evidence below is historical, not certification of the September candidate. In
+particular, Remotion results describe a removed implementation, and the UI font now ships in
+the installer. No historical checked box approves a different commit's installer.
+
+Current source candidate before release-preparation edits: `28b2495b`. The September 15 hidden
+native-app audit covered settings/scaling, media playback, subtitle presets, real Gemini
+translation and video analysis, document generation, gTTS narration and decoded native export.
+It did not certify the production installer, actual fullscreen, or every downloadable engine.
+Its local evidence index is `artifacts/ui-audit-2026-09-15/README.md`; preserve a sanitized copy
+as release evidence before development-cache retention removes the underlying captures.
+
+### Installer validation without a local VM
+
+Use the existing GitHub-hosted Windows jobs. They install and uninstall on a disposable runner,
+not the user's working PC. No Windows desktop control or live-data relocation is necessary locally.
+After committing and pushing the reviewed candidate branch, run:
+
+```powershell
+gh workflow run rewrite-ci.yml --ref rewrite/tauri-rust -f job=full
+gh workflow run rewrite-ci.yml --ref rewrite/tauri-rust -f job=installed-smoke
+gh workflow run rewrite-ci.yml --ref rewrite/tauri-rust -f job=signed-updater-smoke
+```
+
+Record the resolved commit SHA for each run and download its artifacts. A queued job, successful
+compile, or successful artifact download is not a passed installed workflow. Inspect screenshots,
+structured results and logs; fix failures and repeat against the new commit. Do not silently run
+the older remote branch or treat the compile-only macOS/Linux matrix as runtime certification.
+Standard hosted Windows runners are not a substitute for representative GPU/hardware testing:
+retain the local native-render evidence and report that limitation separately.
+
+The updater secrets already exist in repository Actions settings (names checked 2026-09-17).
+Their presence is not proof of a valid matching key: the signed-updater job must verify it.
+Updater signatures are distinct from Windows Authenticode publisher signatures.
+
+### Release-preparation acceptance
+
+- [ ] Final candidate committed and pushed; all three runs above pass for that exact SHA.
+- [ ] Production installer extracted and checked; no automation-only features in the shipment.
+- [ ] Current screenshots/results reviewed, with failed and untested cases explicitly recorded.
+- [ ] README in both languages, notices, migration instructions and release notes match shipment.
+- [ ] Release assets, signed receipts, updater manifest and SHA-256 checksums refer to the same build.
+- [ ] Production publication explicitly authorized; native release deliberately marked Latest.
+
+Do not fetch a private draft with an unauthenticated production updater and expect it to work.
+Use authenticated artifact retrieval for draft inspection and the isolated signed-updater fixture
+for pre-publication lifecycle testing; verify the public production endpoint after publication.
+
 OSG Windows 1.0 replaces the legacy Node/Electron application as the repository's primary
 product. It must not be published, tagged, or merged to `main` merely because compilation and
 unit tests pass. Release approval requires the real installed Windows executable to complete the
@@ -19,8 +77,9 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
   the legacy Electron release publishes a manifest under that name. A dedicated name means the
   desktop updater can never read the legacy metadata as its own — until a Tauri release is
   published and marked Latest, the fetch 404s and the check fails closed.
-- Runtime/model/font assets: immutable, content-addressed assets under
-  `osg-runtime-bundles-v1`, downloaded on demand and never embedded merely to make a test pass.
+- Runtime/model assets: immutable, content-addressed managed deliveries, installed on demand.
+  Reviewed UI-font resources ship with the app for offline first launch; other optional assets
+  remain downloadable. The pool `osg-runtime-bundles-v1` is not an application release.
 - Linux and macOS are not supported releases because no maintained real-device validation
   environment is available. Contributions that reproduce, package, sign, and test those targets
   are welcome through pull requests.
@@ -98,7 +157,7 @@ feature-matrix checkbox or approve the release.
 ### First launch, migration, persistence
 
 - [x] Clean install, launch, close, relaunch, uninstall, and reinstall.
-- [ ] Google Sans Flex first-use download, offline reuse, corruption repair, and immediate removal.
+- [ ] Bundled Google Sans Flex offline first launch, cache reuse and corruption repair.
 - [ ] Legacy folder import through the documented keyboard action: preferences, credentials,
   projects, subtitles, and supported media; repeated import is idempotent.
 - [ ] Settings, projects, media, job recovery, undo/redo, and active editor state survive restart.
@@ -169,8 +228,9 @@ feature-matrix checkbox or approve the release.
 
 1. Complete and attach evidence for every applicable Windows checkbox.
 2. Build `1.0.0` from a clean commit using the external updater-signing key.
-3. Validate the installer and `.sig`, generate an immutable `osg-desktop-updater-v2.json`, and test it from a draft
-   GitHub release on an isolated Windows runner.
-4. Replace `main` with the reviewed Tauri history only after the draft artifact passes.
-5. Publish one official release titled **OSG Windows 1.0.0** and mark it Latest.
+3. Validate the installer and `.sig`, generate `osg-desktop-updater-v2.json`, and inspect the draft
+   artifacts using authenticated retrieval. Prove signed updating with the isolated HTTPS fixture.
+4. Keep the candidate as a draft on the native branch for owner review. Preserve legacy main/Latest.
+5. Only after separate future authorization, coordinate legacy migration, merge the reviewed history
+   and publish **OSG Windows 1.0.0** with a deliberately chosen Latest policy.
 6. Verify the installed release's startup update check against the public GitHub endpoint.

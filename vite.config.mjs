@@ -282,6 +282,9 @@ export default defineConfig(({ mode }) => {
     // Preserve CRA's handling of the frozen legacy transition grammar while the CSS is ported.
     cssMinify: 'esbuild',
     outDir: managedFrontendInputs?.frontendOutDir ?? 'build',
+    // These directories are validated, exclusively leased generated outputs. Vite does not
+    // empty an external outDir by default; leaving old chunks mixes different builds.
+    emptyOutDir: true,
     rolldownOptions: {
       onLog: handleFrontendBuildLog,
       output: {

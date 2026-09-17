@@ -4,8 +4,14 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import managedBuildContext from './managed-build-context.js';
 
 /**
+ * Current baseline: approved native-branch UI at 28b2495b, accepted by the owner on
+ * 2026-09-17. The September screenshot audit covers scale, dropdown and footer repairs.
+ * This protects those improvements; it is not a demand to reproduce legacy main.
+ * Historical repinning rationale follows for provenance.
+ *
  * The exact base and narration stylesheets the product build must produce.
  *
  * REPINNED because the build began minifying CSS again, not because the design changed. `esbuild`
@@ -48,14 +54,14 @@ import { fileURLToPath } from 'node:url';
 export const FROZEN_CSS_ARTIFACTS = Object.freeze({
   files: Object.freeze([
     Object.freeze({
-      fileName: 'index-Bebnduw6.css',
-      sha256: '23c7acd3ba083ff2be5f2f94f75fe8ead13124c99ad55fd47fb6067440995751',
-      sizeBytes: 579_620,
+      fileName: 'index-CtQDSPql.css',
+      sha256: '8a7c5e0756a0806041d500fcd64141e4965cdee765e623e0e9690fda17ccd9d7',
+      sizeBytes: 580_756,
     }),
     Object.freeze({
-      fileName: 'narration-OoOluj4s.css',
-      sha256: '64cb0e2c198896e0d373f787130e629ed60a93434065ef06176503e976d48b46',
-      sizeBytes: 109_116,
+      fileName: 'narration-BmSUMUhb.css',
+      sha256: '2f5875f250f828f26fc70f84a820ea078bf83cee4368cde48a321d3426fee41e',
+      sizeBytes: 108_221,
     }),
   ]),
   parity: Object.freeze({
@@ -195,14 +201,19 @@ export function verifyFrozenCssArtifacts(assetsDirectory, expected = FROZEN_CSS_
   return Object.freeze({ files: Object.freeze(files) });
 }
 
-export function assertFrozenCssBuildOutput(rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
-  return verifyFrozenCssArtifacts(resolve(rootDirectory, 'build/assets'));
+export function assertFrozenCssBuildOutput(
+  rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
+  frontendDirectory = resolve(rootDirectory, 'build'),
+) {
+  return verifyFrozenCssArtifacts(resolve(frontendDirectory, 'assets'));
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   try {
-    const result = assertFrozenCssBuildOutput();
+    const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    managedBuildContext.assertFrontendInnerInvocation({ repositoryRoot });
+    const result = assertFrozenCssBuildOutput(repositoryRoot, process.env.OSG_FRONTEND_OUT_DIR);
     console.log(
       `Frozen CSS output passed: ${result.files.map((file) => (
         `${file.fileName} (${file.sizeBytes} bytes, SHA-256 ${file.sha256})`

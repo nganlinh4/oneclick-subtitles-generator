@@ -1,59 +1,46 @@
-# Phần Mềm Tạo Phụ Đề Tự Động
+# OSG — Phần mềm tạo phụ đề
 
-Read the [English version](README.md). Xem [ảnh chụp giao diện](README.md#screenshots).
+[English](README.md)
 
-One-Click Subtitles Generator (OSG) là ứng dụng desktop local-first để tạo, chỉnh sửa và dịch phụ
-đề; tạo thuyết minh và media hỗ trợ; sau đó render video có phụ đề. Bản rewrite hiện tại giữ nguyên
-giao diện cũ, đồng thời thay Electron và hệ thống nhiều server bằng Tauri 2 cùng core Rust.
+Ứng dụng Windows để tạo, chỉnh sửa và dịch phụ đề, thêm thuyết minh và xuất video có phụ đề.
 
-> **Trạng thái rewrite:** Windows x64 có catalog runtime tải theo nhu cầu và cấu hình installer đã
-> ký đủ điều kiện phát hành. Catalog Linux/macOS vẫn để trống cho đến khi có build đúng target và
-> test thiết bị thật. Không dùng script cài cũ đã xóa và không có bản hosted/Vercel.
+## Tải OSG
 
-## Phần đã chuyển sang native
+**OSG 1.0.0 đang được chuẩn bị phát hành.** Nhánh `rewrite/tauri-rust` là ứng dụng chính thức
+đang phát triển. Bản v2.6.1 trên GitHub là ứng dụng cũ, không phải bản native này.
 
-| Khu vực | Trạng thái hiện tại |
-| --- | --- |
-| Project và chỉnh sửa | Chọn/thả media bằng native, project và revision trong SQLite, undo/redo, job bền vững, settings, cache, nhập phụ đề và export native. |
-| Gemini | Rust quản lý transcription, translation, phân tích phụ đề, tạo ảnh, key rotation/cooldown và upload có giới hạn. Mọi model thông thường được công khai đều nhận audio hoặc video. |
-| Provider và âm nhạc | Genius, metadata/OAuth YouTube và phiên Lyria RealTime chạy qua native; secret nằm trong kho credential của hệ điều hành. |
-| Media và download | Pipeline typed cho probe, compatibility, extract, waveform, download và cancel. Bản đóng gói vẫn cần tool đã được review cho từng target. |
-| ASR local | Windows x64 có thể tải và gỡ hoàn toàn Parakeet, Faster-Whisper Turbo/Large-v3 và Qwen3-ASR 0.6B/1.7B đã xác minh. Catalog Linux/macOS vẫn để trống. |
-| Thuyết minh | Windows x64 có thể tải và gỡ hoàn toàn F5-TTS và Chatterbox; Edge TTS, gTTS và Gemini có runtime nhỏ, độc lập và gỡ được riêng. Trọng số F5 ghi rõ `CC-BY-NC-4.0`. |
-| Render | Windows x64 xuất video bằng codec của hệ điều hành và chính compositor mà bản xem trước dùng. Không cần tải hay cài gì để render. |
-| Cập nhật | Public key và cấu hình artifact đã ký đã có; private signing key nằm ngoài repository. |
+[Bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/releases) ·
+[Kiểm tra trước phát hành](docs/release/WINDOWS-1.0-VALIDATION.md)
 
-Có command native không đồng nghĩa runtime tương ứng đã cài được. Khi thiếu tool/model, OSG báo
-không khả dụng; ứng dụng không tự tải binary chưa review và không quay lại các localhost service cũ.
+Phiên bản 1.0.0 dành cho **Windows x64**, sử dụng Tauri, WebView2 và Rust.
+Bản đóng gói không cần Node.js hay máy chủ phát triển. Chưa hỗ trợ phát hành cho Linux/macOS.
 
-### Policy model Gemini
+## Chức năng
 
-`src/config/geminiModelCatalog.json` là catalog model frontend do OSG sở hữu và là nguồn chính thức
-duy nhất. Catalog được đối chiếu trực tiếp với tài liệu model Gemini chính thức và hiện công khai
-`gemini-3.5-flash-lite` (mặc định hằng ngày/transcription), `gemini-3.6-flash`,
-`gemini-3.5-flash` và `gemini-3.1-flash-lite` cho tác vụ multimodal thông thường; cả bốn đều nhận
-audio và video. Tạo ảnh dùng `gemini-3.1-flash-image`, model này nhận video; live audio dùng
-`gemini-3.1-flash-live-preview` và `gemini-2.5-flash-native-audio-preview-12-2025`.
-`npm run test:gemini-catalog` từ chối mọi model công khai không nhận cả audio lẫn video, đồng thời
-giữ ID cũ làm migration alias thay vì model có thể chọn.
+- Mở media trên máy hoặc tải video từ các trang được hỗ trợ.
+- Tạo phụ đề bằng Gemini hoặc engine nhận dạng giọng nói cục bộ.
+- Sửa nội dung, thời gian, người nói; dịch và lưu tệp phụ đề.
+- Tùy chỉnh phụ đề và xuất video bằng bộ render native.
+- Tạo thuyết minh bằng engine tải theo nhu cầu.
+- Công cụ hỗ trợ phân tích video, tài liệu, hình ảnh và âm nhạc.
 
-## Trạng thái nền tảng
+Gemini cần khóa API riêng và kết nối mạng. Hạn mức, chi phí và khả năng sử dụng phụ thuộc
+tài khoản nhà cung cấp. Engine cục bộ có thể cần nhiều GB dung lượng; yêu cầu phần cứng
+tùy engine. Công cụ runtime cần thiết được cài tự động khi sử dụng.
 
-| Target | Trạng thái |
-| --- | --- |
-| Windows x64 | Máy phát triển và test thủ công hiện tại; source build đã được dùng, nhưng đóng gói release vẫn bị gate chặn. |
-| macOS Apple Silicon / Intel | Đã cấu hình target trong build matrix; chưa xác minh runtime, media, signing và installer trên máy thật. |
-| Linux x64 | Đã cấu hình target trong build matrix; chưa xác minh runtime, media, desktop integration và package trên máy thật. |
+## Dữ liệu và chuyển phiên bản
 
-Mục tiêu sản phẩm là đa nền tảng, nhưng hiện chưa thể tuyên bố macOS và Linux là bản release được
-hỗ trợ.
+Dự án và cài đặt được lưu trên máy. Khóa API được lưu trong kho thông tin xác thực của hệ điều hành.
+Chức năng đám mây gửi media hoặc văn bản cần thiết đến nhà cung cấp đã chọn;
+không phải mọi chức năng đều chạy ngoại tuyến.
 
-## Chạy từ mã nguồn
+Chuyển từ ứng dụng cũ 2.x sang native 1.0.0 cần **chuyển dữ liệu thủ công**.
+Giữ dữ liệu cũ đến khi kiểm tra nhập thành công.
+Xem [hướng dẫn chuyển dữ liệu](docs/DEVELOPMENT.md#data-and-migration).
 
-Toolchain được pin ở Node.js 24.19.0, npm 11.17.0, Python 3.12.10, Rust 1.97.1 và
-Tauri CLI 2.11.4. Cài
-[prerequisite hệ thống của Tauri](https://v2.tauri.app/start/prerequisites/) cho hệ điều hành, rồi
-chạy tại thư mục gốc repo:
+## Phát triển
+
+Cài toolchain và thành phần hệ thống theo [hướng dẫn phát triển](docs/DEVELOPMENT.md), rồi chạy:
 
 ```powershell
 npm ci
@@ -61,129 +48,13 @@ npm --prefix apps/desktop ci
 npm run tauri:dev
 ```
 
-Tauri tự khởi động Vite. `npm run dev:vite` chỉ phù hợp để kiểm tra frontend; chế độ browser không
-chạy được native command và không thay thế ứng dụng desktop.
+Không mở riêng executable debug: lệnh trên khởi động cả Vite và ứng dụng.
+Build và bằng chứng kiểm thử dùng [bộ nhớ đệm ngoài có giới hạn](docs/rewrite/DEVELOPMENT_CACHE.md).
+Giao diện Material 3 Expressive đã duyệt trên nhánh hiện tại là chuẩn giao diện.
 
-Compile mà không tạo bộ cài:
-
-```powershell
-npm run build:frontend
-cargo check --workspace --all-features --locked
-npm run tauri:build -- --no-bundle
-```
-
-Dùng `npm run tauri:build` để tạo bộ cài. Không chạy trực tiếp `cargo build --release`: lệnh production
-của Tauri bật custom protocol để nhúng frontend, còn Cargo release thuần sẽ giữ lại URL của Vite dev
-server. Crate chủ động từ chối kiểu build không an toàn đó.
-
-## Kiểm tra
-
-```powershell
-npm audit --omit=dev --audit-level=high
-npm run check:dependencies
-npm run lint
-npm test
-npm run check:i18n
-npm run test:gemini-catalog
-npm run test:frontend-env
-npm run test:python-workers
-npm run test:frozen-css
-npm run test:production-transport
-npm run check:versions
-npm run test:version-consistency
-npm run check:tauri-contract
-npm run check:visual-freeze
-npm run test:visual-contract
-npm run build:frontend
-npm run check:frozen-css-output
-npm run check:production-transport
-node scripts/check-release-readiness.js --profile compile
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
-```
-
-Profile `compile` kiểm tra source và invariant của repo. Profile `runtime-package` nghiêm ngặt theo
-từng target được dự kiến sẽ fail cho đến khi có đủ runtime đang bị giữ lại, updater key và policy
-license/notice được chủ repo phê duyệt; bỏ qua gate này không tạo ra một release hợp lệ.
-
-Ví dụ gate release cho Windows là:
-
-```powershell
-node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
-```
-
-Ba target còn lại trong matrix là `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin` và
-`x86_64-apple-darwin`.
-
-## Trạng thái phân phối runtime
-
-| Runtime | Trạng thái phân phối |
-| --- | --- |
-| yt-dlp | Release direct `2026.07.04` đã review là baseline cho bốn nhóm target. Thao tác media đầu tiên tự động cài song song toàn bộ batch bắt buộc với tiến trình tổng hợp có thể hủy. Nếu yt-dlp bị lỗi, host kiểm tra release immutable có giới hạn và kích hoạt nóng phiên bản mới đã xác minh, không chạy `yt-dlp -U` và không cần khởi động lại. |
-| Deno | Catalog có release direct-upstream `2.9.5`, content-addressed đã review cho bốn nhóm target. Kiểm tra URL tự động cài và kích hoạt ở lần dùng đầu tiên; binary không được bundle hay tải lúc khởi động. |
-| FFmpeg / ffprobe | Windows x64 tải archive vendor `8.1.2` đã khóa hash, chỉ cài hai executable cùng license/build notice và kích hoạt ngay trong phiên hiện tại. Linux/macOS vẫn fail-closed cho đến khi có delivery tương đương đã review. |
-| Parakeet / Faster-Whisper / Qwen3-ASR | Windows x64 có manifest runtime/model content-addressed, ưu tiên nguồn model chính thức rồi mới dùng bundle pool đã review. Cả năm engine đều cài, chạy với lease và gỡ qua job native typed. |
-| F5-TTS / Chatterbox / Edge TTS / gTTS / Gemini TTS worker | Windows x64 có runtime/model đã xác minh. Mỗi backend tải/gỡ độc lập; ba provider mạng chỉ tải runtime tối giản 11–20 MB thay vì runtime GPU. License model F5 là `CC-BY-NC-4.0`. |
-| Bản xem trước giọng nói Gemini | Gói 30 mẫu chính xác, định địa chỉ theo nội dung (13,5 MB) tự cài ở lần nghe thử đầu tiên trên cả bốn họ nền tảng, phát qua capability media gốc mờ đục và gỡ ngay không cần khởi động lại. Frontend không nhúng WAV xem trước. |
-| Updater ứng dụng | Public key đã cấu hình; artifact updater được ký bằng private key nằm ngoài repository. |
-
-Phần trợ giúp YouTube hiện mô tả đúng OAuth client loại **Desktop app** và callback loopback tạm
-thời; production bundle không chứa callback trình duyệt cũ.
-
-Nội dung trợ giúp API key ghi đúng kho credential của hệ điều hành; giá trị browser cũ chỉ được
-import một lần rồi xóa.
-
-Phân phối speech Windows gồm runtime, thư viện bắc cầu, model, notice và kiểm tra worker offline đã
-review. Model F5TTS v1 base vẫn dùng `CC-BY-NC-4.0` và được ghi rõ trong UI.
-
-Capability `manage-native-tools` công khai command typed cho
-catalog/status/install/remove/cancel; path executable và URL upstream vẫn ở native. Các tool bắt
-buộc được cài song song ở lần dùng đầu tiên, giữ lease đã xác minh và làm mới ngay download/media/
-render runtime trong phiên hiện tại. Tiến trình tổng hợp dùng toast hiện có với nút hủy rõ ràng.
-Việc gỡ sẽ tách runtime rồi xóa ngay trong cùng phiên. Nếu một thao tác phương tiện đang chạy, lệnh
-gỡ trả về trạng thái bận để người dùng thử lại sau khi thao tác kết thúc; không cần khởi động lại.
-Native host chỉ ghi mã sự kiện đã làm sạch và
-ID opaque vào `osg.log` có giới hạn cùng một file log cũ luân phiên trong thư mục log của ứng dụng.
-Trên Windows, đường dẫn chính xác là
-`%LOCALAPPDATA%\io.github.nganlinh4.oneclicksubtitles\logs\osg.log`.
-FFmpeg/ffprobe chỉ được cung cấp trên Windows x64 từ catalog đã review.
-
-Build development và release dùng cùng catalog phân phối remote đã commit và cùng package store có
-receipt được xác minh. Cả hai đều không tìm runtime tùy chọn trong source tree, cạnh executable,
-virtual environment hay `PATH` hệ thống. `npm run tauri:dev` kiểm tra read-back của bundle pool OSG
-trước khi khởi động; build Cargo trực tiếp cũng bắt buộc checkpoint source/catalog cục bộ tương tự.
-
-## Dữ liệu và migration
-
-Ứng dụng native lưu project, revision, trạng thái job, settings và metadata artifact trong SQLite.
-Credential nằm trong Windows Credential Manager, macOS Keychain hoặc Linux Secret Service; UI chỉ
-nhận opaque reference và status an toàn.
-
-Legacy import chỉ chạy sau khi người dùng tự chọn thư mục dữ liệu cũ. Nó có thể copy artifact được
-hỗ trợ, preference an toàn và credential được hỗ trợ; từ chối link hoặc source bị thay đổi; retry
-an toàn; không xóa thư mục nguồn; và bỏ qua cache tạm, path, URL cùng provider handle đã lỗi thời.
-
-## Cam kết không đổi giao diện
-
-Rewrite giữ nguyên JSX, CSS, asset, font, theme, locale, responsive behavior, thứ tự workflow,
-và PromptDJ. Native adapter được nối phía sau interaction hiện hữu. Mọi thay
-đổi product design có chủ ý cần được duyệt riêng và cập nhật baseline qua review riêng.
-
-Ba bộ locale được duy trì là tiếng Anh, tiếng Việt và tiếng Hàn. `npm run check:i18n` bắt buộc mọi
-translation key tĩnh phải có bản tiếng Việt và tiếng Hàn, đồng thời từ chối user-facing string đã
-được audit nhưng bỏ qua i18n.
-
-## Tài liệu
-
-- [Kiến trúc và ranh giới crate](ARCHITECTURE.md)
-- [Mô hình bảo mật và trust boundary](SECURITY.md)
-- [Quy tắc visual freeze](docs/rewrite/DESIGN.md)
-- [Tauri desktop host](apps/desktop/README.md)
+[Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues) · [Bảo mật](SECURITY.md)
 
 ## Giấy phép
 
-Mã nguồn dự án được cấp phép theo [MIT](LICENSE) ở thư mục gốc. Các dependency, runtime, model và
-font tải theo nhu cầu vẫn giữ điều khoản riêng; giấy phép, thông báo và nghĩa vụ cung cấp mã nguồn
-đã thẩm định được ghi trong [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) và được release gate
-kiểm tra bắt buộc.
+Mã nguồn OSG dùng [MIT](LICENSE). Model, runtime, font và thư viện có điều khoản riêng:
+[xem thông báo bên thứ ba](THIRD_PARTY_NOTICES.md).

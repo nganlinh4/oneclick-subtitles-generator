@@ -10,7 +10,7 @@ const { VISITOR_KEYS } = require('@babel/types');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const MANIFEST_PATH = path.join(__dirname, 'frontend-visual-baseline.json');
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const ALGORITHM = 'sha256';
 const NORMALIZATION =
   'binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored';
@@ -70,187 +70,9 @@ const RETIRED_EXACT_FILES = Object.freeze({
   'public/audio/voices/chirp3-hd-zephyr.wav': 'aed7ab19a485a24f6b3fe37feb368caae287fa7d42083b6d4c1878061d70580d',
   'public/audio/voices/chirp3-hd-zubenelgenubi.wav': '09d15cc03e2a8c0140f03f29f0407b3237316d503bd37225d27cc74179520aa1',
 });
-const NATIVE_PROVIDER_IMAGE_SOURCES = new Set([
-  'src/components/inputs/VideoPreviewRenderer.js',
-  'src/components/inputs/YoutubeUrlInput.js',
-]);
-const LEGACY_SELECTED_VIDEO_IMAGE = 'src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`}';
-const NATIVE_SELECTED_VIDEO_IMAGE = 'src={selectedVideo.thumbnail}';
-const SECURITY_COPY_RENDER_CORRECTIONS = Object.freeze({
-  // NativeToolsList.js once needed a correction here, canonicalising the baseline's single
-  // renderer-package cancel branch into the two-package form. Both forms are gone: the renderer
-  // is no longer a downloadable package at all, so the row cancels voice previews or a native
-  // tool and neither the baseline snippet nor its correction can appear again. A canonicalisation
-  // that can never match fails on every run and teaches a reader to ignore the result, so it is
-  // removed rather than left behind. The branch itself stays asserted, in
-  // `src/components/engines/NativeToolsList.test.js`.
-  'src/components/engines/EngineCard.js': Object.freeze([
-    Object.freeze([
-      '  kind,\n  status,',
-      '  kind,\n  license,\n  status,',
-      1,
-    ]),
-    Object.freeze([
-      '  const { install, cancel, start, stop, uninstall, installing, percent, log, error } = useEngineInstall(',
-      '  const {\n    install, cancel, start, stop, uninstall, installing, percent, log,\n    operation: liveOperation, error,\n  } = useEngineInstall(',
-      1,
-    ]),
-    Object.freeze([
-      '  const packageOperation = packageStatus?.operation || null;\n  const packageInstalling',
-      '  const packageOperation = packageStatus?.operation || null;\n  const activeOperation = packageOperation || liveOperation;\n  const packageInstalling',
-      1,
-    ]),
-    Object.freeze([
-      "  const lastLog = log.length ? log[log.length - 1] : '';\n  const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();",
-      "  const lastLog = log.length ? log[log.length - 1] : '';\n  const operationProgress = activeOperation\n    ? [\n      t(`engines.phase.${activeOperation.phase}`, activeOperation.phase),\n      activeOperation.totalBytes > 0\n        ? `${formatBytes(activeOperation.bytesDone) || '0 B'} / ${formatBytes(activeOperation.totalBytes)}`\n        : null,\n    ].filter(Boolean).join(' · ')\n    : '';\n  const { isDarkTheme, waveColor, waveTrackColor } = useWaveColors();",
-      1,
-    ]),
-    Object.freeze([
-      'packageOperation ? packageOperation.basisPoints / 10000',
-      'activeOperation ? activeOperation.basisPoints / 10000',
-      1,
-    ]),
-    Object.freeze([
-      'cancel(packageOperation?.job?.id)',
-      'cancel(activeOperation?.job?.id)',
-      2,
-    ]),
-    Object.freeze([
-      '    t(`engines.state.${state}`, state),\n    packageVersion',
-      '    t(`engines.state.${state}`, state),\n    license || null,\n    packageVersion',
-      1,
-    ]),
-    Object.freeze([
-      "{lastLog || t('engines.installing', 'Installing…')}",
-      "{lastLog || operationProgress || t('engines.installing', 'Installing…')}",
-      1,
-    ]),
-  ]),
-  // EnginesPanel.js once needed two corrections here, both carrying the F5-TTS licence into the
-  // reviewed baseline. They are gone because the file moved past BOTH forms: the engine list is now
-  // a frozen map keyed by id, so neither the old array literal nor the corrected one appears, and
-  // the check reported that as drift rather than as an obsolete rule.
-  //
-  // What the corrections existed to guarantee is still true and is now structural: the licence is
-  // declared at `f5tts: Object.freeze({ kind, license })` and passed as `license={engine.license}`.
-  // Removing a stale canonicalisation is not weakening the gate; leaving one that can never match
-  // is, because it fails on every run and teaches a reader to ignore the result.
-  'src/components/settings/tabs/YoutubeAuthSection.js': Object.freeze([
-    Object.freeze(['Create OAuth 2.0 Client ID (Web application)', 'Create OAuth 2.0 Client ID (Desktop app)', 1]),
-    Object.freeze(['Add Authorized JavaScript origins:', 'Confirm the application type:', 1]),
-    Object.freeze(['Add Authorized redirect URI:', 'OSG uses this temporary loopback callback pattern:', 1]),
-    Object.freeze([
-      "This error occurs when the redirect URI in your application doesn\\'t match what\\'s registered in Google Cloud Console:",
-      'This usually means the OAuth client is not configured as a desktop application:',
-      1,
-    ]),
-    Object.freeze(['In "Authorized JavaScript origins", add exactly:', 'The OAuth client application type must be:', 1]),
-    Object.freeze(['In "Authorized redirect URIs", add exactly:', 'Retry authentication; OSG will select a new loopback callback:', 1]),
-    Object.freeze([
-      "<code>{window.location.origin + '/oauth2callback.html'}</code>",
-      '<code>{LOOPBACK_CALLBACK_PATTERN}</code>',
-      2,
-    ]),
-    Object.freeze(['<code>{window.location.origin}</code>', '<code>{DESKTOP_OAUTH_CLIENT_TYPE}</code>', 2]),
-  ]),
-});
-const SECURITY_COPY_LOCALE_CORRECTIONS = Object.freeze({
-  'src/i18n/locales/en/download.json': Object.freeze({
-    'nativeTools.healthFailed': Object.freeze(['The installed native download tools failed their health check. Restart OSG; if the problem remains, repair the installation.', 'The native tools did not become ready. Retry the operation; if the problem remains, repair them in Tools. Details were written to the application log.']),
-    'nativeTools.failed': Object.freeze(['The verified native tool package could not be installed.', 'Native tool installation failed. Details were written to the application log.']),
-  }),
-  'src/i18n/locales/en/settings.json': Object.freeze({
-    apiKeyDescription: Object.freeze(['Your API key is stored locally in your browser and never sent to our servers.', "Your API key is stored in your operating system's credential store and used only by native provider requests."]),
-    createOAuthClientId: Object.freeze(['Create OAuth 2.0 client ID (web application)', 'Create OAuth 2.0 client ID (desktop app)']),
-    addAuthorizedOrigins: Object.freeze(['Add authorized JavaScript origins:', 'Confirm the application type:']),
-    addAuthorizedRedirect: Object.freeze(['Add authorized redirect URI:', 'OSG uses this temporary loopback callback pattern:']),
-    redirectMismatchDescription: Object.freeze(["This error occurs when the redirect URI in your application doesn't match the URI registered in Google Cloud Console:", 'This usually means the OAuth client is not configured as a desktop application:']),
-    inAuthorizedOrigins: Object.freeze(["In 'Authorized JavaScript origins', add exactly:", 'The OAuth client application type must be:']),
-    inAuthorizedRedirect: Object.freeze(["In 'Authorized redirect URIs', add exactly:", 'Retry authentication; OSG will select a new loopback callback:']),
-  }),
-  'src/i18n/locales/ko/download.json': Object.freeze({
-    'nativeTools.healthFailed': Object.freeze(['설치된 네이티브 다운로드 도구가 상태 검사를 통과하지 못했습니다. OSG를 다시 시작하고 문제가 계속되면 설치를 복구하세요.', '네이티브 도구가 준비되지 않았습니다. 작업을 다시 시도하고, 문제가 계속되면 도구 탭에서 복구하세요. 자세한 내용은 애플리케이션 로그에 기록되었습니다.']),
-    'nativeTools.failed': Object.freeze(['검증된 네이티브 도구 패키지를 설치할 수 없습니다.', '네이티브 도구 설치에 실패했습니다. 자세한 내용은 애플리케이션 로그에 기록되었습니다.']),
-  }),
-  'src/i18n/locales/ko/settings.json': Object.freeze({
-    apiKeyDescription: Object.freeze(['API 키는 브라우저에 로컬로 저장되며 절대 우리 서버로 전송되지 않습니다.', 'API 키는 운영 체제의 자격 증명 저장소에 보관되며 네이티브 제공자 요청에만 사용됩니다.']),
-    createOAuthClientId: Object.freeze(['OAuth 2.0 클라이언트 ID 생성 (웹 애플리케이션)', 'OAuth 2.0 클라이언트 ID 생성 (데스크톱 앱)']),
-    addAuthorizedOrigins: Object.freeze(['승인된 JavaScript 출처 추가:', '애플리케이션 유형 확인:']),
-    addAuthorizedRedirect: Object.freeze(['승인된 리디렉션 URI 추가:', 'OSG는 다음 임시 루프백 콜백 형식을 사용합니다:']),
-    redirectMismatchDescription: Object.freeze(['이 오류는 애플리케이션의 리디렉션 URI가 Google Cloud Console에 등록된 URI와 일치하지 않을 때 발생합니다:', '이 오류는 일반적으로 OAuth 클라이언트가 데스크톱 애플리케이션으로 설정되지 않았을 때 발생합니다:']),
-    inAuthorizedOrigins: Object.freeze(["'승인된 JavaScript 출처'에 정확히 추가:", 'OAuth 클라이언트 애플리케이션 유형:']),
-    inAuthorizedRedirect: Object.freeze(["'승인된 리디렉션 URI'에 정확히 추가:", '인증을 다시 시도하면 OSG가 새 루프백 콜백을 선택합니다:']),
-  }),
-  'src/i18n/locales/vi/download.json': Object.freeze({
-    'nativeTools.healthFailed': Object.freeze(['Các công cụ tải xuống gốc đã cài đặt không vượt qua kiểm tra trạng thái. Hãy khởi động lại OSG; nếu lỗi vẫn còn, hãy sửa chữa cài đặt.', 'Các công cụ gốc chưa sẵn sàng. Hãy thử lại; nếu lỗi vẫn còn, sửa chữa chúng trong tab Công cụ. Chi tiết đã được ghi vào nhật ký ứng dụng.']),
-    'nativeTools.failed': Object.freeze(['Không thể cài đặt gói công cụ gốc đã được xác minh.', 'Cài đặt công cụ gốc thất bại. Chi tiết đã được ghi vào nhật ký ứng dụng.']),
-  }),
-  'src/i18n/locales/vi/settings.json': Object.freeze({
-    apiKeyDescription: Object.freeze(['Khóa API được lưu trữ cục bộ trong trình duyệt của bạn và không bao giờ được gửi đến máy chủ của chúng tôi.', 'Khóa API được lưu trong kho thông tin xác thực của hệ điều hành và chỉ được ứng dụng gốc sử dụng cho các yêu cầu đến nhà cung cấp.']),
-    createOAuthClientId: Object.freeze(['Tạo ID khách hàng OAuth 2.0 (ứng dụng web)', 'Tạo ID khách hàng OAuth 2.0 (ứng dụng máy tính)']),
-    addAuthorizedOrigins: Object.freeze(['Thêm nguồn JavaScript được phép:', 'Xác nhận loại ứng dụng:']),
-    addAuthorizedRedirect: Object.freeze(['Thêm URI chuyển hướng được phép:', 'OSG sử dụng mẫu gọi lại vòng lặp tạm thời này:']),
-    redirectMismatchDescription: Object.freeze(['Lỗi này xảy ra khi URI chuyển hướng trong ứng dụng của bạn không khớp với URI đã đăng ký trong Google Cloud Console:', 'Lỗi này thường có nghĩa là ứng dụng OAuth chưa được cấu hình là ứng dụng máy tính:']),
-    inAuthorizedOrigins: Object.freeze(['Trong "Nguồn JavaScript được phép", thêm chính xác:', 'Loại ứng dụng của ID khách hàng OAuth phải là:']),
-    inAuthorizedRedirect: Object.freeze(['Trong "URI chuyển hướng được phép", thêm chính xác:', 'Thử xác thực lại; OSG sẽ chọn một địa chỉ gọi lại vòng lặp mới:']),
-  }),
-});
+// The approved native baseline is compared directly. Legacy-to-native correction
+// tables used to hide selected differences and require obsolete implementation strings.
 
-function canonicalizeReviewedCorrections(source, corrections, label) {
-  let canonical = source;
-  for (const [index, [legacy, current, expectedCount = 1]] of corrections.entries()) {
-    const legacyCount = canonical.split(legacy).length - 1;
-    const currentCount = canonical.split(current).length - 1;
-    if (legacyCount === expectedCount && currentCount === 0) canonical = canonical.replaceAll(legacy, current);
-    else if (legacyCount !== 0 || currentCount !== expectedCount) {
-      throw new Error(
-        `reviewed security correction ${index + 1} drifted for ${label}: expected ${expectedCount} legacy or current markers, ` +
-          `found ${legacyCount}/${currentCount}`,
-      );
-    }
-  }
-  return canonical;
-}
-
-function canonicalizeRuntimeRenderSource(relativePath, source) {
-  let canonical = source;
-  if (NATIVE_PROVIDER_IMAGE_SOURCES.has(relativePath)) {
-    const legacyCount = canonical.split(LEGACY_SELECTED_VIDEO_IMAGE).length - 1;
-    const nativeCount = canonical.split(NATIVE_SELECTED_VIDEO_IMAGE).length - 1;
-    if (legacyCount === 1 && nativeCount === 0) {
-      canonical = canonical.replace(LEGACY_SELECTED_VIDEO_IMAGE, NATIVE_SELECTED_VIDEO_IMAGE);
-    } else if (legacyCount !== 0 || nativeCount !== 1) {
-      throw new Error(
-        `native provider-image render contract drifted for ${relativePath}: ` +
-          `expected one legacy or native selected-video source, found ${legacyCount}/${nativeCount}`,
-      );
-    }
-  }
-  const corrections = SECURITY_COPY_RENDER_CORRECTIONS[relativePath];
-  return corrections
-    ? canonicalizeReviewedCorrections(canonical, corrections, relativePath)
-    : canonical;
-}
-
-function canonicalizeLocaleValue(relativePath, value) {
-  const corrections = SECURITY_COPY_LOCALE_CORRECTIONS[relativePath];
-  if (!corrections) return value;
-  for (const [key, [legacy, current]] of Object.entries(corrections)) {
-    const segments = key.split('.');
-    const leaf = segments.pop();
-    const parent = segments.reduce(
-      (candidate, segment) => candidate && typeof candidate === 'object'
-        ? candidate[segment]
-        : undefined,
-      value,
-    );
-    if (parent?.[leaf] === legacy) parent[leaf] = current;
-    else if (parent?.[leaf] !== current) {
-      throw new Error(`reviewed locale security correction drifted for ${relativePath}:${key}`);
-    }
-  }
-  return value;
-}
 
 function assertVisualRuntimePins() {
   const packageManifest = JSON.parse(
@@ -337,7 +159,6 @@ function localeSurface(relativePath, contents) {
   } catch (error) {
     throw new Error(`cannot parse locale source ${relativePath}: ${error.message}`);
   }
-  value = canonicalizeLocaleValue(toRepositoryPath(relativePath), value);
   const leafHashes = {};
   function visit(current, prefix) {
     if (current && typeof current === 'object' && !Array.isArray(current)) {
@@ -876,10 +697,7 @@ function createManifest(provider, baselineRevision = null) {
       continue;
     }
     if (isRenderSource(relativePath)) {
-      const source = canonicalizeRuntimeRenderSource(
-        relativePath,
-        provider.readFile(relativePath).toString('utf8'),
-      );
+      const source = provider.readFile(relativePath).toString('utf8');
       const fingerprint = createRenderSurfaceFingerprint(source, relativePath);
       if (fingerprint.rootCount > 0) {
         renderSurfaces[relativePath] = fingerprint;
@@ -1076,7 +894,7 @@ function checkWorkingTree() {
     `Visual freeze passed against ${expected.baselineRevision}: ` +
       `${Object.keys(actual.exactFiles).length} exact files and ` +
       `${Object.keys(actual.renderSurfaces).length} render surfaces match; ` +
-      `${Object.keys(expected.localeSurfaces).length} locale files match the original or explicitly reviewed native-security copy; ` +
+      `${Object.keys(expected.localeSurfaces).length} locale files match the approved native baseline; ` +
       `security-retired static entries absent: ${Object.keys(expected.retiredExactFiles).length}.`,
   );
 }
@@ -1105,8 +923,6 @@ if (require.main === module) {
 
 module.exports = {
   ExpressionFingerprinter,
-  canonicalizeLocaleValue,
-  canonicalizeRuntimeRenderSource,
   cleanJsxText,
   compareManifests,
   createGitProvider,

@@ -1,7 +1,9 @@
-# Visual freeze
+# Approved UI baseline
 
-The Tauri/Rust rewrite has no visual-design mandate. Any intentional visual difference from the
-existing OSG application is a regression unless the user separately approves it.
+The canonical product is the current native branch, not legacy `main`. On 2026-09-17 the owner
+confirmed that the visual improvements made during development are intentional and approved.
+Preserve its Material 3 Expressive styling and interactions; do not restore obsolete UI just to
+match the original port baseline or introduce an unrelated redesign during backend work.
 
 ## Canonical frontend
 
@@ -31,6 +33,9 @@ npm run check:visual-freeze
 npm run test:visual-contract
 ```
 
-The baselines derive from the approved original source. Do not regenerate them to make an
-architectural rewrite pass. An approved visual product change must update the relevant baseline in
-a separate, explicitly reviewed change.
+Baselines protect the approved current UI. Update the affected baseline with an intentional visual
+change and its screenshot evidence; do not use a blanket regeneration to conceal regressions.
+The compiled CSS pin records the approved September candidate at `28b2495b`. The September 15
+audit documents the repaired dropdown positioning, scaling, canvas bounds and modal footers.
+Source hashes and CSS inventories detect changes, not usability: real-app screenshots and
+workflow results remain necessary. No comparison to legacy main is required for approved changes.

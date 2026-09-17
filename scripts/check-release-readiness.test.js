@@ -254,7 +254,7 @@ function createTauriProductionBuildFixture() {
 }
 
 const DEVELOPMENT_CACHE_CONTRACT_FILES = [
-  'README.md',
+  'docs/DEVELOPMENT.md',
   'apps/desktop/README.md',
   'apps/desktop/package.json',
   'apps/desktop/src-tauri/tauri.conf.json',
@@ -3315,10 +3315,10 @@ test('development cache contract pins external output, bounded retention, and jo
       expected: /Workflow evidence retention must remain journal-authorized/u,
     },
     {
-      file: 'README.md',
+      file: 'docs/DEVELOPMENT.md',
       search: 'inner `apps/desktop` Tauri entry points reject unmanaged local invocations',
       replacement: 'inner Tauri entry points may be invoked directly',
-      expected: /Root README must describe the bounded external cache/u,
+      expected: /Development guide must describe the bounded external cache/u,
     },
     {
       file: 'docs/rewrite/DEVELOPMENT_CACHE.md',

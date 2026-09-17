@@ -105,6 +105,7 @@ test('managed frontend build inputs and outputs stay in the leased external lane
   const viteModule = await import(`../vite.config.mjs?managed=${Date.now()}`);
   const config = viteModule.default({ mode: 'production' });
   assert.equal(resolve(config.build.outDir), resolve(output));
+  assert.equal(config.build.emptyOutDir, true, 'external builds must not accumulate obsolete chunks');
   assert.equal(resolve(config.cacheDir), resolve(viteCache));
   const versionPlugin = config.plugins.find(
     ({ name }) => name === 'osg-immutable-e2e-version-metadata',

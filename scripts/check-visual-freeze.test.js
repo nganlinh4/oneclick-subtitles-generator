@@ -2,8 +2,6 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-  canonicalizeLocaleValue,
-  canonicalizeRuntimeRenderSource,
   compareManifests,
   createManifest,
   createRenderSurfaceFingerprint,
@@ -14,40 +12,11 @@ const {
 } = require('./check-visual-freeze');
 const { weaken } = require('./mutation-testing');
 
-test('canonicalizes the retired remote thumbnail expression to the executable native source', () => {
-  const relativePath = 'src/components/inputs/VideoPreviewRenderer.js';
-  const legacy = '<img src={`https://img.youtube.com/vi/${selectedVideo.id}/0.jpg`} />';
-  const native = '<img src={selectedVideo.thumbnail} />';
-  assert.equal(canonicalizeRuntimeRenderSource(relativePath, legacy), native);
-  assert.equal(canonicalizeRuntimeRenderSource(relativePath, native), native);
-  assert.throws(
-    () => canonicalizeRuntimeRenderSource(relativePath, '<img src="other" />'),
-    /native provider-image render contract drifted/,
-  );
-});
-
-test('canonicalizes only the reviewed executable security copy corrections', () => {
-  const relativePath = 'src/i18n/locales/en/settings.json';
-  const legacy = {
-    apiKeyDescription: 'Your API key is stored locally in your browser and never sent to our servers.',
-    createOAuthClientId: 'Create OAuth 2.0 client ID (web application)',
-    addAuthorizedOrigins: 'Add authorized JavaScript origins:',
-    addAuthorizedRedirect: 'Add authorized redirect URI:',
-    redirectMismatchDescription:
-      "This error occurs when the redirect URI in your application doesn't match the URI registered in Google Cloud Console:",
-    inAuthorizedOrigins: "In 'Authorized JavaScript origins', add exactly:",
-    inAuthorizedRedirect: "In 'Authorized redirect URIs', add exactly:",
-  };
-  const corrected = canonicalizeLocaleValue(relativePath, {...legacy});
-  assert.equal(
-    corrected.apiKeyDescription,
-    "Your API key is stored in your operating system's credential store and used only by native provider requests.",
-  );
-  assert.equal(corrected.createOAuthClientId, 'Create OAuth 2.0 client ID (desktop app)');
-  assert.throws(
-    () => canonicalizeLocaleValue(relativePath, {...legacy, apiKeyDescription: 'unreviewed drift'}),
-    /reviewed locale security correction drifted/,
-  );
+test('current native copy is compared literally, without legacy correction tables', () => {
+  const file = 'src/i18n/locales/en/settings.json';
+  const current = createManifest(memoryProvider({ [file]: '{"apiKeyDescription":"Native credential store"}' }));
+  const changed = createManifest(memoryProvider({ [file]: '{"apiKeyDescription":"Browser storage"}' }));
+  assert.notDeepEqual(current.localeSurfaces, changed.localeSurfaces);
 });
 
 function fingerprint(source) {
@@ -297,7 +266,7 @@ test('records a security-retired static file without allowing it back into the w
   );
 });
 
-test('rejects obsolete and malformed schema-5 manifests', () => {
+test('rejects obsolete and malformed manifests', () => {
   assert.throws(() => validateManifest({schemaVersion: 1}), /invalid or obsolete/);
   assert.throws(
     () =>

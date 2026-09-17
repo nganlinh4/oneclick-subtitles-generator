@@ -391,6 +391,9 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $receipt = "$($installer.FullName).osg-package-receipt.json"
+          # Sign only the updater sidecar; the exact installer bytes remain those tested below.
+          node apps/desktop/node_modules/@tauri-apps/cli/tauri.js signer sign $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate updater signing failed' }
           $resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-branch-result.json'
           $pickerEvidencePath = Join-Path $env:RUNNER_TEMP 'osg-installed-native-picker-evidence.json'
           if (Test-Path -LiteralPath $pickerEvidencePath) {
@@ -405,6 +408,22 @@ jobs:
           if ($pickerEvidence.outcome -cne 'succeeded' -or $pickerEvidence.stage -cne 'dialog-dismissed') {
             throw 'Installed branch smoke omitted successful native-picker evidence'
           }
+          node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis
+          if ($LASTEXITCODE -ne 0) { throw 'Signed candidate verification failed' }
+          node scripts/build-updater-manifest.js --bundle-root target --base-url "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v$expectedVersion" --platform windows-x86_64-nsis --notes "OSG $expectedVersion native Windows candidate" --output osg-desktop-updater-v2.json
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate updater manifest generation failed' }
+
+      - name: Retain tested signed release candidate (never publish automatically)
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: native-release-candidate-${{ github.sha }}
+          path: |
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.osg-package-receipt.json
+            target/osg-desktop-updater-v2.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload installed WebView screenshots
         if: always()
