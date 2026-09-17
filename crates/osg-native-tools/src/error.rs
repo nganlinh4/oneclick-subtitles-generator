@@ -15,6 +15,8 @@ pub enum NativeToolError {
     Cancelled,
     #[error("the native tool download failed")]
     Network,
+    #[error("the native tool server returned HTTP {0}")]
+    HttpStatus(u16),
     #[error("the native tool download is incomplete")]
     IncompleteDownload,
     #[error("the native tool package exceeds its storage limit")]

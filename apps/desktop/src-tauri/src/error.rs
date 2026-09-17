@@ -692,9 +692,17 @@ impl From<osg_native_tools::NativeToolError> for CommandError {
                 "nativeToolInUse",
                 "Wait for the current media operation to finish, then retry the tool change.",
             ),
-            NativeToolError::Network
-            | NativeToolError::IncompleteDownload
-            | NativeToolError::StorageLimit => Self::fixed(
+            NativeToolError::HttpStatus(status) => Self {
+                code: "nativeToolHttpFailed",
+                message: format!(
+                    "The native tool server returned HTTP {status}. Please retry later."
+                ),
+            },
+            NativeToolError::IncompleteDownload => Self::fixed(
+                "nativeToolIncompleteDownload",
+                "The native tool download did not match its expected length.",
+            ),
+            NativeToolError::Network | NativeToolError::StorageLimit => Self::fixed(
                 "nativeToolDownloadFailed",
                 "The verified native tool package could not be downloaded.",
             ),
@@ -1142,5 +1150,20 @@ mod tests {
         let integrity: CommandError = osg_engine_packages::PackageError::ArchiveIntegrity.into();
         assert_eq!(integrity.code, "packageIntegrity");
         assert!(!integrity.message.contains("http"));
+    }
+
+    #[test]
+    fn native_download_errors_distinguish_http_from_incomplete_transfers() {
+        let http: CommandError = osg_native_tools::NativeToolError::HttpStatus(503).into();
+        let incomplete: CommandError = osg_native_tools::NativeToolError::IncompleteDownload.into();
+        let transport: CommandError = osg_native_tools::NativeToolError::Network.into();
+        assert_eq!(http.code(), "nativeToolHttpFailed");
+        assert!(http.message.contains("HTTP 503"));
+        assert_eq!(incomplete.code(), "nativeToolIncompleteDownload");
+        assert_eq!(transport.code(), "nativeToolDownloadFailed");
+        for error in [http, incomplete, transport] {
+            assert!(!error.message.contains("https://"));
+            assert!(error.message.len() < 128);
+        }
     }
 }
