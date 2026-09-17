@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const AUTHORITY_FILE: &str = ".osg-runtime-authority-v1.bin";
+const METADATA_LOCK_FILE: &str = ".osg-runtime-metadata.lock";
 const AUTHORITY_MAGIC: &[u8; 8] = b"OSGRTA01";
 const AUTHORITY_BYTES: usize = AUTHORITY_MAGIC.len() + 32;
 const AUTHORITY_TEMP_PREFIX: &str = ".osg-runtime-authority-write-";
@@ -270,17 +271,20 @@ impl RuntimeStagingAuthority {
     pub fn prepare_with_report(root: &Path) -> io::Result<(Self, ReconcileReport)> {
         fs::create_dir_all(root)?;
         let root = validated_root(root)?;
+        let metadata_lock = lock_metadata(&root)?;
         recover_authority_writes(&root)?;
         let secret = load_or_create_authority(&root)?;
         let authority = Self {
             inner: Arc::new(AuthorityInner { root, secret }),
         };
+        drop(metadata_lock);
         let report = authority.reconcile_all()?;
         Ok((authority, report))
     }
 
     /// Reclaims every stale exact entry, including exports in directories that are not revisited.
     pub fn reconcile_all(&self) -> io::Result<ReconcileReport> {
+        let _metadata_lock = lock_metadata(&self.inner.root)?;
         let mut report = ReconcileReport::default();
         self.recover_journal_writes()?;
         for entry in fs::read_dir(&self.inner.root)? {
@@ -335,7 +339,7 @@ impl RuntimeStagingAuthority {
                 continue;
             }
             remove_owned_entry(&target_root.join(&record.entry_name), record.entry_type)?;
-            release_and_remove_journal(journal, &entry.path(), &self.inner.root);
+            release_and_remove_journal_locked(journal, &entry.path(), &self.inner.root);
             report.reclaimed = report.reclaimed.saturating_add(1);
         }
         Ok(report)
@@ -346,6 +350,7 @@ impl RuntimeStagingAuthority {
         target_root: &Path,
         kind: StagingKind,
     ) -> io::Result<(OwnershipJournal, PathBuf, File)> {
+        let _metadata_lock = lock_metadata(&self.inner.root)?;
         for _ in 0..16 {
             let nonce = Uuid::new_v4().simple().to_string();
             let record = OwnershipJournal::new(self, kind, nonce.clone(), target_root)?;
@@ -729,7 +734,45 @@ fn recover_authority_writes(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Serializes publication/reconciliation across independent authority handles and processes.
+/// Per-entry journal locks still protect live payloads. This guard is never held while downloading,
+/// decoding, rendering or otherwise using a staged payload.
+struct MetadataLock(File);
+
+impl Drop for MetadataLock {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.0);
+    }
+}
+
+fn lock_metadata(root: &Path) -> io::Result<MetadataLock> {
+    let path = root.join(METADATA_LOCK_FILE);
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => reject_unsafe_metadata(&metadata, EntryType::File)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+    reject_unsafe_metadata(&fs::symlink_metadata(&path)?, EntryType::File)?;
+    file.lock_exclusive()?;
+    Ok(MetadataLock(file))
+}
+
 fn release_and_remove_journal(journal: File, path: &Path, authority_root: &Path) {
+    // If metadata cannot be locked, keep the authenticated journal for recovery rather than race
+    // another scanner. Dropping the file releases its live-owner lock without deleting authority.
+    let Ok(_metadata_lock) = lock_metadata(authority_root) else {
+        return;
+    };
+    release_and_remove_journal_locked(journal, path, authority_root);
+}
+
+fn release_and_remove_journal_locked(journal: File, path: &Path, authority_root: &Path) {
     let _ = FileExt::unlock(&journal);
     drop(journal);
     let _ = fs::remove_file(path);
@@ -1339,6 +1382,42 @@ mod tests {
         drop(writer);
         RuntimeStagingAuthority::prepare(authority_root.path()).unwrap();
         assert!(!authority_sidecar.exists());
+    }
+
+    #[test]
+    fn parallel_staging_admission_and_cleanup_preserve_live_owners() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("payloads");
+        fs::create_dir(&root).unwrap();
+        let authority =
+            RuntimeStagingAuthority::prepare(&temporary.path().join("authority")).unwrap();
+        let barrier = std::sync::Barrier::new(12);
+        std::thread::scope(|scope| {
+            let barrier = &barrier;
+            for _ in 0..12 {
+                let root = &root;
+                let authority = &authority;
+                scope.spawn(move || {
+                    // Independent handles must coordinate through the filesystem, not merely
+                    // through a mutex shared by clones of one Rust value.
+                    let authority =
+                        RuntimeStagingAuthority::prepare(&authority.inner.root).unwrap();
+                    barrier.wait();
+                    for _ in 0..40 {
+                        let directory = OwnedStagingDirectory::begin(
+                            &authority,
+                            root,
+                            StagingKind::NativeToolDownload,
+                        )
+                        .expect("parallel admission must preserve active journal writers");
+                        assert!(directory.path().is_dir());
+                        directory.remove().expect("owned staging cleanup");
+                    }
+                });
+            }
+        });
+        authority.reconcile_all().unwrap();
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
     }
 
     #[test]

@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
   CdpClient,
+  INSPECTION_EXPRESSION,
   discoverTarget,
   waitForInspection,
 } from './inspect-installed-webview.mjs';
@@ -205,25 +206,7 @@ async function inspectUpdater(options) {
       : options.updatedVersion;
     const inspection = await waitForInspection(
       () => client.send('Runtime.evaluate', {
-        expression: `
-          (async () => {
-            await document.fonts.ready;
-            const root = document.getElementById('root');
-            const bounds = root?.getBoundingClientRect();
-            const health = await window.__TAURI_INTERNALS__.invoke('app_health');
-            return {
-              readyState: document.readyState,
-              rootChildren: root?.childElementCount ?? 0,
-              rootWidth: Math.round(bounds?.width ?? 0),
-              rootHeight: Math.round(bounds?.height ?? 0),
-              managedFont: window.__OSG_MANAGED_UI_FONT__ === true,
-              managedFontStyle: document.getElementById('osg-managed-ui-font') !== null,
-              fontReadyClass: document.documentElement.classList.contains('osg-managed-ui-font-ready'),
-              fontLoaded: document.fonts.check('400 16px "Google Sans"', 'OSG Tiếng Việt ă đ ơ ư'),
-              bodyFontFamily: getComputedStyle(document.body).fontFamily,
-              health,
-            };
-          })()`,
+        expression: INSPECTION_EXPRESSION,
         awaitPromise: true,
         returnByValue: true,
       }),
