@@ -213,14 +213,17 @@ const clickEnabled = (selector) => `
   return true;
 })()`;
 
-const NATIVE_HISTORY_EXPRESSION = `
+export const NATIVE_HISTORY_EXPRESSION = `
 (async () => {
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   if (typeof invoke !== 'function') return null;
-  const cacheId = localStorage.getItem('current_file_cache_id');
+  const workspaceState = await invoke('active_workspace_get');
+  const workspace = workspaceState?.initialized === true ? workspaceState.workspace : null;
+  const cacheId = workspace?.cacheId ?? null;
   const index = await invoke('setting_get', { key: ${JSON.stringify(SUBTITLE_INDEX_KEY)} });
   const entries = Array.isArray(index?.entries) ? index.entries : [];
-  const matchingEntries = entries.filter((entry) => entry?.cacheId === cacheId);
+  const matchingEntries = entries.filter((entry) => entry?.cacheId === cacheId
+    && entry?.projectId === workspace?.projectId);
   const projectId = matchingEntries.length === 1 ? matchingEntries[0].projectId : null;
   let project = null;
   let status = null;

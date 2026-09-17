@@ -340,14 +340,15 @@ export const CLICK_PICKER_EXPRESSION = `
 
 export const LOCAL_MEDIA_RESULT_EXPRESSION = `
 (async () => {
-  const assetId = localStorage.getItem('current_file_cache_id');
-  const currentFileUrl = localStorage.getItem('current_file_url');
   const videoElement = document.querySelector('video.video-player');
+  const currentFileUrl = videoElement?.currentSrc ?? null;
   const invoke = window.__TAURI_INTERNALS__?.invoke;
+  let assetId = null;
   let session = null;
   let inspection = null;
   if (typeof invoke === 'function') {
     session = await invoke('get_session_snapshot');
+    assetId = session?.media?.id ?? null;
     if (${UUID_V7.toString()}.test(assetId ?? '')) {
       inspection = await invoke('media_pipeline_inspect', { assetId });
     }
@@ -381,12 +382,15 @@ export const LOCAL_MEDIA_RESULT_EXPRESSION = `
 
 export const PRIOR_MEDIA_STATE_EXPRESSION = `
 (async () => {
-  const assetId = localStorage.getItem('current_file_cache_id');
   const invoke = window.__TAURI_INTERNALS__?.invoke;
+  let assetId = null;
   let sessionMediaId = null;
   if (typeof invoke === 'function') {
     const session = await invoke('get_session_snapshot');
     sessionMediaId = session?.media?.id ?? null;
+    const video = document.querySelector('video.video-player');
+    assetId = video?.currentSrc && video.currentSrc === session?.playback?.playbackUrl
+      ? sessionMediaId : null;
   }
   return { assetId, sessionMediaId };
 })()`;

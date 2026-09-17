@@ -635,9 +635,6 @@ const START_EXPRESSION = (preferences, expectedCacheId) => `
 
 export const MEDIA_RESULT_EXPRESSION = `
 (async () => {
-  const assetId = localStorage.getItem('current_file_cache_id');
-  const currentFileUrl = localStorage.getItem('current_file_url');
-  const currentFileName = localStorage.getItem('current_file_name');
   const videoElement = document.querySelector('video.video-player');
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   let tools = null;
@@ -650,6 +647,9 @@ export const MEDIA_RESULT_EXPRESSION = `
       invoke('get_session_snapshot'),
     ]);
   }
+  const assetId = session?.media?.id ?? null;
+  const currentFileUrl = videoElement?.currentSrc ?? null;
+  const currentFileName = session?.media?.displayName ?? null;
   let uploadedSrtInfo = null;
   try { uploadedSrtInfo = JSON.parse(localStorage.getItem('uploaded_srt_info')); } catch {}
   return {
@@ -750,6 +750,8 @@ async function runInstalledMediaFlow(options) {
       (value) => hasMediaFlowStarted(value, flowGuard),
       { timeoutMs: 30_000, failureCode: 'download-start-timeout' },
     );
+    let completedAt = null;
+    let lastStateRefusal = 'No accepted media state';
     const state = await waitForValue(
       () => evaluate(client, MEDIA_RESULT_EXPRESSION),
       (value) => {
@@ -757,12 +759,25 @@ async function runInstalledMediaFlow(options) {
         try {
           assertMediaFlowState(value, flowGuard);
           return true;
-        } catch {
+        } catch (error) {
+          lastStateRefusal = sanitizeInspectorError(error, 'Invalid installed media state');
+          const downloads = newDownloadJobs(value, baselineDownloadJobIds);
+          if (downloads.some((job) => job.state === 'failed' || job.state === 'cancelled')) {
+            throw new Error(`Installed download terminated without success: ${lastStateRefusal}`);
+          }
+          if (downloads.length === 1 && downloads[0].state === 'succeeded') {
+            completedAt ??= Date.now();
+            if (Date.now() - completedAt > 30_000) {
+              throw new Error(`Installed completed download did not settle: ${lastStateRefusal}`);
+            }
+          }
           return false;
         }
       },
       { failureCode: 'terminal-state-timeout' },
-    );
+    ).catch((error) => {
+      throw new Error(`${sanitizeInspectorError(error)}; ${lastStateRefusal}`);
+    });
     assertMediaFlowState(state, flowGuard);
     const result = {
       ...state,

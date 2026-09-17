@@ -3,15 +3,41 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 import { URL } from 'node:url';
 
 import {
+  NATIVE_HISTORY_EXPRESSION,
   assertEditorSnapshot,
   assertNativeHistorySnapshot,
   parseArguments,
   sanitizeEditorError,
   waitForValue,
 } from './inspect-installed-editor-flow.mjs';
+
+test('executed history probe resolves the native workspace rather than a removed browser mirror', async () => {
+  const id = '019ff572-2132-7ba1-9e9c-5a29894963bf';
+  const context = {
+    localStorage: { getItem() { throw new Error('legacy media storage is not authority'); } },
+    window: { __TAURI_INTERNALS__: { invoke: async (command) => {
+      if (command === 'active_workspace_get') return {
+        initialized: true, workspace: { cacheId: id, projectId: id },
+      };
+      if (command === 'setting_get') return { entries: [{ cacheId: id, projectId: id }] };
+      if (command === 'project_load') return {
+        stateVersion: 9,
+        tracks: [{ label: 'Cached subtitles', origin: 'legacyJson', cues: [{ text: 'saved' }] }],
+      };
+      assert.equal(command, 'project_track_history_status');
+      return {};
+    } } },
+  };
+  const result = await vm.runInNewContext(NATIVE_HISTORY_EXPRESSION, context);
+  assert.equal(result.cacheIdValid, true);
+  assert.equal(result.matchingEntryCount, 1);
+  assert.equal(result.projectIdValid, true);
+  assert.equal(result.text, 'saved');
+});
 
 const snapshot = () => ({
   canRedo: false,
