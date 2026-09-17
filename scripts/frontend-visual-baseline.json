@@ -2,7 +2,7 @@
   "schemaVersion": 6,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "28b2495b12f5a257c1812de5d1b7e8e19f182515",
+  "baselineRevision": "aad0e22db0c420fa3da64c1b8aeb4aa6362e513d",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -9257,10 +9257,10 @@
       ]
     },
     "src/components/settings/tabs/AboutTab.js": {
-      "hash": "acd32d95f88efa4628ca07e1fff33e9b5486a60c0a57959440564c1c0961a951",
+      "hash": "719a22023170f4393880e5577a67f0cc1af7aa68125faee41f4d75e586f8c0da",
       "rootCount": 1,
       "roots": [
-        "eb6691fb798d4204172c32c63fdc8fd80c1396255985a67c4fb3e45a71b08da5"
+        "9d3342520fade5b56c342a50b87de7f6bdc41c282aaee0e5753762f599e78f82"
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
