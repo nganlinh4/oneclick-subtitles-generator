@@ -2,7 +2,7 @@
   "schemaVersion": 6,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "aad0e22db0c420fa3da64c1b8aeb4aa6362e513d",
+  "baselineRevision": "08322035aabc3692441b27c62ade306433e85e02",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -8268,10 +8268,10 @@
       ]
     },
     "src/components/app/AppLayout.jsx": {
-      "hash": "e98b2781ad7bca147412704b20bf41336757fffcbe018e58faa3f965a78ec547",
+      "hash": "ef6341cda43edef3a98e7e6e9836666aac7f54cae4fedf4c24774ac18850e842",
       "rootCount": 1,
       "roots": [
-        "99298791b705f8133612a6ce1721f83ee149c04cd4ee5a32ddb4d5bcce98f119"
+        "4a994da6343f83a4b36b269a65b46e1be67553f7ff138518966a01e769c84633"
       ]
     },
     "src/components/app/ButtonsContainer.jsx": {
