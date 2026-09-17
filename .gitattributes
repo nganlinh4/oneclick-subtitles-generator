@@ -17,6 +17,9 @@
 
 # JSON files should always have LF line endings to prevent issues with Node.js
 *.json text eol=lf
+# Tauri serializes Cargo manifests as LF. Keep Windows checkout and build bytes identical
+# so clean-source provenance does not report an EOL-only rewrite as an unreviewed build.
+*.toml text eol=lf
 
 # Declare files that will always have LF line endings on checkout
 *.sh text eol=lf

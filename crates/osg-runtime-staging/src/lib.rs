@@ -966,7 +966,11 @@ fn decode_path(encoded: &[u16]) -> io::Result<PathBuf> {
     {
         return Err(invalid_journal());
     }
-    Ok(std::ffi::OsString::from_vec(encoded.iter().map(|unit| *unit as u8).collect()).into())
+    let bytes = encoded
+        .iter()
+        .map(|unit| u8::try_from(*unit).map_err(|_| invalid_journal()))
+        .collect::<io::Result<Vec<_>>>()?;
+    Ok(std::ffi::OsString::from_vec(bytes).into())
 }
 
 #[cfg(windows)]
