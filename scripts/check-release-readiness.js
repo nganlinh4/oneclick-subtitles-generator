@@ -65,7 +65,7 @@ const INSTALLED_NATIVE_TOOLS_INSPECTOR_SHA256 =
 const INSTALLED_LOCAL_MEDIA_INSPECTOR_SHA256 =
   '96f2655f2f5497aa233dc18f9b4f99202bb6d293263c6bc2f4b46de505c87413';
 const INSTALLED_MEDIA_FLOW_INSPECTOR_SHA256 =
-  'd51c82ba4d6f2060bd30f826321b7446c3b61e08d092379176510500392d16f5';
+  '717de96d1a550b95b9fd3a188ba34713136a37aff1cf1502de895eb493208b2b';
 const DOWNLOAD_HANDLERS_SHA256 =
   '2324a6e9acbb2decb06ab5b51eee3d9dd600c07048522ba1421b3b6dbc252875';
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
@@ -1648,11 +1648,11 @@ function assertInstalledMediaFlowInspector(
     'evaluate(client, URL_STAGED_EXPRESSION)',
     'if (options.priorAssetId === null) {',
     'assertStagedReplacementPreservesActiveMedia(',
-    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
     'const baselineDownloadJobIds = collectDownloadJobIds(baselineState)',
     'baselineState?.session?.media?.id === options.priorAssetId',
-    'client, START_EXPRESSION(mediaPreferences, options.priorAssetId)',
+    'client, START_EXPRESSION(mediaPreferences, priorCacheId)',
     "failureCode: 'download-start-timeout'",
     "failureCode: 'terminal-state-timeout'",
   ];
@@ -1782,7 +1782,7 @@ function assertInstalledMediaFlowInspector(
   const initialUploadStart = run.indexOf('if (options.priorAssetId === null) {');
   const stagedIdentityCheck = run.indexOf('assertStagedReplacementPreservesActiveMedia(');
   const srtReadinessWait = run.indexOf(
-    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
   );
   invariant(
     (run.match(/DOM\.setFileInputFiles/g) || []).length === 1
@@ -1817,7 +1817,7 @@ function assertInstalledMediaFlowInspector(
       && start.includes("buttons[0].dataset.generationMode !== 'url-with-srt'")
       && !script.includes('.generate-btn.semi-auto[data-generation-mode=')
       && start.indexOf('buttons.length !== 1') < start.indexOf('buttons[0].click();')
-      && run.split('client, START_EXPRESSION(mediaPreferences, options.priorAssetId)').length === 2,
+      && run.split('client, START_EXPRESSION(mediaPreferences, priorCacheId)').length === 2,
     'Installed media-flow inspector must synchronously revalidate staged URL and preserved SRT state before one exact reviewed action',
   );
   invariant(
@@ -1845,7 +1845,7 @@ function assertInstalledMediaFlowInspector(
       && exactWaitCategory('URL_CONTROL_READY_EXPRESSION', '30_000', 'url-tab-timeout')
       && exactWaitCategory('URL_STAGED_EXPRESSION', '60_000', 'url-stage-timeout')
       && exactWaitCategory(
-        'SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId)',
+        'SRT_READY_EXPRESSION(mediaPreferences, priorCacheId)',
         '60_000',
         'srt-readiness-timeout',
       )
@@ -1866,7 +1866,8 @@ function assertInstalledMediaFlowInspector(
   invariant(
     script.includes("hasExactKeys(value.uploadedSrtInfo, ['cacheId', 'fileName', 'v'])")
       && script.includes('value.uploadedSrtInfo.v === 2')
-      && script.includes('value.uploadedSrtInfo.cacheId === value.assetId')
+      && script.includes('value.uploadedSrtInfo.cacheId === value.workspace.cacheId')
+      && script.includes('value.workspace.mediaId === value.assetId')
       && script.includes("value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt'"),
     'Installed media-flow inspector must bind terminal SRT provenance to the downloaded asset',
   );
@@ -1877,7 +1878,8 @@ function assertInstalledMediaFlowInspector(
   invariant(
     stagedIdentityGuard.includes('before?.assetId === priorAssetId')
       && stagedIdentityGuard.includes('before?.session?.media?.id === priorAssetId')
-      && stagedIdentityGuard.includes('before?.uploadedSrtInfo?.cacheId === priorAssetId')
+      && stagedIdentityGuard.includes('before?.workspace?.mediaId === priorAssetId')
+      && stagedIdentityGuard.includes('before?.uploadedSrtInfo?.cacheId === before?.workspace?.cacheId')
       && stagedIdentityGuard.includes('after?.assetId === before.assetId')
       && stagedIdentityGuard.includes('after?.currentFileUrl === before.currentFileUrl')
       && stagedIdentityGuard.includes('after?.session?.media?.id === before.session.media.id')

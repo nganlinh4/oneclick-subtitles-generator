@@ -231,7 +231,7 @@ export function assertMediaFlowState(value, guardOptions) {
   const guard = normalizeFlowGuard(guardOptions);
   invariant(hasExactKeys(value, [
     'assetId', 'currentFileName', 'currentFileUrl', 'errorToastMessages', 'jobs', 'session',
-    'subtitleMarkerVisible', 'tools', 'uploadedSrtInfo', 'video',
+    'subtitleMarkerVisible', 'tools', 'uploadedSrtInfo', 'video', 'workspace',
   ]), 'Installed media flow returned an invalid result shape');
   invariant(UUID_V7.test(value.assetId ?? ''), 'Installed media flow did not publish a UUIDv7 asset');
   invariant(guard.priorAssetId === null || value.assetId !== guard.priorAssetId,
@@ -253,10 +253,18 @@ export function assertMediaFlowState(value, guardOptions) {
     && value.video.width === 640
     && value.video.height === 360,
   'Installed media element did not decode the downloaded video metadata');
+  invariant(hasExactKeys(value.workspace, [
+    'schemaVersion', 'cacheId', 'projectId', 'mediaId', 'trackId', 'projectStateVersion',
+  ]) && value.workspace.schemaVersion === 1
+    && UUID_V7.test(value.workspace.projectId ?? '')
+    && value.workspace.mediaId === value.assetId
+    && typeof value.workspace.cacheId === 'string' && value.workspace.cacheId.length > 0
+    && value.workspace.cacheId.length <= 8192,
+  'Installed media flow has no exact native workspace owner');
   invariant(value.subtitleMarkerVisible === true
     && hasExactKeys(value.uploadedSrtInfo, ['cacheId', 'fileName', 'v'])
     && value.uploadedSrtInfo.v === 2
-    && value.uploadedSrtInfo.cacheId === value.assetId
+    && value.uploadedSrtInfo.cacheId === value.workspace.cacheId
     && value.uploadedSrtInfo.fileName === 'osg-installed-media-smoke.srt',
   'Installed media flow lost the uploaded SRT state or rendered marker');
   invariant(Array.isArray(value.errorToastMessages) && value.errorToastMessages.length === 0,
@@ -320,7 +328,7 @@ export function assertMediaFlowState(value, guardOptions) {
 export function assertMediaFlowResult(value, guardOptions) {
   invariant(hasExactKeys(value, [
     'assetId', 'currentFileName', 'currentFileUrl', 'errorToastMessages', 'jobs', 'session',
-    'playbackBytes', 'subtitleMarkerVisible', 'tools', 'uploadedSrtInfo', 'video',
+    'playbackBytes', 'subtitleMarkerVisible', 'tools', 'uploadedSrtInfo', 'video', 'workspace',
   ]), 'Installed media flow returned an invalid result shape');
   const { playbackBytes, ...state } = value;
   assertMediaFlowState(state, guardOptions);
@@ -360,13 +368,16 @@ export function assertStagedReplacementPreservesActiveMedia(before, after, prior
     'Installed media-flow staged replacement identity is invalid');
   invariant(before?.assetId === priorAssetId
     && before?.session?.media?.id === priorAssetId
-    && before?.uploadedSrtInfo?.cacheId === priorAssetId,
+    && before?.workspace?.mediaId === priorAssetId
+    && before?.uploadedSrtInfo?.cacheId === before?.workspace?.cacheId,
   'Installed media flow did not begin from one coherent prior asset');
   invariant(after?.assetId === before.assetId
     && after?.currentFileName === before.currentFileName
     && after?.currentFileUrl === before.currentFileUrl
     && after?.session?.media?.id === before.session.media.id
     && after?.session?.playback?.id === before.session.playback?.id
+    && after?.workspace?.cacheId === before.workspace?.cacheId
+    && after?.workspace?.projectId === before.workspace?.projectId
     && after?.uploadedSrtInfo?.cacheId === before.uploadedSrtInfo.cacheId
     && after?.uploadedSrtInfo?.fileName === before.uploadedSrtInfo.fileName
     && after?.subtitleMarkerVisible === before.subtitleMarkerVisible,
@@ -640,11 +651,13 @@ export const MEDIA_RESULT_EXPRESSION = `
   let tools = null;
   let jobs = null;
   let session = null;
+  let workspaceState = null;
   if (typeof invoke === 'function') {
-    [tools, jobs, session] = await Promise.all([
+    [tools, jobs, session, workspaceState] = await Promise.all([
       invoke('native_tools_status'),
       invoke('jobs_list'),
       invoke('get_session_snapshot'),
+      invoke('active_workspace_get'),
     ]);
   }
   const assetId = session?.media?.id ?? null;
@@ -661,6 +674,7 @@ export const MEDIA_RESULT_EXPRESSION = `
       .map((element) => (element.textContent ?? '').trim().slice(0, 1024)),
     jobs,
     session,
+    workspace: workspaceState?.initialized === true ? workspaceState.workspace : null,
     subtitleMarkerVisible: document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)}),
     tools,
     uploadedSrtInfo,
@@ -701,6 +715,7 @@ async function runInstalledMediaFlow(options) {
     const activeState = options.priorAssetId === null
       ? null
       : await evaluate(client, MEDIA_RESULT_EXPRESSION);
+    const priorCacheId = activeState?.workspace?.cacheId ?? null;
     invariant(await evaluate(client, SET_URL_EXPRESSION) === true,
       'Installed media flow could not enter the reviewed URL');
     await waitForValue(
@@ -727,7 +742,7 @@ async function runInstalledMediaFlow(options) {
       );
     }
     await waitForValue(
-      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId)),
+      () => evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId)),
       (value) => value === true,
       { timeoutMs: 60_000, failureCode: 'srt-readiness-timeout' },
     );
@@ -742,7 +757,7 @@ async function runInstalledMediaFlow(options) {
       baselineDownloadJobIds,
     };
     invariant(await evaluate(
-      client, START_EXPRESSION(mediaPreferences, options.priorAssetId),
+      client, START_EXPRESSION(mediaPreferences, priorCacheId),
     ) === true,
       'Installed media flow could not click the real semi-automatic action');
     await waitForValue(

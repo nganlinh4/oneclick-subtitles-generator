@@ -292,12 +292,21 @@ mod tests {
 
     #[test]
     fn relative_output_paths_are_workspace_relative() {
-        let workspace = Path::new("C:/workspace");
+        let workspace = Path::new(if cfg!(windows) {
+            "C:/workspace"
+        } else {
+            "/workspace"
+        });
         assert_eq!(
             resolve_output_path(workspace, "target/run".into()),
             workspace.join("target/run")
         );
-        let absolute = Path::new("C:/elsewhere/run").to_path_buf();
+        let absolute = Path::new(if cfg!(windows) {
+            "C:/elsewhere/run"
+        } else {
+            "/elsewhere/run"
+        })
+        .to_path_buf();
         assert_eq!(resolve_output_path(workspace, absolute.clone()), absolute);
     }
 }

@@ -45,6 +45,7 @@ test('executed media probes use native identity and visible playback without leg
     },
     window: { __TAURI_INTERNALS__: { invoke: async (command, payload) => {
       if (command === 'get_session_snapshot') return value.session;
+      if (command === 'active_workspace_get') return { initialized: true, workspace: value.workspace };
       if (command === 'native_tools_status') return value.tools;
       if (command === 'jobs_list') return value.jobs;
       assert.equal(command, 'media_pipeline_inspect');
@@ -128,9 +129,17 @@ const validResult = () => ({
     ],
   },
   uploadedSrtInfo: {
-    cacheId: '019ff572-2132-7ba1-9e9c-5a29894963bf',
+    cacheId: 'site_fixture_project_alias',
     fileName: 'osg-installed-media-smoke.srt',
     v: 2,
+  },
+  workspace: {
+    schemaVersion: 1,
+    cacheId: 'site_fixture_project_alias',
+    projectId: '019ff572-2133-7ba1-9e9c-5a29894963bf',
+    mediaId: '019ff572-2132-7ba1-9e9c-5a29894963bf',
+    trackId: null,
+    projectStateVersion: 2,
   },
   video: {
     currentSrc: 'http://127.0.0.1:43123/asset/01111111-2222-4333-8444-555555555555?token=' + 'a'.repeat(64),
@@ -334,11 +343,13 @@ test('rejects subtitle-only, inactive-tool, and accidental render false positive
   for (const mutation of [
     (result) => { result.uploadedSrtInfo.v = 1; },
     (result) => { result.uploadedSrtInfo.cacheId = PRIOR_ASSET_ID; },
+    (result) => { result.workspace.cacheId = 'another-project'; },
+    (result) => { result.workspace.mediaId = PRIOR_ASSET_ID; },
     (result) => { result.uploadedSrtInfo.extra = true; },
   ]) {
     const malformedProvenance = validResult();
     mutation(malformedProvenance);
-    assert.throws(() => assertMediaFlowResult(malformedProvenance), /uploaded SRT state/);
+    assert.throws(() => assertMediaFlowResult(malformedProvenance), /uploaded SRT state|native workspace owner/);
   }
 
   const substitutedMedia = validResult();
@@ -429,9 +440,9 @@ test('stages replacement input without mutating the active media and subtitle tr
     'evaluate(client, URL_STAGED_EXPRESSION)',
     'if (options.priorAssetId === null) {',
     'assertStagedReplacementPreservesActiveMedia(',
-    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))',
+    'evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))',
     'const baselineState = await evaluate(client, MEDIA_RESULT_EXPRESSION)',
-    'client, START_EXPRESSION(mediaPreferences, options.priorAssetId)',
+    'client, START_EXPRESSION(mediaPreferences, priorCacheId)',
   ];
   const indices = orderedFragments.map((fragment) => run.indexOf(fragment));
   assert.equal(indices.every((index) => index >= 0), true);
@@ -446,7 +457,7 @@ test('stages replacement input without mutating the active media and subtitle tr
   assert.doesNotMatch(
     run.slice(
       run.indexOf("client.send('DOM.setFileInputFiles'"),
-      run.indexOf('evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, options.priorAssetId))'),
+      run.indexOf('evaluate(client, SRT_READY_EXPRESSION(mediaPreferences, priorCacheId))'),
     ),
     /dispatchEvent|\.files(?:\?|\.)/,
   );
@@ -505,7 +516,7 @@ test('rejects every staged replacement mutation before native activation succeed
   const before = validResult();
   before.assetId = PRIOR_ASSET_ID;
   before.session.media.id = PRIOR_ASSET_ID;
-  before.uploadedSrtInfo.cacheId = PRIOR_ASSET_ID;
+  before.workspace.mediaId = PRIOR_ASSET_ID;
   const unchanged = structuredClone(before);
   assert.equal(
     assertStagedReplacementPreservesActiveMedia(before, unchanged, PRIOR_ASSET_ID),

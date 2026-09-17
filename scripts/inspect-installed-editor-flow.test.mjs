@@ -21,9 +21,11 @@ test('executed history probe resolves the native workspace rather than a removed
     localStorage: { getItem() { throw new Error('legacy media storage is not authority'); } },
     window: { __TAURI_INTERNALS__: { invoke: async (command) => {
       if (command === 'active_workspace_get') return {
-        initialized: true, workspace: { cacheId: id, projectId: id },
+        initialized: true, workspace: { cacheId: 'site_fixture_project_alias', projectId: id },
       };
-      if (command === 'setting_get') return { entries: [{ cacheId: id, projectId: id }] };
+      if (command === 'setting_get') return {
+        entries: [{ cacheId: 'site_fixture_project_alias', projectId: id }],
+      };
       if (command === 'project_load') return {
         stateVersion: 9,
         tracks: [{ label: 'Cached subtitles', origin: 'legacyJson', cues: [{ text: 'saved' }] }],

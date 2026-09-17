@@ -249,7 +249,7 @@ export const NATIVE_HISTORY_EXPRESSION = `
     ? matchingTracks[0].cues
     : [];
   return {
-    cacheIdValid: ${UUID_V7}.test(cacheId ?? ''),
+    cacheIdValid: typeof cacheId === 'string' && cacheId.length > 0 && cacheId.length <= 8192,
     cueCount: cues.length,
     matchingEntryCount: matchingEntries.length,
     matchingTrackCount: matchingTracks.length,
