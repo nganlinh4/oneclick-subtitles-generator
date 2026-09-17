@@ -419,6 +419,7 @@ const AppLayout = ({
               selectedVideo={selectedVideo}
               uploadedFile={uploadedFile}
               uploadedFileData={uploadedFileData}
+              activeTab={activeTab}
               isSrtOnlyMode={isSrtOnlyMode}
               t={t}
               onGenerateBackground={handleGenerateBackground}

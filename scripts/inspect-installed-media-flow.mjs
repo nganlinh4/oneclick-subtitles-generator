@@ -824,6 +824,17 @@ async function runInstalledMediaFlow(options) {
       videoHeight: result.video.height,
       videoWidth: result.video.width,
     };
+  } catch (error) {
+    try {
+      const capture = await client.send('Page.captureScreenshot', {
+        format: 'png', captureBeyondViewport: false, fromSurface: true,
+      });
+      fs.writeFileSync(options.screenshot.replace(/\.png$/i, '-failure.png'),
+        Buffer.from(capture.data, 'base64'), { flag: 'wx' });
+    } catch {
+      // Evidence capture cannot replace the original workflow failure.
+    }
+    throw error;
   } finally {
     client.close();
   }

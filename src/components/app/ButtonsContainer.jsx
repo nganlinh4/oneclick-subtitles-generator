@@ -5,7 +5,6 @@ import VideoAnalysisButton from '../VideoAnalysisButton';
 import LoadingIndicator from '../common/LoadingIndicator';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
 import { abortAllRequests } from '../../services/geminiService';
-import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import '../../styles/ButtonTextBalance.css';
 import Tooltip from '../common/Tooltip';
 import { publishProcessingRanges } from '../../events/bus';
@@ -36,6 +35,7 @@ const ButtonsContainer = ({
   subtitlesData,
   userProvidedSubtitles,
   selectedVideo,
+  activeTab,
   uploadedFile,
   uploadedFileData,
   isSrtOnlyMode,
@@ -90,11 +90,11 @@ const ButtonsContainer = ({
     }
   }, [isDownloading]);
 
-  // Check if we have URL + SRT but no downloaded video yet
-  const hasUrlAndSrtOnly = selectedVideo &&
-                          !uploadedFile &&
+  // Acquisition intent follows the selected input tab, just like handleGenerateSubtitles.
+  // The old loaded file deliberately remains playable while a replacement URL is staged.
+  const hasUrlAndSrtOnly = (activeTab === 'unified-url' || activeTab?.includes('youtube')) &&
+                          selectedVideo &&
                           subtitlesData && subtitlesData.length > 0 &&
-                          !hasValidDownloadedVideo(uploadedFile) &&
                           !isSrtOnlyMode;
   const generationMode = isSrtOnlyMode
     ? 'srt-only'

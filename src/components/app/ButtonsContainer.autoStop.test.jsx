@@ -20,7 +20,6 @@ vi.mock('./utils/srtUploadState', () => ({
     handleSrtClear: vi.fn(),
   }),
 }));
-vi.mock('../../utils/videoUtils', () => ({ hasValidDownloadedVideo: () => false }));
 vi.mock('../SrtUploadButton', () => ({ default: () => null }));
 vi.mock('../AddSubtitlesButton', () => ({ default: () => null }));
 vi.mock('../VideoAnalysisButton', () => ({
@@ -136,3 +135,23 @@ test('subtitle-only mode exposes no dead media actions', () => {
   expect(document.querySelector('[data-osg-action="generate-subtitles"]')).toBeNull();
   expect(screen.queryByTestId('video-analysis')).not.toBeInTheDocument();
 });
+
+test.each(['unified-url', 'youtube-search', 'file-upload'])(
+  'generation presentation follows %s rather than the retained previous media', (activeTab) => {
+    mocks.autoState = { ...mocks.autoState, isAutoGenerating: false,
+      autoFlowActiveRef: { current: false } };
+    const props = { ...baseProps(), activeTab, isGenerating: false, isDownloading: false,
+      isRetrying: false, isProcessingSegment: false,
+      uploadedFile: { name: 'previous.mp4', type: 'video/mp4' },
+      subtitlesData: [{ id: 'one', start: 0, end: 1, text: 'Imported subtitle' }] };
+    const { container } = render(<ButtonsContainer {...props} />);
+    const button = container.querySelector('.generate-btn.semi-auto');
+    expect(button).toHaveAttribute('data-generation-mode',
+      activeTab === 'file-upload' ? 'other' : 'url-with-srt');
+    if (activeTab !== 'file-upload') {
+      expect(button).toHaveTextContent('Download + View with Uploaded SRT');
+    }
+    fireEvent.click(button);
+    expect(props.handleGenerateSubtitles).toHaveBeenCalledTimes(1);
+  }
+);
