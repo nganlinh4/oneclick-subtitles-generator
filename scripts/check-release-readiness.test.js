@@ -3238,6 +3238,16 @@ test('signed updater release gate pins the shipped transport and Windows install
   assert.doesNotThrow(() => assertUpdaterReleaseConfiguration(path.resolve(__dirname, '..')));
 });
 
+test('development cache contract accepts fresh Windows CRLF checkouts', (context) => {
+  const root = createDevelopmentCacheContractFixture();
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const file of DEVELOPMENT_CACHE_CONTRACT_FILES) {
+    const source = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n?/g, '\n');
+    writeFile(root, file, source.replace(/\n/g, '\r\n'));
+  }
+  assert.doesNotThrow(() => assertDevelopmentCacheContract(root));
+});
+
 test('development cache contract pins external output, bounded retention, and journal recovery', (context) => {
   assert.doesNotThrow(() => assertDevelopmentCacheContract(path.resolve(__dirname, '..')));
 

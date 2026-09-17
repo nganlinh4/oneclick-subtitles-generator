@@ -168,7 +168,7 @@ function invariant(condition, message) {
 function readText(rootDirectory, relativePath) {
   const absolutePath = path.join(rootDirectory, relativePath);
   try {
-    return fs.readFileSync(absolutePath, 'utf8').replace(/^\uFEFF/, '');
+    return fs.readFileSync(absolutePath, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   } catch (error) {
     throw new Error(`Could not read ${relativePath}: ${error.message}`);
   }
