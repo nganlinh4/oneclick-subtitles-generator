@@ -35,6 +35,7 @@ pub struct SourceInfo {
 }
 
 impl SourceInfo {
+    #[cfg(windows)]
     pub(crate) const fn new(
         presentation: SourcePresentation,
         grid: SourceGrid,
@@ -62,6 +63,7 @@ impl SourceInfo {
     /// — its timeline, duration and colour description — is a property of the file and is carried
     /// through unchanged.
     #[must_use]
+    #[cfg(windows)]
     pub(crate) const fn with_presentation(self, presentation: SourcePresentation) -> Self {
         Self {
             presentation,

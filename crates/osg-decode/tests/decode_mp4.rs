@@ -156,6 +156,15 @@ fn encoded_clip_at_rate(directory: &TempDir, name: &str, fps: u32, frame_count: 
     }
     encoder.finalize().expect("the container is closed");
     assert!(output.is_file(), "the encoder produced no file");
+    // Keep only synthetic fixtures on isolated CI so an independent decoder can distinguish
+    // encoder timestamp offsets from source-reader selection defects. Never copy user media.
+    if std::env::var_os("GITHUB_ACTIONS").is_some()
+        && let Some(root) = std::env::var_os("RUNNER_TEMP")
+    {
+        let evidence = PathBuf::from(root).join("osg-decode-evidence");
+        std::fs::create_dir_all(&evidence).expect("create synthetic decode evidence");
+        std::fs::copy(&output, evidence.join(name)).expect("retain synthetic decode evidence");
+    }
     output
 }
 
@@ -259,6 +268,12 @@ fn walking_the_clip_yields_every_frame_in_order_and_stops_at_the_end() {
 
     let mut walked = 0_u32;
     while let Some(frame) = decoder.next_frame().expect("the platform decodes the clip") {
+        println!(
+            "walk index={walked} source={} pts={} duration={}",
+            frame.source_index(),
+            frame.presentation_100ns(),
+            frame.duration_100ns()
+        );
         assert_eq!(frame.width(), WIDTH as usize);
         assert_eq!(frame.height(), HEIGHT as usize);
         assert_eq!(frame.pixels().len(), frame.width() * frame.height() * 4);

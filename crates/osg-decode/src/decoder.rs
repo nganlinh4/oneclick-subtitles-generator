@@ -108,10 +108,12 @@ impl DecodeStats {
         self.samples_decoded
     }
 
+    #[cfg(windows)]
     pub(crate) const fn record_seek(&mut self) {
         self.seeks = self.seeks.saturating_add(1);
     }
 
+    #[cfg(windows)]
     pub(crate) const fn record_sample(&mut self) {
         self.samples_decoded = self.samples_decoded.saturating_add(1);
     }

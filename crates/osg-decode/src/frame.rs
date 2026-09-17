@@ -42,6 +42,7 @@ impl fmt::Debug for DecodedFrame {
 }
 
 impl DecodedFrame {
+    #[cfg(windows)]
     pub(crate) const fn new(
         geometry: FrameGeometry,
         pixels: Vec<u8>,

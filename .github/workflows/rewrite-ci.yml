@@ -18,6 +18,7 @@ on:
           - installed-smoke
           - published-installed-smoke
           - signed-updater-smoke
+          - decode-diagnostic
 
 permissions:
   contents: read
@@ -33,6 +34,26 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
+  decode-diagnostic:
+    name: Isolated Windows decoder diagnostic
+    if: github.event_name == 'workflow_dispatch' && inputs.job == 'decode-diagnostic'
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Exercise real encode/decode round trips
+        run: cargo test -p osg-decode --test decode_mp4 --locked -- --nocapture
+      - name: Retain synthetic media for independent inspection
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: decoder-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/osg-decode-evidence/*.mp4
+          if-no-files-found: warn
+          retention-days: 7
+
   signed-updater-smoke:
     name: Signed Windows updater smoke
     if: github.event_name == 'workflow_dispatch' && inputs.job == 'signed-updater-smoke'
@@ -391,6 +412,7 @@ jobs:
           }
           $expectedVersion = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
           $receipt = "$($installer.FullName).osg-package-receipt.json"
+          git diff -- apps/desktop/src-tauri/Cargo.toml
           # Sign only the updater sidecar; the exact installer bytes remain those tested below.
           node apps/desktop/node_modules/@tauri-apps/cli/tauri.js signer sign $installer.FullName
           if ($LASTEXITCODE -ne 0) { throw 'Candidate updater signing failed' }
