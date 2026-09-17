@@ -113,7 +113,8 @@ export function assertPriorMediaState(value, priorAssetId, tabActivation) {
     'Prior installed local-media asset identity is invalid');
   invariant(tabActivation === 'already-active' || tabActivation === 'activated',
     'Installed local-media Upload File tab activation is invalid');
-  const expectedRendererAssetId = tabActivation === 'already-active' ? priorAssetId : null;
+  // Acquisition-tab navigation preserves the active project until replacement admission.
+  const expectedRendererAssetId = priorAssetId;
   invariant(hasExactKeys(value, ['assetId', 'sessionMediaId'])
     && value.assetId === expectedRendererAssetId
     && value.sessionMediaId === priorAssetId,

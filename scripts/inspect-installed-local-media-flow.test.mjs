@@ -292,11 +292,11 @@ test('accepts the exact opaque local-media session and decoded fixture', () => {
   );
   assert.deepEqual(
     assertPriorMediaState(
-      { assetId: null, sessionMediaId: priorAssetId },
+      { assetId: priorAssetId, sessionMediaId: priorAssetId },
       priorAssetId,
       'activated',
     ),
-    { assetId: null, sessionMediaId: priorAssetId },
+    { assetId: priorAssetId, sessionMediaId: priorAssetId },
   );
 });
 
@@ -417,7 +417,7 @@ test('fails closed on ambiguous tab state, incomplete controls, and prior-asset 
 
   for (const [state, activation] of [
     [{ assetId: null, sessionMediaId: priorAssetId }, 'already-active'],
-    [{ assetId: priorAssetId, sessionMediaId: priorAssetId }, 'activated'],
+    [{ assetId: null, sessionMediaId: priorAssetId }, 'activated'],
     [{ assetId, sessionMediaId: priorAssetId }, 'already-active'],
     [{ assetId: null, sessionMediaId: assetId }, 'activated'],
     [{ assetId: priorAssetId, sessionMediaId: priorAssetId }, 'unknown'],
