@@ -197,6 +197,7 @@ jobs:
             ${{ runner.temp }}/osg-relaunch.png
             ${{ runner.temp }}/osg-reinstall-launch.png
             ${{ runner.temp }}/osg-updater-trigger.png
+            ${{ runner.temp }}/osg-updater-trigger-about.png
             ${{ runner.temp }}/osg-updater-relaunch-verify.png
             ${{ runner.temp }}/osg-updater-verify.png
             ${{ runner.temp }}/osg-updater-close-evidence.json
