@@ -8,7 +8,7 @@ import { durableState } from '../support/database.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'readme-screenshots';
-const SOURCE_URL = 'https://www.youtube.com/watch?v=5l63I9JpWgA';
+const SOURCE_URL = 'https://www.youtube.com/watch?v=2eFHWuNuDSA';
 
 describe('README photography', () => {
   it('downloads a real narrated video and photographs actual Gemini-generated subtitles', async () => {
@@ -26,7 +26,7 @@ describe('README photography', () => {
     await $('.subtitle-timeline').waitForDisplayed({ timeout: 600_000 });
     await browser.waitUntil(() => browser.execute(() => {
       const video = document.querySelector('.video-preview video.video-player');
-      return video?.readyState >= 2 && video.duration > 150;
+      return video?.readyState >= 2 && video.duration > 600;
     }), { timeout: 120_000 });
 
     // Close any automatic chooser, then deliberately regenerate the entire real clip.
@@ -54,7 +54,9 @@ describe('README photography', () => {
       return job?.state === 'succeeded' && result.cues.length > 15;
     }, { timeout: 600_000, interval: 1000 });
     assert.ok(result.cues.every(cue => cue.end_ms > cue.start_ms));
-    const cue = result.cues.find(cue => cue.start_ms >= 35000 && cue.start_ms < 60000) || result.cues[5];
+    // Inspected the raw 8:15 interview shot: no burned-in subtitles or lower-third name banner.
+    const cue = result.cues.find(cue => cue.start_ms <= 495000 && cue.end_ms > 495000);
+    assert.ok(cue, 'the inspected interview moment must contain a real generated subtitle');
     const seconds = (cue.start_ms + cue.end_ms) / 2000;
     await seekPreviewTo(seconds);
     await waitForCanvasSubtitleFrame();
