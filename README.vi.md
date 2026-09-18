@@ -9,7 +9,7 @@ Tạo phụ đề, chỉnh thời gian, dịch và xuất video có phụ đề.
 
 ![Trình chỉnh sửa OSG với video, timeline và nội dung phụ đề](docs/images/readme/editor.png)
 
-*Trailer Sintel với phụ đề minh họa. [Nguồn hình ảnh](docs/images/readme/README.md).*
+*[NASA Explorers: Artemis Generation](https://www.youtube.com/watch?v=2eFHWuNuDSA), với phụ đề từ YouTube được tải và hiển thị trong OSG. Video: NASA's Goddard Space Flight Center. [Chi tiết ảnh chụp](docs/images/readme/README.md).*
 
 ## Từ video đến phụ đề
 

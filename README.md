@@ -9,7 +9,7 @@ A Windows desktop app with a timeline editor, narration tools, and a native Rust
 
 ![OSG editor showing video, subtitle timing and editable captions](docs/images/readme/editor.png)
 
-*Sintel trailer with sample captions. [Screenshot credits](docs/images/readme/README.md).*
+*[NASA Explorers: Artemis Generation](https://www.youtube.com/watch?v=2eFHWuNuDSA), with its YouTube captions downloaded and displayed in OSG. Footage: NASA's Goddard Space Flight Center. [Capture details](docs/images/readme/README.md).*
 
 ## From video to subtitles
 
