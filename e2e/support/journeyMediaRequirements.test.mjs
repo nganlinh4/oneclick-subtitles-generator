@@ -40,6 +40,7 @@ test('every journey has exactly the media classification its shipping actions re
     'longMediaOperationRecovery.journey.js',
     'longMediaResourceBounds.journey.js',
     'multiWindowAsrPersistence.journey.js',
+    'readmeScreenshots.journey.js',
   ]);
   assert.equal(new Set([...classified.generic, ...classified.custom]).size,
     classified.generic.length + classified.custom.length);

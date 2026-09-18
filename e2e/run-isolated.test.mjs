@@ -127,6 +127,7 @@ test('discovers every product journey while excluding scenario-only diagnostics'
     'renderAudioNarrationMix.journey.js',
     'renderCancelRetryExport.journey.js',
     'renderFormatTransformMatrix.journey.js',
+    'responsiveVisualAudit.journey.js',
     'settingsApiKeysPresentation.journey.js',
     'settingsDraftIsolation.journey.js',
     'settingsSurface.journey.js',

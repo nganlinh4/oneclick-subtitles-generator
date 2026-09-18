@@ -41,6 +41,13 @@ Sample captions for the OSG editor.
 describe('README photography', () => {
   it('captures the real editor and subtitle styling without submitting cloud requests', async () => {
     await openProjectWithMedia();
+    await clickControl('[data-app-action="open-settings"]');
+    for (let index = 0; index < 2; index += 1) {
+      const before = await $('.app-ui-scale output').getText();
+      await clickControl('.settings-footer .app-ui-scale button:first-child');
+      await browser.waitUntil(async () => (await $('.app-ui-scale output').getText()) !== before);
+    }
+    await clickControl('[data-settings-action="close"]');
     await importSubtitleDocument(CAPTIONS, 'sintel-sample-captions.srt', 'A journey begins.');
     await browser.execute(() => {
       const video = document.querySelector('.video-preview video.video-player');
@@ -56,11 +63,20 @@ describe('README photography', () => {
     });
     await clickControl('.render-video-toggle');
     await $('.video-rendering-section.expanded .native-render-controls').waitForDisplayed({ timeout: 60_000 });
+    await browser.execute(() => {
+      const video = document.querySelector('.video-preview-panel video');
+      video.pause();
+      video.currentTime = 15;
+      document.querySelector('.video-rendering-header').scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
+    await browser.waitUntil(() => browser.execute(() =>
+      document.querySelector('.video-preview-panel [data-osg-preview]')?.getAttribute('data-osg-preview') === 'ready'
+      && document.querySelector('.video-preview-panel video')?.currentTime === 15
+      && document.querySelector('.video-preview-panel video')?.seeking === false), { timeout: 30_000 });
     await browser.pause(3_000);
     await captureWorkflowStep({
       workflow: WORKFLOW, step: '02-subtitle-styling',
       description: 'The real native render preview and subtitle controls.',
-      focusSelector: '.native-render-controls',
     });
   });
 });
