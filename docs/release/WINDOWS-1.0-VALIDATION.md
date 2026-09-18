@@ -13,6 +13,14 @@ improvements on 2026-09-17; preserve that UI rather than reverting it to the ori
 
 ### Published native candidate
 
+The versioned application release contains only its installer. Signatures and signed package
+receipts with the same versioned basename live on `osg-runtime-bundles-v1`, together with
+`OSG-1.0.0-updater-v2.json` and `OSG-1.0.0-SHA256SUMS.txt`. Their bytes were copied and verified
+before removing the duplicate application-release assets. The installer itself is unchanged.
+The existing `osg-native-stable` endpoint is still required by the published 1.0.0 binary;
+deleting it is not a cosmetic cleanup. A feed-branch migration requires a new installer and a
+deliberate compatibility decision for already-downloaded copies.
+
 - Release: [OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0),
   source `f18cb71ff8d10c180823bc99f0a29099fbb19090`, published non-Latest.
 - Installer: `OSG-1.0.0-windows-x64-setup.exe`, 7,417,406 bytes;
