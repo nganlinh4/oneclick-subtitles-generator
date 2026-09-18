@@ -15,6 +15,8 @@ param(
 
   [switch]$IncludeMediaFlow,
 
+  [switch]$RequireCurrentUpdateChannel,
+
   [string]$LocalMediaPath
 )
 
@@ -3159,6 +3161,24 @@ $first = Start-And-WaitForReadiness `
   -LogPath $logPath `
   -InitialEventCount 0 `
   -Phase 'first-launch'
+$publicUpdateOutcome = $null
+if ($RequireCurrentUpdateChannel) {
+  $updateDeadline = (Get-Date).AddMinutes(2)
+  do {
+    $launchEvents = @(Read-DiagnosticEvents -LogPath $logPath)
+    $instance = ($launchEvents | Where-Object event -eq 'app.start' | Select-Object -Last 1).appInstanceId
+    $updateCheck = $launchEvents | Where-Object {
+      $_.event -eq 'app-update.check_completed' -and $_.appInstanceId -eq $instance
+    } | Select-Object -Last 1
+    if ($updateCheck) { break }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $updateDeadline -and -not $first.Process.HasExited)
+  if (-not $updateCheck -or $updateCheck.outcome -cne 'current' -or $updateCheck.version -cne $ExpectedVersion) {
+    Stop-Application -Process $first.Process -LogPath $logPath
+    throw 'Published installer did not confirm its current version through the public native update channel'
+  }
+  $publicUpdateOutcome = $updateCheck.outcome
+}
 Stop-Application -Process $first.Process -LogPath $logPath
 $fontBeforeRelaunch = Get-FontSnapshot -FontRoot $fontRoot
 $rotationFixtureSha256 = Prepare-DiagnosticRotationFixture -LogPath $logPath
@@ -3362,6 +3382,7 @@ OSG installed media smoke
     version = $reinstalled.Registry.DisplayVersion
     executableSha256 = $executableSha256
     firstLaunchEvents = $first.NewEventNames
+    publicUpdateOutcome = $publicUpdateOutcome
     relaunchEvents = $second.NewEventNames
     reinstallLaunchEvents = $third.NewEventNames
     firstLaunchResponding = $first.Responding

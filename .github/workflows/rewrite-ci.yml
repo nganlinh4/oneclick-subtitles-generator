@@ -500,7 +500,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content -LiteralPath "package.json" -Raw | ConvertFrom-Json).version
-          $asset = "OneClickSubtitlesGenerator_${version}_x64-setup.exe"
+          $asset = "OSG-${version}-windows-x64-setup.exe"
           $release = "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v${version}"
           $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
@@ -548,7 +548,7 @@ jobs:
           if (Test-Path -LiteralPath $pickerEvidencePath) {
             throw 'Installed published native-picker evidence path was not clean'
           }
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -RequireCurrentUpdateChannel -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed published smoke omitted its structured result evidence'
           }

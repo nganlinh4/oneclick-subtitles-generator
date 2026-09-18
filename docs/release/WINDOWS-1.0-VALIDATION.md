@@ -81,11 +81,11 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 - Official product name: **OSG Windows**.
 - Supported release target: Windows x64.
 - Official GitHub tag: `v1.0.0` only after this document is signed off.
-- Signed updater metadata: `releases/latest/download/osg-desktop-updater-v2.json`. The name is
-  deliberately not `latest.json`: `releases/latest` resolves to whatever GitHub marks Latest, and
-  the legacy Electron release publishes a manifest under that name. A dedicated name means the
-  desktop updater can never read the legacy metadata as its own — until a Tauri release is
-  published and marked Latest, the fetch 404s and the check fails closed.
+- Native stable update metadata: `releases/download/osg-native-stable/osg-desktop-updater-v2.json`.
+  This dedicated channel is independent of GitHub Latest and the legacy Electron `latest.json`.
+  The channel contains metadata only; signed installers remain on immutable versioned releases.
+  Both native application releases and the channel must be published with `--latest=false` while
+  the legacy edition owns Latest. Do not merge or change the default `main` branch to activate it.
 - Runtime/model assets: immutable, content-addressed managed deliveries, installed on demand.
   Reviewed UI-font resources ship with the app for offline first launch; other optional assets
   remain downloadable. The pool `osg-runtime-bundles-v1` is not an application release.
@@ -240,6 +240,15 @@ feature-matrix checkbox or approve the release.
 3. Validate the installer and `.sig`, generate `osg-desktop-updater-v2.json`, and inspect the draft
    artifacts using authenticated retrieval. Prove signed updating with the isolated HTTPS fixture.
 4. Keep the candidate as a draft on the native branch for owner review. Preserve legacy main/Latest.
-5. Only after separate future authorization, coordinate legacy migration, merge the reviewed history
-   and publish **OSG Windows 1.0.0** with a deliberately chosen Latest policy.
-6. Verify the installed release's startup update check against the public GitHub endpoint.
+5. With owner authorization, publish **OSG 1.0.0** using `gh release edit v1.0.0 --draft=false
+   --latest=false`. Do not change legacy main/Latest. Download the public installer and verify its
+   signature, receipt, byte length and SHA-256 against the validated candidate.
+6. Create `osg-native-stable` as a non-Latest release (first publication), or replace only its
+   `osg-desktop-updater-v2.json` metadata (future promotions). Copy the manifest from the verified
+   versioned release, never rewrite its signature or point it at a draft or channel-hosted installer.
+   Keep the previous channel manifest for rollback. The versioned release assets are never replaced.
+7. Read the channel back over public HTTPS and verify its exact bytes and signed installer target.
+   Run the published-installed smoke and verify a successful startup update check. Confirm GitHub
+   Latest still resolves to `v2.6.1` and `main` is unchanged. Future versions repeat the same sequence:
+   validated versioned release first, channel metadata last; no native installer rebuild is needed
+   merely to move the channel to a newer signed version.

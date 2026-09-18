@@ -71,7 +71,7 @@ const DOWNLOAD_HANDLERS_SHA256 =
 const NATIVE_URL_DOWNLOAD_ADAPTER_SHA256 =
   '95103ae096e6b8bbdbc0727d2fa161c9980a6d02924735d69f79663eb1a1adae';
 const INSTALLED_WINDOWS_SMOKE_SHA256 =
-  'a1e6b446da4dd39c664596e720e62eb02ecef43369c6a846e72e86b6544fb15b';
+  '0347e149f02c735f1b4c6159047d41974c0f0cabd0fd350ca726a5d052469bbd';
 const DISTRIBUTABLE_FONT_EXTENSION = /\.(?:eot|otf|ttf|woff2?)$/i;
 
 const ACTION_PINS = Object.freeze({
@@ -3078,18 +3078,16 @@ function assertUpdaterFixtureSource(rootDirectory) {
     && diagnostics.includes('Value::String(app_instance_id.to_owned()),')
     && (diagnostics.match(/fn encode_record\(/g) || []).length === 1,
   'Every desktop diagnostic record must carry one process-scoped UUIDv7 application identity');
-  // A DEDICATED manifest name, not `latest.json`, and that is the whole point of pinning it.
-  //
-  // `releases/latest` resolves to whatever GitHub currently marks Latest, which is still the legacy
-  // Electron release. A manifest called `latest.json` there is a file this updater would fetch and
-  // attempt to read as its own — the legacy metadata reinterpreted as current. A name only a Tauri
-  // release ever publishes removes that entirely: while the legacy release is Latest the fetch
-  // 404s and the check fails closed, which is the correct behaviour for a build whose channel has
-  // nothing to offer it.
+  assertNativeUpdateChannel(config);
+}
+
+function assertNativeUpdateChannel(config) {
+  // Native updates are independent of GitHub Latest, which belongs to the legacy application.
+  // Only this channel's metadata is mutable; its signed installers live on versioned releases.
   const updaterManifestName = 'osg-desktop-updater-v2.json';
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
-    `https://github.com/nganlinh4/oneclick-subtitles-generator/releases/latest/download/${updaterManifestName}`,
-  ]), 'Production updater endpoint must remain the official GitHub latest release');
+    `https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-native-stable/${updaterManifestName}`,
+  ]), 'Production updater endpoint must remain the dedicated native stable channel, independent of GitHub Latest');
   invariant(
     !config.plugins.updater.endpoints.some((endpoint) => endpoint.endsWith('/latest.json')),
     'Production updater must not read a manifest named latest.json; the legacy release publishes one',
@@ -5198,6 +5196,7 @@ module.exports = {
   assertRepositoryReleasePolicy,
   assertManagedEngineDelivery,
   assertUpdaterReleaseConfiguration,
+  assertNativeUpdateChannel,
   assertDevelopmentCacheContract,
   assertTauriProductionBuildContract,
   assertLoopbackAuditManifest,
