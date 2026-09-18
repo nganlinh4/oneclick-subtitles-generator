@@ -265,7 +265,6 @@ export const run = async ({ repeat, journeys }) => {
                     : null;
                   const journeyName = basename(journey);
                   const needsSourceSwitch = new Set([
-                    'readmeScreenshots.journey.js',
                     'authenticatedCookieDownload.journey.js',
                     'browserProfileCookieDownload.journey.js',
                     'downloadCancellationRetryIdentity.journey.js',
@@ -304,9 +303,6 @@ export const run = async ({ repeat, journeys }) => {
                     };
                     if (preparedRealMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedRealMedia);
-                    }
-                    if (journeyName === 'readmeScreenshots.journey.js') {
-                      environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedSourceSwitch);
                     }
                     if (preparedFourWindowMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(

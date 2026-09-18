@@ -1,46 +1,19 @@
-// Opt-in documentation capture, not a claim of end-to-end generation coverage.
-// Real Sintel trailer, isolated native app, ordinary SRT import and UI controls.
-import { openProjectWithMedia, importSubtitleDocument, waitForCanvasSubtitleFrame } from '../support/workflow.js';
-import { clickControl } from '../support/editor.js';
+// Opt-in real YouTube -> Gemini -> editor photography, not blanket product coverage.
+import process from 'node:process';
+import { strict as assert } from 'node:assert';
+import { seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
+import { clickControl, openEditor } from '../support/editor.js';
+import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
+import { durableState } from '../support/database.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
 const WORKFLOW = 'readme-screenshots';
-const CAPTIONS = `1
-00:00:02,000 --> 00:00:06,000
-A journey begins.
-
-2
-00:00:07,000 --> 00:00:12,000
-Across mountains and unfamiliar lands.
-
-3
-00:00:13,000 --> 00:00:18,000
-An unexpected friendship.
-
-4
-00:00:19,000 --> 00:00:24,000
-Some bonds are worth fighting for.
-
-5
-00:00:25,000 --> 00:00:30,000
-The search is far from over.
-
-6
-00:00:31,000 --> 00:00:37,000
-Every step brings her closer.
-
-7
-00:00:38,000 --> 00:00:44,000
-Sintel — a Blender Foundation open movie.
-
-8
-00:00:45,000 --> 00:00:50,000
-Sample captions for the OSG editor.
-`;
+const SOURCE_URL = 'https://www.youtube.com/watch?v=5l63I9JpWgA';
 
 describe('README photography', () => {
-  it('captures the real editor and subtitle styling without submitting cloud requests', async () => {
-    await openProjectWithMedia();
+  it('downloads a real narrated video and photographs actual Gemini-generated subtitles', async () => {
+    await openEditor();
+    await enrollGeminiCredentials({ limit: 20 });
     await clickControl('[data-app-action="open-settings"]');
     for (let index = 0; index < 2; index += 1) {
       const before = await $('.app-ui-scale output').getText();
@@ -48,35 +21,68 @@ describe('README photography', () => {
       await browser.waitUntil(async () => (await $('.app-ui-scale output').getText()) !== before);
     }
     await clickControl('[data-settings-action="close"]');
-    await importSubtitleDocument(CAPTIONS, 'sintel-sample-captions.srt', 'A journey begins.');
-    await browser.execute(() => {
+    await $('.url-field').setValue(SOURCE_URL);
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await $('.subtitle-timeline').waitForDisplayed({ timeout: 600_000 });
+    await browser.waitUntil(() => browser.execute(() => {
       const video = document.querySelector('.video-preview video.video-player');
-      video.pause();
-      video.currentTime = 15;
-    });
+      return video?.readyState >= 2 && video.duration > 150;
+    }), { timeout: 120_000 });
+
+    // Close any automatic chooser, then deliberately regenerate the entire real clip.
+    // Site captions are not passed off as model output.
+    if (await $('.video-processing-modal').isExisting()) await browser.keys('Escape');
+    await clickControl('.subtitle-timeline');
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    await browser.keys(['\uE017']);
+    await clickControl('[data-osg-action="generate-subtitles"]');
+    await clickControl('.subtitle-timeline');
+    await browser.keys(['\uE009', 'a', '\uE000']);
+    const method = await $('[data-transcription-method="new"]');
+    await method.waitForClickable({ timeout: 60_000 });
+    await method.click();
+    const root = process.env.OSG_E2E_DATA_ROOT;
+    const priorJobs = new Set(durableState(root).jobs.map(({ id }) => id));
+    await clickControl('[data-osg-action="process-subtitles"]');
+    let result;
+    await browser.waitUntil(() => {
+      result = durableState(root);
+      const job = result.jobs.find(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
+      if (['failed', 'cancelled', 'interrupted'].includes(job?.state)) {
+        throw new Error('README transcription did not succeed: ' + job.state);
+      }
+      return job?.state === 'succeeded' && result.cues.length > 15;
+    }, { timeout: 600_000, interval: 1000 });
+    assert.ok(result.cues.every(cue => cue.end_ms > cue.start_ms));
+    const cue = result.cues.find(cue => cue.start_ms >= 35000 && cue.start_ms < 60000) || result.cues[5];
+    const seconds = (cue.start_ms + cue.end_ms) / 2000;
+    await seekPreviewTo(seconds);
     await waitForCanvasSubtitleFrame();
-    await browser.pause(8_000); // Let normal import notifications expire.
+    await browser.pause(8000);
+    await browser.execute(() => document.querySelector('.video-preview')
+      .scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const details = { sourceUrl: SOURCE_URL, cueCount: result.cues.length, displayedCue: cue.text, seconds };
     await captureWorkflowStep({
       workflow: WORKFLOW, step: '01-editor',
-      description: 'Sintel trailer in the actual editor, with authored demonstration captions (not model output).',
-      focusSelector: '.video-preview',
+      description: 'NASA Goddard YouTube video downloaded by OSG with actual Gemini-generated subtitles.',
+      details,
     });
     await clickControl('.render-video-toggle');
     await $('.video-rendering-section.expanded .native-render-controls').waitForDisplayed({ timeout: 60_000 });
-    await browser.execute(() => {
+    await browser.execute((time) => {
       const video = document.querySelector('.video-preview-panel video');
       video.pause();
-      video.currentTime = 15;
+      video.currentTime = time;
       document.querySelector('.video-rendering-header').scrollIntoView({ block: 'start', behavior: 'instant' });
-    });
+    }, seconds);
     await browser.waitUntil(() => browser.execute(() =>
       document.querySelector('.video-preview-panel [data-osg-preview]')?.getAttribute('data-osg-preview') === 'ready'
-      && document.querySelector('.video-preview-panel video')?.currentTime === 15
       && document.querySelector('.video-preview-panel video')?.seeking === false), { timeout: 30_000 });
-    await browser.pause(3_000);
+    await browser.pause(3000);
     await captureWorkflowStep({
       workflow: WORKFLOW, step: '02-subtitle-styling',
-      description: 'The real native render preview and subtitle controls.',
+      description: 'Actual generated subtitles in the native render preview and styling controls.',
+      details,
     });
   });
 });
