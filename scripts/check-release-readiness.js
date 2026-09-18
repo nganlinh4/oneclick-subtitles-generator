@@ -3086,7 +3086,7 @@ function assertNativeUpdateChannel(config) {
   // Only this channel's metadata is mutable; its signed installers live on versioned releases.
   const updaterManifestName = 'osg-desktop-updater-v2.json';
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([
-    `https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-native-stable/${updaterManifestName}`,
+    `https://raw.githubusercontent.com/nganlinh4/oneclick-subtitles-generator/app-update-feed/${updaterManifestName}`,
   ]), 'Production updater endpoint must remain the dedicated native stable channel, independent of GitHub Latest');
   invariant(
     !config.plugins.updater.endpoints.some((endpoint) => endpoint.endsWith('/latest.json')),

@@ -506,9 +506,11 @@ jobs:
           $bundle = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Invoke-WebRequest -Uri "$release/$asset" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe")
-          Invoke-WebRequest -Uri "$support/$asset.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.sig")
-          Invoke-WebRequest -Uri "$support/$asset.osg-package-receipt.json" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json")
-          Invoke-WebRequest -Uri "$support/$asset.osg-package-receipt.json.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json.sig")
+          $digest = (Get-FileHash -LiteralPath (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $supportAsset = "OSG-${version}-windows-x64-$digest"
+          Invoke-WebRequest -Uri "$support/$supportAsset.exe.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.sig")
+          Invoke-WebRequest -Uri "$support/$supportAsset.exe.osg-package-receipt.json" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json")
+          Invoke-WebRequest -Uri "$support/$supportAsset.exe.osg-package-receipt.json.sig" -OutFile (Join-Path $bundle "One-Click Subtitles Generator_${version}_x64-setup.exe.osg-package-receipt.json.sig")
 
       - name: Validate installer architecture, resources, and updater signature
         run: node scripts/check-release-artifacts.js --target x86_64-pc-windows-msvc --bundles nsis

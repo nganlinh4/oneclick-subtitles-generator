@@ -92,7 +92,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/osg-native-stable/osg-desktop-updater-v2.json"
+        "https://raw.githubusercontent.com/nganlinh4/oneclick-subtitles-generator/app-update-feed/osg-desktop-updater-v2.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEwRTVDN0IzRTAwNzgzNTgKUldSWWd3ZmdzOGZsRUo1ME1YSXR1eWFXWGg2MzQxdTJ0Z3BtY2lFSW5GOVc3YnlGY0YvTkx2eXUK",
       "windows": {

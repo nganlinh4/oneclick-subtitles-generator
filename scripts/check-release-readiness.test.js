@@ -3143,7 +3143,7 @@ test('production CSP rejects provider and development network endpoints', () => 
 test('native stable channel cannot follow legacy Latest or a version-pinned manifest', () => {
   const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../apps/desktop/src-tauri/tauri.conf.json'), 'utf8'));
   assert.doesNotThrow(() => assertNativeUpdateChannel(config));
-  for (const route of ['latest/download', 'download/v1.0.0', 'download/unreviewed-channel']) {
+  for (const route of ['latest/download', 'download/v1.0.0', 'download/osg-native-stable', 'download/unreviewed-channel']) {
     const changed = structuredClone(config);
     changed.plugins.updater.endpoints = [
       `https://github.com/nganlinh4/oneclick-subtitles-generator/releases/${route}/osg-desktop-updater-v2.json`,
