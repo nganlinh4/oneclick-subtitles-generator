@@ -1,57 +1,72 @@
-# Phần Mềm Tạo Phụ Đề Tự Động
+# OSG — Phần mềm tạo phụ đề
 
-Phần mềm web giúp auto-sub cho video, audio, dịch SRT, thuyết minh, tạo hình nền, render video phù hợp với người dùng phổ thông.
+[English](README.md)
 
-## Hướng Dẫn Cài Đặt Nhanh
+Ứng dụng Windows để tạo, chỉnh sửa và dịch phụ đề, thêm thuyết minh và xuất video có phụ đề.
 
-### Cài Đặt Trên Windows
+## Tải OSG
 
-- Vào mục [Releases](https://github.com/nganlinh4/oneclick-subtitles-generator/releases) tải về OSG_installer_Windows.bat phiên bản mới nhất.
+**[Tải OSG 1.0.0 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
+Windows có thể cảnh báo nhà phát hành chưa được ký xác thực. Bản native dùng kênh cập nhật riêng
+có chữ ký. OSG 1.0.0 là bản phát hành hiện tại; mã nguồn native nằm trên `rewrite/tauri-rust`.
+Nhánh `main` tạm giữ mã nguồn ứng dụng cũ để người dùng tệp batch tiếp tục sử dụng.
 
-- Mở file .bat vừa tải và làm theo hướng dẫn (kích thước app sẽ lớn nếu cài với tính năng clone giọng)
+[OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
+[Kiểm tra trước phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/WINDOWS-1.0-VALIDATION.md)
 
-### Cài Đặt Trên macOS và Ubuntu
+Phiên bản 1.0.0 dành cho **Windows x64**, sử dụng Tauri, WebView2 và Rust.
+Bản đóng gói không cần Node.js hay máy chủ phát triển. Chưa hỗ trợ phát hành cho Linux/macOS.
+Xuất video native cần GPU và driver Direct3D tương thích; máy ảo Windows chỉ có bộ dựng hình
+phần mềm không cung cấp đường xử lý video cần thiết.
 
-- Clone repo này về máy + chạy file OSG_installer.sh:
-  ```bash
-  git clone https://github.com/nganlinh4/oneclick-subtitles-generator.git
-  cd oneclick-subtitles-generator
-  chmod +x OSG_installer.sh
-  ./OSG_installer.sh
-  ```
+## Chức năng
 
-- Làm theo hướng dẫn trên màn hình (kích thước app sẽ lớn nếu cài với tính năng clone giọng)
+- Mở media trên máy hoặc tải video từ các trang được hỗ trợ.
+- Tạo phụ đề bằng Gemini hoặc engine nhận dạng giọng nói cục bộ.
+- Sửa nội dung, thời gian, người nói; dịch và lưu tệp phụ đề.
+- Tùy chỉnh phụ đề và xuất video bằng bộ render native.
+- Tạo thuyết minh bằng engine tải theo nhu cầu.
+- Công cụ hỗ trợ phân tích video, tài liệu, hình ảnh và âm nhạc.
 
-### Cập Nhật hoặc Chạy Ứng Dụng
+Gemini cần khóa API riêng và kết nối mạng. Hạn mức, chi phí và khả năng sử dụng phụ thuộc
+tài khoản nhà cung cấp. Engine cục bộ có thể cần nhiều GB dung lượng; yêu cầu phần cứng
+tùy engine. Công cụ runtime cần thiết được cài tự động khi sử dụng.
 
-#### Windows
-- Mở OSG_installer_Windows.bat và làm theo hướng dẫn.
+## Dữ liệu và chuyển phiên bản
 
-#### macOS và Ubuntu
-- Mở Terminal và chạy lại file OSG_installer.sh:
-  ```bash
-  ./OSG_installer.sh
-  ```
+Dự án và cài đặt được lưu trên máy. Khóa API được lưu trong kho thông tin xác thực của hệ điều hành.
+Chức năng đám mây gửi media hoặc văn bản cần thiết đến nhà cung cấp đã chọn;
+không phải mọi chức năng đều chạy ngoại tuyến.
 
-- Trình duyệt sẽ tự động mở tại http://localhost:3030
+Chuyển từ ứng dụng cũ 2.x sang native 1.0.0 cần **chuyển dữ liệu thủ công**.
+Giữ dữ liệu cũ đến khi kiểm tra nhập thành công.
+Xem [hướng dẫn chuyển dữ liệu](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#data-and-migration).
 
-## So Sánh Các Chế Độ Chạy
+### Ứng dụng cũ
 
-OSG hiện chỉ có một bản cài local. Các engine nặng như F5-TTS, Chatterbox và NVIDIA Parakeet được cài theo nhu cầu trong Settings > Voice & transcription engines.
+Nếu cần bản cũ, dùng [bản v2.6.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
+và [trình cài đặt batch cho Windows](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat).
+Không dùng đường dẫn Latest để tải trình cài đặt cũ; Latest hiện chỉ bản OSG native.
 
-| Tính Năng | OSG Local | OSG Vercel |
-|---------|-----------|------------|
-| **Tạo Phụ Đề AI** | ✅ Gemini + Parakeet nếu đã cài | ✅ Gemini AI transcription |
-| **Nguồn Video** | ✅ YouTube, Douyin/TikTok, 1000+ nền tảng + Tải lên | Chỉ tải lên |
-| **Trình Chỉnh Sửa Phụ Đề** | ✅ Timeline trực quan, sóng âm, xem trước thực tế | ✅ Timeline trực quan, sóng âm, xem trước thực tế |
-| **Dịch Thuật** | ✅ Đa ngôn ngữ với nhận thức ngữ cảnh | ✅ Đa ngôn ngữ với nhận thức ngữ cảnh |
-| **Render Video** | ✅ GPU-accelerated với Remotion | ❌ Không có sẵn |
-| **Tạo Nhạc Nền** | ✅ Nhạc AI với Lyria | ✅ Nhạc AI với Lyria |
-| **TTS Cơ Bản** | ✅ Gemini Live API, Edge TTS, Google TTS | ❌ Không có sẵn |
-| **Clone Giọng** | ✅ F5-TTS, Chatterbox nếu đã cài | ❌ Không có sẵn |
-| **Kích Thước Thư Mục Dự Án** | Nhỏ sau cài base; tăng thêm khi cài engine local | N/A (hosted) |
-| **Yêu Cầu GPU** | GPU giúp render và engine local nhanh hơn; CPU fallback có sẵn | Không (không có render/local engine) |
+## Phát triển
 
-### 💡 **Khuyến Nghị:**
-- **Chạy OSG local** nếu bạn cần tải video, render, TTS hoặc engine local
-- **Dùng OSG Vercel** nếu bạn chỉ cần workflow hosted dựa trên Gemini
+Cài toolchain và thành phần hệ thống theo [hướng dẫn phát triển](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md), rồi chạy:
+
+```powershell
+git fetch origin
+git switch rewrite/tauri-rust
+npm ci
+npm --prefix apps/desktop ci
+npm run tauri:dev
+```
+
+Không mở riêng executable debug: lệnh trên khởi động cả Vite và ứng dụng.
+Build và bằng chứng kiểm thử dùng [bộ nhớ đệm ngoài có giới hạn](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DEVELOPMENT_CACHE.md).
+Giao diện Material 3 Expressive đã duyệt trên nhánh hiện tại là chuẩn giao diện.
+
+[Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues) · [Bảo mật](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md)
+
+## Giấy phép
+
+Mã nguồn OSG dùng [MIT](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/LICENSE). Model, runtime, font và thư viện có điều khoản riêng:
+[xem thông báo bên thứ ba](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/THIRD_PARTY_NOTICES.md).
