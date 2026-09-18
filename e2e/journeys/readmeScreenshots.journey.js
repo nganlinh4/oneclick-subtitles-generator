@@ -1,9 +1,8 @@
-// Opt-in real YouTube -> Gemini -> editor photography, not blanket product coverage.
+// Opt-in real YouTube -> supplied captions -> editor photography, not generation coverage.
 import process from 'node:process';
 import { strict as assert } from 'node:assert';
 import { seekPreviewTo, waitForCanvasSubtitleFrame } from '../support/workflow.js';
 import { clickControl, openEditor } from '../support/editor.js';
-import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
 import { durableState } from '../support/database.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -11,9 +10,8 @@ const WORKFLOW = 'readme-screenshots';
 const SOURCE_URL = 'https://www.youtube.com/watch?v=2eFHWuNuDSA';
 
 describe('README photography', () => {
-  it('downloads a real narrated video and photographs actual Gemini-generated subtitles', async () => {
+  it('downloads a real narrated video and photographs its actual supplied captions', async () => {
     await openEditor();
-    await enrollGeminiCredentials({ limit: 20 });
     await clickControl('[data-app-action="open-settings"]');
     for (let index = 0; index < 2; index += 1) {
       const before = await $('.app-ui-scale output').getText();
@@ -29,34 +27,19 @@ describe('README photography', () => {
       return video?.readyState >= 2 && video.duration > 600;
     }), { timeout: 120_000 });
 
-    // Close any automatic chooser, then deliberately regenerate the entire real clip.
-    // Site captions are not passed off as model output.
+    // Photograph the supplied YouTube captions, explicitly not claimed as model output.
     if (await $('.video-processing-modal').isExisting()) await browser.keys('Escape');
-    await clickControl('.subtitle-timeline');
-    await browser.keys(['\uE009', 'a', '\uE000']);
-    await browser.keys(['\uE017']);
-    await clickControl('[data-osg-action="generate-subtitles"]');
-    await clickControl('.subtitle-timeline');
-    await browser.keys(['\uE009', 'a', '\uE000']);
-    const method = await $('[data-transcription-method="new"]');
-    await method.waitForClickable({ timeout: 60_000 });
-    await method.click();
     const root = process.env.OSG_E2E_DATA_ROOT;
-    const priorJobs = new Set(durableState(root).jobs.map(({ id }) => id));
-    await clickControl('[data-osg-action="process-subtitles"]');
     let result;
     await browser.waitUntil(() => {
       result = durableState(root);
-      const job = result.jobs.find(({ id, kind }) => kind === 'transcribe' && !priorJobs.has(id));
-      if (['failed', 'cancelled', 'interrupted'].includes(job?.state)) {
-        throw new Error('README transcription did not succeed: ' + job.state);
-      }
-      return job?.state === 'succeeded' && result.cues.length > 15;
-    }, { timeout: 600_000, interval: 1000 });
+      return result.jobs.some(job => job.kind === 'downloadMedia' && job.state === 'succeeded')
+        && result.cues.length > 15;
+    }, { timeout: 60_000, interval: 1000 });
     assert.ok(result.cues.every(cue => cue.end_ms > cue.start_ms));
     // Inspected the raw 8:15 interview shot: no burned-in subtitles or lower-third name banner.
     const cue = result.cues.find(cue => cue.start_ms <= 495000 && cue.end_ms > 495000);
-    assert.ok(cue, 'the inspected interview moment must contain a real generated subtitle');
+    assert.ok(cue, 'the inspected interview moment must contain a supplied subtitle');
     const seconds = (cue.start_ms + cue.end_ms) / 2000;
     await seekPreviewTo(seconds);
     await waitForCanvasSubtitleFrame();
@@ -66,7 +49,7 @@ describe('README photography', () => {
     const details = { sourceUrl: SOURCE_URL, cueCount: result.cues.length, displayedCue: cue.text, seconds };
     await captureWorkflowStep({
       workflow: WORKFLOW, step: '01-editor',
-      description: 'NASA Goddard YouTube video downloaded by OSG with actual Gemini-generated subtitles.',
+      description: 'NASA Goddard YouTube video and its supplied captions downloaded by OSG, not model output.',
       details,
     });
     await clickControl('.render-video-toggle');
@@ -83,7 +66,7 @@ describe('README photography', () => {
     await browser.pause(3000);
     await captureWorkflowStep({
       workflow: WORKFLOW, step: '02-subtitle-styling',
-      description: 'Actual generated subtitles in the native render preview and styling controls.',
+      description: 'Actual supplied YouTube captions in the native render preview and styling controls.',
       details,
     });
   });
