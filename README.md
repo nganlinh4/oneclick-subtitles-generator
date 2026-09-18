@@ -7,10 +7,12 @@ and exporting subtitled video.
 
 ## Get OSG
 
-**OSG 1.0.0 is being prepared for release.** `rewrite/tauri-rust` is the canonical application
-branch. The existing GitHub v2.6.1 release is the legacy application, not this native version.
+**[Download OSG 1.0.0 for Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
+Windows may show an unsigned-publisher warning. Native updates use a separate signed channel.
+`rewrite/tauri-rust` is the canonical application branch. GitHub Latest (`v2.6.1`) remains the
+legacy application; it is not this native version.
 
-[Releases](https://github.com/nganlinh4/oneclick-subtitles-generator/releases) ·
+[OSG 1.0.0 release](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
 [Release checklist](docs/release/WINDOWS-1.0-VALIDATION.md)
 
 The 1.0.0 release targets **Windows x64**, using Tauri, WebView2 and Rust.

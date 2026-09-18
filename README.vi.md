@@ -6,10 +6,12 @@
 
 ## Tải OSG
 
-**OSG 1.0.0 đang được chuẩn bị phát hành.** Nhánh `rewrite/tauri-rust` là ứng dụng chính thức
-đang phát triển. Bản v2.6.1 trên GitHub là ứng dụng cũ, không phải bản native này.
+**[Tải OSG 1.0.0 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
+Windows có thể cảnh báo nhà phát hành chưa được ký xác thực. Bản native dùng kênh cập nhật riêng
+có chữ ký. Nhánh `rewrite/tauri-rust` là ứng dụng chính thức; GitHub Latest (`v2.6.1`) vẫn là
+ứng dụng cũ, không phải bản native này.
 
-[Bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/releases) ·
+[OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
 [Kiểm tra trước phát hành](docs/release/WINDOWS-1.0-VALIDATION.md)
 
 Phiên bản 1.0.0 dành cho **Windows x64**, sử dụng Tauri, WebView2 và Rust.

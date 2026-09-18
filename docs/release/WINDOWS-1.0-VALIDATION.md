@@ -2,14 +2,38 @@
 
 ## Current candidate: September 2026
 
-Owner direction (2026-09-17): prepare **a draft only**, from the native branch. Do not merge into
-`main`, change the default branch, publish the draft, or change GitHub Latest. Legacy batch users
-still consume `main` and `releases/latest/download/OSG_installer_Windows.bat`. Replacing main and
-promoting the native release are future decisions, not part of preparing this draft.
+Owner direction (2026-09-18): after validating the separate native update channel, publish
+**OSG 1.0.0 as non-Latest** from the native branch. This supersedes the earlier draft-only limit.
+Do not merge into `main`, change the default branch, or change GitHub Latest. Legacy batch users
+still consume `main` and `releases/latest/download/OSG_installer_Windows.bat`.
 
 `rewrite/tauri-rust` is the canonical application branch. Legacy `main` is not a visual or
 functional acceptance baseline. The owner approved the current branch's intentional visual
 improvements on 2026-09-17; preserve that UI rather than reverting it to the original port.
+
+### Published native candidate
+
+- Release: [OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0),
+  source `f18cb71ff8d10c180823bc99f0a29099fbb19090`, published non-Latest.
+- Installer: `OSG-1.0.0-windows-x64-setup.exe`, 7,417,406 bytes;
+  SHA-256 `571e6b966f5550297c292be3a74e839adc9a16d45536e1fea8bdd36c5fbd0b00`.
+- [Clean installed workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35299135143):
+  passed on this exact source. Production install, relaunch/reinstall, media download/import,
+  runtime tools, edit/undo/redo and persistence; 11/11 packaged resources verified.
+- [Signed updater workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35299220479):
+  passed on this exact source. Fixture update 1.0.0 → 1.0.1, restart and persistence; About controls
+  screenshot reviewed. The fixture 1.0.1 is not published.
+- The public channel manifest and installer were downloaded without authentication and matched
+  the verified local hashes. Manifest SHA-256:
+  `54d45fdf37bd9427f702b8bcd87e0be332b3694bbbfed903b03e77857c8a3d3a`.
+- [Published installer workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35300559883):
+  passed, including the production startup check against the public channel: `publicUpdateOutcome:
+  current`, version `1.0.0`. The installer hash matched the released candidate and uninstall preserved
+  its isolated profile. This check does not use the updater fixture endpoint.
+- Legacy Latest remains `v2.6.1`; default branch remains `main`, at
+  `48c8e988f3c771021c090702e2ac1ab5aa2f40f1`.
+- The installer has a Tauri updater signature, not a Windows Authenticode publisher signature.
+  Hardware/provider limitations below remain; this is not universal feature or hardware certification.
 
 The August evidence below is historical, not certification of the September candidate. In
 particular, Remotion results describe a removed implementation, and the UI font now ships in
@@ -56,12 +80,13 @@ Updater signatures are distinct from Windows Authenticode publisher signatures.
 
 ### Release-preparation acceptance
 
-- [ ] Final candidate committed and pushed; all three runs above pass for that exact SHA.
+- [ ] Final candidate committed and pushed; installed and signed-updater evidence reviewed.
+  Record full-matrix hardware failures separately; do not label them passed.
 - [ ] Production installer extracted and checked; no automation-only features in the shipment.
 - [ ] Current screenshots/results reviewed, with failed and untested cases explicitly recorded.
 - [ ] README in both languages, notices, migration instructions and release notes match shipment.
 - [ ] Release assets, signed receipts, updater manifest and SHA-256 checksums refer to the same build.
-- [ ] Production publication explicitly authorized; native release deliberately marked Latest.
+- [ ] Production publication explicitly authorized; native release and channel explicitly non-Latest.
 
 Do not fetch a private draft with an unauthenticated production updater and expect it to work.
 Use authenticated artifact retrieval for draft inspection and the isolated signed-updater fixture
