@@ -59,6 +59,7 @@ const GENERIC_REAL_MEDIA = new Set([
 ]);
 
 const CUSTOM_STAGED_MEDIA = new Set([
+  'readmeScreenshots.journey.js',
   'geminiBackgroundImageSuccess.journey.js',
   'geminiMediaBenchmark.journey.js',
   'geminiMultiWindowTranscription.journey.js',

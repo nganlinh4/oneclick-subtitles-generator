@@ -24,6 +24,7 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 // (own script: test:long-media-resource-bounds). longMediaOperationRecovery is a two-process
 // PHASE-gated scenario like renderInterruptRecovery, needing scenarios/longMediaOperationRecovery.mjs.
 const NON_DEFAULT_JOURNEYS = new Set([
+  'readmeScreenshots.journey.js',
   'geminiMediaBenchmark.journey.js',
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
@@ -264,6 +265,7 @@ export const run = async ({ repeat, journeys }) => {
                     : null;
                   const journeyName = basename(journey);
                   const needsSourceSwitch = new Set([
+                    'readmeScreenshots.journey.js',
                     'authenticatedCookieDownload.journey.js',
                     'browserProfileCookieDownload.journey.js',
                     'downloadCancellationRetryIdentity.journey.js',
@@ -302,6 +304,9 @@ export const run = async ({ repeat, journeys }) => {
                     };
                     if (preparedRealMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedRealMedia);
+                    }
+                    if (journeyName === 'readmeScreenshots.journey.js') {
+                      environment.OSG_E2E_MEDIA_SELECTION = stageMedia(preparedSourceSwitch);
                     }
                     if (preparedFourWindowMedia !== null) {
                       environment.OSG_E2E_MEDIA_SELECTION = stageMedia(
