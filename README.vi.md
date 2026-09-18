@@ -2,55 +2,62 @@
 
 [English](README.md)
 
-Ứng dụng Windows để tạo, chỉnh sửa và dịch phụ đề, thêm thuyết minh và xuất video có phụ đề.
+Tạo phụ đề, chỉnh thời gian, dịch và xuất video có phụ đề.
+Ứng dụng Windows với trình chỉnh sửa timeline, công cụ thuyết minh và bộ render video bằng Rust.
 
-## Tải OSG
+**[Tải OSG 1.0.0 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe)** · [Bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) · [Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues)
 
-**[Tải OSG 1.0.0 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
-Windows có thể cảnh báo nhà phát hành chưa được ký xác thực. Bản native dùng kênh cập nhật riêng
-có chữ ký. OSG 1.0.0 là bản phát hành hiện tại; mã nguồn native nằm trên `rewrite/tauri-rust`.
-Nhánh `main` tạm giữ mã nguồn ứng dụng cũ để người dùng tệp batch tiếp tục sử dụng.
+![Trình chỉnh sửa OSG với video, timeline và nội dung phụ đề](docs/images/readme/editor.png)
 
-[OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
-[Kiểm tra trước phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/WINDOWS-1.0-VALIDATION.md)
+*Trailer Sintel với phụ đề minh họa. [Nguồn hình ảnh](docs/images/readme/README.md).*
 
-Phiên bản 1.0.0 dành cho **Windows x64**, sử dụng Tauri, WebView2 và Rust.
-Bản đóng gói không cần Node.js hay máy chủ phát triển. Chưa hỗ trợ phát hành cho Linux/macOS.
-Xuất video native cần GPU và driver Direct3D tương thích; máy ảo Windows chỉ có bộ dựng hình
-phần mềm không cung cấp đường xử lý video cần thiết.
+## Từ video đến phụ đề
 
-## Chức năng
+Mở tệp video, âm thanh hoặc dán liên kết video được hỗ trợ. Tạo phụ đề bằng Gemini hay engine
+nhận dạng giọng nói cục bộ; nếu đã có tệp phụ đề, bạn có thể nhập vào để chỉnh sửa ngay.
 
-- Mở media trên máy hoặc tải video từ các trang được hỗ trợ.
-- Tạo phụ đề bằng Gemini hoặc engine nhận dạng giọng nói cục bộ.
-- Sửa nội dung, thời gian, người nói; dịch và lưu tệp phụ đề.
-- Tùy chỉnh phụ đề và xuất video bằng bộ render native.
-- Tạo thuyết minh bằng engine tải theo nhu cầu.
-- Công cụ hỗ trợ phân tích video, tài liệu, hình ảnh và âm nhạc.
+- **Chỉnh sửa ngay trên video.** Sửa nội dung và thời gian trên timeline có sóng âm, thao tác trên
+  phạm vi đã chọn và hoàn tác thay đổi.
+- **Dịch và kiểm tra.** Dịch phụ đề ngay trong trình chỉnh sửa, rồi lưu tệp phụ đề hoặc xuất video.
+- **Tùy chỉnh cách hiển thị.** Chọn font, vị trí, màu sắc và hiệu ứng với bản xem trước video.
+- **Thêm thuyết minh.** Tạo giọng đọc bằng nhà cung cấp hoặc engine cục bộ bạn chọn.
 
-Gemini cần khóa API riêng và kết nối mạng. Hạn mức, chi phí và khả năng sử dụng phụ thuộc
-tài khoản nhà cung cấp. Engine cục bộ có thể cần nhiều GB dung lượng; yêu cầu phần cứng
-tùy engine. Công cụ runtime cần thiết được cài tự động khi sử dụng.
+![Các tùy chỉnh phụ đề bên cạnh bản xem trước video](docs/images/readme/subtitle-styling.png)
 
-## Dữ liệu và chuyển phiên bản
+## Trước khi sử dụng
 
-Dự án và cài đặt được lưu trên máy. Khóa API được lưu trong kho thông tin xác thực của hệ điều hành.
+- **Dành cho Windows x64.** Không cần Node.js hay máy chủ phát triển. Xuất video cần GPU và driver
+  Direct3D tương thích; máy ảo chỉ có bộ dựng hình phần mềm không hỗ trợ xuất video native.
+- **Gemini cần khóa API của bạn.** Hạn mức, chi phí và khả năng sử dụng tùy nhà cung cấp.
+  Engine nhận dạng cục bộ là tùy chọn, tải riêng và có thể cần nhiều GB dung lượng cùng phần cứng phù hợp.
+- **Công cụ được cài khi cần.** Không cần tự thiết lập FFmpeg, yt-dlp hay Deno.
+- **Windows có thể cảnh báo nhà phát hành chưa xác thực.** Trình cài đặt chưa có chữ ký Authenticode;
+  bản cập nhật trong ứng dụng được kiểm tra bằng chữ ký riêng.
+
+Dự án và cài đặt được lưu trên máy. Khóa API dùng kho thông tin xác thực của hệ điều hành.
 Chức năng đám mây gửi media hoặc văn bản cần thiết đến nhà cung cấp đã chọn;
 không phải mọi chức năng đều chạy ngoại tuyến.
 
-Chuyển từ ứng dụng cũ 2.x sang native 1.0.0 cần **chuyển dữ liệu thủ công**.
-Giữ dữ liệu cũ đến khi kiểm tra nhập thành công.
+<details>
+<summary>Bạn đang dùng bản cũ cài bằng tệp batch?</summary>
+
+OSG 1.0.0 là ứng dụng native mới, không phải bản tự động hạ cấp từ 2.x.
+Chuyển dữ liệu cần thực hiện thủ công; giữ dữ liệu cũ đến khi đã kiểm tra nhập thành công.
 Xem [hướng dẫn chuyển dữ liệu](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#data-and-migration).
 
-### Ứng dụng cũ
+[Bản v2.6.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
+và [trình cài đặt batch cho Windows](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat)
+vẫn còn. Đường dẫn Latest hiện trỏ đến bản OSG native.
 
-Nếu cần bản cũ, dùng [bản v2.6.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
-và [trình cài đặt batch cho Windows](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat).
-Không dùng đường dẫn Latest để tải trình cài đặt cũ; Latest hiện chỉ bản OSG native.
+</details>
 
-## Phát triển
+<details>
+<summary>Chạy từ mã nguồn</summary>
 
-Cài toolchain và thành phần hệ thống theo [hướng dẫn phát triển](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md), rồi chạy:
+Mã nguồn native nằm trên **`rewrite/tauri-rust`**. Nhánh `main` tạm giữ mã ứng dụng cũ
+để không làm gián đoạn người dùng tệp batch.
+
+Cài các thành phần trong [hướng dẫn phát triển](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md), rồi chạy:
 
 ```powershell
 git fetch origin
@@ -60,13 +67,18 @@ npm --prefix apps/desktop ci
 npm run tauri:dev
 ```
 
-Không mở riêng executable debug: lệnh trên khởi động cả Vite và ứng dụng.
-Build và bằng chứng kiểm thử dùng [bộ nhớ đệm ngoài có giới hạn](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DEVELOPMENT_CACHE.md).
-Giao diện Material 3 Expressive đã duyệt trên nhánh hiện tại là chuẩn giao diện.
+Dùng lệnh trên thay vì mở riêng executable debug: lệnh này khởi động cả máy chủ phát triển.
 
-[Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues) · [Bảo mật](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md)
+[Kiến trúc](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/ARCHITECTURE.md) ·
+[Bộ nhớ đệm phát triển](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DEVELOPMENT_CACHE.md) ·
+[Quy chuẩn giao diện](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DESIGN.md) ·
+[Kiểm tra bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/WINDOWS-1.0-VALIDATION.md)
+
+</details>
 
 ## Giấy phép
 
-Mã nguồn OSG dùng [MIT](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/LICENSE). Model, runtime, font và thư viện có điều khoản riêng:
-[xem thông báo bên thứ ba](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/THIRD_PARTY_NOTICES.md).
+OSG dùng giấy phép [MIT](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/LICENSE).
+Model, font và thư viện có điều khoản riêng:
+[thông báo bên thứ ba](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/THIRD_PARTY_NOTICES.md).
+Thông tin báo cáo bảo mật nằm trong [SECURITY.md](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md).
