@@ -14,30 +14,35 @@ improvements on 2026-09-17; preserve that UI rather than reverting it to the ori
 ### Published native candidate
 
 The versioned application release contains only its installer. Signatures and signed package
-receipts with the same versioned basename live on `osg-runtime-bundles-v1`, together with
-`OSG-1.0.0-updater-v2.json` and `OSG-1.0.0-SHA256SUMS.txt`. Their bytes were copied and verified
-before removing the duplicate application-release assets. The installer itself is unchanged.
-The existing `osg-native-stable` endpoint is still required by the published 1.0.0 binary;
-deleting it is not a cosmetic cleanup. A feed-branch migration requires a new installer and a
-deliberate compatibility decision for already-downloaded copies.
+receipts live on `osg-runtime-bundles-v1`, under
+`OSG-<version>-windows-x64-<installer-sha256>.exe` plus their respective sidecar suffixes.
+Archived updater manifests and checksums use the same version/hash prefix. Never overwrite pool
+assets. The live manifest is committed atomically on the isolated `app-update-feed` branch.
+
+The owner explicitly authorized replacing the initial 1.0.0 installer and retiring its old
+release-based channel before user adoption. This is a one-time pre-adoption replacement, not a
+policy permitting future same-version binary replacement. Older local copies must be reinstalled.
+The following receipts describe the replacement unless explicitly marked historical.
 
 - Release: [OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0),
-  source `f18cb71ff8d10c180823bc99f0a29099fbb19090`, published non-Latest.
-- Installer: `OSG-1.0.0-windows-x64-setup.exe`, 7,417,406 bytes;
-  SHA-256 `571e6b966f5550297c292be3a74e839adc9a16d45536e1fea8bdd36c5fbd0b00`.
-- [Clean installed workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35299135143):
+  source `93ef21d767c0009c59ac9a47e64fcfbcfb8c60d0`, published non-Latest.
+- Installer: `OSG-1.0.0-windows-x64-setup.exe`, 7,414,227 bytes;
+  SHA-256 `3e7d2ad68672bcdb80c79c94206ded0c7be6e3c96d97ecc217f72c685eba0930`.
+- [Clean installed workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35309116308):
   passed on this exact source. Production install, relaunch/reinstall, media download/import,
   runtime tools, edit/undo/redo and persistence; 11/11 packaged resources verified.
 - [Signed updater workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35299220479):
-  passed on this exact source. Fixture update 1.0.0 → 1.0.1, restart and persistence; About controls
-  screenshot reviewed. The fixture 1.0.1 is not published.
+  historical PASS on `f18cb71f`. Fixture update 1.0.0 → 1.0.1, restart and persistence; About
+  controls screenshot reviewed. The fixture 1.0.1 is not published. This migration changes the
+  endpoint, not the updater implementation or signing key.
 - The public channel manifest and installer were downloaded without authentication and matched
   the verified local hashes. Manifest SHA-256:
-  `54d45fdf37bd9427f702b8bcd87e0be332b3694bbbfed903b03e77857c8a3d3a`.
-- [Published installer workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35300559883):
-  passed, including the production startup check against the public channel: `publicUpdateOutcome:
-  current`, version `1.0.0`. The installer hash matched the released candidate and uninstall preserved
-  its isolated profile. This check does not use the updater fixture endpoint.
+  `76edaae4de750db2a5e636762a2822db8596407bf1ecc37dffeb1c8796e0173e`.
+  Metadata-only feed commit: `e5450ae094873d59edb42ee751ed760d06239daa`.
+- [Published replacement workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35310417910):
+  PASS. The public replacement installer matched the hash above and its production startup check
+  against the feed branch returned `current`, version `1.0.0`. The obsolete `osg-native-stable`
+  release and tag were then deleted. Its metadata remains archived in the bundles pool.
 - Legacy Latest remains `v2.6.1`; default branch remains `main`, at
   `48c8e988f3c771021c090702e2ac1ab5aa2f40f1`.
 - The installer has a Tauri updater signature, not a Windows Authenticode publisher signature.
@@ -114,11 +119,13 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 - Official product name: **OSG Windows**.
 - Supported release target: Windows x64.
 - Official GitHub tag: `v1.0.0` only after this document is signed off.
-- Native stable update metadata: `releases/download/osg-native-stable/osg-desktop-updater-v2.json`.
-  This dedicated channel is independent of GitHub Latest and the legacy Electron `latest.json`.
-  The channel contains metadata only; signed installers remain on immutable versioned releases.
-  Both native application releases and the channel must be published with `--latest=false` while
-  the legacy edition owns Latest. Do not merge or change the default `main` branch to activate it.
+- Native stable update metadata:
+  `https://raw.githubusercontent.com/nganlinh4/oneclick-subtitles-generator/app-update-feed/osg-desktop-updater-v2.json`.
+  The isolated feed branch contains metadata only, not application source or binaries. It is
+  independent of GitHub Latest and the legacy Electron `latest.json`; no channel release is needed.
+  Keep native application releases non-Latest while the legacy edition owns Latest. Do not merge
+  or change the default `main` branch. Tauri still verifies the installer signature embedded in
+  the manifest against the application's existing public key.
 - Runtime/model assets: immutable, content-addressed managed deliveries, installed on demand.
   Reviewed UI-font resources ship with the app for offline first launch; other optional assets
   remain downloadable. The pool `osg-runtime-bundles-v1` is not an application release.
@@ -276,10 +283,14 @@ feature-matrix checkbox or approve the release.
 5. With owner authorization, publish **OSG 1.0.0** using `gh release edit v1.0.0 --draft=false
    --latest=false`. Do not change legacy main/Latest. Download the public installer and verify its
    signature, receipt, byte length and SHA-256 against the validated candidate.
-6. Create `osg-native-stable` as a non-Latest release (first publication), or replace only its
-   `osg-desktop-updater-v2.json` metadata (future promotions). Copy the manifest from the verified
-   versioned release, never rewrite its signature or point it at a draft or channel-hosted installer.
-   Keep the previous channel manifest for rollback. The versioned release assets are never replaced.
+6. Upload support files without overwrite to `osg-runtime-bundles-v1` using the installer-hash
+   naming contract above; read them back and verify bytes. Keep only the installer on the app
+   release. Generate the manifest with `scripts/build-updater-manifest.js` from that signed
+   installer, pointing to its public versioned download URL. Commit the resulting
+   `osg-desktop-updater-v2.json` on `app-update-feed` and push without force. Initial publication
+   uses a parentless metadata-only commit; subsequent commits retain that branch's parent/history.
+   Reject downgrades or same-version changes during normal promotion. Never point the feed at a
+   draft or rewrite its installer signature. Git history retains previous feed metadata.
 7. Read the channel back over public HTTPS and verify its exact bytes and signed installer target.
    Run the published-installed smoke and verify a successful startup update check. Confirm GitHub
    Latest still resolves to `v2.6.1` and `main` is unchanged. Future versions repeat the same sequence:
