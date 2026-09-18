@@ -8,8 +8,8 @@
 
 **[Tải OSG 1.0.0 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
 Windows có thể cảnh báo nhà phát hành chưa được ký xác thực. Bản native dùng kênh cập nhật riêng
-có chữ ký. Nhánh `rewrite/tauri-rust` là ứng dụng chính thức; GitHub Latest (`v2.6.1`) vẫn là
-ứng dụng cũ, không phải bản native này.
+có chữ ký. OSG 1.0.0 là bản phát hành hiện tại; mã nguồn native nằm trên `rewrite/tauri-rust`.
+Nhánh `main` tạm giữ mã nguồn ứng dụng cũ để người dùng tệp batch tiếp tục sử dụng.
 
 [OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
 [Kiểm tra trước phát hành](docs/release/WINDOWS-1.0-VALIDATION.md)
@@ -42,11 +42,19 @@ Chuyển từ ứng dụng cũ 2.x sang native 1.0.0 cần **chuyển dữ liệ
 Giữ dữ liệu cũ đến khi kiểm tra nhập thành công.
 Xem [hướng dẫn chuyển dữ liệu](docs/DEVELOPMENT.md#data-and-migration).
 
+### Ứng dụng cũ
+
+Nếu cần bản cũ, dùng [bản v2.6.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
+và [trình cài đặt batch cho Windows](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat).
+Không dùng đường dẫn Latest để tải trình cài đặt cũ; Latest hiện chỉ bản OSG native.
+
 ## Phát triển
 
 Cài toolchain và thành phần hệ thống theo [hướng dẫn phát triển](docs/DEVELOPMENT.md), rồi chạy:
 
 ```powershell
+git fetch origin
+git switch rewrite/tauri-rust
 npm ci
 npm --prefix apps/desktop ci
 npm run tauri:dev

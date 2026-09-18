@@ -9,8 +9,8 @@ and exporting subtitled video.
 
 **[Download OSG 1.0.0 for Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe).**
 Windows may show an unsigned-publisher warning. Native updates use a separate signed channel.
-`rewrite/tauri-rust` is the canonical application branch. GitHub Latest (`v2.6.1`) remains the
-legacy application; it is not this native version.
+OSG 1.0.0 is the current release. Native application source is on `rewrite/tauri-rust`;
+`main` temporarily retains the legacy application code for existing batch-file users.
 
 [OSG 1.0.0 release](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) ·
 [Release checklist](docs/release/WINDOWS-1.0-VALIDATION.md)
@@ -44,11 +44,19 @@ Legacy 2.x → native 1.0.0 is a **manual migration**, not an automatic downgrad
 Keep your old data until the import is verified.
 See [migration instructions](docs/DEVELOPMENT.md#data-and-migration).
 
+### Legacy edition
+
+Need the old application? Use the [v2.6.1 release](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
+and its [Windows batch installer](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat).
+Do not use the generic Latest link for the legacy installer; Latest now means native OSG.
+
 ## Development
 
 Install the pinned toolchains and system prerequisites in the [development guide](docs/DEVELOPMENT.md), then:
 
 ```powershell
+git fetch origin
+git switch rewrite/tauri-rust
 npm ci
 npm --prefix apps/desktop ci
 npm run tauri:dev

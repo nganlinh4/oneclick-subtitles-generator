@@ -3084,7 +3084,7 @@ function assertUpdaterFixtureSource(rootDirectory) {
 }
 
 function assertNativeUpdateChannel(config) {
-  // Native updates are independent of GitHub Latest, which belongs to the legacy application.
+  // Native updates are independent of GitHub's repository-wide Latest selection.
   // Only this channel's metadata is mutable; its signed installers live on versioned releases.
   const updaterManifestName = 'osg-desktop-updater-v2.json';
   invariant(JSON.stringify(config.plugins?.updater?.endpoints) === JSON.stringify([

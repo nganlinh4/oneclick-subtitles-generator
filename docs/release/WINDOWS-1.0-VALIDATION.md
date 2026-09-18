@@ -2,10 +2,10 @@
 
 ## Current candidate: September 2026
 
-Owner direction (2026-09-18): after validating the separate native update channel, publish
-**OSG 1.0.0 as non-Latest** from the native branch. This supersedes the earlier draft-only limit.
-Do not merge into `main`, change the default branch, or change GitHub Latest. Legacy batch users
-still consume `main` and `releases/latest/download/OSG_installer_Windows.bat`.
+Owner direction (2026-09-18, superseding the initial non-Latest publication): present
+**OSG 1.0.0 as Latest** and update both public READMEs on `main`. Do not merge native application
+code into `main` or change the default branch. Legacy downloads use the explicit `v2.6.1` tag,
+not GitHub Latest; previously distributed batch files are not rewritten by README changes.
 
 `rewrite/tauri-rust` is the canonical application branch. Legacy `main` is not a visual or
 functional acceptance baseline. The owner approved the current branch's intentional visual
@@ -25,7 +25,7 @@ policy permitting future same-version binary replacement. Older local copies mus
 The following receipts describe the replacement unless explicitly marked historical.
 
 - Release: [OSG 1.0.0](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0),
-  source `93ef21d767c0009c59ac9a47e64fcfbcfb8c60d0`, published non-Latest.
+  source `93ef21d767c0009c59ac9a47e64fcfbcfb8c60d0`, promoted to Latest with owner approval.
 - Installer: `OSG-1.0.0-windows-x64-setup.exe`, 7,414,227 bytes;
   SHA-256 `3e7d2ad68672bcdb80c79c94206ded0c7be6e3c96d97ecc217f72c685eba0930`.
 - [Clean installed workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/35309116308):
@@ -43,8 +43,9 @@ The following receipts describe the replacement unless explicitly marked histori
   PASS. The public replacement installer matched the hash above and its production startup check
   against the feed branch returned `current`, version `1.0.0`. The obsolete `osg-native-stable`
   release and tag were then deleted. Its metadata remains archived in the bundles pool.
-- Legacy Latest remains `v2.6.1`; default branch remains `main`, at
-  `48c8e988f3c771021c090702e2ac1ab5aa2f40f1`.
+- Default branch remains `main`; only its English and Vietnamese READMEs change for the public
+  landing page. Its application code remains based on `48c8e988f3c771021c090702e2ac1ab5aa2f40f1`.
+  Legacy v2.6.1 remains published, but OSG 1.0.0 is now GitHub Latest.
 - The installer has a Tauri updater signature, not a Windows Authenticode publisher signature.
   Hardware/provider limitations below remain; this is not universal feature or hardware certification.
 
@@ -99,7 +100,7 @@ Updater signatures are distinct from Windows Authenticode publisher signatures.
 - [ ] Current screenshots/results reviewed, with failed and untested cases explicitly recorded.
 - [ ] README in both languages, notices, migration instructions and release notes match shipment.
 - [ ] Release assets, signed receipts, updater manifest and SHA-256 checksums refer to the same build.
-- [ ] Production publication explicitly authorized; native release and channel explicitly non-Latest.
+- [ ] Production publication and Latest promotion explicitly authorized.
 
 Do not fetch a private draft with an unauthenticated production updater and expect it to work.
 Use authenticated artifact retrieval for draft inspection and the isolated signed-updater fixture
@@ -123,8 +124,8 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
   `https://raw.githubusercontent.com/nganlinh4/oneclick-subtitles-generator/app-update-feed/osg-desktop-updater-v2.json`.
   The isolated feed branch contains metadata only, not application source or binaries. It is
   independent of GitHub Latest and the legacy Electron `latest.json`; no channel release is needed.
-  Keep native application releases non-Latest while the legacy edition owns Latest. Do not merge
-  or change the default `main` branch. Tauri still verifies the installer signature embedded in
+  Native application releases own Latest after the authorized 1.0.0 promotion. Do not merge
+  native application code into the default `main` branch. Tauri still verifies the installer signature embedded in
   the manifest against the application's existing public key.
 - Runtime/model assets: immutable, content-addressed managed deliveries, installed on demand.
   Reviewed UI-font resources ship with the app for offline first launch; other optional assets
@@ -279,9 +280,9 @@ feature-matrix checkbox or approve the release.
 2. Build `1.0.0` from a clean commit using the external updater-signing key.
 3. Validate the installer and `.sig`, generate `osg-desktop-updater-v2.json`, and inspect the draft
    artifacts using authenticated retrieval. Prove signed updating with the isolated HTTPS fixture.
-4. Keep the candidate as a draft on the native branch for owner review. Preserve legacy main/Latest.
+4. Keep the candidate as a draft on the native branch for owner review. Preserve legacy main code.
 5. With owner authorization, publish **OSG 1.0.0** using `gh release edit v1.0.0 --draft=false
-   --latest=false`. Do not change legacy main/Latest. Download the public installer and verify its
+   --latest`. Do not change legacy main code. Download the public installer and verify its
    signature, receipt, byte length and SHA-256 against the validated candidate.
 6. Upload support files without overwrite to `osg-runtime-bundles-v1` using the installer-hash
    naming contract above; read them back and verify bytes. Keep only the installer on the app
@@ -293,6 +294,6 @@ feature-matrix checkbox or approve the release.
    draft or rewrite its installer signature. Git history retains previous feed metadata.
 7. Read the channel back over public HTTPS and verify its exact bytes and signed installer target.
    Run the published-installed smoke and verify a successful startup update check. Confirm GitHub
-   Latest still resolves to `v2.6.1` and `main` is unchanged. Future versions repeat the same sequence:
+   Latest resolves to the intended native release and legacy main code is unchanged. Future versions repeat the same sequence:
    validated versioned release first, channel metadata last; no native installer rebuild is needed
    merely to move the channel to a newer signed version.
