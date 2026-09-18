@@ -1030,7 +1030,9 @@ function assertWorkflowCommands(workflow) {
     publishedInstalledSmoke.includes("inputs.job == 'published-installed-smoke'") &&
       hasExactInstalledTimeout(publishedInstalledSmoke) &&
       publishedInstalledSmoke.includes('/releases/download/v${version}') &&
-      publishedInstalledSmoke.includes('$asset.sig') &&
+      publishedInstalledSmoke.includes('$support/$supportAsset.exe.sig') &&
+      publishedInstalledSmoke.includes('OSG-${version}-windows-x64-$digest') &&
+      publishedInstalledSmoke.includes('-Algorithm SHA256') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
       publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
       publishedInstalledSmoke.includes('-IncludeMediaFlow') &&
