@@ -1,6 +1,51 @@
 # OSG Windows 1.0 release validation
 
-## Current candidate: September 2026
+## OSG 1.0.1 — September 29, 2026
+
+- Published [OSG 1.0.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.1)
+  as Latest with owner authorization. The only public application asset is
+  `OSG-1.0.1-windows-x64-setup.exe` (7,411,212 bytes), SHA-256
+  `9a48018aa7ec56725bc4f382bc747432678fbe395964bd2663316e3fea6e19e6`.
+- The exact installer source is `ef43dcd5c89c1ca84de42f85eecad783798e0aca`.
+  [Installed workflow](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/36569518654)
+  passed install, media import/download, tool lifecycle, edit/undo/redo, reload, persistence,
+  uninstall/reinstall, and signed package verification.
+- [Signed updater lifecycle](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/36564842235)
+  passed on `f9ada488558406a0ac7242be382b659d8ec333db`: isolated 1.0.1 → test-only 1.0.2,
+  signed download/install, relaunch, preserved data, and a subsequent `current` result.
+  No 1.0.2 release was published. Later candidate changes were test-only; the updater code,
+  signing key, and endpoint are unchanged from released 1.0.0.
+- Public unauthenticated installer and all five content-addressed support files were read back
+  byte-for-byte. The live feed was promoted only afterwards, in metadata-only commit
+  `fa106a71d9ce548f661868e00b892012aaa20099`. Feed SHA-256:
+  `3ee415d1efeed13c782f5745b25484316f5dbd225e5da022ea8693b5fa5c15c2`.
+- English and Vietnamese download links on `main` were updated in
+  `89f88ce86bf6c6c02d2cf89d3cbfa6cb2cfc7eb1`; no native code was merged into legacy main.
+- An earlier installed run failed an undo/redo assertion. A fresh run passed without product
+  changes, and the separate local two-process undo/restart/redo journey also passed. Inspection
+  found a test race: `Page.reload` acknowledged the request while the old document could still
+  report `complete`. The harness now requires a new loader identity before inspecting controls,
+  with a regression test; no history assertions were removed. Final public-artifact verification
+  uses that corrected harness rather than treating the rerun alone as resolution.
+- The first public-artifact check refused before launch because the signed receipt's release
+  commit differed from the newer harness commit. The workflow now checks out the immutable
+  release tag in leased staging and supplies that source to the existing strict verifier.
+  It still verifies signature, exact commit/tree, installer, and complete installed payload;
+  the temporary source worktree is removed without force after the run.
+- [Public installer verification](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/36572845255)
+  passed on the exact published hash, using the corrected harness. Startup returned
+  `publicUpdateOutcome: current`, version `1.0.1`; media, edit/undo/redo, both document reloads,
+  relaunch/reinstall and profile preservation passed. The final screenshot was reviewed and
+  shows the edited subtitle composited on the real fixture video.
+- All 3,100 frontend tests passed. The three native desktop GPU export tests passed locally.
+  Hosted Windows GPU failures at `D3d11Device` / `0x887A0004` remain the hardware limitation
+  documented below, not passing full-matrix certification. The installer is updater-signed,
+  not Authenticode-signed.
+- Local installer, updater screenshots and diagnostics are intentionally retained under the
+  managed evidence lane at `%LOCALAPPDATA%\OSG-Development\cache\evidence\release-1.0.1`.
+  All local task leases were released; the cache remained at 10.504 GiB of its 28 GiB limit.
+
+## Historical 1.0.0 candidate: September 2026
 
 Owner direction (2026-09-18, superseding the initial non-Latest publication): present
 **OSG 1.0.0 as Latest** and update both public READMEs on `main`. Do not merge native application

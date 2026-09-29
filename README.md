@@ -5,7 +5,7 @@
 Generate subtitles, fix their timing, translate them, and render them into your video.
 A Windows desktop app with a timeline editor, narration tools, and a native Rust video renderer.
 
-**[Download OSG 1.0.0 for Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.0/OSG-1.0.0-windows-x64-setup.exe)** · [Release notes](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.0) · [Report a bug](https://github.com/nganlinh4/oneclick-subtitles-generator/issues)
+**[Download OSG 1.0.1 for Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.1/OSG-1.0.1-windows-x64-setup.exe)** · [Release notes](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.1) · [Report a bug](https://github.com/nganlinh4/oneclick-subtitles-generator/issues)
 
 ![OSG editor showing video, subtitle timing and editable captions](docs/images/readme/editor.png)
 
