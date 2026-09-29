@@ -385,6 +385,11 @@ async function runInstalledEditorFlow(options) {
       },
     );
 
+    await evaluate(client, `(async () => {
+      document.querySelector('.lyrics-container-wrapper')?.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    })()`);
+    await waitForSnapshot(client, { text: EDITED_TEXT, canUndo: true, canRedo: false, stage: 'final-editor-capture' });
     const capture = await client.send('Page.captureScreenshot', {
       format: 'png', captureBeyondViewport: false, fromSurface: true,
     });
