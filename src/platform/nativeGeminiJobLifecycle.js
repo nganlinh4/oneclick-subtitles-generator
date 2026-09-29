@@ -14,6 +14,7 @@ import {
   claimRecoveredGeminiJob,
   ensureNativeJobRecoveryReady,
 } from './jobRecoveryCoordinator';
+import i18n from '../i18n/i18n';
 
 const RETRYABLE_CREDENTIAL_CODES = new Set([
   'geminiCredentialRejected',
@@ -21,7 +22,12 @@ const RETRYABLE_CREDENTIAL_CODES = new Set([
 ]);
 
 const fixedError = (code = 'nativeGeminiFailed') => {
-  const error = new Error('The native Gemini operation could not be completed');
+  const message = code === 'geminiCredentialUnavailable'
+    ? i18n.t('settings.geminiCredentialRequired', 'No Gemini API key is currently usable. Add or check a key in Settings → API Keys.')
+    : ['credentialRefreshFailed', 'credentialStoreUnavailable', 'credentialStoreLocked'].includes(code)
+      ? i18n.t('settings.credentialLoadFailed', 'Saved keys could not be loaded. Reopen Settings to retry.')
+      : 'The native Gemini operation could not be completed';
+  const error = new Error(message);
   error.name = 'NativeGeminiError';
   error.code = typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
     ? code

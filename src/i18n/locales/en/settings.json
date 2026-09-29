@@ -19,6 +19,7 @@
   "geminiApiKeys": "Gemini API Keys",
   "geminiKeyRotation": "Add saves immediately; no need to click Save. Multiple keys share parallel Gemini work and rotate on retryable errors.",
   "credentialAdded": "Key saved. You can use Gemini now; no need to click Save.",
+  "geminiCredentialRequired": "No Gemini API key is currently usable. Add or check a key in Settings → API Keys.",
   "credentialChangeFailed": "The key change could not be confirmed. Check the saved-key list before trying again.",
   "credentialLoadFailed": "Saved keys could not be loaded. Reopen Settings to retry.",
   "credentialPreferenceSaveFailed": "Only the preferred-key setting could not be saved. Reopen Settings to retry.",

@@ -40,13 +40,15 @@ describe('customer SRT-only translation diagnostic', () => {
     await browser.waitUntil(async () => {
       errorToasts = await browser.execute(() => [...document.querySelectorAll('.toast-error')]
         .map(node => (node.innerText || '').replace(/\s+/g, ' ').trim()));
-      return errorToasts.some(message => /API|credential|key/i.test(message));
+      return errorToasts.length > 0;
     }, { timeout: 30000, interval: 200, timeoutMsg: 'translation did not refuse the missing credential' });
     await captureWorkflowStep({
       workflow: 'srt-only-translation-diagnostic', step: '00-missing-key',
       description: 'First translation attempt genuinely refuses because this clean profile has no key.',
       allowVisibleProblems: { errorToasts: errorToasts.map(text => ({ text, reason: 'Expected missing-key refusal before enrollment.' })) },
     });
+    assert.ok(errorToasts.some(message => message.includes('No Gemini API key is currently usable')),
+      `expected actionable missing-key guidance, received: ${JSON.stringify(errorToasts)}`);
     await browser.waitUntil(async () => browser.execute(() => document.querySelector('.toast-error') === null), { timeout: 30000, interval: 200 });
     await clickControl('[data-app-action="open-settings"]');
     await clickControl('[data-settings-tab="api-keys"]');

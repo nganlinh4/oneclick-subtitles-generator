@@ -22,6 +22,7 @@
   "geminiApiKeys": "Các Khóa API Gemini",
   "geminiKeyRotation": "Bấm Thêm là lưu ngay, không cần bấm Lưu. Nhiều khóa sẽ chia sẻ tác vụ Gemini song song và chuyển khóa khi gặp lỗi có thể thử lại.",
   "credentialAdded": "Đã lưu khóa. Bạn có thể dùng Gemini ngay, không cần bấm Lưu.",
+  "geminiCredentialRequired": "Hiện chưa có khóa API Gemini dùng được. Hãy thêm hoặc kiểm tra khóa trong Cài đặt → Khóa API.",
   "credentialChangeFailed": "Chưa xác nhận được thay đổi khóa. Hãy kiểm tra danh sách khóa đã lưu trước khi thử lại.",
   "credentialLoadFailed": "Không tải được các khóa đã lưu. Hãy mở lại Cài đặt để thử lại.",
   "credentialPreferenceSaveFailed": "Chỉ có lựa chọn khóa ưu tiên chưa lưu được. Hãy mở lại Cài đặt để thử lại.",

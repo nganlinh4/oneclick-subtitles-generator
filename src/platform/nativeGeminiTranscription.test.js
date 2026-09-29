@@ -181,6 +181,9 @@ it('never starts native work for a pre-aborted request or missing credential', a
 
   harness.getCredentialId.mockResolvedValueOnce(null);
   await expect(harness.runner.run(harness.request))
-    .rejects.toMatchObject({ code: 'geminiCredentialUnavailable' });
+    .rejects.toMatchObject({
+      code: 'geminiCredentialUnavailable',
+      message: 'No Gemini API key is currently usable. Add or check a key in Settings → API Keys.',
+    });
   expect(harness.start).not.toHaveBeenCalled();
 });
