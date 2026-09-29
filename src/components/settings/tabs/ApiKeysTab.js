@@ -102,7 +102,7 @@ const ApiKeysTab = ({
           <GeminiKeysManager {...geminiKeys} />
 
           <p className="gemini-key-rotation-note">
-            {t('settings.geminiKeyRotation', 'Add multiple keys and OSG will distribute parallel Gemini work across them, rotating when a request can be retried.')}
+            {t('settings.geminiKeyRotation', 'Add saves immediately; no need to click Save. Multiple keys share parallel Gemini work and rotate on retryable errors.')}
           </p>
 
           <p className="api-key-help">

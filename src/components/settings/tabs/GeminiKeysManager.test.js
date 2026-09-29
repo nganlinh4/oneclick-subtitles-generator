@@ -97,6 +97,7 @@ const nativeSnapshot = (credentials, activeIndex = 0) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.addToast = vi.fn();
   formatCredentialReference.mockImplementation((credential) => (
     `gemini:${credential.id}:${credential.state}:••••${credential.last4 ?? '----'}`
   ));
@@ -171,6 +172,48 @@ it('uses a write-only native add buffer and clears it after success or failure',
   act(() => result.current.setNewGeminiKey('second-transient-secret'));
   await act(async () => result.current.handleAddGeminiKey());
   expect(result.current.newGeminiKey).toBe('');
+  expect(window.addToast).toHaveBeenLastCalledWith(
+    'The key change could not be confirmed. Check the saved-key list before trying again.', 'error', 8000,
+  );
+  expect(JSON.stringify(window.addToast.mock.calls)).not.toContain('second-transient-secret');
+});
+
+it('shows one preference warning per failure and keeps saved keys usable', async () => {
+  isDesktopRuntime.mockReturnValue(true);
+  let subscriber;
+  subscribeCredentialState.mockImplementation((next) => { subscriber = next; return () => undefined; });
+  const credential = { id: uuidv7(), purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234' };
+  const { result, unmount } = renderHook(() => useGeminiKeys({ setGeminiApiKey: vi.fn(), setApiKeysSet: vi.fn() }));
+  const snapshot = { ...nativeSnapshot([credential]), selectionPersistenceFailed: true };
+  act(() => { subscriber(snapshot); subscriber(snapshot); });
+  expect(result.current.geminiApiKeys).toHaveLength(1);
+  expect(window.addToast).toHaveBeenCalledTimes(1);
+  expect(window.addToast).toHaveBeenCalledWith(
+    'Only the preferred-key setting could not be saved. Reopen Settings to retry.', 'warning', 8000,
+  );
+  unmount();
+});
+
+it.each(['select', 'remove'])('reports %s failures through the global toast without exposing errors', async (operation) => {
+  isDesktopRuntime.mockReturnValue(true);
+  let subscriber;
+  subscribeCredentialState.mockImplementation((next) => { subscriber = next; return () => undefined; });
+  const credential = { id: uuidv7(), purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234' };
+  const { result, unmount } = renderHook(() => useGeminiKeys({ setGeminiApiKey: vi.fn(), setApiKeysSet: vi.fn() }));
+  act(() => subscriber(nativeSnapshot([credential])));
+  (operation === 'select' ? selectGeminiCredential : removeGeminiCredential)
+    .mockRejectedValueOnce(new Error('never echo secret-value'));
+  await act(async () => {
+    const success = operation === 'select'
+      ? await result.current.handleSetActiveKey(0)
+      : await result.current.handleRemoveGeminiKey(result.current.geminiApiKeys[0]);
+    expect(success).toBe(false);
+  });
+  expect(window.addToast).toHaveBeenLastCalledWith(
+    'The key change could not be confirmed. Check the saved-key list before trying again.', 'error', 8000,
+  );
+  expect(JSON.stringify(window.addToast.mock.calls)).not.toContain('secret-value');
+  unmount();
 });
 
 it('reveals a native key only on demand and erases the revealed value when hidden', async () => {

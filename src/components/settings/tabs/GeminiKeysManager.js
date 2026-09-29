@@ -13,6 +13,7 @@ import {
 import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { revealCredential } from '../../../platform/credentialService';
 import { animateToggle, toggleKeyVisibility } from '../utils/keyVisibilityAnimation';
+import { showToast } from '../../../utils/toastUtils';
 
 // Hook owning the multiple Gemini API key state + handlers.
 export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
@@ -26,6 +27,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
   const [revealedKeyValues, setRevealedKeyValues] = useState({});
   const credentialIdByReference = useRef(new Map());
   const nativeAddPending = useRef(false);
+  const preferenceWarningShown = useRef(false);
 
   const applyNativeSnapshot = useCallback((snapshot) => {
     if (!snapshot.initialized) return;
@@ -40,7 +42,16 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
       ...previous,
       gemini: getCredentialAvailability(snapshot).gemini,
     }));
-  }, [setApiKeysSet]);
+    if (snapshot.selectionPersistenceFailed && !preferenceWarningShown.current) {
+      showToast(t('settings.credentialPreferenceSaveFailed', 'Only the preferred-key setting could not be saved. Reopen Settings to retry.'), 'warning', 8000);
+    }
+    preferenceWarningShown.current = Boolean(snapshot.selectionPersistenceFailed);
+  }, [setApiKeysSet, t]);
+
+  const reportMutationFailure = () => showToast(t(
+    'settings.credentialChangeFailed',
+    'The key change could not be confirmed. Check the saved-key list before trying again.',
+  ), 'error', 8000);
 
   // Load all Gemini API keys on mount
   useEffect(() => {
@@ -52,6 +63,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
       initializeCredentialState().catch(() => {
         if (mounted) {
           setApiKeysSet((previous) => ({ ...previous, gemini: false }));
+          showToast(t('settings.credentialLoadFailed', 'Saved keys could not be loaded. Reopen Settings to retry.'), 'error', 8000);
         }
       });
       return () => {
@@ -64,7 +76,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
     setGeminiApiKeys(keys);
     setActiveKeyIndexState(getActiveKeyIndex());
     return undefined;
-  }, [applyNativeSnapshot, nativeCredentialMode, setApiKeysSet]);
+  }, [applyNativeSnapshot, nativeCredentialMode, setApiKeysSet, t]);
 
   // Update the active key when it changes
   const handleSetActiveKey = async (index) => {
@@ -76,6 +88,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
         await selectGeminiCredential(id);
         return true;
       } catch {
+        reportMutationFailure();
         return false;
       }
     }
@@ -100,8 +113,10 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
         try {
           await addGeminiCredential(secret);
           setShowNewGeminiKey(false);
+          showToast(t('settings.credentialAdded', 'Key saved. You can use Gemini now; no need to click Save.'), 'success');
           return true;
         } catch {
+          reportMutationFailure();
           return false;
         } finally {
           nativeAddPending.current = false;
@@ -133,6 +148,7 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
       try {
         return await removeGeminiCredential(id);
       } catch {
+        reportMutationFailure();
         return false;
       }
     }

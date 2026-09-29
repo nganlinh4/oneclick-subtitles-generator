@@ -57,6 +57,7 @@ const defaultSnapshot = () => Object.freeze({
     cooldowns: Object.freeze([]),
   }),
   legacyMigrationFailed: false,
+  selectionPersistenceFailed: false,
 });
 
 export class CredentialStateError extends Error {
@@ -223,6 +224,8 @@ export const createCredentialStateController = ({
   let lastAdmittedGeminiId = null;
   let operationTail = Promise.resolve();
   let initialization = null;
+  let needsReconcile = false;
+  let selectionPersistenceFailed = false;
   const subscribers = new Set();
 
   const publish = (report, legacyMigrationFailed = snapshot.legacyMigrationFailed) => {
@@ -255,6 +258,7 @@ export const createCredentialStateController = ({
           .map(([id, untilMs]) => Object.freeze({ id, untilMs }))),
       }),
       legacyMigrationFailed,
+      selectionPersistenceFailed,
     });
     subscribers.forEach((subscriber) => {
       try {
@@ -273,11 +277,63 @@ export const createCredentialStateController = ({
   };
 
   const persistSelection = async () => {
-    await invokeCommand('setting_set', {
-      key: GEMINI_SELECTION_SETTING_KEY,
-      value: selectionValue(selection),
+    // The vault is authoritative for credentials. A failed preference write must not undo a
+    // confirmed credential change or prevent in-session rotation/cooldowns from taking effect.
+    try {
+      await invokeCommand('setting_set', {
+        key: GEMINI_SELECTION_SETTING_KEY,
+        value: selectionValue(selection),
+      });
+      selectionPersistenceFailed = false;
+    } catch {
+      selectionPersistenceFailed = true;
+    }
+    publish({ store: snapshot.store, credentials: snapshot.credentials });
+  };
+
+  const readCurrentCredentials = async () => {
+    try {
+      const report = await credentialApi.getCredentialStatus();
+      needsReconcile = false;
+      return publish(report);
+    } catch {
+      needsReconcile = true;
+      // Never keep stale admission enabled when an ambiguous mutation cannot be reconciled.
+      publish({ store: 'unavailable', credentials: snapshot.credentials });
+      throw new CredentialStateError('credentialRefreshFailed', 'Credential status could not be refreshed');
+    }
+  };
+
+  const mutateCredentials = async (operation, applyResult) => {
+    let result;
+    try {
+      result = await operation();
+    } catch {
+      // A transport failure may arrive after the native write. Reconcile once, never retry a
+      // secret-bearing mutation (which could add a duplicate). Preserve only safe error text.
+      try { await readCurrentCredentials(); } catch { /* next initialization retries the read */ }
+      throw new CredentialStateError('credentialMutationFailed', 'The credential change could not be confirmed');
+    }
+    applyResult(result);
+    return result;
+  };
+
+  const publishCredential = (status) => {
+    const replaces = (credential) => credential.id === status.id
+      || (status.purpose !== GEMINI_PURPOSE && credential.purpose === status.purpose);
+    const exists = snapshot.credentials.some(replaces);
+    return publish({
+      store: 'available',
+      credentials: exists
+        ? snapshot.credentials.map((credential) => replaces(credential) ? status : credential)
+        : [...snapshot.credentials, status],
     });
   };
+
+  const publishRemoval = (id) => publish({
+    store: snapshot.store,
+    credentials: snapshot.credentials.filter((credential) => credential.id !== id),
+  });
 
   const purgeNativeLegacySettings = async () => {
     let failed = false;
@@ -322,21 +378,31 @@ export const createCredentialStateController = ({
     const legacyMigrationFailed = (await migrateLegacyDrafts(report, legacyDrafts))
       || nativeSettingPurgeFailed;
     report = await credentialApi.getCredentialStatus();
-    const storedSelection = await invokeCommand('setting_get', {
-      key: GEMINI_SELECTION_SETTING_KEY,
-    });
+    let storedSelection = null;
+    try {
+      storedSelection = await invokeCommand('setting_get', { key: GEMINI_SELECTION_SETTING_KEY });
+    } catch {
+      selectionPersistenceFailed = true;
+    }
     selection = normalizeSelection(storedSelection, now());
     const beforeReconcile = {
       activeId: selection.activeId,
       cooldowns: new Map(selection.cooldowns),
     };
     publish(report, legacyMigrationFailed);
-    if (!sameSelection(beforeReconcile, selection)) await persistSelection();
+    if (selectionPersistenceFailed || !sameSelection(beforeReconcile, selection)) await persistSelection();
     return snapshot;
   };
 
   const initialize = () => {
-    if (snapshot.initialized) return Promise.resolve(snapshot);
+    if (snapshot.initialized) {
+      if (!needsReconcile && snapshot.store === 'available' && !selectionPersistenceFailed) return Promise.resolve(snapshot);
+      return enqueue(async () => {
+        if (needsReconcile || snapshot.store !== 'available') await readCurrentCredentials();
+        if (selectionPersistenceFailed) await persistSelection();
+        return snapshot;
+      });
+    }
     if (initialization === null) {
       // Capture and purge legacy aliases synchronously. No native consumer gets a scheduling window
       // in which it could observe a plaintext WebView credential before the first IPC call.
@@ -354,9 +420,8 @@ export const createCredentialStateController = ({
         activeId: selection.activeId,
         cooldowns: new Map(selection.cooldowns),
       };
-      const report = await credentialApi.getCredentialStatus();
-      publish(report);
-      if (!sameSelection(beforeReconcile, selection)) await persistSelection();
+      await readCurrentCredentials();
+      if (selectionPersistenceFailed || !sameSelection(beforeReconcile, selection)) await persistSelection();
       return snapshot;
     });
   };
@@ -364,11 +429,11 @@ export const createCredentialStateController = ({
   const addGeminiCredential = async (secret) => {
     await initialize();
     return enqueue(async () => {
-      const status = await credentialApi.setCredential({ purpose: GEMINI_PURPOSE, secret });
-      const report = await credentialApi.getCredentialStatus();
-      if (selection.activeId === null && status.state === 'ready') selection.activeId = status.id;
+      const status = await mutateCredentials(
+        () => credentialApi.setCredential({ purpose: GEMINI_PURPOSE, secret }),
+        publishCredential,
+      );
       await persistSelection();
-      publish(report);
       return status.id;
     });
   };
@@ -380,8 +445,7 @@ export const createCredentialStateController = ({
       if (snapshot.credentials.some((credential) => credential.purpose === purpose)) {
         throw credentialAlreadyConfigured();
       }
-      const status = await credentialApi.setCredential({ purpose, secret });
-      publish(await credentialApi.getCredentialStatus());
+      const status = await mutateCredentials(() => credentialApi.setCredential({ purpose, secret }), publishCredential);
       return status.id;
     });
   };
@@ -390,8 +454,7 @@ export const createCredentialStateController = ({
     if (purpose === GEMINI_PURPOSE) return addGeminiCredential(secret);
     await initialize();
     return enqueue(async () => {
-      const status = await credentialApi.upsertCredential({ purpose, secret });
-      publish(await credentialApi.getCredentialStatus());
+      const status = await mutateCredentials(() => credentialApi.upsertCredential({ purpose, secret }), publishCredential);
       return status.id;
     });
   };
@@ -402,11 +465,7 @@ export const createCredentialStateController = ({
       if (!snapshot.credentials.some((credential) => (
         credential.id === id && credential.purpose === GEMINI_PURPOSE
       ))) throw invalidSelection();
-      const deleted = await credentialApi.deleteCredential(id);
-      selection.cooldowns.delete(id);
-      if (selection.activeId === id) selection.activeId = null;
-      const report = await credentialApi.getCredentialStatus();
-      publish(report);
+      const deleted = await mutateCredentials(() => credentialApi.deleteCredential(id), () => publishRemoval(id));
       await persistSelection();
       return deleted;
     });
@@ -418,12 +477,13 @@ export const createCredentialStateController = ({
       if (!snapshot.credentials.some((credential) => (
         credential.id === id && credential.purpose === GEMINI_PURPOSE
       ))) throw invalidSelection();
-      const status = await credentialApi.replaceCredential(
-        id,
-        { purpose: GEMINI_PURPOSE, secret },
+      const status = await mutateCredentials(
+        () => credentialApi.replaceCredential(id, { purpose: GEMINI_PURPOSE, secret }),
+        (updated) => {
+          selection.cooldowns.delete(id);
+          publishCredential(updated);
+        },
       );
-      selection.cooldowns.delete(id);
-      publish(await credentialApi.getCredentialStatus());
       await persistSelection();
       return status.id;
     });
@@ -436,9 +496,8 @@ export const createCredentialStateController = ({
       const matches = snapshot.credentials.filter((credential) => credential.purpose === purpose);
       let deleted = false;
       for (const { id } of matches) {
-        deleted = (await credentialApi.deleteCredential(id)) || deleted;
+        deleted = (await mutateCredentials(() => credentialApi.deleteCredential(id), () => publishRemoval(id))) || deleted;
       }
-      publish(await credentialApi.getCredentialStatus());
       return deleted;
     });
   };
@@ -452,12 +511,13 @@ export const createCredentialStateController = ({
           && credential.state === 'ready'
       ))) throw invalidSelection();
       selection.activeId = id;
-      await persistSelection();
       const report = {
         store: snapshot.store,
         credentials: snapshot.credentials,
       };
-      return publish(report);
+      publish(report);
+      await persistSelection();
+      return snapshot;
     });
   };
 
@@ -484,8 +544,8 @@ export const createCredentialStateController = ({
       const candidates = [...geminiCredentials.slice(activeIndex + 1), ...geminiCredentials.slice(0, activeIndex + 1)];
       const next = candidates.find(({ id }) => !selection.cooldowns.has(id));
       selection.activeId = next?.id ?? selection.activeId;
-      await persistSelection();
       publish({ store: snapshot.store, credentials: snapshot.credentials });
+      await persistSelection();
       return next?.id ?? null;
     });
   };
@@ -519,7 +579,7 @@ export const createCredentialStateController = ({
       let failed = false;
       for (const { id } of snapshot.credentials) {
         try {
-          await credentialApi.deleteCredential(id);
+          await mutateCredentials(() => credentialApi.deleteCredential(id), () => publishRemoval(id));
         } catch {
           failed = true;
         }
@@ -527,10 +587,12 @@ export const createCredentialStateController = ({
       selection = { activeId: null, cooldowns: new Map() };
       try {
         await invokeCommand('setting_delete', { key: GEMINI_SELECTION_SETTING_KEY });
+        selectionPersistenceFailed = false;
       } catch {
+        selectionPersistenceFailed = true;
         failed = true;
       }
-      publish(await credentialApi.getCredentialStatus());
+      await readCurrentCredentials();
       if (failed) {
         throw new CredentialStateError(
           'credentialResetIncomplete',

@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import process from 'node:process';
 import { durableState, durableTranslations } from '../support/database.js';
 import { clickControl, openEditor } from '../support/editor.js';
-import { enrollGeminiCredentials } from '../support/liveProviderCredentials.js';
+import { readGeminiCredentialPool } from '../support/liveProviderCredentials.js';
 import { importSubtitles } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
 
@@ -22,10 +22,40 @@ describe('customer SRT-only translation diagnostic', () => {
       assert.equal(durableTranslations(root)[0]?.translation?.status, 'complete');
       await (await $('.translation-section')).scrollIntoView({ block: 'start' });
       await captureWorkflowStep({ workflow: 'srt-only-translation-diagnostic', step: '03-relaunched', description: 'New process restores the standalone document and its translated result, without media.' });
+      const previousText = durableTranslations(root)[0].translation.baseSubtitles[0].text;
+      await (await $('.language-chain .chain-item input')).setValue('French');
+      await clickControl('.translate-button');
+      await browser.waitUntil(async () => {
+        const translation = durableTranslations(root)[0]?.translation;
+        return translation?.status === 'complete'
+          && translation.baseSubtitles[0]?.text !== previousText;
+      }, { timeout: 180000, interval: 250, timeoutMsg: 'the saved key could not translate again after restart' });
+      await captureWorkflowStep({ workflow: 'srt-only-translation-diagnostic', step: '04-translated-after-restart', description: 'A second real request translates into French after process restart, without reopening Settings or entering any key.' });
       return;
     }
     await importSubtitles();
-    await enrollGeminiCredentials({ limit: 1 });
+    await (await $('.language-chain .chain-item input')).setValue('Vietnamese');
+    await clickControl('.translate-button');
+    let errorToasts = [];
+    await browser.waitUntil(async () => {
+      errorToasts = await browser.execute(() => [...document.querySelectorAll('.toast-error')]
+        .map(node => (node.innerText || '').replace(/\s+/g, ' ').trim()));
+      return errorToasts.some(message => /API|credential|key/i.test(message));
+    }, { timeout: 30000, interval: 200, timeoutMsg: 'translation did not refuse the missing credential' });
+    await captureWorkflowStep({
+      workflow: 'srt-only-translation-diagnostic', step: '00-missing-key',
+      description: 'First translation attempt genuinely refuses because this clean profile has no key.',
+      allowVisibleProblems: { errorToasts: errorToasts.map(text => ({ text, reason: 'Expected missing-key refusal before enrollment.' })) },
+    });
+    await browser.waitUntil(async () => browser.execute(() => document.querySelector('.toast-error') === null), { timeout: 30000, interval: 200 });
+    await clickControl('[data-app-action="open-settings"]');
+    await clickControl('[data-settings-tab="api-keys"]');
+    await (await $('#new-gemini-key-input')).setValue(readGeminiCredentialPool()[0].value);
+    await clickControl('.add-key-button');
+    // Do not wait for the key list: exercise closing immediately after Add, with no Save.
+    // No evidence is captured while the write-only field could contain a secret.
+    await clickControl('[data-settings-action="close"]');
+    await $('.settings-modal').waitForExist({ reverse: true, timeout: 30000 });
     assert.equal(await browser.execute(() => document.querySelectorAll('video').length), 0);
     await (await $('.language-chain .chain-item input')).setValue('Vietnamese');
     await (await $('.translation-section')).scrollIntoView({ block: 'start' });

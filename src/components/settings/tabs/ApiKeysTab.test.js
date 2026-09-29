@@ -96,7 +96,7 @@ it('places the compact usage link beside the key heading without changing key ma
   expect(usage.previousElementSibling).toHaveTextContent('Not Set');
   expect(screen.getByTestId('gemini-keys-manager')).toBeInTheDocument();
   expect(screen.getByText(
-    'Add multiple keys and OSG will distribute parallel Gemini work across them, rotating when a request can be retried.'
+    'Add saves immediately; no need to click Save. Multiple keys share parallel Gemini work and rotate on retryable errors.'
   )).toBeInTheDocument();
 });
 

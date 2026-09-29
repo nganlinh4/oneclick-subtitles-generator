@@ -93,6 +93,128 @@ const createHarness = ({
   return { controller, credentialApi, invokeCommand, storage, getSelection: () => selection };
 };
 
+it.each(['status-read', 'selection-write'])(
+  'keeps a confirmed Gemini key available despite a failed %s without any unrelated Save',
+  async (failurePoint) => {
+    const { controller, credentialApi, invokeCommand } = createHarness();
+    await controller.initialize();
+    expect(await controller.acquireGeminiCredential()).toBeNull();
+
+    if (failurePoint === 'status-read') {
+      credentialApi.getCredentialStatus.mockRejectedValueOnce(new Error('injected status read failure'));
+    } else {
+      invokeCommand.mockRejectedValueOnce(new Error('injected selection write failure'));
+    }
+    const readCount = credentialApi.getCredentialStatus.mock.calls.length;
+    const id = await controller.addGeminiCredential('diagnostic-not-a-real-key');
+    expect(credentialApi.getCredentialStatus).toHaveBeenCalledTimes(readCount);
+    expect(controller.getSnapshot().selectionPersistenceFailed).toBe(failurePoint === 'selection-write');
+    expect(getCredentialAvailability(controller.getSnapshot()).gemini).toBe(true);
+    expect(await controller.acquireGeminiCredential()).toBe(id);
+    expect(getCredentialAvailability(await controller.initialize()).gemini).toBe(true);
+    expect(controller.getSnapshot().selectionPersistenceFailed).toBe(false);
+    expect(credentialApi.upsertCredential).not.toHaveBeenCalled();
+  },
+);
+
+it('reconciles an ambiguous native write once without replaying the secret-bearing mutation', async () => {
+  const { controller, credentialApi } = createHarness();
+  await controller.initialize();
+  const nativeWrite = credentialApi.setCredential.getMockImplementation();
+  credentialApi.setCredential.mockImplementationOnce(async (request) => {
+    await nativeWrite(request);
+    throw new Error('transport response lost with secret text');
+  });
+  await expect(controller.addGeminiCredential('diagnostic-value')).rejects.toMatchObject({
+    code: 'credentialMutationFailed', message: 'The credential change could not be confirmed',
+  });
+  expect(credentialApi.setCredential).toHaveBeenCalledTimes(1);
+  expect(controller.getSnapshot().credentials).toHaveLength(1);
+  expect(await controller.acquireGeminiCredential()).toBe(controller.getSnapshot().credentials[0].id);
+});
+
+it('fails closed after an ambiguous removal and recovers on reopening without Genius', async () => {
+  const first = status('geminiApiKey');
+  const { controller, credentialApi } = createHarness({ initialCredentials: [first] });
+  await controller.initialize();
+  const nativeDelete = credentialApi.deleteCredential.getMockImplementation();
+  credentialApi.deleteCredential.mockImplementationOnce(async (id) => {
+    await nativeDelete(id);
+    throw new Error('response lost');
+  });
+  credentialApi.getCredentialStatus.mockRejectedValueOnce(new Error('read unavailable'));
+  await expect(controller.removeGeminiCredential(first.id)).rejects.toMatchObject({ code: 'credentialMutationFailed' });
+  expect(getCredentialAvailability(controller.getSnapshot()).gemini).toBe(false);
+  expect(controller.getSnapshot().store).toBe('unavailable');
+  await controller.initialize();
+  expect(controller.getSnapshot().credentials).toEqual([]);
+  expect(await controller.acquireGeminiCredential()).toBeNull();
+});
+
+it('keeps deletion, replacement and rotation authoritative while preference storage is down', async () => {
+  const first = status('geminiApiKey');
+  const second = status('geminiApiKey');
+  const { controller, invokeCommand } = createHarness({ initialCredentials: [first, second] });
+  await controller.initialize();
+  invokeCommand.mockRejectedValue(new Error('preferences unavailable'));
+  await controller.selectGeminiCredential(second.id);
+  expect(controller.getSnapshot().gemini.activeCredentialId).toBe(second.id);
+  await controller.rotateGeminiCredential({ cooldownCredentialId: second.id });
+  expect(await controller.acquireGeminiCredential()).toBe(first.id);
+  await controller.replaceGeminiCredential(second.id, 'replacement-5678');
+  expect(controller.getSnapshot().credentials.map(({ id }) => id)).toEqual([first.id, second.id]);
+  expect(controller.getSnapshot().credentials[1].last4).toBe('5678');
+  expect(controller.getSnapshot().gemini.cooldowns).toEqual([]);
+  await controller.removeGeminiCredential(first.id);
+  expect(await controller.acquireGeminiCredential()).toBe(second.id);
+  await controller.removeGeminiCredential(second.id);
+  expect(await controller.acquireGeminiCredential()).toBeNull();
+  expect(controller.getSnapshot().credentials).toEqual([]);
+});
+
+it('publishes singleton upserts from confirmed metadata without a second status-read dependency', async () => {
+  const { controller, credentialApi } = createHarness();
+  await controller.initialize();
+  const readCount = credentialApi.getCredentialStatus.mock.calls.length;
+  credentialApi.getCredentialStatus.mockRejectedValue(new Error('read unavailable'));
+  credentialApi.upsertCredential.mockImplementation(async ({ purpose }) => status(purpose));
+  await controller.upsertSingletonCredential('geniusAccessToken', 'one');
+  await controller.upsertSingletonCredential('geniusAccessToken', 'two');
+  expect(controller.getSnapshot().credentials).toHaveLength(1);
+  expect(getCredentialAvailability(controller.getSnapshot()).genius).toBe(true);
+  expect(credentialApi.getCredentialStatus).toHaveBeenCalledTimes(readCount);
+});
+
+it('never publishes an unsaved key and allows retry after a real write failure', async () => {
+  const { controller, credentialApi } = createHarness();
+  await controller.initialize();
+  credentialApi.setCredential.mockRejectedValueOnce(new Error('vault rejected secret-value'));
+  await expect(controller.addGeminiCredential('secret-value')).rejects.toMatchObject({ code: 'credentialMutationFailed' });
+  expect(controller.getSnapshot().credentials).toEqual([]);
+  expect(await controller.acquireGeminiCredential()).toBeNull();
+  const id = await controller.addGeminiCredential('secret-value');
+  expect(await controller.acquireGeminiCredential()).toBe(id);
+});
+
+it('rechecks a previously locked store when initialization is requested again', async () => {
+  const { controller, credentialApi } = createHarness();
+  credentialApi.getCredentialStatus.mockResolvedValueOnce({ store: 'locked', credentials: [] });
+  credentialApi.getCredentialStatus.mockResolvedValueOnce({ store: 'locked', credentials: [] });
+  await controller.initialize();
+  expect(controller.getSnapshot().store).toBe('locked');
+  await controller.initialize();
+  expect(controller.getSnapshot().store).toBe('available');
+});
+
+it('admits a queued request after adding the first key without a settings Save', async () => {
+  const { controller } = createHarness();
+  await controller.initialize();
+  expect(await controller.acquireGeminiCredential()).toBeNull();
+  const addition = controller.addGeminiCredential('diagnostic-not-a-real-key');
+  const admission = controller.acquireGeminiCredential();
+  expect(await admission).toBe(await addition);
+});
+
 it('migrates supported legacy secrets transiently and purges every legacy secret key', async () => {
   const storage = createStorage({
     gemini_api_key: 'gemini-primary-1111',
