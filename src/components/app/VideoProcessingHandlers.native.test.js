@@ -11,6 +11,8 @@ import {
 } from '../../platform/subtitleProjectBinding';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 import { downloadAndPrepareYouTubeVideo } from './VideoProcessingHandlers';
+import { getCurrentCacheId } from '../../utils/userSubtitlesStore';
+import { getActiveProjectSnapshot, deactivateProject } from '../../platform/projectService';
 import {
   AutoGenerationOwnershipError,
   createAutoGenerationRequest,
@@ -47,10 +49,11 @@ vi.mock('../../platform/subtitleProjectBinding', () => ({
 vi.mock('../../platform/projectService', async (importOriginal) => ({
   ...await importOriginal(),
   deactivateProject: vi.fn(() => true),
+  getActiveProjectSnapshot: vi.fn(() => null),
 }));
 vi.mock('../../services/subtitleCache', () => ({ generateUrlBasedCacheId: vi.fn() }));
 vi.mock('../../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
-vi.mock('../../utils/userSubtitlesStore', () => ({ setCurrentCacheId: vi.fn() }));
+vi.mock('../../utils/userSubtitlesStore', () => ({ setCurrentCacheId: vi.fn(), getCurrentCacheId: vi.fn(() => null) }));
 
 const SOURCE_ID = '01890f39-7b62-7c4e-8c9a-000000000101';
 const source = createNativeMediaDescriptor({
@@ -109,6 +112,8 @@ const completeNativeDownloadTransaction = async (request, media = source) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getCurrentCacheId.mockReturnValue(null);
+  getActiveProjectSnapshot.mockReturnValue(null);
   forgetNativeMediaSessionDurably.mockResolvedValue(true);
   clearSubtitleProjectBinding.mockImplementation(() => true);
   localStorage.clear();
@@ -127,6 +132,19 @@ beforeEach(() => {
     projectId: options.expectedProjectId ?? `project:${cacheId}`,
     stateVersion: 0,
   }));
+});
+
+it('keeps a standalone document active when its first URL download fails', async () => {
+  getCurrentCacheId.mockReturnValue('subtitle-document:one');
+  getActiveProjectSnapshot.mockReturnValue({ media: [], metadata: { id: 'document-project' } });
+  downloadNativeVideo.mockRejectedValueOnce(new Error('offline'));
+  const setSrtOnly = vi.fn();
+  await downloadAndPrepareYouTubeVideo(
+    { url: 'https://example.test/video' }, vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), setSrtOnly,
+  );
+  expect(clearSubtitleProjectBinding).not.toHaveBeenCalled();
+  expect(deactivateProject).not.toHaveBeenCalled();
+  expect(setSrtOnly).toHaveBeenCalledWith(true);
 });
 
 it('shows a localized actionable error only after the downloader retry is exhausted', async () => {

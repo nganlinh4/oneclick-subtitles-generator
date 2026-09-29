@@ -39,8 +39,7 @@ const customerSurface = () => browser.execute(() => {
   };
   const text = (node) => (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ');
   return {
-    generationMode: document.querySelector('[data-osg-action="generate-subtitles"]')
-      ?.getAttribute('data-generation-mode') ?? null,
+    generationMode: document.querySelector('.srt-only-message') !== null ? 'srt-only' : null,
     cueTexts: [...document.querySelectorAll('.lyric-item[data-lyric-index] .lyric-text')]
       .map((node) => (node.innerText || '').trim()),
     videos: document.querySelectorAll('.video-preview video.video-player').length,

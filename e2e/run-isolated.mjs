@@ -25,6 +25,7 @@ const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 // PHASE-gated scenario like renderInterruptRecovery, needing scenarios/longMediaOperationRecovery.mjs.
 const NON_DEFAULT_JOURNEYS = new Set([
   'srtOnlyTranslationDiagnostic.journey.js',
+  'srtOnlyUrlAttach.journey.js',
   'readmeScreenshots.journey.js',
   'geminiMediaBenchmark.journey.js',
   'damagedFontPayload.journey.js',

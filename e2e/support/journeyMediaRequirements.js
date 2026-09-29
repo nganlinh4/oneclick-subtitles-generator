@@ -97,6 +97,7 @@ const NO_STAGED_MEDIA = new Set([
   'startup.journey.js',
   'subtitleDocumentRoundTrip.journey.js',
   'srtOnlyTranslationDiagnostic.journey.js',
+  'srtOnlyUrlAttach.journey.js',
   'urlLocalAsrPreview.journey.js',
   'urlToPreview.journey.js',
   'youtubeSearchAndHistory.journey.js',

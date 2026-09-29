@@ -17,7 +17,9 @@ import {
   clearSubtitleProjectBinding,
   rollbackSubtitleProjectBinding,
 } from '../../platform/subtitleProjectBinding';
-import { deactivateProject } from '../../platform/projectService';
+import { deactivateProject, getActiveProjectSnapshot } from '../../platform/projectService';
+import { getCurrentCacheId } from '../../utils/userSubtitlesStore';
+import { isSubtitleDocumentCacheId } from '../../platform/subtitleDocumentProject';
 import {
   assertAutoGenerationRequestActive,
   AutoGenerationOwnershipError,
@@ -35,13 +37,16 @@ const withdrawVisibleMediaForUrlIntent = async ({
 }) => {
   const selected = await getSelectedMedia();
   if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
+  const currentCacheId = getCurrentCacheId();
+  const documentCacheId = selected === null && isSubtitleDocumentCacheId(currentCacheId)
+    && getActiveProjectSnapshot()?.media?.length === 0 ? currentCacheId : null;
 
   // Selecting URL B is itself a media intent. Video A remains durable in its project history, but
   // it must stop being the active/visible media immediately; otherwise a failed B download lies by
   // continuing to show A. Clear every compatibility surface before the fallible network work.
   const replacedFileUrl = localStorage.getItem('current_file_url');
   setUploadedFile(null);
-  setIsSrtOnlyMode?.(false);
+  setIsSrtOnlyMode?.(documentCacheId !== null);
   for (const key of [
     'current_file_name',
     'current_file_url',
@@ -52,8 +57,10 @@ const withdrawVisibleMediaForUrlIntent = async ({
   // The native clear is conditional, and its reply may arrive after a newer URL has already
   // activated. Only its current owner may withdraw the browser project or proceed to download.
   if (cleared !== true || !ownsPresentation()) throw new AutoGenerationOwnershipError();
-  clearSubtitleProjectBinding();
-  deactivateProject();
+  if (documentCacheId === null) {
+    clearSubtitleProjectBinding();
+    deactivateProject();
+  }
 
   // Use the exact identities observed above. If another media intent won while the IPC round trip
   // was in flight, native clear_media refuses instead of erasing that newer selection.
@@ -73,6 +80,7 @@ const withdrawVisibleMediaForUrlIntent = async ({
     }
     forgetBrowserMediaBlob(replacedFileUrl);
   }
+  return documentCacheId;
 };
 
 /** Download a selected site URL into the native media library and activate it. */
@@ -112,7 +120,7 @@ export const downloadAndPrepareYouTubeVideo = async (
   const autoRequest = nativeDownloadOptions.autoRequest;
   const guardedAutoRequest = isAutoGenerationRequest(autoRequest) ? autoRequest : null;
   try {
-    await withdrawVisibleMediaForUrlIntent({
+    const documentCacheId = await withdrawVisibleMediaForUrlIntent({
       ownsPresentation,
       setIsSrtOnlyMode,
       setUploadedFile,
@@ -123,7 +131,7 @@ export const downloadAndPrepareYouTubeVideo = async (
       if (guardedAutoRequest) assertAutoGenerationRequestActive(guardedAutoRequest);
     };
     assertDownloadOwnership();
-    const projectCacheId = await generateUrlBasedCacheId(selectedVideo.url);
+    const projectCacheId = documentCacheId ?? await generateUrlBasedCacheId(selectedVideo.url);
     if (typeof projectCacheId !== 'string' || projectCacheId.length === 0) {
       throw new Error('The downloaded media could not be bound to a subtitle project.');
     }

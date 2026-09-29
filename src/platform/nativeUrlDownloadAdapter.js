@@ -34,7 +34,7 @@ import {
 } from './nativeUrlDownloadSubscriber';
 import { createCompletedAssetCache } from './nativeUrlDownloadCache';
 import { createCompletedAssetReopener } from './nativeUrlDownloadReopen';
-import { resolveProjectForCache } from './subtitleProjectStore';
+import { resolveProjectForMedia } from './subtitleDocumentProject';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
 
 const DEFAULT_MEDIA_SELECTION = Object.freeze({
@@ -66,7 +66,7 @@ const resolveCandidateProjectForUrl = async (url) => {
   if (typeof cacheId !== 'string' || cacheId.length === 0) {
     throw fixedFailure('mediaCandidateProjectFailed');
   }
-  return resolveProjectForCache(cacheId, { create: true });
+  return resolveProjectForMedia(cacheId, { create: true });
 };
 
 export const createNativeUrlDownloadAdapter = ({

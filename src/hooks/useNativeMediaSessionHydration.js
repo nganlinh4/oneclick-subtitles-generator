@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import i18n from '../i18n/i18n';
 
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { activateResolvedMediaProject } from '../platform/mediaProjectActivation';
@@ -216,7 +217,8 @@ export const useNativeMediaSessionHydration = ({ setUploadedFile, setIsSrtOnlyMo
       if (restored) setIsSrtOnlyMode?.(true);
       else await hydrator.hydrate();
     })().catch(() => {
-      if (!disposed) window.addToast?.('The saved subtitle project could not be restored.', 'error');
+      if (!disposed) window.addToast?.(i18n.t('output.subtitleDocumentRestoreFailed',
+        'The saved subtitle project could not be restored.'), 'error');
     });
     return () => { disposed = true; hydrator.dispose(); };
   }, [setUploadedFile, setIsSrtOnlyMode]);
