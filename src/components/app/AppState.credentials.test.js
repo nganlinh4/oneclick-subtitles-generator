@@ -9,11 +9,13 @@ import {
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock('react-i18next', () => {
+vi.mock('react-i18next', async (importOriginal) => {
   const t = (_key, fallback) => fallback;
-  return { useTranslation: () => ({ t }) };
+  return { ...await importOriginal(), useTranslation: () => ({ t }) };
 });
-vi.mock('../../utils/systemDetection', () => ({ getThemeWithFallback: () => 'dark' }));
+vi.mock('../../utils/systemDetection', async (importOriginal) => ({
+  ...await importOriginal(), getThemeWithFallback: () => 'dark',
+}));
 vi.mock('../../hooks/useSubtitles', () => {
   const stableSubtitlesState = {
     subtitlesData: null,
