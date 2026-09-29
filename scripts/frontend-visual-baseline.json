@@ -2,7 +2,7 @@
   "schemaVersion": 6,
   "algorithm": "sha256",
   "normalization": "binary exact; UTF-8 BOM ignored, CRLF/CR normalized to LF, terminal newlines ignored",
-  "baselineRevision": "badbb718e8cf11536fae014ffe94ee43feffd139",
+  "baselineRevision": "b5744fa5bd76d6c7c2f4810f9543ea62f9a1262e",
   "retiredExactFiles": {
     "public/oauth2callback.html": "c19855fd5a3f19af1eea1c1fed6e7794a342136223dd60dbead2586d4298fd90",
     "src/assets/fonts/GoogleSansFlex.ttf": "eae5ed6ddefbd44ab9693b84454ce46f3f2de0fb4f7cc5b54138c50c5b347d70",
@@ -1167,7 +1167,7 @@
       ]
     },
     "src/i18n/locales/en/output.json": {
-      "hash": "191d46ffb9c1a532809583effcf7147781fad57957c8a783441437f618e20fe6",
+      "hash": "2bc694a46a5fd6e941eaa40c3d8e833c607e7bb6cbbd7493c391a07c9e4ac39e",
       "keys": [
         "analyzingVideo",
         "audioFpsDisabled",
@@ -1257,6 +1257,7 @@
         "srtOnlyModeInfo",
         "strongModelSuccess",
         "strongModelWarning",
+        "subtitleDocumentRestoreFailed",
         "subtitles",
         "subtitlesCacheLoadFailed",
         "subtitlesCacheSaveFailed",
@@ -1646,7 +1647,7 @@
       ]
     },
     "src/i18n/locales/en/settings.json": {
-      "hash": "669b68f6d5aaa92456122831d5f3e63bbf877d0436dcf1d661f1a4272255dc04",
+      "hash": "4eaa8a182ce9de9ddc3a4de571463c19f4c3886d7963829faba3f8b2e3d8f5f6",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -1711,6 +1712,10 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentialAdded",
+        "credentialChangeFailed",
+        "credentialLoadFailed",
+        "credentialPreferenceSaveFailed",
         "credentialRevealFailed",
         "credentials.clearFailed",
         "credentials.confirmClear",
@@ -3749,7 +3754,7 @@
       ]
     },
     "src/i18n/locales/ko/output.json": {
-      "hash": "6c872e592bd4b7fd453af402251edec6831e1331e159e639bbaf2d33edea3ace",
+      "hash": "332065121ab485852577f6ff16b0e79ebb2684e10bd1b5d49a07c455ffeb6bc9",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -3850,6 +3855,7 @@
         "streamingProgress",
         "strongModelSuccess",
         "strongModelWarning",
+        "subtitleDocumentRestoreFailed",
         "subtitles",
         "subtitlesCacheLoadFailed",
         "subtitlesCacheSaveFailed",
@@ -4268,7 +4274,7 @@
       ]
     },
     "src/i18n/locales/ko/settings.json": {
-      "hash": "5e81572f0d7d0e3472e23a24194224fd70659330e6f6a99dab2a24be24d79b29",
+      "hash": "b72567ea9b96ea666d001c442cc6792c984e948753b85920e7dd9ee59b187d97",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -4350,6 +4356,10 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentialAdded",
+        "credentialChangeFailed",
+        "credentialLoadFailed",
+        "credentialPreferenceSaveFailed",
         "credentialRevealFailed",
         "credentials.clearFailed",
         "credentials.confirmClear",
@@ -6543,7 +6553,7 @@
       ]
     },
     "src/i18n/locales/vi/output.json": {
-      "hash": "7d1fb0b2153afe3bfc53ded3f2b460f8f47883c7496f8f7070981e3fc06e41e3",
+      "hash": "f44958b21ad00ee77db3053759d232012df4eeeb83b4e1b844a1a49a54c0120d",
       "keys": [
         "analysisError",
         "analyzingVideo",
@@ -6644,6 +6654,7 @@
         "streamingProgress",
         "strongModelSuccess",
         "strongModelWarning",
+        "subtitleDocumentRestoreFailed",
         "subtitles",
         "subtitlesCacheLoadFailed",
         "subtitlesCacheSaveFailed",
@@ -7062,7 +7073,7 @@
       ]
     },
     "src/i18n/locales/vi/settings.json": {
-      "hash": "7f91e8f152072635a9a67240af8028ad8cbab4dfd827ac1b592645c0c3ebea66",
+      "hash": "bd80c2d9191842ab9d40c0f1c350131dc64da63d9f8173021e68b696fdd105bb",
       "keys": [
         "about",
         "accessDeniedDescription",
@@ -7144,6 +7155,10 @@
         "createOAuthClientId",
         "createProject",
         "creator",
+        "credentialAdded",
+        "credentialChangeFailed",
+        "credentialLoadFailed",
+        "credentialPreferenceSaveFailed",
         "credentialRevealFailed",
         "credentials.clearFailed",
         "credentials.confirmClear",
@@ -9264,10 +9279,10 @@
       ]
     },
     "src/components/settings/tabs/ApiKeysTab.js": {
-      "hash": "1764f0c4f4639ff88d076e3de7aedaacb585a1aeca8d437e0a3baca465b7e958",
+      "hash": "fb567f18774adb20da67ac48697b1924e91f7551801a781e4f3762dfc2e2d63d",
       "rootCount": 1,
       "roots": [
-        "26eda2bda9ada6121e44d89264ceb3cbeb48885f97d316e295b5901c4fc7a39b"
+        "117dfe09e3f5924cdd39865272c28640e9ec0e73473fc7ff23a8f06c60968b24"
       ]
     },
     "src/components/settings/tabs/CacheTab.js": {
