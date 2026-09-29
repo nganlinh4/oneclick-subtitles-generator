@@ -3470,7 +3470,7 @@ dependencies = [
 
 [[package]]
 name = "osg-application"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-domain",
  "serde",
@@ -3495,7 +3495,7 @@ dependencies = [
 
 [[package]]
 name = "osg-audio"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-scene",
  "symphonia",
@@ -3505,7 +3505,7 @@ dependencies = [
 
 [[package]]
 name = "osg-compositor"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-scene",
  "pollster",
@@ -3515,7 +3515,7 @@ dependencies = [
 
 [[package]]
 name = "osg-decode"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-encode",
  "osg-scene",
@@ -3526,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "osg-desktop"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "atomicwrites",
  "base64 0.22.1",
@@ -3582,7 +3582,7 @@ dependencies = [
 
 [[package]]
 name = "osg-domain"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3606,7 +3606,7 @@ dependencies = [
 
 [[package]]
 name = "osg-encode"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-scene",
  "tempfile",
@@ -3616,7 +3616,7 @@ dependencies = [
 
 [[package]]
 name = "osg-engine-packages"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "fs2",
  "osg-runtime-staging",
@@ -3633,7 +3633,7 @@ dependencies = [
 
 [[package]]
 name = "osg-export"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-audio",
  "osg-compositor",
@@ -3650,7 +3650,7 @@ dependencies = [
 
 [[package]]
 name = "osg-gemini"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3676,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "osg-gpu-video"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-compositor",
  "osg-decode",
@@ -3689,7 +3689,7 @@ dependencies = [
 
 [[package]]
 name = "osg-infrastructure"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "blake3",
  "filetime",
@@ -3711,7 +3711,7 @@ dependencies = [
 
 [[package]]
 name = "osg-live-music"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -3728,7 +3728,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "command-group",
  "serde",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media-pipeline"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-media",
  "osg-runtime-staging",
@@ -3750,7 +3750,7 @@ dependencies = [
 
 [[package]]
 name = "osg-media-server"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "blake3",
  "filetime",
@@ -3781,7 +3781,7 @@ dependencies = [
 
 [[package]]
 name = "osg-providers"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64 0.22.1",
  "dom_query",
@@ -3803,7 +3803,7 @@ dependencies = [
 
 [[package]]
 name = "osg-render"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "osg-domain",
  "serde",
@@ -3814,7 +3814,7 @@ dependencies = [
 
 [[package]]
 name = "osg-runtime-staging"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "atomicwrites",
  "blake3",
@@ -3828,7 +3828,7 @@ dependencies = [
 
 [[package]]
 name = "osg-scene"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3836,7 +3836,7 @@ dependencies = [
 
 [[package]]
 name = "osg-speech"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "command-group",
  "osg-engine-packages",
