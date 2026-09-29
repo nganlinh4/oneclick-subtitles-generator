@@ -284,7 +284,7 @@ const waitForSnapshot = (client, expected) => waitForValue(
     assertEditorSnapshot(value, expected);
     return true;
   },
-  { stage: `visible-${expected.text === ORIGINAL_TEXT ? 'original' : 'edited'}` },
+  { stage: expected.stage ?? `visible-${expected.text === ORIGINAL_TEXT ? 'original' : 'edited'}` },
 );
 
 const waitForNativeHistory = (client, expected) => waitForValue(
@@ -323,7 +323,7 @@ async function runInstalledEditorFlow(options) {
     );
     invariant(await evaluate(client, COMMIT_EDIT_EXPRESSION) === true,
       'Installed editor flow could not commit the text edit');
-    await waitForSnapshot(client, { text: EDITED_TEXT, canUndo: true, canRedo: false });
+    await waitForSnapshot(client, { text: EDITED_TEXT, canUndo: true, canRedo: false, stage: 'initial-edit' });
     const editedHistory = await waitForNativeHistory(client, {
       text: EDITED_TEXT, canUndo: true, canRedo: false,
     });
@@ -348,7 +348,7 @@ async function runInstalledEditorFlow(options) {
     );
     invariant(await evaluate(client, clickEnabled('.redo-btn')) === true,
       'Installed editor flow could not invoke redo after reload');
-    await waitForSnapshot(client, { text: EDITED_TEXT, canUndo: true, canRedo: false });
+    await waitForSnapshot(client, { text: EDITED_TEXT, canUndo: true, canRedo: false, stage: 'redo-after-reload' });
     const redoneHistory = await waitForNativeHistory(client, {
       text: EDITED_TEXT,
       canUndo: true,
@@ -357,7 +357,7 @@ async function runInstalledEditorFlow(options) {
     });
     await reloadAndWait(
       client,
-      { text: EDITED_TEXT, canUndo: true, canRedo: false },
+      { text: EDITED_TEXT, canUndo: true, canRedo: false, stage: 'reload-after-redo' },
       {
         text: EDITED_TEXT,
         canUndo: true,
@@ -384,6 +384,17 @@ async function runInstalledEditorFlow(options) {
       undoRedoCycles: 1,
     };
   } catch (error) {
+    let historyDiagnostic = null;
+    try {
+      const value = await evaluate(client, NATIVE_HISTORY_EXPRESSION);
+      historyDiagnostic = {
+        canUndo: value?.status?.canUndo ?? null,
+        canRedo: value?.status?.canRedo ?? null,
+        historyVersion: value?.status?.historyVersion ?? null,
+        stateVersion: value?.status?.stateVersion ?? null,
+        textKind: value?.text === ORIGINAL_TEXT ? 'original' : value?.text === EDITED_TEXT ? 'edited' : 'other',
+      };
+    } catch { /* Do not replace the primary failure when inspection is unavailable. */ }
     try {
       await evaluate(client, `(async () => {
         document.querySelector('.lyrics-container-wrapper')?.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -399,7 +410,7 @@ async function runInstalledEditorFlow(options) {
     } catch {
       // Preserve the original assertion even if the WebView has exited.
     }
-    throw error;
+    throw new Error(`${sanitizeEditorError(error)}; nativeHistory=${JSON.stringify(historyDiagnostic)}`, { cause: error });
   } finally {
     client.close();
   }
