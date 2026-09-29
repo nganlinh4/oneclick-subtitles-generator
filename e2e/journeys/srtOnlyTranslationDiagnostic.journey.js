@@ -23,6 +23,8 @@ describe('customer SRT-only translation diagnostic', () => {
       await (await $('.translation-section')).scrollIntoView({ block: 'start' });
       await captureWorkflowStep({ workflow: 'srt-only-translation-diagnostic', step: '03-relaunched', description: 'New process restores the standalone document and its translated result, without media.' });
       const previousText = durableTranslations(root)[0].translation.baseSubtitles[0].text;
+      await clickControl('.reset-translation-button');
+      await $('.translate-button').waitForExist({ timeout: 30000 });
       await (await $('.language-chain .chain-item input')).setValue('French');
       await clickControl('.translate-button');
       await browser.waitUntil(async () => {
@@ -30,6 +32,9 @@ describe('customer SRT-only translation diagnostic', () => {
         return translation?.status === 'complete'
           && translation.baseSubtitles[0]?.text !== previousText;
       }, { timeout: 180000, interval: 250, timeoutMsg: 'the saved key could not translate again after restart' });
+      const repeated = durableTranslations(root)[0].translation.baseSubtitles;
+      assert.equal(repeated.length, 3);
+      assert.ok(repeated.every(row => row.text.trim().length > 0));
       await captureWorkflowStep({ workflow: 'srt-only-translation-diagnostic', step: '04-translated-after-restart', description: 'A second real request translates into French after process restart, without reopening Settings or entering any key.' });
       return;
     }
