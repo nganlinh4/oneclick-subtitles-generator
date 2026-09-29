@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const test = require('node:test');
 
 const {
@@ -10,7 +12,8 @@ const {
 const { tauriFrontendDistOverride } = require('./managed-build-context');
 
 const repositoryRoot = path.resolve(__dirname, '..');
-const cacheRoot = path.resolve(repositoryRoot, '..', 'managed-command-test-cache');
+const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-managed-command-test-'));
+test.after(() => fs.rmSync(cacheRoot, { recursive: true, force: true }));
 const cargoTargetDir = path.join(cacheRoot, 'cargo', 'dev');
 const leaseId = '2'.repeat(32);
 
