@@ -121,15 +121,6 @@ describe('a customer edits a cue and reopens the application', () => {
       interval: 500,
       timeoutMsg: 'undo did not take the edit back',
     });
-    await browser.waitUntil(() => !durableState(root).cues.some((cue) => cue.text === EDITED), {
-      timeout: 30_000, timeoutMsg: 'undo did not reach durable storage before reload',
-    });
-    await browser.refresh();
-    await openEditor();
-    await browser.waitUntil(async () => (await showsText(FIRST_CUE))
-      && await browser.execute(() => document.querySelector('.redo-btn')?.disabled === false), {
-      timeout: 60_000, timeoutMsg: 'reload did not restore the durable redo cursor',
-    });
     await clickControl('.redo-btn');
     await browser.waitUntil(async () => showsText(EDITED), {
       timeout: 30_000,

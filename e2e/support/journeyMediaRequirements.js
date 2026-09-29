@@ -15,6 +15,7 @@ const GENERIC_REAL_MEDIA = new Set([
   'edgeTtsNarrationGeneration.journey.js',
   'editorCueCrudAndHistory.journey.js',
   'editPersistRelaunch.journey.js',
+  'historyAcrossRestart.journey.js',
   'exportAnimationParityMatrix.journey.js',
   'frontendResponsiveness.journey.js',
   'geminiCredentialBoundary.journey.js',

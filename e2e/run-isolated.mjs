@@ -30,6 +30,7 @@ const NON_DEFAULT_JOURNEYS = new Set([
   'geminiMediaBenchmark.journey.js',
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
+  'historyAcrossRestart.journey.js',
   'geminiBackgroundImageSuccess.journey.js',
   'geminiMultiWindowTranscription.journey.js',
   'geminiDocumentSuccess.journey.js',
