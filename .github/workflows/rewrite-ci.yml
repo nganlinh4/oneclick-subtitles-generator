@@ -551,7 +551,27 @@ jobs:
           if (Test-Path -LiteralPath $pickerEvidencePath) {
             throw 'Installed published native-picker evidence path was not clean'
           }
-          ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -ExpectedVersion $expectedVersion -RequireCurrentUpdateChannel -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          # Test code may advance after publication. Authenticate the package against its release
+          # source, not today's harness HEAD; keep every signed source/payload check intact.
+          git fetch --no-tags origin "refs/tags/v${expectedVersion}:refs/tags/v${expectedVersion}"
+          if ($LASTEXITCODE -ne 0) { throw 'Published source tag fetch failed' }
+          $lease = ./scripts/dev-cache.ps1 -Action Lease -Lane staging -LeaseProcessId $PID -OutputFormat Json | ConvertFrom-Json
+          $releaseSource = Join-Path $lease.stagingRoot ("published-source-" + [Guid]::NewGuid().ToString('N'))
+          try {
+            git worktree add --detach $releaseSource "v$expectedVersion"
+            if ($LASTEXITCODE -ne 0) { throw 'Published source checkout failed' }
+            ./scripts/test-installed-windows.ps1 -InstallerPath $installer.FullName -PackageReceiptPath $receipt -RepositoryRoot $releaseSource -ExpectedVersion $expectedVersion -RequireCurrentUpdateChannel -IncludeMediaFlow -LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA -ResultPath $resultPath
+          } finally {
+            try {
+              if (Test-Path -LiteralPath (Join-Path $releaseSource '.git')) {
+                git worktree remove -- $releaseSource
+                if ($LASTEXITCODE -ne 0) { throw 'Published source cleanup failed; worktree retained' }
+              }
+            } finally {
+              ./scripts/dev-cache.ps1 -Action Lease -Lane staging -LeaseOperation Release -LeaseId $lease.leaseId
+              ./scripts/dev-cache.ps1 -Action Prune -Apply -Confirm:$false
+            }
+          }
           if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
             throw 'Installed published smoke omitted its structured result evidence'
           }

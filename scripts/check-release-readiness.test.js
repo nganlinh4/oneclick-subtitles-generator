@@ -3042,6 +3042,19 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     () => assertWorkflowCommands(publishedWithoutStructuredEvidenceCheck),
     /published-installed-smoke must validate and launch the signed immutable release artifact/,
   );
+  for (const sourceContract of [
+    'git worktree add --detach $releaseSource "v$expectedVersion"',
+    '-RepositoryRoot $releaseSource',
+    'git worktree remove -- $releaseSource',
+  ]) {
+    const wrongPublishedSource = replaceInWorkflowJob(
+      workflow, 'windows-published-installed-smoke', sourceContract, '',
+    );
+    assert.throws(
+      () => assertWorkflowCommands(wrongPublishedSource),
+      /published-installed-smoke must validate and launch the signed immutable release artifact/,
+    );
+  }
   const buildLine = '        run: npm run build:frontend:inner\n';
   const frontendBuiltTooLate = transformWorkflowJob(workflow, 'native-matrix', (job) => {
     assert.ok(job.includes(buildLine));

@@ -1035,6 +1035,10 @@ function assertWorkflowCommands(workflow) {
       publishedInstalledSmoke.includes('-Algorithm SHA256') &&
       !publishedInstalledSmoke.includes('--allow-unsigned-branch-build') &&
       publishedInstalledSmoke.includes('./scripts/test-installed-windows.ps1') &&
+      publishedInstalledSmoke.includes('git fetch --no-tags origin "refs/tags/v${expectedVersion}:refs/tags/v${expectedVersion}"') &&
+      publishedInstalledSmoke.includes('git worktree add --detach $releaseSource "v$expectedVersion"') &&
+      publishedInstalledSmoke.includes('-RepositoryRoot $releaseSource') &&
+      publishedInstalledSmoke.includes('git worktree remove -- $releaseSource') &&
       publishedInstalledSmoke.includes('-IncludeMediaFlow') &&
       publishedInstalledSmoke.includes('-LocalMediaPath $env:OSG_INSTALLED_LOCAL_MEDIA') &&
       publishedInstalledSmoke.includes("$resultPath = Join-Path $env:RUNNER_TEMP 'osg-installed-published-result.json'") &&
