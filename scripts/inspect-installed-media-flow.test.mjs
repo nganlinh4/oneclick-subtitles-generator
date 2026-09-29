@@ -11,6 +11,7 @@ import { LOCAL_MEDIA_RESULT_EXPRESSION } from './inspect-installed-local-media-f
 import {
   MEDIA_RESULT_EXPRESSION,
   assertMediaFlowResult,
+  assertFirstMediaDocumentPreserved,
   assertStagedReplacementPreservesActiveMedia,
   collectDownloadJobIds,
   hasMediaFlowStarted,
@@ -26,6 +27,16 @@ import {
 const DOWNLOAD_JOB_A = '019ff572-2140-7ba1-8e9c-5a29894963bf';
 const DOWNLOAD_JOB_B = '019ff572-2141-7ba1-8e9c-5a29894963bf';
 const PRIOR_ASSET_ID = '019ff572-2131-7ba1-9e9c-5a29894963bf';
+
+test('first media attachment retains the durable imported subtitle document', () => {
+  const cacheId = 'subtitle-document:019ff572-2131-7ba1-9e9c-5a29894963bf';
+  const before = { uploadedSrtInfo: { cacheId } };
+  const after = { workspace: { cacheId }, uploadedSrtInfo: { cacheId } };
+  assert.doesNotThrow(() => assertFirstMediaDocumentPreserved(before, after));
+  assert.throws(() => assertFirstMediaDocumentPreserved({ uploadedSrtInfo: { cacheId: null } }, after));
+  assert.throws(() => assertFirstMediaDocumentPreserved(before, { ...after, workspace: { cacheId: 'different' } }));
+  assert.throws(() => assertFirstMediaDocumentPreserved(before, { ...after, uploadedSrtInfo: { cacheId: 'different' } }));
+});
 
 test('executed media probes use native identity and visible playback without legacy storage', async () => {
   const value = validResult();

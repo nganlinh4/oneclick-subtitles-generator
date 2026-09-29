@@ -583,7 +583,9 @@ const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `
     && info && typeof info === 'object' && !Array.isArray(info)
     && Object.keys(info).sort().join(',') === 'cacheId,fileName,v'
     && info.v === 2
-    && info.cacheId === ${JSON.stringify(expectedCacheId)}
+    && (${JSON.stringify(expectedCacheId)} === null
+      ? /^subtitle-document:[0-9a-f-]{36}$/.test(info.cacheId)
+      : info.cacheId === ${JSON.stringify(expectedCacheId)})
     && info.fileName === 'osg-installed-media-smoke.srt'
     && document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
     && startButtons.length === 1
@@ -644,7 +646,9 @@ const START_EXPRESSION = (preferences, expectedCacheId) => `
       || !info || typeof info !== 'object' || Array.isArray(info)
       || Object.keys(info).sort().join(',') !== 'cacheId,fileName,v'
       || info.v !== 2
-      || info.cacheId !== ${JSON.stringify(expectedCacheId)}
+      || (${JSON.stringify(expectedCacheId)} === null
+        ? !/^subtitle-document:[0-9a-f-]{36}$/.test(info.cacheId)
+        : info.cacheId !== ${JSON.stringify(expectedCacheId)})
       || info.fileName !== 'osg-installed-media-smoke.srt'
       || !document.body.innerText.includes(${JSON.stringify(SUBTITLE_MARKER)})
       || buttons.length !== 1 || !(buttons[0] instanceof HTMLButtonElement)
@@ -653,6 +657,15 @@ const START_EXPRESSION = (preferences, expectedCacheId) => `
   buttons[0].click();
   return true;
 })()`;
+
+export function assertFirstMediaDocumentPreserved(before, after) {
+  const documentId = before?.uploadedSrtInfo?.cacheId;
+  invariant(typeof documentId === 'string' && /^subtitle-document:[0-9a-f-]{36}$/.test(documentId),
+    'First media attachment must start from a durable subtitle document');
+  invariant(after?.workspace?.cacheId === documentId
+    && after?.uploadedSrtInfo?.cacheId === documentId,
+  'First media attachment replaced the imported subtitle document');
+}
 
 export const MEDIA_RESULT_EXPRESSION = `
 (async () => {
@@ -816,6 +829,7 @@ async function runInstalledMediaFlow(options) {
       { failureCode: 'terminal-state-timeout' },
     );
     assertMediaFlowState(state, flowGuard);
+    if (options.priorAssetId === null) assertFirstMediaDocumentPreserved(baselineState, state);
     const result = {
       ...state,
       playbackBytes: await readPlaybackCapability(state.currentFileUrl),

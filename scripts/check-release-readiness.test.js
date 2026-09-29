@@ -1534,8 +1534,8 @@ test('installed URL media flow preserves A while staging B and commits only nati
         INSTALLED_MEDIA_FLOW_INSPECTOR,
         'const SRT_READY_EXPRESSION = (preferences, expectedCacheId) => `',
         'const START_EXPRESSION = (preferences, expectedCacheId) => `',
-        '    && info.cacheId === ${JSON.stringify(expectedCacheId)}',
-        '    && info.cacheId === null',
+        '      : info.cacheId === ${JSON.stringify(expectedCacheId)})',
+        '      : true)',
       ),
     ],
     [
@@ -1544,8 +1544,8 @@ test('installed URL media flow preserves A while staging B and commits only nati
         INSTALLED_MEDIA_FLOW_INSPECTOR,
         'const START_EXPRESSION = (preferences, expectedCacheId) => `',
         'export const MEDIA_RESULT_EXPRESSION = `',
-        '      || info.cacheId !== ${JSON.stringify(expectedCacheId)}',
-        '      || false',
+        '        : info.cacheId !== ${JSON.stringify(expectedCacheId)})',
+        '        : false)',
       ),
     ],
     [
