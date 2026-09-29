@@ -13,7 +13,28 @@ import {
   parseArguments,
   sanitizeEditorError,
   waitForValue,
+  waitForDocumentReload,
 } from './inspect-installed-editor-flow.mjs';
+
+test('reload cannot accept the old complete page or click its obsolete controls', async () => {
+  const loaders = ['old', 'old', 'old', 'new', 'new'];
+  const readiness = ['loading', 'complete'];
+  let queries = 0;
+  let reloaded = false;
+  await waitForDocumentReload({ send: async (method) => {
+    if (method === 'Page.getFrameTree') {
+      return { frameTree: { frame: { loaderId: loaders.shift() } } };
+    }
+    if (method === 'Page.reload') { reloaded = true; return {}; }
+    assert.equal(method, 'Runtime.evaluate');
+    assert.equal(reloaded, true);
+    assert.ok(loaders.length <= 1, 'never accept readyState from the old document');
+    queries += 1;
+    return { result: { value: readiness.shift() } };
+  } }, { delay: async () => {} });
+  assert.equal(queries, 2);
+  assert.equal(loaders.length, 0);
+});
 
 test('executed history probe resolves the native workspace and typed alias store, not retired settings', async () => {
   const id = '019ff572-2132-7ba1-9e9c-5a29894963bf';

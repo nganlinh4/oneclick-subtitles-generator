@@ -296,12 +296,31 @@ const waitForNativeHistory = (client, expected) => waitForValue(
   { stage: `durable-${expected.text === ORIGINAL_TEXT ? 'original' : 'edited'}` },
 );
 
-const reloadAndWait = async (client, expected, nativeExpected) => {
+export const waitForDocumentReload = async (client, waitOptions = {}) => {
+  const before = await client.send('Page.getFrameTree');
+  const previousLoader = before.frameTree?.frame?.loaderId;
+  invariant(typeof previousLoader === 'string' && previousLoader.length > 0,
+    'Installed editor reload requires a document identity');
   await client.send('Page.reload', { ignoreCache: true });
+  // Page.reload acknowledges the request, not completion. The old document can still be
+  // "complete" and expose valid controls; clicking those races its pending destruction.
   await waitForValue(
-    () => evaluate(client, 'document.readyState'),
-    (value) => value === 'complete',
+    async () => {
+      const current = await client.send('Page.getFrameTree');
+      const loader = current.frameTree?.frame?.loaderId;
+      if (typeof loader !== 'string' || !loader || loader === previousLoader) return false;
+      const result = await client.send('Runtime.evaluate', {
+        expression: 'document.readyState', returnByValue: true,
+      });
+      return !result.exceptionDetails && result.result?.value === 'complete';
+    },
+    (value) => value === true,
+    { ...waitOptions, stage: 'new-document-complete' },
   );
+};
+
+const reloadAndWait = async (client, expected, nativeExpected) => {
+  await waitForDocumentReload(client);
   await waitForNativeHistory(client, nativeExpected);
   return waitForSnapshot(client, expected);
 };
