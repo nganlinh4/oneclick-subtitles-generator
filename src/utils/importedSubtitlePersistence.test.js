@@ -23,16 +23,31 @@ describe('imported subtitle persistence', () => {
     expect(save).toHaveBeenCalledWith('asset-a', rows, { expectedProjectId: 'project-a' });
   });
 
-  it('defers when a URL has no active media project yet', async () => {
-    const save = vi.fn();
+  it('creates and binds a durable document without requiring media', async () => {
+    let cacheId = null;
+    const save = vi.fn(async () => ({ success: true, cacheId, projectId: 'document-project', subtitleCount: 1 }));
     const persist = createImportedSubtitlePersistence({
       desktop: () => true,
-      readCacheId: () => null,
-      resolveProject: vi.fn(),
+      readCacheId: () => cacheId,
+      resolveProject: async () => ({ projectId: 'document-project' }),
+      newDocumentId: () => 'subtitle-document:unique',
+      activateBinding: async (id) => { cacheId = id; },
       save,
     });
 
-    await expect(persist(rows)).resolves.toEqual({ status: 'deferred' });
+    await expect(persist(rows)).resolves.toMatchObject({ cacheId: 'subtitle-document:unique', projectId: 'document-project' });
+    expect(save).toHaveBeenCalledWith('subtitle-document:unique', rows, { expectedProjectId: 'document-project' });
+  });
+
+  it('refuses publication when document binding loses to a media selection', async () => {
+    let cacheId = null;
+    const save = vi.fn();
+    const persist = createImportedSubtitlePersistence({
+      desktop: () => true, readCacheId: () => cacheId, save,
+      newDocumentId: () => 'subtitle-document:unique',
+      activateBinding: async () => { cacheId = 'new-media'; },
+    });
+    await expect(persist(rows)).rejects.toMatchObject({ code: 'projectScopeMismatch' });
     expect(save).not.toHaveBeenCalled();
   });
 

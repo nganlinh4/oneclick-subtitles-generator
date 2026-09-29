@@ -158,7 +158,7 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     // what makes it reopenable after a restart; without it the asset is unowned forever.
     const ownership = await ensureProjectOwnsNativeMedia({ media, cacheId: media.assetId });
     if (!isCurrent()) return;
-    await activateSubtitleProjectBinding(media.assetId, {
+    await activateSubtitleProjectBinding(ownership.cacheId, {
       expectedProjectId: ownership.projectId,
       create: false,
     });

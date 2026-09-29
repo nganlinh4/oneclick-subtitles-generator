@@ -17,6 +17,7 @@ import {
   isSubtitleProjectBindingReceipt,
 } from '../platform/subtitleProjectBinding';
 import { forgetBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
+import { restoreSubtitleDocument } from '../platform/subtitleDocumentProject';
 
 /**
  * Restore the media a previous run left active.
@@ -195,7 +196,7 @@ export const applyNativeMediaSession = ({
     });
 };
 
-export const useNativeMediaSessionHydration = ({ setUploadedFile }) => {
+export const useNativeMediaSessionHydration = ({ setUploadedFile, setIsSrtOnlyMode }) => {
   useEffect(() => {
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeMediaSessionHydrator({
@@ -208,7 +209,15 @@ export const useNativeMediaSessionHydration = ({ setUploadedFile }) => {
         validateOwnership,
       }),
     });
-    void hydrator.hydrate();
-    return () => hydrator.dispose();
-  }, [setUploadedFile]);
+    let disposed = false;
+    void (async () => {
+      const restored = await restoreSubtitleDocument({ isCurrent: () => !disposed });
+      if (disposed) return;
+      if (restored) setIsSrtOnlyMode?.(true);
+      else await hydrator.hydrate();
+    })().catch(() => {
+      if (!disposed) window.addToast?.('The saved subtitle project could not be restored.', 'error');
+    });
+    return () => { disposed = true; hydrator.dispose(); };
+  }, [setUploadedFile, setIsSrtOnlyMode]);
 };

@@ -135,7 +135,7 @@ export const useAppState = () => {
     retryingSegments
   } = useSubtitles(t);
 
-  useNativeMediaSessionHydration({ setUploadedFile });
+  useNativeMediaSessionHydration({ setUploadedFile, setIsSrtOnlyMode });
 
   // Initialize default values for settings
   useEffect(() => {

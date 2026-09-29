@@ -7,6 +7,7 @@ import {
   resolveProjectForCache,
 } from './subtitleProjectStore';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
+import { resolveProjectForMedia } from './subtitleDocumentProject';
 
 /**
  * Durable association between the media the app is showing and the subtitle project that owns it.
@@ -299,7 +300,7 @@ export const ensureProjectOwnsNativeMedia = async ({
   cacheId,
   expectedProjectId = null,
 }, {
-  resolveProject = resolveProjectForCache,
+  resolveProject = resolveProjectForMedia,
   mutate = mutateProject,
   rememberSession = persistNativeMediaSession,
   beginIntent = async () => invokeDesktop('active_workspace_begin', {}),
@@ -316,6 +317,8 @@ export const ensureProjectOwnsNativeMedia = async ({
   }
 
   const resolved = await resolveProject(cacheId, { create: true });
+  // The first attached media inherits a standalone document's existing identity.
+  if (resolveProject === resolveProjectForMedia) cacheId = resolved?.cacheId;
   if (!isUuidV7(resolved?.projectId)
       || (expectedProjectId !== null && resolved.projectId !== expectedProjectId)
       || !Array.isArray(resolved.snapshot?.media)) {

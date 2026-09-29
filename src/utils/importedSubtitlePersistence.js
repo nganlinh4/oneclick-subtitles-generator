@@ -1,6 +1,9 @@
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { resolveProjectForCache } from '../platform/subtitleProjectStore';
-import { awaitSubtitleProjectBindingSettled } from '../platform/subtitleProjectBinding';
+import {
+  activateSubtitleProjectBinding,
+  awaitSubtitleProjectBindingSettled,
+} from '../platform/subtitleProjectBinding';
 import {
   requireSuccessfulSubtitleCacheSave,
   saveSubtitlesToCache,
@@ -20,6 +23,8 @@ export const createImportedSubtitlePersistence = ({
   resolveProject = resolveProjectForCache,
   save = saveSubtitlesToCache,
   awaitBinding = awaitSubtitleProjectBindingSettled,
+  activateBinding = activateSubtitleProjectBinding,
+  newDocumentId = () => `subtitle-document:${crypto.randomUUID()}`,
 } = {}) => async (subtitles) => {
   if (!desktop()) return Object.freeze({ status: 'deferred' });
   if (!Array.isArray(subtitles) || subtitles.length === 0) throw scopeFailure();
@@ -31,11 +36,14 @@ export const createImportedSubtitlePersistence = ({
   // produces, instead of racing a snapshot of a cache ID that is still in motion.
   await awaitBinding();
 
-  const cacheId = readCacheId();
-  // A URL may accept subtitles before its media has been downloaded and activated. There is no
-  // project to own them yet; the download path calls the same import handler again after activation.
-  if (typeof cacheId !== 'string' || cacheId.length === 0) {
-    return Object.freeze({ status: 'deferred' });
+  let cacheId = readCacheId();
+  if (cacheId === null) {
+    // A subtitle document is a project in its own right. Bind through the same transactional
+    // authority as media instead of leaving rows in React until a video happens to arrive.
+    const documentId = newDocumentId();
+    await activateBinding(documentId, { create: true });
+    cacheId = readCacheId();
+    if (cacheId !== documentId) throw scopeFailure();
   }
 
   const resolved = await resolveProject(cacheId, { create: false });
