@@ -1,5 +1,38 @@
 # OSG Windows 1.0 release validation
 
+## OSG 1.0.2 — September 30, 2026
+
+- Published [OSG 1.0.2](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.2)
+  as Latest with owner authorization. Its only application asset is
+  `OSG-1.0.2-windows-x64-setup.exe` (7,414,199 bytes), SHA-256
+  `30f99fcd18c3444f2a46c01c3844321ab12ec323cc98e4b362b3d59381ac61e6`.
+- Exact installer source: `26f67976f1238f55d7277ecc0c5a8eb5b5b3772c`.
+  Gemini credential mutations now publish confirmed native state independently of preference
+  persistence; uncertain writes reconcile without replaying secret-bearing mutations. The
+  existing Add action saves immediately, with explicit confirmation and actionable errors.
+- [Installed candidate verification](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/36667947081)
+  passed on the exact released bytes: installation, import/download, tool lifecycle, native
+  media preparation, edit/undo/redo, both document reloads, relaunch, uninstall/reinstall, and
+  preserved profile. The signed receipt matches the clean source commit/tree and payload.
+  The reviewed editor screenshot shows the edited subtitle composited on the fixture video.
+- [Signed updater verification](https://github.com/nganlinh4/oneclick-subtitles-generator/actions/runs/36667949994)
+  passed isolated 1.0.2 → test-only 1.0.3 download/install, relaunch, preserved project and
+  subsequent `current` checks. This is a fixture lifecycle test, not a claim that the public
+  1.0.1 → 1.0.2 path was installed locally. No 1.0.3 release was published.
+- The installer and all five immutable support files on `osg-runtime-bundles-v1` were read
+  back over public HTTPS byte-for-byte. Only then was the live feed promoted, in commit
+  `1bada651f41b0a5e9f2fde413de9f1bfe751fe34`. The configured public feed returned HTTP 200,
+  version 1.0.2, and exact manifest bytes, SHA-256
+  `fe8e6d02356be623d363b008e3502abc307055a4bf11521e6fc40c8ab5d9234c`.
+- All 3,112 frontend tests passed, plus lint, locale coverage, visual baseline, versions,
+  compile readiness and remote managed-delivery verification. Hosted Windows workspace tests
+  still fail the two known export cases at `D3d11Device` / `0x887A0004`; all three desktop GPU
+  export tests passed locally on this source. This is not an all-platform/full-matrix pass.
+  The installer is updater-signed, not Authenticode-signed.
+- Retained installers, signatures, receipts and installed/updater screenshots are in the
+  owned evidence lane `%LOCALAPPDATA%\OSG-Development\cache\evidence\release-1.0.2`.
+  No normal user profile was installed over or changed by release testing.
+
 ## OSG 1.0.1 — September 29, 2026
 
 - Published [OSG 1.0.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.1)

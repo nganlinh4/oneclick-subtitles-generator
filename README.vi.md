@@ -5,7 +5,7 @@
 Tạo phụ đề, chỉnh thời gian, dịch và xuất video có phụ đề.
 Ứng dụng Windows với trình chỉnh sửa timeline, công cụ thuyết minh và bộ render video bằng Rust.
 
-**[Tải OSG 1.0.1 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.1/OSG-1.0.1-windows-x64-setup.exe)** · [Bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.1) · [Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues)
+**[Tải OSG 1.0.2 cho Windows x64](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v1.0.2/OSG-1.0.2-windows-x64-setup.exe)** · [Bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v1.0.2) · [Báo lỗi](https://github.com/nganlinh4/oneclick-subtitles-generator/issues)
 
 ![Trình chỉnh sửa OSG với video, timeline và nội dung phụ đề](docs/images/readme/editor.png)
 
