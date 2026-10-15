@@ -53,15 +53,11 @@ npm run check:fixture-integrity
 npm run test:gemini-catalog
 npm run test:frontend-env
 npm run test:python-workers
-npm run test:frozen-css
 npm run test:production-transport
 npm run check:versions
 npm run test:version-consistency
 npm run check:tauri-contract
-npm run check:visual-freeze
-npm run test:visual-contract
 npm run build:frontend
-npm run check:frozen-css-output
 npm run check:production-transport
 node scripts/check-release-readiness.js --profile compile
 cargo fmt --all -- --check

@@ -43,7 +43,7 @@ application. Read [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md)
 - Never interpolate user input into a shell or generated source. Native workers use fixed programs,
   closed arguments, allowlisted environments, and private framed stdin/stdout.
 - Keep ordinary output quiet and actionable. Private content and credentials never belong in logs.
-- Run the applicable commands in [README.md](README.md#verification), including visual, command
+- Run the applicable commands in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#verification), including command
   contract, frontend, Rust, and readiness gates.
 
 Use conventional commit messages. Never commit or push without explicit user approval for the

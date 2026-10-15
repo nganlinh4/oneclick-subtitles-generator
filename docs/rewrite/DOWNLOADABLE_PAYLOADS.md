@@ -108,8 +108,8 @@ Release CI runs `check-desktop-payload-size.mjs`. It reports the executable, fro
 and every embedded file over 256 KiB; caps the compiled frontend at 30 MiB, the measured Windows
 executable at 16 MiB, and unmeasured Linux/macOS executables at 48 MiB; and fails if a native
 executable, interpreter, model, Chromium/Node payload, or unreviewed
-Tauri resource appears. The retired 30-voice static set remains hash-recorded by the visual contract,
-while the working feature is exercised through the verified package flow. A size decrease is accepted
+Tauri resource appears. The retired 30-voice static set is no longer shipped; the working
+feature is exercised through the verified package flow. A size decrease is accepted
 only when the corresponding feature remains reachable through a verified package flow.
 
 The Rust desktop shell itself uses one codegen unit, full LTO, `opt-level = "z"`, aborting panics, and

@@ -3078,15 +3078,6 @@ test('workflow is unsigned, read-only, credentialless, and locked', () => {
     )),
     /(?:required locked gate.*tauri\.js bundle|explicit pinned Tauri)/u,
   );
-  for (const gate of [
-    'node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs',
-    'node scripts/check-frozen-css-output.mjs',
-  ]) {
-    assert.throws(
-      () => assertWorkflowCommands(weaken(workflow, gate, 'gate intentionally removed')),
-      /workflow is missing required locked gate/,
-    );
-  }
   const nativeWithoutFrontendBuild = transformWorkflowJob(
     workflow,
     'native-matrix',

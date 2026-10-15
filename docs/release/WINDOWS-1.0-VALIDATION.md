@@ -236,7 +236,7 @@ migration. Automatic signed updates begin with the OSG Windows 1.x release line.
 - [ ] Exact pinned Node/npm/Python/Rust/Tauri toolchains.
 - [ ] Clean `npm ci` for root and desktop manifests; production dependency audit has zero findings.
 - [ ] Full ESLint, Vitest, Python worker contracts, Rust format, strict Clippy, workspace tests.
-- [ ] Visual freeze, frozen compiled CSS, i18n, model catalog, native-only production transport.
+- [ ] i18n, model catalog, native-only production transport.
 - [ ] Tauri handler/build/ACL/reachability contract.
 - [ ] Managed-delivery checkpoint and remote read-back for every referenced pool asset.
 - [ ] Windows runtime-package readiness and installer extraction/architecture/resource/signature

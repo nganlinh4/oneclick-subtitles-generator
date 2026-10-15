@@ -156,11 +156,10 @@ the operating-system UI font stack and packages no separate font payload.
 ## Visual compatibility
 
 The rewrite deliberately reuses the original JSX, CSS, fonts, assets, locales, and workflow order.
-Native capability adapters sit behind existing interactions. Repository gates compare the frontend,
-PromptDJ, and render surfaces with baselines derived from the original source so an architectural
-change cannot silently become a redesign.
+Native capability adapters sit behind existing interactions, so an architectural change does not
+become a redesign. Intentional visual work follows the Material 3 Expressive component policy.
 
-See [docs/rewrite/DESIGN.md](docs/rewrite/DESIGN.md) for the visual-freeze policy.
+See [docs/rewrite/DESIGN.md](docs/rewrite/DESIGN.md) for the UI design policy.
 
 ## Legacy import
 
@@ -168,7 +167,7 @@ Migration is explicit and user-selected. The importer reads a bounded `localStor
 known legacy artifact directories, rejects links/reparse points and source changes, and records a
 content fingerprint so retries are idempotent.
 
-The visual-freeze policy leaves the original settings surface unchanged. In the desktop app, press
+The legacy import has no settings-surface entry. In the desktop app, press
 `Ctrl+Alt+Shift+I` on Windows/Linux or `Command+Option+Shift+I` on macOS to open the native legacy
 data-folder picker. Browser-only builds do not install this action. Selection/import status and the
 path-free result are reported through the existing toast panel; imported settings take effect after

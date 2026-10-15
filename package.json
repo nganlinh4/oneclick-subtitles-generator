@@ -43,7 +43,6 @@
     "cache:prune:apply": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Prune -ProtectUnit apps-e2e -Apply -Confirm:$false",
     "test:dev-cache": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.test.ps1 && node --test scripts/managed-build-context.test.js scripts/run-frontend-command.test.js scripts/run-managed-command.test.js scripts/run-tauri-cli.test.js scripts/windows-job-supervisor.test.js scripts/windows-process-identity.test.js scripts/frontend-config-guard.test.mjs scripts/managed-frontend-output.test.mjs",
     "test:installed-local": "pwsh -NoProfile -NonInteractive -File scripts/test-installed-local.test.ps1",
-    "test:frozen-css": "node --test scripts/frozen-css-compatibility.test.mjs scripts/check-frozen-css-output.test.mjs",
     "test:render-parity": "node --test scripts/render-parity-fixture.test.mjs",
     "test:parity-matrix": "node --test scripts/parity-matrix.test.mjs",
     "test:production-transport": "node --test scripts/check-production-transport.test.js scripts/frontend-bundle-boundary.test.mjs",
@@ -59,18 +58,14 @@
     "test:managed-delivery": "python -I -B scripts/check-managed-delivery-contract.test.py -v && python -I -B scripts/build-provider-speech-runtime.test.py -v",
     "check:versions": "node scripts/check-version-consistency.js",
     "check:tauri-contract": "node scripts/check-tauri-command-contract.js",
-    "check:frozen-css-output": "node scripts/run-frontend-command.js --lane dev -- node scripts/check-frozen-css-output.mjs",
     "check:desktop-payload-size": "node scripts/check-desktop-payload-size.mjs",
     "check:installer-payload": "node scripts/inspect-installer-payload.mjs",
     "check:production-transport": "node scripts/check-production-transport.js",
     "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
-    "check:visual-freeze": "node scripts/check-visual-freeze.js && npm run --workspace=promptdj-midi check:visual-contract",
-    "test:visual-contract": "node --test scripts/check-visual-freeze.test.js promptdj-midi/scripts/check-visual-contract.test.mjs",
     "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
     "test:installer-payload": "node --test scripts/inspect-installer-payload.test.mjs scripts/installer-payload-residue-rules.test.mjs scripts/installer-payload-extract.test.mjs scripts/read-windows-executable-metadata.test.mjs",
     "test:installed-inspector-contracts": "node --test scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs",
-    "test:updater-fixture": "node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs",
-    "update:visual-freeze": "node scripts/check-visual-freeze.js --update --baseline-ref HEAD && npm run --workspace=promptdj-midi update:visual-contract"
+    "test:updater-fixture": "node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs"
   },
   "dependencies": {
     "@material/web": "2.4.1",

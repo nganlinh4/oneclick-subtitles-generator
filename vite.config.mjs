@@ -3,7 +3,6 @@ import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import managedBuildContext from './scripts/managed-build-context.js';
 import { defineConfig, loadEnv, transformWithOxc } from 'vite';
 
-import { createFrozenCssCompatibilityPlugin } from './scripts/frozen-css-compatibility.mjs';
 import { createDevFreshnessPlugin } from './scripts/vite-dev-freshness.mjs';
 import {
   FRONTEND_CHUNK_WARNING_LIMIT_KB,
@@ -279,7 +278,7 @@ export default defineConfig(({ mode }) => {
   cacheDir: externalFrontendInputs?.cacheDir,
   build: {
     chunkSizeWarningLimit: FRONTEND_CHUNK_WARNING_LIMIT_KB,
-    // Preserve CRA's handling of the frozen legacy transition grammar while the CSS is ported.
+    // esbuild keeps CRA's handling of the legacy transition grammar in existing stylesheets.
     cssMinify: 'esbuild',
     outDir: managedFrontendInputs?.frontendOutDir ?? 'build',
     // These directories are validated, exclusively leased generated outputs. Vite does not
@@ -288,7 +287,7 @@ export default defineConfig(({ mode }) => {
     rolldownOptions: {
       onLog: handleFrontendBuildLog,
       output: {
-        // Keep stable third-party code cacheable without reordering or splitting frozen CSS.
+        // Keep stable third-party code cacheable without reordering or splitting CSS.
         codeSplitting: createFrontendCodeSplitting(),
       },
     },
@@ -313,7 +312,6 @@ export default defineConfig(({ mode }) => {
   plugins: [
     createDevFreshnessPlugin(),
     immutableE2eVersionMetadata(),
-    createFrozenCssCompatibilityPlugin(),
     ...(mode === 'production'
       ? [productionDesktopModules(), foldProductionDesktopBranches()]
       : []),

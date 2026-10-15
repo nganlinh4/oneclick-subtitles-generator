@@ -1,5 +1,18 @@
 /* Material Symbols Rounded - centralized tuning (modifiable in one place) */
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,GRAD@24,600,0&display=block');
+/* Other Google Fonts that are not bundled locally (incl. Vietnamese faces) */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans:wght@400;500;700&family=Noto+Serif:wght@400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Gothic+Coding&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=Montserrat+Alternates:wght@400;500;600&family=Sarabun:wght@400;500;600&family=Josefin+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Vietnamese:wght@400;500;600&display=swap');
+@import url('./material-tokens.css');
+@import url('./components/custom-slider.css');
+@import url('./album-art-fix.css');
+@import url('./floating-scrollbar.css');
+@import url('./font-overrides.css');
+@import url('./components/LiquidGlass.css');
+@import url('./components/form-controls.css');
 
 :root {
   /* Material Symbols tuning (change these values to retune all icons) */
@@ -23,22 +36,6 @@
 }
 /* Avoid showing ligature text before Material Symbols font is ready */
 html:not(.ms-font-ready) .material-symbols-rounded { visibility: hidden; }
-
-/* Keep other Google Fonts that we don't have locally */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Sans:wght@400;500;700&family=Noto+Serif:wght@400;700&family=Nanum+Gothic:wght@400;700;800&family=Nanum+Gothic+Coding&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Dodum&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');
-/* Vietnamese fonts (except Be Vietnam Pro which is replaced by Google Sans) */
-@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=Montserrat+Alternates:wght@400;500;600&family=Sarabun:wght@400;500;600&family=Josefin+Sans:wght@400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Vietnamese:wght@400;500;600&display=swap');
-@import url('./material-tokens.css');
-@import url('./components/custom-slider.css');
-@import url('./album-art-fix.css');
-@import url('./floating-scrollbar.css');
-@import url('./font-overrides.css');
-@import url('./components/LiquidGlass.css');
-
-@import url('./components/form-controls.css');
 
 /* index.css - Global styles for the application */
 
@@ -342,5 +339,3 @@ input, select, textarea {
   animation: slideInUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
 }
 /* Status messages removed - now using centralized toast component */
-
-
