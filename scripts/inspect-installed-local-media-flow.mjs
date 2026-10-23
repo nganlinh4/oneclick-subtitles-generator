@@ -207,6 +207,21 @@ function assertLocalMediaState(value, expectedFileName, priorAssetId) {
   return value;
 }
 
+async function captureScreenshot(client, destination) {
+  const capture = await client.send('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  invariant(typeof capture.data === 'string', 'Installed local-media screenshot was empty');
+  const bytes = Buffer.from(capture.data, 'base64');
+  invariant(bytes.length > 10_000 && bytes.subarray(0, 8).equals(
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'Installed local-media screenshot is not a PNG');
+  fs.writeFileSync(destination, bytes, { flag: 'wx' });
+  return bytes;
+}
+
 export async function waitForValue(read, accept, {
   timeoutMs = DEFAULT_TIMEOUT_MS,
   delay = () => new Promise((resolve) => setTimeout(resolve, 250)),
@@ -422,34 +437,32 @@ async function runInstalledLocalMediaFlow(options) {
     invariant(await evaluate(client, CLICK_PICKER_EXPRESSION) === true,
       'Installed local-media flow could not open the native picker');
     writePickerPhase(options.phaseDirectory, 'click-issued');
-    const state = await waitForValue(
-      () => evaluate(client, LOCAL_MEDIA_RESULT_EXPRESSION),
-      (value) => {
-        try {
-          assertLocalMediaState(value, options.expectedFileName, options.priorAssetId);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-    );
-    assertLocalMediaState(state, options.expectedFileName, options.priorAssetId);
-    const result = {
-      ...state,
-      playbackBytes: await readPlaybackCapability(state.currentFileUrl),
-    };
-    assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId);
-    const capture = await client.send('Page.captureScreenshot', {
-      format: 'png',
-      captureBeyondViewport: false,
-      fromSurface: true,
-    });
-    invariant(typeof capture.data === 'string', 'Installed local-media screenshot was empty');
-    const bytes = Buffer.from(capture.data, 'base64');
-    invariant(bytes.length > 10_000 && bytes.subarray(0, 8).equals(
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-    'Installed local-media screenshot is not a PNG');
-    fs.writeFileSync(options.screenshot, bytes, { flag: 'wx' });
+    let result;
+    try {
+      const state = await waitForValue(
+        () => evaluate(client, LOCAL_MEDIA_RESULT_EXPRESSION),
+        (value) => {
+          try {
+            assertLocalMediaState(value, options.expectedFileName, options.priorAssetId);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      );
+      assertLocalMediaState(state, options.expectedFileName, options.priorAssetId);
+      result = {
+        ...state,
+        playbackBytes: await readPlaybackCapability(state.currentFileUrl),
+      };
+      assertLocalMediaResult(result, options.expectedFileName, options.priorAssetId);
+    } catch (error) {
+      // The reason stays private; the window screenshot (already an uploaded artifact on success)
+      // is the failure evidence.
+      await captureScreenshot(client, options.screenshot).catch(() => {});
+      throw error;
+    }
+    const bytes = await captureScreenshot(client, options.screenshot);
     return {
       assetId: result.assetId,
       displayedFileName: result.displayedFileName,
