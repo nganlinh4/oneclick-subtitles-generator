@@ -26,6 +26,20 @@ WebView. Windows x64 is the shipped target. Read [ARCHITECTURE.md](ARCHITECTURE.
   [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#verification) before committing.
 - Remove a check or rule that only pins old source text or blocks without protecting anything.
 
+## Simple and fast
+
+- Prefer deleting to adding. Build the smallest design that works: no speculative options, flags,
+  abstraction layers, or compatibility shims without a named current consumer.
+- Time every long build, test suite, journey, and CI job, and report the time with the result.
+  Treat the slowest item and any regression as a bug: find the bottleneck and fix it, or record why
+  it can't be fixed yet. A change that makes a gate slower needs a stated reason.
+- Fewer, broader tests. One e2e journey per user workflow, covering it end to end. Extend the
+  existing journey instead of adding one that re-proves the same ground, and merge journeys that
+  overlap. Unit tests own edge cases; journeys own integration.
+- Tests wait on conditions, never fixed sleeps. Expensive fixtures (media, tools, models) are
+  prepared once and reused.
+- Tests prove behaviour, not source text. Every gate must protect a real outcome.
+
 ## Builds and disk
 
 - Use the managed commands (`npm run cargo:*`, `npm run tauri:dev`, the managed build/E2E
