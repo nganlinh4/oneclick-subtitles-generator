@@ -2777,14 +2777,7 @@ function Inspect-InstalledLocalMediaFlow {
       throw 'Installed local-media inspector stderr was not regular and bounded'
     }
     if ($inspection.ExitCode -ne 0) {
-      # The inspector writes one sanitized reason; surface it only when it is plain bounded text.
-      $reason = @(Get-Content -LiteralPath $stderr -TotalCount 1 -ErrorAction SilentlyContinue)[0]
-      $detail = if ($reason -and $reason.Length -le 300 -and $reason -cmatch "^[A-Za-z0-9 .,'()/_-]+$") {
-        ": $reason"
-      } else {
-        ''
-      }
-      throw "Installed local-media inspection failed after the native picker click$detail"
+      throw 'Installed local-media inspection failed after the native picker click'
     }
     if ($output.Count -ne 1 -or $stderrState -cne 'empty') {
       throw 'Installed local-media inspection returned an unexpected output shape'
