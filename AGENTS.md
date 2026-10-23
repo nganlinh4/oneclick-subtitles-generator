@@ -1,41 +1,50 @@
-# Workspace Agent Guidance
+# Agent guidance
 
-## Development storage and cleanup
+One-Click Subtitles Generator (OSG) is a local-first Tauri 2 / Rust desktop app with a React
+WebView. Windows x64 is the shipped target. Read [ARCHITECTURE.md](ARCHITECTURE.md) and
+[SECURITY.md](SECURITY.md) before changing a runtime boundary.
 
-- Keep disposable OSG builds, test profiles, downloaded test media, toolchains and temporary
-  worktrees inside the owned managed development cache (`%LOCALAPPDATA%\OSG-Development\cache`,
-  or the configured `OSG_DEV_CACHE_ROOT`). Use its existing lane/lease/ownership APIs; do not
-  create unmanaged directories inside it or bypass its ownership checks.
-- Never create sibling clones, test folders or caches under `C:\WORK`. Use managed staging for
-  temporary worktrees and remove them with `git worktree remove` when their task finishes.
-- Use the repository's managed build commands (`npm run cargo:check`, `npm run cargo:test`,
-  `npm run cargo:clippy`, `npm run tauri:dev` and the managed E2E/package scripts). Do not run
-  bare Cargo builds/tests that recreate repository-local `target` directories.
-- The default 28 GiB / 14 inactive-day policy covers only the managed cache, not the whole
-  workspace. Check both managed-cache usage and unmanaged outputs before and after substantial
-  build/test work. Run the existing cache prune command after releasing task-owned leases;
-  report protected/in-use over-budget data rather than bypassing protections.
-- Tests must use unique temporary directories and clean them in teardown, including failures;
-  never use a fixed sibling directory such as `managed-command-test-cache`.
-- Before cleanup, resolve exact paths, check process usage and Git tracked/untracked changes,
-  and distinguish disposable outputs from source changes, credentials and user media. Never
-  force-remove dirty worktrees, follow directory junctions during deletion, or delete other
-  projects. Preserve unique work and report anything intentionally retained.
-- At handoff, report leftover temporary directories and why they remain. Do not leave orphan
-  worktrees or silently expand the storage budget.
+## Boundaries
 
-## Launching the debug application
+- The React frontend (`src/`) is the visual source of truth. Don't restyle it during other work;
+  visual changes are small and previewed with the owner first.
+- Rust owns projects, jobs, settings, credentials, files, provider traffic, media, downloads,
+  rendering, and worker supervision. The WebView calls typed commands with opaque IDs only:
+  no native paths, secrets, process arguments, or provider-private URLs cross into it.
+- No browser fallbacks for native operations, and no Electron/Express/fixed-port server stack.
+- Optional tools and models come only from reviewed, content-addressed delivery catalogs. Never
+  fall back to a system executable or an unverified download to make a feature look installed.
+- Never interpolate user input into a shell or generated source. Workers use fixed programs,
+  closed arguments, allowlisted environments, and owned process-tree termination.
+- Logs stay quiet and never carry private content or credentials.
 
-- When the user asks to launch the current debug app, run `npm run tauri:dev` from the repository
-  root. Never launch `target/debug/osg-desktop.exe` directly: that binary loads the configured Vite
-  development URL and displays `ERR_CONNECTION_REFUSED` without the managed dev server.
-- Keep the managed Tauri command alive for as long as the user is testing. Closing its terminal
-  session also closes Vite and invalidates the running WebView.
-- Do not report that the app is running merely because an `osg-desktop` process exists. Verify all
-  three launch receipts first:
-  1. `http://127.0.0.1:3030/` returns HTTP 200.
-  2. The live `osg-desktop` executable comes from the managed development cache.
-  3. The newest application instance records `app.page_load_finished` in `logs/osg.log`.
-- If any receipt is absent, treat the launch as failed and repair it before handing control back.
-- Do not use Windows GUI automation for ordinary development launches or inspection unless the
-  user explicitly authorizes it for that task.
+## Code
+
+- No code file over 600 lines; split along real seams. Prune dead code as you touch an area.
+- One shared helper per job; don't add a parallel implementation.
+- Behaviour changes come with focused tests. Run the gates in
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#verification) before committing.
+- Remove a check or rule that only pins old source text or blocks without protecting anything.
+
+## Builds and disk
+
+- Use the managed commands (`npm run cargo:*`, `npm run tauri:dev`, the managed build/E2E
+  scripts). They keep outputs in the managed cache (`%LOCALAPPDATA%\OSG-Development\cache` or
+  `OSG_DEV_CACHE_ROOT`); don't create caches, clones, or test folders under `C:\WORK`.
+- To launch the debug app, run `npm run tauri:dev` and keep it alive while the owner tests. It is
+  only running once `http://127.0.0.1:3030/` answers and `logs/osg.log` records
+  `app.page_load_finished` for the newest instance.
+- Tests use unique temp directories and clean them up, including on failure.
+- Before deleting anything, resolve exact paths and check for running processes and uncommitted
+  work. Never follow directory junctions while deleting.
+
+## Releases
+
+- Releases are signed; the updater reads the feed on the `app-update-feed` branch.
+  [docs/release/RELEASING.md](docs/release/RELEASING.md) has the steps. NSIS updates are not
+  transactional, so a half-applied update is fixed by reinstalling.
+- The project is MIT; extend `THIRD_PARTY_NOTICES.md` for anything new that ships.
+
+## Git
+
+Conventional commits. Never commit or push without the owner's approval for that change set.

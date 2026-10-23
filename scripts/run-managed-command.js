@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runSupervisedSync } = require('./windows-job-supervisor');
@@ -9,6 +11,36 @@ const { tauriFrontendDistOverride } = require('./managed-build-context.js');
 const CACHE_SCHEMA_VERSION = 1;
 const MANAGED_LANES = new Set(['dev', 'package']);
 const LEASE_PATTERN = /^[0-9a-f]{32}$/u;
+// A prune scans every lane and the process table (about six seconds). Every command prunes after
+// itself, so the one before it only matters when the last command never finished (a killed
+// `tauri:dev`); once per interval is enough for that.
+const PRUNE_INTERVAL_MS = 15 * 60 * 1000;
+
+/** The marker recording this machine's last completed prune of one cache root. */
+const pruneStampPath = (cacheRoot) => {
+  const key = cacheRoot === undefined || cacheRoot === '' ? 'default' : path.resolve(cacheRoot);
+  const digest = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+  return path.join(os.tmpdir(), `osg-dev-cache-prune-${digest}.stamp`);
+};
+
+const prunedRecently = (stampPath, now) => {
+  try {
+    const age = now - fs.statSync(stampPath).mtimeMs;
+    // Absolute: file times can run a few milliseconds ahead of Date.now(), and a clock moved back
+    // must not suppress pruning for longer than one interval.
+    return Math.abs(age) < PRUNE_INTERVAL_MS;
+  } catch {
+    return false;
+  }
+};
+
+const recordPrune = (stampPath) => {
+  try {
+    fs.writeFileSync(stampPath, '');
+  } catch {
+    // The stamp only saves time; without it the next command simply prunes again.
+  }
+};
 
 const isWindowsNamespacePath = (value) => {
   const windows = String(value).replaceAll('/', '\\');
@@ -232,6 +264,8 @@ const runManagedCommand = ({
   processId = process.pid,
   spawn = spawnSync,
   supervise = runSupervisedSync,
+  pruneStamp = pruneStampPath(environment.OSG_DEV_CACHE_ROOT),
+  now = Date.now,
 } = {}) => {
   const invocation = parseArguments(commandLine);
   const repository = path.resolve(repositoryRoot);
@@ -244,7 +278,10 @@ const runManagedCommand = ({
   try {
     // Let an over-cap or inactive copy of this lane be reclaimed before we claim it. Existing
     // processes remain protected by their lease and the manager's authoritative process scan.
-    prune({ repositoryRoot: repository, cacheRoot, lane: invocation.lane, spawn });
+    if (!prunedRecently(pruneStamp, now())) {
+      prune({ repositoryRoot: repository, cacheRoot, lane: invocation.lane, spawn });
+      recordPrune(pruneStamp);
+    }
     lease = acquire({
       repositoryRoot: repository,
       cacheRoot,
@@ -312,6 +349,7 @@ const runManagedCommand = ({
         protectLane: primaryError === undefined,
         spawn,
       });
+      recordPrune(pruneStamp);
     } catch (error) {
       cleanupErrors.push(error);
     }

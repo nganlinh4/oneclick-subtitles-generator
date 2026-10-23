@@ -45,7 +45,7 @@ works offline.
 
 OSG 1.0.0 is the new native application, not an automatic downgrade from legacy 2.x.
 Migration is manual; keep your old data until you have checked the import.
-See the [migration guide](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#data-and-migration).
+See the [migration guide](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#logs-and-data).
 
 The [v2.6.1 release](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
 and its [Windows batch installer](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat)
@@ -72,9 +72,7 @@ npm run tauri:dev
 Use the managed launch command, not the debug executable alone: it starts the development server too.
 
 [Architecture](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/ARCHITECTURE.md) ·
-[Development cache](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DEVELOPMENT_CACHE.md) ·
-[UI design policy](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DESIGN.md) ·
-[Release validation](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/WINDOWS-1.0-VALIDATION.md)
+[Releasing](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/RELEASING.md)
 
 </details>
 
@@ -83,4 +81,4 @@ Use the managed launch command, not the debug executable alone: it starts the de
 OSG is [MIT licensed](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/LICENSE).
 Models, fonts and other dependencies have their own terms:
 [third-party notices](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/THIRD_PARTY_NOTICES.md).
-For security reports, see [SECURITY.md](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md).
+Security model: [SECURITY.md](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md).

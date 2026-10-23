@@ -15,6 +15,9 @@ const repositoryRoot = path.resolve(__dirname, '..');
 const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-managed-command-test-'));
 test.after(() => fs.rmSync(cacheRoot, { recursive: true, force: true }));
 const cargoTargetDir = path.join(cacheRoot, 'cargo', 'dev');
+let stampCount = 0;
+/** A fresh prune marker, so every test starts with no recent prune recorded. */
+const freshStamp = () => path.join(cacheRoot, `prune-${stampCount += 1}.stamp`);
 const leaseId = '2'.repeat(32);
 
 const contract = (lane = 'dev') => JSON.stringify({
@@ -90,6 +93,7 @@ test('managed command leases the external Cargo lane for the complete child life
     processId: 1234,
     spawn,
     supervise,
+    pruneStamp: freshStamp(),
   });
 
   assert.equal(calls.length, 5);
@@ -161,6 +165,7 @@ test('child failure keeps its exit code and still releases and prunes', () => {
       processId: 1234,
       spawn,
       supervise,
+      pruneStamp: freshStamp(),
     }),
     (error) => error.exitCode === 7,
   );
@@ -168,4 +173,35 @@ test('child failure keeps its exit code and still releases and prunes', () => {
   const prunes = calls.filter(({ args }) => args.includes('Prune'));
   assert.equal(prunes.length, 2);
   assert.ok(prunes.every(({ args }) => !args.includes('-ProtectLane')));
+});
+
+test('a recent prune skips the one before the next command but never the one after it', () => {
+  const calls = [];
+  const spawn = (command, args) => {
+    calls.push({ command, args: [...args] });
+    if (command === 'pwsh' && args.includes('Acquire')) {
+      return { status: 0, stdout: contract(), stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+  const supervise = ({ command, args, ...options }) => spawn(command, args, options);
+  const pruneStamp = freshStamp();
+  const run = (now) => runManagedCommand({
+    arguments_: ['--lane', 'dev', '--', 'cargo', 'check'],
+    repositoryRoot,
+    environment: { OSG_DEV_CACHE_ROOT: cacheRoot },
+    processId: 1234,
+    spawn,
+    supervise,
+    pruneStamp,
+    now: () => now,
+  });
+  const prunes = () => calls.filter(({ args }) => args.includes('Prune')).length;
+
+  run(Date.now());
+  assert.equal(prunes(), 2, 'with no record, the command prunes before and after itself');
+  run(Date.now());
+  assert.equal(prunes(), 3, 'a prune a moment ago skips only the one before the command');
+  run(Date.now() + 16 * 60 * 1000);
+  assert.equal(prunes(), 5, 'an old record prunes before the command again');
 });

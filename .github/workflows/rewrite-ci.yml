@@ -106,9 +106,6 @@ jobs:
       - name: Check application versions
         run: node scripts/check-version-consistency.js
 
-      - name: Test the version gate
-        run: node --test scripts/check-version-consistency.test.js
-
       - name: Check Tauri command and capability contract
         run: node scripts/check-tauri-command-contract.js
 
@@ -131,8 +128,11 @@ jobs:
           npm run test:managed-delivery
           npm run verify:managed-delivery
 
-      - name: Test release-readiness and artifact gates
-        run: node --test "scripts/release-readiness/*.test.js" scripts/mutation-testing.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/installer-package-receipt.test.js scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs "scripts/installed-media-flow/*.test.mjs" scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
+      - name: Test release-readiness, updater-feed, payload and artifact gates
+        run: npm run test:gates
+
+      - name: Check committed test fixtures
+        run: npm run check:fixture-integrity
 
   native-matrix:
     name: ${{ matrix.platform }} native build
@@ -242,7 +242,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --features osg-desktop/production --locked --target "${{ matrix.rust-target }}" -- -D warnings
 
       - name: Test Rust workspace
-        run: cargo test --workspace --features osg-desktop/production --locked --target "${{ matrix.rust-target }}"
+        run: cargo test --workspace --features osg-desktop/production --locked --target "${{ matrix.rust-target }}" --no-fail-fast
 
       - name: Check frontend catalogs
         run: |

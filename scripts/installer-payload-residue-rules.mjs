@@ -1,11 +1,9 @@
 /**
  * Forbidden-residue catalog for the built Windows NSIS payload.
  *
- * CLAUDE.md states: "The former Electron, Express, Flask, FastAPI, fixed-port, CORS, and
- * browser-owned process stack has been removed. Do not recreate it or add browser fallbacks for
- * native operations." `ARCHITECTURE.md:25` repeats the same list. This module turns that sentence
- * into exact file/directory fingerprints so a packaged installer can be checked mechanically rather
- * than by re-reading prose.
+ * The former Electron/Express/Flask/FastAPI process stack is gone and must not come back
+ * (AGENTS.md, "Boundaries"). This module turns that rule into exact file/directory fingerprints so a
+ * packaged installer can be checked mechanically rather than by re-reading prose.
  *
  * Every rule below is provenanced in its own comment: either a path this repository's own git
  * history shows was deleted (`git log --diff-filter=D --name-only -- .` on `main`, the pre-rewrite
@@ -57,8 +55,8 @@ const FORBIDDEN_BASENAMES = Object.freeze([
   ['npx.cmd', 'a bundled Node package-runner shim'],
   // --- Python interpreter: `workers/osg_asr_worker.py` and `workers/osg_speech_worker.py` are
   // worker *source* the config declares (`tauri.conf.json` bundle.resources); the interpreter that
-  // runs them is a separate, content-addressed runtime delivery per CLAUDE.md ("Optional tools and
-  // model runtimes come only from reviewed, target-specific, content-addressed delivery catalogs")
+  // runs them is a separate, content-addressed runtime delivery per AGENTS.md ("Optional tools and
+  // models come only from reviewed, content-addressed delivery catalogs")
   // and THIRD_PARTY_NOTICES.md's CPython entry, never something the installer itself carries.
   ['python.exe', 'a bundled CPython interpreter'],
   ['pythonw.exe', 'a bundled CPython interpreter'],

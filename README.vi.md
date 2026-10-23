@@ -43,7 +43,7 @@ không phải mọi chức năng đều chạy ngoại tuyến.
 
 OSG 1.0.0 là ứng dụng native mới, không phải bản tự động hạ cấp từ 2.x.
 Chuyển dữ liệu cần thực hiện thủ công; giữ dữ liệu cũ đến khi đã kiểm tra nhập thành công.
-Xem [hướng dẫn chuyển dữ liệu](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#data-and-migration).
+Xem [hướng dẫn chuyển dữ liệu](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/DEVELOPMENT.md#logs-and-data).
 
 [Bản v2.6.1](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/tag/v2.6.1)
 và [trình cài đặt batch cho Windows](https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/v2.6.1/OSG_installer_Windows.bat)
@@ -70,9 +70,7 @@ npm run tauri:dev
 Dùng lệnh trên thay vì mở riêng executable debug: lệnh này khởi động cả máy chủ phát triển.
 
 [Kiến trúc](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/ARCHITECTURE.md) ·
-[Bộ nhớ đệm phát triển](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DEVELOPMENT_CACHE.md) ·
-[Quy chuẩn giao diện](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/rewrite/DESIGN.md) ·
-[Kiểm tra bản phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/WINDOWS-1.0-VALIDATION.md)
+[Quy trình phát hành](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/docs/release/RELEASING.md)
 
 </details>
 
@@ -81,4 +79,4 @@ Dùng lệnh trên thay vì mở riêng executable debug: lệnh này khởi đ�
 OSG dùng giấy phép [MIT](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/LICENSE).
 Model, font và thư viện có điều khoản riêng:
 [thông báo bên thứ ba](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/THIRD_PARTY_NOTICES.md).
-Thông tin báo cáo bảo mật nằm trong [SECURITY.md](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md).
+Mô hình bảo mật: [SECURITY.md](https://github.com/nganlinh4/oneclick-subtitles-generator/blob/rewrite/tauri-rust/SECURITY.md).

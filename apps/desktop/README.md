@@ -1,80 +1,13 @@
 # Tauri desktop host
 
-This directory is the Tauri 2 composition root. It hosts the canonical frontend from repository
-root `src/` and `public/`; there is no second UI implementation.
+The Tauri 2 composition root. It serves the frontend from the repository root (`src/`, `public/`);
+there is no second UI. The main WebView gets only the permissions listed in
+`src-tauri/capabilities/main.json`.
 
-Rust commands own files, projects, jobs, settings, credentials, provider traffic, media work,
-rendering, and supervised optional workers. The main WebView receives only the explicit custom
-permissions in `src-tauri/capabilities/main.json`.
+Run everything from the repository root through the npm scripts (`npm run tauri:dev`,
+`npm run tauri:build`, `npm run cargo:test`). The scripts in this package refuse to run outside the
+managed build lease. See [docs/DEVELOPMENT.md](../../docs/DEVELOPMENT.md) for setup and checks,
+[ARCHITECTURE.md](../../ARCHITECTURE.md) and [SECURITY.md](../../SECURITY.md) for the boundaries.
 
-## Development
-
-Use the repository-pinned Node.js 24.19.0, npm 11.17.0, Python 3.12.10, Rust 1.97.1,
-and Tauri CLI 2.11.4 toolchains.
-
-From the repository root:
-
-```powershell
-npm ci
-npm --prefix apps/desktop ci
-npm run tauri:dev
-```
-
-Vite is started automatically by Tauri. `npm run dev:vite` is useful for frontend-only inspection,
-but browser mode cannot exercise native commands and is not the product runtime. Public frontend
-and PromptDJ build/dev commands acquire the bounded `dev` lane themselves. Tauri's
-`beforeDevCommand` and `beforeBuildCommand` use guarded inner scripts under the lease Tauri already
-holds, avoiding nested managers. Direct inner use, including a shell with only spoofed CI flags,
-fails closed before Vite can write an output or dependency cache.
-
-Run Tauri and Cargo from the repository root through the documented npm commands. They hold an
-owned `dev` or `package` lease and put Cargo plus generated frontend output in the bounded external
-cache (`%LOCALAPPDATA%\OSG-Development\cache`, 28 GiB and 14 inactive days by default). The inner Tauri
-scripts in this package deliberately reject unmanaged local invocations. Cache publication
-keeps only the current and one previous verified frontend/application generation, while real-flow
-evidence keeps the three newest attempts plus the latest success. Recovery is journal-driven; see
-[../../docs/rewrite/DEVELOPMENT_CACHE.md](../../docs/rewrite/DEVELOPMENT_CACHE.md).
-
-## Compile without packaging
-
-```powershell
-npm run build:frontend
-npm run cargo:check
-npm run tauri:build -- --no-bundle --ci -- --locked
-```
-
-Do not treat `--no-bundle` as a release. Target-specific optional runtimes, notices, updater
-signing, and installer validation are enforced by the stricter runtime-package gates.
-
-## Native verification
-
-```powershell
-npm run check:dependencies
-npm run lint
-npm test
-npm run test:python-workers
-npm run build:frontend
-npm run check:production-transport
-cargo fmt --all -- --check
-npm run cargo:clippy
-npm run cargo:test
-npm run check:tauri-contract
-node scripts/check-release-readiness.js --profile compile
-```
-
-The target-specific release gate takes a Rust target triple. Windows passes only while its reviewed
-FFmpeg/ffprobe, ASR, speech, font, and voice-sample deliveries remain available and match
-the checked catalogs. Other targets remain gated until their target-specific delivery catalogs are
-complete. The updater public key is checked in; release signing still requires the matching private
-key from the repository owner's external secret store:
-
-```powershell
-node scripts/check-release-readiness.js --profile runtime-package --target x86_64-pc-windows-msvc
-```
-
-Do not weaken or skip that gate to produce a distributable. The MIT root license and reviewed
-`THIRD_PARTY_NOTICES.md` policy are checked in, and every downloadable payload must continue to
-carry its required license, notice, and corresponding-source records.
-
-Architecture and trust boundaries are documented in [../../ARCHITECTURE.md](../../ARCHITECTURE.md)
-and [../../SECURITY.md](../../SECURITY.md).
+A `--no-bundle` build is not a release; releases follow
+[docs/release/RELEASING.md](../../docs/release/RELEASING.md).

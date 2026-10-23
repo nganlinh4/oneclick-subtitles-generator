@@ -22,9 +22,8 @@
 # production
 /build
 
-# Electron build artifacts
+# Build output and installers
 /dist
-/win-unpacked
 /out
 *.exe
 *.dmg
@@ -89,39 +88,20 @@ Desktop.ini
 .temp/
 *.tmp
 
-# Electron builder files
-builder-debug.yml
-builder-effective-config.yaml
-latest.yml
-
 # Cache files
 .cache/
 .npm/
 .eslintcache
 
-# F5-TTS and models - now handled as git submodule
-# F5-TTS/
-# Exclude model files but not source code
+# Model weights
 /models/
-/models/*/
-/models/f5_tts/
-# Don't ignore the src/services/gemini/models directory
-!src/services/gemini/models/
 *.safetensors
 *.pt
 *.bin
 *.onnx
 
-# Installation artifacts that should not be tracked
-2.0.0
-*.0.0
-
-# Temporary chatterbox clone for installation
-chatterbox-temp/
-
 # Local storage and config
 localStorage.json
-tiktokdien/
 
 # Python virtual environments
 venv/
@@ -150,10 +130,6 @@ __pycache__/
 *.wav
 !src/assets/*.mp3
 !src/assets/*.wav
-# Keep bundled Gemini voice samples in repo
-!public/audio/voices/*.wav
-!public/audio/voices/*.mp3
-!public/audio/voices/*.ogg
 # osg-audio decode fixtures: compressed containers committed alongside the .flac/.ogg ones already
 # exempted below, because they cannot be produced without an encoder. Same reasoning and same class
 # of bug as crates/osg-decode/tests/fixtures/*.mp4 at the bottom of this file -- without this
@@ -169,23 +145,12 @@ __pycache__/
 !tests/subtitle-benchmark/fixtures/*.wav
 !tests/subtitle-benchmark/fixtures/*.mp4
 
-live-api-web-console/
-
-package.json.bak
 .port_processes.json
-=0.0.6
-=0.24.0
-=0.104.0
 # Anchored: an unanchored `bin` also matches a real nested source directory such as a crate's
 # src/bin/, the same class of bug .gitignore already carried for `subtitles/` and `debug/`.
 e2e/tools/**/bin/
 e2e/tools/**/obj/
 /bin
-electron-dist
-manual-dist-v2/
-manual-dist/
-dist-new/
-.builder-cache/
 
 # E2E harness dependencies (the lockfile is committed; the tree is not)
 e2e/node_modules/

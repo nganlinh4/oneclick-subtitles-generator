@@ -13,23 +13,13 @@ const { REPOSITORY_ROOT, invariant, toRepositoryPath, walkFiles } = require('./s
  * worker filename, and every one of those is plain text before it is anything else. A dependency
  * graph would have caught the first and missed the rest.
  *
- * The token is assembled from halves so this gate is not its own first offender. That is not
- * cleverness for its own sake: spelling it here would force `scripts/` onto the allowlist, and an
- * allowlisted `scripts/` is where the next reintroduction would land unnoticed.
+ * The token is assembled from halves so this gate is not its own first offender; an exemption for
+ * `scripts/` is where the next reintroduction would land unnoticed.
  *
- * Only the four history files below may keep the word, and none is reachable from a build: a
- * handoff record, a superseded design note, a dated validation log, and the captured Electron logs.
- * They are named rather than merely left outside the scanned roots, so moving one into `src/` or
- * `scripts/` fails instead of quietly becoming allowed.
+ * Only the build roots are scanned; documentation outside them may still describe the old path.
  */
 const LEGACY_RENDERER_ROOTS = ['src', 'crates', 'apps', 'scripts'];
 const LEGACY_RENDERER_MANIFESTS = ['package.json', 'package-lock.json'];
-const LEGACY_RENDERER_ALLOWLIST = new Set([
-  'CLAUDE_HANDOFF_TEMP.md',
-  'docs/rewrite/NATIVE_RENDERER.md',
-  'docs/release/WINDOWS-1.0-VALIDATION.md',
-]);
-const LEGACY_RENDERER_ALLOWED_PREFIX = 'electron-logs/';
 /** Dependency and build caches: not sources, and not something a reviewer can edit. */
 const LEGACY_RENDERER_SKIPPED_DIRECTORIES = new Set(['node_modules', 'target', '__pycache__']);
 const LEGACY_RENDERER_BINARY = new RegExp(
@@ -38,11 +28,6 @@ const LEGACY_RENDERER_BINARY = new RegExp(
   'i',
 );
 const LEGACY_RENDERER_TOKEN = new RegExp(['re', 'motion'].join(''), 'i');
-
-function isLegacyRendererReferenceAllowed(relativePath) {
-  return LEGACY_RENDERER_ALLOWLIST.has(relativePath)
-    || relativePath.startsWith(LEGACY_RENDERER_ALLOWED_PREFIX);
-}
 
 function assertNoLegacyRendererResidue(rootDirectory = REPOSITORY_ROOT) {
   const candidates = [
@@ -57,12 +42,8 @@ function assertNoLegacyRendererResidue(rootDirectory = REPOSITORY_ROOT) {
   ];
   const offenders = [];
   for (const candidate of candidates) {
-    const relativePath = toRepositoryPath(rootDirectory, candidate);
-    if (isLegacyRendererReferenceAllowed(relativePath)) {
-      continue;
-    }
     if (LEGACY_RENDERER_TOKEN.test(fs.readFileSync(candidate, 'utf8'))) {
-      offenders.push(relativePath);
+      offenders.push(toRepositoryPath(rootDirectory, candidate));
     }
   }
   const displayed = offenders.slice(0, 12);

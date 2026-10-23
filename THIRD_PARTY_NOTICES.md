@@ -147,8 +147,11 @@ Important model terms include:
 - Chatterbox code and model files: MIT.
 - F5-TTS code: MIT; the default F5TTS_v1_Base model is CC-BY-NC-4.0 and is not licensed for
   commercial use. It is downloaded directly from the official immutable model revision.
-- Vocos mel-24kHz, the vocoder the F5-TTS backend downloads alongside that model: MIT, pinned as
-  `charactr/vocos-mel-24khz` in `crates/osg-speech/delivery/speech-upstreams.lock.json`.
+- Vocos mel-24kHz, the vocoder the F5-TTS backend downloads alongside that model: MIT
+  (Copyright (c) 2023 Charactr Inc., <https://huggingface.co/charactr/vocos-mel-24khz>), pinned at
+  revision `0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21` in
+  `crates/osg-speech/delivery/speech-upstreams.lock.json`. It is downloaded directly from that
+  revision.
 
 ## Downloadable voice-preview media
 
@@ -164,9 +167,11 @@ gaps left to close before distribution.
 
 - The published notice index
   `crates/osg-engine-packages/delivery/windows-managed-runtime-notices.json` lists seventeen
-  components and does not yet include the Vocos vocoder named above. Correcting it means
-  republishing that pool asset and refreshing `delivery/managed-delivery.checkpoint.json`, so the
-  entry is recorded here in the meantime.
+  components and does not yet include the Vocos vocoder named above, so the entry is recorded here
+  in the meantime. The index is a hash-pinned pool asset embedded in every engine manifest as
+  `licenses/THIRD_PARTY_NOTICES.json`, so correcting it means publishing a new content-addressed
+  notice asset, recomposing the five ASR and two local speech manifests, updating both delivery
+  catalogs, and refreshing `delivery/managed-delivery.checkpoint.json`.
 - The ASR and speech runtimes were not installed on the machine used to compile these notices, so
   their entries above are taken from the committed delivery catalogs rather than from delivered
   bytes.

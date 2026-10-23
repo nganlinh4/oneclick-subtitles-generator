@@ -1,188 +1,80 @@
 # Architecture
 
-One-Click Subtitles Generator (OSG) is a local-first Tauri 2 desktop application. React remains
-the presentation layer; Rust owns application state, filesystem access, provider credentials,
-network adapters, durable work, external tools, and optional model workers.
-
-This document describes the native rewrite. It is an implementation boundary, not a promise that
-every optional runtime is already packaged. See [Runtime delivery](#runtime-delivery).
-
-## Runtime topology
+OSG is a local-first Tauri 2 desktop app. React (`src/`) is the presentation layer; Rust owns state,
+files, credentials, provider traffic, media work, rendering and worker supervision. Windows x64 is
+the shipped target.
 
 ```text
 React UI in the system WebView
   |  typed Tauri commands, bounded events, opaque IDs
   v
-Tauri desktop host (apps/desktop/src-tauri)
-  |-- application/domain services
-  |-- SQLite projects, revisions, jobs, settings, and artifact metadata
-  |-- operating-system credential store
-  |-- Gemini, Lyria, Genius, and YouTube adapters
-  |-- media/download/render orchestration
+Tauri host (apps/desktop/src-tauri)
+  |-- application and domain services, SQLite (projects, revisions, jobs, settings, artifacts)
+  |-- OS credential store
+  |-- Gemini, Lyria, Genius and YouTube clients
+  |-- media, download, render and export orchestration
+  |-- loopback media streamer (byte ranges for <video>/<img> only)
   `-- supervised ASR and speech workers over private stdin/stdout
 ```
 
-The desktop app does not launch the former Electron, Express, Flask, FastAPI, CORS, WebSocket, or
-fixed-port process mesh. Development uses Vite on port 3030 only while `tauri dev` is running.
+There is no Electron, Express, Python web server, fixed port or CORS layer. Vite runs on port 3030
+only during `tauri dev`.
 
-Large local audio and video need byte-range responses for reliable seeking in system WebViews.
-Rust starts one process-scoped capability streamer on `127.0.0.1` with an operating-system-assigned
-port. It serves registered file handles plus bounded, native-fetched Genius/YouTube raster images
-through opaque IDs and a random per-process token. React assigns those capabilities only to media
-or image elements; script-level byte reads are prohibited. Waveform analysis and narration export
-remain typed native operations, with native save UI keeping destination paths out of IPC. The
-streamer is not a general application API. Details are in
-[SECURITY.md](SECURITY.md#loopback-media-transport).
-
-Separately, an active YouTube OAuth authorization opens a temporary callback listener on
-`127.0.0.1` with an operating-system-assigned port. It accepts only the bounded OAuth redirect,
-validates the exact host/path plus state and PKCE flow, and closes on success, cancellation, or its
-three-minute deadline. It is not a persistent application service. See
-[SECURITY.md](SECURITY.md#oauth-loopback-callback).
-
-## Source boundaries
+## Source map
 
 | Path | Responsibility |
 | --- | --- |
-| `src/`, `public/` | Canonical React UI, styles, assets, fonts, and locales. |
-| `apps/desktop/src-tauri/` | Tauri composition root, platform adapters, command DTOs, capabilities, and release configuration. |
-| `crates/osg-domain/` | Media, subtitle, project, revision, and job invariants; no UI or platform dependencies. |
-| `crates/osg-application/` | Use cases and ports around the domain. |
-| `crates/osg-infrastructure/` | SQLite storage, content-addressed artifacts, jobs, settings, and credential-vault integration. |
-| `crates/osg-gemini/`, `crates/osg-live-music/`, `crates/osg-providers/` | Bounded native provider clients. |
-| `crates/osg-media/`, `crates/osg-media-pipeline/`, `crates/osg-media-server/` | Typed FFmpeg/ffprobe plans, media transformations, and scoped playback transport. |
-| `crates/osg-download/` | URL validation and managed yt-dlp downloads. |
-| `crates/osg-render/`, `crates/osg-export/` | The validated render contract and the native export pipeline. |
-| `crates/osg-asr/`, `crates/osg-speech/` | Typed local inference contracts and supervised worker protocols. |
-| `crates/osg-engine-packages/`, `crates/osg-native-tools/` | Reviewed, content-addressed optional runtime delivery. |
-| `promptdj-midi/` | Bundled PromptDJ/Lyria control surface, built into the desktop frontend. |
+| `src/`, `public/` | The React UI, styles, fonts and locales. The visual source of truth. |
+| `promptdj-midi/` | PromptDJ/Lyria surface, built into the frontend and embedded at `/promptdj/`. |
+| `apps/desktop/src-tauri/` | Tauri composition root: commands, DTOs, capabilities, platform adapters, release config. |
+| `crates/osg-domain`, `osg-application` | Domain invariants and use cases; no UI, platform or I/O dependencies. |
+| `crates/osg-infrastructure` | SQLite storage, content-addressed artifacts, jobs, settings, credential vault. |
+| `crates/osg-gemini`, `osg-live-music`, `osg-providers` | Bounded provider clients. |
+| `crates/osg-media`, `osg-media-pipeline`, `osg-media-server` | FFmpeg/ffprobe plans, media transforms, the loopback streamer. |
+| `crates/osg-download` | URL validation and the managed yt-dlp adapter. |
+| `crates/osg-render`, `osg-scene`, `osg-compositor`, `osg-decode`, `osg-encode`, `osg-audio`, `osg-gpu-video`, `osg-export` | The native renderer; see [docs/rewrite/NATIVE_RENDERER.md](docs/rewrite/NATIVE_RENDERER.md). |
+| `crates/osg-asr`, `osg-speech` | Local ASR and speech contracts and their supervised workers. |
+| `crates/osg-engine-packages`, `osg-native-tools`, `osg-delivery-core` | Reviewed, content-addressed delivery of optional runtimes, models and tools. |
+| `crates/osg-process`, `osg-runtime-staging`, `osg-formats` | Child-process supervision, crash-safe staging, bounded binary-format parsing. |
 
-The canonical Gemini policy is `src/config/geminiModelCatalog.json`. Repository checks require
-every selectable ordinary, image, or live model to accept at least audio or video; legacy IDs are
-normalization aliases, not additional selectable/provider models.
-
-Dependencies point inward: domain types do not import Tauri, the WebView, databases, provider
-SDKs, or process adapters. Tauri commands translate path-free UI requests into native
-capabilities and invoke the application layer.
+Dependencies point inward: domain crates never import Tauri, the WebView, databases, provider SDKs
+or process adapters.
 
 ## State and identity
 
-- SQLite stores durable projects, immutable revisions, background-job state, settings, artifact
-  metadata, and credential references.
-- Native paths are retained inside Rust-owned state. The WebView normally receives UUID-backed
-  project, asset, artifact, job, and credential identifiers instead of paths.
-- Produced artifacts are staged, validated, hashed, and published without silently overwriting an
-  existing destination.
-- Long-running operations expose bounded progress and explicit cancellation. Durable jobs can be
-  recovered after a WebView reconnect or application restart where the operation supports it.
-- High-frequency playback and timeline work remains in the WebView; it does not round-trip through
-  JSON IPC every frame.
+- SQLite holds projects, immutable revisions, jobs, settings, artifact metadata and credential
+  references. Native paths stay in Rust; the WebView gets UUID-backed IDs.
+- Outputs are staged, verified, hashed and published without overwriting an existing file.
+- Long operations report bounded progress and support cancellation; durable jobs survive a reload
+  or restart where the operation allows it.
+- Playback and timeline interaction stay in the WebView; nothing round-trips IPC per frame.
+- Editor undo has an in-memory stack for immediate controls plus a bounded SQLite history cursor
+  per subtitle track that survives restart.
 
-## Native feature boundaries
+## Providers
 
-The Tauri command surface currently covers:
+Gemini work goes through one Rust transport on the Interactions API (`store: false`, key in the
+`x-goog-api-key` header). The Files API stages large media; Live transcription, Live TTS and Live
+Music use their own WebSocket protocols and are never fallbacks for each other. Structured output
+uses fixed-size schemas, and every response is validated locally (ordinals, counts, non-blank
+text) before it is stored. `src/config/geminiModelCatalog.json` is the model policy: every
+selectable model must accept audio or video.
 
-- native file selection and drag-and-drop redemption;
-- projects, immutable revisions and revision-navigation commands, jobs, settings, cache, and
-  exports;
-- Gemini transcription, translation, subtitle analysis, and image generation;
-- Lyria RealTime music sessions, Genius lyrics, YouTube metadata, and YouTube OAuth;
-- media probing, compatibility transforms, audio extraction, waveform generation, and downloads;
-- durable native video-export jobs and playback handles;
-- local ASR, narration, reference-audio, audio-edit, voice-conversion, and alignment contracts;
-- managed native-tool and engine/package lifecycles, plus the signing-key-gated update-metadata
-  check.
+## Optional runtimes
 
-An implemented command or worker contract does not make its external executable, model, or
-installer available. Optional runtimes fail closed until a reviewed release exists for the target.
-The lyrics editor keeps an immediate in-memory interaction stack for responsive controls and
-serializes the same logical edits into a separate, bounded SQLite track-history cursor. That cursor
-survives restart and applies only the selected canonical subtitle track to the latest project
-snapshot, so undo can cross newer media or other-track revisions without reverting them. Text edits
-are grouped after 500 ms of inactivity and flushed before navigation or save. Both the 256-state
-native cursor and its 255-edge local mirror are bounded; the serialized native queue is limited by
-operation count and retained bytes, and any failure blocks save until authoritative reconciliation.
+Tools (yt-dlp, Deno, FFmpeg/ffprobe on Windows), ASR and speech engines, voice samples and the UI
+font come only from the reviewed catalogs in `crates/*/delivery/`: immutable upstream URLs first,
+the append-only `osg-runtime-bundles-v1` pool second, exact sizes and hashes, full inventories and
+notices. Nothing falls back to `PATH`, pip, npm or an unverified file. Installs are staged, verified,
+published atomically and leased while in use; removal of a busy tool reports busy instead of
+needing a restart. Required tools install on first use with progress and cancel in the existing
+toast. A failing yt-dlp triggers one throttled check for a newer immutable official release.
 
-## Runtime delivery
+The desktop executable itself carries no executables, interpreters or models; the payload budget
+(`scripts/check-desktop-payload-size.mjs`) enforces that.
 
-Runtime catalogs are the only authority for downloaded executables and model packages. Entries
-must use immutable upstream sources, exact sizes and hashes, safe relative paths, and applicable
-license notices. Installations use staging plus verified publication and retain receipts for later
-status/removal checks.
+## Platforms
 
-At the current rewrite checkpoint:
-
-- Windows x64 publishes verified on-demand ASR and speech/TTS packages; other target catalogs are empty.
-- Windows x64 downloads the exact reviewed FFmpeg/ffprobe `8.1.2` vendor archive on demand. Linux
-  and macOS remain withheld pending equivalent reviewed delivery.
-- Reviewed yt-dlp `2026.07.04` and Deno `2.9.5` releases are catalogued for content-addressed,
-  direct-upstream, on-demand delivery; they are never bundled in the application. A user-initiated
-  URL inspection performs the status check and automatically installs the smallest required batch,
-  exposing bounded progress plus cancellation through the existing toast surface. No startup task
-  downloads tools.
-- A genuine yt-dlp process failure starts one coalesced, throttled official-release check. Only a
-  stable release marked immutable is eligible; GitHub's asset digest and notices from the exact tag
-  commit become the new receipt. The new version is published beside the leased version and hot-
-  activated in the current process. Invalid input, cancellation, timeout, and generic network failures do
-  not trigger this path, and the failed media operation is never automatically retried. The native
-  host caches checks for 30 minutes, retains two verified rollback generations, and quarantines
-  damaged generations before repair.
-- The updater public key is configured and updater artifacts are signed with a private key held
-  outside the repository.
-
-The Windows speech catalog includes transitive runtime/model inventories, notices, and offline
-worker proofs. F5TTS v1 weights remain `CC-BY-NC-4.0` and are labeled in the UI. Arbitrary model
-URLs are intentionally not installable; other platforms require their own reproduced packages.
-
-The native-tool ACL contains `native_tools_catalog`, `native_tools_status`,
-`native_tool_install`, `native_tool_remove`, and `native_tool_cancel`. Public catalog/status DTOs
-do not contain executable paths or upstream URLs. Distinct tools install concurrently under
-per-tool durable operation slots. Publication acquires a verified lease and atomically refreshes
-download, media-pipeline, editor, speech/ASR, and render consumers without restarting. Removal
-first detaches future consumers, drops the verified lease, and deletes the exact package in the
-same session. If media work is active, removal fails busy and succeeds when retried after that work
-finishes; it is never converted into a restart requirement. The existing media flow reaches
-catalog/status/install/cancel, while the compact Tools tab also exposes confirmed removal. Download start offers the Windows
-media-tool package when it is missing and fails closed on targets whose catalog remains empty.
-The native host writes only sanitized event codes and opaque identifiers to a bounded current log
-and one rotated previous log in the Tauri application log directory.
-
-Consequently, source compilation can pass while an unsupported target correctly fails the stricter
-release-readiness gate. Windows x64 currently passes it.
-
-The repository carries the selected root MIT license and `THIRD_PARTY_NOTICES.md`. PromptDJ uses
-the operating-system UI font stack; its only font payload is the bundled Open Sans fallback of the
-Noto Sans app-font preference, recorded in `THIRD_PARTY_NOTICES.md`.
-
-## Visual compatibility
-
-The rewrite deliberately reuses the original JSX, CSS, fonts, assets, locales, and workflow order.
-Native capability adapters sit behind existing interactions, so an architectural change does not
-become a redesign. Intentional visual work follows the Material 3 Expressive component policy.
-
-See [docs/rewrite/DESIGN.md](docs/rewrite/DESIGN.md) for the UI design policy.
-
-## Legacy import
-
-Migration is explicit and user-selected. The importer reads a bounded `localStorage.json` plus
-known legacy artifact directories, rejects links/reparse points and source changes, and records a
-content fingerprint so retries are idempotent.
-
-The legacy import has no settings-surface entry. In the desktop app, press
-`Ctrl+Alt+Shift+I` on Windows/Linux or `Command+Option+Shift+I` on macOS to open the native legacy
-data-folder picker. Browser-only builds do not install this action. Selection/import status and the
-path-free result are reported through the existing toast panel; imported settings take effect after
-restart.
-
-Safe preferences move to SQLite, supported credentials move to the operating-system credential
-store, and supported artifacts are copied into native content-addressed storage. Transient state,
-paths, URLs, provider file handles, stale caches, and unsupported secrets are ignored. The source
-directory is retained; import is not a destructive conversion.
-
-## Platform targets
-
-The workspace and CI matrix target Windows x64 (`x86_64-pc-windows-msvc`), Linux x64
-(`x86_64-unknown-linux-gnu`), macOS Intel (`x86_64-apple-darwin`), and macOS Apple Silicon
-(`aarch64-apple-darwin`). Windows is the currently exercised development host. The macOS and Linux
-targets have build-matrix configuration but still require real-device runtime, media, packaging,
-signing, and installer testing before they should be described as supported releases.
+CI builds Windows x64, Linux x64 and macOS (Intel and Apple Silicon). Only Windows has complete
+delivery catalogs and passes the `runtime-package` readiness profile; the other targets compile
+but are not released.
