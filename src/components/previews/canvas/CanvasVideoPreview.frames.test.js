@@ -135,6 +135,11 @@ describe('canvas preview decoded-frame publication', () => {
     // re-arms after a throw (a) and that the failure reaches published state instead of vanishing (b).
     spoofWindowsChrome();
     installReadyManagedFont();
+    // Only the rVFC chain may publish here. jsdom's requestAnimationFrame is a real ~16 ms timer, so
+    // under load the bounded capture retry could otherwise publish between `readyState = 4` and
+    // the first fired frame and make this test timing-dependent.
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
     let readyState = 1;
     let callbackSequence = 0;
     const videoCallbacks = new Map();
