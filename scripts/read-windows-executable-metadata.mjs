@@ -29,8 +29,11 @@ function quotePowerShellLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-export function readWindowsExecutableVersionInfo(executablePath, { spawn = spawnSync } = {}) {
-  if (process.platform !== 'win32') {
+export function readWindowsExecutableVersionInfo(
+  executablePath,
+  { spawn = spawnSync, platform = process.platform } = {},
+) {
+  if (platform !== 'win32') {
     throw new Error('Windows PE version-metadata reads are available on Windows only');
   }
   if (typeof executablePath !== 'string' || executablePath.trim() === '') {

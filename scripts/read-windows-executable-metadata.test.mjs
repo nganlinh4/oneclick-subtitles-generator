@@ -15,6 +15,7 @@ const fakeSpawnReturning = (payload, status = 0) => () => ({
 
 test('parses the PowerShell VersionInfo JSON envelope', () => {
   const info = readWindowsExecutableVersionInfo('C:/fake/osg-desktop.exe', {
+    platform: 'win32',
     spawn: fakeSpawnReturning({
       FileVersion: '1.0.0.0',
       ProductVersion: '1.0.0.0',
@@ -34,6 +35,7 @@ test('parses the PowerShell VersionInfo JSON envelope', () => {
 test('rejects a non-zero PowerShell exit', () => {
   assert.throws(
     () => readWindowsExecutableVersionInfo('C:/fake/missing.exe', {
+      platform: 'win32',
       spawn: () => ({ error: null, status: 1, stdout: '', stderr: 'Cannot find path' }),
     }),
     /Could not read Windows executable metadata/,
@@ -43,6 +45,7 @@ test('rejects a non-zero PowerShell exit', () => {
 test('rejects a spawn failure', () => {
   assert.throws(
     () => readWindowsExecutableVersionInfo('C:/fake/osg-desktop.exe', {
+      platform: 'win32',
       spawn: () => ({ error: new Error('pwsh not found') }),
     }),
     /pwsh not found/,
@@ -52,6 +55,7 @@ test('rejects a spawn failure', () => {
 test('rejects malformed JSON from the reader', () => {
   assert.throws(
     () => readWindowsExecutableVersionInfo('C:/fake/osg-desktop.exe', {
+      platform: 'win32',
       spawn: () => ({ error: null, status: 0, stdout: 'not json', stderr: '' }),
     }),
     /not valid JSON/,
@@ -59,8 +63,20 @@ test('rejects malformed JSON from the reader', () => {
 });
 
 test('rejects an empty executable path', () => {
-  assert.throws(() => readWindowsExecutableVersionInfo('', { spawn: fakeSpawnReturning({}) }),
+  assert.throws(() => readWindowsExecutableVersionInfo('', { platform: 'win32', spawn: fakeSpawnReturning({}) }),
     /non-empty executable path/);
+});
+
+test('refuses to run off Windows without spawning anything', () => {
+  let spawned = false;
+  assert.throws(
+    () => readWindowsExecutableVersionInfo('C:/fake/osg-desktop.exe', {
+      platform: 'linux',
+      spawn: () => { spawned = true; return {}; },
+    }),
+    /available on Windows only/,
+  );
+  assert.equal(spawned, false);
 });
 
 test('a four-part Windows version matches the three-part semantic version it pads', () => {
