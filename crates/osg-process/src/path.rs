@@ -41,6 +41,15 @@ mod tests {
         assert_eq!(native_process_path(Path::new("relative")), None);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn absolute_unix_paths_pass_through_unchanged() {
+        assert_eq!(
+            native_process_path(Path::new("/opt/osg/model")),
+            Some(PathBuf::from("/opt/osg/model"))
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn only_the_extended_length_prefix_is_removed() {
