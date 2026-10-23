@@ -10,7 +10,9 @@ const TAURI_CONFIG = path.join(REPOSITORY_ROOT, 'apps', 'desktop', 'src-tauri', 
 const SEPARATOR = String.fromCharCode(92);
 const LARGE_FILE_BYTES = 256 * 1024;
 const FRONTEND_BUDGET_BYTES = 30 * 1024 * 1024;
-const WINDOWS_EXECUTABLE_BUDGET_BYTES = 16 * 1024 * 1024;
+// 1.0.2 shipped a 17.7 MB executable; bundling the WebView fonts for offline use (about 6.1 MB,
+// mostly the Material Symbols variable font) made 1.0.3 23.8 MB. Keep the budget tight above that.
+export const WINDOWS_EXECUTABLE_BUDGET_BYTES = 24 * 1024 * 1024;
 const OTHER_EXECUTABLE_BUDGET_BYTES = 48 * 1024 * 1024;
 const EXPECTED_BOOTSTRAPS = new Set([
   'workers/osg_asr_worker.py',

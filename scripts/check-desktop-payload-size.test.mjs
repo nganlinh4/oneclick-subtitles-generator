@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { auditDesktopPayload } from './check-desktop-payload-size.mjs';
+import { WINDOWS_EXECUTABLE_BUDGET_BYTES, auditDesktopPayload } from './check-desktop-payload-size.mjs';
 
 const digestOf = (contents) => createHash('sha256').update(contents).digest('hex');
 
@@ -179,7 +179,7 @@ test('rejects omitting a font the catalog pins', () => {
 test('enforces the release executable budget when a binary is supplied', () => {
   withFixture((root) => {
     const executable = path.join(root, 'osg-desktop.exe');
-    fs.writeFileSync(executable, Buffer.alloc(16 * 1024 * 1024 + 1));
+    fs.writeFileSync(executable, Buffer.alloc(WINDOWS_EXECUTABLE_BUDGET_BYTES + 1));
     assert.throws(
       () => auditDesktopPayload({ rootDirectory: root, executablePath: executable }),
       /executable exceeds the .*byte budget/,
