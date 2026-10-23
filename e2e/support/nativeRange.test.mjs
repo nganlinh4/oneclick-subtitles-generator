@@ -1,11 +1,9 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 
+import { readJourneySource } from './journeySource.js';
 import { actuateNativeRange, actuateNativeRangeInPage } from './nativeRange.js';
-
-/* global URL */
 
 const withFakePage = ({ node, Input = null }, operation) => {
   class FakeEvent {
@@ -185,11 +183,10 @@ test('the WebView actuator survives function-only WebDriver serialization', () =
 });
 
 test('public seek helpers use the shared range bridge and never assign media currentTime', () => {
-  const read = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
   const cases = [
-    ['material', read('../journeys/subtitleMaterialAndAnimation.journey.js'), 'const publicSeek =', 'const setPlaying ='],
-    ['customization', read('../journeys/subtitleCustomizationPreview.journey.js'), 'const seekRenderPreviewWithPublicControl =', 'const applyPresetDuringPlayback ='],
-    ['export', read('../journeys/exportAnimationParityMatrix.journey.js'), 'const seekThroughPublicControl =', 'const capturePhase ='],
+    ['material', readJourneySource('subtitleMaterialAndAnimation.journey.js'), 'const publicSeek =', 'const setPlaying ='],
+    ['customization', readJourneySource('subtitleCustomizationPreview.journey.js'), 'const seekRenderPreviewWithPublicControl =', 'const applyPresetDuringPlayback ='],
+    ['export', readJourneySource('exportAnimationParityMatrix.journey.js'), 'const seekThroughPublicControl =', 'const capturePhase ='],
   ];
   for (const [label, source, startNeedle, endNeedle] of cases) {
     const start = source.indexOf(startNeedle);

@@ -1,5 +1,4 @@
 import { Buffer } from 'node:buffer';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -21,9 +20,6 @@ import { DatabaseSync } from 'node:sqlite';
  */
 
 const relative = (root) => join(root, 'data', 'db', 'osg.sqlite3');
-
-/** Whether the application has created its database yet. */
-export const databaseExists = (root) => existsSync(relative(root));
 
 /**
  * Run `read` against the application's database and close it again.

@@ -14,7 +14,7 @@
 // duplicates BulkTranslationPool's parse/validate logic for the one drop target that actually
 // ships) and the bulk-only "Download All" export in src/components/translation/utils/
 // downloadUtils.js. It runs bulk-only (no main subtitles imported) so the bulk-only branch of
-// useTranslationState.js:589-679 (`if (!hasMainSubtitles) return { status: 'complete', scope:
+// src/hooks/useTranslationState.js (`if (!hasMainSubtitles) return { status: 'complete', scope:
 // 'bulk' }`) is exercised directly, without re-proving the main-track path those two journeys
 // already cover.
 //
@@ -96,6 +96,7 @@ import process from 'node:process';
 
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
+import { GEMINI_CREDENTIAL_REQUIRED_MESSAGE } from '../support/providerRefusalOracle.js';
 import {
   snapshotOutputDirectory, verifySubtitleDocumentExport, waitForNewDocumentExports,
 } from '../support/subtitleDocumentOracle.js';
@@ -337,7 +338,7 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
       `a credential-missing bulk run did not surface exactly one refusal toast: ${JSON.stringify(refused.errorToasts)}`
     ));
     const refusalToast = refused.errorToasts[0];
-    assert.match(refusalToast, /native gemini operation could not be completed/i, refusalToast);
+    assert.ok(refusalToast.includes(GEMINI_CREDENTIAL_REQUIRED_MESSAGE), refusalToast);
     assert.deepEqual(refused.inlineErrors, [], (
       'the credential-missing bulk refusal rendered inline over the video -- an explicitly watched defect class'
     ));

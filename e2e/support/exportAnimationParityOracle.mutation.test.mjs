@@ -5,10 +5,10 @@ import test from 'node:test';
 
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 
 import { activeCueAtFrom, easeSubtitle } from '../../src/components/previews/canvas/canvasSubtitleMath.js';
 import {
-  EXPORT_ANIMATION_PARITY_CASES,
   EXPORT_PARITY_FPS,
   EXPORT_PARITY_MAIN_RENDER_ROTATED_FLOOR,
   EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR,

@@ -12,7 +12,7 @@
 //                         src/platform/managedEngineCatalog.js:1-33 (only f5tts/f5-tts differ)
 //   Card state derivation: src/components/engines/EngineCard.js:67-79
 //   Store root wiring: apps/desktop/src-tauri/src/lib.rs (`engine-packages/v1`)
-//   On-disk package layout: crates/osg-engine-packages/src/manager.rs (`ensure_component_layout`)
+//   On-disk package layout: crates/osg-engine-packages/src/manager/layout.rs (`ensure_component_layout`)
 //                         (ensure_component_layout joins the store root with the package id
 //                         directly -- ASR and narration/speech packages share ONE store,
 //                         `data/engine-packages/v1`, keyed by their own id string)

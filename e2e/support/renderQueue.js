@@ -15,7 +15,7 @@ import { managedArtifactFiles } from './downloadJourneyOracle.js';
  * the interrupt-recovery scenario looking at exactly the same customer surface.
  */
 
-export const RENDER_ROW = '.video-rendering-section .rendering-row:has([data-osg-action="render-video"])';
+const RENDER_ROW = '.video-rendering-section .rendering-row:has([data-osg-action="render-video"])';
 export const RENDER_BUTTON = `${RENDER_ROW} [data-osg-action="render-video"]`;
 
 const DEFAULT_MAX_RECORDED_RENDER_ERRORS = 32;

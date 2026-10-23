@@ -44,13 +44,23 @@ test('the resource-bounds journey drives only the public UI and never substitute
 test('the resource-bounds journey cites the real source of every cap it asserts', () => {
   for (const citation of [
     'src/components/lyrics/waveformRendering.js',
-    'apps/desktop/src-tauri/src/waveform_cache.rs:20',
-    'apps/desktop/src-tauri/src/media_pipeline.rs:36',
-    'apps/desktop/src-tauri/src/render/host.rs:22',
     'src/components/lyrics/VolumeVisualizer.js:21',
     'crates/osg-application/src/jobs.rs:11',
   ]) {
     assert.ok(boundsJourney.includes(citation), `missing cap citation: ${citation}`);
+  }
+  // Native caps are cited by constant name (line numbers go stale), and each constant must still
+  // be defined in the file the journey names.
+  for (const [file, constant] of [
+    ['apps/desktop/src-tauri/src/waveform_cache.rs', 'MAX_CACHE_BYTES'],
+    ['apps/desktop/src-tauri/src/media_pipeline.rs', 'MAX_WAVEFORM_POINTS'],
+    ['apps/desktop/src-tauri/src/media_pipeline.rs', 'MAX_CONCURRENT_OPERATIONS'],
+    ['apps/desktop/src-tauri/src/render/host.rs', 'MAX_CONCURRENT_RENDERS'],
+  ]) {
+    assert.ok(boundsJourney.includes(file), `missing cap citation: ${file}`);
+    assert.ok(boundsJourney.includes(constant), `missing cap constant: ${constant}`);
+    const source = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+    assert.match(source, new RegExp(String.raw`\bconst ${constant}\b`, 'u'), `${constant} is no longer defined in ${file}`);
   }
 });
 

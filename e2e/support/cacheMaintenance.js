@@ -10,7 +10,7 @@ import { withStagingLease } from './stagingLease.js';
 const require = createRequire(import.meta.url);
 const { pruneManagedCache } = require('../../scripts/build-e2e-binary.js');
 
-export const pruneE2eRuntimeCache = ({
+const pruneE2eRuntimeCache = ({
   cacheRoot = DEVELOPMENT_CACHE_ROOT,
   prune = pruneManagedCache,
   repositoryRoot = REPOSITORY_ROOT,

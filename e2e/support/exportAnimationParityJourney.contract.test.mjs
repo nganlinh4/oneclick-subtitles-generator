@@ -8,11 +8,15 @@ import {
   EXPORT_ANIMATION_PARITY_CASES,
   validateExportAnimationParityMatrix,
 } from './exportAnimationParityOracle.js';
+import { readJourneySource } from './journeySource.js';
 
-const journey = readFileSync(
-  new URL('../journeys/exportAnimationParityMatrix.journey.js', import.meta.url),
-  'utf8',
-);
+const journey = readJourneySource('exportAnimationParityMatrix.journey.js');
+// The oracle's public entry point plus the matrix and ROI modules it re-exports.
+const oracleSource = () => [
+  './exportAnimationParityOracle.js',
+  './exportAnimationParityMatrix.js',
+  './exportAnimationParityRegion.js',
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const mainControls = readFileSync(
   new URL('../../src/components/previews/VideoBottomControls.js', import.meta.url),
   'utf8',
@@ -67,10 +71,13 @@ test('the journey cannot mutate private app or media state', () => {
     assert.doesNotMatch(journey, forbidden, `journey contains forbidden ${label}`);
   }
   assert.doesNotMatch(journey, /\bseekPreviewTo\b/u, 'a direct-seek shared helper was imported');
-  const workflowImport = /import\s*\{([^}]+)\}\s*from\s*['"]\.\.\/support\/workflow\.js['"]/u.exec(journey);
-  assert.ok(workflowImport, 'the reviewed workflow import is absent');
+  // Every workflow.js import, from the journey or any of its step modules, counts.
+  const workflowImports = [...journey.matchAll(
+    /import\s*\{([^}]+)\}\s*from\s*['"](?:\.\.\/)+support\/workflow\.js['"]/gu,
+  )];
+  assert.ok(workflowImports.length > 0, 'the reviewed workflow import is absent');
   assert.deepEqual(
-    workflowImport[1].split(',').map(value => value.trim()).filter(Boolean).sort(),
+    [...new Set(workflowImports.flatMap(([, names]) => names.split(',')).map(value => value.trim()).filter(Boolean))].sort(),
     ['importSubtitleDocument', 'openProjectWithMedia'],
     'the journey imported an unreviewed workflow helper',
   );
@@ -190,7 +197,7 @@ test('the only OS boundary is fail-closed staging below the disposable run root'
 // anti-oracle-weakening rule requires. Raising a floor (tightening) also trips this deliberately:
 // a stricter oracle still deserves the same explicit sign-off.
 test('every parity threshold is pinned so a relaxation cannot pass unnoticed', () => {
-  const oracle = readFileSync(new URL('./exportAnimationParityOracle.js', import.meta.url), 'utf8');
+  const oracle = oracleSource();
   for (const [name, value] of [
     ['EXPORT_PARITY_WYSIWYG_FLOOR', '0.95'],
     ['EXPORT_PARITY_WYSIWYG_ROTATED_FLOOR', '0.91'],
@@ -219,7 +226,7 @@ test('every parity threshold is pinned so a relaxation cannot pass unnoticed', (
 // Render while drifting from Main scored a perfect 0px, and on the preserved matrix that let a 60px
 // joint translation pass unseen.
 test('export placement is judged against the worst surface, never the best', () => {
-  const oracle = readFileSync(new URL('./exportAnimationParityOracle.js', import.meta.url), 'utf8');
+  const oracle = oracleSource();
   assert.match(oracle, /const \[worstSurface, worstDistance\] = placementPairs\.reduce/u);
   assert.match(oracle, /candidate\[1\] > best\[1\] \? candidate : best/u);
   assert.doesNotMatch(oracle, /candidate\[1\] < best\[1\] \? candidate : best/u);

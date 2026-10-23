@@ -4,20 +4,17 @@
  *
  * GROUND TRUTH: src/platform/nativeGeminiJobLifecycle.js's createNativeGeminiJobRunner resolves a
  * credential BEFORE calling into Rust. With none available, `getCredentialId()` resolves null, the
- * attempt loop breaks immediately, and it throws the fixed error `fixedError('geminiCredentialUnavailable')`
- * (name `NativeGeminiError`, message exactly "The native Gemini operation could not be completed") --
- * no native command is ever invoked, so no job/artifact row is ever written. Every consumer of
- * src/platform/nativeGeminiText.js (document consolidate/summarize via
- * src/services/gemini/documentRequest.js, and translation via src/services/gemini/translation.js)
- * propagates that exact error unchanged: neither wraps it in a friendlier message the way
- * transcription's UI layer does. bulkTranslationFileIO.journey.js already asserts this same text for
- * the BULK translation path (`/native gemini operation could not be completed/i`); this module is
- * the single place that constant lives so a future journey does not retype it.
+ * attempt loop breaks immediately, and it throws `fixedError('geminiCredentialUnavailable')` (name
+ * `NativeGeminiError`, code `geminiCredentialUnavailable`, message the English
+ * `settings.geminiCredentialRequired` text below) -- no native command is ever invoked, so no
+ * job/artifact row is ever written. Document consolidate/summarize, main-track translation and bulk
+ * translation all surface that message unchanged; this module is the single place it lives so a
+ * journey does not retype it.
  */
 
 /* global document, getComputedStyle */
 
-export const NATIVE_GEMINI_REFUSAL_MESSAGE = 'The native Gemini operation could not be completed';
+export const GEMINI_CREDENTIAL_REQUIRED_MESSAGE = 'No Gemini API key is currently usable. Add or check a key in Settings → API Keys.';
 
 /** Native job kinds every credential-gated Gemini text call can register -- see geminiCredentialBoundary.journey.js. */
 export const PROVIDER_JOB_KINDS = Object.freeze(['transcribe', 'translate', 'analyzeSubtitles']);

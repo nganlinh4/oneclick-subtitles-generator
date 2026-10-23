@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
  * through "Download Only": `media_assets` carries only display_name/extension/size_bytes/content_hash
  * (see `downloadDurabilityState` in downloadJourneyOracle.js), and no log records the yt-dlp
  * `--format` string Rust builds from `VideoQuality::AtMost(height)`
- * (crates/osg-download/src/plan.rs, `format_selector`, ~lines 328-366) -- CLAUDE.md requires redacted
+ * (crates/osg-download/src/plan/arguments.rs, `DownloadPlan::format_selector`) -- CLAUDE.md requires redacted
  * diagnostics, and the format string is shaped by customer input. The only honest, credential-free
  * observable left is BEHAVIORAL: independently ffprobe the customer's saved file for two or three
  * DIFFERENT requested qualities and require the decoded geometry to track the request. If Rust ever

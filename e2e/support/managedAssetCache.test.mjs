@@ -34,11 +34,8 @@ test('managed fixture caches are ordinary direct children, never nested or redir
 });
 
 test('persistent asset acquisition remains supervised, root-bound and freshly lease-checked', () => {
-  const source = readFileSync(new URL('./realMedia.js', import.meta.url), 'utf8');
-  const sourceSwitch = source.slice(
-    source.indexOf('export const ensureSourceSwitchVideo'),
-    source.indexOf('const REAL_MEDIA_RECEIPT'),
-  );
+  const source = readFileSync(new URL('./secondaryRealMedia.js', import.meta.url), 'utf8');
+  const sourceSwitch = source.slice(source.indexOf('export const ensureSourceSwitchVideo'));
   assert.match(sourceSwitch, /runSupervisedSync\(\{/u);
   assert.match(sourceSwitch, /ownerProcessId:\s*process\.pid/u);
   assert.match(sourceSwitch, /managedPaths:\s*applicationLease\.managedPaths/u);

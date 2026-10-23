@@ -2,7 +2,7 @@
 // will start it, so a journey can tell "the install refused honestly" apart from "the install is
 // broken" without probing a private queue.
 //
-// crates/osg-engine-packages/src/manager.rs:1620-1632 (`ensure_disk_capacity`) runs inside the
+// crates/osg-engine-packages/src/manager/layout.rs (`ensure_disk_capacity`) runs inside the
 // install worker, BEFORE the first delivery byte is fetched, and fails the operation with
 // `PackageError::InsufficientSpace` unless the package store's volume can hold the compressed
 // download PLUS the unpacked tree PLUS a fixed reserve. On a host below that line the install job
@@ -15,14 +15,14 @@ import { readFileSync, statfsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
-/** crates/osg-engine-packages/src/manager.rs:40 (`MIN_FREE_RESERVE_BYTES`). */
+/** crates/osg-engine-packages/src/manager.rs (`MIN_FREE_RESERVE_BYTES`). */
 export const MIN_FREE_RESERVE_BYTES = 256 * 1024 * 1024;
 
 export const SPEECH_DELIVERY_CATALOG = resolve(
   import.meta.dirname, '..', '..', 'crates', 'osg-speech', 'delivery', 'speech-packages.delivery.json',
 );
 
-/** crates/osg-engine-packages/src/catalog.rs:646-654 (`current_platform`). */
+/** crates/osg-engine-packages/src/catalog.rs (`current_platform`). */
 const DELIVERY_PLATFORMS = Object.freeze({
   'win32:x64': 'windows-x86_64',
   'linux:x64': 'linux-x86_64',
@@ -30,7 +30,7 @@ const DELIVERY_PLATFORMS = Object.freeze({
   'darwin:arm64': 'macos-aarch64',
 });
 
-export const deliveryPlatform = (platform = process.platform, arch = process.arch) => (
+const deliveryPlatform = (platform = process.platform, arch = process.arch) => (
   DELIVERY_PLATFORMS[`${platform}:${arch}`] ?? null
 );
 

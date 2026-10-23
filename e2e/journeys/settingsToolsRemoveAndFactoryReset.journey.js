@@ -10,13 +10,13 @@
 //      catalog tool, an 18 MB Windows download -- crates/osg-native-tools/delivery/
 //      native-tools.delivery.json), removed through the same two-step public confirm nativeToolsInstall
 //      and settingsSurface use, and a directory-shape digest before install and after removal must be
-//      identical: crates/osg-native-tools/src/manager.rs:439-533 renames the installed version into
-//      `.trash` and synchronously cleans it up within the SAME removal call before the command
+//      identical: crates/osg-native-tools/src/manager/removal.rs (`remove`) renames the installed
+//      version into `.trash` and synchronously cleans it up within the SAME removal call before the command
 //      returns, so nothing exists that was not there when the store was empty.
 //   2. Factory reset clears what it claims. It stores one real (network-free, local-only) credential
 //      through the public API Keys tab, then factory-resets, and reads `credential_refs` back to 0 --
-//      exercising src/components/settings/SettingsModal.js:84-89 `clearNativeApplicationState`'s
-//      `clearCredentials()` (src/platform/credentialStateController.js:450-475), which
+//      exercising `clearNativeApplicationState` (src/components/settings/utils/applicationStateReset.js)
+//      and its `clearCredentials()` (src/platform/credentialStateController.js), which
 //      `credential_delete`s every stored credential. This is the one `clearNativeApplicationState`
 //      call settingsSurface never exercises, because it deliberately keeps that profile credential-free.
 /* global $, browser, describe, document, it */

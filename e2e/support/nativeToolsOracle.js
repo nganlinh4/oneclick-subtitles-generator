@@ -324,7 +324,7 @@ export const resolveVerifiedNativeToolExecutable = ({ storeRoot, tool, role }) =
   resolveVerifiedNativeToolRoles({ storeRoot, tool, roles: [role] })[role]
 );
 
-export const nativeToolsStore = (runRoot) => join(runRoot, 'data', 'native-tools');
+const nativeToolsStore = (runRoot) => join(runRoot, 'data', 'native-tools');
 
 export const verifyNativeToolsInstall = (runRoot, versions) => {
   assert.deepEqual(Object.keys(versions).sort(), [...TOOL_IDS].sort());

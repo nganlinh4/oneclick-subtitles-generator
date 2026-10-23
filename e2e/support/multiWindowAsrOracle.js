@@ -33,7 +33,7 @@ const normalizeRange = (range, index) => {
   return Object.freeze({ start, end });
 };
 
-export const assertFourContiguousRanges = ({
+const assertFourContiguousRanges = ({
   ranges,
   durationSeconds,
   maxRequestSeconds,

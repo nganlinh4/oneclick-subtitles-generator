@@ -483,10 +483,3 @@ export const verifyNarrationOnlyExportMix = ({
   ));
   return Object.freeze({ correlation, sourceTail, exportedTail, exportedAlignment });
 };
-
-export const NARRATION_AUDIO_ORACLE = Object.freeze({
-  sampleRate: AUDIO_SAMPLE_RATE,
-  windowMs: AUDIO_WINDOW_MS,
-  activeRmsFloor: ACTIVE_RMS_FLOOR,
-  silentRmsCeiling: SILENT_RMS_CEILING,
-});

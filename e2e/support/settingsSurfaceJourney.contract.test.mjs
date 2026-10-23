@@ -1,12 +1,9 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import test from 'node:test';
 
-const source = readFileSync(
-  resolve(import.meta.dirname, '..', 'journeys', 'settingsSurface.journey.js'),
-  'utf8',
-);
+import { readJourneySource } from './journeySource.js';
+
+const source = readJourneySource('settingsSurface.journey.js');
 
 test('settings journey reaches every public tab and records behavioural checkpoints', () => {
   for (const tab of [

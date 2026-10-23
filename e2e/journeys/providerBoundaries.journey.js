@@ -10,25 +10,25 @@
 // src/platform/nativeGeminiText.js, by document processing and translation) resolves a Gemini
 // credential BEFORE any native command is invoked. With none configured, `getCredentialId()`
 // resolves null, the attempt loop breaks immediately, and it throws the fixed
-// `NativeGeminiError('geminiCredentialUnavailable')` whose message is exactly
-// "The native Gemini operation could not be completed" -- no job/artifact row is ever written. That
-// exact text is asserted through e2e/support/providerRefusalOracle.js so document
-// processing/translation/PromptDJ never retype it, and bulkTranslationFileIO.journey.js already
-// proves the identical text for BULK translation; this journey's Part C proves the untested
-// MAIN-TRACK translation code path (useTranslationState.js:681-701's direct `translateSubtitles`
-// call, not the per-file bulk-failure wrapper). geminiCredentialBoundary.journey.js already proves
+// `NativeGeminiError('geminiCredentialUnavailable')` whose message is the actionable
+// `settings.geminiCredentialRequired` text -- no job/artifact row is ever written. That exact text
+// is asserted through e2e/support/providerRefusalOracle.js so document processing and translation
+// never retype it, and bulkTranslationFileIO.journey.js already proves the identical text for BULK
+// translation; this journey's Part C proves the MAIN-TRACK translation code path
+// (useTranslationState.js's direct `translateSubtitles` call, not the per-file bulk-failure
+// wrapper). geminiCredentialBoundary.journey.js already proves
 // this same wall for Gemini transcription end to end with full modal-layout containment checks;
 // this journey's Part A does not repeat those, it proves the INCREMENTAL fact that journey does
 // not: both transcription methods are offered and the max-duration request-window control is real.
 //
-// BACKGROUND IMAGE GENERATION HAS NO FRIENDLY MESSAGE FOR THIS FAILURE.
-// src/components/background/errorMessages.js's getFriendlyErrorMessage pattern-matches known error
-// shapes ("api key not set", HTTP status codes, quota, CORS, ...) and falls back to
-// t('backgroundGenerator.error.generic', 'Generation failed') for anything else. The raw
-// NativeGeminiError message above matches NONE of those patterns, so the customer-visible toast for
-// a missing credential here is the generic "Generation failed" -- bounded and actionable (a toast,
-// never inline), but less specific than transcription's "Please set your API key..." copy. This
-// journey asserts the REAL text rather than a nicer one it does not produce.
+// SPLIT DOCUMENT PROCESSING REPORTS AN INCOMPLETE RESULT, NOT THE CREDENTIAL TEXT. A nonzero split
+// duration takes src/services/gemini/consolidationService.js's completeDocumentByChunks path, which
+// catches each chunk's NativeGeminiError and resolves a `refused` result; LyricsDisplay.js then
+// shows its own "No usable output was returned" toast. Part B proves both paths.
+//
+// BACKGROUND IMAGE GENERATION MAPS THE ERROR CODE. src/components/background/errorMessages.js's
+// getFriendlyErrorMessage reads the bounded `geminiCredentialUnavailable` code and shows
+// `backgroundGenerator.error.apiKeyMissing` ("Gemini API key not set. Please set it in settings.").
 //
 // PROMPTDJ'S REFUSAL NEVER REACHES RUST AT ALL. src/components/BackgroundMusicSection.jsx posts
 // `{ type: 'pm-dj-native-init', available: getActiveGeminiCredentialId() !== null }` into the
@@ -74,7 +74,7 @@ import { actuateNativeRange } from '../support/nativeRange.js';
 import { durableState } from '../support/database.js';
 import { clickControl } from '../support/editor.js';
 import {
-  NATIVE_GEMINI_REFUSAL_MESSAGE, PROVIDER_JOB_KINDS, collectTopDocumentToasts,
+  GEMINI_CREDENTIAL_REQUIRED_MESSAGE, PROVIDER_JOB_KINDS, collectTopDocumentToasts,
 } from '../support/providerRefusalOracle.js';
 import { importSubtitles, openProjectWithMedia } from '../support/workflow.js';
 import { captureWorkflowStep } from '../support/workflowEvidence.js';
@@ -103,7 +103,7 @@ const waitUntilWithDiagnostic = async (predicate, { diagnostic, ...options }) =>
  * position guess that silently drifts if a tab is ever reordered) is the wrong contract either way.
  * Tagging the exact `.tab-label` (falling back to the button's own text for `.download-tabs`, which
  * has no icon) is the same explicit-marker pattern clickResultControlButton uses in
- * referenceVoiceAndPerCueNarration.journey.js.
+ * steps/referenceVoiceAndPerCueNarration/resultRows.js.
  */
 const clickTabLabelled = async (containerSelector, label) => {
   const tagged = await browser.execute((container, text) => {
@@ -264,7 +264,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       focusSelector: '.download-options-modal',
     });
 
-    const runDocumentRefusal = async (stepName, description, expectedMessage = NATIVE_GEMINI_REFUSAL_MESSAGE) => {
+    const runDocumentRefusal = async (stepName, description, expectedMessage = GEMINI_CREDENTIAL_REQUIRED_MESSAGE) => {
       const before = durableState(root);
       const beforeArtifacts = before.counts.artifacts;
       await clickControl('.process-button');
@@ -355,7 +355,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     });
     const afterC = durableState(root);
     await assertCleanTextRefusal({
-      toasts: refusalC, expectedMessage: NATIVE_GEMINI_REFUSAL_MESSAGE, before: beforeC, after: afterC, label: 'main-track translation',
+      toasts: refusalC, expectedMessage: GEMINI_CREDENTIAL_REQUIRED_MESSAGE, before: beforeC, after: afterC, label: 'main-track translation',
     });
     assert.deepEqual(afterC.cues, beforeC.cues, 'a missing credential altered the main durable cue track');
     await captureWorkflowStep({

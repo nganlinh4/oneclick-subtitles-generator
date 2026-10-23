@@ -115,7 +115,3 @@ export const verifyNarrationMixWindows = ({
   );
   return Object.freeze(deltas);
 };
-
-export const RENDER_AUDIO_NARRATION_MIX_ORACLE = Object.freeze({
-  rmsFloor: NARRATION_MIX_RMS_FLOOR,
-});

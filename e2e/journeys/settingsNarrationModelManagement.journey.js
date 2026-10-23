@@ -13,7 +13,7 @@
 //   3. Cancelling immediately, before any large source archive can materially progress, returns the
 //      panel to the same truthful "not installed" state and leaves NO orphaned bytes or leases: the
 //      native package store's owned staging directory is removed on cancellation by
-//      crates/osg-runtime-staging/src/lib.rs:432-513 (`OwnedStagingDirectory`'s `Drop` impl runs
+//      crates/osg-runtime-staging/src/owned.rs (`OwnedStagingDirectory`'s `Drop` impl runs
 //      `cleanup()`, which removes the staged tree and releases its durable ownership journal). This
 //      journey verifies that promise independently with a before/after filesystem digest.
 // Full install-then-remove-then-repair coverage for a small package already exists
@@ -21,8 +21,8 @@
 // journey does not attempt the same for F5-TTS; see e2e/inventory.json for the recorded rationale.
 //
 // Claims 2 and 3 have a host precondition the product enforces and this journey must respect.
-// crates/osg-engine-packages/src/manager.rs:1620-1632 refuses an install -- before the first
-// delivery byte is fetched -- unless the package store's volume holds the compressed download plus
+// crates/osg-engine-packages/src/manager/layout.rs (`ensure_disk_capacity`) refuses an install --
+// before the first delivery byte is fetched -- unless the package store's volume holds the compressed download plus
 // the unpacked tree plus a 256 MiB reserve. For the Windows F5-TTS release that is ~11.0 GiB. On a
 // host below that line the job starts and dies in the same instant, so `status.operation` is never
 // observable and the Cancel control the proof depends on can never render. That is the product

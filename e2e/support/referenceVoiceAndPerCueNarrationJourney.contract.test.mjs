@@ -3,12 +3,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { readJourneySource } from './journeySource.js';
+
 const read = (...segments) => readFileSync(join(import.meta.dirname, ...segments), 'utf8');
 
-const journeyPath = join(
-  import.meta.dirname, '..', 'journeys', 'referenceVoiceAndPerCueNarration.journey.js',
-);
-const journey = readFileSync(journeyPath, 'utf8');
+const journey = readJourneySource('referenceVoiceAndPerCueNarration.journey.js');
 const oracle = read('narrationControlOracle.js');
 const narrationMethodSelection = read('..', '..', 'src', 'components', 'narration', 'components', 'NarrationMethodSelection.js');
 const audioControls = read('..', '..', 'src', 'components', 'narration', 'components', 'AudioControls.js');

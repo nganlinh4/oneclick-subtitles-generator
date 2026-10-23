@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
+import { readJourneySource } from './journeySource.js';
 import {
   ANIMATION_CASES,
   ANIMATION_EASING_VALUES,
@@ -11,7 +12,7 @@ import {
 } from './subtitleMaterialAnimationOracle.js';
 
 const read = path => readFileSync(resolve(import.meta.dirname, '..', path), 'utf8');
-const journey = read('journeys/subtitleMaterialAndAnimation.journey.js');
+const journey = readJourneySource('subtitleMaterialAndAnimation.journey.js');
 const nativeMediaOracle = read('support/nativeMediaOracle.js');
 const presetButtons = read('../src/components/subtitleCustomization/PresetButtonsGrid.js');
 const publicControls = [

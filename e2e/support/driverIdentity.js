@@ -22,7 +22,7 @@ const listenOnFreshLoopbackPort = () => new Promise((resolve, reject) => {
   });
 });
 
-export const isGuardedWebDriverIdentity = (value) => (
+const isGuardedWebDriverIdentity = (value) => (
   typeof value === 'string' && IDENTITY_PATTERN.test(value)
 );
 

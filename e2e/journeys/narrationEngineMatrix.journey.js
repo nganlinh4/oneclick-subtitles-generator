@@ -23,7 +23,8 @@
 // alternateLocalAsrMatrix.journey.js exactly:
 //   1. The Tools engine-selection surface never lies: every narration card's data-engine-state is
 //      cross-checked against the independent on-disk oracle (data/engine-packages/v1/<packageId>,
-//      the SAME store ASR packages use -- crates/osg-engine-packages/src/manager.rs:1433-1436 --
+//      the SAME store ASR packages use -- `ensure_component_layout` in
+//      crates/osg-engine-packages/src/manager/layout.rs --
 //      keyed by the package id, not the frontend card id; F5-TTS's card id 'f5tts' maps to package
 //      id 'f5-tts', src/platform/managedEngineCatalog.js).
 //   2. Selecting an uninstalled narration engine offers a real install rather than silently

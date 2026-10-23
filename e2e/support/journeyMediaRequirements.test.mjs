@@ -73,7 +73,7 @@ test('outer lease owners prepare generic media while WDIO remains read-only', ()
     'WDIO configuration may verify/copy prepared inputs but must never acquire persistent assets',
   );
 
-  const realMedia = source('support', 'realMedia.js');
+  const realMedia = source('support', 'secondaryRealMedia.js');
   assert.match(
     realMedia,
     /ensureSourceSwitchVideo[\s\S]*?runSupervisedSync\(\{[\s\S]*?ownerProcessId:\s*process\.pid,[\s\S]*?managedPaths:\s*applicationLease\.managedPaths/u,

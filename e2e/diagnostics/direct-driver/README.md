@@ -1,7 +1,8 @@
 # Direct `tauri-driver` attempt — retained as evidence, not as a harness
 
-This was the first real-binary harness. It is kept because what it measured is worth keeping, and
-deleting it would invite someone to try the same approach again.
+This was the first real-binary harness. Its code (an external-driver session helper and an
+exploration journey) has been removed; this record is kept because what it measured is worth
+keeping, and forgetting it would invite someone to try the same approach again.
 
 ## What it established
 

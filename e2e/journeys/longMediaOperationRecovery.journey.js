@@ -2,11 +2,11 @@
 // running; the next process must tell the truth about it. The boot-time job/artifact reconciliation
 // this relies on is kind-agnostic -- crates/osg-infrastructure/src/storage/jobs.rs interrupts every
 // stale 'running'/'cancelling' job regardless of kind, and
-// crates/osg-infrastructure/src/storage/artifacts.rs's reconcile() walks every artifact the same
-// way -- so the SAME honesty guarantee renderInterruptRecovery.journey.js proves for a killed render
-// job applies here to a killed generateWaveform job. Long media matters for this specific proof: it
-// is what makes the seed phase's "job still running when the process is torn down" observation
-// non-racy without depending on unmeasured native decode throughput (see
+// crates/osg-infrastructure/src/storage/artifacts/reconcile.rs's reconcile() walks every artifact
+// the same way -- so the SAME honesty guarantee renderInterruptRecovery.journey.js proves for a
+// killed render job applies here to a killed generateWaveform job. Long media matters for this
+// specific proof: it is what makes the seed phase's "job still running when the process is torn
+// down" observation non-racy without depending on unmeasured native decode throughput (see
 // support/longSyntheticMediaFixture.js's two-hour margin).
 //
 // The seed phase deliberately ends while the job is mid-flight: the scenario supervisor tears the

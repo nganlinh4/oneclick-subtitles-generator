@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { GEMINI_CREDENTIAL_REQUIRED_MESSAGE } from './providerRefusalOracle.js';
+
 const read = (...segments) => readFileSync(join(import.meta.dirname, ...segments), 'utf8');
 
 const journeyPath = join(import.meta.dirname, '..', 'journeys', 'providerBoundaries.journey.js');
@@ -14,6 +16,8 @@ const documentRequest = read('..', '..', 'src', 'services', 'gemini', 'documentR
 const consolidationService = read('..', '..', 'src', 'services', 'gemini', 'consolidationService.js');
 const translation = read('..', '..', 'src', 'services', 'gemini', 'translation.js');
 const imageGenerationService = read('..', '..', 'src', 'services', 'gemini', 'imageGenerationService.js');
+const lyricsDisplay = read('..', '..', 'src', 'components', 'LyricsDisplay.js');
+const enSettings = read('..', '..', 'src', 'i18n', 'locales', 'en', 'settings.json');
 const errorMessages = read('..', '..', 'src', 'components', 'background', 'errorMessages.js');
 const backgroundImageGenerator = read('..', '..', 'src', 'components', 'BackgroundImageGenerator.js');
 const backgroundMusicSection = read('..', '..', 'src', 'components', 'BackgroundMusicSection.jsx');
@@ -30,13 +34,13 @@ const database = read('..', 'support', 'database.js');
 
 test('the fixed refusal message this journey shares comes from the real credential-resolution wall, not a guess', () => {
   assert.match(jobLifecycle, /const fixedError = \(code = 'nativeGeminiFailed'\) => \{/u);
-  assert.match(jobLifecycle, /The native Gemini operation could not be completed/u);
+  assert.match(jobLifecycle, /code === 'geminiCredentialUnavailable'\s*\? i18n\.t\('settings\.geminiCredentialRequired',/u);
+  assert.equal(JSON.parse(enSettings).geminiCredentialRequired, GEMINI_CREDENTIAL_REQUIRED_MESSAGE);
   assert.match(jobLifecycle, /let lastError = fixedError\('geminiCredentialUnavailable'\)/u);
   // With no credential, getCredentialId() resolves null and the attempt loop breaks immediately --
   // no `start()` (and therefore no native command) is ever called before that fixed error throws.
   assert.match(jobLifecycle, /if \(credentialId === null \|\| attemptedCredentials\.has\(credentialId\)\) break;/u);
-  assert.match(oracle, /NATIVE_GEMINI_REFUSAL_MESSAGE = 'The native Gemini operation could not be completed'/u);
-  assert.match(journey, /NATIVE_GEMINI_REFUSAL_MESSAGE/u);
+  assert.match(journey, /GEMINI_CREDENTIAL_REQUIRED_MESSAGE/u);
 });
 
 test('toast refusal text reads the customer message, not the close icon or localized heading', () => {
@@ -59,17 +63,14 @@ test('document consolidate/summarize and translation both route through the same
   assert.match(journey, /06-main-track-translation-refused/u);
 });
 
-test('background image generation really produces the generic "Generation failed" fallback for this raw message', () => {
+test('background image generation maps the missing-credential code to its api-key toast', () => {
   assert.match(imageGenerationService, /runNativeGeminiText\(\{\s*task: 'analyzeSubtitles'/u);
-  assert.match(errorMessages, /return t\('backgroundGenerator\.error\.generic', 'Generation failed'\);/u);
-  // None of the specific patterns (api key / quota / HTTP status / CORS / network) match the raw
-  // NativeGeminiError text, so the fallback above is genuinely what fires -- confirmed by every
-  // specific branch requiring a substring this text does not contain.
-  for (const specific of [/api key not set/iu, /quota/iu, /HTTP\s+\d{3}/u, /cors/iu, /\bnetwork\b/iu]) {
-    assert.doesNotMatch('The native Gemini operation could not be completed', specific);
-  }
+  // The friendly-message mapper keys on the bounded error CODE the credential wall sets, so the
+  // customer copy is the api-key message, not the generic fallback.
+  assert.match(jobLifecycle, /error\.code = typeof code === 'string'/u);
+  assert.match(errorMessages, /if \(code === 'geminiCredentialUnavailable'\) \{\s*return t\('backgroundGenerator\.error\.apiKeyMissing', 'Gemini API key not set\. Please set it in settings\.'\);/u);
   assert.match(backgroundImageGenerator, /window\.addToast\(getFriendlyErrorMessage\(t, err(?:\?\.message \|\| String\(err\))?\), 'error', 5000\)/u);
-  assert.match(journey, /expectedMessage: 'Generation failed'/u);
+  assert.match(journey, /expectedMessage: 'Gemini API key not set\. Please set it in settings\.'/u);
 });
 
 test("PromptDJ's refusal never reaches Rust: the embedded app itself gates play/pause on credentialAvailable", () => {
@@ -108,16 +109,21 @@ test('the max-duration request-window slider is a real native input this journey
   assert.match(journey, /parallelInfoPresent, false/u);
 });
 
-test('the credential-free split-duration control is real, and the chunked-refusal edge case is documented rather than silently skipped', () => {
+test('the credential-free split-duration control is real, and the chunked refusal is asserted with its own toast', () => {
   assert.match(downloadOptionsModal, /id="consolidation-split-duration-slider"/u);
   assert.match(journey, /splitSlider = '#consolidation-split-duration-slider'/u);
   assert.match(journey, /actuateNativeRange\(\{ driver: browser, selector: splitSlider, value: 5/u);
-  assert.match(journey, /GROUND TRUTH: a NONZERO split duration takes/u);
+  // A nonzero split catches each chunk's refusal and resolves `refused`; LyricsDisplay.js then owns
+  // the toast, so the split path has its own incomplete-result text rather than the credential text.
+  assert.match(consolidationService, /failures\.push\(\{ chunkId, code: boundedFailureCode\(error\) \}\);/u);
+  assert.match(lyricsDisplay, /'No usable output was returned\. Retry the document\.'/u);
+  assert.match(journey, /'04b-split-document-refused'/u);
+  assert.match(journey, /'Error processing document: No usable output was returned\. Retry the document\.'/u);
 });
 
 test('main-track translation exercises the direct call path bulkTranslationFileIO does not, and shares its refusal text', () => {
   assert.match(translationActions, /className=\{`translate-button \$\{isFormatMode \? 'format-button' : ''\}`\}/u);
-  assert.match(bulkTranslationJourney, /native gemini operation could not be completed/iu);
+  assert.match(bulkTranslationJourney, /refusalToast\.includes\(GEMINI_CREDENTIAL_REQUIRED_MESSAGE\)/u);
   assert.match(journey, /add-chain-item-btn:not\(\.delimiter\):not\(\.original\)/u);
   assert.match(journey, /TARGET_LANGUAGE = 'Spanish'/u);
   assert.match(journey, /afterC\.cues, beforeC\.cues/u);
@@ -150,15 +156,15 @@ test('the journey never substitutes a native command, private IPC, raw SQL, or a
 test('the contract fails when any one load-bearing assertion is removed', () => {
   const assertJourneyStillProvesTheWall = (source) => {
     assert.match(source, /methodAvailability\.oldMethod, 'true'/u);
-    assert.match(source, /NATIVE_GEMINI_REFUSAL_MESSAGE/u);
-    assert.match(source, /expectedMessage: 'Generation failed'/u);
+    assert.match(source, /GEMINI_CREDENTIAL_REQUIRED_MESSAGE/u);
+    assert.match(source, /expectedMessage: 'Gemini API key not set\. Please set it in settings\.'/u);
     assert.match(source, /credentialAvailable === false/u);
     assert.match(source, /afterE\.jobs, beforeE\.jobs/u);
   };
   assertJourneyStillProvesTheWall(journey);
   for (const needle of [
     "methodAvailability.oldMethod, 'true'",
-    "expectedMessage: 'Generation failed'",
+    "expectedMessage: 'Gemini API key not set. Please set it in settings.'",
     'credentialAvailable === false',
     'afterE.jobs, beforeE.jobs',
   ]) {

@@ -37,8 +37,13 @@ test('every advanced control the journey drives is a real, shipped public contro
   assert.match(rangeActionBar, /delete<\/span>/u);
   assert.match(journey, /range-action-bar button:nth-child\(3\)/u);
   assert.match(journey, /carries no class of its own/u);
-  assert.match(journey, /origin: 'viewport'/u);
-  assert.match(journey, /timelineLocation\.x \+ timelineSize\.width - 2/u);
+  // Element-relative origins only: WebDriver measures from the element's centre, so the legal
+  // right edge is half the timeline width away. A viewport origin mixed with getLocation()'s
+  // document coordinates missed the handle whenever the page had scrolled.
+  assert.match(journey, /\.move\(\{ origin: handle \}\)/u);
+  assert.match(journey, /targetOffsetX = Math\.floor\(timelineSize\.width \/ 2\) - 2/u);
+  assert.match(journey, /\.move\(\{ origin: timeline, x: targetOffsetX, y: 0/u);
+  assert.doesNotMatch(journey, /origin: 'viewport'/u);
   assert.doesNotMatch(journey, /\.move\(\{ origin: handle, x: overshootPx/u);
 
   assert.match(liquidGlass, /className=\{`liquid-glass \$\{className\}`\}/u);
@@ -92,14 +97,14 @@ test('undo/redo is walked across a MIXED sequence with revision reasons read fro
 
 test('the journey targets its own advanced-editing ground, not the already-green CRUD or boundary journeys', () => {
   // editorCueCrudAndHistory already owns insert/delete/merge/split/save/checkpoint/reset.
+  // The split action is addressed by data-osg-action: `.split-sub-btn` is shared with the speakers button.
   for (const control of [
-    '.insert-lyric-button', '.merge-lyrics-button', '.split-sub-btn', '.empty-insert-lyric-btn',
-    '.lyrics-save-btn', '.checkpoint-btn', '.reset-btn', '.delete-lyric-btn', '.edit-lyric-btn',
+    '.insert-lyric-button', '.merge-lyrics-button', '[data-osg-action="split-subtitles"]',
+    '.empty-insert-lyric-btn', '.lyrics-save-btn', '.checkpoint-btn', '.reset-btn',
+    '.delete-lyric-btn', '.edit-lyric-btn',
   ]) {
     assert.ok(otherEditingJourney.includes(control), `fixture check: ${control} is owned by editorCueCrudAndHistory`);
-    assert.doesNotMatch(journey, new RegExp(control.replace('.', '\\.'), 'u'), (
-      `timelineAdvancedEditing duplicates the already-covered control ${control}`
-    ));
+    assert.ok(!journey.includes(control), `timelineAdvancedEditing duplicates the already-covered control ${control}`);
   }
   // timelineBoundary already owns Ctrl+A-then-delete-everything and ASR-driven regeneration.
   assert.match(boundaryJourney, /ensureEngineReady/u);

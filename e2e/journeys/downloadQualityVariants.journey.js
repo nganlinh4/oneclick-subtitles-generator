@@ -21,7 +21,7 @@
 // saved file for each requested quality and require the decoded geometry to (a) never exceed the
 // requested height and (b) be DISTINCT across rounds (assertRoundsAreDistinct) -- the only way that
 // can be true is if the requested height genuinely reached and shaped the real yt-dlp process
-// (crates/osg-download/src/plan.rs's `format_selector`, ~lines 328-366).
+// (`DownloadPlan::format_selector` in crates/osg-download/src/plan/arguments.rs).
 //
 // WHY NOT THE DETERMINISTIC LOOPBACK FIXTURE (support/downloadFixtureOrigin.js). Its two sources are
 // direct MP4 URLs. crates/osg-download/src/plan.rs's `direct_mp4_format_id` path REFUSES

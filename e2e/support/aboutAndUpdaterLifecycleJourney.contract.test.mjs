@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { readJourneySource } from './journeySource.js';
+
 const read = (...segments) => readFileSync(join(import.meta.dirname, ...segments), 'utf8');
 
 const journeyPath = join(import.meta.dirname, '..', 'journeys', 'aboutAndUpdaterLifecycle.journey.js');
@@ -12,7 +14,7 @@ const libRs = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'lib.rs');
 const cargoToml = read('..', '..', 'apps', 'desktop', 'src-tauri', 'Cargo.toml');
 const updaterSmokeWorkflow = read('..', '..', '.github', 'workflows', 'updater-smoke.yml');
 const diagnosticsRs = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'diagnostics.rs');
-const settingsSurfaceJourney = read('..', 'journeys', 'settingsSurface.journey.js');
+const settingsSurfaceJourney = readJourneySource('settingsSurface.journey.js');
 const database = read('..', 'support', 'database.js');
 
 test('the e2e-automation channel is really compiled disabled, before the signing key is ever checked', () => {

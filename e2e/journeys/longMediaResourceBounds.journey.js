@@ -50,18 +50,18 @@ const WORKFLOW = 'long-media-resource-bounds';
 // TARGET_LONG_WAVEFORM_POINTS (250,000) or MAX_WAVEFORM_POINTS (1,000,000), whichever binds first.
 const FRONTEND_MAX_WAVEFORM_POINTS = 1_000_000;
 const FRONTEND_TARGET_LONG_WAVEFORM_POINTS = 250_000;
-// apps/desktop/src-tauri/src/media_pipeline.rs:35 -- the native validation ceiling every waveform
+// MAX_WAVEFORM_POINTS in apps/desktop/src-tauri/src/media_pipeline.rs -- the native validation ceiling every waveform
 // request is checked against regardless of what the frontend asked for.
 const NATIVE_MAX_WAVEFORM_POINTS = 1_000_000;
-// apps/desktop/src-tauri/src/waveform_cache.rs:20 -- the byte cap on ONE cached waveform artifact.
+// MAX_CACHE_BYTES in apps/desktop/src-tauri/src/waveform_cache.rs -- the byte cap on ONE cached waveform artifact.
 const WAVEFORM_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 
 // --- Resource-growth caps and their justification ---
 // Thread-count growth: this suite already caught a real unbounded-scan regression at 562 threads
 // (asrGeneration's finding, recorded in e2e/inventory.json). This ceiling sits more than 8x below
 // that regression while tolerating legitimate churn bounded by MAX_CONCURRENT_OPERATIONS=2
-// (apps/desktop/src-tauri/src/media_pipeline.rs:36) and MAX_CONCURRENT_RENDERS=1
-// (apps/desktop/src-tauri/src/render/host.rs:22) -- neither of which this journey's seek/zoom/
+// (apps/desktop/src-tauri/src/media_pipeline.rs) and MAX_CONCURRENT_RENDERS=1
+// (apps/desktop/src-tauri/src/render/host.rs) -- neither of which this journey's seek/zoom/
 // playback interaction should even invoke a second time, since a seek is an ordinary HTTP range
 // request against the private native media server the initial PreparePlayback job already opened.
 const THREAD_COUNT_GROWTH_CAP = 64;
@@ -188,7 +188,7 @@ const waveformInkBoundary = (mediaEnd, zoomValue, nearEndEpsilonSeconds) => brow
 
 /**
  * `waitUntil`'s own `timeoutMsg` must be a static string -- WebdriverIO (and this suite's own
- * automationSafety.contract.test.mjs) requires it, because the options object is evaluated eagerly
+ * automationSafetyTimeouts.contract.test.mjs) requires it, because the options object is evaluated eagerly
  * at call time, before the predicate ever runs. A diagnostic that needs LIVE state read at the
  * moment of failure goes through this wrapper instead, exactly like timelineBoundary.journey.js's
  * own helper of the same name.
