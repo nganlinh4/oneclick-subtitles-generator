@@ -1,4 +1,5 @@
-import { createMediaCandidateLifecycle, createNativeMediaDescriptor } from './mediaService';
+import { createMediaCandidateLifecycle } from './mediaCandidateLifecycle';
+import { createNativeMediaDescriptor } from './mediaService';
 import { createProjectService } from './projectService';
 import {
   createMediaProjectActivation,

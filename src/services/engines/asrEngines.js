@@ -14,7 +14,7 @@
  * method id 'nvidia-parakeet' + route 'parakeet'; it shares the same generic ASR options/flow.)
  */
 
-export const QWEN3_ASR_SUPPORTED_LANGUAGES = Object.freeze([
+const QWEN3_ASR_SUPPORTED_LANGUAGES = Object.freeze([
   'zh', 'en', 'fr', 'de', 'it', 'ja', 'ko', 'pt', 'ru', 'es',
 ]);
 
@@ -53,9 +53,7 @@ export const ASR_ENGINES = [
   },
 ];
 
-export const ASR_METHOD_IDS = ASR_ENGINES.map((e) => e.id);
-export const isAsrMethod = (method) => ASR_METHOD_IDS.includes(method);
-export const getAsrEngine = (id) => ASR_ENGINES.find((e) => e.id === id) || null;
+const getAsrEngine = (id) => ASR_ENGINES.find((e) => e.id === id) || null;
 
 export const normalizeAsrLanguage = (engineId, value) => {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : 'auto';

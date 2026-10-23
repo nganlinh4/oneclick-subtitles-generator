@@ -3,7 +3,7 @@ import { resolveProjectForCache } from './subtitleProjectStore';
 import { cloneTranslationRecord } from '../utils/translationOwnership';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
-export const MAX_PROJECT_AUXILIARY_BYTES = 900 * 1024;
+const MAX_PROJECT_AUXILIARY_BYTES = 900 * 1024;
 
 const AUXILIARY_SCHEMA_VERSION = 1;
 const AUXILIARY_KEY_PREFIX = 'project.legacyAux.v1.';
@@ -25,7 +25,7 @@ const ANALYSIS_PRESET_IDS = new Set([
 ]);
 const LANGUAGE_TAG = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
-export class ProjectAuxiliaryStoreError extends Error {
+class ProjectAuxiliaryStoreError extends Error {
   constructor(code, message, details = {}) {
     super(message);
     this.name = 'ProjectAuxiliaryStoreError';

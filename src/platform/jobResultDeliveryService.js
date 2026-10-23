@@ -45,7 +45,7 @@ const normalizeHeader = (value) => {
   });
 };
 
-export const normalizePendingJobResults = (value) => {
+const normalizePendingJobResults = (value) => {
   if (!Array.isArray(value) || value.length > MAX_PENDING_RESULTS) throw invalid();
   const seenJobs = new Set();
   return Object.freeze(value.map((raw) => {

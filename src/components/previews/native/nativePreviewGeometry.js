@@ -44,7 +44,7 @@ import { GLYPH_ATLAS_LIMITS } from '../../../platform/glyphAtlas';
  * The resolution ladder, mirroring `RenderResolution::height` in `crates/osg-render/src/contract.rs`.
  * The composition height is taken from here unchanged; only the width is derived.
  */
-export const RESOLUTION_HEIGHTS = Object.freeze({
+const RESOLUTION_HEIGHTS = Object.freeze({
   '360p': 360,
   '480p': 480,
   '720p': 720,

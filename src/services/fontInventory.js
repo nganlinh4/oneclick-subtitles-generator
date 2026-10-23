@@ -40,7 +40,7 @@ import {
   parseFontFamilyValue,
 } from './fontIdentity';
 
-export const FONT_INVENTORY_CONTRACT_VERSION = 1;
+const FONT_INVENTORY_CONTRACT_VERSION = 1;
 
 /** Byte availability of a family on one platform. Exactly one applies; there is no other outcome. */
 export const FONT_FAMILY_BUCKET = Object.freeze({

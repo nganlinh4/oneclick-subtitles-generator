@@ -118,54 +118,18 @@ export const useLyricsSave = ({
         return true;
       }
 
-      // Save to cache (server when available; local-only in FE-only)
-      const { probeServerAvailability } = await import('../utils/serverEnv');
-      let hasServer = false;
-      try {
-        hasServer = await probeServerAvailability();
-      } catch {
-        // Browser preview continues with its local-only save behavior.
+      // Browser preview has no durable owner: local state and events only.
+      notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
+
+      updateSavedLyrics();
+      if (onSaveSubtitles) {
+        onSaveSubtitles(subtitlesToSave);
       }
-
-      if (hasServer) {
-        const result = await saveSubtitlesToCache(cacheId, subtitlesToSave);
-        if (result.success) {
-          // Show success toast using centralized system
-          notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
-
-          // Update the saved lyrics state in the editor
-          updateSavedLyrics();
-
-          // Call the callback if provided to update parent component state
-          if (onSaveSubtitles) {
-            onSaveSubtitles(subtitlesToSave);
-          }
-
-          // Notify listeners
-          window.dispatchEvent(new CustomEvent('subtitles-saved', { detail: { success: true } }));
-          window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
-            detail: { action: 'save', timestamp: Date.now(), subtitles: subtitlesToSave }
-          }));
-          return true;
-        } else {
-          console.error('Failed to save subtitles:', result.error);
-          return refuse();
-        }
-      } else {
-        // Frontend-only: simulate success (local state + events only)
-        // Show success toast using centralized system
-        notifySaved(t('output.subtitlesSaved', 'Progress saved successfully'));
-
-        updateSavedLyrics();
-        if (onSaveSubtitles) {
-          onSaveSubtitles(subtitlesToSave);
-        }
-        window.dispatchEvent(new CustomEvent('subtitles-saved', { detail: { success: true } }));
-        window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
-          detail: { action: 'save', timestamp: Date.now(), subtitles: subtitlesToSave }
-        }));
-        return true;
-      }
+      window.dispatchEvent(new CustomEvent('subtitles-saved', { detail: { success: true } }));
+      window.dispatchEvent(new CustomEvent('subtitle-timing-changed', {
+        detail: { action: 'save', timestamp: Date.now(), subtitles: subtitlesToSave }
+      }));
+      return true;
     } catch (error) {
       console.error('Error saving subtitles:', error);
       return refuse();
@@ -258,5 +222,3 @@ export const useLyricsSave = ({
 
   return { handleSave };
 };
-
-export default useLyricsSave;

@@ -380,8 +380,6 @@ const VideoBottomControls = ({
                 } else if (container.msRequestFullscreen) {
                   container.msRequestFullscreen();
                 }
-              } else {
-                console.log('ERROR: Container not found!');
               }
             }
           }}

@@ -11,7 +11,6 @@ it('keeps production YouTube, Genius, and OAuth sources structurally native-only
     'src/platform/desktopYoutubeService.js',
     'src/platform/providerService.js',
     'src/hooks/useGeniusLyrics.js',
-    'src/components/OAuth2Callback.js',
     'src/components/inputs/UnifiedUrlInput.js',
     'src/components/inputs/YoutubeUrlInput.js',
     'src/components/inputs/YoutubeSearchInput.js',

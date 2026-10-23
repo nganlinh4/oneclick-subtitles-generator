@@ -4,7 +4,7 @@ import { isDesktopRuntime } from './runtimeEnvironment';
 export { isDesktopRuntime } from './runtimeEnvironment';
 
 export const DESKTOP_RUNTIME_UNAVAILABLE = 'desktopRuntimeUnavailable';
-export const DESKTOP_COMMAND_FAILED = 'desktopCommandFailed';
+const DESKTOP_COMMAND_FAILED = 'desktopCommandFailed';
 /**
  * A native call's own promise never settled -- Tauri's IPC bridge neither resolved nor rejected
  * it. This is distinct from `DESKTOP_COMMAND_FAILED`: that code means Rust answered with a

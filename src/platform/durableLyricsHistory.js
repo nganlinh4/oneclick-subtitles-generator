@@ -13,12 +13,12 @@ export {
   registerDurableLyricsHistoryFlusher,
 } from './durableLyricsCheckpoint';
 
-export const LYRICS_EDITOR_REVISION_PREFIX = 'OSG lyrics editor v1:';
-export const MAX_DURABLE_LYRICS_HISTORY_OPERATIONS = 16;
-export const MAX_DURABLE_LYRICS_HISTORY_STATE_BYTES = 64 * 1024 * 1024;
-export const MAX_DURABLE_LYRICS_HISTORY_QUEUE_BYTES = 128 * 1024 * 1024;
+const LYRICS_EDITOR_REVISION_PREFIX = 'OSG lyrics editor v1:';
+const MAX_DURABLE_LYRICS_HISTORY_OPERATIONS = 16;
+const MAX_DURABLE_LYRICS_HISTORY_STATE_BYTES = 64 * 1024 * 1024;
+const MAX_DURABLE_LYRICS_HISTORY_QUEUE_BYTES = 128 * 1024 * 1024;
 
-export class DurableLyricsHistoryBackpressureError extends Error {
+class DurableLyricsHistoryBackpressureError extends Error {
   constructor(limit, byteLimit, code = 'historyQueueSaturated') {
     super('The durable subtitle-history queue reached its bounded capacity');
     this.name = 'DurableLyricsHistoryBackpressureError';
@@ -48,7 +48,7 @@ export const LYRICS_EDITOR_ACTIONS = Object.freeze({
 const ACTIONS = new Set(Object.values(LYRICS_EDITOR_ACTIONS));
 const reasonFor = (action) => `${LYRICS_EDITOR_REVISION_PREFIX} ${action}`;
 const EDITOR_REASONS = new Set([...ACTIONS].map(reasonFor));
-export const isLyricsEditorRevisionReason = (value) => (
+const isLyricsEditorRevisionReason = (value) => (
   typeof value === 'string' && EDITOR_REASONS.has(value)
 );
 

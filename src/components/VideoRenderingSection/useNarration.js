@@ -22,7 +22,7 @@ const firstArray = (...candidates) => (
  * to be non-empty, because an original track left in memory is not evidence that it belongs to the
  * translated or grouped subtitles currently selected for export.
  */
-export const resolveCurrentNarrationInputs = ({
+const resolveCurrentNarrationInputs = ({
   narrationState,
   narrationResults,
   subtitlesData,
@@ -182,5 +182,3 @@ export const useNarration = ({
     handleRefreshNarration,
   };
 };
-
-export default useNarration;

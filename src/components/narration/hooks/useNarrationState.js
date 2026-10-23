@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export const NARRATION_METHODS = Object.freeze([
+const NARRATION_METHODS = Object.freeze([
   'f5tts',
   'chatterbox',
   'gemini',

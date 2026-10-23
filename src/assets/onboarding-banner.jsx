@@ -1,8 +1,5 @@
 
 function OnboardingAnimation(props) {
-  // You might want to forward refs if needed:
-  // const { svgRef, ...restProps } = props; // Example if using forwardRef
-
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500px" height="500px" {...props}> {/* Spread any additional props */}
       <defs>

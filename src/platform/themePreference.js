@@ -13,7 +13,7 @@ const requireTheme = (theme) => {
 const defaultRoot = () => document.documentElement;
 const defaultStorage = () => localStorage;
 
-export const applyEffectiveTheme = (theme, { root = defaultRoot() } = {}) => {
+const applyEffectiveTheme = (theme, { root = defaultRoot() } = {}) => {
   const effectiveTheme = requireTheme(theme);
   root.setAttribute('data-theme', effectiveTheme);
   return effectiveTheme;

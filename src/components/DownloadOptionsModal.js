@@ -4,8 +4,6 @@ import ModelDropdown from './ModelDropdown';
 import PromptEditor from './PromptEditor';
 import CloseButton from './common/CloseButton';
 import SliderWithValue from './common/SliderWithValue';
-// Import default prompts from geminiService if needed in the future
-// import { getDefaultConsolidatePrompt, getDefaultSummarizePrompt } from '../services/geminiService';
 import '../styles/DownloadOptionsModal.css';
 import '../styles/components/tabs.css';
 import initTabPillAnimation from '../utils/tabPillAnimation';

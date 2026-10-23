@@ -4,7 +4,7 @@ import {
     getTranscriptionRulesSync,
 } from '../utils/transcriptionRulesStore';
 
-export const hasMeaningfulTranscriptionRules = (rules) => (
+const hasMeaningfulTranscriptionRules = (rules) => (
     rules !== null
     && typeof rules === 'object'
     && !Array.isArray(rules)

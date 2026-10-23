@@ -10,10 +10,12 @@ import {
   subscribeCurrentCacheId,
   subscribeCurrentSubtitleProjectRefresh,
 } from '../utils/userSubtitlesStore';
-
-const DEBUG_LOGS = (typeof window !== 'undefined')
-  && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+import {
+  clone,
+  pruneLyricsCheckpointHistory,
+  pruneLyricsHistoryStacks,
+  same,
+} from './lyricsEditorHistoryState';
 
 // A range move (and every other durable edit: text, insert, delete, merge, split, timing drag,
 // clear range) applies optimistically in the UI before its native revision commits. When that
@@ -30,120 +32,9 @@ const notifyEditFailed = (message) => {
   }
 };
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
-const identityKey = (value) => {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return null;
-  }
-};
-const durableRowsIdentity = (rows) => {
-  if (!Array.isArray(rows)) return null;
-  const ordinalByIdentity = new Map();
-  rows.forEach((row, index) => {
-    const key = identityKey(row?.id);
-    if (key !== null) ordinalByIdentity.set(key, index + 1);
-  });
-  return rows.map((row) => {
-    const source = row?.originalId ?? row?.sourceId ?? null;
-    const sourceKey = source === null ? null : identityKey(source);
-    return {
-      text: row?.text,
-      speaker: row?.speaker ?? null,
-      startMs: Math.round(Number(row?.start ?? row?.startTime) * 1_000),
-      endMs: Math.round(Number(row?.end ?? row?.endTime) * 1_000),
-      sourceOrdinal: sourceKey === null
-        ? null
-        : ordinalByIdentity.get(sourceKey) ?? (Number.isInteger(source) ? source : null),
-    };
-  });
-};
-const same = (left, right) => (
-  JSON.stringify(durableRowsIdentity(left)) === JSON.stringify(durableRowsIdentity(right))
-);
 const EMPTY_DURABLE_STATUS = Object.freeze({ canUndo: false, canRedo: false });
 const EXTERNAL_MERGE_QUIET_MS = 750;
 const TEXT_EDIT_QUIET_MS = 500;
-// Native history retains 256 states, including the current/root state: at most 255 undo targets.
-export const MAX_LOCAL_LYRICS_HISTORY_ENTRIES = 255;
-export const MAX_LOCAL_LYRICS_HISTORY_STATE_BYTES = 64 * 1024 * 1024;
-export const MAX_LOCAL_LYRICS_HISTORY_BYTES = 256 * 1024 * 1024;
-export const MAX_LOCAL_LYRICS_CHECKPOINTS = 4;
-export const MAX_LOCAL_LYRICS_CHECKPOINT_BYTES = 128 * 1024 * 1024;
-const STATE_SIZE_CACHE = new WeakMap();
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code <= 0x7f) bytes += 1;
-    else if (code <= 0x7ff) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff
-        && value.charCodeAt(index + 1) >= 0xdc00
-        && value.charCodeAt(index + 1) <= 0xdfff) {
-      bytes += 4;
-      index += 1;
-    } else bytes += 3;
-  }
-  return bytes;
-};
-
-const stateByteLength = (value) => {
-  if (value == null || typeof value !== 'object') return Number.POSITIVE_INFINITY;
-  const cached = STATE_SIZE_CACHE.get(value);
-  if (cached !== undefined) return cached;
-  let size = Number.POSITIVE_INFINITY;
-  try {
-    size = utf8ByteLength(JSON.stringify(value));
-  } catch {
-    // Non-serializable values cannot be retained in editor history.
-  }
-  STATE_SIZE_CACHE.set(value, size);
-  return size;
-};
-
-export const pruneLyricsHistoryStacks = (
-  history,
-  redo,
-  {
-    maxEntries = MAX_LOCAL_LYRICS_HISTORY_ENTRIES,
-    maxStateBytes = MAX_LOCAL_LYRICS_HISTORY_STATE_BYTES,
-    maxTotalBytes = MAX_LOCAL_LYRICS_HISTORY_BYTES,
-  } = {}
-) => {
-  const keep = (value) => Array.isArray(value)
-    ? value.slice(-maxEntries).filter((state) => stateByteLength(state) <= maxStateBytes)
-    : [];
-  const nextHistory = keep(history);
-  const nextRedo = keep(redo);
-  let totalBytes = [...nextHistory, ...nextRedo]
-    .reduce((total, state) => total + stateByteLength(state), 0);
-  const evictFarthest = () => {
-    const fromHistory = nextRedo.length === 0
-      || (nextHistory.length > 0
-        && stateByteLength(nextHistory[0]) >= stateByteLength(nextRedo[0]));
-    const removed = fromHistory ? nextHistory.shift() : nextRedo.shift();
-    totalBytes -= stateByteLength(removed);
-  };
-  while (nextHistory.length + nextRedo.length > maxEntries || totalBytes > maxTotalBytes) {
-    evictFarthest();
-  }
-  return { history: nextHistory, redo: nextRedo };
-};
-
-export const pruneLyricsCheckpointHistory = (
-  checkpoints,
-  {
-    maxEntries = MAX_LOCAL_LYRICS_CHECKPOINTS,
-    maxStateBytes = MAX_LOCAL_LYRICS_HISTORY_STATE_BYTES,
-    maxTotalBytes = MAX_LOCAL_LYRICS_CHECKPOINT_BYTES,
-  } = {}
-) => pruneLyricsHistoryStacks(checkpoints, [], {
-  maxEntries,
-  maxStateBytes,
-  maxTotalBytes,
-}).history;
 
 const pushBounded = (stack, value) => [...stack, value];
 
@@ -529,7 +420,6 @@ export const useLyricsEditorHistory = ({
   const createCheckpoint = useCallback(() => {
     const current = clone(lyricsRef.current);
     setCheckpointHistory((previous) => [...previous, current]);
-    dbg('[LyricsEditor] Created checkpoint at save');
   }, [setCheckpointHistory]);
 
   const handleJumpToCheckpoint = useCallback(() => {
@@ -565,7 +455,6 @@ export const useLyricsEditorHistory = ({
       historyBefore: historyRef.current,
       redoBefore: redoRef.current,
     };
-    dbg('[LyricsEditor] Captured state before merge operation for undo/redo');
   }, [finishExternalMerge, finishPendingText]);
 
   const observeExternalLyrics = useCallback((rows) => {

@@ -47,5 +47,3 @@ export const useNarrationLaneState = ({
     drag,
   };
 };
-
-export default useNarrationLaneState;

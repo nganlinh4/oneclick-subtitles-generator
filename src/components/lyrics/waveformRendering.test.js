@@ -36,7 +36,6 @@ const draw = (visibleTimeRange, containerWidth = 400, seekableEnd = 10) => {
     visibleTimeRange,
     seekableEnd,
     height: 30,
-    dbgWave: vi.fn(),
   });
   return harness;
 };

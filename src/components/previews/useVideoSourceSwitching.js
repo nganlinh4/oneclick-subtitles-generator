@@ -8,7 +8,6 @@ import {
   forgetBrowserMediaBlob,
   registerBrowserMediaBlob,
 } from '../../platform/browserMediaBlobRegistry';
-import { dbg } from './videoPreviewDebug';
 
 // Smaller than one 30-fps frame. The seek coordinator is the primary authority for completion;
 // this second check prevents a wrongly wired/mock completion from resuming the replacement source.
@@ -184,7 +183,6 @@ const useVideoSourceSwitching = ({
             return;
           }
           removeAttemptListeners();
-          dbg('[VideoPreview] Successfully resumed playback after source switch');
           setIsPlaying(true);
         }).catch((error) => {
           if (!isCurrentAttempt()) return;
@@ -224,7 +222,6 @@ const useVideoSourceSwitching = ({
           // This error is recovered inside the source owner. Do not let the generic source-error
           // listener show a transient failure for an optimized rendition the customer never sees.
           event.stopImmediatePropagation?.();
-          dbg('[VideoPreview] Optimized source failed; restoring the original source');
           beginAttempt(fallbackUrl, false);
           return;
         }
@@ -241,12 +238,6 @@ const useVideoSourceSwitching = ({
       videoElement.addEventListener('loadeddata', handleLoadedData);
       videoElement.addEventListener('error', handleLoadError);
 
-      dbg('[VideoPreview] Committing video source after transport snapshot:', {
-        actualUrl: actualUrl.substring(0, 80),
-        requestedUrl: requestedUrl.substring(0, 80),
-        restoreTime: restore.time,
-        wasPlaying: restore.wasPlaying,
-      });
       videoElement.src = actualUrl;
       videoElement.load();
     };
@@ -294,7 +285,6 @@ const useVideoSourceSwitching = ({
         const isExternalUrl = (playerUrl.startsWith('http://') || playerUrl.startsWith('https://'))
           && !isLoopbackServiceUrl(playerUrl);
         if (isExternalUrl) {
-          dbg('[VideoPreview] Skipping blob conversion for external URL to avoid CORS');
           localStorage.setItem('current_file_url', playerUrl);
           if (!cancelled) onVideoUrlReady?.(playerUrl);
           return;
@@ -319,10 +309,8 @@ const useVideoSourceSwitching = ({
         lastBlobUrlRef.current = objectUrl;
         onVideoUrlReady?.(objectUrl);
         window.dispatchEvent(new CustomEvent('currentFileUrlChanged', { detail: { url: objectUrl } }));
-      } catch (error) {
-        if (!cancelled) {
-          dbg('[VideoPreview] Failed to convert to blob, using direct URL:', error.message);
-        }
+      } catch {
+        // A source that cannot be prepared leaves the previous URL in place.
       }
     })();
 

@@ -149,7 +149,7 @@ export const getAllCurrentProjectNarrationResults = () => {
   return Object.freeze(SOURCES.flatMap((source) => current.resultsBySource[source]));
 };
 
-export const subscribeToProjectNarrationState = (listener) => {
+const subscribeToProjectNarrationState = (listener) => {
   if (typeof listener !== 'function') throw new TypeError('A narration subscriber is required');
   listeners.add(listener);
   const unsubscribeProject = subscribeToActiveProject(() => {

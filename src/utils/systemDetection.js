@@ -7,7 +7,7 @@
  * Detect system language preference
  * @returns {string} Language code ('en', 'vi', 'ko') or 'en' as fallback
  */
-export const detectSystemLanguage = () => {
+const detectSystemLanguage = () => {
   try {
     // Get system language from browser
     const systemLanguage = navigator.language || navigator.userLanguage || 'en';
@@ -28,7 +28,7 @@ export const detectSystemLanguage = () => {
  * Detect system theme preference
  * @returns {string} Theme ('dark' or 'light')
  */
-export const detectSystemTheme = () => {
+const detectSystemTheme = () => {
   try {
     // Check if the browser supports prefers-color-scheme
     if (window.matchMedia) {
@@ -136,15 +136,4 @@ export const isMobileDevice = () => {
     console.warn('Error detecting mobile device:', error);
     return false; // Default to desktop if detection fails
   }
-};
-
-/**
- * Initialize theme and language from system preferences
- * @returns {Object} Object with theme and language
- */
-export const initializeSystemPreferences = () => {
-  return {
-    theme: getThemeWithFallback(),
-    language: getLanguageWithFallback()
-  };
 };

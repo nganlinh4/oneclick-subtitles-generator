@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { dbg } from './videoPreviewDebug';
 import { requestAlignedNarrationReset } from '../../platform/alignedNarrationSession';
 
 /**
@@ -73,7 +72,6 @@ const useNarrationRefreshEvents = ({ isRefreshingNarration, setIsRefreshingNarra
   // Clean up aligned narration resources when component unmounts
   useEffect(() => {
     return () => {
-      dbg('Cleaning up aligned narration on component unmount');
       requestAlignedNarrationReset();
     };
   }, []);

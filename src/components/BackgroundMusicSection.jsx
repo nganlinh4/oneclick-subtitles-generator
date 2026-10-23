@@ -23,6 +23,8 @@ import AudioPlayer from './common/AudioPlayer';
 import { formatTime } from '../utils/timeFormatter';
 import { trimSilenceFromBlob } from '../utils/audioTrim';
 import { startPromptDjReadinessBridge } from './backgroundMusic/promptDjReadiness';
+import useResizablePanelHeight from './backgroundMusic/useResizablePanelHeight';
+import usePromptDjAppearanceSync, { postCurrentTheme } from './backgroundMusic/usePromptDjAppearanceSync';
 
 // Collapsible section embedding the promptdj-midi app with start/stop recording controls
 const BackgroundMusicSection = () => {
@@ -39,16 +41,13 @@ const BackgroundMusicSection = () => {
     return saved === 'true';
   });
 
-  // Resizable panel height state
-  const [panelHeight, setPanelHeight] = useState(() => {
-    const saved = parseInt(localStorage.getItem('bg_music_panel_height') || '600', 10);
-    return Number.isFinite(saved) ? saved : 600;
-  });
-  const panelMinHeight = 280;
-  const panelMaxHeight = 1400;
-
-  // Track active resizing to place an overlay above the iframe
-  const [isResizing, setIsResizing] = useState(false);
+  const {
+    panelRef,
+    panelHeight,
+    isResizing,
+    onResizePointerDown,
+    resetPanelHeight,
+  } = useResizablePanelHeight();
 
   // MIDI UI state now lives in the main app header
   const [midiShow, setMidiShow] = useState(false);
@@ -64,73 +63,6 @@ const BackgroundMusicSection = () => {
   const liveSessionRef = useRef(null);
   const liveStartRef = useRef(null);
   const closeAfterStartRef = useRef(false);
-
-  // Resizer refs and handlers for panel height
-  const panelRef = useRef(null);
-  const resizingRef = useRef(false);
-  const startYRef = useRef(0);
-  const startHeightRef = useRef(0);
-
-  // Keep latest height in a ref to avoid stale closures
-  const latestHeightRef = useRef(panelHeight);
-  useEffect(() => { latestHeightRef.current = panelHeight; }, [panelHeight]);
-
-  const onAnyMove = useCallback((e) => {
-    if (!resizingRef.current) return;
-    const clientY = e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY) ?? 0;
-    const dy = clientY - startYRef.current;
-    let next = startHeightRef.current + dy;
-    next = Math.max(panelMinHeight, Math.min(panelMaxHeight, next));
-    setPanelHeight(next);
-  }, []);
-
-  const onAnyTouchMove = useCallback((e) => onAnyMove(e), [onAnyMove]);
-
-  const endResize = useCallback(() => {
-    if (!resizingRef.current) return;
-    resizingRef.current = false;
-    try { document.body.style.cursor = ''; document.body.style.userSelect = ''; } catch {
-      // The panel can unmount while a resize gesture is ending.
-    }
-    const finalH = Math.round(panelRef.current?.offsetHeight || latestHeightRef.current || 600);
-    try { localStorage.setItem('bg_music_panel_height', String(finalH)); } catch {
-      // Persisting the optional panel preference is best effort.
-    }
-    // Remove all possible listeners
-    window.removeEventListener('pointermove', onAnyMove);
-    window.removeEventListener('pointerup', endResize);
-    window.removeEventListener('pointercancel', endResize);
-    window.removeEventListener('mousemove', onAnyMove);
-    window.removeEventListener('mouseup', endResize);
-    window.removeEventListener('touchmove', onAnyTouchMove);
-    window.removeEventListener('touchend', endResize);
-    window.removeEventListener('touchcancel', endResize);
-    window.removeEventListener('blur', endResize);
-    setIsResizing(false);
-  }, [onAnyMove, onAnyTouchMove]);
-
-  function onResizePointerDown(e) {
-    e.preventDefault();
-    resizingRef.current = true;
-    setIsResizing(true);
-    startYRef.current = (e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY) ?? 0);
-    startHeightRef.current = panelRef.current?.offsetHeight || latestHeightRef.current || panelHeight;
-    try { document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none'; } catch {
-      // Detached documents can reject transient style changes.
-    }
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {
-      // Pointer capture is optional on compatibility WebViews.
-    }
-    window.addEventListener('pointermove', onAnyMove);
-    window.addEventListener('pointerup', endResize);
-    window.addEventListener('pointercancel', endResize);
-    window.addEventListener('mousemove', onAnyMove);
-    window.addEventListener('mouseup', endResize);
-    window.addEventListener('touchmove', onAnyTouchMove, { passive: false });
-    window.addEventListener('touchend', endResize);
-    window.addEventListener('touchcancel', endResize);
-    window.addEventListener('blur', endResize);
-  }
 
   const getPromptDjWindow = useCallback(() => {
     try {
@@ -208,17 +140,16 @@ const BackgroundMusicSection = () => {
     }
   }, [isRecording, recordingStartTime]);
 
-	  // Cleanup object URL when it changes or on unmount
-	  useEffect(() => {
-	    return () => {
-	      if (recordingUrl) {
-	        try { URL.revokeObjectURL(recordingUrl); } catch {
-	          // Revoking an already-released recording URL is harmless.
-	        }
-	      }
-	    };
-	  }, [recordingUrl]);
-
+  // Cleanup object URL when it changes or on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingUrl) {
+        try { URL.revokeObjectURL(recordingUrl); } catch {
+          // Revoking an already-released recording URL is harmless.
+        }
+      }
+    };
+  }, [recordingUrl]);
 
   // Propagate language changes to iframe
   useEffect(() => {
@@ -392,7 +323,6 @@ const BackgroundMusicSection = () => {
       }
     }
 
-
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [getPromptDjWindow, nativeRuntime, postToPromptDj, promptDjOrigin, recordingUrl]);
@@ -400,13 +330,7 @@ const BackgroundMusicSection = () => {
   const onIframeLoad = useCallback(() => {
     postNativeAvailability();
     // Sync theme initially
-    try {
-      const theme = document.documentElement.getAttribute('data-theme')
-        || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      postToPromptDj({ type: 'pm-dj-set-theme', theme });
-    } catch {
-      // Theme synchronization is advisory for the isolated iframe.
-    }
+    postCurrentTheme(postToPromptDj);
     // Sync font initially
     try {
       const appFont = localStorage.getItem('app_font') || 'google-sans';
@@ -429,54 +353,7 @@ const BackgroundMusicSection = () => {
     }, 100);
   }, [postNativeAvailability, postToPromptDj]);
 
-  // Watch main app theme changes and forward to iframe
-  useEffect(() => {
-    const el = document.documentElement;
-
-    const sendTheme = () => {
-      try {
-        const theme = el.getAttribute('data-theme')
-          || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        postToPromptDj({ type: 'pm-dj-set-theme', theme });
-      } catch {
-        // Theme synchronization is advisory for the isolated iframe.
-      }
-    };
-
-    // Initial
-    sendTheme();
-
-    // Observe attribute changes
-    const observer = new MutationObserver((mutList) => {
-      for (const m of mutList) {
-        if (m.type === 'attributes' && m.attributeName === 'data-theme') {
-          sendTheme();
-          break;
-        }
-      }
-    });
-    observer.observe(el, { attributes: true, attributeFilter: ['data-theme'] });
-
-    // Also respond to prefers-color-scheme changes if app relies on system theme
-    const mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-    const onMql = () => sendTheme();
-    try { mql?.addEventListener('change', onMql); } catch {
-      try { mql?.addListener(onMql); } catch {
-        // Older WebViews may expose neither media-query listener API.
-      }
-    }
-
-    return () => {
-      try { observer.disconnect(); } catch {
-        // Cleanup remains idempotent when the document is already gone.
-      }
-      try { mql?.removeEventListener('change', onMql); } catch {
-        try { mql?.removeListener(onMql); } catch {
-          // Older WebViews may expose neither media-query listener API.
-        }
-      }
-    };
-  }, [postToPromptDj]);
+  usePromptDjAppearanceSync(postToPromptDj);
 
   useEffect(() => {
     if (!nativeRuntime) return undefined;
@@ -509,18 +386,6 @@ const BackgroundMusicSection = () => {
     const session = liveSessionRef.current;
     if (session) closeLiveMusicSession(session.id).catch(() => undefined);
   }, []);
-
-  // Watch main app font changes and forward to iframe
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === 'app_font') {
-        const font = e.newValue || 'google-sans';
-        postToPromptDj({ type: 'pm-dj-set-font', font });
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [postToPromptDj]);
 
   return (
     <div
@@ -682,21 +547,13 @@ const BackgroundMusicSection = () => {
             <div
               className="floating-resizer-pill"
               onPointerDown={onResizePointerDown}
-              onDoubleClick={() => {
-                const def = 600;
-                setPanelHeight(def);
-                try { localStorage.setItem('bg_music_panel_height', String(def)); } catch {
-                  // Persisting the optional panel preference is best effort.
-                }
-              }}
+              onDoubleClick={resetPanelHeight}
               title={t('common.resize', 'Resize height')}
               role="separator"
               aria-orientation="vertical"
               aria-label={t('common.resize', 'Resize height')}
             />
           </div>
-          {/* Horizontal resizer handle */}
-
         </div>
       )}
     </div>

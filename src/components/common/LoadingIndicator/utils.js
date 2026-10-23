@@ -152,18 +152,8 @@ export const DistanceEpsilon = 1e-4;
  */
 export const AngleEpsilon = 1e-6;
 
-/**
- * A more relaxed epsilon for operations where human perception allows for higher tolerances,
- * such as checking for collinearity.
- * @internal
- */
-export const RelaxedDistanceEpsilon = 5e-3;
-
 /** The value of PI as a float. @internal */
 export const FloatPi = Math.PI;
-
-/** The value of 2 * PI as a float. @internal */
-export const TwoPi = 2 * Math.PI;
 
 /**
  * Squares a number.
@@ -191,21 +181,6 @@ export function positiveModulo(num, mod) {
 }
 
 /**
- * Checks if point C is on the line defined by points A and B, within a given tolerance.
- * @internal
- */
-export function collinearIsh(aX, aY, bX, bY, cX, cY, tolerance = DistanceEpsilon) {
-    // The dot product of a perpendicular angle is 0. By rotating one of the vectors,
-    // we save the calculations to convert the dot product to degrees afterwards.
-    const ab = new Point(bX - aX, bY - aY).rotate90();
-    const ac = new Point(cX - aX, cY - aY);
-    const dotProduct = Math.abs(ab.dotProduct(ac));
-    const relativeTolerance = tolerance * ab.getDistance() * ac.getDistance();
-
-    return dotProduct < tolerance || dotProduct < relativeTolerance;
-}
-
-/**
  * Approximates whether a corner at a vertex is concave or convex.
  * @internal
  */
@@ -214,49 +189,3 @@ export function convex(previous, current, next) {
     return current.minus(previous).clockwise(next.minus(current));
 }
 
-/**
- * A function to be minimized by `findMinimum`.
- * @callback FindMinimumFunction
- * @param {number} value - The input value.
- * @returns {number} The result of the function at that value.
- */
-
-/**
- * Performs a ternary search in the range [v0..v1] to find the parameter that minimizes the given function.
- * @internal
- * @param {number} v0 - The start of the search range.
- * @param {number} v1 - The end of the search range.
- * @param {number} [tolerance=1e-3] - The desired precision. The search stops when the range is smaller than this.
- * @param {FindMinimumFunction} f - The function to minimize.
- * @returns {number} The value in the range that minimizes the function.
- */
-export function findMinimum(v0, v1, tolerance = 1e-3, f) {
-    let a = v0;
-    let b = v1;
-    while (b - a > tolerance) {
-        const c1 = (2 * a + b) / 3;
-        const c2 = (2 * b + a) / 3;
-        if (f(c1) < f(c2)) {
-            b = c2;
-        } else {
-            a = c1;
-        }
-    }
-    return (a + b) / 2;
-}
-
-/** @internal */
-export const DEBUG = false;
-
-/**
- * Logs a message to the console if DEBUG is true.
- * The message is only generated if it will be logged.
- * @internal
- * @param {string} tag
- * @param {() => string} messageFactory
- */
-export function debugLog(tag, messageFactory) {
-    if (DEBUG) {
-        console.log(`${tag}: ${messageFactory()}`);
-    }
-}

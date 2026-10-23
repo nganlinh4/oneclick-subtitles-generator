@@ -1,7 +1,7 @@
 // High-DPI canvas + native waveform presentation utilities (pure, no component deps)
 
 // High-DPI canvas utilities for crisp rendering at any zoom level
-export const getDevicePixelRatio = () => window.devicePixelRatio || 1;
+const getDevicePixelRatio = () => window.devicePixelRatio || 1;
 
 export const setupHighDPICanvas = (canvas, width, height) => {
   const dpr = getDevicePixelRatio();

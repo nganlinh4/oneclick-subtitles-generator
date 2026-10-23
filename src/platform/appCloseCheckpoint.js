@@ -7,7 +7,7 @@ import { isDesktopRuntime } from './runtimeEnvironment';
 
 export const CLOSE_CHECKPOINT_HANDLER = '__OSG_FLUSH_BEFORE_CLOSE__';
 export const CLOSE_CHECKPOINT_PENDING = '__OSG_PENDING_CLOSE_CHECKPOINT__';
-export const CLOSE_CHECKPOINT_TIMEOUT_MS = 15_000;
+const CLOSE_CHECKPOINT_TIMEOUT_MS = 15_000;
 
 const isNonce = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;

@@ -25,7 +25,7 @@ const NATIVE_SECRET_ALIASES = Object.freeze([
   'youtube_oauth_token',
 ]);
 
-export const submitNativeCredentialDrafts = async ({
+const submitNativeCredentialDrafts = async ({
   geniusApiKey,
   youtubeApiKey,
   youtubeClientId,

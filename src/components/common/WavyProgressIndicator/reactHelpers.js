@@ -1,14 +1,9 @@
-// Local helpers for the React WavyProgressIndicator.jsx.
-//
-// These are the variants the .jsx historically used. They intentionally differ
-// from the sibling animationClasses.js / defaults.js ports and are kept
-// separate to preserve the React component's exact runtime behavior:
-//   - `Animatable.animateTo` here guards `easing` with `Array.isArray` and
+// Local helpers for the React WavyProgressIndicator.jsx:
+//   - `Animatable.animateTo` guards `easing` with `Array.isArray` and
 //     falls back to an ease-out curve when no bezier is supplied.
-//   - `LinearProgressDrawingCache` here is the lighter cache the .jsx draws
-//     against (no createWavySegment/arraysEqual, different updatePaths shape).
+//   - `LinearProgressDrawingCache` is the path cache the .jsx draws against.
 //   - `WavyProgressDefaults` is a flat object (containerWidth, strokeWidth,
-//     wavelength, gapSize, stopSize, indicatorAmplitude...), not the class form.
+//     wavelength, gapSize, stopSize, indicatorAmplitude...).
 // Pure module — only browser globals (Path2D, Math, performance,
 // requestAnimationFrame). No React/component state.
 

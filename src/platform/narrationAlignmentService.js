@@ -7,8 +7,8 @@ import {
   resolveSpeechArtifact,
 } from './speechService';
 
-export const MAX_ALIGNMENT_CLIPS = 1_000;
-export const MAX_ALIGNMENT_DURATION_MICROS = 4 * 60 * 60 * 1_000_000;
+const MAX_ALIGNMENT_CLIPS = 1_000;
+const MAX_ALIGNMENT_DURATION_MICROS = 4 * 60 * 60 * 1_000_000;
 
 const MAX_PENDING_EVENTS = 4_096;
 const MAX_JOB_EVENTS = 20_000;
@@ -60,7 +60,7 @@ const uuidHasVersion = (value, expectedVersion) => {
   }
 };
 
-export class NarrationAlignmentError extends Error {
+class NarrationAlignmentError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'NarrationAlignmentError';
@@ -153,7 +153,7 @@ export const normalizeAlignmentRequest = (request) => {
   });
 };
 
-export const normalizeAlignmentJob = (job) => {
+const normalizeAlignmentJob = (job) => {
   if (!hasExactKeys(job, ['id', 'kind', 'state', 'progress', 'sequence'])
       || !hasExactKeys(job.progress, ['basisPoints'])
       || !uuidHasVersion(job.id, 7)

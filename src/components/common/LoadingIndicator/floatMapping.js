@@ -26,7 +26,7 @@ import { positiveModulo, DistanceEpsilon } from './utils.js';
  * @param {number} progressTo The end of the range.
  * @returns {boolean} True if the progress is within the range.
  */
-export function progressInRange(progress, progressFrom, progressTo) {
+function progressInRange(progress, progressFrom, progressTo) {
     if (progressTo >= progressFrom) {
         return progress >= progressFrom && progress <= progressTo;
     } else {
@@ -44,7 +44,7 @@ export function progressInRange(progress, progressFrom, progressTo) {
  * @param {number} x The source value to map.
  * @returns {number} The mapped value in the target space.
  */
-export function linearMap(xValues, yValues, x) {
+function linearMap(xValues, yValues, x) {
     // Safety check for NaN or invalid arrays
     if (isNaN(x) || !xValues || !yValues || xValues.length === 0 || yValues.length === 0) {
         console.error(`❌ linearMap: Invalid input - x=${x}, xValues=${xValues}, yValues=${yValues}`);
@@ -149,7 +149,7 @@ export class DoubleMapper {
  * @internal
  * @param {number[]} p - The list of progress values.
  */
-export function validateProgress(p) {
+function validateProgress(p) {
     if (p.length === 0) return;
     let prev = p[p.length - 1];
     let wraps = 0;
@@ -180,7 +180,7 @@ export function validateProgress(p) {
  * @param {number} p2
  * @returns {number}
  */
-export function progressDistance(p1, p2) {
+function progressDistance(p1, p2) {
     const d = Math.abs(p1 - p2);
     return Math.min(d, 1 - d);
 }

@@ -9,7 +9,7 @@
 // When there is no narration lane, the subtitle band fills the whole area below the ruler
 // (the original, unchanged look).
 
-export const TIME_MARKER_SPACE = 25;
+const TIME_MARKER_SPACE = 25;
 
 /**
  * @param {number} displayHeight - canvas CSS height in px

@@ -1,7 +1,7 @@
 import { normalizeTranscriptionPrompt } from './transcriptionPromptInvariant';
 
-export const SETTINGS_PROMPT_PRESET_ID = 'settings';
-export const CUSTOM_PROMPT_PRESET_ID = 'custom';
+const SETTINGS_PROMPT_PRESET_ID = 'settings';
+const CUSTOM_PROMPT_PRESET_ID = 'custom';
 
 const invalidPreset = () => {
   const error = new Error('The selected transcription prompt preset is invalid.');
@@ -14,7 +14,7 @@ const readStorage = (storage, key) => {
   return storage.getItem(key);
 };
 
-export const isUsableTranscriptionPromptPreset = (preset) => (
+const isUsableTranscriptionPromptPreset = (preset) => (
   preset !== null
   && typeof preset === 'object'
   && typeof preset.id === 'string'

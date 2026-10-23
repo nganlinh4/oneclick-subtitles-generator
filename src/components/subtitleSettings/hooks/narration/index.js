@@ -2,10 +2,6 @@ import { useState } from 'react';
 import useNarrationState from './useNarrationState';
 import useNarrationEffects from './useNarrationEffects';
 import useAlignedNarration from './useAlignedNarration';
-import useAlignedNarrationState from './useAlignedNarrationState';
-import useAlignedNarrationGeneration from './useAlignedNarrationGeneration';
-import useAlignedNarrationPlayback from './useAlignedNarrationPlayback';
-import useAlignedNarrationEvents from './useAlignedNarrationEvents';
 
 /**
  * Custom hook for managing narration playback
@@ -63,15 +59,6 @@ const useNarration = (
     useAlignedMode: true, // Always true
     ...alignedNarration
   };
-};
-
-// Export all hooks
-export {
-  useAlignedNarration,
-  useAlignedNarrationState,
-  useAlignedNarrationGeneration,
-  useAlignedNarrationPlayback,
-  useAlignedNarrationEvents
 };
 
 export default useNarration;

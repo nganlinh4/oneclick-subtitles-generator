@@ -86,18 +86,15 @@ const DownloadOnlyModal = ({
   useEffect(() => {
     if (isOpen) {
       if (activeDownloadModal && activeDownloadModal !== onClose) {
-        console.log('[DownloadOnlyModal] Another modal is already active, closing this one');
         onClose();
         return;
       }
       activeDownloadModal = onClose;
-      console.log('[DownloadOnlyModal] Registered as active modal');
     }
 
     return () => {
       if (activeDownloadModal === onClose) {
         activeDownloadModal = null;
-        console.log('[DownloadOnlyModal] Unregistered active modal');
       }
     };
   }, [isOpen, onClose]);
@@ -224,7 +221,6 @@ const DownloadOnlyModal = ({
 
   const handleCancel = async () => {
     if (isDownloading && downloadVideoId) {
-      console.log('[DownloadOnlyModal] Cancelling download:', downloadVideoId);
 
       const success = await cancelDownloadOnly(downloadVideoId);
 

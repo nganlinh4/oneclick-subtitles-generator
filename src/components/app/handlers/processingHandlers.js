@@ -9,9 +9,6 @@ import {
 import { resolveActiveNativeMedia } from '../../../platform/activeNativeMedia';
 import { isNativeMediaDescriptor } from '../../../platform/mediaService';
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 /**
  * Create processing-related handlers (segment select, process with options, retry).
@@ -66,13 +63,6 @@ export const createProcessingHandlers = ({
 
       // Set processing state to true when starting
       setIsProcessingSegment(true);
-      dbg(
-        "[ProcessWithOptions] Started processing segment, animation should begin"
-      );
-      dbg(
-        "[ProcessWithOptions] Received segmentProcessingDelay:",
-        options.segmentProcessingDelay
-      );
 
       // The media returned by preparation owns this run. A stale captured
       // uploadedFileData value must never override it.
@@ -127,7 +117,6 @@ export const createProcessingHandlers = ({
         signal: autoRunContext?.signal,
       };
 
-      dbg("[ProcessWithOptions] Passing to generateSubtitles - segmentProcessingDelay:", subtitleOptions.segmentProcessingDelay);
 
       // Add user-provided subtitles ONLY when the timing-generation preset is selected
       if (options.promptPreset === 'timing-generation') {
@@ -183,9 +172,6 @@ export const createProcessingHandlers = ({
         } catch {
           // Overlay cleanup is advisory after processing completes.
         }
-        dbg(
-          "[ProcessWithOptions] Processing complete, animation should stop"
-        );
       }
     } catch (error) {
       if (autoRunContext?.signal?.aborted || error?.name === 'AbortError') {
@@ -210,17 +196,14 @@ export const createProcessingHandlers = ({
    * Handle retrying subtitle generation - FORCE RETRY that ignores validation
    */
   const handleRetryGeneration = async () => {
-    dbg("FORCE RETRY: handleRetryGeneration called");
 
     // Prevent multiple simultaneous retries
     if (isRetrying) {
-      dbg("FORCE RETRY: Already retrying, ignoring duplicate call");
       return false;
     }
 
     // Only check for API key - this is the minimum requirement
     if (!apiKeysSet.gemini) {
-      dbg("No Gemini API key available");
       setStatus({
         message: t("errors.apiKeyRequired", "Gemini API key is required"),
         type: "error",
@@ -228,14 +211,12 @@ export const createProcessingHandlers = ({
       return false;
     }
 
-    dbg("FORCE RETRY: Setting retrying state to true");
     // Set retrying state to true immediately
     setIsRetrying(true);
 
     // Clear the segments-status before starting the retry process
     setSegmentsStatus([]);
 
-    dbg("FORCE RETRY: Determining input source...");
     let input, inputType;
 
     let activeMediaCapability = null;
@@ -260,15 +241,12 @@ export const createProcessingHandlers = ({
     }
 
     if (activeMediaCapability) {
-      dbg('FORCE RETRY: Using exact active native media');
       input = activeMediaCapability.media;
       inputType = 'file-upload';
     } else if (uploadedFile && !isDesktopRuntime()) {
-      dbg("FORCE RETRY: Using uploaded file");
       input = uploadedFile;
       inputType = "file-upload";
     } else if (selectedVideo) {
-      dbg("FORCE RETRY: Using selected video");
       input = selectedVideo;
       inputType =
         activeTab.includes("youtube") || activeTab === "unified-url"
@@ -284,7 +262,6 @@ export const createProcessingHandlers = ({
       return false;
     }
 
-    dbg("FORCE RETRY: Input determined:", { input, inputType });
 
     // For YouTube or Unified URL tabs, download the video first and switch to upload tab
     if (
@@ -345,9 +322,6 @@ export const createProcessingHandlers = ({
         }
 
         // FORCE RETRY: Always retry generating subtitles, ignore existing data
-        dbg(
-          "FORCE RETRY: Forcing subtitle regeneration for downloaded video..."
-        );
         return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
       } catch (error) {
         console.error("Error downloading video:", error);
@@ -393,7 +367,6 @@ export const createProcessingHandlers = ({
         }
 
         // FORCE RETRY: Always retry generating subtitles, ignore existing data
-        dbg("FORCE RETRY: Forcing subtitle regeneration...");
         return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);
       } finally {
         // Reset retrying state regardless of success or failure
@@ -403,7 +376,6 @@ export const createProcessingHandlers = ({
       }
     } else {
       // Direct retry without re-downloading - use retryGeneration function
-      dbg("FORCE RETRY: Using direct retry method");
 
       try {
         // Regeneration is a replacement transaction. Keep the acknowledged project track and
@@ -422,11 +394,6 @@ export const createProcessingHandlers = ({
           subtitleOptions.userProvidedSubtitles = userProvidedSubtitles;
         }
 
-        dbg("FORCE RETRY: Calling retryGeneration with:", {
-          input,
-          inputType,
-          subtitleOptions,
-        });
 
         // Call retryGeneration directly - it will handle finding the right input
         return await retryGeneration(input, inputType, apiKeysSet, subtitleOptions);

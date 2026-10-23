@@ -58,7 +58,7 @@ const mergeSorted = (left, right) => {
  * here is one a descriptor can carry. The pack is checked separately by the caller, which holds the
  * width hint that keeps it cheap.
  */
-export const tableOverflow = (cells, codePoints, limits) => {
+const tableOverflow = (cells, codePoints, limits) => {
   if (cells.length > limits.maxGlyphCount) return 'glyphAtlasTooManyGlyphs';
   return codePoints > limits.maxAtlasCodePoints ? 'glyphAtlasTextTooLong' : null;
 };

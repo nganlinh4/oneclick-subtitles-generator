@@ -20,9 +20,6 @@ import { showErrorToast, showWarningToast } from '../utils/toastUtils';
 import { EVENTS } from '../events/constants';
 import '../styles/VideoAnalysisButton.css';
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 
 // Custom analyze icon: panel with Gemini star inside
@@ -117,7 +114,6 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     
     // Check if video has actually changed
     if (currentFingerprint !== lastVideoIdentifier) {
-      dbg('[VideoAnalysisButton] Video changed from:', lastVideoIdentifier, 'to:', currentFingerprint);
       
       // The media activation boundary already switched the project-scoped rule
       // store before publishing this file. Never clear here: doing so would
@@ -163,11 +159,9 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     const videoFile = uploadedFileData || uploadedFile;
 
     if (videoFile) {
-      dbg('[VideoAnalysisButton] Found video file:', videoFile.name || 'unnamed file');
       return videoFile;
     }
 
-    dbg('[VideoAnalysisButton] No video file found');
     return null;
   };
 
@@ -190,10 +184,7 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     analysisControllerRef.current = controller;
 
     try {
-      // Create a status update callback
-      const onStatusUpdate = (status) => {
-        dbg('Video analysis status:', status.message);
-      };
+      const onStatusUpdate = () => {};
 
       // Perform video analysis
       const context = await captureActiveMediaRunContext({
@@ -331,11 +322,8 @@ const VideoAnalysisButton = ({ disabled = false, uploadedFile = null, uploadedFi
     manualEditorControllerRef.current = null;
   };
 
-  const handleChangePrompt = (preset) => {
-    // The TranscriptionRulesEditor already saves to localStorage
-    // We just need to log for debugging
-    dbg('[VideoAnalysisButton] Preset changed in Rules Editor:', preset?.id || 'custom');
-  };
+  // The TranscriptionRulesEditor persists the chosen preset itself.
+  const handleChangePrompt = () => {};
 
 
   return (

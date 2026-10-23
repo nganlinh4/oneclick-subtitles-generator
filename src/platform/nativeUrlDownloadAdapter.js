@@ -10,29 +10,22 @@ import {
 } from './mediaService';
 import { recoverNativeDownloaderAfterFailure } from './nativeDownloadPreflight';
 import {
-  isSubtitleProjectBindingReceipt,
-  rollbackSubtitleProjectBinding,
-} from './subtitleProjectBinding';
-import {
-  abortedFailure,
-  candidateAssetId,
   fixedFailure,
   normalizeCallback,
   normalizeCookieSource,
   normalizePreferredLanguages,
+  normalizeQuality,
   normalizeUrl,
   progressPercent,
+  selectNativeQuality,
   selectSubtitle,
   snapshotDownloadRequest,
   snapshotSignal,
 } from './nativeUrlDownloadContract';
-import {
-  assertListenerLive,
-  attachAbortBinding,
-  detachAbortBinding,
-  replayListenerCallback,
-} from './nativeUrlDownloadSubscriber';
+import { assertListenerLive } from './nativeUrlDownloadSubscriber';
 import { createCompletedAssetCache } from './nativeUrlDownloadCache';
+import { createCandidateClaimer } from './nativeUrlDownloadClaim';
+import { createOperationListeners } from './nativeUrlDownloadListeners';
 import { createCompletedAssetReopener } from './nativeUrlDownloadReopen';
 import { resolveProjectForMedia } from './subtitleDocumentProject';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
@@ -56,17 +49,20 @@ const defaultWaitForRetry = (milliseconds) => new Promise((resolve) => {
 });
 
 // The operation identity: two requests share a download only when their URL, explicit browser
-// source and preferred subtitle languages all match. The separator cannot occur in any of them.
-const operationKey = (url, cookieSource, preferredLanguages) => (
-  `${cookieSource}\u0000${preferredLanguages.join(',')}\u0000${url}`
+// source, preferred subtitle languages and requested quality all match. The separator cannot occur
+// in any of them.
+const operationKey = (url, cookieSource, preferredLanguages, quality) => (
+  `${cookieSource}\u0000${preferredLanguages.join(',')}\u0000${quality ?? ''}\u0000${url}`
 );
 
-const resolveCandidateProjectForUrl = async (url) => {
+// A quality re-download replaces the media of a project the URL alias already names, so only the
+// default download may create its project.
+const resolveCandidateProjectForUrl = async (url, { create = true } = {}) => {
   const cacheId = await generateUrlBasedCacheId(url);
   if (typeof cacheId !== 'string' || cacheId.length === 0) {
     throw fixedFailure('mediaCandidateProjectFailed');
   }
-  return resolveProjectForMedia(cacheId, { create: true });
+  return resolveProjectForMedia(cacheId, { create });
 };
 
 export const createNativeUrlDownloadAdapter = ({
@@ -95,27 +91,6 @@ export const createNativeUrlDownloadAdapter = ({
     })
     : null;
 
-  const settleListener = (operation, listener, outcome, value) => {
-    if (listener.settled) return;
-    listener.settled = true;
-    listener.settlementError = outcome === 'reject' ? value : null;
-    operation.listeners.delete(listener);
-    detachAbortBinding(listener);
-    if (outcome === 'resolve') listener.resolve(value);
-    else listener.reject(value);
-  };
-
-  const settleAll = async (operation, outcome, value) => {
-    for (const listener of [...operation.listeners]) {
-      try {
-        await assertListenerLive(listener);
-        settleListener(operation, listener, outcome, value);
-      } catch (error) {
-        settleListener(operation, listener, 'reject', error);
-      }
-    }
-  };
-
   const requestOperationCancel = (operation) => {
     if (operation.jobId === null) {
       // Inspection has no native job to cancel. If registration itself is in flight, remember the
@@ -137,114 +112,15 @@ export const createNativeUrlDownloadAdapter = ({
     return operation.cancelPromise;
   };
 
-  const subscribe = (
-    operation,
-    {
-      admitActivation,
-      onStarted,
-      onProgress,
-      onSubtitle,
-      publishActivation,
-      rollbackActivation,
-      signalBinding,
-      validateOwnership,
-    }
-  ) => {
-    let listener;
-    const promise = new Promise((resolve, reject) => {
-      listener = {
-        aborted: false,
-        admitActivation,
-        handleAbort: null,
-        onProgress,
-        onStarted,
-        onSubtitle,
-        publishActivation,
-        reject,
-        resolve,
-        rollbackActivation,
-        settlementError: null,
-        settled: false,
-        signalAttached: false,
-        signalBinding,
-        validateOwnership,
-      };
-      listener.handleAbort = () => {
-        listener.aborted = true;
-        settleListener(operation, listener, 'reject', abortedFailure());
-        if (operation.listeners.size === 0) {
-          requestOperationCancel(operation);
-        }
-      };
-      operation.listeners.add(listener);
-      if (operation.jobId === null && operation.registrationStarted) {
-        operation.cancelRequested = false;
-      }
-      if (signalBinding !== null) {
-        try {
-          attachAbortBinding(listener, signalBinding, listener.handleAbort);
-        } catch (error) {
-          settleListener(operation, listener, 'reject', error);
-          return;
-        }
-        // An already-aborted signal settles the subscriber synchronously during attachment.
-        if (listener.settled) {
-          detachAbortBinding(listener);
-          return;
-        }
-      }
-      Promise.resolve().then(async () => {
-        if (operation.jobId !== null) {
-          await replayListenerCallback(listener, 'onStarted', operation.jobId);
-        }
-        if (operation.percent !== null) {
-          await replayListenerCallback(listener, 'onProgress', operation.percent);
-        }
-        if (operation.subtitle !== null) {
-          await replayListenerCallback(listener, 'onSubtitle', operation.subtitle);
-        }
-      }).catch((error) => {
-        settleListener(operation, listener, 'reject', error);
-        if (operation.listeners.size === 0) requestOperationCancel(operation);
-      });
-      });
-    promise.catch(() => undefined);
-    return Object.freeze({
-      listener,
-      promise,
-      registered: !listener.settled,
-    });
-  };
+  const {
+    publishToLiveListeners,
+    revalidateListeners,
+    settleAll,
+    settleListener,
+    subscribe,
+  } = createOperationListeners(requestOperationCancel);
 
-  const revalidateListeners = async (operation, { cancelIfEmpty = false } = {}) => {
-    for (const listener of [...operation.listeners]) {
-      try {
-        await assertListenerLive(listener);
-      } catch (error) {
-        settleListener(operation, listener, 'reject', error);
-      }
-    }
-    if (cancelIfEmpty && operation.listeners.size === 0) requestOperationCancel(operation);
-    return operation.listeners.size > 0;
-  };
-
-  const publishToLiveListeners = async (operation, callbackName, value) => {
-    if (!await revalidateListeners(operation, { cancelIfEmpty: true })) return false;
-    for (const listener of [...operation.listeners]) {
-      try {
-        await replayListenerCallback(listener, callbackName, value);
-      } catch (error) {
-        settleListener(operation, listener, 'reject', error);
-      }
-    }
-    if (operation.listeners.size === 0) {
-      requestOperationCancel(operation);
-      return false;
-    }
-    return true;
-  };
-
-  const createOperation = (key, url, cookieSource, preferredLanguages) => {
+  const createOperation = (key, url, cookieSource, preferredLanguages, quality) => {
     const operation = {
       accepting: true,
       cancelInvoked: false,
@@ -266,34 +142,18 @@ export const createNativeUrlDownloadAdapter = ({
       settleOrphan: null,
     };
 
-    const discardCandidateOnce = async (candidate) => {
-      const assetId = candidateAssetId(candidate);
-      if (operation.discardedCandidateIds.has(assetId)) return;
-      try {
-        const discarded = await Promise.resolve(discardCandidate(assetId));
-        if (discarded !== true) throw fixedFailure('mediaCandidateDiscardFailed');
-        operation.discardedCandidateIds.add(assetId);
-      } catch {
-        throw fixedFailure('mediaCandidateDiscardFailed');
-      }
-    };
-
-    // Ownership hook for steps which must fail closed rather than return a boolean. Losing
-    // subscribers are settled with their own abort/ownership error before this throws.
-    const assertOperationOwned = async () => {
-      if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
-        throw fixedFailure('mediaCandidateOwnershipLost');
-      }
-    };
-
-    const transactionalOwner = () => (
-      [...operation.listeners].find((listener) => (
-        typeof listener.admitActivation === 'function'
-        && typeof listener.publishActivation === 'function'
-        && typeof listener.rollbackActivation === 'function'
-        && typeof listener.validateOwnership === 'function'
-      )) ?? null
-    );
+    const claimCompletedCandidate = createCandidateClaimer({
+      activateProject,
+      claimCandidate,
+      discardCandidate,
+      operation,
+      publishToLiveListeners,
+      resolveCandidateProject: (candidateUrl) => (
+        resolveCandidateProject(candidateUrl, { create: quality === null })
+      ),
+      revalidateListeners,
+      url,
+    });
 
     const enqueueEvent = (task) => {
       const queued = operation.eventChain.then(task);
@@ -302,103 +162,6 @@ export const createNativeUrlDownloadAdapter = ({
     };
     operation.enqueueEvent = enqueueEvent;
 
-    const claimCompletedCandidate = async (event, settle) => {
-      const candidate = event.media;
-      try {
-        if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
-          await discardCandidateOnce(candidate);
-          return;
-        }
-        operation.subtitle = event.subtitle ?? null;
-        if (operation.subtitle !== null
-            && !await publishToLiveListeners(operation, 'onSubtitle', operation.subtitle)) {
-          await discardCandidateOnce(candidate);
-          return;
-        }
-        // Resolving creates the durable project on demand, so never resolve for an operation
-        // which has already lost every subscriber. It is still detached: neither project
-        // publication nor native media selection may happen until the caller's admission below.
-        if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
-          await discardCandidateOnce(candidate);
-          return;
-        }
-        const resolved = await resolveCandidateProject(url);
-        await assertOperationOwned();
-        let media;
-        const owner = transactionalOwner();
-        if (owner !== null) {
-          let binding = null;
-          try {
-            await assertListenerLive(owner);
-            binding = await owner.admitActivation(Object.freeze({
-              assetId: candidateAssetId(candidate),
-              resolvedProject: resolved,
-              url,
-            }), { validateOwnership: assertOperationOwned });
-            await assertOperationOwned();
-            if (!isSubtitleProjectBindingReceipt(binding, {
-              cacheId: resolved?.cacheId,
-              projectId: resolved?.projectId,
-            }) || !Number.isSafeInteger(binding.stateVersion) || binding.stateVersion < 0) {
-              throw fixedFailure('mediaCandidateProjectFailed');
-            }
-            media = await claimCandidate(candidate, {
-              expectedStateVersion: binding.stateVersion,
-              projectId: binding.projectId,
-            }, { validateOwnership: assertOperationOwned });
-            await assertOperationOwned();
-            await owner.publishActivation(media, binding, {
-              validateOwnership: assertOperationOwned,
-            });
-            await assertOperationOwned();
-          } catch (error) {
-            if (binding !== null && rollbackSubtitleProjectBinding(binding)) {
-              try {
-                await owner.rollbackActivation({ validateOwnership: assertOperationOwned });
-              } catch {
-                throw fixedFailure('mediaActivationRollbackFailed');
-              }
-            }
-            throw error;
-          }
-        } else {
-          if (typeof activateProject !== 'function') {
-            throw fixedFailure('mediaActivationAdmissionRequired');
-          }
-          // Test-only compatibility for the reviewed legacy adapter contract. The shipping
-          // singleton has no activator and therefore cannot enter this branch.
-          const activation = await activateProject(resolved, {
-            validateOwnership: assertOperationOwned,
-          });
-          try {
-            media = await claimCandidate(candidate, activation.claimOptions, {
-              validateOwnership: assertOperationOwned,
-            });
-          } catch (error) {
-            activation.release();
-            throw error;
-          }
-        }
-        settle({
-          kind: 'completed',
-          media,
-          assetId: candidateAssetId(candidate),
-          subtitle: operation.subtitle,
-        });
-      } catch (error) {
-        try {
-          await discardCandidateOnce(candidate);
-          settle({
-            kind: 'failed',
-            error: error?.code === 'mediaActivationRollbackFailed'
-              ? error
-              : fixedFailure('mediaOpenFailed'),
-          });
-        } catch (discardError) {
-          settle({ kind: 'failed', error: discardError });
-        }
-      }
-    };
 
     const runAttempt = async (attempt) => {
       if (!await revalidateListeners(operation, { cancelIfEmpty: true })) {
@@ -439,7 +202,9 @@ export const createNativeUrlDownloadAdapter = ({
         operation.registrationStarted = true;
         initial = await start({
           inventoryId: inspection.capability.id,
-          media: DEFAULT_MEDIA_SELECTION,
+          media: quality === null
+            ? DEFAULT_MEDIA_SELECTION
+            : { kind: 'video', quality: selectNativeQuality(inspection.inventory, quality) },
           subtitle,
         }, {
           onProgress: (event) => enqueueEvent(async () => {
@@ -591,6 +356,7 @@ export const createNativeUrlDownloadAdapter = ({
         onProgress,
         onSubtitle,
         preferredSubtitleLanguages,
+        quality: requestedQuality,
         signal,
         validateOwnership,
         admitActivation,
@@ -624,7 +390,8 @@ export const createNativeUrlDownloadAdapter = ({
       }
       const cookieSource = normalizeCookieSource(requestedCookieSource);
       const preferredLanguages = normalizePreferredLanguages(preferredSubtitleLanguages);
-      const key = operationKey(normalizedUrl, cookieSource, preferredLanguages);
+      const quality = normalizeQuality(requestedQuality);
+      const key = operationKey(normalizedUrl, cookieSource, preferredLanguages, quality);
 
       const completed = reopenCompletedAsset === null ? undefined : completedAssets.read(key);
       if (completed && reopenCompletedAsset !== null) {
@@ -636,7 +403,7 @@ export const createNativeUrlDownloadAdapter = ({
       const reused = existing?.accepting === true;
       const operation = reused
         ? existing
-        : createOperation(key, normalizedUrl, cookieSource, preferredLanguages);
+        : createOperation(key, normalizedUrl, cookieSource, preferredLanguages, quality);
       const subscription = subscribe(operation, callbacks);
       if (subscription.registered && !reused) active.set(key, operation);
       if (subscription.registered) {

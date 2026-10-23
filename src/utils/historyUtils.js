@@ -187,10 +187,6 @@ export const addDouyinUrlToHistory = (videoData) => {
   }
 };
 
-export const clearDouyinUrlHistory = () => {
-  localStorage.removeItem(DOUYIN_URL_HISTORY_KEY);
-};
-
 export const getAllSitesUrlHistory = () => readBoundedHistory(
   ALL_SITES_URL_HISTORY_KEY,
   sanitizeAllSitesItem,
@@ -214,10 +210,6 @@ export const addAllSitesUrlToHistory = (videoData) => {
   } catch (error) {
     console.error('Error saving All Sites URL history:', error);
   }
-};
-
-export const clearAllSitesUrlHistory = () => {
-  localStorage.removeItem(ALL_SITES_URL_HISTORY_KEY);
 };
 
 export const formatTimestamp = (timestamp) => {

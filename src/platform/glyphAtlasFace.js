@@ -32,8 +32,8 @@ import { readMeasurement } from './glyphAtlasSurface';
  * resolves to visibly different metrics; agreement between all three is what proves a face did not
  * participate in a measurement.
  */
-export const PROBE_FAMILIES = Object.freeze(['monospace', 'serif', 'sans-serif']);
-export const FACE_PROBE_TEXT = 'mmmmmmmmmmlliWQ';
+const PROBE_FAMILIES = Object.freeze(['monospace', 'serif', 'sans-serif']);
+const FACE_PROBE_TEXT = 'mmmmmmmmmmlliWQ';
 /** Face-level vertical metrics are string-independent, so a fixed probe also covers empty text. */
 export const METRIC_PROBE_TEXT = 'Hxdpg';
 
@@ -42,7 +42,7 @@ const genericFont = (face, probeFamily) => `${face.style} ${face.weight} ${round
 /**
  * The three probe pairs, or a typed failure when the surface cannot tell two faces apart at all.
  */
-export const probeFace = (surface, face, families) => {
+const probeFace = (surface, face, families) => {
   const alone = PROBE_FAMILIES.map((probeFamily) => ({
     probeFamily,
     width: readMeasurement(

@@ -16,7 +16,7 @@ import { acknowledgeJobResult, claimJobResult } from './jobResultDeliveryService
 const contexts = new WeakMap();
 const receipts = new WeakMap();
 
-export class ProjectSubtitleGroupingError extends Error {
+class ProjectSubtitleGroupingError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'ProjectSubtitleGroupingError';
@@ -294,7 +294,6 @@ export const createProjectSubtitleGroupingStore = ({
 const projectSubtitleGroupingStore = createProjectSubtitleGroupingStore();
 
 export const captureProjectSubtitleGrouping = projectSubtitleGroupingStore.capture;
-export const assertProjectSubtitleGroupingCurrent = projectSubtitleGroupingStore.assertIdentity;
 export const persistProjectSubtitleGrouping = projectSubtitleGroupingStore.persist;
 export const acknowledgeProjectSubtitleGrouping = projectSubtitleGroupingStore.acknowledge;
 export const loadProjectSubtitleGrouping = projectSubtitleGroupingStore.load;

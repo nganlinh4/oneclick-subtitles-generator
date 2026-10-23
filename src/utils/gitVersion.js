@@ -95,7 +95,7 @@ export const getGitVersion = async () => {
  * @param {string} shortHash - Short git commit hash
  * @returns {string} Formatted version string
  */
-export const formatGitVersion = (dateString, shortHash) => {
+const formatGitVersion = (dateString, shortHash) => {
   try {
     let date;
     
@@ -301,7 +301,7 @@ export const compareVersions = (version1, version2) => {
  *
  * @returns {string} Operating system ('windows', 'mac', 'linux', 'unknown')
  */
-export const detectOS = () => {
+const detectOS = () => {
   if (typeof window === 'undefined') return 'unknown';
 
   const userAgent = window.navigator.userAgent.toLowerCase();
@@ -332,33 +332,3 @@ export const getInstallerFilename = () => {
   }
 };
 
-/**
- * Get build information for debugging
- *
- * @param {Object} versionInfo - Version information object
- * @returns {string} Build information string
- */
-export const getBuildInfo = (versionInfo) => {
-  if (!versionInfo) return 'No build info available';
-
-  const parts = [
-    `Source: ${versionInfo.source}`,
-    `Hash: ${versionInfo.shortHash}`,
-    `Built: ${versionInfo.date}`
-  ];
-
-  return parts.join(' | ');
-};
-
-const gitVersionUtils = {
-  getGitVersion,
-  formatGitVersion,
-  getDisplayVersion,
-  getBuildInfo,
-  getLatestVersion,
-  compareVersions,
-  detectOS,
-  getInstallerFilename
-};
-
-export default gitVersionUtils;

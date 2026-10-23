@@ -1,147 +1,36 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isDesktopRuntime } from '../../platform/desktopRuntime';
-import { nativeMediaDropService, sharedNativeMediaDropService } from '../../platform/mediaDropService';
-import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
-import {
-  ensureProjectOwnsNativeMedia,
-  forgetNativeMediaSessionDurably,
-  loadDurableNativeMediaSession,
-  readNativeMediaSession,
-  resolveOwnedNativeMediaProject,
-} from '../../platform/nativeMediaOwnership';
-import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
-import {
-  claimMediaDrop,
-  clearMedia,
-  getSelectedMedia,
-  isNativeMediaDescriptor,
-  isNativeMediaPlaybackUrl,
-  restoreMediaAsset,
-  selectMedia,
-} from '../../platform/mediaService';
+import { isNativeMediaDescriptor, selectMedia } from '../../platform/mediaService';
 import {
   forgetBrowserMediaBlob,
   registerBrowserMediaBlob,
 } from '../../platform/browserMediaBlobRegistry';
-import {
-  activateSubtitleProjectBinding,
-  clearSubtitleProjectBinding,
-} from '../../platform/subtitleProjectBinding';
+import { clearSubtitleProjectBinding } from '../../platform/subtitleProjectBinding';
 import LoadingIndicator from '../common/LoadingIndicator';
+import { isAudioFile, isVideoFile, MAX_FILE_SIZE_MB } from './mediaFileTypes';
+import { releaseSelectedNativeMedia } from './nativeMediaSelection';
+import useNativeMediaInput from './useNativeMediaInput';
 import '../../styles/FileUploadInput.css';
-
-export const reconcileSelectedNativeMedia = async ({
-  media,
-  activateAsLocal,
-  applyOwnedSession,
-  readSession = readNativeMediaSession,
-  resolveOwner = resolveOwnedNativeMediaProject,
-}) => {
-  const session = readSession();
-  if (session === null) {
-    await activateAsLocal(media);
-    return 'local';
-  }
-  if (session.assetId !== media?.assetId) {
-    throw new Error('The selected media does not match its active subtitle project.');
-  }
-  const owner = await resolveOwner(session);
-  if (owner === null) {
-    throw new Error('The selected media subtitle project is no longer available.');
-  }
-  await applyOwnedSession(media, session);
-  return 'owned-session';
-};
-
-export const releaseSelectedNativeMedia = async ({
-  media,
-  clear = clearMedia,
-  readSession = readNativeMediaSession,
-  forgetSession = forgetNativeMediaSessionDurably,
-  restore = restoreMediaAsset,
-}) => {
-  if (!isNativeMediaDescriptor(media)
-      || typeof clear !== 'function'
-      || typeof readSession !== 'function'
-      || typeof forgetSession !== 'function'
-      || typeof restore !== 'function') {
-    throw new TypeError('Exact native media is required for release');
-  }
-  const session = readSession();
-  await clear({
-    expectedAssetId: media.assetId,
-    expectedPlaybackId: media.playbackId,
-  });
-  if (session === null || session.assetId !== media.assetId) return null;
-  if (await forgetSession({ expectedSession: session }) === true) return session;
-
-  const current = readSession();
-  if (current === null
-      || current.assetId !== session.assetId
-      || current.cacheId !== session.cacheId
-      || current.projectId !== session.projectId) {
-    return null;
-  }
-
-  // The native capability has already been withdrawn, but its exact durable pointer survived.
-  // Reopen only if the host is still empty: a newer selection arriving after `clear` must win.
-  // Refusing the UI removal after this rollback keeps the visible state and relaunch state equal.
-  const restored = await restore(media.assetId);
-  if (restored === null) return null;
-  if (!isNativeMediaDescriptor(restored)
-      || restored.assetId !== media.assetId) {
-    throw new Error('The selected media could not be restored after its session remained active.');
-  }
-  throw Object.assign(new Error('The selected media session could not be removed.'), {
-    restoredMedia: restored,
-  });
-};
 
 const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, onVideoSelect, className, isSrtOnlyMode, setIsSrtOnlyMode, setStatus, setVideoSegments, setSegmentsStatus }) => {
   const { t } = useTranslation();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
-
-  const nativeOperationRef = useRef(0);
-  const nativeHydratedRef = useRef(false);
-  const nativeLoadingRef = useRef(false);
-
-
-  // Maximum file size in MB (5GB = 5120MB)
-  const MAX_FILE_SIZE_MB = 5120;
-
-  const SUPPORTED_AUDIO_EXTENSIONS = useMemo(() => [
-    ".wav", ".mp3", ".aiff", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".opus",
-    ".amr", ".au", ".caf", ".dts", ".ac3", ".ape", ".mka", ".ra", ".webm"
-  ], []);
-
-  const SUPPORTED_VIDEO_EXTENSIONS = useMemo(() => [
-    ".mp4", ".mpeg", ".mpg", ".mov", ".avi", ".flv", ".webm", ".wmv", ".3gp", ".3gpp", ".mkv"
-  ], []);
-
-  // Check if file is a video - wrapped in useCallback to avoid dependency issues
-  const isVideoFile = useCallback((mimeType, fileName = '') => {
-    // First check MIME type
-    if (mimeType.startsWith('video/')) {
-      return true;
-    }
-    // Fallback to file extension check
-    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-    return SUPPORTED_VIDEO_EXTENSIONS.includes(extension);
-  }, [SUPPORTED_VIDEO_EXTENSIONS]);
-
-  // Check if file is an audio - wrapped in useCallback to avoid dependency issues
-  const isAudioFile = useCallback((mimeType, fileName = '') => {
-    // Allow any MIME type that starts with 'audio/'
-    if (mimeType.startsWith('audio/')) {
-      return true;
-    }
-    // Fallback to file extension check for known audio extensions
-    const extension = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
-    return SUPPORTED_AUDIO_EXTENSIONS.includes(extension);
-  }, [SUPPORTED_AUDIO_EXTENSIONS]);
+  const { activateNativeMedia, nativeOperationRef } = useNativeMediaInput({
+    fileInputRef,
+    isLoading,
+    isSrtOnlyMode,
+    onVideoSelect,
+    setIsDragOver,
+    setIsLoading,
+    setIsSrtOnlyMode,
+    setStatus,
+    setUploadedFile,
+    setUploadedFileData,
+    t,
+  });
 
   // Media owns its metadata. A second state copy kept A's name/type when the parent selected B.
   const fileInfo = uploadedFile ? {
@@ -150,197 +39,6 @@ const FileUploadInput = ({ uploadedFile, setUploadedFile, setUploadedFileData, o
     size: `${(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB`,
     mediaType: isVideoFile(uploadedFile.type, uploadedFile.name) ? 'Video' : 'Audio',
   } : null;
-
-  // `isCurrent` is re-checked after the durable ownership commit, because that await lets a newer
-  // selection supersede this one before the media is published to React.
-  const activateNativeMedia = useCallback(async (media, isCurrent = () => true) => {
-    // A locally imported asset is its own subtitle alias. Binding it to that project durably is
-    // what makes it reopenable after a restart; without it the asset is unowned forever.
-    const ownership = await ensureProjectOwnsNativeMedia({ media, cacheId: media.assetId });
-    if (!isCurrent()) return;
-    await activateSubtitleProjectBinding(ownership.cacheId, {
-      expectedProjectId: ownership.projectId,
-      create: false,
-    });
-    if (!isCurrent()) return;
-
-    localStorage.removeItem('current_video_url');
-    localStorage.removeItem('split_result');
-    const previousUrl = localStorage.getItem('current_file_url');
-    if (previousUrl?.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(previousUrl);
-      } catch {
-        // A stale object URL is already inert.
-      }
-      forgetBrowserMediaBlob(previousUrl);
-    }
-    localStorage.setItem('current_file_url', media.playbackUrl);
-
-    if (onVideoSelect) onVideoSelect(null);
-    if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
-    if (setUploadedFileData) setUploadedFileData(null);
-    setUploadedFile(media);
-
-    // Media ownership does not imply subtitle-track readiness. In particular, this callback can
-    // still observe source A's React cue array while transactional activation has already made
-    // source B current. The subtitle project/hydration owner publishes its own authoritative state.
-  }, [
-    isSrtOnlyMode,
-    onVideoSelect,
-    setIsSrtOnlyMode,
-    setUploadedFile,
-    setUploadedFileData,
-  ]);
-
-  useEffect(() => {
-    nativeLoadingRef.current = isLoading;
-  }, [isLoading]);
-
-  useEffect(() => {
-    if (!isDesktopRuntime()) return undefined;
-
-    let cancelled = false;
-    let subscription = null;
-    let activeDragId = null;
-    let lastSequence = 0;
-
-    const containsPhysicalPosition = (position) => {
-      const dropZone = fileInputRef.current?.closest('.file-upload-input');
-      return isPhysicalPointInsideElement(position, dropZone);
-    };
-
-    const showNativeDropError = (error) => {
-      const message = error?.message || t('fileUpload.nativeSelectionError', 'Could not open the selected media.');
-      if (setStatus) setStatus({ message, type: 'error' });
-      else if (window.addToast) window.addToast(message, 'error', 8000);
-    };
-
-    const handleNativeDropEvent = (event) => {
-      if (cancelled || event.sequence <= lastSequence) return;
-      lastSequence = event.sequence;
-
-      if (event.type === 'enter') {
-        activeDragId = event.dragId;
-      } else if (activeDragId !== null && event.dragId !== activeDragId) {
-        return;
-      } else if (activeDragId === null && (event.type === 'over' || event.type === 'leave')) {
-        return;
-      }
-
-      if (event.type === 'enter' || event.type === 'over') {
-        setIsDragOver(!nativeLoadingRef.current && containsPhysicalPosition(event.position));
-        return;
-      }
-      setIsDragOver(false);
-
-      if (event.type === 'leave') {
-        activeDragId = null;
-        return;
-      }
-      if (event.type === 'rejected') {
-        activeDragId = null;
-        if (!containsPhysicalPosition(event.position)) return;
-        const message = t('fileUpload.formatError', 'Unsupported file format. Please upload a supported video or audio file.');
-        if (window.addToast) window.addToast(message, 'error', 5000);
-        else if (setStatus) setStatus({ message, type: 'error' });
-        return;
-      }
-      if (event.type !== 'drop') return;
-      activeDragId = null;
-
-      if (!containsPhysicalPosition(event.position)) return;
-      if (nativeLoadingRef.current) {
-        nativeMediaDropService.discard(event.offerId).catch(() => {});
-        return;
-      }
-
-      const operation = ++nativeOperationRef.current;
-      nativeLoadingRef.current = true;
-      setIsLoading(true);
-      claimMediaDrop(event.offerId)
-        .then((media) => {
-          const isCurrent = () => !cancelled && nativeOperationRef.current === operation;
-          if (isCurrent()) return activateNativeMedia(media, isCurrent);
-          return undefined;
-        })
-        .catch((error) => {
-          if (!cancelled && nativeOperationRef.current === operation) showNativeDropError(error);
-        })
-        .finally(() => {
-          if (!cancelled && nativeOperationRef.current === operation) {
-            nativeLoadingRef.current = false;
-            setIsLoading(false);
-          }
-        });
-    };
-
-    sharedNativeMediaDropService.subscribe(handleNativeDropEvent, () => {
-      if (!cancelled) setIsDragOver(false);
-    }).then((registered) => {
-      if (cancelled) registered.unsubscribe().catch(() => {});
-      else subscription = registered;
-    }).catch(() => {
-      if (!cancelled) setIsDragOver(false);
-    });
-
-    return () => {
-      cancelled = true;
-      if (subscription) subscription.unsubscribe().catch(() => {});
-    };
-  }, [activateNativeMedia, setStatus, t]);
-
-  // Reconcile WebView state with Rust after remounts. Expired loopback capabilities from a prior
-  // process are removed instead of being replayed as if they were still authorized.
-  useEffect(() => {
-    if (!isDesktopRuntime() || nativeHydratedRef.current) return undefined;
-    nativeHydratedRef.current = true;
-    const operation = ++nativeOperationRef.current;
-    let mounted = true;
-
-    loadDurableNativeMediaSession()
-      .then(() => getSelectedMedia())
-      .then((media) => {
-        if (!mounted || nativeOperationRef.current !== operation) return undefined;
-        if (media) {
-          const isCurrent = () => mounted && nativeOperationRef.current === operation;
-          return reconcileSelectedNativeMedia({
-            media,
-            activateAsLocal: (selected) => activateNativeMedia(selected, isCurrent),
-            applyOwnedSession: async (selected, session) => {
-              if (!isCurrent()) return;
-              await applyNativeMediaSession({
-                media: selected,
-                cacheId: session.cacheId,
-                projectId: session.projectId,
-                setUploadedFile,
-                validateOwnership: isCurrent,
-              });
-              if (!isCurrent()) return;
-              if (onVideoSelect) onVideoSelect(null);
-              if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
-              if (setUploadedFileData) setUploadedFileData(null);
-            },
-          });
-        }
-        const staleUrl = localStorage.getItem('current_file_url');
-        if (isNativeMediaPlaybackUrl(staleUrl)) {
-          localStorage.removeItem('current_file_url');
-        }
-      })
-      .catch((error) => {
-        console.error('Could not reconcile the native media session:', error);
-      });
-
-    return () => { mounted = false; };
-  }, [
-    activateNativeMedia,
-    isSrtOnlyMode,
-    onVideoSelect,
-    setIsSrtOnlyMode,
-    setUploadedFile,
-    setUploadedFileData,
-  ]);
 
   // Validate file type and size
   const validateFile = (file) => {

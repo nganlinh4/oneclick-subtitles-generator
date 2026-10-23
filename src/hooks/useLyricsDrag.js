@@ -88,5 +88,3 @@ export const useLyricsDrag = ({ lyrics, duration, startDrag, handleDrag, endDrag
 
   return { handleMouseDown, handleTouchStart };
 };
-
-export default useLyricsDrag;

@@ -9,7 +9,7 @@ import { isMobileDevice } from './systemDetection';
  * Apply zoom level to the page using viewport meta tag (browser-like zoom)
  * @param {number} zoomLevel - Zoom level (e.g., 0.5 for 50% zoom)
  */
-export const applyZoom = (zoomLevel) => {
+const applyZoom = (zoomLevel) => {
   try {
     // Find or create viewport meta tag
     let viewportMeta = document.querySelector('meta[name="viewport"]');
@@ -37,27 +37,8 @@ export const applyZoom = (zoomLevel) => {
     // Update the meta tag
     viewportMeta.setAttribute('content', filteredParts.join(', '));
 
-    console.log(`Applied browser-like zoom level: ${zoomLevel} (initial-scale: ${initialScale})`);
   } catch (error) {
     console.warn('Error applying zoom:', error);
-  }
-};
-
-/**
- * Remove zoom from the page (reset viewport to default)
- */
-export const removeZoom = () => {
-  try {
-    const viewportMeta = document.querySelector('meta[name="viewport"]');
-
-    if (viewportMeta) {
-      // Reset to default viewport settings
-      viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1');
-    }
-
-    console.log('Removed zoom (reset viewport)');
-  } catch (error) {
-    console.warn('Error removing zoom:', error);
   }
 };
 
@@ -75,30 +56,5 @@ export const initializeMobileZoom = (zoomLevel = 0.5) => {
     }
   } catch (error) {
     console.warn('Error initializing mobile zoom:', error);
-  }
-};
-
-/**
- * Get current zoom level from viewport meta tag
- * @returns {number} Current zoom level (1.0 = 100%)
- */
-export const getCurrentZoom = () => {
-  try {
-    const viewportMeta = document.querySelector('meta[name="viewport"]');
-
-    if (viewportMeta) {
-      const content = viewportMeta.getAttribute('content');
-      if (content) {
-        const initialScaleMatch = content.match(/initial-scale=([0-9.]+)/);
-        if (initialScaleMatch) {
-          return parseFloat(initialScaleMatch[1]);
-        }
-      }
-    }
-
-    return 1.0; // Default zoom level
-  } catch (error) {
-    console.warn('Error getting current zoom:', error);
-    return 1.0;
   }
 };

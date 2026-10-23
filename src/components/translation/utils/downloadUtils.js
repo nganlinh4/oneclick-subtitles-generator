@@ -19,7 +19,7 @@ import { getCurrentCacheId } from '../../../utils/userSubtitlesStore';
  * @param {string} videoTitle - Fallback video title
  * @returns {string} - Base filename (no extension)
  */
-export const generateFilename = (source, namingInfo = {}, videoTitle) => {
+const generateFilename = (source, namingInfo = {}, videoTitle) => {
   const { sourceSubtitleName = '', videoName = '', targetLanguages: targetLangs = [] } = namingInfo;
 
   // Priority 1: Source subtitle name (remove extension)
@@ -58,7 +58,7 @@ export const generateFilename = (source, namingInfo = {}, videoTitle) => {
  * @param {Array} targetLanguages - Target languages
  * @returns {string} - Base filename (no extension)
  */
-export const generateBulkFilename = (originalName, targetLanguages) => {
+const generateBulkFilename = (originalName, targetLanguages) => {
   // Remove extension from original name
   const baseName = originalName.replace(/\.(srt|json)$/i, '');
 

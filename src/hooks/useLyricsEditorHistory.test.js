@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
+import { useLyricsEditorHistory } from './useLyricsEditorHistory';
 import {
   pruneLyricsCheckpointHistory,
   pruneLyricsHistoryStacks,
-  useLyricsEditorHistory,
-} from './useLyricsEditorHistory';
+} from './lyricsEditorHistoryState';
 import { LYRICS_EDITOR_ACTIONS } from '../platform/durableLyricsHistory';
 
 let currentCacheIdListener = null;

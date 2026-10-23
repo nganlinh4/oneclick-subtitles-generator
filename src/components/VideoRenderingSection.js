@@ -1,7 +1,5 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { defaultProjectRenderSceneValues, useProjectRenderScene } from '../platform/projectRenderScene';
-import { completeSubtitleCustomization } from './VideoRenderingSection/subtitleCustomizationState';
 import QueueManagerPanel from './QueueManagerPanel';
 import '../styles/VideoRenderingSection.css';
 import '../styles/CollapsibleSection.css';
@@ -12,35 +10,20 @@ import '../styles/VideoRenderingControls.css';
 import '../styles/components/form-controls.css';
 import { useRenderQueue } from './VideoRenderingSection/useRenderQueue';
 import { useVideoUpload } from './VideoRenderingSection/useVideoUpload';
-import {
-  requireGeneratedNarrationArtifact,
-  useNarration,
-} from './VideoRenderingSection/useNarration';
+import { useNarration } from './VideoRenderingSection/useNarration';
+import { useProjectRenderSceneControls } from './VideoRenderingSection/useProjectRenderSceneControls';
+import { admitNativeRender } from './VideoRenderingSection/nativeRenderAdmission';
+import VideoRenderingHeader from './VideoRenderingSection/VideoRenderingHeader';
 import { usePanelResize } from './VideoRenderingSection/usePanelResize';
 import { useAutoFill } from './VideoRenderingSection/useAutoFill';
 import InputSelectionRow from './VideoRenderingSection/InputSelectionRow';
 import RenderSettingsRow from './VideoRenderingSection/RenderSettingsRow';
 import TrimTimelineRow from './VideoRenderingSection/TrimTimelineRow';
 import PreviewCustomizationRow from './VideoRenderingSection/PreviewCustomizationRow';
-import {
-  buildNativeRenderRequest,
-  cancelNativeRender,
-  ensureNativeRenderProject,
-  getNativeRenderStatus,
-  resolveNativeRenderSource,
-  runNativeRender,
-} from '../platform/renderService';
+import { cancelNativeRender, runNativeRender } from '../platform/renderService';
 import { stageNativeRenderText } from './previews/native/exportTextStaging';
 import { translatedSubtitlesForRender } from './previews/previewCueSelection';
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-let DEBUG_LOGS = false;
-try {
-  DEBUG_LOGS = typeof window !== 'undefined' && localStorage.getItem('debug_logs') === 'true';
-} catch {
-  DEBUG_LOGS = false;
-}
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 const ACTIVE_RENDER_TOAST_DURATION_MS = 24 * 60 * 60 * 1000;
 
 const VideoRenderingSection = ({
@@ -99,62 +82,20 @@ const VideoRenderingSection = ({
     handleDrop,
   } = useVideoUpload({ onNativeVideoSelected });
 
-  // One project-owned scene is the only state preview, queue admission and export may read. It is
-  // cleared synchronously during A→B activation, so the old project's style/trim never flashes or
-  // leaks into the new project's request while Rust loads the durable scene.
   const {
-    status: renderSceneStatus,
-    scene: projectRenderScene,
-    error: renderSceneError,
-    updateScene: updateProjectRenderScene,
-    flushScene: flushProjectRenderScene,
-  } = useProjectRenderScene();
-  useEffect(() => {
-    const key = 'native-render-scene-error';
-    if (!renderSceneError) {
-      window.removeToastByKey?.(key);
-      return;
-    }
-    window.addToast?.(renderSceneError.message, 'error', 8000, key);
-  }, [renderSceneError]);
-  const fallbackScene = defaultProjectRenderSceneValues();
-  const sceneValues = projectRenderScene ?? fallbackScene;
-  const {
+    renderSceneStatus,
+    flushProjectRenderScene,
     selectedSubtitles,
     selectedNarration,
     renderSettings,
-    customization: subtitleCustomization,
-    crop: cropSettings,
-  } = sceneValues;
-
-  const updateSceneField = useCallback((field, update) => {
-    updateProjectRenderScene((previous) => ({
-      ...previous,
-      [field]: typeof update === 'function' ? update(previous[field]) : update,
-    }));
-  }, [updateProjectRenderScene]);
-  const setSelectedSubtitles = useCallback(
-    (update) => updateSceneField('selectedSubtitles', update),
-    [updateSceneField],
-  );
-  const setSelectedNarration = useCallback(
-    (update) => updateSceneField('selectedNarration', update),
-    [updateSceneField],
-  );
-  const setRenderSettings = useCallback(
-    (update) => updateSceneField('renderSettings', update),
-    [updateSceneField],
-  );
-  const setSubtitleCustomization = useCallback(
-    (update) => updateSceneField('customization', (previous) => completeSubtitleCustomization(
-      typeof update === 'function' ? update(previous) : update,
-    )),
-    [updateSceneField],
-  );
-  const setCropSettings = useCallback(
-    (update) => updateSceneField('crop', update),
-    [updateSceneField],
-  );
+    subtitleCustomization,
+    cropSettings,
+    setSelectedSubtitles,
+    setSelectedNarration,
+    setRenderSettings,
+    setSubtitleCustomization,
+    setCropSettings,
+  } = useProjectRenderSceneControls();
 
   // *** FIX START ***
   // This effect resets the video duration state whenever a new video file is selected.
@@ -249,6 +190,13 @@ const VideoRenderingSection = ({
   };
   const getCurrentSubtitles = () => getSubtitlesForSource(selectedSubtitles);
 
+  // Merge `patch` into the queue row with this id; every other row is left untouched.
+  const patchQueueItem = (queueItemId, patch) => {
+    setRenderQueue(prev => prev.map(item => (
+      item.id === queueItemId ? { ...item, ...patch } : item
+    )));
+  };
+
   // Simple render function - allows queueing multiple renders
   const handleRender = async () => {
     setError('');
@@ -259,58 +207,14 @@ const VideoRenderingSection = ({
     let durableScene;
     let lyrics;
     try {
-      setRenderAdmissionStage('runtime');
-      const runtime = await getNativeRenderStatus();
-      if (!runtime.available) {
-        const error = new Error(t(
-          'videoRendering.rendererNotInstalled',
-          'The video renderer is not ready. Install the native tools in Settings before rendering.',
-        ));
-        error.code = 'renderRuntimeUnavailable';
-        throw error;
-      }
-      setRenderAdmissionStage('source');
-      nativeSourceAsset = await resolveNativeRenderSource(selectedVideoFile);
-      setRenderAdmissionStage('project');
-      const projectId = await ensureNativeRenderProject(nativeSourceAsset);
-      durableScene = await flushProjectRenderScene();
-      if (durableScene === null
-          || durableScene.projectId !== projectId) {
-        const sceneError = new Error(
-          'The active project render settings are not ready for this video',
-        );
-        sceneError.code = 'projectRenderSceneUnavailable';
-        throw sceneError;
-      }
-      lyrics = getSubtitlesForSource(durableScene.selectedSubtitles);
-      if (!Array.isArray(lyrics) || lyrics.length === 0) {
-        const subtitleError = new Error(t(
-          'videoRendering.noSubtitlesSelected',
-          'Add or generate subtitles before rendering.',
-        ));
-        subtitleError.code = 'noSubtitlesSelected';
-        throw subtitleError;
-      }
-      setRenderAdmissionStage('narration');
-      const narrationArtifactId = requireGeneratedNarrationArtifact(
-        durableScene.selectedNarration,
-        durableScene.selectedNarration === 'generated'
-          ? await getNarrationArtifactId(durableScene.selectedNarration)
-          : null,
-      );
-      setRenderAdmissionStage('request');
-      nativeRenderRequest = buildNativeRenderRequest({
-        sourceAsset: nativeSourceAsset,
-        projectId,
-        sceneRevision: durableScene.sceneRevision,
-        selectedSubtitles: durableScene.selectedSubtitles,
-        selectedNarration: durableScene.selectedNarration,
-        narrationArtifactId,
-        lyrics,
-        settings: durableScene.renderSettings,
-        customization: durableScene.customization,
-        crop: durableScene.crop,
-      });
+      ({ nativeSourceAsset, nativeRenderRequest, durableScene, lyrics } = await admitNativeRender({
+        t,
+        selectedVideoFile,
+        flushProjectRenderScene,
+        getSubtitlesForSource,
+        getNarrationArtifactId,
+        setStage: setRenderAdmissionStage,
+      }));
     } catch (error) {
       const message = error?.code === 'renderRuntimeUnavailable'
         ? t(
@@ -400,33 +304,18 @@ const VideoRenderingSection = ({
             if (!ownsRenderLease(renderOwner)) return;
             activeNativeRenderIdRef.current = job.id;
             setCurrentRenderId(job.id);
-            const targetQueueItem = queueItem;
-            if (targetQueueItem) {
-              setRenderQueue(prev => prev.map(item =>
-                item.id === targetQueueItem.id
-                  ? { ...item, nativeJobId: job.id, nativeSourceAsset: sourceAsset }
-                  : item
-              ));
-            }
+            patchQueueItem(queueItem.id, { nativeJobId: job.id, nativeSourceAsset: sourceAsset });
           },
           onProgress: (event) => {
             if (!ownsRenderLease(renderOwner)) return;
             const progressPercent = Math.round(event.fractionMillionths / 10_000);
             setRenderProgress(progressPercent);
-            const targetQueueItem = queueItem;
-            if (targetQueueItem) {
-              setRenderQueue(prev => prev.map(item =>
-                item.id === targetQueueItem.id
-                  ? {
-                      ...item,
-                      progress: progressPercent,
-                      renderedFrames: event.renderedFrames,
-                      durationInFrames: event.durationInFrames,
-                      phase: event.phase,
-                    }
-                  : item
-              ));
-            }
+            patchQueueItem(queueItem.id, {
+              progress: progressPercent,
+              renderedFrames: event.renderedFrames,
+              durationInFrames: event.durationInFrames,
+              phase: event.phase,
+            });
           },
         });
         if (!ownsRenderLease(renderOwner)) return;
@@ -436,25 +325,17 @@ const VideoRenderingSection = ({
         setRenderedVideoUrl(result.playback.playbackUrl);
         setRenderStatus(t('videoRendering.complete', 'Render complete!'));
         setRenderProgress(100);
-        const targetQueueItem = queueItem;
-        if (targetQueueItem) {
-          setRenderQueue(prev => prev.map(item =>
-            item.id === targetQueueItem.id
-              ? {
-                  ...item,
-                  status: 'completed',
-                  progress: 100,
-                  completedAt,
-                  nativeJobId: completed.job.id,
-                  outputPath: result.playback.playbackUrl,
-                  outputPlaybackId: result.playback.id,
-                  outputAssetId: result.asset.id,
-                  outputArtifactId: result.artifactId,
-                  outputSizeBytes: result.asset.sizeBytes,
-                }
-              : item
-          ));
-        }
+        patchQueueItem(queueItem.id, {
+          status: 'completed',
+          progress: 100,
+          completedAt,
+          nativeJobId: completed.job.id,
+          outputPath: result.playback.playbackUrl,
+          outputPlaybackId: result.playback.id,
+          outputAssetId: result.asset.id,
+          outputArtifactId: result.artifactId,
+          outputSizeBytes: result.asset.sizeBytes,
+        });
       return;
 
     } catch (error) {
@@ -463,32 +344,17 @@ const VideoRenderingSection = ({
 
       // Check if this was an abort (cancellation)
       if (error.name === 'AbortError' || error.code === 'renderCancelled') {
-        dbg('Render was aborted');
         setRenderStatus(t('videoRendering.cancelled', 'Render cancelled'));
         setRenderProgress(0);
 
         // Only this generation may update its queue item.
-        const targetQueueItem = queueItem;
-        if (targetQueueItem) {
-          setRenderQueue(prev => prev.map(item =>
-            item.id === targetQueueItem.id
-              ? { ...item, status: 'cancelled', progress: 0, error: null }
-              : item
-          ));
-        }
+        patchQueueItem(queueItem.id, { status: 'cancelled', progress: 0, error: null });
       } else {
         setError(error.message);
         setRenderStatus(t('videoRendering.failed', 'Render failed'));
 
         // Only this generation may update its queue item.
-        const targetQueueItem = queueItem;
-        if (targetQueueItem) {
-          setRenderQueue(prev => prev.map(item =>
-            item.id === targetQueueItem.id
-              ? { ...item, status: 'failed', error: error.message }
-              : item
-          ));
-        }
+        patchQueueItem(queueItem.id, { status: 'failed', error: error.message });
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -515,9 +381,7 @@ const VideoRenderingSection = ({
     if (!nativeRenderId && activeController) {
       activeController.abort();
       setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
-      setRenderQueue(prev => prev.map(item => (
-        item.id === activeQueueItemId ? { ...item, status: 'cancelling' } : item
-      )));
+      patchQueueItem(activeQueueItemId, { status: 'cancelling' });
       return true;
     }
 
@@ -529,9 +393,7 @@ const VideoRenderingSection = ({
       const accepted = await cancelNativeRender(nativeRenderId);
       if (accepted.state === 'cancelling') {
         setRenderStatus(t('videoRendering.cancelling', 'Cancelling render...'));
-        setRenderQueue(prev => prev.map(item => (
-          item.id === activeQueueItemId ? { ...item, status: 'cancelling' } : item
-        )));
+        patchQueueItem(activeQueueItemId, { status: 'cancelling' });
       }
       return true;
     } catch (error) {
@@ -561,47 +423,20 @@ const VideoRenderingSection = ({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-      {/* Header - matching background-generator-header */}
-      <div className="video-rendering-header">
-        <div className="header-left">
-          <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <span className="material-symbols-rounded">movie</span>
-            {t('videoRendering.title', 'Video Rendering')}
-          </h2>
-          <span style={{
-            marginLeft: '16px',
-            fontSize: '12px',
-            color: 'var(--md-on-surface-variant)',
-            fontStyle: 'italic',
-            opacity: 0.7
-          }}>
-            {t('videoRendering.upcomingFeatures', 'Export subtitles, narration, styling, and effects into a finished video.')}
-          </span>
-        </div>
-        <button
-          className="collapse-button"
-          disabled={isClickDisabled}
-          onClick={() => {
-            // Disable button for 2 seconds to prevent rapid clicking
-            setIsClickDisabled(true);
-            setTimeout(() => setIsClickDisabled(false), 2000);
+      <VideoRenderingHeader
+        isCollapsed={isCollapsed}
+        isClickDisabled={isClickDisabled}
+        onToggleCollapsed={() => {
+          // Disable button for 2 seconds to prevent rapid clicking
+          setIsClickDisabled(true);
+          setTimeout(() => setIsClickDisabled(false), 2000);
 
-            // Toggle collapsed state
-            const newCollapsedState = !isCollapsed;
-            setIsCollapsed(newCollapsedState);
-
-            // Set userHasCollapsed flag when user manually collapses
-            if (newCollapsedState) {
-              setUserHasCollapsed(true);
-            } else {
-              // Reset the flag when user manually expands
-              setUserHasCollapsed(false);
-            }
-          }}
-        >
-          <span className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
-        </button>
-      </div>
+          // A manual collapse sets userHasCollapsed; a manual expand resets it.
+          const newCollapsedState = !isCollapsed;
+          setIsCollapsed(newCollapsedState);
+          setUserHasCollapsed(newCollapsedState);
+        }}
+      />
 
       {/* Drag overlay */}
       {isDragging && (

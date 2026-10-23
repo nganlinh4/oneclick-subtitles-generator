@@ -7,7 +7,7 @@ export const NATIVE_NARRATION_EDIT_COMMIT_EVENT = 'osg:native-narration-edit-com
 
 const requests = new WeakMap();
 
-export class NativeNarrationEditCommitError extends Error {
+class NativeNarrationEditCommitError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'NativeNarrationEditCommitError';

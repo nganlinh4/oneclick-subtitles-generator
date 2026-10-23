@@ -5,6 +5,6 @@ import { formatSecondsToTimecode } from '../../../utils/timecode';
  * @param {number} timeInSeconds - Time in seconds
  * @returns {string} - Formatted time string
  */
-export const formatTimeString = (timeInSeconds) => formatSecondsToTimecode(timeInSeconds, '.');
+const formatTimeString = (timeInSeconds) => formatSecondsToTimecode(timeInSeconds, '.');
 
 export default formatTimeString;

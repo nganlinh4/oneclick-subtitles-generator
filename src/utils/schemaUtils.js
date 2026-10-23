@@ -2,8 +2,6 @@
  * Utility functions for creating response schemas for Gemini API
  */
 
-import { createVideoAnalysisSchema } from './videoAnalysisSchema';
-
 /**
  * Creates a schema for language detection
  * @returns {Object} Schema for language detection
@@ -190,22 +188,4 @@ export const createSummarizationSchema = () => {
     };
 };
 
-/**
- * Adds response schema configuration to a Gemini API request
- * @param {Object} requestData - The original request data
- * @param {Object} schema - The schema to apply
- * @returns {Object} Updated request data with schema
- */
-export const addResponseSchema = (requestData, schema) => {
-    return {
-        ...requestData,
-        generationConfig: {
-            ...(requestData.generationConfig || {}),
-            responseMimeType: 'application/json',
-            responseSchema: schema
-        }
-    };
-};
-
 // Export the video analysis schema
-export { createVideoAnalysisSchema };

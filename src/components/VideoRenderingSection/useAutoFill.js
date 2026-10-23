@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 /**
  * Applies incoming autoFillData (from e.g. the video-quality modal): expands/scrolls
@@ -33,7 +30,6 @@ export const useAutoFill = ({
   // Auto-fill data when autoFillData changes - with improved state management
   useEffect(() => {
     if (autoFillData) {
-      dbg('[VideoRenderingSection] Processing autoFillData:', autoFillData);
 
       // Expand/scroll sequencing: when coming from video-quality-modal, scroll first, then expand
       const shouldSequenceScrollThenExpand =
@@ -82,7 +78,6 @@ export const useAutoFill = ({
 
       // Auto-scroll ONLY if explicitly requested
       if (shouldSequenceScrollThenExpand) {
-        dbg('[VideoRenderingSection] Sequencing: scroll first, then expand');
         // Use a JS-driven smooth scroll to avoid any CSS/UA interruptions
         setTimeout(() => {
           const targetEl = sectionRef.current;
@@ -109,13 +104,9 @@ export const useAutoFill = ({
           };
           requestAnimationFrame(animate);
         }, 50);
-      } else if (autoFillData.autoScroll && autoFillData.source !== 'video-quality-modal') {
-        dbg('[VideoRenderingSection] Auto-scroll requested but blocked - source:', autoFillData.source);
       }
     }
   }, [autoFillData, actualVideoUrl, selectedVideo, uploadedFile, subtitlesData, translatedSubtitles, narrationResults, userHasCollapsed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { sectionRef };
 };
-
-export default useAutoFill;

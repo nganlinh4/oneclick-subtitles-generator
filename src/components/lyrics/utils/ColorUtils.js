@@ -3,7 +3,7 @@
  */
 
 // Simple hash function for consistent colors
-export const hashString = (str) => {
+const hashString = (str) => {
   let hash = 0;
   for (let i = 0; str.length > i; i++) {
     const char = str.charCodeAt(i);

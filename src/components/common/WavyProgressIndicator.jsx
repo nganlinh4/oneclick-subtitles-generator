@@ -15,10 +15,7 @@ import {
  * It defaults to a light theme if no colors are provided.
  *
  * The amplitude/path helper classes and default constants live in
- * ./WavyProgressIndicator/reactHelpers. They are the .jsx-specific variants
- * (e.g. Animatable's Array.isArray easing fallback, the flat WavyProgressDefaults
- * object) and intentionally differ from the sibling animationClasses.js /
- * defaults.js ports — do not swap one for the other without re-diffing.
+ * ./WavyProgressIndicator/reactHelpers.
  */
 
 // Pure React Wavy Progress Indicator with all original features

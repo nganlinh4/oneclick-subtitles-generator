@@ -137,7 +137,7 @@ export const createSubtitleDocumentExportService = ({
   },
 });
 
-export const subtitleDocumentExportService = createSubtitleDocumentExportService();
+const subtitleDocumentExportService = createSubtitleDocumentExportService();
 
 export const exportSubtitleDocument = (request) => subtitleDocumentExportService.save(request);
 

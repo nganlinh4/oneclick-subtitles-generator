@@ -26,12 +26,3 @@ export const DEFAULT_SUBTITLE_FONT_NAME = 'Google Sans';
 
 /** The CSS stack stored in settings, customization, presets and render requests. */
 export const DEFAULT_SUBTITLE_FONT_FAMILY = `'${DEFAULT_SUBTITLE_FONT_NAME}', sans-serif`;
-
-/**
- * The editor's pre-fix default, kept only so migration can recognise it.
- *
- * It names the same family in an unquoted stack. It is not "wrong" and needs no rewriting now that
- * the family resolves — this constant exists so a reader who greps the old string finds the reason
- * rather than concluding it was lost.
- */
-export const LEGACY_IMPLICIT_SUBTITLE_FONT_FAMILY = 'Google Sans, sans-serif';

@@ -1,4 +1,5 @@
 import {
+  activateOwnedLocalMedia,
   applyNativeMediaSession,
   createNativeMediaSessionHydrator,
 } from './useNativeMediaSessionHydration';
@@ -79,6 +80,7 @@ const createHarness = (overrides = {}) => {
     restore: vi.fn(async () => MEDIA_A),
     readSession: vi.fn(() => state.session),
     resolveOwner: vi.fn(async () => resolvedProject()),
+    forgetStale: vi.fn(async () => true),
     activate: vi.fn(async () => Object.freeze({ claimOptions: {}, release })),
     apply: vi.fn(),
   };
@@ -97,7 +99,10 @@ it('publishes the owning project and reopens the remembered asset on a fresh pro
 
   await expect(harness.hydrator.hydrate()).resolves.toBe(true);
 
-  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(sessionA());
+  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(
+    sessionA(),
+    { onStale: expect.any(Function) }
+  );
   expect(harness.activate).toHaveBeenCalledExactlyOnceWith(
     resolvedProject(),
     { validateOwnership: expect.any(Function) }
@@ -200,7 +205,10 @@ it('adopts media the native process already holds only after publishing its owni
   const harness = createHarness({ read: async () => MEDIA_A });
 
   await expect(harness.hydrator.hydrate()).resolves.toBe(true);
-  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(sessionA());
+  expect(harness.resolveOwner).toHaveBeenCalledExactlyOnceWith(
+    sessionA(),
+    { onStale: expect.any(Function) }
+  );
   expect(harness.activate).toHaveBeenCalledExactlyOnceWith(
     resolvedProject(),
     { validateOwnership: expect.any(Function) },
@@ -333,6 +341,26 @@ it.each([
   const harness = createHarness(overrides);
   await expect(harness.hydrator.hydrate()).resolves.toBe(false);
   expect(harness.apply).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['its own asset alias', ASSET_A],
+  ['the subtitle document alias it was attached to', 'subtitle-document:fixture'],
+])('publishes newly selected local media under %s', async (_label, ownedAlias) => {
+  const ensureOwnership = vi.fn(async () => Object.freeze({
+    assetId: ASSET_A, cacheId: ownedAlias, projectId: PROJECT_A,
+  }));
+  const applySession = vi.fn(async () => 'receipt');
+  const setUploadedFile = vi.fn();
+
+  await expect(activateOwnedLocalMedia({
+    media: MEDIA_A, setUploadedFile, ensureOwnership, applySession,
+  })).resolves.toBe('receipt');
+
+  expect(ensureOwnership).toHaveBeenCalledExactlyOnceWith({ media: MEDIA_A, cacheId: ASSET_A });
+  expect(applySession).toHaveBeenCalledExactlyOnceWith({
+    media: MEDIA_A, cacheId: ownedAlias, projectId: PROJECT_A, setUploadedFile,
+  });
 });
 
 it('requires every reviewed dependency', () => {

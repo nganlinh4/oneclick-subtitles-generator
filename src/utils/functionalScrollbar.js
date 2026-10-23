@@ -303,7 +303,7 @@ export function initializeFunctionalScrollbars() {
 /**
  * Clean up all functional scrollbars (based on data attribute)
  */
-export function cleanupFunctionalScrollbars(root = document) {
+function cleanupFunctionalScrollbars(root = document) {
   const initializedContainers = [...root.querySelectorAll('[data-fs-initialized]')];
   if (root.matches?.('[data-fs-initialized]')) initializedContainers.unshift(root);
   initializedContainers.forEach((container) => {

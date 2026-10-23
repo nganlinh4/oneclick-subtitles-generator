@@ -2,7 +2,7 @@ import { invokeDesktop } from './desktopRuntime';
 
 // Credential values belong exclusively to the native vault. Legacy aliases must never be copied
 // into the general-purpose SQLite settings table during browser-storage compatibility sync.
-export const CREDENTIAL_SETTING_KEYS = Object.freeze([
+const CREDENTIAL_SETTING_KEYS = Object.freeze([
   'gemini_api_key',
   'gemini_api_keys',
   'gemini_blacklisted_keys',
@@ -16,7 +16,7 @@ export const CREDENTIAL_SETTING_KEYS = Object.freeze([
 // These values are associated with one media/project alias and are persisted by the project
 // compatibility stores. Copying them into the global settings scope would create a stale second
 // source of truth after switching projects.
-export const PROJECT_SCOPED_SETTING_KEYS = Object.freeze([
+const PROJECT_SCOPED_SETTING_KEYS = Object.freeze([
   'latest_segment_subtitles',
   'original_subtitles_map',
   'transcription_rules',
@@ -27,7 +27,7 @@ export const PROJECT_SCOPED_SETTING_KEYS = Object.freeze([
 // These keys are owned by typed native stores. A same-named legacy localStorage entry contains
 // only a JSON string; copying it through the generic preference sync would replace structured
 // native data and break project/credential restoration on the next launch.
-export const NATIVE_OWNED_SETTING_KEYS = Object.freeze([
+const NATIVE_OWNED_SETTING_KEYS = Object.freeze([
   'gemini.keySelection.v1',
   'project.subtitleCacheIndex.v1',
 ]);
@@ -35,7 +35,7 @@ export const NATIVE_OWNED_SETTING_KEYS = Object.freeze([
 // Runtime handles, capability URLs, generated results, and recomputable caches must not be copied
 // into the durable settings table. In particular, `current_file_url` can contain the private media
 // server's bearer token and Gemini file-cache rows historically included provider metadata.
-export const TRANSIENT_SETTING_KEYS = Object.freeze([
+const TRANSIENT_SETTING_KEYS = Object.freeze([
   'currentRenderId',
   'currentRenderItem',
   'gemini_active_key_index',

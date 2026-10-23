@@ -108,5 +108,3 @@ export const useEngineStatus = ({ poll = true } = {}) => {
 
   return { engines, loading, refresh, isReady, isInstalled };
 };
-
-export default useEngineStatus;

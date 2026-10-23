@@ -8,7 +8,7 @@ import {
 import { isValidDouyinUrl, extractDouyinVideoId } from './urlValidation';
 import { getVideoThumbnail } from '../../platform/desktopYoutubeService';
 
-export { addDouyinUrlToHistory, getDouyinUrlHistory };
+export { addDouyinUrlToHistory };
 
 // Load combined history from all sources
 export const loadHistory = async (setHistory) => {

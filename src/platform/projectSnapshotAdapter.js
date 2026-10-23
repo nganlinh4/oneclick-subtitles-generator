@@ -1,9 +1,9 @@
 import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
 import { normalizeSpeaker } from '../utils/subtitleSpeaker';
 
-export const MAX_LEGACY_SUBTITLE_SECONDS = 31_557_600_000;
-export const MAX_PROJECT_CUES = 1_000_000;
-export const MAX_PROJECT_TRACKS = 256;
+const MAX_LEGACY_SUBTITLE_SECONDS = 31_557_600_000;
+const MAX_PROJECT_CUES = 1_000_000;
+const MAX_PROJECT_TRACKS = 256;
 
 const MAX_CUE_TEXT_CHARS = 1_000_000;
 const MAX_PROJECT_NAME_CHARS = 200;
@@ -11,7 +11,7 @@ const MAX_TRACK_LABEL_CHARS = 200;
 const VALID_TRACK_ORIGINS = new Set(['legacyJson', 'srt']);
 const VALID_MEDIA_KINDS = new Set(['audio', 'video']);
 
-export class ProjectSnapshotMappingError extends Error {
+class ProjectSnapshotMappingError extends Error {
   constructor(code, message, details = {}) {
     super(message);
     this.name = 'ProjectSnapshotMappingError';

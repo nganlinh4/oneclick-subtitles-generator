@@ -15,8 +15,7 @@ import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
 import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 import { showErrorToast } from '../../utils/toastUtils';
-import { applyNativeMediaSession } from '../../hooks/useNativeMediaSessionHydration';
-import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
+import { activateOwnedLocalMedia } from '../../hooks/useNativeMediaSessionHydration';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 import SettingsModal from '../settings/SettingsModal';
 
@@ -163,22 +162,20 @@ const AppLayout = ({
   } = modalHandlers;
 
   const handleNativeRenderVideoSelected = useCallback(async (media) => {
-    const ownership = await ensureProjectOwnsNativeMedia({
-      media,
-      cacheId: media.assetId,
-    });
-    await applyNativeMediaSession({
-      media,
-      cacheId: media.assetId,
-      projectId: ownership.projectId,
-      setUploadedFile,
-    });
+    await activateOwnedLocalMedia({ media, setUploadedFile });
     localStorage.removeItem('current_video_url');
     localStorage.removeItem('split_result');
     setSelectedVideo(null);
     setUploadedFileData?.(null);
     setIsSrtOnlyMode(false);
   }, [setIsSrtOnlyMode, setSelectedVideo, setUploadedFile, setUploadedFileData]);
+
+  // A quality re-download replaced the active media of the same project; the preview and any
+  // processed-file copy must follow the newly published playback capability.
+  const handleQualityMediaReplaced = useCallback((media) => {
+    setUploadedFile(media);
+    setUploadedFileData?.((current) => (current ? media : current));
+  }, [setUploadedFile, setUploadedFileData]);
 
   // Use video info hook to track current video and available versions
   const {
@@ -520,6 +517,7 @@ const AppLayout = ({
           isOpen={showVideoQualityModal}
           onClose={() => setShowVideoQualityModal(false)}
           onConfirm={handleVideoQualityConfirm}
+          onMediaReplaced={handleQualityMediaReplaced}
           videoInfo={getVideoInfoForModal()?.videoInfo || videoInfo}
           actualDimensions={getVideoInfoForModal()?.actualDimensions}
           availableVersions={availableVersions}

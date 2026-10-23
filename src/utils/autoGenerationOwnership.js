@@ -97,7 +97,7 @@ export const createPreparedAutoMedia = ({
   return prepared;
 };
 
-export const isPreparedAutoMedia = (value) => (
+const isPreparedAutoMedia = (value) => (
   value?.kind === PREPARED_MEDIA_KIND
   && value.media != null
   && typeof value.signal?.aborted === 'boolean'

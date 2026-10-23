@@ -11,13 +11,13 @@ import { applySubtitleAnimationEasing } from '../../../shared/subtitle/subtitleA
 const REFERENCE_WIDTH = 1_920;
 const REFERENCE_HEIGHT = 1_080;
 
-export const round2 = (value) => Number(Number(value).toFixed(2));
+const round2 = (value) => Number(Number(value).toFixed(2));
 
 export const scaleStyleValue = (value, compositionHeight) => (
   round2((Number(value) * compositionHeight) / REFERENCE_HEIGHT)
 );
 
-export const marginFraction = (value, reference) => (
+const marginFraction = (value, reference) => (
   round2((Number(value) / reference) * 100) / 100
 );
 

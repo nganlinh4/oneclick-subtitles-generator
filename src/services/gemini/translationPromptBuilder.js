@@ -101,42 +101,4 @@ Treat the full sequence as context so terminology, pronouns, names, tone, and re
     return translationPrompt;
 };
 
-/**
- * Build the retry prompt used when the translation count does not match.
- * @param {Object} params
- * @param {Array} params.subtitles - The original subtitles
- * @param {string|Array} params.targetLanguage - Target language(s)
- * @param {boolean} params.isMultiLanguage - Whether multi-language translation is active
- * @param {number} params.translatedCount - Count returned by the previous attempt
- * @returns {string} - The retry prompt
- */
-const buildRetryPrompt = ({ subtitles, targetLanguage, isMultiLanguage, translatedCount }) => {
-    // Create a more specific retry prompt that includes the original subtitle text
-    // This ensures proper mapping between input and output
-    const subtitleTextWithNumbers = subtitles.map((sub, index) => `${index + 1}. ${sub.text}`).join('\n');
-
-    if (isMultiLanguage && Array.isArray(targetLanguage)) {
-        const languageList = targetLanguage.join(', ');
-        return `RETRY REQUEST: Translate the following ${subtitles.length} numbered subtitle texts to these languages: ${languageList}.
-
-CRITICAL: You must return exactly ${subtitles.length} translations for each language, maintaining the exact same order as the numbered list below.
-
-Previous attempt returned ${translatedCount} translations but we need exactly ${subtitles.length}.
-
-${subtitleTextWithNumbers}
-
-Return your response in the same JSON format as requested originally, with exactly ${subtitles.length} entries for each language.`;
-    }
-
-    return `RETRY REQUEST: Translate the following ${subtitles.length} numbered subtitle texts to ${targetLanguage}.
-
-CRITICAL: You must return exactly ${subtitles.length} translations, maintaining the exact same order as the numbered list below.
-
-Previous attempt returned ${translatedCount} translations but we need exactly ${subtitles.length}.
-
-${subtitleTextWithNumbers}
-
-Return your response in the same JSON format as requested originally, with exactly ${subtitles.length} entries.`;
-};
-
-export { buildTranslationPrompt, buildRetryPrompt };
+export { buildTranslationPrompt };

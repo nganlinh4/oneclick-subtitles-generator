@@ -7,8 +7,8 @@
 export const ACCEPTABLE_OVERLAP = 0.3;
 // Caps for auto/per-line speed. Research (isochrony / speaking-rate studies): keep speed near 1.0×;
 // past ~1.2× it audibly speeds up, so bias to gentle speed-UP only and clamp.
-export const AUTO_SPEED_MAX = 1.5;
-export const PER_LINE_SPEED_MAX = 1.6;
+const AUTO_SPEED_MAX = 1.5;
+const PER_LINE_SPEED_MAX = 1.6;
 // Default per-line adaptiveness used by Auto arrange: a small, gentle nudge (0 = off, 1 = exact fit).
 export const PER_LINE_WEIGHT_DEFAULT = 0.35;
 

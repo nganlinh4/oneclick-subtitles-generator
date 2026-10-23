@@ -25,7 +25,7 @@ const RECEIPT_KIND = 'subtitle-project-binding';
 const receipts = new WeakMap();
 let latestIntent = 0;
 
-export class SubtitleProjectBindingError extends Error {
+class SubtitleProjectBindingError extends Error {
   constructor(message = 'The media could not be bound to its subtitle project.') {
     super(message);
     this.name = 'SubtitleProjectBindingError';

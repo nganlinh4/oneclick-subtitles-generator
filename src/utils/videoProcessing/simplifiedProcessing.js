@@ -18,7 +18,7 @@ import { isDesktopRuntime } from '../../platform/desktopRuntime';
  * @param {Object} options - Processing options
  * @returns {Promise<Array>} - Array of subtitle objects
  */
-export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, options = {}) => {
+const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, options = {}) => {
   if (isDesktopRuntime()) {
     throw new Error(
       'Native Gemini transcription must run through the project-owned subtitle generation flow.'
@@ -155,94 +155,13 @@ export const processVideoWithFilesApi = async (mediaFile, onStatusUpdate, t, opt
  * @param {File} mediaFile - The media file
  * @returns {boolean} - True if should use simplified processing
  */
-export const shouldUseSimplifiedProcessing = (_mediaFile) => {
+const shouldUseSimplifiedProcessing = (_mediaFile) => {
   // Check if user has enabled the new processing method
   const useSimplifiedProcessing = localStorage.getItem('use_simplified_processing') === 'true';
   
   // For now, we'll make this opt-in to ensure compatibility
   // Later this can become the default
   return useSimplifiedProcessing;
-};
-
-/**
- * Get estimated video duration for processing decisions
- * @param {File} mediaFile - The media file
- * @returns {Promise<number>} - Duration in seconds
- */
-export const getEstimatedDuration = async (mediaFile) => {
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    
-    video.onloadedmetadata = () => {
-      resolve(video.duration || 0);
-    };
-    
-    video.onerror = () => {
-      resolve(0); // Return 0 if we can't determine duration
-    };
-    
-    // Set timeout to avoid hanging
-    setTimeout(() => resolve(0), 5000);
-    
-    video.src = URL.createObjectURL(mediaFile);
-  });
-};
-
-/**
- * Create video metadata configuration for different use cases
- * @param {Object} options - Configuration options
- * @returns {Object} - Video metadata object
- */
-export const createVideoMetadata = (options = {}) => {
-  const {
-    fps = null,
-    startTime = null,
-    endTime = null,
-    resolution = null
-  } = options;
-
-  const metadata = {};
-
-  if (fps !== null) {
-    // FPS compatibility is now handled in the UI (VideoProcessingOptionsModal)
-    metadata.fps = fps;
-  }
-
-  if (startTime !== null) {
-    metadata.start_offset = `${startTime}s`;
-  }
-
-  if (endTime !== null) {
-    metadata.end_offset = `${endTime}s`;
-  }
-
-  // Note: Resolution is handled differently in Files API
-  // It's controlled by the mediaResolution parameter in the request
-  if (resolution) {
-    console.log(`Video resolution preference: ${resolution} (will be applied via mediaResolution parameter)`);
-  }
-
-  // Propagate flip flags if provided either in options or nested cropSettings.
-  // This ensures any consumer (Files API, renderer or server) receives explicit flip metadata.
-  if (options) {
-    // Top-level flags
-    if (typeof options.flipX !== 'undefined') {
-      metadata.flipX = Boolean(options.flipX);
-    }
-    if (typeof options.flipY !== 'undefined') {
-      metadata.flipY = Boolean(options.flipY);
-    }
-
-    // Nested crop settings (common UI shape)
-    const cs = options.cropSettings ?? options.crop ?? null;
-    if (cs && typeof cs === 'object') {
-      if (typeof cs.flipX !== 'undefined') metadata.flipX = Boolean(cs.flipX);
-      if (typeof cs.flipY !== 'undefined') metadata.flipY = Boolean(cs.flipY);
-    }
-  }
-
-  return metadata;
 };
 
 /**
@@ -255,10 +174,8 @@ export const createVideoMetadata = (options = {}) => {
  */
 export const processMediaFile = async (mediaFile, onStatusUpdate, t, options = {}) => {
   if (shouldUseSimplifiedProcessing(mediaFile)) {
-    console.log('[VideoProcessing] Using simplified Files API processing');
     return await processVideoWithFilesApi(mediaFile, onStatusUpdate, t, options);
   } else {
-    console.log('[VideoProcessing] Legacy processing is no longer available. Using simplified processing instead.');
     onStatusUpdate({
       message: t('output.legacyDeprecated', 'Legacy processing is deprecated. Using simplified processing for better performance.'),
       type: 'warning'

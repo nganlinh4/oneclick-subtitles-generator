@@ -122,7 +122,7 @@ export const applyMaterial3ExpressiveEffects = (ctx, state, size) => {
  * @param {number} shapeCount
  * @returns {number[]}
  */
-export const generateRandomShapeOrder = (shapeCount) => {
+const generateRandomShapeOrder = (shapeCount) => {
   const indices = Array.from({ length: shapeCount }, (_, i) => i);
   // Fisher-Yates shuffle algorithm
   for (let i = indices.length - 1; i > 0; i--) {

@@ -14,10 +14,6 @@ import {
   updateVisualization as updateVisualizationImpl,
 } from './waveformRendering';
 
-const DEBUG_WAVEFORM = typeof window !== 'undefined'
-  && localStorage.getItem('debug_logs') === 'true';
-const dbgWave = (...args) => { if (DEBUG_WAVEFORM) console.log(...args); };
-
 const MAX_CACHED_WAVEFORMS = 4;
 const waveformCache = new Map();
 
@@ -126,11 +122,7 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
         setStatus('ready');
       } catch (error) {
         if (!isCurrent() || error?.name === 'AbortError') return;
-        if (error?.name === 'ActiveNativeMediaError') {
-          dbgWave('[WAVEFORM] Active media changed before waveform publication');
-        } else if (isMissingAudioFailure(error)) {
-          dbgWave('[WAVEFORM] Selected media has no usable audio stream');
-        } else {
+        if (error?.name !== 'ActiveNativeMediaError' && !isMissingAudioFailure(error)) {
           console.error('[WAVEFORM] Native waveform unavailable:', error);
         }
         // Waveforms are an optional derived view. Failure must never block or
@@ -148,7 +140,7 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
   const renderWaveform = useCallback((canvas, containerWidth) => {
     renderWaveformImpl(canvas, containerWidth, {
-      waveform, visibleTimeRange, seekableEnd: duration, height, dbgWave,
+      waveform, visibleTimeRange, seekableEnd: duration, height,
     });
   }, [waveform, visibleTimeRange, duration, height]);
 

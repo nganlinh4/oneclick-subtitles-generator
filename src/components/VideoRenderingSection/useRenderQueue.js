@@ -377,5 +377,3 @@ export const useRenderQueue = ({
     clearQueue,
   };
 };
-
-export default useRenderQueue;

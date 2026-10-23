@@ -9,7 +9,7 @@ import { positionPillForActiveTab } from './settingsTabPillAnimation';
  * Initialize the drag functionality for the settings tabs
  * @param {string} tabsSelector - CSS selector for the settings tabs container
  */
-export const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
+const initSettingsTabsDrag = (tabsSelector = '.settings-tabs') => {
   const tabContainers = document.querySelectorAll(tabsSelector);
   if (!tabContainers.length) return;
 

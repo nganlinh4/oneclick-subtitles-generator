@@ -18,12 +18,8 @@ import { ProgressableFeature } from "./featureMapper.js";
 import {
     Point,
     DistanceEpsilon,
-    positiveModulo,
-    debugLog
+    positiveModulo
 } from "./utils.js";
-
-const LOG_TAG = "PolygonMeasure";
-const DEBUG = false;
 
 /**
  * A MeasuredCubic holds information about the cubic itself, and the outline progress values
@@ -35,7 +31,7 @@ const DEBUG = false;
  * overall outline path of the shape.
  * @internal
  */
-export class MeasuredCubic {
+class MeasuredCubic {
     /** @type {Cubic} */
     cubic;
     /** @type {number} */
@@ -113,13 +109,6 @@ export class MeasuredCubic {
             }
         }
 
-        if (DEBUG) {
-            debugLog(LOG_TAG,
-                `cutAtProgress: progress = ${boundedCutOutlineProgress} / ` +
-                `this = [${this.startOutlineProgress} .. ${this.endOutlineProgress}] / ` +
-                `ps = ${progressFromStart} / rp = ${relativeProgress} / t = ${t}`
-            );
-        }
 
         const [c1, c2] = this.cubic.split(t);
         return [
@@ -165,9 +154,6 @@ export class MeasuredPolygon {
         this.#measurer = measurer;
         this.features = features;
 
-        if (DEBUG) {
-            debugLog(LOG_TAG, `CTOR: cubics = ${cubics.join(", ")}\nCTOR: op = ${outlineProgress.join(", ")}`);
-        }
 
         const measuredCubics = [];
         let startOutlineProgress = 0;
@@ -217,13 +203,8 @@ export class MeasuredPolygon {
         }
 
         const target = this.#cubics[targetIndex];
-        if (DEBUG) {
-            this.#cubics.forEach((cubic, index) => debugLog(LOG_TAG, `cut&Shift | cubic #${index} : ${cubic} `));
-            debugLog(LOG_TAG, `cut&Shift, cuttingPoint = ${cuttingPoint}, target = (${targetIndex}) ${target}`);
-        }
 
         const [b1, b2] = target.cutAtProgress(cuttingPoint);
-        if (DEBUG) debugLog(LOG_TAG, `Split | ${target} -> ${b1} & ${b2}`);
 
         const retCubics = [b2.cubic];
         for (let i = 1; i < this.#cubics.length; i++) {
@@ -291,7 +272,6 @@ export class MeasuredPolygon {
         }
 
 
-        if (DEBUG) debugLog(LOG_TAG, `Total size: ${totalMeasure}`);
 
         const features = featureToCubic.map(({ feature, index }) => {
             const progress = positiveModulo(
@@ -309,7 +289,7 @@ export class MeasuredPolygon {
  * Interface for measuring a cubic.
  * @internal
  */
-export class Measurer {
+class Measurer {
     /**
      * Returns size of given cubic. It has to be greater or equal to 0.
      * @param {Cubic} _c

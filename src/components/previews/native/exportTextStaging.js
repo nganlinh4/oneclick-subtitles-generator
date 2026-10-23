@@ -41,7 +41,7 @@ import { atlasBakeRequest, previewFace } from './nativePreviewScene';
 const { GLYPH_ATLAS_LIMITS } = glyphAtlas;
 
 /** Mirrors `EXPORT_TEXT_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/render/text.rs`. */
-export const EXPORT_TEXT_SCHEMA_VERSION = 2;
+const EXPORT_TEXT_SCHEMA_VERSION = 2;
 
 /**
  * The bounds the far side applies, mirrored so an unusable payload is refused before IPC.
@@ -51,7 +51,7 @@ export const EXPORT_TEXT_SCHEMA_VERSION = 2;
  * already mirror; they are read from the baker so one rename moves both. `maxPages` is
  * `MAX_ATLAS_PAGES` in `crates/osg-scene/src/glyph/limits.rs`, mirrored the same way.
  */
-export const EXPORT_TEXT_LIMITS = Object.freeze({
+const EXPORT_TEXT_LIMITS = Object.freeze({
   maxCues: 100_000,
   maxPages: GLYPH_ATLAS_LIMITS.maxAtlasPages,
   maxRunLines: GLYPH_ATLAS_LIMITS.maxLayoutLines,
@@ -65,19 +65,6 @@ const isRecord = (value) => value !== null && typeof value === 'object' && !Arra
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
 /**
- * The codes this module refuses under. Local to the `WebView`: the export never started, so none of
- * these can arrive from native code, and none of them is a native refusal renamed.
- */
-export const EXPORT_TEXT_ERROR_CODES = Object.freeze([
-  /** The project's font is not one this machine can draw, and no substitute will be used. */
-  'renderFontUnresolved',
-  /** The source has not reported a decoded size, so the composition it wraps against is unknown. */
-  'renderSourceSizeUnknown',
-  /** The atlas could not be baked or staged. `reason` carries the baker's or stager's own code. */
-  'renderTextStagingFailed',
-]);
-
-/**
  * A refusal to prepare an export's text.
  *
  * Its own type rather than `NativeRenderError`, because nothing here has called the renderer yet:
@@ -85,7 +72,7 @@ export const EXPORT_TEXT_ERROR_CODES = Object.freeze([
  * `message` is written for a person; `reason` carries a sanitized nested code for diagnostics and
  * is never shown.
  */
-export class ExportTextError extends Error {
+class ExportTextError extends Error {
   constructor(code, message, reason = null) {
     super(message);
     this.name = 'ExportTextError';
@@ -138,7 +125,7 @@ const fontUnresolved = (fontFamily, detail) => {
 };
 
 /** The three platforms `src/services/fontIdentity.js` has reviewed declaration sets for. */
-export const detectExportPlatform = () => {
+const detectExportPlatform = () => {
   const agent = typeof navigator === 'object' && typeof navigator.userAgent === 'string'
     ? navigator.userAgent.toLowerCase()
     : '';
@@ -152,7 +139,7 @@ export const detectExportPlatform = () => {
  * Corroboration only, and only in the rejecting direction: `resolveFontIdentity` treats a `false` as
  * a missing face and never lets a `true` override a declaration it does not have.
  */
-export const systemFaceProbe = systemFontProbe;
+const systemFaceProbe = systemFontProbe;
 
 /** A playable URL for whatever shape of source the export was handed, and how to give it back. */
 const resolveSourceUrl = (source) => {
@@ -180,7 +167,7 @@ const resolveSourceUrl = (source) => {
  * Returns `null` rather than a guess. A 16:9 assumption would wrap every other source's subtitles at
  * the wrong width, silently.
  */
-export const measureNativeSourceDimensions = (source) => new Promise((resolve) => {
+const measureNativeSourceDimensions = (source) => new Promise((resolve) => {
   const resolved = resolveSourceUrl(source);
   if (resolved === null || typeof document !== 'object' || typeof document.createElement !== 'function') {
     resolve(null);
@@ -238,7 +225,7 @@ export const measureNativeSourceDimensions = (source) => new Promise((resolve) =
  * A build without that entry point refuses rather than falling back to one cue's atlas standing in
  * for the rest.
  */
-export const bakeCueAtlas = (request, options = {}) => {
+const bakeCueAtlas = (request, options = {}) => {
   const bake = glyphAtlas.bakeGlyphAtlasForCues;
   if (typeof bake !== 'function') stagingFailed('glyphAtlasCueBakerUnavailable');
   return bake(request, options);
@@ -315,7 +302,7 @@ const exportRun = (layout, cellCount) => {
  * table and be caught, if at all, by the compositor — with a message that says nothing about which
  * side produced it.
  */
-export const buildExportTextRequest = ({ handles, face, layouts, pageOfCue, cueCount }) => {
+const buildExportTextRequest = ({ handles, face, layouts, pageOfCue, cueCount }) => {
   if (!Array.isArray(handles)
       || handles.length === 0
       || handles.length > EXPORT_TEXT_LIMITS.maxPages

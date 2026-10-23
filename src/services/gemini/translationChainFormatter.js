@@ -69,9 +69,6 @@ const formatSubtitlesWithChain = (subtitles, chainItems) => {
     for (let i = 0; i < formattedSubtitles.length; i++) {
         const subtitle = formattedSubtitles[i];
 
-        // Make a copy of the subtitle for debugging if needed
-        // const originalSubtitle = { ...subtitle };
-
         // Store the original text
         const originalText = subtitle.text;
 

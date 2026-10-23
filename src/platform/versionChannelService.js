@@ -2,7 +2,7 @@ import { getGitVersion } from '../utils/gitVersion';
 
 const normalizeChannel = (branch) => branch === 'old_version' ? 'old_version' : 'main';
 
-export class VersionChannelError extends Error {
+class VersionChannelError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'VersionChannelError';

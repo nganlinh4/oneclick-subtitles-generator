@@ -1,8 +1,23 @@
 import { invokeDesktop } from './desktopRuntime';
-import { isUuidV7, normalizeProjectSnapshot } from './projectSnapshotAdapter';
+import { normalizeProjectSnapshot } from './projectSnapshotAdapter';
+import { createProjectCommandGate } from './projectCommandGate';
+import { createProjectTrackOperations } from './projectTrackOperations';
+import {
+  STALE_PROJECT_VERSION,
+  ProjectConflictError,
+  ProjectServiceError,
+  copySnapshot,
+  freezeTree,
+  isStaleVersionError,
+  normalizeHistoryStatus,
+  validateCommit,
+  validateProjectCreateKey,
+  validateProjectId,
+  validateProjectName,
+  validateReason,
+} from './projectServiceContract';
 
-export const STALE_PROJECT_VERSION = 'staleProjectVersion';
-export const PROJECT_COMMAND_OUTCOME_UNCERTAIN = 'projectCommandOutcomeUncertain';
+export { STALE_PROJECT_VERSION, ProjectConflictError };
 
 /**
  * Every command this service issues is a bounded, database-backed request/response -- never a
@@ -20,220 +35,6 @@ export const PROJECT_COMMAND_OUTCOME_UNCERTAIN = 'projectCommandOutcomeUncertain
  * can no longer mutate the store.
  */
 export const PROJECT_COMMAND_TIMEOUT_MS = 20_000;
-
-const withCommandTimeout = (
-  promise,
-  command,
-  timeoutMs,
-  schedule,
-  cancel,
-  onTimeout = null
-) => {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
-  return new Promise((resolve, reject) => {
-    const timer = schedule(() => {
-      reject(onTimeout?.() ?? new ProjectServiceError(
-        'projectCommandTimedOut',
-        'The desktop host did not respond to a project command in time',
-        { command }
-      ));
-    }, timeoutMs);
-    promise.then(
-      (value) => { cancel(timer); resolve(value); },
-      (error) => { cancel(timer); reject(error); },
-    );
-  });
-};
-
-export class ProjectServiceError extends Error {
-  constructor(code, message, details = {}) {
-    super(message);
-    this.name = 'ProjectServiceError';
-    this.code = code;
-    Object.assign(this, details);
-  }
-}
-
-export class ProjectConflictError extends ProjectServiceError {
-  constructor(projectId, authoritativeSnapshot, cause) {
-    super(
-      STALE_PROJECT_VERSION,
-      'The project changed since it was opened. The current project has been reloaded.',
-      { projectId, authoritativeSnapshot, cause }
-    );
-    this.name = 'ProjectConflictError';
-  }
-}
-
-const hasControlCharacter = (value) => Array.from(value).some((character) => {
-  const codePoint = character.codePointAt(0);
-  return codePoint <= 31 || codePoint === 127;
-});
-const TRACK_ORIGINS = new Set(['legacyJson', 'srt']);
-const TRACK_HISTORY_CONFLICT_CODES = new Set([
-  'staleProjectTrackHistory',
-  'projectTrackHistoryDiverged',
-]);
-const MUTATING_PROJECT_COMMANDS = new Set([
-  'project_commit',
-  'project_undo',
-  'project_redo',
-  'project_track_commit',
-  'project_track_undo',
-  'project_track_redo',
-]);
-
-const validateProjectId = (id) => {
-  if (!isUuidV7(id)) {
-    throw new ProjectServiceError('invalidProjectId', 'A valid UUIDv7 project ID is required');
-  }
-  return id;
-};
-
-const validateProjectName = (name) => {
-  if (typeof name !== 'string' || name.trim().length === 0) {
-    throw new ProjectServiceError('invalidProjectName', 'A project name is required');
-  }
-  if (Array.from(name.trim()).length > 200 || hasControlCharacter(name)) {
-    throw new ProjectServiceError('invalidProjectName', 'The project name is invalid');
-  }
-  return name;
-};
-
-const validateProjectCreateKey = (idempotencyKey) => {
-  if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0
-      || idempotencyKey.length > 8_192
-      || Array.from(idempotencyKey).some(character => /\p{Cc}/u.test(character))) {
-    throw new ProjectServiceError(
-      'invalidProjectCreateKey',
-      'A bounded stable project create identity is required'
-    );
-  }
-  return idempotencyKey;
-};
-
-const validateReason = (reason) => {
-  if (typeof reason !== 'string' || reason.trim().length === 0) {
-    throw new ProjectServiceError('invalidRevisionReason', 'A revision reason is required');
-  }
-  if (Array.from(reason.trim()).length > 500 || hasControlCharacter(reason)) {
-    throw new ProjectServiceError('invalidRevisionReason', 'The revision reason is invalid');
-  }
-  return reason;
-};
-
-const validateCommit = (commit, expectedVersion) => {
-  if (!commit || !isUuidV7(commit.revisionId)
-      || !Number.isSafeInteger(commit.stateVersion)
-      || commit.stateVersion !== expectedVersion + 1) {
-    throw new ProjectServiceError(
-      'invalidProjectCommit',
-      'The desktop host returned an invalid project commit result'
-    );
-  }
-  return commit;
-};
-
-const normalizeHistoryReason = (value, field) => {
-  if (value === null) return null;
-  if (typeof value !== 'string' || value.trim().length === 0
-      || Array.from(value).length > 500 || hasControlCharacter(value)) {
-    throw new ProjectServiceError(
-      'invalidProjectHistoryStatus',
-      `The desktop host returned an invalid ${field}`
-    );
-  }
-  return value;
-};
-
-const normalizeHistoryStatus = (status) => {
-  if (!status || typeof status !== 'object' || Array.isArray(status)
-      || !Number.isSafeInteger(status.stateVersion) || status.stateVersion < 0
-      || typeof status.canUndo !== 'boolean' || typeof status.canRedo !== 'boolean') {
-    throw new ProjectServiceError(
-      'invalidProjectHistoryStatus',
-      'The desktop host returned an invalid project history status'
-    );
-  }
-  const undoReason = normalizeHistoryReason(status.undoReason, 'undo reason');
-  const redoReason = normalizeHistoryReason(status.redoReason, 'redo reason');
-  if (status.canUndo !== (undoReason !== null) || status.canRedo !== (redoReason !== null)) {
-    throw new ProjectServiceError(
-      'invalidProjectHistoryStatus',
-      'The desktop host returned an inconsistent project history status'
-    );
-  }
-  return Object.freeze({
-    stateVersion: status.stateVersion,
-    canUndo: status.canUndo,
-    canRedo: status.canRedo,
-    undoReason,
-    redoReason,
-  });
-};
-
-const normalizeTrackSelector = (selector) => {
-  if (!selector || typeof selector !== 'object' || Array.isArray(selector)
-      || typeof selector.label !== 'string' || selector.label.trim().length === 0
-      || Array.from(selector.label.trim()).length > 200
-      || hasControlCharacter(selector.label)
-      || !TRACK_ORIGINS.has(selector.origin)) {
-    throw new ProjectServiceError(
-      'invalidProjectTrackSelector',
-      'A valid project track selector is required'
-    );
-  }
-  return Object.freeze({ label: selector.label.trim(), origin: selector.origin });
-};
-
-const normalizeStandaloneTrack = (track, projectId) => {
-  if (track === null) return null;
-  return normalizeProjectSnapshot({
-    metadata: { id: projectId, name: 'Track validation' },
-    stateVersion: 0,
-    media: [],
-    tracks: [track],
-  }).tracks[0];
-};
-
-const normalizeTrackHistoryStatus = (status) => {
-  if (!status || typeof status !== 'object' || Array.isArray(status)
-      || !Number.isSafeInteger(status.stateVersion) || status.stateVersion < 0
-      || !Number.isSafeInteger(status.historyVersion) || status.historyVersion < 0
-      || typeof status.diverged !== 'boolean'
-      || typeof status.canUndo !== 'boolean' || typeof status.canRedo !== 'boolean') {
-    throw new ProjectServiceError(
-      'invalidProjectTrackHistoryStatus',
-      'The desktop host returned an invalid project track history status'
-    );
-  }
-  const undoReason = normalizeHistoryReason(status.undoReason, 'track undo reason');
-  const redoReason = normalizeHistoryReason(status.redoReason, 'track redo reason');
-  if (status.canUndo !== (undoReason !== null) || status.canRedo !== (redoReason !== null)
-      || (status.diverged && (status.canUndo || status.canRedo))) {
-    throw new ProjectServiceError(
-      'invalidProjectTrackHistoryStatus',
-      'The desktop host returned an inconsistent project track history status'
-    );
-  }
-  return Object.freeze({
-    stateVersion: status.stateVersion,
-    historyVersion: status.historyVersion,
-    diverged: status.diverged,
-    canUndo: status.canUndo,
-    canRedo: status.canRedo,
-    undoReason,
-    redoReason,
-  });
-};
-
-const isStaleVersionError = (error) => error?.code === STALE_PROJECT_VERSION;
-
-const freezeTree = (value) => {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  Object.values(value).forEach(freezeTree);
-  return Object.freeze(value);
-};
 
 /**
  * Durable project command bridge. Storage operations are detached from the active-project
@@ -253,16 +54,8 @@ export const createProjectService = ({
   let activePublicationVersion = 0;
   let pendingPublication = null;
   let publishing = false;
-  const projectTails = new Map();
-  const uncertainProjects = new Map();
-  const inFlightProjectMutations = new Map();
-  const synchronousMutatorFrames = [];
   const subscribers = new Set();
   const mutationStep = Symbol('mutationStep');
-
-  const copySnapshot = (snapshot) => (
-    snapshot == null ? null : freezeTree(normalizeProjectSnapshot(snapshot))
-  );
 
   const publish = (snapshot, version) => {
     // Coalesce synchronous re-entry to the newest active snapshot. The current publication stops
@@ -308,206 +101,21 @@ export const createProjectService = ({
     return true;
   };
 
-  const uncertainOutcomeError = (projectId, state) => {
-    const error = new ProjectServiceError(
-      PROJECT_COMMAND_OUTCOME_UNCERTAIN,
-      state.pending.size > 0
-        ? 'A project command timed out and may still complete. Restart the desktop application before editing this project again.'
-        : 'A project command completed after its timeout, but authoritative recovery has not succeeded.',
-      {
-        projectId,
-        command: state.commands.at(-1) ?? null,
-        pendingNativeCommands: state.pending.size,
-        recoveryRequired: true,
-        requiresDesktopRestart: state.pending.size > 0,
-      }
-    );
-    // Higher layers may retry their own reconciliation after this resolves. It is deliberately
-    // non-enumerable: this in-process coordination promise is not error evidence or transport data.
-    Object.defineProperty(error, 'outcomeRecovery', {
-      value: state.outcomeRecovery,
-      enumerable: false,
-    });
-    return error;
-  };
-
-  const assertProjectCertain = (projectId) => {
-    const state = uncertainProjects.get(projectId);
-    if (state !== undefined) throw uncertainOutcomeError(projectId, state);
-  };
-
-  const beginNativeCall = (command, args) => {
-    try {
-      return Promise.resolve(invokeCommand(command, args));
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  };
-
-  const recoverUncertainProject = (projectId, state) => {
-    if (uncertainProjects.get(projectId) !== state) {
-      return Promise.resolve(copySnapshot(activeSnapshot));
-    }
-    if (state.pending.size > 0) return Promise.reject(uncertainOutcomeError(projectId, state));
-    if (state.recovery !== null) return state.recovery;
-
-    const expectedActivationGeneration = activationGeneration;
-    const nativeLoad = beginNativeCall('project_load', { id: projectId });
-    state.recovery = withCommandTimeout(
-      nativeLoad,
-      'project_load',
-      commandTimeoutMs,
-      schedule,
-      cancel
-    ).then((value) => {
-      const snapshot = copySnapshot(value);
-      if (snapshot !== null && snapshot.metadata.id !== projectId) {
-        throw new ProjectServiceError(
-          'invalidProjectLoad',
-          'The desktop host returned a different project during uncertain-outcome recovery',
-          { projectId, returnedProjectId: snapshot.metadata.id }
-        );
-      }
-      if (uncertainProjects.get(projectId) === state && state.pending.size === 0) {
-        uncertainProjects.delete(projectId);
-        refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
-        state.resolveOutcomeRecovery(snapshot);
-      }
-      return snapshot;
-    }).catch((error) => {
-      state.recovery = null;
-      state.recoveryError = error;
-      throw error;
-    });
-    // Automatic recovery is best effort. Its rejection remains recorded on the latch and is
-    // deliberately observed here; an explicit recovery call may safely retry the read later.
-    void state.recovery.catch(() => undefined);
-    return state.recovery;
-  };
-
-  const markProjectOutcomeUncertain = (projectId, command, nativeCall) => {
-    let state = uncertainProjects.get(projectId);
-    if (state === undefined) {
-      let resolveOutcomeRecovery;
-      const outcomeRecovery = new Promise((resolve) => {
-        resolveOutcomeRecovery = resolve;
-      });
-      state = {
-        commands: [],
-        pending: new Set(),
-        recovery: null,
-        recoveryError: null,
-        outcomeRecovery,
-        resolveOutcomeRecovery,
-      };
-      uncertainProjects.set(projectId, state);
-    }
-    state.commands.push(command);
-    const trackUncertainCall = (call) => {
-      if (state.pending.has(call)) return;
-      state.pending.add(call);
-      const settled = () => {
-        state.pending.delete(call);
-        if (state.pending.size === 0 && uncertainProjects.get(projectId) === state) {
-          void recoverUncertainProject(projectId, state).catch(() => undefined);
-        }
-      };
-      call.then(settled, settled);
-    };
-    // A synchronous re-entrant mutator can already have more than one native CAS in flight when
-    // the first watchdog fires. Every one of them is capable of committing later, even if its own
-    // timeout has not fired yet, so the latch must wait for the whole in-flight set.
-    const inFlight = inFlightProjectMutations.get(projectId);
-    if (inFlight === undefined || inFlight.size === 0) {
-      trackUncertainCall(nativeCall);
-    } else {
-      inFlight.forEach(trackUncertainCall);
-    }
-    return uncertainOutcomeError(projectId, state);
-  };
-
-  const invoke = (command, args, createTimeoutError = null) => {
-    const projectId = MUTATING_PROJECT_COMMANDS.has(command)
-      ? args?.id ?? args?.snapshot?.metadata?.id ?? null
-      : null;
-    if (projectId !== null) assertProjectCertain(projectId);
-    const nativeCall = beginNativeCall(command, args);
-    if (projectId !== null) {
-      let inFlight = inFlightProjectMutations.get(projectId);
-      if (inFlight === undefined) {
-        inFlight = new Set();
-        inFlightProjectMutations.set(projectId, inFlight);
-      }
-      inFlight.add(nativeCall);
-      const retire = () => {
-        inFlight.delete(nativeCall);
-        if (inFlight.size === 0 && inFlightProjectMutations.get(projectId) === inFlight) {
-          inFlightProjectMutations.delete(projectId);
-        }
-      };
-      nativeCall.then(retire, retire);
-    }
-    const bounded = withCommandTimeout(
-      nativeCall,
-      command,
-      commandTimeoutMs,
-      schedule,
-      cancel,
-      projectId === null
-        ? createTimeoutError
-        : () => markProjectOutcomeUncertain(projectId, command, nativeCall)
-    );
-    if (projectId === null) return bounded;
-    return bounded.then(
-      (value) => {
-        // Another concurrent same-project mutation may have timed out while this one was pending.
-        // Its result cannot be published independently of the shared authoritative recovery.
-        assertProjectCertain(projectId);
-        return value;
-      },
-      (error) => {
-        const state = uncertainProjects.get(projectId);
-        if (state !== undefined && error?.code !== PROJECT_COMMAND_OUTCOME_UNCERTAIN) {
-          throw uncertainOutcomeError(projectId, state);
-        }
-        throw error;
-      }
-    );
-  };
-
-  const enqueueProject = (projectId, operation) => {
-    const guardedOperation = () => {
-      assertProjectCertain(projectId);
-      return operation();
-    };
-    const mutatorFrame = synchronousMutatorFrames[synchronousMutatorFrames.length - 1];
-    if (mutatorFrame?.projectId === projectId) {
-      mutatorFrame.reentered = true;
-      try {
-        return Promise.resolve(guardedOperation());
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
-    const previous = projectTails.get(projectId) ?? Promise.resolve();
-    const result = previous.then(guardedOperation, guardedOperation);
-    const recovered = result.catch(() => undefined);
-    projectTails.set(projectId, recovered);
-    void recovered.then(() => {
-      if (projectTails.get(projectId) === recovered) projectTails.delete(projectId);
-    });
-    return result;
-  };
-
-  const invokeMutator = (projectId, mutator, snapshot) => {
-    const frame = { projectId, reentered: false };
-    synchronousMutatorFrames.push(frame);
-    try {
-      return { frame, value: mutator(copySnapshot(snapshot)) };
-    } finally {
-      synchronousMutatorFrames.pop();
-    }
-  };
+  const {
+    assertProjectCertain,
+    invoke,
+    enqueueProject,
+    invokeMutator,
+    recoverOutcome,
+  } = createProjectCommandGate({
+    invokeCommand,
+    commandTimeoutMs,
+    schedule,
+    cancel,
+    getActiveSnapshot: () => activeSnapshot,
+    getActivationGeneration: () => activationGeneration,
+    refreshActiveProject,
+  });
 
   const readDirect = async (id) => {
     const projectId = validateProjectId(id);
@@ -617,12 +225,7 @@ export const createProjectService = ({
     return readDirect(id);
   };
 
-  const recoverProjectCommandOutcome = (id) => {
-    const projectId = validateProjectId(id);
-    const state = uncertainProjects.get(projectId);
-    if (state === undefined) return readDirect(projectId);
-    return recoverUncertainProject(projectId, state);
-  };
+  const recoverProjectCommandOutcome = (id) => recoverOutcome(validateProjectId(id), readDirect);
 
   const activateSnapshot = (snapshot) => {
     const normalized = normalizeProjectSnapshot(snapshot);
@@ -880,175 +483,20 @@ export const createProjectService = ({
     });
   };
 
-  const trackHistoryStatusDetached = (id, selector) => {
-    const projectId = validateProjectId(id);
-    const trackSelector = normalizeTrackSelector(selector);
-    const expectedActivationGeneration = activationGeneration;
-    return enqueueProject(projectId, async () => {
-      let snapshot = await requireProjectDirect(projectId);
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const status = normalizeTrackHistoryStatus(await invoke(
-          'project_track_history_status',
-          { id: projectId, selector: trackSelector }
-        ));
-        if (status.stateVersion === snapshot.stateVersion) {
-          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
-          return status;
-        }
-        const loaded = await readDirect(projectId);
-        if (loaded === null) {
-          throw new ProjectServiceError('projectNotFound', 'The project does not exist', {
-            projectId,
-          });
-        }
-        snapshot = loaded;
-        if (status.stateVersion === snapshot.stateVersion) {
-          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
-          return status;
-        }
-      }
-      return reloadAfterConflict(
-        projectId,
-        new ProjectServiceError(
-          STALE_PROJECT_VERSION,
-          'The project changed while its editor history was being inspected'
-        ),
-        expectedActivationGeneration
-      );
-    });
-  };
-
-  const validateTrackMutation = (value, projectId) => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new ProjectServiceError(
-        'invalidProjectTrackMutation',
-        'The desktop host returned an invalid project track mutation'
-      );
-    }
-    const snapshot = copySnapshot(value.snapshot);
-    const status = normalizeTrackHistoryStatus(value.status);
-    if (snapshot.metadata.id !== projectId || status.stateVersion !== snapshot.stateVersion) {
-      throw new ProjectServiceError(
-        'invalidProjectTrackMutation',
-        'The desktop host returned an inconsistent project track mutation'
-      );
-    }
-    return freezeTree({ snapshot, status });
-  };
-
-  const reloadTrackConflict = async (
-    projectId,
-    cause,
-    expectedActivationGeneration
-  ) => {
-    let authoritativeSnapshot = null;
-    try {
-      authoritativeSnapshot = await readDirect(projectId);
-    } catch (reloadError) {
-      throw new ProjectServiceError(
-        'projectReloadFailed',
-        'The subtitle history conflicted and could not be reloaded',
-        { projectId, cause, reloadError }
-      );
-    }
-    refreshActiveProject(projectId, authoritativeSnapshot, expectedActivationGeneration);
-    throw new ProjectConflictError(projectId, authoritativeSnapshot, cause);
-  };
-
-  const commitTrackDetached = ({
-    id,
-    selector,
-    expectedHistoryVersion,
-    beforeTrack,
-    afterTrack,
-    reason,
-  }) => {
-    const projectId = validateProjectId(id);
-    const trackSelector = normalizeTrackSelector(selector);
-    const historyVersion = Number.isSafeInteger(expectedHistoryVersion)
-        && expectedHistoryVersion >= 0
-      ? expectedHistoryVersion
-      : null;
-    if (historyVersion === null) {
-      throw new ProjectServiceError(
-        'invalidProjectTrackHistoryVersion',
-        'A valid project track history version is required'
-      );
-    }
-    const previous = normalizeStandaloneTrack(beforeTrack, projectId);
-    const next = normalizeStandaloneTrack(afterTrack, projectId);
-    const revisionReason = validateReason(reason);
-    const expectedActivationGeneration = activationGeneration;
-    return enqueueProject(projectId, async () => {
-      await requireProjectDirect(projectId);
-      try {
-        const result = validateTrackMutation(await invoke('project_track_commit', {
-          id: projectId,
-          selector: trackSelector,
-          expectedHistoryVersion: historyVersion,
-          beforeTrack: previous,
-          afterTrack: next,
-          reason: revisionReason,
-        }), projectId);
-        refreshActiveProject(
-          projectId,
-          result.snapshot,
-          expectedActivationGeneration
-        );
-        return result;
-      } catch (error) {
-        if (TRACK_HISTORY_CONFLICT_CODES.has(error?.code)) {
-          return reloadTrackConflict(projectId, error, expectedActivationGeneration);
-        }
-        throw error;
-      }
-    });
-  };
-
-  const navigateTrackDetached = (command, {
-    id,
-    selector,
-    expectedHistoryVersion,
-    expectedReason,
-  }) => {
-    const projectId = validateProjectId(id);
-    const trackSelector = normalizeTrackSelector(selector);
-    if (!Number.isSafeInteger(expectedHistoryVersion) || expectedHistoryVersion < 0) {
-      throw new ProjectServiceError(
-        'invalidProjectTrackHistoryVersion',
-        'A valid project track history version is required'
-      );
-    }
-    const reason = validateReason(expectedReason);
-    const expectedActivationGeneration = activationGeneration;
-    return enqueueProject(projectId, async () => {
-      const snapshot = await requireProjectDirect(projectId);
-      try {
-        const value = await invoke(command, {
-          id: projectId,
-          selector: trackSelector,
-          expectedHistoryVersion,
-          expectedReason: reason,
-        });
-        if (value === null) {
-          refreshActiveProject(projectId, snapshot, expectedActivationGeneration);
-          return null;
-        }
-        const result = validateTrackMutation(value, projectId);
-        refreshActiveProject(
-          projectId,
-          result.snapshot,
-          expectedActivationGeneration
-        );
-        return result;
-      } catch (error) {
-        if (TRACK_HISTORY_CONFLICT_CODES.has(error?.code)) {
-          return reloadTrackConflict(projectId, error, expectedActivationGeneration);
-        }
-        throw error;
-      }
-    });
-  };
+  const {
+    trackHistoryStatusDetached,
+    commitTrackDetached,
+    undoDetachedTrack,
+    redoDetachedTrack,
+  } = createProjectTrackOperations({
+    enqueueProject,
+    invoke,
+    readDirect,
+    requireProjectDirect,
+    reloadAfterConflict,
+    refreshActiveProject,
+    getActivationGeneration: () => activationGeneration,
+  });
 
   const subscribe = (subscriber) => {
     if (typeof subscriber !== 'function') {
@@ -1058,12 +506,6 @@ export const createProjectService = ({
     return () => subscribers.delete(subscriber);
   };
 
-  const undoDetachedTrack = (options) => (
-    navigateTrackDetached('project_track_undo', options)
-  );
-  const redoDetachedTrack = (options) => (
-    navigateTrackDetached('project_track_redo', options)
-  );
   const undoDetached = (id, expectedReason = null) => (
     navigateDetached('project_undo', id, expectedReason)
   );
@@ -1110,37 +552,17 @@ export const createProjectService = ({
 
 const projectService = createProjectService();
 
-export const readProject = projectService.readProject;
-export const createDetachedProject = projectService.createDetachedProject;
-export const commitDetachedProject = projectService.commitDetachedProject;
-export const mutateDetachedProject = projectService.mutateDetachedProject;
-export const getDetachedProjectHistoryStatus = projectService.getDetachedProjectHistoryStatus;
-export const getDetachedProjectTrackHistoryStatus = (
-  projectService.getDetachedProjectTrackHistoryStatus
-);
-export const commitDetachedProjectTrack = projectService.commitDetachedProjectTrack;
-export const undoDetachedProjectTrack = projectService.undoDetachedProjectTrack;
-export const redoDetachedProjectTrack = projectService.redoDetachedProjectTrack;
 export const undoDetachedProject = projectService.undoDetachedProject;
-export const redoDetachedProject = projectService.redoDetachedProject;
 export const activateProjectSnapshot = projectService.activateProjectSnapshot;
-export const activateProject = projectService.activateProject;
 export const deactivateProject = projectService.deactivateProject;
-export const recoverProjectCommandOutcome = projectService.recoverProjectCommandOutcome;
 
 // Backward-compatible names intentionally retain detached storage semantics.
 export const createProject = projectService.createProject;
 export const loadProject = projectService.loadProject;
-export const reloadProject = projectService.reloadProject;
-export const recoverProjectOutcome = projectService.recoverProjectOutcome;
-export const commitProject = projectService.commitProject;
 export const mutateProject = projectService.mutateProject;
-export const getProjectHistoryStatus = projectService.getProjectHistoryStatus;
 export const getProjectTrackHistoryStatus = projectService.getProjectTrackHistoryStatus;
 export const commitProjectTrack = projectService.commitProjectTrack;
 export const undoProjectTrack = projectService.undoProjectTrack;
 export const redoProjectTrack = projectService.redoProjectTrack;
-export const undoProject = projectService.undoProject;
-export const redoProject = projectService.redoProject;
 export const getActiveProjectSnapshot = projectService.getActiveProjectSnapshot;
 export const subscribeToActiveProject = projectService.subscribe;

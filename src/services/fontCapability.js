@@ -150,7 +150,7 @@ const parseFontReadiness = (value) => {
  * "no publication" distinct from this present-but-incompatible contract, so an export barrier can
  * fail closed instead of waiting forever.
  */
-export const readFontReadiness = (globalScope) => {
+const readFontReadiness = (globalScope) => {
   const published = publishedValue(globalScope);
   return published.present ? parseFontReadiness(published.value) : null;
 };

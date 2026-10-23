@@ -405,17 +405,6 @@ export const parseStructuredJsonResponse = (response) => {
                 }
             }
 
-            // Create a response structure with just the text
-            // const mockResponse = {
-            //     candidates: [{
-            //         content: {
-            //             parts: [{
-            //                 text: text
-            //             }]
-            //         }
-            //     }]
-            // };
-
             // Parse the text directly to avoid infinite recursion
             const subtitles = [];
 

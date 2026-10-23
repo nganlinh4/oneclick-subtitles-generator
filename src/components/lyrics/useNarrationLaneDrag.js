@@ -101,5 +101,3 @@ export const useNarrationLaneDrag = ({
 
   return { onMouseDown, onHoverMove };
 };
-
-export default useNarrationLaneDrag;

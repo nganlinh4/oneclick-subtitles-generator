@@ -1,12 +1,8 @@
 import { DEFAULT_TRANSCRIPTION_MODEL_ID } from '../config/geminiModels';
 import { importAudioBlob, releaseAudioBlob } from '../platform/mediaService';
 import { runNativeGeminiTranscription } from '../platform/nativeGeminiTranscription';
-import { toBase64 } from '../utils/fileUtils';
 
-// Retained for non-provider callers that depend on this utility export.
-export const blobToBase64 = toBase64;
-
-export const isTextEnglish = (text) => {
+const isTextEnglish = (text) => {
   if (!text) return true;
   const normalizedText = text
     .toLowerCase()

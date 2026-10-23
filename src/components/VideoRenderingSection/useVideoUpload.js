@@ -234,5 +234,3 @@ export const useVideoUpload = ({ onNativeVideoSelected } = {}) => {
     nativeDropZoneRef,
   };
 };
-
-export default useVideoUpload;

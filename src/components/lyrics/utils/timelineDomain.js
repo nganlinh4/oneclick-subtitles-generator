@@ -53,7 +53,7 @@ export const getSelectAllRange = (lyrics, mediaDuration) => {
   });
 };
 
-export const clampTimelineTime = (time, domain) => {
+const clampTimelineTime = (time, domain) => {
   const value = finiteNonNegative(time);
   return Math.min(domain.selectableEnd, value);
 };

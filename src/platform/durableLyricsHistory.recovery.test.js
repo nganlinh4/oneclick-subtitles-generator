@@ -1,0 +1,312 @@
+// durableLyricsHistory: writer backpressure, size bounds and reconciliation after failures.
+
+import { createDurableLyricsHistory, LYRICS_EDITOR_ACTIONS } from './durableLyricsHistory';
+import { deferred, rows, editorStatus } from './durableLyricsHistoryTestFixtures';
+
+vi.mock('./desktopRuntime', () => ({
+  isDesktopRuntime: vi.fn(() => false),
+  invokeDesktop: vi.fn(),
+}));
+
+it('bounds a slow native writer queue and reconciles after backpressure', async () => {
+  const first = deferred();
+  const reconciled = [];
+  const errors = [];
+  let commitCount = 0;
+  const revisions = {
+    commit: vi.fn(async (_cacheId, _before, _after, reason) => {
+      commitCount += 1;
+      if (commitCount === 1) await first.promise;
+      return { status: editorStatus(reason, null, commitCount) };
+    }),
+    load: vi.fn(async () => rows('Native C')),
+    status: vi.fn(async () => editorStatus('OSG lyrics editor v1: text', null, 2)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    maxPendingOperations: 2,
+    onReconcile: (value) => reconciled.push(value),
+    onError: (error) => errors.push(error),
+  });
+
+  const firstWrite = history.record(rows('A'), rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+  const secondWrite = history.record(rows('B'), rows('C'), LYRICS_EDITOR_ACTIONS.TEXT);
+  const circularRows = [];
+  circularRows.push(circularRows);
+  const rejected = await history.record(
+    circularRows,
+    circularRows,
+    LYRICS_EDITOR_ACTIONS.TEXT
+  );
+  const rejectedNavigation = await history.undo();
+  await Promise.resolve();
+  expect(rejected).toMatchObject({ ok: false, backpressure: true });
+  expect(rejected.error).toMatchObject({ code: 'historyQueueSaturated', limit: 2 });
+  expect(rejectedNavigation).toMatchObject({ ok: false, backpressure: true });
+  expect(revisions.commit).toHaveBeenCalledTimes(1);
+  expect(revisions.undo).not.toHaveBeenCalled();
+
+  first.resolve();
+  await Promise.all([firstWrite, secondWrite]);
+  await expect(history.flush()).rejects.toMatchObject({ code: 'historyQueueSaturated' });
+  expect(revisions.commit).toHaveBeenCalledTimes(2);
+  expect(revisions.load).toHaveBeenCalledWith('cache-id');
+  expect(revisions.load).toHaveBeenCalledTimes(1);
+  expect(reconciled).toEqual([rows('Native C')]);
+  expect(errors).toHaveLength(2);
+
+  await history.record(rows('Native C'), rows('E'), LYRICS_EDITOR_ACTIONS.TEXT);
+  expect(revisions.commit).toHaveBeenCalledTimes(3);
+});
+
+it('reserves aggregate queue bytes and releases them after recovery', async () => {
+  const first = deferred();
+  const reconciled = [];
+  const pairBytes = JSON.stringify(rows('A')).length + JSON.stringify(rows('B')).length;
+  const revisions = {
+    commit: vi.fn(async (_cacheId, _before, _after, reason) => {
+      if (revisions.commit.mock.calls.length === 1) await first.promise;
+      return { status: editorStatus(reason, null, revisions.commit.mock.calls.length) };
+    }),
+    load: vi.fn(async () => rows('B')),
+    status: vi.fn(async () => editorStatus('OSG lyrics editor v1: text', null, 1)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    maxPendingOperations: 4,
+    maxPendingBytes: pairBytes,
+    maxStateBytes: pairBytes,
+    onReconcile: (value) => reconciled.push(value),
+    onError: () => undefined,
+  });
+
+  const accepted = history.record(rows('A'), rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+  const rejected = await history.record(rows('B'), rows('C'), LYRICS_EDITOR_ACTIONS.TEXT);
+  expect(rejected).toMatchObject({ backpressure: true });
+  expect(revisions.commit).toHaveBeenCalledTimes(1);
+
+  first.resolve();
+  await accepted;
+  await expect(history.flush()).rejects.toMatchObject({ code: 'historyQueueSaturated' });
+  expect(reconciled).toEqual([rows('B')]);
+
+  await history.record(rows('B'), rows('D'), LYRICS_EDITOR_ACTIONS.TEXT);
+  expect(revisions.commit).toHaveBeenCalledTimes(2);
+});
+
+it('rejects a single oversized history state without calling the native writer', async () => {
+  const reconciled = [];
+  const revisions = {
+    commit: vi.fn(),
+    load: vi.fn(async () => rows('A')),
+    status: vi.fn(async () => editorStatus(null, null, 0)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    maxStateBytes: JSON.stringify(rows('A')).length,
+    maxPendingBytes: 1_024,
+    onReconcile: (value) => reconciled.push(value),
+    onError: () => undefined,
+  });
+
+  const result = await history.record(
+    rows('A'),
+    rows('text that exceeds the injected state limit'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  );
+  expect(result).toMatchObject({
+    ok: false,
+    backpressure: true,
+    error: { code: 'historySnapshotTooLarge' },
+  });
+  await expect(history.flush()).rejects.toMatchObject({ code: 'historySnapshotTooLarge' });
+  expect(revisions.commit).not.toHaveBeenCalled();
+  expect(reconciled).toEqual([rows('A')]);
+});
+
+it('uses the newer status rows when recovery observes a concurrent divergence', async () => {
+  const reconciled = [];
+  const transportError = new Error('transport failed');
+  const revisions = {
+    commit: vi.fn(async () => { throw transportError; }),
+    load: vi.fn(async () => rows('Loaded A')),
+    status: vi.fn(async () => ({
+      ...editorStatus(null, null, 2),
+      diverged: true,
+      authoritativeRows: rows('Status B'),
+    })),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onReconcile: (value) => reconciled.push(value),
+    onError: () => undefined,
+  });
+
+  await expect(history.record(
+    rows('A'),
+    rows('Optimistic'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  )).resolves.toMatchObject({ ok: false });
+  await expect(history.flush()).rejects.toBe(transportError);
+  expect(reconciled).toEqual([rows('Status B')]);
+});
+
+it('retries reconciliation only after an uncertain native outcome becomes authoritative', async () => {
+  const outcome = deferred();
+  let outcomeKnown = false;
+  const uncertain = new Error('the native commit may still complete');
+  uncertain.code = 'projectCommandOutcomeUncertain';
+  Object.defineProperty(uncertain, 'outcomeRecovery', {
+    value: outcome.promise,
+    enumerable: false,
+  });
+  const reconciled = [];
+  const revisions = {
+    commit: vi.fn(async () => { throw uncertain; }),
+    load: vi.fn(async () => {
+      if (!outcomeKnown) throw uncertain;
+      return rows('Authoritative late commit');
+    }),
+    status: vi.fn(async () => editorStatus('OSG lyrics editor v1: text', null, 4)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onError: () => undefined,
+    onReconcile: (value) => reconciled.push(value),
+  });
+
+  await expect(history.record(
+    rows('A'),
+    rows('Optimistic'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  )).resolves.toMatchObject({ ok: false, error: uncertain });
+  await vi.waitFor(() => expect(revisions.load).toHaveBeenCalledTimes(1));
+  expect(revisions.status).not.toHaveBeenCalled();
+  expect(reconciled).toEqual([]);
+
+  // The outcome promise is deliberately not part of operationTail. While it is unresolved, a new
+  // optimistic edit fails closed immediately instead of hanging behind the uncertain native call.
+  await expect(history.record(
+    rows('Optimistic'),
+    rows('Later'),
+    LYRICS_EDITOR_ACTIONS.TEXT
+  )).resolves.toMatchObject({
+    ok: false,
+    backpressure: true,
+    error: { code: 'historyQueueSaturated' },
+  });
+  await vi.waitFor(() => expect(revisions.load.mock.calls.length).toBeGreaterThanOrEqual(2));
+  const failedRecoveryAttempts = revisions.load.mock.calls.length;
+
+  outcomeKnown = true;
+  outcome.resolve(rows('Authoritative late commit'));
+  await vi.waitFor(() => expect(reconciled).toEqual([rows('Authoritative late commit')]));
+  expect(revisions.load).toHaveBeenCalledTimes(failedRecoveryAttempts + 1);
+  expect(revisions.status).toHaveBeenCalledTimes(1);
+});
+
+it('rejects every concurrent flush in the failure cohort, then permits a later flush', async () => {
+  const writeError = new Error('write failed');
+  const revisions = {
+    commit: vi.fn(async () => { throw writeError; }),
+    load: vi.fn(async () => rows('Authoritative')),
+    status: vi.fn(async () => editorStatus(null, null, 1)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onError: () => undefined,
+  });
+  await history.record(rows('A'), rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+
+  const results = await Promise.allSettled([history.flush(), history.flush()]);
+  expect(results).toEqual([
+    { status: 'rejected', reason: writeError },
+    { status: 'rejected', reason: writeError },
+  ]);
+  await expect(history.flush()).resolves.toBeUndefined();
+});
+
+it('still reconciles when an injected error callback throws', async () => {
+  const writeError = new Error('write failed');
+  const reconciled = [];
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  const revisions = {
+    commit: vi.fn(async () => { throw writeError; }),
+    load: vi.fn(async () => rows('Authoritative')),
+    status: vi.fn(async () => editorStatus(null, null, 1)),
+    undo: vi.fn(),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onError: () => { throw new Error('host callback failed'); },
+    onReconcile: (value) => reconciled.push(value),
+  });
+
+  await history.record(rows('A'), rows('B'), LYRICS_EDITOR_ACTIONS.TEXT);
+  await expect(history.flush()).rejects.toBe(writeError);
+  expect(reconciled).toEqual([rows('Authoritative')]);
+  consoleError.mockRestore();
+});
+
+it('reconciles a generic failed undo and keeps flush blocked while recovery fails', async () => {
+  const reconciled = [];
+  const undoError = new Error('undo transport failed');
+  const recoveryError = new Error('recovery failed');
+  let recoveryCanSucceed = false;
+  const revisions = {
+    commit: vi.fn(),
+    load: vi.fn(async () => {
+      if (!recoveryCanSucceed) throw recoveryError;
+      return rows('Authoritative');
+    }),
+    status: vi.fn()
+      .mockResolvedValueOnce(editorStatus('OSG lyrics editor v1: text', null, 1))
+      .mockResolvedValue(editorStatus(null, null, 1)),
+    undo: vi.fn(async () => { throw undoError; }),
+    redo: vi.fn(),
+  };
+  const history = createDurableLyricsHistory({
+    runtimeAvailable: () => true,
+    currentCacheId: () => 'cache-id',
+    revisions,
+    onReconcile: (value) => reconciled.push(value),
+    onError: () => undefined,
+  });
+
+  await expect(history.undo()).resolves.toMatchObject({ ok: false });
+  await expect(history.flush()).rejects.toBe(recoveryError);
+  await expect(history.flush()).rejects.toBe(recoveryError);
+  expect(reconciled).toEqual([]);
+
+  recoveryCanSucceed = true;
+  await expect(history.flush()).rejects.toBe(recoveryError);
+  expect(reconciled).toEqual([rows('Authoritative')]);
+  await expect(history.flush()).resolves.toBeUndefined();
+});

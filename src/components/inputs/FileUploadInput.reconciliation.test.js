@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import FileUploadInput from './FileUploadInput';
 import {
-  default as FileUploadInput,
   reconcileSelectedNativeMedia,
   releaseSelectedNativeMedia,
-} from './FileUploadInput';
+} from './nativeMediaSelection';
 import { createNativeMediaDescriptor } from '../../platform/mediaService';
 
 const MEDIA = Object.freeze({ assetId: '019ffa3d-8e35-7f92-b3e3-607dd27bb263' });

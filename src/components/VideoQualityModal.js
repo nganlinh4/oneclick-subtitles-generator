@@ -13,6 +13,7 @@ const VideoQualityModal = ({
   isOpen,
   onClose,
   onConfirm,
+  onMediaReplaced,
   videoInfo,
   actualDimensions,
   availableVersions = []
@@ -24,7 +25,6 @@ const VideoQualityModal = ({
   const [isRedownloading, setIsRedownloading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [availableQualities, setAvailableQualities] = useState([]);
-  const [qualityVideoId, setQualityVideoId] = useState(null);
 
   const [downloadProgress, setDownloadProgress] = useState(0);
   const progressIntervalRef = useRef(null);
@@ -63,18 +63,16 @@ const VideoQualityModal = ({
     onClose();
   };
 
-  // Quality re-download orchestration (start, poll progress, cancel)
+  // Quality re-download orchestration (start, native progress, cancel)
   const {
     handleCancelRedownload,
     startQualityDownloadWithId,
-    startProgressTracking,
   } = useQualityProgressTracking({
-    progressIntervalRef,
-    qualityVideoId,
     setIsRedownloading,
     setDownloadProgress,
     onConfirm,
     handleClose,
+    onMediaReplaced,
   });
 
   // Reset state when modal opens
@@ -191,19 +189,9 @@ const VideoQualityModal = ({
       setDownloadProgress(0);
 
       try {
-        // Generate video ID first
         const videoId = `quality_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-        // Save the quality videoId so cancel button can use it
-        setQualityVideoId(videoId);
-
-        // Start progress tracking BEFORE starting download
-        startProgressTracking(videoId, selectedQuality.quality, videoInfo.url);
-
-        // Start the download with the pre-generated video ID
+        // Completion publishes the new media and proceeds to rendering through onConfirm.
         await startQualityDownloadWithId(selectedQuality.quality, videoInfo.url, videoId);
-
-        // Progress tracking will handle completion and proceed to rendering automatically
       } catch (error) {
         console.error('Error redownloading video:', error);
         setIsRedownloading(false);

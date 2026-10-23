@@ -1,9 +1,9 @@
 import {
   createCanvasSubtitleRenderer,
-  subtitleBackgroundRgba,
   subtitleBorderBands,
   subtitleGradientVector,
 } from './canvasSubtitleRenderer';
+import { subtitleBackgroundRgba } from './canvasSubtitleColor';
 import { defaultCustomization } from '../../subtitleCustomization/defaultCustomization';
 
 describe('subtitleBackgroundRgba', () => {

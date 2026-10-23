@@ -1,9 +1,6 @@
 import { parseSrtContent } from "../../../utils/srtParser";
 import { hasValidDownloadedVideo } from "../../../utils/videoUtils";
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 /**
  * Create subtitle-related handlers (input validation + SRT/JSON upload).
@@ -169,9 +166,6 @@ export const createSubtitleHandlers = ({
 
         // With simplified processing, we don't need to prepare video segments when uploading SRT files
         // The subtitles are already available and ready to use
-        dbg(
-          "SRT file uploaded successfully, no video segment preparation needed"
-        );
       } else if (hasUnifiedVideo) {
         // For unified URL input, set the subtitles data directly
         // We'll download the video when the user clicks "Generate Subtitles"

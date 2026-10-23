@@ -83,5 +83,3 @@ export const usePanelResize = () => {
     handleMouseDown,
   };
 };
-
-export default usePanelResize;

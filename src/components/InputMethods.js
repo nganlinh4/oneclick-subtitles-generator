@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import YoutubeUrlInput from './inputs/YoutubeUrlInput';
 import YoutubeSearchInput from './inputs/YoutubeSearchInput';
@@ -23,21 +23,36 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
     }
   }, [enableYoutubeSearch, activeTab, setActiveTab]);
 
-  // Initialize pill position and container height on component mount
-  useEffect(() => {
-    if (tabsRef.current) {
-      // Small delay to ensure the DOM is fully rendered
-      setTimeout(() => {
-        initTabPillAnimation('.input-tabs');
-
-        // Set initial height with extra 100px to ensure enough space
-        if (containerRef.current && contentRef.current) {
-          const contentHeight = contentRef.current.offsetHeight;
-          containerRef.current.style.height = `${contentHeight + 100}px`;
-        }
-      }, 50);
+  // The container animates its height, so it carries an explicit one: the content height plus
+  // 100px of room. Measured when the content resizes (wrapping site chips, window width) and when
+  // web fonts finish loading, so the size never depends on how fast a font arrived.
+  const syncContainerHeight = useCallback(() => {
+    if (containerRef.current && contentRef.current) {
+      containerRef.current.style.height = `${contentRef.current.offsetHeight + 100}px`;
     }
   }, []);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return undefined;
+    const relayout = () => {
+      syncContainerHeight();
+      if (tabsRef.current) initTabPillAnimation('.input-tabs');
+    };
+    const initial = setTimeout(relayout, 50);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(syncContainerHeight) : null;
+    observer?.observe(content);
+    const fonts = typeof document !== 'undefined' ? document.fonts : null;
+    let disposed = false;
+    fonts?.addEventListener?.('loadingdone', relayout);
+    fonts?.ready?.then(() => { if (!disposed) relayout(); });
+    return () => {
+      disposed = true;
+      clearTimeout(initial);
+      observer?.disconnect();
+      fonts?.removeEventListener?.('loadingdone', relayout);
+    };
+  }, [syncContainerHeight]);
 
   // Update pill position when active tab changes
   useEffect(() => {
@@ -80,21 +95,11 @@ const InputMethods = ({ onVideoSelect, apiKeysSet, selectedVideo, setSelectedVid
     }
   }, [activeTab, previousTab, enableYoutubeSearch]);
 
-  // Handle height animation when content changes
+  // Re-measure once the newly selected tab's content has rendered.
   useEffect(() => {
-    // Use a small delay to ensure the new content is rendered
-    const animationTimeout = setTimeout(() => {
-      if (containerRef.current && contentRef.current) {
-        // Get the height of the content and add 100px for extra space
-        const contentHeight = contentRef.current.offsetHeight;
-
-        // Set the container height to match the content height plus extra space
-        containerRef.current.style.height = `${contentHeight + 100}px`;
-      }
-    }, 50); // Small delay to ensure content is rendered
-
+    const animationTimeout = setTimeout(syncContainerHeight, 50);
     return () => clearTimeout(animationTimeout);
-  }, [activeTab, uploadedFile]);
+  }, [activeTab, uploadedFile, syncContainerHeight]);
 
   const renderInputMethod = () => {
     // Determine the animation class based on direction

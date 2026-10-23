@@ -111,19 +111,3 @@ export const paragraphLevelOf = (clusters, { baseDirection = null } = {}) => {
   }
   return 0;
 };
-
-/**
- * Whether a cluster is strongly right-to-left, for the coarse per-cell direction the descriptor
- * reports.
- *
- * PROVENANCE ONLY. It says which script a cell's text is written in; it does not decide where
- * anything is drawn, because a cell is a whole shaped line and its ink is already in visual order.
- */
-export const isStrongRtl = (text) => {
-  for (const character of text) {
-    const strong = strongClassOf(character.codePointAt(0));
-    if (strong === 'r' || strong === 'al') return true;
-    if (strong === 'l') return false;
-  }
-  return false;
-};

@@ -7,8 +7,6 @@ import { runMediaPipeline } from '../platform/mediaPipelineService';
 import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
 import {
-  parseSubtitleTimeSeconds,
-  secondsToSrtTimestamp,
   serializeJsonSubtitleDocument,
   serializeSrtDocument,
   serializeTextSubtitleDocument,
@@ -41,33 +39,6 @@ export const downloadTextDocument = async (content, filename = 'document.txt') =
     throw new TypeError('A text document is required');
   }
   return saveSubtitleDocument(content, 'txt', filename, 'text/plain;charset=utf-8');
-};
-
-/**
- * Parse time string (00:00:00,000 or 00:00:00.000) to seconds
- * @param {string} timeString - Time string in format 00:00:00,000 or 00:00:00.000
- * @returns {number} - Time in seconds
- */
-export const parseTimeString = (timeString) => {
-  return parseSubtitleTimeSeconds(timeString);
-};
-
-/**
- * Convert seconds to SRT time format (HH:MM:SS,mmm)
- * @param {number} seconds - Time in seconds
- * @returns {string} - Time in SRT format
- */
-export const secondsToSrtTime = (seconds) => {
-  return secondsToSrtTimestamp(seconds);
-};
-
-/**
- * Clean subtitle text by removing any SRT formatting that might be embedded in it
- * @param {string} text - The subtitle text that might contain SRT formatting
- * @returns {string} - Cleaned text without SRT formatting
- */
-export const cleanSubtitleText = (text) => {
-  return typeof text === 'string' ? text : '';
 };
 
 /**
@@ -131,7 +102,7 @@ export const downloadJSON = async (subtitles, filename) => {
  * @param {Array} subtitles - Array of subtitle objects
  * @returns {string} - Plain text content
  */
-export const generateTxtContent = (subtitles) => {
+const generateTxtContent = (subtitles) => {
   return serializeTextSubtitleDocument(subtitles);
 };
 

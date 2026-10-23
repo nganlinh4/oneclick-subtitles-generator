@@ -15,11 +15,8 @@
  */
 
 import { Feature } from './roundedPolygon.js';
-import { Point, DistanceEpsilon, debugLog } from './utils.js';
+import { Point, DistanceEpsilon } from './utils.js';
 import { DoubleMapper } from './floatMapping.js';
-
-const LOG_TAG = "FeatureMapping";
-const DEBUG = true;
 
 /**
  * A feature with its progress along the polygon's outline.
@@ -83,20 +80,10 @@ export function featureMapper(features1, features2) {
 
     const featureProgressMapping = doMapping(filteredFeatures1, filteredFeatures2);
 
-    if (DEBUG) {
-        debugLog(LOG_TAG, featureProgressMapping.map(p => `${p.first} -> ${p.second}`).join(', '));
-    }
 
     // DoubleMapper constructor expects individual mapping objects as arguments, not an array
     const dm = new DoubleMapper(...featureProgressMapping);
 
-    if (DEBUG) {
-        const N = 10;
-        const toFixed = (n) => n.toFixed(3);
-        const mapValues = Array.from({ length: N + 1 }, (_, i) => toFixed(dm.map(i / N))).join(', ');
-        const mapBackValues = Array.from({ length: N + 1 }, (_, i) => toFixed(dm.mapBack(i / N))).join(', ');
-        debugLog(LOG_TAG, `Map: ${mapValues}\nMb : ${mapBackValues}`);
-    }
     return dm;
 }
 
@@ -110,10 +97,6 @@ export function featureMapper(features1, features2) {
  * @private
  */
 function doMapping(features1, features2) {
-    if (DEBUG) {
-        debugLog(LOG_TAG, `Shape1 progresses: ${features1.map(f => f.progress).join(', ')}`);
-        debugLog(LOG_TAG, `Shape2 progresses: ${features2.map(f => f.progress).join(', ')}`);
-    }
 
     const distanceVertexList = [];
     for (const f1 of features1) {
@@ -220,7 +203,6 @@ class MappingHelper {
  */
 function featureDistSquared(f1, f2) {
     if (f1.isCorner && f2.isCorner && f1.convex !== f2.convex) {
-        if (DEBUG) debugLog(LOG_TAG, "*** Feature distance ∞ for convex-vs-concave corners");
         return Number.MAX_VALUE;
     }
     const p1 = featureRepresentativePoint(f1);

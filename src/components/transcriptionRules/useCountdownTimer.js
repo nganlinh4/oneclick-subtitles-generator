@@ -50,7 +50,6 @@ const useCountdownTimer = (isOpen, onSave) => {
               // Set up the auto-save timeout
               countdownTimeoutRef.current = setTimeout(() => {
                 if (!userInteracted) {
-                  console.log('[TranscriptionRulesEditor] Countdown completed, auto-saving...');
                   onSave();
                 }
               }, seconds * 1000);
@@ -94,7 +93,6 @@ const useCountdownTimer = (isOpen, onSave) => {
         countdownTimeoutRef.current = null;
       }
 
-      console.log('[TranscriptionRulesEditor] User interaction detected, countdown cancelled');
     }
   };
 

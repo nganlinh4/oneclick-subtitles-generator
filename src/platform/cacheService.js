@@ -336,6 +336,5 @@ const cacheService = createCacheService();
 
 export const getCacheInfo = cacheService.getCacheInfo;
 export const clearCache = cacheService.clearCache;
-export const pruneExpiredCache = cacheService.pruneExpiredCache;
 
 export { formatBytes as formatCacheBytes };

@@ -6,7 +6,7 @@ import type { PlaybackState, Prompt } from '../types';
 import { decodeAudioData } from './audio';
 import { throttle } from './throttle';
 
-export type NativePlaybackControl = 'play' | 'pause' | 'stop' | 'resetContext';
+type NativePlaybackControl = 'play' | 'pause' | 'stop' | 'resetContext';
 
 export interface NativeLiveMusicTransport {
   start(weightedPrompts: ReadonlyArray<{ text: string; weight: number }>): void;

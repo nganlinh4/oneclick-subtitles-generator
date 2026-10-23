@@ -1,5 +1,3 @@
-import { formatSecondsToTimecode } from '../timecode';
-
 /** Parse explicit units only; invalid input must not silently move to frame zero. */
 export const convertTimeStringToSeconds = (value) => {
   if (typeof value !== 'string') throw new Error('Subtitle timestamp must be a string.');
@@ -28,4 +26,3 @@ export const convertTimeStringToSeconds = (value) => {
   throw new Error('Subtitle timestamp has no supported explicit format.');
 };
 
-export const formatSecondsToSRTTime = (seconds) => formatSecondsToTimecode(seconds, ',');

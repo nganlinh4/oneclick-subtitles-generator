@@ -5,11 +5,11 @@ import {
   ASR_ENGINE_CATALOG,
   ASR_ENGINE_IDS,
   AsrServiceError,
-  createNativeAsrService,
   normalizeAsrJobEvent,
   normalizeAsrStartRequest,
   normalizeAsrStatus,
-} from './asrService';
+} from './asrContract';
+import { createNativeAsrService } from './asrService';
 
 vi.mock('@tauri-apps/api/core', () => ({
   Channel: class MockTauriChannel {},
@@ -78,12 +78,14 @@ const createService = (overrides = {}) => createNativeAsrService({
 });
 
 it('contains no HTTP, browser storage, provider secret, or raw-file transport', () => {
-  const source = fs.readFileSync(path.join(__dirname, 'asrService.js'), 'utf8');
-  expect(source).not.toMatch(/\bfetch\s*\(/);
-  expect(source).not.toMatch(/localStorage\s*\./);
-  expect(source).not.toMatch(/https?:\/\//i);
-  expect(source).not.toMatch(/\bapiKey\b/);
-  expect(source).not.toMatch(/\b(file|path|bytes|base64)\s*:/i);
+  for (const module of ['asrService.js', 'asrContract.js']) {
+    const source = fs.readFileSync(path.join(__dirname, module), 'utf8');
+    expect(source, module).not.toMatch(/\bfetch\s*\(/);
+    expect(source, module).not.toMatch(/localStorage\s*\./);
+    expect(source, module).not.toMatch(/https?:\/\//i);
+    expect(source, module).not.toMatch(/\bapiKey\b/);
+    expect(source, module).not.toMatch(/\b(file|path|bytes|base64)\s*:/i);
+  }
 });
 
 it('normalizes legacy aliases, defaults, segmentation bounds, and seconds to Rust wire values', () => {

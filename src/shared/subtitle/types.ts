@@ -1,43 +1,5 @@
 import type { SubtitleAnimationEasing } from './subtitleAnimationEasing';
 
-export interface SubtitleEntry {
-  start: number;
-  end: number;
-  text: string;
-}
-
-// Keep LyricEntry as alias for backward compatibility
-export type LyricEntry = SubtitleEntry;
-
-export type Resolution = '360p' | '480p' | '720p' | '1080p' | '1440p' | '4K' | '8K';
-export type FrameRate = 24 | 25 | 30 | 50 | 60 | 120;
-
-export interface VideoMetadata {
-  videoType: 'Subtitled Video';
-  resolution: Resolution; // Video resolution (1080p, 1440p, 4K, etc.)
-  frameRate: FrameRate; // Frame rate (30 or 60 fps)
-  originalAudioVolume: number; // Volume for original audio/video (0-100)
-  narrationVolume: number; // Volume for narration audio (0-100)
-  subtitleCustomization?: SubtitleCustomization; // Subtitle styling options
-  cropSettings?: CropSettings; // Video crop settings
-  fontStylesheetUrl?: string; // Managed native render font pack; browser previews omit this.
-}
-
-// Crop settings interface
-export interface CropSettings {
-  x: number; // X position as percentage (can be <0 for out-crop)
-  y: number; // Y position as percentage (can be <0 for out-crop)
-  width: number; // Width as percentage (0-100, can exceed 100 for out-crop)
-  height: number; // Height as percentage (0-100, can exceed 100 for out-crop)
-  aspectRatio: number | null; // Aspect ratio value or null for custom
-  // Canvas (padding) controls to match editor visuals
-  canvasBgMode?: 'solid' | 'blur';
-  canvasBgColor?: string; // Used when canvasBgMode === 'solid'
-  canvasBgBlur?: number; // Blur amount when canvasBgMode === 'blur'
-  flipX?: boolean;
-  flipY?: boolean;
-}
-
 // Subtitle customization interface
 export interface SubtitleCustomization {
   // Text Styling
@@ -116,31 +78,6 @@ export interface SubtitleCustomization {
   // Preset Styles
   // Native validation accepts any non-empty, bounded, control-free preset identity.
   preset: string;
-}
-
-export interface AudioFiles {
-  main: File | null; // Original video audio
-  narration?: File | null; // Narration audio track
-}
-
-export interface Props {
-  audioUrl: string; // Original video audio
-  narrationUrl?: string; // Narration audio
-  lyrics: LyricEntry[]; // Subtitles
-  backgroundImageUrl?: string; // Optional background image
-  metadata: VideoMetadata;
-  isVideoFile?: boolean; // Flag to indicate if the main file is a video
-  framesPathUrl?: string; // If provided, render server-extracted frames instead of raw video
-}
-
-// Interface for components that can work with either a File or URL
-export interface AudioProps {
-  audioFile?: File; // Original video audio
-  narrationFile?: File; // Narration audio
-  audioUrl?: string;
-  narrationUrl?: string;
-  lyrics: LyricEntry[];
-  backgroundImageUrl?: string;
 }
 
 

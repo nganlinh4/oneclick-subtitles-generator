@@ -1,9 +1,7 @@
 /**
  * Format a duration in seconds as a zero-padded HH:MM:SS<sep>mmm timecode.
  *
- * Single source for the three byte-identical formatters that previously lived in
- * translation/utils/formatTimeString, vttUtils (secondsToVttTime) and subtitle/timeUtils
- * (formatSecondsToSRTTime) — they differed only in the millisecond separator.
+ * Used by translation/utils/formatTimeString; the separator selects WebVTT or SRT style.
  *
  * @param {number} seconds
  * @param {string} [sep='.'] separator before milliseconds ('.' for WebVTT, ',' for SRT)

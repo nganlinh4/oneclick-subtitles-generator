@@ -143,8 +143,6 @@ const parseSeconds = (value) => {
   return Number(exactMilliseconds);
 };
 
-export const parseSubtitleTimeSeconds = (value) => parseSeconds(value) / 1_000;
-
 const formatMilliseconds = (milliseconds) => {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) throw invalidDocument();
   const hours = Math.floor(milliseconds / 3_600_000);
@@ -214,12 +212,3 @@ export const serializeJsonSubtitleDocument = (subtitles) => JSON.stringify(
 export const serializeTextSubtitleDocument = (subtitles) => normalizeSubtitleDocumentRows(subtitles)
   .map((subtitle) => subtitle.text)
   .join('\n');
-
-export const serializeSubtitleDocument = (subtitles, format) => {
-  switch (format) {
-    case 'srt': return serializeSrtDocument(subtitles);
-    case 'json': return serializeJsonSubtitleDocument(subtitles);
-    case 'txt': return serializeTextSubtitleDocument(subtitles);
-    default: throw invalidDocument();
-  }
-};

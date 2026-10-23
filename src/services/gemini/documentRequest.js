@@ -45,7 +45,7 @@ const freezeFailures = (failures) => {
   }));
 };
 
-export const nativeDocumentDelivery = (result) => {
+const nativeDocumentDelivery = (result) => {
   if (typeof result?.acknowledge !== 'function') return Object.freeze([]);
   return freezeDeliveries([{
     jobId: result.job?.id ?? null,
@@ -122,7 +122,7 @@ export const documentResultError = (result) => {
  * otherwise we let the prompt drive the language (returns null).
  * @returns {string|null}
  */
-export const resolveProcessingLanguage = () => {
+const resolveProcessingLanguage = () => {
   const translatedLanguage = localStorage.getItem('translation_target_language');
   const source = localStorage.getItem('current_processing_source');
   return source === 'translated' && translatedLanguage ? translatedLanguage : null;

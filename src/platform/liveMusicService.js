@@ -80,7 +80,7 @@ const characterCountWithin = (value, maximum) => {
   return true;
 };
 
-export class LiveMusicServiceError extends Error {
+class LiveMusicServiceError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'LiveMusicServiceError';
@@ -159,7 +159,7 @@ const normalizeStartRequest = (request) => {
   });
 };
 
-export const normalizeLiveMusicSession = (value) => {
+const normalizeLiveMusicSession = (value) => {
   if (!isRecord(value)
       || !hasOnlyKeys(value, new Set(['id', 'model', 'sampleRateHz', 'channels', 'format']))
       || !isUuidV7(value.id)
@@ -575,4 +575,3 @@ export const startLiveMusicSession = liveMusicService.startSession;
 export const updateLiveMusicPrompts = liveMusicService.updatePrompts;
 export const applyLiveMusicControl = liveMusicService.applyControl;
 export const closeLiveMusicSession = liveMusicService.closeSession;
-export const getActiveLiveMusicSession = liveMusicService.getActiveSession;

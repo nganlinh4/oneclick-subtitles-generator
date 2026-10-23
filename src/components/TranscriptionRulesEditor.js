@@ -139,17 +139,14 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
 
     if (savedEditorPresetId) {
       // Use what's saved (user's choice)
-      console.log('[TranscriptionRulesEditor] Using saved preset:', savedPresetId);
       detectedPresetId = savedEditorPresetId;
       setCurrentPresetId(detectedPresetId);
     } else if (sessionEditorPresetId) {
       // No saved preference, use analysis recommendation as initial value
-      console.log('[TranscriptionRulesEditor] Using analysis recommendation as initial value:', sessionPresetId);
       detectedPresetId = sessionEditorPresetId;
       setCurrentPresetId(sessionEditorPresetId);
     } else {
       // No saved preference and no recommendation, default to custom
-      console.log('[TranscriptionRulesEditor] No saved preset or recommendation, defaulting to custom');
       detectedPresetId = 'custom';
       setCurrentPresetId('custom');
     }

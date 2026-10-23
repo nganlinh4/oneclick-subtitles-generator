@@ -5,13 +5,12 @@
 import { selectNativeWaveformLevel, setupHighDPICanvas } from './waveformLOD';
 
 // Render the waveform onto the given canvas.
-// params: { waveform, visibleTimeRange, seekableEnd, height, dbgWave }
+// params: { waveform, visibleTimeRange, seekableEnd, height }
 export const renderWaveform = (canvas, containerWidth, {
     waveform,
     visibleTimeRange,
     seekableEnd,
     height,
-    dbgWave,
 }) => {
     if (!waveform || !visibleTimeRange) return;
 
@@ -37,19 +36,6 @@ export const renderWaveform = (canvas, containerWidth, {
     const endSample = Math.min(lodData.length, Math.ceil(drawEnd * lodSamplesPerSecond));
     const samplesToDraw = Math.max(0, endSample - startSample);
 
-    dbgWave('[WAVEFORM] Rendering:', {
-      duration: waveform.durationSeconds,
-      totalDataLength: waveform.levels[0].points.length,
-      samplesPerSecond: waveform.levels[0].pointsPerSecond,
-      visibleStart: visibleStart,
-      visibleEnd: visibleEnd,
-      seekableEnd,
-      waveformEnd,
-      startSample: startSample,
-      endSample: endSample,
-      samplesToDraw: samplesToDraw,
-      containerWidth: containerWidth
-    });
 
     ctx.clearRect(0, 0, containerWidth, height);
 
@@ -99,10 +85,6 @@ export const renderWaveform = (canvas, containerWidth, {
     ctx.closePath();
     ctx.fill();
 
-    dbgWave('[WAVEFORM] Rendered native level', {
-      samples: samplesToDraw,
-      pointsPerSecond: level.pointsPerSecond,
-    });
 };
 
 // Decide whether/what to render and dispatch to renderWaveform.

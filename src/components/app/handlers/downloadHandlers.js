@@ -27,9 +27,6 @@ import { readNativeMediaSession } from "../../../platform/nativeMediaOwnership";
 import { registerBrowserMediaBlob } from "../../../platform/browserMediaBlobRegistry";
 import { showErrorToast, showWarningToast } from "../../../utils/toastUtils";
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 const pendingSubtitleEntries = new WeakMap();
 const activePreparationTokens = new WeakMap();
 
@@ -260,10 +257,6 @@ export const createDownloadHandlers = ({
                 assertPreparationOwnership(projectId);
               }
 
-              dbg(
-                "[AppHandlers] Checking for cached subtitles for downloaded video (URL-based):",
-                urlBasedCacheId
-              );
 
               let cachedSubtitles;
               try {
@@ -282,11 +275,6 @@ export const createDownloadHandlers = ({
                 cachedSubtitles &&
                 cachedSubtitles.length > 0
               ) {
-                dbg(
-                  "[AppHandlers] Found cached subtitles for downloaded video, loading immediately:",
-                  cachedSubtitles.length,
-                  "subtitles"
-                );
                 if (guardedAutoRequest) {
                   preparedSubtitleCandidate = cachedSubtitles;
                 } else {
@@ -300,9 +288,6 @@ export const createDownloadHandlers = ({
                   });
                 }
               } else {
-                dbg(
-                  "[AppHandlers] No cached subtitles found for this downloaded video"
-                );
                 // The processing modal already owns the selected range and next action. Clear the
                 // transient download/upload state instead of covering that modal with a redundant
                 // "ready for segment selection" toast.
@@ -316,10 +301,6 @@ export const createDownloadHandlers = ({
                 );
                 const fileCacheId = await generateFileCacheId(processedFile);
                 localStorage.setItem("current_file_cache_id", fileCacheId);
-                dbg(
-                  "[AppHandlers] Generated file cache ID for Files API caching:",
-                  fileCacheId
-                );
               }
             } else {
               console.warn(
@@ -397,10 +378,6 @@ export const createDownloadHandlers = ({
           // Publish only after the durable project identity is active.
           setUploadedFile(processedFile);
 
-          dbg(
-            "[AppHandlers] Checking for cached subtitles for uploaded file:",
-            cacheId
-          );
 
           let cachedSubtitles;
           try {
@@ -419,11 +396,6 @@ export const createDownloadHandlers = ({
             cachedSubtitles &&
             cachedSubtitles.length > 0
           ) {
-            dbg(
-              "[AppHandlers] Found cached subtitles, loading immediately:",
-              cachedSubtitles.length,
-              "subtitles"
-            );
             if (guardedAutoRequest) {
               preparedSubtitleCandidate = cachedSubtitles;
             } else {
@@ -437,9 +409,6 @@ export const createDownloadHandlers = ({
               });
             }
           } else {
-            dbg(
-              "[AppHandlers] No cached subtitles found for this file"
-            );
             setStatus({});
           }
         } catch (error) {
@@ -478,7 +447,6 @@ export const createDownloadHandlers = ({
       // Only set the default status if we haven't already set a cache-related status
       // We'll just set the default status since the cache-related status was already set above if needed
       // The cache logic above handles setting the appropriate status message
-      dbg("[AppHandlers] Video processing complete, ready for segment selection");
       // Apply any pending auto-downloaded subtitles now that video download is complete
       try {
         const pendingSubtitle = pendingEntries.get(pendingToken) ?? null;

@@ -9,7 +9,7 @@ const RESOLVED_PROJECT_KEYS = Object.freeze(['cacheId', 'projectId', 'snapshot']
 const SNAPSHOT_KEYS = Object.freeze(['media', 'metadata', 'stateVersion', 'tracks']);
 const METADATA_KEYS = Object.freeze(['id', 'name']);
 
-export class MediaProjectActivationError extends Error {
+class MediaProjectActivationError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'MediaProjectActivationError';

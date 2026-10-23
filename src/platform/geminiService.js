@@ -8,24 +8,11 @@ import {
 } from '../config/geminiModels';
 import { invokeDesktop } from './desktopRuntime';
 
-export const GEMINI_TASKS = Object.freeze([
+const GEMINI_TASKS = Object.freeze([
   'transcribe',
   'translate',
   'analyzeSubtitles',
 ]);
-export const GEMINI_EVENT_TYPES = Object.freeze([
-  'chunk',
-  'completed',
-  'cancelled',
-  'failed',
-]);
-export const GEMINI_THINKING_LEVELS = Object.freeze([
-  'minimal',
-  'low',
-  'medium',
-  'high',
-]);
-export const GEMINI_MEDIA_RESOLUTIONS = Object.freeze(['low', 'medium', 'high']);
 
 const MAX_PROMPT_CHARACTERS = 1_048_576;
 const MAX_SCHEMA_BYTES = 1_048_576;

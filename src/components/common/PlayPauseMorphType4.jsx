@@ -12,7 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
  * Tuning in one place: edit TYPE4_DEFAULTS below or pass a `config` prop to override.
  */
 
-export const TYPE4_DEFAULTS = {
+const TYPE4_DEFAULTS = {
   duration: 700,            // ms morph duration
   samples: 150,             // number of sampled points along the path
   easing: 'cubic-bezier(0.2, 0, 0, 1)',

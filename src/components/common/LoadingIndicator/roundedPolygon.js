@@ -34,7 +34,7 @@ import {
  * rounded corner or a straight edge connecting two corners.
  * @abstract
  */
-export class Feature {
+class Feature {
     /** @type {Cubic[]} */
     cubics;
     /** @type {boolean} */

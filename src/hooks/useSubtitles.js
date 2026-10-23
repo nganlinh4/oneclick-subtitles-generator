@@ -1,36 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { callGeminiApi, setProcessingForceStopped } from '../services/geminiService';
 import { getVideoDuration } from '../utils/videoProcessor';
-import { EVENTS, publishStreamingComplete, subscribe } from '../events/bus';
+import { EVENTS, subscribe } from '../events/bus';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
-
-import {
-    captureDurableSubtitleSegmentRevision,
-    commitDurableSubtitleCheckpoint,
-    commitDurableSubtitleSegmentCheckpoint,
-    isDurableSubtitleCheckpointReceipt,
-    isSuccessfulSubtitleCacheSaveReceipt,
-    requireSuccessfulSubtitleCacheSave,
-    saveSubtitlesToCache
-} from '../services/subtitleCache';
-import { reportKnownGeminiSubtitleError } from '../utils/geminiSubtitleErrors';
-import { isSubtitleOperationCancellation } from '../utils/subtitleOperationOwnership';
-import {
-    resolveCacheIdForGeneration,
-    loadCachedSubtitlesIfAvailable
-} from './useSubtitlesCaching';
 import { useSubtitlesSegmentRetry } from './useSubtitlesSegmentRetry';
 import { useQuotaCountdown } from './useQuotaCountdown';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
-import { runAsrGeneration } from './runAsrGeneration';
-import { DESCRIPTORS, LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
+import { LOCAL_METHOD_IDS } from '../services/engines/transcriptionEngineRegistry';
 import {
     createFullMediaStreamingHandler,
 } from './subtitleStreamingHandlers';
-import { CHECKPOINT_SOURCE } from '../events/constants';
 import { fetchBrowserResource } from '../platform/browserFetch';
 import { useNativeSubtitleHydration } from './useNativeSubtitleHydration';
-import { subtitleCompletionStatus } from './subtitleCompletionStatus';
 import { getEmptySpeechPolicy } from '../services/gemini/promptManagement';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { getBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
@@ -42,32 +23,20 @@ import { isNativeMediaDescriptor } from '../platform/mediaService';
 import {
     assertAutoGenerationContextCurrent,
     assertAutoGenerationContextDurable,
-    createAutoGenerationCompletion,
-    getAutoGenerationCacheCandidate,
     isAutoGenerationContext
 } from '../utils/autoGenerationOwnership';
-import {
-    acknowledgeGeminiTranscriptionDeliveries,
-    bindGeminiTranscriptionDeliveries,
-    retryPendingGeminiTranscriptionDeliveries,
-} from '../services/gemini/transcriptionDelivery';
-import {
-    loadExactProjectSubtitles,
-    resolveProjectForCache,
-} from '../platform/subtitleProjectStore';
-import { getActiveProjectSnapshot, loadProject } from '../platform/projectService';
-import { getCurrentCacheId as getRulesCacheId } from '../utils/transcriptionRulesStore';
-import { getCurrentCacheId as getSubtitlesCacheId } from '../utils/userSubtitlesStore';
+import { bindGeminiTranscriptionDeliveries } from '../services/gemini/transcriptionDelivery';
+import { loadExactProjectSubtitles } from '../platform/subtitleProjectStore';
 import * as userSubtitlesStore from '../utils/userSubtitlesStore';
+import { createSubtitleRunId } from './subtitleRunId';
+import { createGenerationPresentation } from './subtitleGenerationOwnership';
+import { getLocalSubtitleRunner, runLocalSubtitleGeneration } from './runLocalSubtitleGeneration';
+import { prepareGeminiGeneration } from './prepareGeminiGeneration';
+import { commitGeminiGeneration, presentGeminiGenerationFailure } from './geminiGenerationOutcome';
 
-// Cache utilities moved to services/subtitleCache
+// Required-effective async boundary: the lifecycle orchestrator must stay out of the entry chunk.
+const loadLifecycleOrchestrator = () => import('../services/lifecycleOrchestrator');
 
-// Local (non-Gemini) transcription methods -> the generic ASR runner, keyed by the registry. EVERY local
-// ASR engine (Parakeet + catalog) runs through runAsrGeneration with its descriptor (route + capabilities),
-// so adding an engine is one registry row — no scattered method checks.
-const METHOD_RUNNERS = Object.fromEntries(
-    DESCRIPTORS.filter((d) => d.type === 'asr').map((d) => [d.id, (ctx) => runAsrGeneration({ ...ctx, engine: d })])
-);
 const LOCAL_METHODS = new Set(LOCAL_METHOD_IDS);
 
 export const useSubtitles = (t) => {
@@ -122,8 +91,7 @@ export const useSubtitles = (t) => {
     // Countdown updater for quota exceeded with retry seconds
     const startQuotaCountdown = useQuotaCountdown({ t, setStatus, isGenerating });
 
-
-        // Listen for abort events
+    // Listen for abort events
     useEffect(() => {
         const handleAbort = () => {
             // If a retry-from-cache is in progress, notify completion for that specific segment
@@ -161,45 +129,25 @@ export const useSubtitles = (t) => {
         window.dispatchEvent(event);
     }, []);
 
-    // checkCachedSubtitles and saveSubtitlesToCache imported from services/subtitleCache
-
     const generateSubtitles = useCallback(async (input, inputType, apiKeysSet, options = {}) => {
-    // Extract options
-    const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
-
+        const runId = createSubtitleRunId();
         const { userProvidedSubtitles, segment, fps, mediaResolution, model } = options; // inlineExtraction supported via options.inlineExtraction
         const autoRunContext = isAutoGenerationContext(options.autoRunContext)
             ? options.autoRunContext
             : null;
-        let deliveryContext = null;
-        const presentationToken = Object.freeze({ runId });
-        generationPresentationOwnerRef.current = presentationToken;
-        const ownsPresentation = () => (
-            generationPresentationOwnerRef.current === presentationToken
-        );
-        const canPresent = () => {
-            if (!ownsPresentation()) return false;
-            if (isDesktopRuntime()) {
-                const currentCache = typeof getSubtitlesCacheId === 'function' ? getSubtitlesCacheId() : null;
-                if (deliveryContext?.cacheId && currentCache && currentCache !== deliveryContext.cacheId) {
-                    return false;
-                }
-                const activeProject = typeof getActiveProjectSnapshot === 'function' ? getActiveProjectSnapshot() : null;
-                if (deliveryContext?.projectId && activeProject?.metadata?.id && activeProject.metadata.id !== deliveryContext.projectId) {
-                    return false;
-                }
-            }
-            if (!autoRunContext) return true;
-            try {
-                assertAutoGenerationContextCurrent(autoRunContext);
-                return true;
-            } catch {
-                return false;
-            }
-        };
-        const setGenerationStatus = (value) => {
-            if (canPresent()) setStatus(value);
-        };
+        const presentation = createGenerationPresentation({
+            runId,
+            autoRunContext,
+            ownerRef: generationPresentationOwnerRef,
+            setStatus,
+            setSubtitlesData,
+        });
+        const {
+            ownsPresentation,
+            releasePresentation,
+            setGenerationStatus,
+            setGenerationSubtitlesData,
+        } = presentation;
         if (autoRunContext) {
             assertAutoGenerationContextCurrent(autoRunContext);
             if (input !== autoRunContext.media) {
@@ -223,16 +171,7 @@ export const useSubtitles = (t) => {
             }
             return nativeMediaCapability;
         };
-        const setGenerationSubtitlesData = (value) => {
-            if (!canPresent()) return undefined;
-            if (typeof value === 'function') {
-                return setSubtitlesData((current) => {
-                    if (!canPresent()) return current;
-                    return value(current);
-                });
-            }
-            return setSubtitlesData(value);
-        };
+        const getNativeMediaCapability = () => nativeMediaCapability;
         const speechOnly = getEmptySpeechPolicy(
             input?.type?.startsWith('audio/') ? 'audio' : 'video',
             userProvidedSubtitles,
@@ -240,7 +179,7 @@ export const useSubtitles = (t) => {
         ) === 'provenSilence';
         if (!LOCAL_METHODS.has(options.method) && !apiKeysSet.gemini) {
             setGenerationStatus({ message: t('errors.apiKeyRequired'), type: 'error' });
-            if (ownsPresentation()) generationPresentationOwnerRef.current = null;
+            releasePresentation();
             return false;
         }
 
@@ -250,312 +189,52 @@ export const useSubtitles = (t) => {
         setIsGenerating(true);
         setGenerationStatus({ message: t('output.processingVideo'), type: 'loading' });
 
-        // Local ASR engines (Parakeet + the catalog engines) run via their registered runner.
-        const localRunner = METHOD_RUNNERS[options.method];
+        const localRunner = getLocalSubtitleRunner(options.method);
         if (localRunner) {
-            const requestedSegment = options.segment;
-            if (!requestedSegment
-                || typeof requestedSegment.start !== 'number'
-                || typeof requestedSegment.end !== 'number') {
-                setGenerationStatus({
-                    message: t('errors.invalidSegmentSelection', 'Invalid segment selection'),
-                    type: 'error',
-                });
-                setIsGenerating(false);
-                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
-                return false;
-            }
-            // Local ASR used to bypass project resolution, paint streaming rows, and schedule a
-            // best-effort event save 500 ms later. Resolve its durable owner before inference.
-            const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
-                ? (typeof input === 'string' ? input : input?.url ?? null)
-                : null;
-            let cacheId;
-            try {
-                cacheId = await resolveCacheIdForGeneration({
-                    input,
-                    inputType,
-                    currentVideoUrl,
-                    t,
-                    setStatus: setGenerationStatus,
-                });
-                if (autoRunContext) {
-                    assertAutoGenerationContextCurrent(autoRunContext);
-                    if (cacheId !== autoRunContext.cacheId) {
-                        throw new Error('Automatic generation resolved a different subtitle project.');
-                    }
-                }
-            } catch (error) {
-                setIsGenerating(false);
-                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
-                throw error;
-            }
-            let localRunnerStarted = false;
-            try {
-                await refreshNativeMedia();
-                const resolvedLocalProject = await resolveProjectForCache(cacheId, { create: true });
-                const localProjectId = nativeMediaCapability?.projectId
-                    ?? resolvedLocalProject?.projectId
-                    ?? null;
-                if (!localProjectId
-                    || resolvedLocalProject?.projectId !== localProjectId
-                    || (autoRunContext && localProjectId !== autoRunContext.projectId)) {
-                    throw new Error('The active subtitle project changed before local transcription.');
-                }
-                const localContext = Object.freeze({
-                    runId,
-                    cacheId,
-                    projectId: localProjectId,
-                    segment: Object.freeze({
-                        start: options.segment.start,
-                        end: options.segment.end,
-                    }),
-                    ...(options.signal ? { signal: options.signal } : {}),
-                });
-                const validateLocalOwnership = autoRunContext
-                    ? async (context) => {
-                        await assertAutoGenerationContextDurable(autoRunContext);
-                        if (context.cacheId !== autoRunContext.cacheId
-                            || context.projectId !== autoRunContext.projectId) {
-                            throw new Error('Automatic generation changed subtitle projects.');
-                        }
-                        return context;
-                    }
-                    : async (context) => {
-                        await refreshNativeMedia();
-                        if (!canPresent()
-                            || getRulesCacheId() !== context.cacheId
-                            || getSubtitlesCacheId() !== context.cacheId
-                            || nativeMediaCapability?.projectId !== context.projectId) {
-                            throw new Error('The active subtitle project changed during local transcription.');
-                        }
-                        await loadExactProjectSubtitles(context.cacheId, context.projectId);
-                        await refreshNativeMedia();
-                        if (!canPresent()
-                            || getRulesCacheId() !== context.cacheId
-                            || getSubtitlesCacheId() !== context.cacheId
-                            || nativeMediaCapability?.projectId !== context.projectId) {
-                            throw new Error('The active subtitle project changed during local transcription.');
-                        }
-                        return context;
-                    };
-                let localRevision = null;
-                const captureGeneratedSegment = async () => {
-                    localRevision = await captureDurableSubtitleSegmentRevision({
-                        context: localContext,
-                        validateOwnership: validateLocalOwnership,
-                    });
-                    return localRevision;
-                };
-                const persistGeneratedSegment = async (replacement) => {
-                    if (localRevision === null) {
-                        throw new Error('Local subtitles have no captured durable revision.');
-                    }
-                    const receipt = await commitDurableSubtitleSegmentCheckpoint({
-                        context: localContext,
-                        revision: localRevision,
-                        replacement,
-                        validateOwnership: validateLocalOwnership,
-                    });
-                    if (!isDurableSubtitleCheckpointReceipt(receipt, localContext)
-                        || !Array.isArray(receipt.subtitles)) {
-                        throw new Error('Local subtitles were not durably saved.');
-                    }
-                    await refreshNativeMedia();
-                    return receipt;
-                };
-                const loadAuthoritativeSubtitles = async () => {
-                    await validateLocalOwnership(localContext);
-                    return loadExactProjectSubtitles(cacheId, localProjectId);
-                };
-                localRunnerStarted = true;
-                return await localRunner({
-                    input,
-                    options,
-                    runId,
-                    setStatus: setGenerationStatus,
-                    setIsGenerating,
-                    setSubtitlesData: setGenerationSubtitlesData,
-                    loadSubtitles: loadAuthoritativeSubtitles,
-                    captureGeneratedSegment,
-                    persistGeneratedSegment,
-                    t
-                });
-            } finally {
-                if (!localRunnerStarted) setIsGenerating(false);
-                if (ownsPresentation()) generationPresentationOwnerRef.current = null;
-            }
+            return await runLocalSubtitleGeneration({
+                localRunner,
+                input,
+                inputType,
+                options,
+                runId,
+                autoRunContext,
+                presentation,
+                refreshNativeMedia,
+                getNativeMediaCapability,
+                setIsGenerating,
+                t,
+            });
         }
 
         let fullMediaStreamingHandler = null;
-        let presentationRollbackRows = null;
         try {
-            // Check if this is a URL-based input (either direct URL or downloaded video)
-            const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
-                ? (typeof input === 'string' ? input : input?.url ?? null)
-                : null;
-
-            // URL-based vs file-based cache key resolution (see useSubtitlesCaching)
-            const cacheId = await resolveCacheIdForGeneration({
+            const prepared = await prepareGeminiGeneration({
                 input,
                 inputType,
-                currentVideoUrl,
-                t,
-                setStatus: setGenerationStatus,
-            });
-            if (autoRunContext) {
-                assertAutoGenerationContextCurrent(autoRunContext);
-                if (cacheId !== autoRunContext.cacheId) {
-                    throw new Error('Automatic generation resolved a different subtitle project.');
-                }
-            }
-            if (typeof cacheId !== 'string' || cacheId.length === 0) {
-                throw new Error('The subtitle project could not be resolved.');
-            }
-            const resolvedProject = await resolveProjectForCache(cacheId, { create: true });
-            if (!resolvedProject?.projectId
-                || (autoRunContext && resolvedProject.projectId !== autoRunContext.projectId)
-                || (nativeMediaCapability
-                    && (resolvedProject.projectId !== nativeMediaCapability.projectId
-                        || cacheId !== nativeMediaCapability.cacheId))) {
-                throw new Error('The subtitle project changed before Gemini transcription.');
-            }
-            deliveryContext = autoRunContext ?? Object.freeze({
+                options,
+                segment,
                 runId,
-                cacheId,
-                projectId: resolvedProject.projectId,
+                autoRunContext,
+                presentation,
+                refreshNativeMedia,
+                getNativeMediaCapability,
+                loadLifecycleOrchestrator,
+                t,
             });
-            const validateDeliveryOwnership = autoRunContext
-                ? assertAutoGenerationContextDurable
-                : async (context) => {
-                    await refreshNativeMedia();
-                    if (!canPresent()
-                        || getRulesCacheId() !== context.cacheId
-                        || getSubtitlesCacheId() !== context.cacheId) {
-                        throw new Error('The active subtitle project changed during Gemini transcription.');
-                    }
-                    await loadExactProjectSubtitles(context.cacheId, context.projectId);
-                    await refreshNativeMedia();
-                    if (!canPresent()
-                        || getRulesCacheId() !== context.cacheId
-                        || getSubtitlesCacheId() !== context.cacheId) {
-                        throw new Error('The active subtitle project changed during Gemini transcription.');
-                    }
-                    return context;
-                };
-            const withGeminiProjectAdmission = async (providerOptions) => {
-                await validateDeliveryOwnership(deliveryContext);
-                const snapshot = await loadProject(deliveryContext.projectId);
-                await validateDeliveryOwnership(deliveryContext);
-                if (snapshot?.metadata?.id !== deliveryContext.projectId
-                    || !Number.isSafeInteger(snapshot.stateVersion)
-                    || snapshot.stateVersion < 0) {
-                    throw new Error('The subtitle project could not authorize Gemini transcription.');
-                }
-                return {
-                    ...providerOptions,
-                    projectId: deliveryContext.projectId,
-                    expectedProjectStateVersion: snapshot.stateVersion,
-                };
-            };
-            if (!autoRunContext) {
-                const { checkpointBeforeUpdate } = await import('../services/lifecycleOrchestrator');
-                await checkpointBeforeUpdate({
-                    source: CHECKPOINT_SOURCE.GENERATION_START,
-                    runId,
-                    ...(options.signal ? { signal: options.signal } : {}),
-                });
-            }
-            if (nativeMediaCapability !== null) {
-                await validateDeliveryOwnership(deliveryContext);
-                const durableRows = await loadExactProjectSubtitles(
-                    deliveryContext.cacheId,
-                    deliveryContext.projectId,
-                );
-                await validateDeliveryOwnership(deliveryContext);
-                presentationRollbackRows = durableRows === null ? [] : durableRows;
-                if (!Array.isArray(presentationRollbackRows)) {
-                    throw new Error('The native subtitle project returned an invalid track.');
-                }
-            }
-            const priorDeliveryRecovery = await retryPendingGeminiTranscriptionDeliveries({
-                cacheId: deliveryContext.cacheId,
-                projectId: deliveryContext.projectId,
-                validateOwnership: validateDeliveryOwnership,
-            });
-
-            // IMPORTANT: Check cache FIRST and load cached subtitles immediately
-            // This ensures the timeline shows cached subtitles right when output container appears
-            let cacheHit = false;
-            let cachedSubtitles = null;
-            if (options.bypassCache !== true && options.engine !== 'gemini-3.5-transcribe') {
-                if (autoRunContext && !segment) {
-                    await assertAutoGenerationContextDurable(autoRunContext);
-                    const candidate = getAutoGenerationCacheCandidate(autoRunContext);
-                    cacheHit = candidate.cacheHit;
-                    cachedSubtitles = candidate.subtitles;
-                    if (!cacheHit) setGenerationSubtitlesData(null);
-                } else {
-                    await validateDeliveryOwnership(deliveryContext);
-                    ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
-                        cacheId,
-                        segment,
-                        currentVideoUrl,
-                    }));
-                    await validateDeliveryOwnership(deliveryContext);
-                    if (cacheHit) {
-                        setGenerationSubtitlesData(cachedSubtitles);
-                    } else if (!segment) {
-                        setGenerationSubtitlesData(null);
-                    }
-                }
-            }
-            if (cacheHit) {
-                if (autoRunContext) {
-                    const saved = await commitDurableSubtitleCheckpoint({
-                        context: autoRunContext,
-                        subtitles: cachedSubtitles,
-                        validateOwnership: assertAutoGenerationContextDurable
-                    });
-                    if (!isDurableSubtitleCheckpointReceipt(saved, autoRunContext)) {
-                        throw new Error('Cached automatic subtitles were not durably saved.');
-                    }
-                    const completion = createAutoGenerationCompletion({
-                        context: autoRunContext,
-                        terminal: 'subtitles',
-                        checkpoint: saved,
-                    });
-                    setGenerationSubtitlesData(cachedSubtitles);
-                    setGenerationStatus({
-                        message: t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!'),
-                        type: 'success',
-                        translationKey: 'output.subtitlesLoadedFromCache'
-                    });
-                    return completion;
-                }
-                setGenerationStatus({
-                    message: t('output.subtitlesLoadedFromCache', 'Subtitles loaded from cache!'),
-                    type: 'success',
-                    translationKey: 'output.subtitlesLoadedFromCache'
-                });
-                return true;
-            }
-            if (!priorDeliveryRecovery.acknowledged) {
-                throw new Error('A saved Gemini transcription is still awaiting native recovery.');
-            }
+            if (prepared.cachedResult !== undefined) return prepared.cachedResult;
+            const {
+                deliveryContext,
+                presentationRollbackRows,
+                validateDeliveryOwnership,
+                withGeminiProjectAdmission,
+            } = prepared;
 
             // Generate new subtitles
             let subtitles;
 
             // Check if this is segment processing
             if (segment) {
-                // Inline extraction path now streams identically to Files API.
-                // Fall through to the streaming branch below with forceInline flag.
-                if (options.inlineExtraction === true) {
-                    // No-op here; the streaming branch below will handle save and processing.
-                }
-
-
+                // Inline extraction streams identically to the Files API (forceInline below).
                 // The generation-start checkpoint acknowledged the latest manual edits. Read that exact
                 // native project revision back as the merge base; a React setter callback is not a
                 // transactional read and can stall or observe another project's presentation.
@@ -640,16 +319,6 @@ export const useSubtitles = (t) => {
             else if (input.type && (input.type.startsWith('video/') || input.type.startsWith('audio/'))) {
                 try {
                     const duration = await getVideoDuration(input);
-                    // eslint-disable-next-line no-unused-vars
-                    const durationMinutes = Math.floor(duration / 60);
-
-                    // Determine if this is a video or audio file
-                    const isAudio = input.type.startsWith('audio/');
-                    // eslint-disable-next-line no-unused-vars
-                    const mediaType = isAudio ? 'audio' : 'video';
-
-                    // Debug log to see the media duration
-
 
                     // Check if we have segment-based processing options
                     if (segment && fps && mediaResolution && model) {
@@ -819,160 +488,32 @@ export const useSubtitles = (t) => {
                 }
             }
 
-            if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
-            const hasSubtitles = Array.isArray(subtitles) && subtitles.length > 0;
-            const explicitNoSpeech = Array.isArray(subtitles)
-                && subtitles.length === 0
-                && speechOnly;
-            if (!hasSubtitles && !explicitNoSpeech) {
-                fullMediaStreamingHandler?.rollback?.();
-                setGenerationStatus(subtitleCompletionStatus(subtitles, t, { speechOnly }));
-                return false;
-            }
-
-            await validateDeliveryOwnership(deliveryContext);
-            let durableSave = null;
-
-            if (segment) {
-                if (!cacheId) throw new Error('The subtitle project could not be resolved.');
-                if (autoRunContext) {
-                    durableSave = await commitDurableSubtitleCheckpoint({
-                        context: autoRunContext,
-                        subtitles,
-                        validateOwnership: assertAutoGenerationContextDurable
-                    });
-                } else {
-                    durableSave = await saveSubtitlesToCache(cacheId, subtitles, {
-                        expectedProjectId: deliveryContext.projectId,
-                    });
-                    requireSuccessfulSubtitleCacheSave(durableSave);
-                }
-            } else {
-                if (hasSubtitles || explicitNoSpeech) {
-                    if (autoRunContext) await assertAutoGenerationContextDurable(autoRunContext);
-                    if (autoRunContext) {
-                        durableSave = await commitDurableSubtitleCheckpoint({
-                            context: autoRunContext,
-                            subtitles,
-                            validateOwnership: assertAutoGenerationContextDurable
-                        });
-                    }
-                }
-            }
-
-            // Cache full-media results. Segment results were committed immediately above so
-            // generic streaming could not announce success ahead of durability.
-            if (cacheId && Array.isArray(subtitles) && !segment) {
-                if (autoRunContext) {
-                    if (!durableSave) {
-                        durableSave = await commitDurableSubtitleCheckpoint({
-                            context: autoRunContext,
-                            subtitles,
-                            validateOwnership: assertAutoGenerationContextDurable
-                        });
-                    }
-                } else {
-                    durableSave = await saveSubtitlesToCache(cacheId, subtitles, {
-                        expectedProjectId: deliveryContext.projectId,
-                    });
-                    requireSuccessfulSubtitleCacheSave(durableSave);
-                }
-            }
-
-            let completion = null;
-            if (autoRunContext) {
-                if (!isDurableSubtitleCheckpointReceipt(durableSave, autoRunContext)) {
-                    throw new Error('Automatic subtitles were not durably saved.');
-                }
-                completion = createAutoGenerationCompletion({
-                    context: autoRunContext,
-                    terminal: hasSubtitles ? 'subtitles' : 'no-speech',
-                    checkpoint: durableSave,
-                });
-            } else if (!isSuccessfulSubtitleCacheSaveReceipt(durableSave)) {
-                throw new Error('Subtitles were not durably saved.');
-            }
-
-            await validateDeliveryOwnership(deliveryContext);
-            const deliveryCommit = await acknowledgeGeminiTranscriptionDeliveries({
-                rows: subtitles,
-                receipt: durableSave,
-                context: deliveryContext,
-                validateOwnership: validateDeliveryOwnership,
+            return await commitGeminiGeneration({
+                subtitles,
+                segment,
+                requestedSegment: options.requestedSegment,
+                cacheId: prepared.cacheId,
+                runId,
+                speechOnly,
+                autoRunContext,
+                deliveryContext,
+                validateDeliveryOwnership,
+                fullMediaStreamingHandler,
+                presentation,
+                t,
             });
-            await validateDeliveryOwnership(deliveryContext);
-            fullMediaStreamingHandler?.cancel?.();
-            setGenerationSubtitlesData(subtitles);
-
-            // This owner is the first layer allowed to publish terminal UI. Both the status and
-            // streaming-complete lifecycle happen only after a privately branded native receipt.
-            setGenerationStatus(deliveryCommit.acknowledged
-                ? subtitleCompletionStatus(subtitles, t, { speechOnly })
-                : {
-                    message: t(
-                        'output.subtitlesDeliveryPending',
-                        'Subtitles were saved. Native result cleanup will retry automatically.'
-                    ),
-                    type: 'warning',
-                });
-            if (hasSubtitles && canPresent()) {
-                publishStreamingComplete({
-                    subtitles,
-                    segment: segment ?? options.requestedSegment,
-                    runId,
-                });
-            }
-            if (completion) return completion;
-            return true;
         } catch (error) {
-            if (!canPresent()) return false;
-            fullMediaStreamingHandler?.rollback?.();
-            // The stop event already publishes the intentional cancellation notice.
-            // Preserve it while finally releases this run's presentation ownership.
-            if (isSubtitleOperationCancellation(error)) return false;
-            if (error?.code === 'subtitleCacheSaveFailed') {
-                setGenerationStatus({
-                    message: t(
-                        'output.subtitlesCacheSaveFailed',
-                        'Subtitles were generated, but they could not be saved.'
-                    ),
-                    type: 'error'
-                });
-                return false;
-            }
-            try {
-                if (!reportKnownGeminiSubtitleError(error, {
-                    t,
-                    setStatus: setGenerationStatus,
-                    startQuotaCountdown
-                })) {
-                    // Not a recognised error type - parse a structured error payload from Gemini.
-                    const errorData = JSON.parse(error.message);
-                    if (errorData.type === 'unrecognized_format') {
-                        setGenerationStatus({
-                            message: `${errorData.message}\n\nRaw text from Gemini:\n${errorData.rawText}`,
-                            type: 'error'
-                        });
-                    } else {
-                        setGenerationStatus({ message: `Error: ${error.message}`, type: 'error' });
-                    }
-                }
-            } catch {
-                // The structured-error JSON.parse above threw (non-JSON message); fall back to a
-                // recognised-error check then a generic message.
-                if (!reportKnownGeminiSubtitleError(error, {
-                    t,
-                    setStatus: setGenerationStatus,
-                    startQuotaCountdown
-                })) {
-                    setGenerationStatus({ message: `Error: ${error.message}`, type: 'error' });
-                }
-            }
-            return false;
+            return presentGeminiGenerationFailure(error, {
+                canPresent: presentation.canPresent,
+                fullMediaStreamingHandler,
+                setGenerationStatus,
+                startQuotaCountdown,
+                t,
+            });
         } finally {
             fullMediaStreamingHandler?.cancel?.();
             if (ownsPresentation()) {
-                generationPresentationOwnerRef.current = null;
+                releasePresentation();
                 setIsGenerating(false);
             }
         }
@@ -985,8 +526,6 @@ export const useSubtitles = (t) => {
         setSubtitlesData,
         currentSourceFileRef
     });
-
-    // State to track which segments are currently being retried is defined at the top of the hook
 
     // Segment retry: the (deprecated) per-segment callback + the
     // RETRY_SEGMENT_FROM_CACHE listener (Files-API offsets vs clipped fallback,

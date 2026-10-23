@@ -37,6 +37,7 @@ import {
 } from '../platform/activeNativeMedia';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
 import { isSubtitleOperationCancellation } from '../utils/subtitleOperationOwnership';
+import { createSubtitleRunId } from './subtitleRunId';
 
 /**
  * retryGeneration extracted from useSubtitles.
@@ -58,7 +59,7 @@ export const useSubtitlesRetryGeneration = ({
         const generationEpoch = generationEpochRef.current + 1;
         generationEpochRef.current = generationEpoch;
         const ownsGeneration = () => generationEpochRef.current === generationEpoch;
-        const runId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
+        const runId = createSubtitleRunId();
         // Extract options
         const { userProvidedSubtitles } = options;
         const speechOnly = getEmptySpeechPolicy(

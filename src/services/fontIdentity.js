@@ -23,17 +23,17 @@
 
 import { fontOptions } from '../components/subtitleCustomization/fontOptions';
 
-export const FONT_IDENTITY_CONTRACT_VERSION = 1;
+const FONT_IDENTITY_CONTRACT_VERSION = 1;
 
 export const FONT_WEIGHT_MINIMUM = 100;
 export const FONT_WEIGHT_MAXIMUM = 900;
-export const FONT_WEIGHT_STEP = 100;
+const FONT_WEIGHT_STEP = 100;
 /** Mirrors the `boundedText(256)` bound the customization validator already applies. */
 export const MAX_FONT_FAMILY_BYTES = 256;
 
-export const FONT_SOURCE_KIND = Object.freeze({ managed: 'managed', system: 'system' });
+const FONT_SOURCE_KIND = Object.freeze({ managed: 'managed', system: 'system' });
 
-export const FONT_STYLES = Object.freeze(['normal', 'italic']);
+const FONT_STYLES = Object.freeze(['normal', 'italic']);
 
 export const PLATFORMS = Object.freeze(['windows', 'macos', 'linux']);
 

@@ -13,104 +13,34 @@ import {
   legacyRowsToCanonicalTrack,
   readLegacySubtitleTrack,
   removeLegacySubtitleTrack,
-  replaceLegacySubtitleTrack,
 } from './projectSnapshotAdapter';
 import { clearActiveTranscript, loadProjectTranscript } from './transcriptStore';
+import {
+  SUBTITLE_CACHE_TRACK_LABEL,
+  SubtitleProjectStoreError,
+  normalizeIndex,
+  projectNameForCache,
+  validateCacheId,
+} from './subtitleProjectAliasIndex';
+import { createSubtitleSegmentRevisions } from './subtitleSegmentRevision';
+import {
+  EDITOR_TRACK_SELECTOR,
+  bindEditorRowIdentities,
+  cachedTrack,
+  conflict,
+  mapHistoryError,
+  readRows,
+  rowsMatch,
+  writeRows,
+} from './subtitleTrackRows';
 
-export const SUBTITLE_PROJECT_INDEX_KEY = 'project.subtitleCacheIndex.v1';
-export const SUBTITLE_CACHE_TRACK_LABEL = 'Cached subtitles';
-export const MAX_SUBTITLE_PROJECT_ALIASES = 2_048;
-export const MAX_SUBTITLE_PROJECT_INDEX_BYTES = 900 * 1024;
+export {
+  MAX_SUBTITLE_PROJECT_ALIASES,
+  SUBTITLE_CACHE_TRACK_LABEL,
+} from './subtitleProjectAliasIndex';
 
-const INDEX_SCHEMA_VERSION = 1;
 const SAVE_REASON = 'Save cached subtitles';
 const CLEAR_REASON = 'Clear cached subtitles for retry';
-const REPLACE_SEGMENT_REASON = 'Replace regenerated subtitle segment';
-const EDITOR_TRACK_SELECTOR = Object.freeze({
-  label: SUBTITLE_CACHE_TRACK_LABEL,
-  origin: 'legacyJson',
-});
-const segmentRevisionTokens = new WeakMap();
-
-const isControlCharacter = character => /\p{Cc}/u.test(character);
-
-export class SubtitleProjectStoreError extends Error {
-  constructor(code, message, details = {}) {
-    super(message);
-    this.name = 'SubtitleProjectStoreError';
-    this.code = code;
-    Object.assign(this, details);
-  }
-}
-
-const validateCacheId = (cacheId) => {
-  if (typeof cacheId !== 'string' || cacheId.length === 0 || cacheId.length > 8_192
-      || Array.from(cacheId).some(isControlCharacter)) {
-    throw new SubtitleProjectStoreError('invalidCacheId', 'A bounded subtitle cache ID is required');
-  }
-  return cacheId;
-};
-
-const projectNameForCache = (cacheId) => {
-  const cleaned = Array.from(cacheId, (character) => (
-    isControlCharacter(character) ? ' ' : character
-  )).join('').trim();
-  const name = Array.from(cleaned).slice(0, 200).join('').trim();
-  return name || 'Subtitles';
-};
-
-const emptyIndex = () => ({
-  schemaVersion: INDEX_SCHEMA_VERSION,
-  activeCacheId: null,
-  entries: [],
-});
-
-const parseSerializedIndex = (value) => {
-  if (typeof value !== 'string' || value.length === 0
-      || value.length > MAX_SUBTITLE_PROJECT_INDEX_BYTES) {
-    return value;
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-};
-
-const normalizeIndex = (rawValue) => {
-  const value = parseSerializedIndex(rawValue);
-  if (!value || value.schemaVersion !== INDEX_SCHEMA_VERSION || !Array.isArray(value.entries)) {
-    return emptyIndex();
-  }
-
-  const entries = [];
-  const seenCacheIds = new Set();
-  const seenProjectIds = new Set();
-  value.entries.forEach((entry) => {
-    if (!entry || typeof entry.cacheId !== 'string' || entry.cacheId.length === 0
-        || entry.cacheId.length > 8_192 || Array.from(entry.cacheId).some(isControlCharacter)
-        || !isUuidV7(entry.projectId)
-        || !Number.isSafeInteger(entry.lastOpenedAt) || entry.lastOpenedAt < 0
-        || seenCacheIds.has(entry.cacheId) || seenProjectIds.has(entry.projectId)) {
-      return;
-    }
-    seenCacheIds.add(entry.cacheId);
-    seenProjectIds.add(entry.projectId);
-    entries.push({
-      cacheId: entry.cacheId,
-      projectId: entry.projectId,
-      lastOpenedAt: entry.lastOpenedAt,
-    });
-  });
-
-  entries.sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
-  const bounded = entries.slice(0, MAX_SUBTITLE_PROJECT_ALIASES);
-  const activeCacheId = typeof value.activeCacheId === 'string'
-      && bounded.some((entry) => entry.cacheId === value.activeCacheId)
-    ? value.activeCacheId
-    : null;
-  return { schemaVersion: INDEX_SCHEMA_VERSION, activeCacheId, entries: bounded };
-};
 
 export const createSubtitleProjectStore = ({
   invokeCommand = invokeDesktop,
@@ -300,160 +230,6 @@ export const createSubtitleProjectStore = ({
     });
   };
 
-  const readRows = (snapshot) => (
-    readLegacySubtitleTrack(snapshot, { label: SUBTITLE_CACHE_TRACK_LABEL }) ?? []
-  );
-
-  const validateSegment = (segment) => {
-    const start = segment?.start;
-    const end = segment?.end;
-    if (!Number.isFinite(start) || start < 0 || !Number.isFinite(end) || end <= start) {
-      throw new SubtitleProjectStoreError(
-        'invalidSubtitleSegment',
-        'A valid subtitle segment is required'
-      );
-    }
-    return Object.freeze({ start, end });
-  };
-
-  const cloneRows = (rows) => rows.map((row) => ({ ...row }));
-
-  const rowsTouchingSegment = (rows, segment) => rows.filter((row) => (
-    row.start < segment.end && row.end > segment.start
-  ));
-
-  const rowsEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-
-  const mergeSegmentRows = (rows, replacement, segment) => {
-    const preserved = [];
-    rows.forEach((row) => {
-      if (row.end <= segment.start || row.start >= segment.end) {
-        preserved.push(row);
-      } else if (row.start < segment.start && row.end > segment.end) {
-        preserved.push({ ...row, end: segment.start });
-        preserved.push({ ...row, start: segment.end });
-      } else if (row.start < segment.start && row.end > segment.start) {
-        preserved.push({ ...row, end: segment.start });
-      } else if (row.start < segment.end && row.end > segment.end) {
-        preserved.push({ ...row, start: segment.end });
-      }
-    });
-    return [...preserved, ...replacement]
-      .sort((left, right) => left.start - right.start);
-  };
-
-  const writeRows = (snapshot, rows) => {
-    if (!Array.isArray(rows)) {
-      throw new SubtitleProjectStoreError(
-        'invalidSubtitles',
-        'Subtitle editor rows must be an array'
-      );
-    }
-    if (rows.length === 0) {
-      return removeLegacySubtitleTrack(snapshot, { label: SUBTITLE_CACHE_TRACK_LABEL });
-    }
-    return replaceLegacySubtitleTrack(snapshot, rows, { label: SUBTITLE_CACHE_TRACK_LABEL });
-  };
-
-  const comparableTrack = (trackValue) => {
-    if (trackValue == null) return null;
-    const ordinalById = new Map(trackValue.cues.map((cue) => [cue.id, cue.ordinal]));
-    return {
-      label: trackValue.label,
-      origin: trackValue.origin,
-      cues: trackValue.cues.map((cue) => ({
-        ordinal: cue.ordinal,
-        startMs: cue.startMs,
-        endMs: cue.endMs,
-        text: cue.text,
-        speaker: cue.speaker ?? null,
-        sourceOrdinal: cue.sourceId == null ? null : ordinalById.get(cue.sourceId) ?? null,
-      })),
-    };
-  };
-
-  const cachedTrack = (snapshot) => snapshot.tracks.find((candidate) => (
-    candidate.origin === 'legacyJson' && candidate.label === SUBTITLE_CACHE_TRACK_LABEL
-  )) ?? null;
-
-  const identityFreeTrack = (rows, snapshot) => {
-    if (rows.length === 0) return null;
-    const existing = cachedTrack(snapshot);
-    return legacyRowsToCanonicalTrack(rows, {
-      label: existing?.label ?? SUBTITLE_CACHE_TRACK_LABEL,
-      origin: existing?.origin ?? 'legacyJson',
-    });
-  };
-
-  const rowsMatch = (snapshot, rows) => {
-    // Local numeric IDs are ordinals from the revision in which the editor loaded them. Inserting
-    // a UUID cue shifts later native ordinals, so canonicalizing against the *current* track can
-    // bind local ID 2 to the newly inserted cue and even report a duplicate before semantics are
-    // compared. Validate/canonicalize independently, then compare only timing, text and lineage.
-    return JSON.stringify(comparableTrack(identityFreeTrack(rows, snapshot)))
-      === JSON.stringify(comparableTrack(cachedTrack(snapshot)));
-  };
-
-  const localIdentityKey = (value) => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number' && !Number.isFinite(value)) return null;
-    if (typeof value !== 'string' && typeof value !== 'number'
-        && typeof value !== 'boolean') return null;
-    return `${typeof value}:${JSON.stringify(value)}`;
-  };
-
-  const rowStartMs = (row) => Math.round((row.start ?? row.startTime) * 1_000);
-  const rowEndMs = (row) => Math.round((row.end ?? row.endTime) * 1_000);
-
-  /**
-   * Rebind this editor revision's local identities to the exact native baseline.
-   *
-   * Legacy rows expose numeric ordinals while newly-created rows already carry UUIDv7. Ordinals
-   * are not identities after insert/delete/split, so pair the semantically matched, sorted baseline
-   * with its authoritative native cues and translate every identity carried into the replacement.
-   */
-  const bindEditorRowIdentities = (beforeTrack, beforeRows, afterRows) => {
-    if (beforeTrack === null) return afterRows;
-    const orderedBefore = beforeRows.map((row, inputIndex) => ({ row, inputIndex }))
-      .sort((left, right) => (
-        rowStartMs(left.row) - rowStartMs(right.row)
-          || rowEndMs(left.row) - rowEndMs(right.row)
-          || left.inputIndex - right.inputIndex
-      ));
-    if (orderedBefore.length !== beforeTrack.cues.length) return afterRows;
-
-    const nativeIdByLocal = new Map();
-    orderedBefore.forEach(({ row }, index) => {
-      const key = localIdentityKey(row.id);
-      if (key !== null) nativeIdByLocal.set(key, beforeTrack.cues[index].id);
-    });
-    const rebound = (value) => {
-      const key = localIdentityKey(value);
-      return key !== null && nativeIdByLocal.has(key) ? nativeIdByLocal.get(key) : value;
-    };
-    return afterRows.map((row) => {
-      const next = { ...row };
-      if (Object.prototype.hasOwnProperty.call(next, 'id')) next.id = rebound(next.id);
-      if (Object.prototype.hasOwnProperty.call(next, 'originalId')) {
-        next.originalId = rebound(next.originalId);
-      }
-      if (Object.prototype.hasOwnProperty.call(next, 'sourceId')) {
-        next.sourceId = rebound(next.sourceId);
-      }
-      return next;
-    });
-  };
-
-  const conflict = (snapshot) => new SubtitleProjectStoreError(
-    'subtitleHistoryDiverged',
-    'The durable subtitle track changed outside this editor history',
-    { authoritativeRows: readRows(snapshot), authoritativeSnapshot: snapshot }
-  );
-
-  const mapHistoryError = (error) => (
-    error?.authoritativeSnapshot == null ? error : conflict(error.authoritativeSnapshot)
-  );
-
   const commitEditorRevision = async (cacheId, beforeRows, afterRows, reason) => {
     if (typeof reason !== 'string' || reason.length === 0) {
       throw new SubtitleProjectStoreError(
@@ -608,179 +384,10 @@ export const createSubtitleProjectStore = ({
     return result.snapshot;
   };
 
-  /**
-   * Capture the exact durable rows owned by a segment operation. The public
-   * token contains diagnostics only; its baseline is kept in this store so a
-   * caller cannot forge or mutate the compare-and-swap precondition.
-   */
-  const captureSegmentRevision = async (
-    cacheId,
-    segment,
-    { expectedProjectId = null } = {}
-  ) => {
-    const range = validateSegment(segment);
-    const resolved = await resolve(cacheId, { create: true });
-    if (!resolved?.projectId
-        || (expectedProjectId !== null && resolved.projectId !== expectedProjectId)) {
-      throw new SubtitleProjectStoreError(
-        'projectScopeMismatch',
-        'The active subtitle project changed before its segment could be captured'
-      );
-    }
-    let snapshot = null;
-    let status = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      snapshot = await projects.loadProject(resolved.projectId);
-      if (snapshot === null) throw conflict(resolved.snapshot);
-      status = await projects.getProjectTrackHistoryStatus(
-        resolved.projectId,
-        EDITOR_TRACK_SELECTOR
-      );
-      if (status.stateVersion === snapshot.stateVersion) break;
-      snapshot = null;
-      status = null;
-    }
-    if (snapshot === null || status === null) {
-      throw new SubtitleProjectStoreError(
-        'subtitleSegmentConflict',
-        'The subtitle project changed while its segment revision was being captured'
-      );
-    }
-    const token = Object.freeze({
-      kind: 'subtitle-segment-revision',
-      cacheId: resolved.cacheId,
-      projectId: resolved.projectId,
-      segment: range,
-      stateVersion: snapshot.stateVersion,
-      historyVersion: status.historyVersion,
-    });
-    segmentRevisionTokens.set(token, Object.freeze({
-      baseline: cloneRows(rowsTouchingSegment(readRows(snapshot), range)),
-    }));
-    return token;
-  };
-
-  /**
-   * Atomically replace only the captured range. ProjectService retries once
-   * against an authoritative snapshot, so edits outside the range survive a
-   * concurrent commit. A change inside the range fails closed instead of
-   * overwriting newer user work.
-   */
-  const commitSegmentRevision = async (revision, replacement, {
-    expectedProjectId = null,
-  } = {}) => {
-    const owned = revision && typeof revision === 'object'
-      ? segmentRevisionTokens.get(revision)
-      : null;
-    if (!owned || revision.kind !== 'subtitle-segment-revision') {
-      throw new SubtitleProjectStoreError(
-        'invalidSubtitleSegmentRevision',
-        'A captured subtitle segment revision is required'
-      );
-    }
-    if (expectedProjectId !== null && revision.projectId !== expectedProjectId) {
-      throw new SubtitleProjectStoreError(
-        'projectScopeMismatch',
-        'The active subtitle project changed before its segment could be saved'
-      );
-    }
-    if (!Array.isArray(replacement)) {
-      throw new SubtitleProjectStoreError(
-        'invalidSubtitles',
-        'A regenerated subtitle segment must be an array'
-      );
-    }
-    if (replacement.length > 0) {
-      legacyRowsToCanonicalTrack(replacement, { label: SUBTITLE_CACHE_TRACK_LABEL });
-    }
-    replacement.forEach((row) => {
-      if (row.start < revision.segment.start || row.end > revision.segment.end) {
-        throw new SubtitleProjectStoreError(
-          'invalidSubtitleSegment',
-          'Regenerated subtitles must stay inside the captured segment'
-        );
-      }
-    });
-
-    const resolved = await resolve(revision.cacheId);
-    if (!resolved?.projectId || resolved.projectId !== revision.projectId) {
-      throw new SubtitleProjectStoreError(
-        'projectScopeMismatch',
-        'The subtitle project alias no longer identifies the captured project'
-      );
-    }
-
-    let result = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const current = await projects.loadProject(revision.projectId);
-      if (current === null) throw conflict(resolved.snapshot);
-      const status = await projects.getProjectTrackHistoryStatus(
-        revision.projectId,
-        EDITOR_TRACK_SELECTOR
-      );
-      if (status.stateVersion !== current.stateVersion) {
-        if (attempt < 2) continue;
-        throw new SubtitleProjectStoreError(
-          'subtitleSegmentConflict',
-          'The subtitle project kept changing while its segment was being committed',
-          { authoritativeRows: cloneRows(readRows(current)) }
-        );
-      }
-      if (current.stateVersion < revision.stateVersion
-          || status.historyVersion < revision.historyVersion) {
-        throw new SubtitleProjectStoreError(
-          'subtitleSegmentConflict',
-          'The selected subtitle segment revision is no longer available',
-          { authoritativeRows: cloneRows(readRows(current)) }
-        );
-      }
-
-      const currentRows = readRows(current);
-      const currentSegment = rowsTouchingSegment(currentRows, revision.segment);
-      if (!rowsEqual(currentSegment, owned.baseline)) {
-        throw new SubtitleProjectStoreError(
-          'subtitleSegmentConflict',
-          'The selected subtitle segment changed while it was being regenerated',
-          { authoritativeRows: cloneRows(currentRows) }
-        );
-      }
-      const merged = mergeSegmentRows(currentRows, replacement, revision.segment);
-      if (rowsMatch(current, merged)) {
-        result = { snapshot: current, status };
-        break;
-      }
-      const candidate = writeRows(current, merged);
-      try {
-        result = await projects.commitProjectTrack({
-          id: revision.projectId,
-          selector: EDITOR_TRACK_SELECTOR,
-          expectedHistoryVersion: status.historyVersion,
-          beforeTrack: cachedTrack(current),
-          afterTrack: cachedTrack(candidate),
-          reason: REPLACE_SEGMENT_REASON,
-        });
-        break;
-      } catch (error) {
-        const retryable = error?.code === 'staleProjectVersion'
-          || error?.code === 'staleProjectTrackHistory'
-          || error?.code === 'projectTrackHistoryDiverged';
-        if (!retryable || attempt === 2) throw error;
-      }
-    }
-    if (result === null) {
-      throw new SubtitleProjectStoreError(
-        'subtitleSegmentConflict',
-        'The selected subtitle segment could not be committed atomically'
-      );
-    }
-    const rows = readRows(result.snapshot);
-    return Object.freeze({
-      cacheId: revision.cacheId,
-      projectId: revision.projectId,
-      stateVersion: result.snapshot.stateVersion,
-      rows: Object.freeze(cloneRows(rows).map(Object.freeze)),
-    });
-  };
+  const { captureSegmentRevision, commitSegmentRevision } = createSubtitleSegmentRevisions({
+    resolve,
+    projects,
+  });
 
   const clearSubtitles = async (
     cacheId = null,

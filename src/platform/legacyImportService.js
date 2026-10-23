@@ -200,8 +200,6 @@ export const createLegacyImportService = ({
 
 const legacyImportService = createLegacyImportService();
 
-export const importLegacyData = legacyImportService.importLegacyData;
-export const getLegacyImportStatus = legacyImportService.getLegacyImportStatus;
 
 const summaryTotals = (summary) => {
   const groups = [summary.settings, summary.credentials, summary.artifacts, summary.ignored];

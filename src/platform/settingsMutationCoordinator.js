@@ -35,7 +35,7 @@ export const subscribeSettingsResetState = (listener) => {
  * reach native SQLite, and reset cannot clear SQLite/browser mirrors until every earlier write has
  * either published or rejected.
  */
-export const runImmediateSettingsMutation = (mutation) => {
+const runImmediateSettingsMutation = (mutation) => {
   if (typeof mutation !== 'function') {
     return Promise.reject(new TypeError('A settings mutation is required'));
   }

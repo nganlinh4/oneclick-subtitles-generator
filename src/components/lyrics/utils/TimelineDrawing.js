@@ -3,8 +3,6 @@
  */
 
 import { timeToX } from './TimelineCalculations';
-// Legacy segment optimization is no longer needed with simplified processing
-// import { optimizeSegments, clearUnusedSegments } from '../../../utils/colorfulSegmentsOptimizer';
 import { drawTimeMarkers, drawLyricSegments, drawNarrationSegments, drawPlayhead } from './timelineDrawingHelpers';
 import { computeTimelineBands } from './timelineBands';
 

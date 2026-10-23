@@ -14,7 +14,7 @@
 
 import { invokeDesktop, isDesktopRuntime } from '../platform/desktopRuntime';
 
-export const FONT_REPAIR_COMMAND = 'font_readiness_retry';
+const FONT_REPAIR_COMMAND = 'font_readiness_retry';
 
 /**
  * Start a repair. Resolves with the state the attempt begins from, normally `repairing`.

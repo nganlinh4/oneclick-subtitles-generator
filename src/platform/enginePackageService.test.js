@@ -70,11 +70,14 @@ const createService = (overrides = {}) => createNativeEnginePackageService({
 });
 
 it('contains no HTTP, browser storage, URL, path, file, or byte-buffer transport', () => {
-  const source = fs.readFileSync(path.join(__dirname, 'enginePackageService.js'), 'utf8');
-  expect(source).not.toMatch(/\bfetch\s*\(/);
-  expect(source).not.toMatch(/localStorage\s*\./);
-  expect(source).not.toMatch(/https?:\/\//i);
-  expect(source).not.toMatch(/\b(path|url|file|base64|buffer)\s*:/i);
+  // Both modules the service was split across, so the guard keeps covering the moved code.
+  for (const module of ['enginePackageService', 'enginePackageContract']) {
+    const source = fs.readFileSync(path.join(__dirname, `${module}.js`), 'utf8');
+    expect(source, module).not.toMatch(/\bfetch\s*\(/);
+    expect(source, module).not.toMatch(/localStorage\s*\./);
+    expect(source, module).not.toMatch(/https?:\/\//i);
+    expect(source, module).not.toMatch(/\b(path|url|file|base64|buffer)\s*:/i);
+  }
 });
 
 it('strictly validates, freezes, and canonically orders all five package entries', () => {

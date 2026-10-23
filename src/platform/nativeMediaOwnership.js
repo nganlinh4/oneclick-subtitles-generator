@@ -34,7 +34,7 @@ const ATTACH_REASON = 'Associate active media with its subtitle project';
 let latestWorkspacePublication = 0;
 let suppressedBrowserSession = null;
 
-export class NativeMediaOwnershipError extends Error {
+class NativeMediaOwnershipError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'NativeMediaOwnershipError';
@@ -364,10 +364,15 @@ export const ensureProjectOwnsNativeMedia = async ({
  * `create: false` is essential: a remapped or deleted alias must fail closed rather than mint a
  * replacement project and orphan the real one. Losing the asset from the snapshot — an undo past
  * the attach revision, or a replacement import — also fails closed before any native call.
+ *
+ * `onStale` runs only when the stores answered and the answer disowns the session (the alias names
+ * another project, or that project no longer lists the asset). A failed lookup is not proof, so it
+ * returns null without calling it.
  */
 export const resolveOwnedNativeMediaProject = async (session, {
   resolveProject = resolveProjectForCache,
   adoptProject = adoptExactSubtitleProjectAlias,
+  onStale = () => {},
 } = {}) => {
   if (!isUuidV7(session?.assetId) || !isUuidV7(session?.projectId) || !isCacheId(session?.cacheId)) {
     return null;
@@ -381,9 +386,10 @@ export const resolveOwnedNativeMediaProject = async (session, {
   } catch {
     return null;
   }
-  if (resolved === null || resolved?.projectId !== session.projectId) return null;
-  if (!Array.isArray(resolved.snapshot?.media)
+  if (resolved === null || !Array.isArray(resolved?.snapshot?.media)) return null;
+  if (resolved.projectId !== session.projectId
       || !resolved.snapshot.media.some((asset) => asset?.id === session.assetId)) {
+    onStale();
     return null;
   }
   return resolved;

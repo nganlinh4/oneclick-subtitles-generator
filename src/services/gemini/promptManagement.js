@@ -470,20 +470,6 @@ Here are the subtitles:\n\n${subtitlesText}
 ${languageInstruction}`;
 };
 
-// Simple translation prompt for single subtitle retry
-const getSimpleTranslationPromptImpl = (subtitleText, targetLanguage) => {
-    if (Array.isArray(targetLanguage)) {
-        const languageList = targetLanguage.join(', ');
-        return `Translate the following text to ${languageList}. Return ONLY the translations, nothing else.
-
-Text: ${subtitleText}`;
-    } else {
-        return `Translate the following text to ${targetLanguage}. Return ONLY the translation, nothing else.
-
-Text: ${subtitleText}`;
-    }
-};
-
 // Export all functions at the module level
 export const getUserPromptPresets = getUserPromptPresetsImpl;
 export const saveUserPromptPresets = saveUserPromptPresetsImpl;
@@ -506,6 +492,5 @@ export const getTranscriptionPrompt = (contentType, userProvidedSubtitles = null
 };
 export const getEmptySpeechPolicy = getEmptySpeechPolicyImpl;
 export const getDefaultTranslationPrompt = getDefaultTranslationPromptImpl;
-export const getSimpleTranslationPrompt = getSimpleTranslationPromptImpl;
 export const getDefaultConsolidatePrompt = getDefaultConsolidatePromptImpl;
 export const getDefaultSummarizePrompt = getDefaultSummarizePromptImpl;

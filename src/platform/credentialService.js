@@ -1,7 +1,7 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop } from './desktopRuntime';
 
-export const CREDENTIAL_PURPOSES = Object.freeze([
+const CREDENTIAL_PURPOSES = Object.freeze([
   'geminiApiKey',
   'geniusAccessToken',
   'youtubeApiKey',
@@ -9,8 +9,8 @@ export const CREDENTIAL_PURPOSES = Object.freeze([
   'youtubeOauthToken',
 ]);
 
-export const CREDENTIAL_STATES = Object.freeze(['pending', 'ready', 'unavailable']);
-export const CREDENTIAL_STORE_STATES = Object.freeze(['available', 'locked', 'unavailable']);
+const CREDENTIAL_STATES = Object.freeze(['pending', 'ready', 'unavailable']);
+const CREDENTIAL_STORE_STATES = Object.freeze(['available', 'locked', 'unavailable']);
 
 const MAX_CREDENTIAL_BYTES = 16 * 1024;
 const MAX_CREDENTIAL_STATUSES = 1_024;

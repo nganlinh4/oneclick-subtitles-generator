@@ -17,7 +17,7 @@ const LANGUAGE_TAG = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const MAX_LANGUAGE_NAME = 256;
 const MAX_SECONDARY_LANGUAGES = 32;
 
-export class ProjectSubtitleLanguageError extends Error {
+class ProjectSubtitleLanguageError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'ProjectSubtitleLanguageError';
@@ -258,7 +258,6 @@ export const createProjectSubtitleLanguageStore = ({
 const store = createProjectSubtitleLanguageStore();
 
 export const captureProjectSubtitleLanguage = store.capture;
-export const assertProjectSubtitleLanguageCurrent = store.assertCurrent;
 export const persistProjectSubtitleLanguage = store.persist;
 export const acknowledgeProjectSubtitleLanguage = store.acknowledge;
 export const loadProjectSubtitleLanguage = store.load;

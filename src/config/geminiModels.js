@@ -58,9 +58,8 @@ const withUiMetadata = (model, index) => {
   };
 };
 
-export const GEMINI_MODEL_CATALOG = catalog;
 export const GEMINI_MODELS = catalog.models.map(withUiMetadata);
-export const GEMINI_MODEL_IDS = GEMINI_MODELS.map(({ id }) => id);
+const GEMINI_MODEL_IDS = GEMINI_MODELS.map(({ id }) => id);
 
 export const DEFAULT_GEMINI_MODEL_ID = catalog.defaults.ordinary;
 export const DEFAULT_TRANSCRIPTION_MODEL_ID = catalog.defaults.transcription;
@@ -69,12 +68,11 @@ export const DEFAULT_ANALYSIS_MODEL_ID = catalog.defaults.analysis;
 export const DEFAULT_BACKGROUND_PROMPT_MODEL_ID = catalog.defaults.backgroundPrompt;
 export const DEFAULT_FAST_TEXT_MODEL_ID = catalog.defaults.fastText;
 export const DEFAULT_IMAGE_GENERATION_MODEL_ID = catalog.defaults.imageGeneration;
-export const DEFAULT_SPEECH_MODEL_ID = catalog.defaults.speech;
 
 export const IMAGE_GENERATION_MODELS = sortModelsForDisplay(catalog.imageGenerationModels);
-export const GEMINI_SPEECH_MODEL_CATALOG = sortModelsForDisplay(catalog.speechModels);
+const GEMINI_SPEECH_MODEL_CATALOG = sortModelsForDisplay(catalog.speechModels);
 export const GEMINI_SPEECH_MODEL_IDS = GEMINI_SPEECH_MODEL_CATALOG.map(({ id }) => id);
-export const MEDIA_INPUT_MODALITIES = ['audio', 'video'];
+const MEDIA_INPUT_MODALITIES = ['audio', 'video'];
 
 /** Menu-only quota metadata; the closed control keeps its model name alone. */
 export const buildGeminiModelOption = (model, t) => {
@@ -99,12 +97,8 @@ export const modelAcceptsMedia = (id) => {
   const model = getModelById(catalog.legacyMigrations[id] || id);
   return Boolean(model?.modalities.some((modality) => MEDIA_INPUT_MODALITIES.includes(modality)));
 };
-export const getModelsForFeature = (feature) =>
+const getModelsForFeature = (feature) =>
   sortModelsForDisplay(GEMINI_MODELS.filter((model) => model.features.includes(feature)));
-export const modelSupportsFeature = (id, feature) => {
-  const model = getModelById(catalog.legacyMigrations[id] || id);
-  return model ? model.features.includes(feature) : true;
-};
 
 export const ANALYSIS_MODELS = getModelsForFeature('analysis');
 export const ANALYSIS_MODEL_IDS = ANALYSIS_MODELS.map(({ id }) => id);
@@ -146,7 +140,6 @@ export const normalizeImageGenerationModelId = (id) =>
   IMAGE_GENERATION_MODELS.some((model) => model.id === id)
     ? id
     : DEFAULT_IMAGE_GENERATION_MODEL_ID;
-export const isLegacyGeminiModel = (id) => Boolean(catalog.legacyMigrations[id]);
 export const migrateGeminiModelId = (id, fallback = DEFAULT_GEMINI_MODEL_ID) => {
   const normalized = typeof id === 'string' ? id.trim().replace(/^models\//, '') : '';
   if (!normalized) return fallback;
@@ -162,8 +155,6 @@ export const normalizeMediaModelId = (id, fallback = DEFAULT_TRANSCRIPTION_MODEL
     ? normalizedFallback
     : DEFAULT_TRANSCRIPTION_MODEL_ID;
 };
-export const isHighIntelligenceModel = (id) =>
-  (getModelById(migrateGeminiModelId(id))?.intelligenceTier || 0) >= 6;
 
 /** Migrate only known retired built-ins. Unknown IDs remain valid custom models. */
 export const migrateStoredGeminiModels = (storage = null) => {

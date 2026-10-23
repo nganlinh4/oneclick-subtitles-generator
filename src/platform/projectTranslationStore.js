@@ -2,7 +2,7 @@ import { patchProjectAuxiliary, readProjectAuxiliary } from './projectAuxiliaryS
 import { resolveProjectForCache } from './subtitleProjectStore';
 import { cloneTranslationRecord, normalizeTranslationRecord } from '../utils/translationOwnership';
 
-export class ProjectTranslationStoreError extends Error {
+class ProjectTranslationStoreError extends Error {
   constructor(code, message, details = {}) {
     super(message);
     this.name = 'ProjectTranslationStoreError';
@@ -280,7 +280,6 @@ export const createProjectTranslationStore = ({
 const projectTranslationStore = createProjectTranslationStore();
 
 export const resolveExactTranslationProject = projectTranslationStore.resolveExact;
-export const assertExactTranslationProject = projectTranslationStore.assertStillExact;
 export const readProjectTranslation = projectTranslationStore.read;
 export const persistProjectTranslation = projectTranslationStore.persist;
 export const captureProjectTranslationRevision = projectTranslationStore.captureRevision;

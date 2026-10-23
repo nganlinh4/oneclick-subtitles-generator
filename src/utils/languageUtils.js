@@ -88,7 +88,7 @@ export const getLanguageCode = (language) => {
  * @param {string} code - The ISO language code (e.g., "en", "es")
  * @returns {string} - The language name (e.g., "English", "Spanish")
  */
-export const getLanguageName = (code) => {
+const getLanguageName = (code) => {
   if (!code) return 'English'; // Default to English if no code provided
   
   // Convert to lowercase for case-insensitive matching

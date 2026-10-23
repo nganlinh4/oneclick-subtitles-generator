@@ -12,12 +12,12 @@ import { getCurrentCacheId } from '../utils/userSubtitlesStore';
 import { getCurrentMediaId } from '../utils/mediaId';
 import { cloneTranslationRecord, normalizeTranslationRecord } from '../utils/translationOwnership';
 
-export const BROWSER_TRANSLATION_CACHE_KEY = 'translated_subtitles_cache';
+const BROWSER_TRANSLATION_CACHE_KEY = 'translated_subtitles_cache';
 
 const browserReceipts = new WeakMap();
 const browserRevisions = new WeakMap();
 
-export class TranslationPersistenceError extends Error {
+class TranslationPersistenceError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'TranslationPersistenceError';

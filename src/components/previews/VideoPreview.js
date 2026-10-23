@@ -22,16 +22,12 @@ import CanvasVideoPreview from './canvas/CanvasVideoPreview';
 import { selectPreviewCue } from './native/nativePreviewScene';
 import useNativePreviewToast from './native/useNativePreviewToast';
 import { EDITOR_PREVIEW_RESOLUTION, translatedSubtitlesForRender } from './previewCueSelection';
-import {
-  applyPreviewSettingsToProjectScene,
-  previewSettingsFromProjectScene,
-} from './projectPreviewSettings';
+import useProjectSubtitleSettings from './useProjectSubtitleSettings';
 // Narration settings now integrated into the translation section
 import '../../styles/VideoPreview.css';
 import '../../styles/narration/index.css';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 import { useProjectRenderScene } from '../../platform/projectRenderScene';
-import { defaultCustomization } from '../subtitleCustomization/defaultCustomization';
 import { showInfoToast } from '../../utils/toastUtils';
 
 export const admittedPlaybackSourceUrl = (committedSource, requestedUrl) => (
@@ -166,45 +162,11 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
     onSeekRequestConsumed?.(seekRequest);
   }, [isLoaded, onSeekRequestConsumed, seekRequest, seekTo, videoSource, videoUrl]);
 
-  // The main editor and Render tab are two views of this one project-owned scene. The browser-era
-  // `subtitle_settings` localStorage record is deliberately not read or mirrored here: it had no
-  // project identity, so project B could inherit project A's style while export used a different
-  // SQLite scene. A loading scene shows the canonical defaults for a few milliseconds; updates made
-  // during loading are queued by the authority and applied to the loaded scene before publication.
-  const subtitleSettings = useMemo(
-    () => previewSettingsFromProjectScene(projectRenderScene),
-    [projectRenderScene],
-  );
-  const handleSubtitleSettingsChange = useCallback((nextSettings) => {
-    try {
-      updateProjectRenderScene((previous) => (
-        applyPreviewSettingsToProjectScene(previous, nextSettings)
-      ));
-    } catch (error) {
-      window.addToast?.(
-        error?.message || t('videoPreview.projectStyleUnavailable', 'Add a video before styling subtitles.'),
-        'error',
-        8000,
-        'project-subtitle-style',
-      );
-    }
-  }, [t, updateProjectRenderScene]);
-  const resetSubtitleSettings = useCallback(() => {
-    try {
-      updateProjectRenderScene((previous) => ({
-        ...previous,
-        selectedSubtitles: 'original',
-        customization: { ...defaultCustomization },
-      }));
-    } catch (error) {
-      window.addToast?.(
-        error?.message || t('videoPreview.projectStyleUnavailable', 'Add a video before styling subtitles.'),
-        'error',
-        8000,
-        'project-subtitle-style',
-      );
-    }
-  }, [t, updateProjectRenderScene]);
+  const {
+    subtitleSettings,
+    handleSubtitleSettingsChange,
+    resetSubtitleSettings,
+  } = useProjectSubtitleSettings({ projectRenderScene, updateProjectRenderScene, t });
   // Timeline/volume seek-drag + external seek (owns drag + volume-slider state)
   const {
     isDragging,
@@ -479,11 +441,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
             onMouseEnter={() => !isFullscreen && setIsVideoHovered(true)}
             onMouseLeave={() => !isFullscreen && setIsVideoHovered(false)}
           >
-              {/* Video quality toggle - only show when optimized video is available */}
-
-
-
-
               <div className="video-wrapper" style={{ position: 'relative' }}>
                 {/* Topside buttons component */}
                 <VideoTopsideButtons
@@ -590,9 +547,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
                   videoSource={videoSource}
                   fileType={fileType}
                 />
-
-
-
 
                 {/* Loading overlay for narration refresh */}
                 {isRefreshingNarration && (

@@ -421,7 +421,6 @@ const cacheMatchesPlan = (plan) => (
   && cache.alignmentKey === createNativeNarrationPlanKey(plan)
 );
 
-export const isAlignedNarrationAvailableForPlan = (plan) => cacheMatchesPlan(plan);
 export const getAlignedNarrationUrlForPlan = (plan) => (
   cacheMatchesPlan(plan) ? cache.url : null
 );

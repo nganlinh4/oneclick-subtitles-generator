@@ -13,7 +13,7 @@ import { systemFontProbe } from '../platform/systemFontProbe';
 export { systemFontProbe };
 
 const FONT_WEIGHTS = Object.freeze([400, 700, 300, 500, 600, 800, 900, 100, 200]);
-export const FONT_WEIGHT_VALUES = Object.freeze([100, 200, 300, 400, 500, 600, 700, 800, 900]);
+const FONT_WEIGHT_VALUES = Object.freeze([100, 200, 300, 400, 500, 600, 700, 800, 900]);
 
 export const fontPlatform = (userAgent = typeof navigator === 'object' ? navigator.userAgent : '') => {
   const agent = String(userAgent).toLowerCase();

@@ -30,7 +30,7 @@ export const detectDarkTheme = () => {
 };
 
 // Helpers to read CSS variables
-export const getCssVar = (name, fallback) => {
+const getCssVar = (name, fallback) => {
   if (typeof window === 'undefined') return fallback;
   const styles = getComputedStyle(document.documentElement);
   const val = styles.getPropertyValue(name).trim();

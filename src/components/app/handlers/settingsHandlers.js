@@ -22,13 +22,10 @@ const NATIVE_SECRET_ALIASES = [
   "youtube_oauth_token",
 ];
 
-export const getNativeCredentialAvailability = (snapshot, useOAuth = false) => (
+const getNativeCredentialAvailability = (snapshot, useOAuth = false) => (
   getCredentialAvailability(snapshot, { useOAuth })
 );
 
-// Gated debug logging (enable in the browser console: localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
 
 /**
  * Create settings/navigation handlers (save API keys, tab change, cancel download).
@@ -148,10 +145,6 @@ export const createSettingsHandlers = ({
         useOptimizedPreviewSetting.toString()
       );
       setUseOptimizedPreview(useOptimizedPreviewSetting);
-      dbg(
-        "[AppHandlers] Updated useOptimizedPreview setting:",
-        useOptimizedPreviewSetting
-      );
 
       // Trigger a custom event to immediately notify VideoPreview component
       // This ensures immediate synchronization without waiting for the 500ms interval

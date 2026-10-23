@@ -7,7 +7,7 @@ import {
 import { getF5ModelsStatus } from '../platform/f5ModelService';
 
 const PACKAGE_BACKEND = 'f5-tts';
-export const DEFAULT_NARRATION_MODEL_ID = 'f5tts-v1-base';
+const DEFAULT_NARRATION_MODEL_ID = 'f5tts-v1-base';
 
 const handlerKeys = new Set([
   'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed',
@@ -31,7 +31,7 @@ const DEFAULT_MODEL = Object.freeze({
   }),
 });
 
-export class ModelServiceError extends Error {
+class ModelServiceError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'ModelServiceError';

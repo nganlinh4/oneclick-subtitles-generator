@@ -69,26 +69,10 @@ const cursiveJoining = (codePoint) => {
 };
 
 /**
- * `count` distinct dual-joining clusters, for a fixture that needs many of them.
- *
- * Marks and format characters are skipped because neither is a cluster of its own: a mark welds
- * itself to the letter before it, which would make the fixture shorter than it says it is.
- */
-export const dualJoining = (count) => {
-  const letters = [];
-  for (let codePoint = 0x0620; letters.length < count && codePoint <= 0x08ff; codePoint += 1) {
-    const character = String.fromCodePoint(codePoint);
-    const standalone = !COMBINING.test(character) && !/[\p{Cf}\p{White_Space}]/u.test(character);
-    if (standalone && !RIGHT_JOINING.has(codePoint)) letters.push(character);
-  }
-  return letters;
-};
-
-/**
  * Each contextual form's advance, as a fraction of the size. All four differ, which is exactly why
  * an isolated cell cannot reproduce a joined run: the sum of the isolated advances is not the run.
  */
-export const CURSIVE_FORM_RATIOS = Object.freeze({
+const CURSIVE_FORM_RATIOS = Object.freeze({
   isolated: 0.6, initial: 0.5, medial: 0.4, final: 0.55,
 });
 
@@ -392,14 +376,6 @@ export const cursive = (request, surfaceOptions) => bakeGlyphAtlas(
  */
 export const cellTextsOf = (descriptor) => descriptor.glyphs.map((glyph) => glyph.cluster);
 
-/** One cell's coverage, sampled at the middle of its ink so two forms can be told apart. */
-export const cellAlphaOf = (descriptor, cell) => {
-  const glyph = descriptor.glyphs[cell];
-  const x = glyph.xPx + Math.floor(glyph.widthPx / 2);
-  const y = glyph.yPx + Math.floor(glyph.heightPx / 2);
-  return descriptor.pixels[(y * descriptor.atlas.widthPx + x) * 4 + 3];
-};
-
 export const codeOf = (run) => {
   try {
     run();
@@ -409,8 +385,6 @@ export const codeOf = (run) => {
   }
   throw new Error('expected the bake to be rejected');
 };
-
-export const clustersOf = (descriptor) => descriptor.glyphs.map((glyph) => glyph.cluster);
 
 /** The text of each laid-out line, reconstructed from the cells the line actually indexes. */
 export const lineTextsOf = (descriptor) => descriptor.layout.lines.map(

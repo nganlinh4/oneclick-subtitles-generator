@@ -202,7 +202,6 @@ const useVideoProcessingState = ({
             // but we need to update the previous setting so when we exit timing generation,
             // we restore to the user's manual choice
             setPreviousAutoSplitSetting(newValue);
-            console.log('[VideoProcessingModal] Manual auto-split toggle in timing generation mode - updated saved state to:', newValue);
         }
         setAutoSplitSubtitles(newValue);
     }, [isInTimingGenerationMode]);
@@ -218,12 +217,10 @@ const useVideoProcessingState = ({
             setPreviousAutoSplitSetting(autoSplitSubtitles);
             setAutoSplitSubtitles(false);
             setIsInTimingGenerationMode(true);
-            console.log('[VideoProcessingModal] Switched to timing generation - saved auto-split state:', autoSplitSubtitles, 'and disabled it');
         } else if (!isTimingGeneration && wasTimingGeneration) {
             // Switching FROM timing generation - restore previous auto-split state
             setAutoSplitSubtitles(previousAutoSplitSetting);
             setIsInTimingGenerationMode(false);
-            console.log('[VideoProcessingModal] Switched from timing generation - restored auto-split state:', previousAutoSplitSetting);
         }
     }, [selectedPromptPreset, autoSplitSubtitles, isInTimingGenerationMode, previousAutoSplitSetting]);
 

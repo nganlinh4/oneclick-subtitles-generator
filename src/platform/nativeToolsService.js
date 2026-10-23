@@ -3,14 +3,14 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
 
 export const NATIVE_TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
-export const NATIVE_TOOL_STATES = Object.freeze([
+const NATIVE_TOOL_STATES = Object.freeze([
   'unavailable',
   'missing',
   'installed',
   'corrupt',
 ]);
-export const NATIVE_TOOL_ACTIONS = Object.freeze(['install', 'remove']);
-export const NATIVE_TOOL_PHASES = Object.freeze([
+const NATIVE_TOOL_ACTIONS = Object.freeze(['install', 'remove']);
+const NATIVE_TOOL_PHASES = Object.freeze([
   'preparing',
   'downloading',
   'extracting',
@@ -152,7 +152,7 @@ const normalizeVersion = (value) => {
   return value;
 };
 
-export const normalizeNativeToolJob = (value) => {
+const normalizeNativeToolJob = (value) => {
   if (!hasExactKeys(value, jobKeys)
       || !hasExactKeys(value.progress, progressKeys)
       || !isUuidV7(value.id)

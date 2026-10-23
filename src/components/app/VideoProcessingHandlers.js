@@ -7,11 +7,15 @@ import {
 } from '../../platform/mediaService';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 import {
-  ensureProjectOwnsNativeMedia,
   forgetNativeMediaSessionDurably,
   persistNativeMediaSession,
   readNativeMediaSession,
 } from '../../platform/nativeMediaOwnership';
+import {
+  captureMediaCompatibility,
+  publishOwnedUrlMedia,
+  restoreMediaCompatibility,
+} from '../../platform/urlMediaPublication';
 import {
   activateSubtitleProjectBinding,
   clearSubtitleProjectBinding,
@@ -154,12 +158,7 @@ export const downloadAndPrepareYouTubeVideo = async (
         previousMedia = await getSelectedMedia();
         await validateOwnership();
         previousSession = readNativeMediaSession();
-        previousCompatibility = Object.freeze({
-          fileName: localStorage.getItem('current_file_name'),
-          fileUrl: localStorage.getItem('current_file_url'),
-          splitResult: localStorage.getItem('split_result'),
-          videoUrl: localStorage.getItem('current_video_url'),
-        });
+        previousCompatibility = captureMediaCompatibility();
         let binding = null;
         try {
           binding = await activateSubtitleProjectBinding(projectCacheId, {
@@ -174,21 +173,14 @@ export const downloadAndPrepareYouTubeVideo = async (
         }
       },
       publishActivation: async (media, binding, { validateOwnership }) => {
-        await validateOwnership();
-        const ownership = await ensureProjectOwnsNativeMedia({
+        await publishOwnedUrlMedia({
           media,
           cacheId: projectCacheId,
-          expectedProjectId: binding.projectId,
+          projectId: binding.projectId,
+          url: selectedVideo.url,
+          validateOwnership,
+          ownershipError: () => new AutoGenerationOwnershipError(),
         });
-        await validateOwnership();
-        if (ownership.projectId !== binding.projectId) {
-          throw new AutoGenerationOwnershipError();
-        }
-
-        localStorage.removeItem('split_result');
-        localStorage.setItem('current_video_url', selectedVideo.url);
-        localStorage.setItem('current_file_url', media.playbackUrl);
-        localStorage.setItem('current_file_name', media.name);
         handleTabChange('file-upload', false);
         setUploadedFile(media);
         setIsSrtOnlyMode?.(false);
@@ -211,17 +203,7 @@ export const downloadAndPrepareYouTubeVideo = async (
         }
         if (previousSession === null) await forgetNativeMediaSessionDurably();
         else await persistNativeMediaSession(previousSession);
-        if (previousCompatibility !== null) {
-          for (const [key, value] of [
-            ['current_file_name', previousCompatibility.fileName],
-            ['current_file_url', previousCompatibility.fileUrl],
-            ['split_result', previousCompatibility.splitResult],
-            ['current_video_url', previousCompatibility.videoUrl],
-          ]) {
-            if (value === null) localStorage.removeItem(key);
-            else localStorage.setItem(key, value);
-          }
-        }
+        if (previousCompatibility !== null) restoreMediaCompatibility(previousCompatibility);
       },
       onStarted: (jobId) => present(() => setCurrentDownloadId(jobId)),
       onProgress: (progress) => present(() => setDownloadProgress(progress)),

@@ -17,11 +17,7 @@
 import { Cubic, MutableCubic, createCubic } from "./cubic.js";
 import { MeasuredPolygon, LengthMeasurer } from "./measuredPolygon.js";
 import { featureMapper } from "./featureMapper.js";
-import { interpolate, positiveModulo, AngleEpsilon, debugLog } from "./utils.js";
-
-const LOG_TAG = "Morph";
-// Set to true to enable debug logging
-const DEBUG = false;
+import { interpolate, positiveModulo, AngleEpsilon } from "./utils.js";
 
 /**
  * This class is used to animate between start and end polygons objects.
@@ -214,7 +210,6 @@ export class Morph {
 
         // cut point on poly2 is the mapping of the 0 point on poly1
         const polygon2CutPoint = doubleMapper.map(0);
-        if (DEBUG) debugLog(LOG_TAG, `polygon2CutPoint = ${polygon2CutPoint}`);
 
         // Cut and rotate.
         // Polygons start at progress 0, and the featureMapper has decided that we want to match
@@ -226,16 +221,6 @@ export class Morph {
         const bs1 = measuredPolygon1;
         const bs2 = measuredPolygon2.cutAndShift(polygon2CutPoint);
 
-        if (DEBUG) {
-            for (let index = 0; index < bs1.size; index++) {
-                const b1 = bs1.get(index);
-                debugLog(LOG_TAG, `bs1[${index}] = ${b1.startOutlineProgress} .. ${b1.endOutlineProgress}`);
-            }
-            for (let index = 0; index < bs2.size; index++) {
-                const b2 = bs2.get(index);
-                debugLog(LOG_TAG, `bs2[${index}] = ${b2.startOutlineProgress} .. ${b2.endOutlineProgress}`);
-            }
-        }
 
         // Match
         // Now we can compare the two lists of measured cubics and create a list of pairs
@@ -259,14 +244,12 @@ export class Morph {
                     positiveModulo(b2.endOutlineProgress + polygon2CutPoint, 1.0)
                 );
             const minb = Math.min(b1a, b2a);
-            if (DEBUG) debugLog(LOG_TAG, `${b1a} ${b2a} | ${minb}`);
 
             // minb is the progress at which the curve that ends first ends.
             // If both curves end roughly there, no cutting is needed, we have a match.
             // If one curve extends beyond, we need to cut it.
             let seg1, newb1;
             if (b1a > minb + AngleEpsilon) {
-                if (DEBUG) debugLog(LOG_TAG, "Cut 1");
                 [seg1, newb1] = b1.cutAtProgress(minb);
             } else {
                 seg1 = b1;
@@ -275,7 +258,6 @@ export class Morph {
 
             let seg2, newb2;
             if (b2a > minb + AngleEpsilon) {
-                if (DEBUG) debugLog(LOG_TAG, "Cut 2");
                 [seg2, newb2] = b2.cutAtProgress(
                     positiveModulo(doubleMapper.map(minb) - polygon2CutPoint, 1.0)
                 );

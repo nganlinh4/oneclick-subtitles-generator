@@ -25,5 +25,3 @@ export const useFontReadiness = () => {
 
   return capability;
 };
-
-export default useFontReadiness;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { resolveVoiceSample } from '../../../platform/voiceSampleService';
-import { GEMINI_VOICES } from '../../../services/gemini/geminiNarrationService';
+import { GEMINI_VOICES } from '../../../services/gemini/constants/voiceConstants';
 import '../../../styles/narration/geminiVoiceSelectionCompact.css';
 import CustomDropdown from '../../common/CustomDropdown';
 import PlayPauseMorphType4 from '../../common/PlayPauseMorphType4';

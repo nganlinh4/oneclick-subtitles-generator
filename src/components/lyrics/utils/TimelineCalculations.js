@@ -4,14 +4,6 @@
 
 import { createTimelineDomain } from './timelineDomain';
 
-/**
- * Calculate minimum zoom level - now always returns 1 to allow full zoom out
- * @param {number} totalDuration - Total duration of the timeline in seconds
- * @returns {number} - Minimum zoom level (always 1)
- */
-export const calculateMinZoom = (_totalDuration) => {
-  return 1; // Always allow 100% zoom (showing entire timeline)
-};
 
 /**
  * Calculate visible time range based on current parameters
@@ -58,31 +50,6 @@ export const calculateVisibleTimeRange = (lyrics, duration, tempPanOffset, curre
   const end = Math.min(timelineEnd, start + visibleDuration);
 
   return { start, end, total: timelineEnd };
-};
-
-/**
- * Calculate the playhead position on screen
- * @param {Object} timelineRef - Reference to the canvas element
- * @param {number} currentTime - Current playback time
- * @param {Object} visibleTimeRange - Visible time range object
- * @param {number} duration - Total duration of the video
- * @returns {number|null} - Pixel position of the playhead or null if not visible
- */
-export const calculatePlayheadPosition = (timelineRef, currentTime, visibleTimeRange, duration) => {
-  if (!timelineRef || !duration) return null;
-
-  const canvas = timelineRef;
-  const displayWidth = canvas.clientWidth;
-
-  const { start: visibleStart, end: visibleEnd } = visibleTimeRange;
-  const visibleDuration = visibleEnd - visibleStart;
-
-  // Calculate the pixel position
-  if (currentTime >= visibleStart && currentTime <= visibleEnd) {
-    return ((currentTime - visibleStart) / visibleDuration) * displayWidth;
-  }
-
-  return null;
 };
 
 /**

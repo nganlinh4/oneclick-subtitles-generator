@@ -3,9 +3,7 @@
  * Exports all subtitle parsing functionality
  */
 
-import { parseRawTextManually } from './formatParsers';
 import { parseStructuredJsonResponse } from './structuredJsonParser';
-import { convertTimeStringToSeconds, formatSecondsToSRTTime } from './timeUtils';
 import { deduplicateAndSortSubtitles } from './subtitleUtils';
 import {
     parseOriginalFormat,
@@ -346,11 +344,3 @@ export const parseGeminiResponse = (response) => {
     return deduplicateAndSortSubtitles(subtitles);
 };
 
-// Export all functions
-export {
-    parseRawTextManually,
-    convertTimeStringToSeconds,
-    formatSecondsToSRTTime,
-    deduplicateAndSortSubtitles,
-    parseStructuredJsonResponse
-};

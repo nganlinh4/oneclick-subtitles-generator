@@ -163,7 +163,7 @@ const normalizeVersion = (value) => {
   return value;
 };
 
-export const normalizeSpeechPackageJob = (value) => {
+const normalizeSpeechPackageJob = (value) => {
   if (!hasExactKeys(value, jobKeys)
       || !hasExactKeys(value.progress, progressKeys)
       || !isUuidV7(value.id)

@@ -181,7 +181,11 @@ describe('subtitle customization default authority', () => {
     );
     expect(preferencesSource).toContain('consumeLegacyRenderScene');
     expect(preferencesSource).toContain('parseStoredSubtitleCustomization(');
-    const sectionSource = readFileSync(resolve('src/components/VideoRenderingSection.js'), 'utf8');
+    // The section reads its scene through the controls hook it was split into.
+    const sectionSource = [
+      'src/components/VideoRenderingSection.js',
+      'src/components/VideoRenderingSection/useProjectRenderSceneControls.js',
+    ].map((path) => readFileSync(resolve(path), 'utf8')).join('\n');
     expect(sectionSource).toContain('useProjectRenderScene()');
     expect(sectionSource).not.toContain('JSON.parse(saved)');
   });

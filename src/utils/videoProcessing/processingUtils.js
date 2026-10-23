@@ -12,62 +12,6 @@ import { shouldSplitGeneratedSubtitles } from '../../services/gemini/promptManag
  * the old segment-based processing approach. All functions now redirect to
  * the new simplified processing system for better performance.
  */
-// Debug logging gate (enable by setting localStorage.debug_logs = 'true')
-const DEBUG_LOGS = (typeof window !== 'undefined') && (localStorage.getItem('debug_logs') === 'true');
-const dbg = (...args) => { if (DEBUG_LOGS) console.log(...args); };
-const dbgw = (...args) => { if (DEBUG_LOGS) console.warn(...args); };
-
-/**
- * Process a short video/audio file (shorter than max segment duration)
- * @deprecated Use processVideoWithFilesApi from simplifiedProcessing.js instead
- * @param {File} mediaFile - The media file
- * @param {Function} onStatusUpdate - Callback for status updates
- * @param {Function} t - Translation function
- * @param {Object} options - Processing options
- * @returns {Promise<Array>} - Array of subtitle objects
- */
-export const processShortMedia = async (mediaFile, onStatusUpdate, t, options = {}) => {
-  dbgw('[LEGACY] processShortMedia is deprecated. Redirecting to simplified processing.');
-
-  // Show a helpful message to the user
-  onStatusUpdate({
-    message: t('output.usingLegacyFallback', 'Using legacy processing. Enable "Simplified Processing" in settings for better performance.'),
-    type: 'warning'
-  });
-
-  // Redirect to simplified processing
-  const { processVideoWithFilesApi } = await import('./simplifiedProcessing');
-  return await processVideoWithFilesApi(mediaFile, onStatusUpdate, t, options);
-};
-
-/**
- * Process a long video/audio file by splitting it into segments
- * @deprecated Use processVideoWithFilesApi from simplifiedProcessing.js instead
- * @param {File} mediaFile - The media file
- * @param {Function} onStatusUpdate - Callback for status updates
- * @param {Function} t - Translation function
- * @param {Object} options - Processing options
- * @returns {Promise<Array>} - Array of subtitle objects
- */
-export const processLongVideo = async (mediaFile, onStatusUpdate, t, options = {}) => {
-  dbgw('[LEGACY] processLongVideo is deprecated. Redirecting to simplified processing.');
-
-  // Show a helpful message to the user
-  onStatusUpdate({
-    message: t('output.usingLegacyFallback', 'Using legacy processing. Enable "Simplified Processing" in settings for better performance.'),
-    type: 'warning'
-  });
-
-  // Redirect to simplified processing
-  const { processVideoWithFilesApi } = await import('./simplifiedProcessing');
-  return await processVideoWithFilesApi(mediaFile, onStatusUpdate, t, options);
-};
-
-/**
- * Alias for processLongVideo to maintain backward compatibility
- * @deprecated Use processVideoWithFilesApi from simplifiedProcessing.js instead
- */
-export const processLongMedia = processLongVideo;
 
 /**
  * Map UI media resolution values to Gemini API enum values
@@ -78,70 +22,6 @@ const mapMediaResolution = (resolution) => {
     'medium': 'MEDIA_RESOLUTION_MEDIUM'
   };
   return resolutionMap[resolution] || 'MEDIA_RESOLUTION_MEDIUM';
-};
-
-/**
- * Process a specific segment of video using Files API with custom options
- * This is the new segment-based processing function for the improved workflow
- */
-export const processSegmentWithFilesApi = async (file, segment, options, setStatus, t) => {
-  if (isDesktopRuntime()) {
-    throw new Error(
-      'Native Gemini segments must run through the project-owned streaming checkpoint flow.'
-    );
-  }
-  try {
-    const { fps, mediaResolution, model, userProvidedSubtitles } = options;
-
-    setStatus({
-      message: t('processing.processingSegment', 'Processing selected segment (reusing uploaded file)...'),
-      type: 'loading'
-    });
-
-    // Check if this is an audio file - audio files don't need video metadata
-    const isAudio = file.type.startsWith('audio/');
-    
-    // Prepare video metadata for segment processing (ONLY for video files)
-    // Using string format that was working before
-    let videoMetadata = null;
-    if (!isAudio) {
-      videoMetadata = {
-        start_offset: `${Math.floor(segment.start)}s`,
-        end_offset: `${Math.floor(segment.end)}s`,
-        fps: fps
-      };
-      console.log('[ProcessingUtils] Added video metadata for video file:', videoMetadata);
-    } else {
-      console.log('[ProcessingUtils] Skipping video metadata for audio file to prevent 500 errors');
-    }
-
-    // Map media resolution to API enum value
-    const mappedMediaResolution = mapMediaResolution(mediaResolution);
-
-    // Prepare options for the Files API call
-    const apiOptions = {
-      userProvidedSubtitles,
-      modelId: model,
-      videoMetadata: videoMetadata, // Will be null for audio files
-      mediaResolution: mappedMediaResolution,
-      segmentInfo: {
-        start: segment.start,
-        end: segment.end,
-        duration: segment.end - segment.start
-      }
-    };
-
-    // Call the Gemini API with Files API
-    const gemini = await import('../../services/gemini');
-    const result = isDesktopRuntime()
-      ? await gemini.callGeminiApi(file, 'file-upload', apiOptions)
-      : await gemini.callGeminiApiWithFilesApi(file, apiOptions);
-
-    return result;
-  } catch (error) {
-    console.error('Error processing segment with Files API:', error);
-    throw error;
-  }
 };
 
 /**
@@ -206,18 +86,15 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
           let finalSubtitles;
           if (result && result.isSegmentResult) {
             // This is from parallel processing - extract subtitles
-            dbg('[ProcessingUtils] Received parallel processing segment result');
             finalSubtitles = result.subtitles;
           } else if (Array.isArray(result)) {
             // Direct subtitle array from single streaming
             finalSubtitles = result;
           } else {
             // Might be text or other format, try to handle it
-            dbgw('[ProcessingUtils] Unexpected result format:', typeof result);
             finalSubtitles = [];
           }
 
-          dbg('[ProcessingUtils] Streaming complete:', finalSubtitles.length, 'subtitles');
 
           const filteredFinal = projectClipSubtitles(finalSubtitles, segment);
             processedResult = filteredFinal;
@@ -303,7 +180,6 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
           (progress) => {
             // Handle parallel processing progress updates
             if (progress && progress.segmentProgress) {
-              dbg('[ProcessingUtils] Parallel processing progress:', progress);
               // Dispatch progress event for UI updates
               window.dispatchEvent(new CustomEvent('parallel-processing-progress', {
                 detail: progress
@@ -320,51 +196,3 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
   });
 };
 
-
-/**
- * Extract the selected segment locally and send inline to Gemini (no offsets)
- */
-export const processSegmentWithInlineExtraction = async (file, segment, options, setStatus, t) => {
-  if (isDesktopRuntime()) {
-    throw new Error(
-      'Native Gemini segments must run through the project-owned streaming checkpoint flow.'
-    );
-  }
-  try {
-    const { model, userProvidedSubtitles } = options || {};
-    setStatus({ message: t('processing.extractingSegment', 'Extracting selected segment locally...'), type: 'loading' });
-
-    const { extractVideoSegmentLocally } = await import('../videoSegmenter');
-    const segmentFile = await extractVideoSegmentLocally(file, segment.start, segment.end);
-
-    setStatus({ message: t('processing.sendingToGemini', 'Sending extracted segment to Gemini...'), type: 'loading' });
-    const { callGeminiApi } = await import('../../services/gemini');
-
-    const rawSubtitles = await callGeminiApi(segmentFile, 'file-upload', {
-      userProvidedSubtitles,
-      modelId: model,
-      segmentInfo: { start: segment.start, end: segment.end, duration: segment.end - segment.start },
-      forceInline: true,
-      ...(options && options.runId ? { runId: options.runId } : {})
-    });
-
-    let adjusted = Array.isArray(rawSubtitles) ? rawSubtitles : [];
-    if (adjusted.length > 0) {
-      const segDuration = segment.end - segment.start;
-      const maxEnd = Math.max(...adjusted.map(s => s.end || 0));
-      const looksRelative = maxEnd <= (segDuration + 1);
-      if (looksRelative) {
-        adjusted = adjusted.map(s => ({
-          ...s,
-          start: (s.start || 0) + segment.start,
-          end: (s.end || 0) + segment.start
-        }));
-      }
-    }
-
-    return bindGeminiTranscriptionDeliveries(adjusted, rawSubtitles);
-  } catch (error) {
-    console.error('Error processing segment with inline extraction:', error);
-    throw error;
-  }
-};

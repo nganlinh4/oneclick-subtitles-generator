@@ -4,11 +4,11 @@ import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { isWellFormedUnicode } from './subtitleGroupingSourceReadiness';
 
-export const GROUPING_INTENSITIES = Object.freeze([
+const GROUPING_INTENSITIES = Object.freeze([
   'minimal', 'light', 'balanced', 'moderate', 'enhanced', 'aggressive',
 ]);
-export const MAX_GROUPING_SUBTITLES = 100_000;
-export const MAX_GROUPING_SOURCE_BYTES = 700 * 1024;
+const MAX_GROUPING_SUBTITLES = 100_000;
+const MAX_GROUPING_SOURCE_BYTES = 700 * 1024;
 
 const textEncoder = new TextEncoder();
 const intensitySet = new Set(GROUPING_INTENSITIES);
@@ -18,7 +18,7 @@ const isUuidV7 = (value) => {
   try { return uuidVersion(value) === 7; } catch { return false; }
 };
 
-export class SubtitleGroupingError extends Error {
+class SubtitleGroupingError extends Error {
   constructor(code, message, details = {}) {
     super(message);
     this.name = 'SubtitleGroupingError';
@@ -138,7 +138,7 @@ export const snapshotGroupingSource = (subtitles) => {
   return Object.freeze(rows);
 };
 
-export const canonicalGroupingSource = (sourceType, subtitles) => {
+const canonicalGroupingSource = (sourceType, subtitles) => {
   if (sourceType !== 'original' && sourceType !== 'translated') {
     throw invalid('Grouping source type is invalid');
   }

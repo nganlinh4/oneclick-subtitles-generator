@@ -17,7 +17,7 @@ import {
 const durableCheckpointReceipts = new WeakSet();
 const successfulSaveReceipts = new WeakSet();
 
-export class SubtitleCacheError extends Error {
+class SubtitleCacheError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'SubtitleCacheError';

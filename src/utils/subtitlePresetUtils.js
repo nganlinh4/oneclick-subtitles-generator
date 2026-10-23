@@ -46,7 +46,7 @@ export const getCustomSubtitlePresets = () => {
  * Save custom subtitle presets to localStorage
  * @param {Array} presets Array of custom preset objects
  */
-export const saveCustomSubtitlePresets = (presets) => {
+const saveCustomSubtitlePresets = (presets) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
   } catch (error) {

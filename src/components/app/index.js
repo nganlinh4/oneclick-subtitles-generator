@@ -18,8 +18,6 @@ import '../../styles/SrtUploadButton.css';
 import '../../styles/TranscriptionRulesEditor.css';
 import '../../styles/OnboardingBanner.css';
 import '../../styles/AutoGenerate.css'; // Auto-generate button and flow styles
-// Removed spinner-fix.css - now using LoadingIndicator component
-import '../../styles/lyrics/save-message.css'; // Audio alignment notification styles
 import '../../styles/OnboardingFooterReveal.css';
 
 // The banner decides for itself whether a first-time visitor needs it, so it stays off the

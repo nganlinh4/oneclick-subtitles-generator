@@ -3,9 +3,7 @@ import { getModelById, migrateGeminiModelId } from '../config/geminiModels';
 
 const getThinkingProfile = (modelId) => getModelById(migrateGeminiModelId(modelId))?.thinking || null;
 
-export const isThinkingLevelModel = (modelId) => getThinkingProfile(modelId)?.type === 'level';
-export const isThinkingSupported = (modelId) => Boolean(getThinkingProfile(modelId));
-export const getDefaultThinkingBudget = (modelId) => getThinkingProfile(modelId)?.default ?? null;
+const getDefaultThinkingBudget = (modelId) => getThinkingProfile(modelId)?.default ?? null;
 
 export const validateThinkingBudget = (modelId, value) => {
   const thinking = getThinkingProfile(modelId);

@@ -26,7 +26,6 @@ import {
     FloatPi,
     radialToCartesian,
     convex,
-    debugLog,
     DistanceEpsilon,
     Zero,
     directionVector

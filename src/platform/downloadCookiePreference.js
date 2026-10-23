@@ -31,7 +31,7 @@ const safelyRead = (storage, key) => {
   }
 };
 
-export const normalizeDownloadCookieBrowser = (value) => (
+const normalizeDownloadCookieBrowser = (value) => (
   typeof value === 'string' && browserSources.has(value)
     ? value
     : DEFAULT_DOWNLOAD_COOKIE_BROWSER

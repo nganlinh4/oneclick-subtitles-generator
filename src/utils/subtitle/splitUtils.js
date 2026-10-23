@@ -37,7 +37,7 @@ export const countWords = (text) => {
  * @param {number} maxWords - Maximum words/characters per chunk
  * @returns {Array} - Array of text chunks with their word counts
  */
-export const smartSplitText = (text, maxWords) => {
+const smartSplitText = (text, maxWords) => {
   if (!text || maxWords <= 0) return [{ text, wordCount: countWords(text) }];
 
   const totalWords = countWords(text);
@@ -147,7 +147,7 @@ export const smartSplitText = (text, maxWords) => {
  * @param {Array} chunks - Array of text chunks with word counts
  * @returns {Array} - Array of timing objects
  */
-export const splitTiming = (startTime, endTime, chunks) => {
+const splitTiming = (startTime, endTime, chunks) => {
   if (chunks.length <= 1) {
     return [{ start: startTime, end: endTime }];
   }

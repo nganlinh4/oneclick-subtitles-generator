@@ -142,7 +142,12 @@ describe('the subtitle style the render tab holds', () => {
     const authority = codeOf('src/components/VideoRenderingSection/subtitleCustomizationState.js');
     expect(authority.match(/\.\.\.defaultCustomization/g)).toHaveLength(1);
 
-    const section = codeOf('src/components/VideoRenderingSection.js');
+    // The render tab is the section plus the scene hook and admission step it was split into.
+    const section = [
+      'src/components/VideoRenderingSection.js',
+      'src/components/VideoRenderingSection/useProjectRenderSceneControls.js',
+      'src/components/VideoRenderingSection/nativeRenderAdmission.js',
+    ].map(codeOf).join('\n');
     expect(section).not.toContain('defaultCustomization');
     expect(section).not.toMatch(/\.\.\.\(?\s*(queueItem\?\.customization|subtitleCustomization)/);
     expect(section).toContain('useProjectRenderScene()');

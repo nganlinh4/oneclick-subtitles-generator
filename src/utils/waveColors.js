@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
  * --md-primary on light. The canvas components need resolved color values, not CSS-var strings.
  */
 
-export const detectDarkTheme = () => {
+const detectDarkTheme = () => {
   if (typeof document === 'undefined') return true; // default theme is dark (matches systemDetection)
   const root = document.documentElement;
   const body = document.body;
@@ -36,7 +36,7 @@ const hexToRgba = (hex, alpha = 1) => {
 };
 
 /** @returns {{ isDarkTheme: boolean, waveColor: string, waveTrackColor: string }} */
-export const getWaveColors = () => {
+const getWaveColors = () => {
   const isDarkTheme = detectDarkTheme();
   const waveColor = isDarkTheme ? '#FFFFFF' : getCssVar('--md-primary', '#5D5FEF');
   const waveTrackColor = isDarkTheme ? 'rgba(255,255,255,0.35)' : hexToRgba(waveColor, 0.35);

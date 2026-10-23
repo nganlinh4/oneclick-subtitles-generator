@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/BackgroundImageGenerator.css';
-import BackgroundPromptEditorButton from './background/BackgroundPromptEditorButton';
 import CustomScrollbarTextarea from './common/CustomScrollbarTextarea';
 import { useCurrentTheme } from './background/themeHook';
 import { boundedBackgroundErrorCode, getFriendlyErrorMessage } from './background/errorMessages';
@@ -9,65 +8,16 @@ import PromptAndAlbumArtSection from './background/PromptAndAlbumArtSection';
 import ImageGenerationSection from './background/ImageGenerationSection';
 
 import { generateBackgroundPrompt, generateBackgroundImage } from '../services/gemini/imageGenerationService';
-import { saveBackgroundImages, loadBackgroundImages } from '../utils/indexedDBUtils';
+import { saveBackgroundImages } from '../utils/indexedDBUtils';
 import { isDesktopRuntime } from '../platform/runtimeEnvironment';
+import { releaseNativeGeneratedImagePlayback } from '../platform/nativeGeminiImage';
+import { browserViewImage, nativeViewImage, releaseNativeImages } from './background/generatedImageViews';
 import {
-  getActiveGeneratedImageProjectId,
-  loadNativeGeneratedImages,
-  releaseNativeGeneratedImagePlayback,
-} from '../platform/nativeGeminiImage';
-import { getActiveProjectSnapshot } from '../platform/projectService';
-import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
-
-const nativeViewImage = (image, prompt = '') => ({
-  url: image.playback.playbackUrl,
-  timestamp: image.artifact.createdAtMs,
-  prompt,
-  isLoading: false,
-  nativeImage: image,
-});
-
-const browserViewImage = (image, prompt = '') => ({
-  url: `data:${image.mime_type};base64,${image.data}`,
-  timestamp: Date.now(),
-  prompt,
-  isLoading: false,
-});
-
-const releaseNativeImages = async (images) => {
-  const playables = images
-    .map((image) => image?.nativeImage)
-    .filter(Boolean);
-  await Promise.allSettled(
-    playables.map((playable) => releaseNativeGeneratedImagePlayback(playable))
-  );
-};
-
-const capturePromptProjectAuthority = () => {
-  if (!isDesktopRuntime()) return null;
-  const snapshot = getActiveProjectSnapshot();
-  const projectId = snapshot?.metadata?.id;
-  const expectedProjectStateVersion = snapshot?.stateVersion;
-  if (typeof projectId !== 'string'
-      || !Number.isSafeInteger(expectedProjectStateVersion)
-      || expectedProjectStateVersion < 0) {
-    const error = new Error('Open a media project before generating a background prompt.');
-    error.code = 'imageProjectUnavailable';
-    throw error;
-  }
-  return Object.freeze({ projectId, expectedProjectStateVersion });
-};
-
-const assertPromptProjectAuthority = (authority) => {
-  if (authority === null) return;
-  const current = getActiveProjectSnapshot();
-  if (current?.metadata?.id !== authority.projectId
-      || current?.stateVersion !== authority.expectedProjectStateVersion) {
-    const error = new Error('The active project changed while the prompt was being generated.');
-    error.code = 'imageProjectChanged';
-    throw error;
-  }
-};
+  assertPromptProjectAuthority,
+  capturePromptProjectAuthority,
+} from './background/promptProjectAuthority';
+import BackgroundGeneratorHeader from './background/BackgroundGeneratorHeader';
+import useGeneratedImageLibrary from './background/useGeneratedImageLibrary';
 
 /**
  * Component for generating background images based on lyrics and album art
@@ -88,16 +38,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [, setPendingImageCount] = useState(0); // Track how many images are pending
   const [customSongName, setCustomSongName] = useState(songName || '');
-  const [autoExecutionComplete, setAutoExecutionComplete] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(!isExpanded); // Use the isExpanded prop
-  const [isGenerationInProgress, setIsGenerationInProgress] = useState(false); // Track if generation is in progress
   const [userHasCollapsed, setUserHasCollapsed] = useState(false); // Track if user has manually collapsed
-  const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false); // Track if we should auto-generate
-  const [activeProjectGeneration, setActiveProjectGeneration] = useState(0);
 
-  // Use a ref to track if the auto-execution effect has already run
-  // This helps prevent double execution in React StrictMode
-  const autoExecutionRef = useRef(false);
   const generationRunRef = useRef(0);
   const generationAbortRef = useRef(null);
   const nativeImagesRef = useRef([]);
@@ -129,82 +72,20 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     setGeneratedPrompt(value);
   };
 
-  useEffect(() => subscribeCurrentCacheId(() => {
-    if (isDesktopRuntime()) {
-      generationRunRef.current += 1;
-      generationAbortRef.current?.abort();
-      generationAbortRef.current = null;
-      generatedPromptDeliveryRef.current = null;
-      setActiveProjectGeneration((generation) => generation + 1);
-    }
-  }), []);
-
-  // Native images are reopened from the active durable project. The legacy browser build keeps
-  // its IndexedDB behavior, but capability URLs are never written there.
-  useEffect(() => {
-    let disposed = false;
-    const loadGeneration = generationRunRef.current + 1;
-    generationRunRef.current = loadGeneration;
-    generationAbortRef.current?.abort();
-    generationAbortRef.current = null;
-    setIsGeneratingPrompt(false);
-    setIsGeneratingImage(false);
-    setIsGenerationInProgress(false);
-    setPendingImageCount(0);
-
-    const loadImages = async () => {
-      let pendingNativeImages = [];
-      try {
-        if (!isDesktopRuntime()) {
-          const savedImages = await loadBackgroundImages();
-          if (!disposed && generationRunRef.current === loadGeneration) {
-            setGeneratedImages(savedImages);
-            setGeneratedImage(savedImages.find((image) => image?.url)?.url || '');
-          }
-          return;
-        }
-
-        const previous = nativeImagesRef.current;
-        nativeImagesRef.current = [];
-        setGeneratedImages([]);
-        setGeneratedImage('');
-        await releaseNativeImages(previous);
-        const projectId = await getActiveGeneratedImageProjectId();
-        const reopened = await loadNativeGeneratedImages(projectId);
-        pendingNativeImages = reopened.map((image) => nativeViewImage(image));
-        const currentProjectId = await getActiveGeneratedImageProjectId().catch(() => null);
-        if (disposed
-            || generationRunRef.current !== loadGeneration
-            || currentProjectId !== projectId) {
-          await releaseNativeImages(pendingNativeImages);
-          pendingNativeImages = [];
-          return;
-        }
-        const views = pendingNativeImages;
-        pendingNativeImages = [];
-        nativeImagesRef.current = views;
-        setGeneratedImages(views);
-        setGeneratedImage(views[0]?.url || '');
-      } catch (error) {
-        await releaseNativeImages(pendingNativeImages);
-        if (!disposed && error?.code !== 'imageProjectUnavailable' && error?.code !== 'invalidImageProject') {
-          console.error('Error loading generated images:', error);
-        }
-      }
-    };
-
-    void loadImages();
-    return () => {
-      disposed = true;
-    };
-  }, [activeProjectGeneration, albumArt, lyrics, songName]);
-
-  useEffect(() => () => {
-    generationRunRef.current += 1;
-    generationAbortRef.current?.abort();
-    void releaseNativeImages(nativeImagesRef.current);
-    nativeImagesRef.current = [];
-  }, []);
+  useGeneratedImageLibrary({
+    lyrics,
+    albumArt,
+    songName,
+    generationRunRef,
+    generationAbortRef,
+    nativeImagesRef,
+    generatedPromptDeliveryRef,
+    setGeneratedImages,
+    setGeneratedImage,
+    setIsGeneratingPrompt,
+    setIsGeneratingImage,
+    setPendingImageCount,
+  });
 
   // Ref for the Generate with Unique Prompts button
   const generateWithUniquePromptsButtonRef = useRef(null);
@@ -217,7 +98,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     }
 
     setIsGeneratingPrompt(true);
-    setIsGenerationInProgress(true); // Set generation in progress flag
 
     try {
       const authority = capturePromptProjectAuthority();
@@ -238,8 +118,20 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       return null;
     } finally {
       setIsGeneratingPrompt(false);
-      setIsGenerationInProgress(false); // Reset generation in progress flag
     }
+  };
+
+  // Places one finished image into its grid slot. Slot 0 also feeds the single-image view.
+  const publishGeneratedImage = (newImages, index, generated) => {
+    newImages[index] = {
+      ...generated,
+    };
+    nativeImagesRef.current = newImages.filter((entry) => entry?.nativeImage);
+    setGeneratedImages([...newImages]);
+    if (index === 0) {
+      setGeneratedImage(generated.url);
+    }
+    setPendingImageCount(prev => prev - 1);
   };
 
   // Generate image using Gemini
@@ -262,7 +154,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     }
 
     setIsGeneratingImage(true);
-    setIsGenerationInProgress(true); // Set generation in progress flag
     generationAbortRef.current?.abort();
     const controller = new AbortController();
     generationAbortRef.current = controller;
@@ -312,22 +203,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             ? nativeViewImage(image, currentPrompt)
             : browserViewImage(image, currentPrompt);
 
-          // Update this specific image in the array
-          newImages[i] = {
-            ...generated,
-          };
-          nativeImagesRef.current = newImages.filter((entry) => entry?.nativeImage);
-
-          // Update the state with the progress
-          setGeneratedImages([...newImages]);
-
-          // Also update the single image view for backward compatibility
-          if (i === 0) {
-            setGeneratedImage(generated.url);
-          }
-
-          // Decrease pending count
-          setPendingImageCount(prev => prev - 1);
+          publishGeneratedImage(newImages, i, generated);
         } catch (err) {
           if (controller.signal.aborted
               || generationRunRef.current !== run
@@ -363,18 +239,14 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       if (generationRunRef.current === run) {
         if (generationAbortRef.current === controller) generationAbortRef.current = null;
         setIsGeneratingImage(false);
-        setIsGenerationInProgress(false); // Reset generation in progress flag
       }
     }
   };
 
   // Sync isCollapsed state with isExpanded prop, but respect user's manual collapse
   useEffect(() => {
-
-
     // Always expand when isExpanded becomes true, regardless of userHasCollapsed
     if (isExpanded) {
-
       setIsCollapsed(false);
       // Reset userHasCollapsed when we force expand
       setUserHasCollapsed(false);
@@ -424,10 +296,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         setGeneratedPrompt('');
         setGeneratedImage('');
         // Don't reset generatedImages to preserve them across UI changes
-        // setGeneratedImages([]);
         setPendingImageCount(0);
-        setAutoExecutionComplete(false);
-        autoExecutionRef.current = false; // Reset the ref to allow auto-execution
       }
 
       // Only expand if the user hasn't manually collapsed it
@@ -438,52 +307,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         if (onExpandChange) {
           onExpandChange(true);
         }
-
-        // No longer setting shouldAutoGenerate flag to prevent auto-generation
-        // setShouldAutoGenerate(true); - removed to prevent auto-generation
       }
     }
   }, [lyrics, albumArt, songName, onExpandChange, userHasCollapsed]);
-
-  // Effect to handle the shouldAutoGenerate flag (auto-click functionality removed)
-  useEffect(() => {
-    if (shouldAutoGenerate && !isCollapsed && !isGenerationInProgress) {
-
-      // Reset the flag to prevent multiple executions
-      setShouldAutoGenerate(false);
-      // No longer auto-clicking the button
-    }
-  }, [shouldAutoGenerate, isCollapsed, isGenerationInProgress]);
-
-  // Auto-execute prompt generation and image generation when component mounts
-  // or when lyrics/albumArt change - uses the default of 4 images for new prompt
-  useEffect(() => {
-    // Skip if we've already run this effect in the current render cycle
-    // or if we don't have the necessary data or if auto-execution is already complete
-    if (autoExecutionRef.current || autoExecutionComplete || !lyrics || !albumArt) {
-      return;
-    }
-
-    // Mark that we've run this effect
-    autoExecutionRef.current = true;
-
-    /* Auto-execution is disabled, but we keep the structure for potential future use
-    const executeAutoGeneration = async () => {
-      // Function implementation removed for brevity
-    };
-
-    // Disabled auto-execution to prevent automatic generation when component is expanded
-    // if (lyrics && albumArt && !autoExecutionComplete) {
-    //   executeAutoGeneration();
-    // }
-    */
-
-    // Cleanup function to reset the ref when the component unmounts
-    return () => {
-      // We don't reset the ref here because we want to prevent re-execution
-      // even if the effect is called multiple times due to StrictMode
-    };
-  }, [lyrics, albumArt, customLyrics, customAlbumArt, customSongName, autoExecutionComplete]);
 
   // Generate new prompt and then generate image
   const generateWithNewPrompt = async (count = null) => {
@@ -501,7 +327,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
 
     // Prepare the grid with placeholders
     setIsGeneratingImage(true);
-    setIsGenerationInProgress(true); // Set generation in progress flag
     setPendingImageCount(imagesToGenerate);
     generationAbortRef.current?.abort();
     const controller = new AbortController();
@@ -535,7 +360,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           // Generate a new prompt for each image
           setIsGeneratingPrompt(true);
 
-
           const authority = capturePromptProjectAuthority();
           const promptResult = await generateBackgroundPrompt(
             customLyrics,
@@ -558,8 +382,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           setGeneratedImages([...newImages]);
 
           // Generate image with the unique prompt
-
-
           const image = await generateBackgroundImage(uniquePrompt, customAlbumArt, {
             signal: controller.signal,
           });
@@ -577,22 +399,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
             ? nativeViewImage(image, uniquePrompt)
             : browserViewImage(image, uniquePrompt);
 
-          // Update this specific image in the array
-          newImages[i] = {
-            ...generated,
-          };
-          nativeImagesRef.current = newImages.filter((entry) => entry?.nativeImage);
-
-          // Update the state with the progress
-          setGeneratedImages([...newImages]);
-
-          // Also update the single image view for backward compatibility
-          if (i === 0) {
-            setGeneratedImage(generated.url);
-          }
-
-          // Decrease pending count
-          setPendingImageCount(prev => prev - 1);
+          publishGeneratedImage(newImages, i, generated);
         } catch (err) {
           if (controller.signal.aborted
               || generationRunRef.current !== run
@@ -626,7 +433,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
         if (generationAbortRef.current === controller) generationAbortRef.current = null;
         setIsGeneratingPrompt(false);
         setIsGeneratingImage(false);
-        setIsGenerationInProgress(false); // Reset generation in progress flag
       }
     }
   };
@@ -641,52 +447,31 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     setNewPromptImageCount(parseInt(count, 10));
   };
 
+  // Toggle collapsed state - ONLY affects visual display, not generation
+  const handleToggleCollapsed = () => {
+    const newCollapsedState = !isCollapsed;
+    setIsCollapsed(newCollapsedState);
+
+    // Set userHasCollapsed flag when user manually collapses
+    if (newCollapsedState) {
+      setUserHasCollapsed(true);
+    } else {
+      // Reset the flag when user manually expands
+      setUserHasCollapsed(false);
+    }
+
+    // Notify parent component about expansion/collapse
+    if (onExpandChange) {
+      onExpandChange(!newCollapsedState);
+    }
+  };
+
   return (
     <div className={`background-generator-container ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="background-generator-header">
-        <div className="header-left">
-          <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>panorama</span>
-            {t('backgroundGenerator.title', 'Background Image Generator')}
-          </h2>
-          <BackgroundPromptEditorButton />
-          <span style={{
-            marginLeft: '16px',
-            fontSize: '12px',
-            color: 'var(--md-on-surface-variant)',
-            fontStyle: 'italic',
-            opacity: 0.7
-          }}>
-            {t('backgroundGenerator.upcomingFeatures', 'Image model availability depends on your Gemini account and current quota.')}
-          </span>
-        </div>
-        <button
-          className="collapse-button"
-          onClick={() => {
-            // Toggle collapsed state - ONLY affects visual display, not generation
-            const newCollapsedState = !isCollapsed;
-            setIsCollapsed(newCollapsedState);
-
-            // Set userHasCollapsed flag when user manually collapses
-            if (newCollapsedState) {
-              setUserHasCollapsed(true);
-            } else {
-              // Reset the flag when user manually expands
-              setUserHasCollapsed(false);
-            }
-
-            // Notify parent component about expansion/collapse
-            if (onExpandChange) {
-              onExpandChange(!newCollapsedState);
-            }
-
-
-          }}
-          title={isCollapsed ? t('backgroundGenerator.expand', 'Expand') : t('backgroundGenerator.collapse', 'Collapse')}
-        >
-          <span className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
-        </button>
-      </div>
+      <BackgroundGeneratorHeader
+        isCollapsed={isCollapsed}
+        onToggleCollapsed={handleToggleCollapsed}
+      />
 
       {isCollapsed ? (
         <div className="background-generator-collapsed-content">

@@ -107,5 +107,3 @@ export const subtitleImportFileNameForCache = (cacheId, options = {}) => {
   const current = readSubtitleImportProvenance(options);
   return current !== null && current.cacheId === cacheId ? current.fileName : '';
 };
-
-export const SUBTITLE_IMPORT_PROVENANCE_KEY = STORAGE_KEY;

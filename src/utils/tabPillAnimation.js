@@ -107,12 +107,79 @@ const startGooSim = (tabContainer, targetLeft, targetWidth, dir) => {
   if (!sim.raf) sim.raf = requestAnimationFrame(step);
 };
 
+const PRESS_START_EVENTS = ['pointerdown', 'mousedown', 'touchstart'];
+// Delegated: focusout instead of blur, which does not bubble to the strip.
+const PRESS_END_EVENTS = ['pointerup', 'mouseup', 'touchend', 'touchcancel', 'pointercancel', 'mouseleave', 'pointerout', 'focusout'];
+const wiredContainers = new WeakSet();
+
+const resetTabMemory = (tabContainer, except) => {
+  tabContainer.querySelectorAll('.tab-btn').forEach((tab) => {
+    if (tab === except) return;
+    tab.dataset.wasActive = 'false';
+    tab.dataset.lastActive = 'false';
+  });
+};
+
+const clearPressVars = (tabContainer) => {
+  tabContainer.style.removeProperty('--press-pill-left');
+  tabContainer.style.removeProperty('--press-pill-width');
+};
+
+const setPressVars = (tabContainer, button) => {
+  if (button.classList.contains('active')) {
+    clearPressVars(tabContainer);
+    return;
+  }
+  const pillPadding = 8;
+  tabContainer.style.setProperty('--press-pill-width', `${button.offsetWidth + pillPadding}px`);
+  tabContainer.style.setProperty('--press-pill-left', `${button.offsetLeft - (pillPadding / 2)}px`);
+};
+
+/**
+ * Listeners are delegated to the tab strip and attached once per strip, so calling init again
+ * (every tab change, every font load) only re-positions the pill. A ResizeObserver on the strip
+ * and its tabs re-positions it whenever tab geometry changes: window width, a web font arriving,
+ * a locale switch.
+ */
+const wireTabContainer = (tabContainer) => {
+  if (wiredContainers.has(tabContainer)) return;
+  wiredContainers.add(tabContainer);
+
+  tabContainer.addEventListener('click', (event) => {
+    const button = event.target.closest?.('.tab-btn');
+    if (!button || !tabContainer.contains(button)) return;
+    resetTabMemory(tabContainer, button);
+    setTimeout(() => positionPillForActiveTab(tabContainer), 10);
+  });
+  PRESS_START_EVENTS.forEach((type) => {
+    tabContainer.addEventListener(type, (event) => {
+      const button = event.target.closest?.('.tab-btn');
+      if (button && tabContainer.contains(button)) setPressVars(tabContainer, button);
+    }, { passive: true });
+  });
+  PRESS_END_EVENTS.forEach((type) => {
+    tabContainer.addEventListener(type, () => clearPressVars(tabContainer), { passive: true });
+  });
+
+  const reposition = () => {
+    resetTabMemory(tabContainer);
+    positionPillForActiveTab(tabContainer);
+  };
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(reposition);
+    observer.observe(tabContainer);
+    tabContainer.querySelectorAll('.tab-btn').forEach((tab) => observer.observe(tab));
+  } else {
+    window.addEventListener('resize', reposition);
+  }
+};
+
 export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
   const tabContainers = document.querySelectorAll(tabsSelector);
   if (!tabContainers.length) return;
   ensureGooFilter();
 
-  tabContainers.forEach(tabContainer => {
+  tabContainers.forEach((tabContainer) => {
     if (!tabContainer.querySelector('.pill-overlay')) {
       const overlay = document.createElement('div');
       overlay.className = 'pill-overlay';
@@ -120,54 +187,8 @@ export const initTabPillAnimation = (tabsSelector = '.input-tabs') => {
       tabContainer.appendChild(overlay);
       tabContainer.classList.add('goo-ready');
     }
-
     positionPillForActiveTab(tabContainer);
-
-    const tabButtons = tabContainer.querySelectorAll('.tab-btn');
-    tabButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        tabButtons.forEach(tab => {
-          if (tab !== button) {
-            tab.dataset.wasActive = 'false';
-            tab.dataset.lastActive = 'false';
-          }
-        });
-        setTimeout(() => positionPillForActiveTab(tabContainer), 10);
-      });
-
-      const setPressVars = (btn) => {
-        if (btn.classList.contains('active')) {
-          tabContainer.style.removeProperty('--press-pill-left');
-          tabContainer.style.removeProperty('--press-pill-width');
-          return;
-        }
-        const left = btn.offsetLeft;
-        const pillPadding = 8;
-        const naturalWidth = btn.offsetWidth;
-        const pressWidth = naturalWidth + pillPadding;
-        tabContainer.style.setProperty('--press-pill-width', `${pressWidth}px`);
-        tabContainer.style.setProperty('--press-pill-left', `${left - (pillPadding / 2)}px`);
-      };
-      const clearPressVars = () => {
-        tabContainer.style.removeProperty('--press-pill-left');
-        tabContainer.style.removeProperty('--press-pill-width');
-      };
-
-      ['pointerdown','mousedown','touchstart'].forEach(evt => {
-        button.addEventListener(evt, () => setPressVars(button), { passive: true });
-      });
-      ['pointerup','mouseup','touchend','touchcancel','pointercancel','mouseleave','pointerout','blur'].forEach(evt => {
-        button.addEventListener(evt, clearPressVars, { passive: true });
-      });
-    });
-
-    window.addEventListener('resize', () => {
-      tabButtons.forEach(tab => {
-        tab.dataset.wasActive = 'false';
-        tab.dataset.lastActive = 'false';
-      });
-      positionPillForActiveTab(tabContainer);
-    });
+    wireTabContainer(tabContainer);
   });
 };
 

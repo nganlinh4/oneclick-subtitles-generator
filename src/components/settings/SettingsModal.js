@@ -11,10 +11,6 @@ import '../../styles/settings/checkbox-fix.css';
 import '../../styles/components/tab-content-animations.css';
 import SettingsFooterControls from './SettingsFooterControls';
 import CloseButton from '../common/CloseButton';
-import { clearCache } from '../../platform/cacheService';
-import { clearCredentials } from '../../platform/credentialStateController';
-import { clearMedia } from '../../platform/mediaService';
-import { clearDesktopSettings } from '../../platform/settingsService';
 import {
   isSettingsResetActive,
   runTerminalSettingsReset,
@@ -43,92 +39,8 @@ import {
 import useSettingsState from './hooks/useSettingsState';
 import useSettingsPersistence from './hooks/useSettingsPersistence';
 import { useSettingsTabPillInit, useSettingsTabPillUpdate } from './utils/settingsAnimationHelpers';
-
-const startResetOperation = (operation) => {
-  try {
-    return Promise.resolve(operation());
-  } catch (error) {
-    return Promise.reject(error);
-  }
-};
-
-const runIdempotentResetOperations = async (operations, { attempts = 2 } = {}) => {
-  const values = new Array(operations.length);
-  let remaining = operations.map((operation, index) => ({ operation, index }));
-  let lastFailures = [];
-
-  for (let attempt = 0; attempt < attempts && remaining.length > 0; attempt += 1) {
-    const batch = remaining;
-    const results = await Promise.allSettled(batch.map(
-      ({ operation }) => startResetOperation(operation),
-    ));
-    const failed = [];
-    results.forEach((result, batchIndex) => {
-      const { operation, index } = batch[batchIndex];
-      if (result.status === 'fulfilled') {
-        values[index] = result.value;
-      } else {
-        failed.push({ operation, index });
-      }
-    });
-    lastFailures = results.filter((result) => result.status === 'rejected');
-    remaining = failed;
-  }
-
-  if (remaining.length > 0) {
-    throw lastFailures[0].reason;
-  }
-  return values;
-};
-
-export const clearNativeApplicationState = () => runIdempotentResetOperations([
-  () => clearCache(),
-  () => clearCredentials(),
-  () => clearMedia(),
-  () => clearDesktopSettings(),
-]);
-
-const waitForIndexedDbDeletion = (indexedDb, name) => new Promise((resolve, reject) => {
-  const request = indexedDb.deleteDatabase(name);
-  request.onsuccess = () => resolve();
-  request.onerror = () => reject(request.error ?? new Error('IndexedDB reset failed'));
-  request.onblocked = () => reject(new Error('IndexedDB reset was blocked'));
-});
-
-export const clearBrowserApplicationState = async ({
-  storage = globalThis.localStorage,
-  indexedDb = globalThis.indexedDB,
-} = {}) => {
-  const [databases] = await runIdempotentResetOperations([
-    () => indexedDb.databases(),
-  ]);
-  const databaseNames = databases
-    .map((database) => database?.name)
-    .filter((name) => typeof name === 'string' && name.length > 0);
-
-  storage.clear();
-  await runIdempotentResetOperations(databaseNames.map(
-    (name) => () => waitForIndexedDbDeletion(indexedDb, name),
-  ));
-};
-
-export const clearApplicationStateAndReload = async ({
-  clearNative = clearNativeApplicationState,
-  clearBrowser = clearBrowserApplicationState,
-  reload = () => window.location.reload(),
-} = {}) => {
-  let resetFailure = null;
-  try {
-    await runIdempotentResetOperations([clearNative, clearBrowser]);
-  } catch (error) {
-    resetFailure = error;
-  }
-
-  // Navigation is the recovery boundary for both success and partial failure. The terminal
-  // coordinator keeps the old document read-only if the host does not destroy it immediately.
-  reload();
-  if (resetFailure) throw resetFailure;
-};
+import { clearApplicationStateAndReload } from './utils/applicationStateReset';
+import { pickNextAboutBackground } from './utils/aboutBackground';
 
 const SETTINGS_TAB_IDS = new Set([
   'api-keys',
@@ -437,55 +349,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
                 }
                 // Select a random background when clicking on the About tab
                 if (activeTab !== 'about') {
-                  // Possible background types: default, alternative, 1, 2, 3, 4, 5
-                  const allBackgroundOptions = ['default', 'alternative', '1', '2', '3', '4', '5'];
-
-                  // Get the history of recently used backgrounds from localStorage
-                  let recentBackgrounds = [];
-                  try {
-                    const storedHistory = localStorage.getItem('about_background_history');
-                    if (storedHistory) {
-                      recentBackgrounds = JSON.parse(storedHistory);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing background history:', e);
-                    // If there's an error, just use an empty array
-                    recentBackgrounds = [];
-                  }
-
-                  // Filter out recently used backgrounds (if we have enough options)
-                  // We'll avoid reusing the last 3 backgrounds if possible
-                  let availableOptions = [...allBackgroundOptions];
-
-                  // Only filter if we have enough options to choose from
-                  if (allBackgroundOptions.length > recentBackgrounds.length) {
-                    availableOptions = allBackgroundOptions.filter(
-                      option => !recentBackgrounds.includes(option)
-                    );
-                  }
-
-                  // If we somehow filtered out all options, use all backgrounds
-                  if (availableOptions.length === 0) {
-                    availableOptions = [...allBackgroundOptions];
-                  }
-
-                  // Select a random background from available options
-                  const randomBackground = availableOptions[Math.floor(Math.random() * availableOptions.length)];
-
-                  // Update the history - add the new background and keep only the last 3
-                  recentBackgrounds.unshift(randomBackground);
-                  if (recentBackgrounds.length > 3) {
-                    recentBackgrounds = recentBackgrounds.slice(0, 3);
-                  }
-
-                  // Save the updated history
-                  localStorage.setItem('about_background_history', JSON.stringify(recentBackgrounds));
-
-                  // Save the selected background
-                  localStorage.setItem('about_background_type', randomBackground);
-
-                  // Update the state
-                  setBackgroundType(randomBackground);
+                  setBackgroundType(pickNextAboutBackground());
                 }
                 setActiveTab('about');
               }}

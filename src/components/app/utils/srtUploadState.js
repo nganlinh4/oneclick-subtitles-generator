@@ -97,5 +97,3 @@ export const useSrtUploadState = ({
     handleSrtClear: handleSrtClearWithState,
   };
 };
-
-export default useSrtUploadState;

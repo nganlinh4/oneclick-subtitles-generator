@@ -1,248 +1,156 @@
+// Quality re-download orchestration: the shared native URL download at the selected quality,
+// progress, confirmation, and cancellation before and after native job registration.
 import { act, renderHook } from '@testing-library/react';
+
 import {
-  cancelDownload,
-  inspectDownloadUrl,
-  startDownload,
-} from '../../platform/downloadService';
-import {
-  claimMediaCandidate,
-  discardMediaCandidate,
-} from '../../platform/mediaService';
-import { selectNativeQuality } from './useQualityProgressTracking';
+  cancelNativeVideoDownload,
+  downloadNativeVideo,
+} from '../../platform/nativeUrlDownloadAdapter';
+import { createQualityRedownloadActivation } from './qualityRedownloadActivation';
 import useQualityProgressTracking from './useQualityProgressTracking';
 
-vi.mock('@tauri-apps/api/core', () => ({
-  Channel: class Channel {},
-  invoke: vi.fn(),
+vi.mock('../../platform/nativeUrlDownloadAdapter', () => ({
+  cancelNativeVideoDownload: vi.fn(),
+  downloadNativeVideo: vi.fn(),
 }));
-vi.mock('../../platform/desktopRuntime', () => ({
-  isDesktopRuntime: () => true,
-  invokeDesktop: vi.fn(),
-  invokeDesktopRaw: vi.fn(),
+vi.mock('./qualityRedownloadActivation', () => ({
+  createQualityRedownloadActivation: vi.fn(),
 }));
-vi.mock('../../platform/downloadService', () => ({
-  cancelDownload: vi.fn(),
-  inspectDownloadUrl: vi.fn(),
-  startDownload: vi.fn(),
-}));
-vi.mock('../../platform/mediaService', () => ({
-  claimMediaCandidate: vi.fn(),
-  discardMediaCandidate: vi.fn(),
-}));
-vi.mock('../../services/subtitleCache', () => ({
-  generateUrlBasedCacheId: vi.fn(async () => 'url-cache'),
-}));
-vi.mock('../../platform/subtitleProjectStore', () => ({
-  resolveProjectForCache: vi.fn(async () => ({
-    cacheId: 'url-cache',
-    projectId: '01890f39-7b62-7c4e-8c9a-000000000231',
-    snapshot: {
-      metadata: { id: '01890f39-7b62-7c4e-8c9a-000000000231', name: 'url-cache' },
-      stateVersion: 4,
-      media: [],
-      tracks: [],
-    },
-  })),
-}));
+
+const JOB_ID = '01890f39-7b62-7c4e-8c9a-000000000202';
+const media = Object.freeze({ native: true, assetId: 'output' });
+const activation = Object.freeze({
+  validateOwnership: vi.fn(),
+  admitActivation: vi.fn(),
+  publishActivation: vi.fn(),
+  rollbackActivation: vi.fn(),
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  createQualityRedownloadActivation.mockResolvedValue(activation);
 });
 
-const inventory = {
-  formats: {
-    video: [
-      { formatId: '1080-video', height: 1080, includesAudio: false, bitrateKbps: 4_000 },
-      { formatId: '1080-combined', height: 1080, includesAudio: true, bitrateKbps: 2_000 },
-      { formatId: '720-combined', height: 720, includesAudio: true, bitrateKbps: 1_000 },
-    ],
-  },
+const renderTracking = () => {
+  const props = {
+    setIsRedownloading: vi.fn(),
+    setDownloadProgress: vi.fn(),
+    onConfirm: vi.fn(),
+    handleClose: vi.fn(),
+    onMediaReplaced: vi.fn(),
+  };
+  const { result } = renderHook(() => useQualityProgressTracking(props));
+  return { props, result };
 };
 
-it('prefers an exact combined native download format at the requested height', () => {
-  expect(selectNativeQuality(inventory, '1080p')).toEqual({
-    mode: 'exact',
-    formatId: '1080-combined',
-  });
-});
-
-it('uses a bounded at-most request when the inventory has no exact format', () => {
-  expect(selectNativeQuality(inventory, '480p')).toEqual({ mode: 'atMost', height: 480 });
-  expect(() => selectNativeQuality(inventory, 'original')).toThrow(
-    'The selected video quality is invalid'
-  );
-});
-
-it('finishes quality downloads through native channel events without polling localhost', async () => {
+it('downloads the selected quality through the shared transaction and confirms the new media', async () => {
   localStorage.setItem('use_cookies_for_download', 'true');
   localStorage.setItem('download_cookie_source', 'opera');
-  inspectDownloadUrl.mockResolvedValue({
-    capability: { id: '01890f39-7b62-7c4e-8c9a-000000000201' },
-    inventory,
+  downloadNativeVideo.mockImplementation(async (request) => {
+    request.onStarted(JOB_ID);
+    request.onProgress(25);
+    return media;
   });
-  claimMediaCandidate.mockResolvedValue({ native: true, assetId: 'output' });
-  discardMediaCandidate.mockResolvedValue(true);
-  startDownload.mockImplementation(async (request, handlers) => {
-    handlers.onProgress({
-      job: { progress: { basisPoints: 2_500 } },
-      progress: { fraction: 0.9 },
-    });
-    handlers.onCompleted({ media: { asset: { id: 'output' } } });
-    return { id: '01890f39-7b62-7c4e-8c9a-000000000202' };
-  });
-  const setDownloadProgress = vi.fn();
-  const setIsRedownloading = vi.fn();
-  const onConfirm = vi.fn();
-  const handleClose = vi.fn();
-  const progressIntervalRef = { current: null };
-  const { result } = renderHook(() => useQualityProgressTracking({
-    progressIntervalRef,
-    qualityVideoId: 'legacy-id',
-    setIsRedownloading,
-    setDownloadProgress,
-    onConfirm,
-    handleClose,
-  }));
+  const { props, result } = renderTracking();
 
   let outcome;
   await act(async () => {
-    outcome = await result.current.startQualityDownloadWithId(
-      '1080p',
-      'https://example.com/video',
-      'legacy-id'
-    );
+    outcome = await result.current.startQualityDownloadWithId('1080p', 'https://example.com/video', 'id');
   });
 
-  expect(startDownload).toHaveBeenCalledWith(expect.objectContaining({
-    inventoryId: '01890f39-7b62-7c4e-8c9a-000000000201',
-    media: {
-      kind: 'video',
-      quality: { mode: 'exact', formatId: '1080-combined' },
-    },
-  }), expect.any(Object));
-  expect(inspectDownloadUrl).toHaveBeenCalledWith({
+  expect(createQualityRedownloadActivation).toHaveBeenCalledExactlyOnceWith({
+    url: 'https://example.com/video',
+    onMediaReplaced: props.onMediaReplaced,
+  });
+  expect(downloadNativeVideo).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    ...activation,
     url: 'https://example.com/video',
     cookieSource: 'opera',
-  });
-  expect(setDownloadProgress).toHaveBeenCalledWith(25);
-  expect(setDownloadProgress).toHaveBeenCalledWith(100);
-  expect(onConfirm).toHaveBeenCalledWith('redownload', expect.objectContaining({
-    nativeMedia: { native: true, assetId: 'output' },
+    quality: '1080p',
+    signal: expect.any(AbortSignal),
   }));
-  expect(handleClose).toHaveBeenCalledTimes(1);
-  expect(outcome).toEqual({
-    success: true,
-    nativeMedia: { native: true, assetId: 'output' },
+  expect(props.setDownloadProgress).toHaveBeenCalledWith(25);
+  expect(props.setDownloadProgress).toHaveBeenLastCalledWith(100);
+  expect(props.onConfirm).toHaveBeenCalledExactlyOnceWith('redownload', {
+    quality: '1080p',
+    url: 'https://example.com/video',
+    videoId: 'id',
+    nativeMedia: media,
   });
+  expect(props.handleClose).toHaveBeenCalledOnce();
+  expect(outcome).toEqual({ success: true, nativeMedia: media });
 });
 
-it('rejects a pre-registration protocol failure once without cancelling above the service', async () => {
-  inspectDownloadUrl.mockResolvedValue({
-    capability: { id: '01890f39-7b62-7c4e-8c9a-000000000211' },
-    inventory,
+it('cancels a registered job through the adapter so a claim already in progress stays authoritative', async () => {
+  let finish;
+  downloadNativeVideo.mockImplementation(async (request) => {
+    request.onStarted(JOB_ID);
+    return new Promise((resolve) => { finish = resolve; });
   });
-  const protocol = Object.assign(new Error('fixed protocol failure'), {
-    code: 'invalidDownloadResponse',
-  });
-  startDownload.mockImplementation(async (_request, handlers) => {
-    handlers.onProtocolError(protocol);
-    throw protocol;
-  });
-  const { result } = renderHook(() => useQualityProgressTracking({
-    setIsRedownloading: vi.fn(),
-    setDownloadProgress: vi.fn(),
-    onConfirm: vi.fn(),
-    handleClose: vi.fn(),
-  }));
-
-  await expect(act(async () => result.current.startQualityDownloadWithId(
-    '1080p',
-    'https://example.com/protocol',
-    'legacy-id'
-  ))).rejects.toBe(protocol);
-  await new Promise((resolve) => { setTimeout(resolve, 0); });
-  expect(cancelDownload).not.toHaveBeenCalled();
-});
-
-it('keeps an atomic candidate claim authoritative when cancellation arrives after commit begins', async () => {
-  inspectDownloadUrl.mockResolvedValue({
-    capability: { id: '01890f39-7b62-7c4e-8c9a-000000000221' },
-    inventory,
-  });
-  let resolveOpen;
-  claimMediaCandidate.mockReturnValue(new Promise((resolve) => { resolveOpen = resolve; }));
-  discardMediaCandidate.mockResolvedValue(true);
-  startDownload.mockImplementation(async (_request, handlers) => {
-    handlers.onCompleted({ media: { asset: { id: 'output' } } });
-    return { id: '01890f39-7b62-7c4e-8c9a-000000000222' };
-  });
-  cancelDownload.mockResolvedValue({ state: 'cancelling' });
-  const onConfirm = vi.fn();
-  const handleClose = vi.fn();
-  const { result } = renderHook(() => useQualityProgressTracking({
-    setIsRedownloading: vi.fn(),
-    setDownloadProgress: vi.fn(),
-    onConfirm,
-    handleClose,
-  }));
+  cancelNativeVideoDownload.mockResolvedValue(false);
+  const { props, result } = renderTracking();
 
   let operation;
   act(() => {
-    operation = result.current.startQualityDownloadWithId(
-      '1080p',
-      'https://example.com/cancelled-open',
-      'legacy-id'
-    );
+    operation = result.current.startQualityDownloadWithId('720p', 'https://example.com/v', 'id');
   });
-  await vi.waitFor(() => expect(claimMediaCandidate).toHaveBeenCalledWith(
-    { asset: { id: 'output' } },
-    {
-      expectedStateVersion: 4,
-      projectId: '01890f39-7b62-7c4e-8c9a-000000000231',
-    }
-  ));
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
   await act(async () => result.current.handleCancelRedownload());
-  resolveOpen({ native: true, assetId: 'output' });
+  expect(cancelNativeVideoDownload).toHaveBeenCalledExactlyOnceWith(JOB_ID);
+  expect(downloadNativeVideo.mock.calls[0][0].signal.aborted).toBe(false);
 
-  let outcome;
-  await act(async () => { outcome = await operation; });
-  expect(outcome).toEqual({
-    success: true,
-    nativeMedia: { native: true, assetId: 'output' },
+  finish(media);
+  await act(async () => {
+    await expect(operation).resolves.toEqual({ success: true, nativeMedia: media });
   });
-  expect(onConfirm).toHaveBeenCalledExactlyOnceWith('redownload', {
-    quality: '1080p',
-    url: 'https://example.com/cancelled-open',
-    videoId: 'legacy-id',
-    nativeMedia: { native: true, assetId: 'output' },
-  });
-  expect(handleClose).toHaveBeenCalledOnce();
+  expect(props.onConfirm).toHaveBeenCalledOnce();
 });
 
-it('discards a quality candidate exactly once when project activation fails', async () => {
-  inspectDownloadUrl.mockResolvedValue({
-    capability: { id: '01890f39-7b62-7c4e-8c9a-000000000241' },
-    inventory,
-  });
-  const activationError = new Error('project version changed');
-  claimMediaCandidate.mockRejectedValue(activationError);
-  discardMediaCandidate.mockResolvedValue(true);
-  startDownload.mockImplementation(async (_request, handlers) => {
-    handlers.onCompleted({ media: { asset: { id: 'candidate-output' } } });
-    return { id: '01890f39-7b62-7c4e-8c9a-000000000242' };
-  });
-  const { result } = renderHook(() => useQualityProgressTracking({
-    setIsRedownloading: vi.fn(),
-    setDownloadProgress: vi.fn(),
-    onConfirm: vi.fn(),
-    handleClose: vi.fn(),
-  }));
+it('reports a cancellation the adapter resolved without media', async () => {
+  downloadNativeVideo.mockResolvedValue(null);
+  const { props, result } = renderTracking();
 
-  await expect(result.current.startQualityDownloadWithId(
-    '1080p',
-    'https://example.com/failed-activation',
-    'legacy-id'
-  )).rejects.toBe(activationError);
-  expect(discardMediaCandidate).toHaveBeenCalledExactlyOnceWith('candidate-output');
+  await act(async () => {
+    await expect(result.current.startQualityDownloadWithId('720p', 'https://example.com/v', 'id'))
+      .resolves.toEqual({ success: false, cancelled: true });
+  });
+  expect(props.onConfirm).not.toHaveBeenCalled();
+});
+
+it('withdraws an unregistered request through its abort signal', async () => {
+  downloadNativeVideo.mockImplementation((request) => new Promise((_resolve, reject) => {
+    request.signal.addEventListener('abort', () => {
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    });
+  }));
+  const { props, result } = renderTracking();
+
+  let operation;
+  act(() => {
+    operation = result.current.startQualityDownloadWithId('720p', 'https://example.com/v', 'id');
+  });
+  await vi.waitFor(() => expect(downloadNativeVideo).toHaveBeenCalledOnce());
+  await act(async () => result.current.handleCancelRedownload());
+
+  await act(async () => {
+    await expect(operation).resolves.toEqual({ success: false, cancelled: true });
+  });
+  expect(cancelNativeVideoDownload).not.toHaveBeenCalled();
+  expect(props.setIsRedownloading).toHaveBeenCalledWith(false);
+  expect(props.onConfirm).not.toHaveBeenCalled();
+});
+
+it('surfaces a refused activation without starting a download', async () => {
+  const refusal = Object.assign(new Error('not the active media source'), {
+    code: 'qualityRedownloadOwnershipLost',
+  });
+  createQualityRedownloadActivation.mockRejectedValue(refusal);
+  const { result } = renderTracking();
+
+  await act(async () => {
+    await expect(result.current.startQualityDownloadWithId('720p', 'https://example.com/v', 'id'))
+      .rejects.toBe(refusal);
+  });
+  expect(downloadNativeVideo).not.toHaveBeenCalled();
 });

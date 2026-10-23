@@ -8,7 +8,7 @@ import {
 } from '../platform/activeNativeMedia';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
 
-export const mapNativeInspectionToVideoDimensions = (assetId, inspection) => {
+const mapNativeInspectionToVideoDimensions = (assetId, inspection) => {
   const dimensions = inspection.width !== null && inspection.height !== null
     ? `${inspection.width}x${inspection.height}`
     : null;

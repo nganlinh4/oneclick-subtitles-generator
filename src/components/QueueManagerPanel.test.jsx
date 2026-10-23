@@ -6,7 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import QueueManagerPanel from './QueueManagerPanel';
 
 const queueManagerCss = readFileSync(
-  resolve('src/styles/QueueManagerPanel.css'),
+  resolve('src/styles/queue-manager/queue-items.css'),
   'utf8',
 );
 

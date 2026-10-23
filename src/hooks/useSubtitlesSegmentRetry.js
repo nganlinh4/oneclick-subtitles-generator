@@ -2,23 +2,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
     EVENTS,
     publishStreamingComplete,
-    publishStreamingUpdate,
     subscribe,
 } from '../events/bus';
 import { getVideoProcessingFps, getMediaResolution } from '../services/configService';
 import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 import { isDesktopRuntime } from '../platform/desktopRuntime';
-import {
-    getSelectedMedia,
-    isNativeMediaDescriptor,
-    isNativeMediaPlaybackUrl,
-} from '../platform/mediaService';
-import { fetchBrowserResource } from '../platform/browserFetch';
-import {
-    captureDurableSubtitleSegmentRevision,
-    commitDurableSubtitleSegmentCheckpoint,
-    isDurableSubtitleCheckpointReceipt,
-} from '../services/subtitleCache';
+import { captureDurableSubtitleSegmentRevision } from '../services/subtitleCache';
 import {
     SubtitleOperationOwnershipError,
     acquireSubtitleProjectOperationLease,
@@ -31,234 +20,28 @@ import {
     isSubtitleOperationCurrent,
     releaseSubtitleProjectOperationLease,
 } from '../utils/subtitleOperationOwnership';
-import {
-    acknowledgeGeminiTranscriptionDeliveries,
-    bindGeminiTranscriptionDeliveries,
-    retryPendingGeminiTranscriptionDeliveries,
-} from '../services/gemini/transcriptionDelivery';
+import { retryPendingGeminiTranscriptionDeliveries } from '../services/gemini/transcriptionDelivery';
 import { loadProject } from '../platform/projectService';
+import { createSubtitleRunId as createRunId } from './subtitleRunId';
+import {
+    assertResolvedSourceMatches,
+    resolveCachedRetrySource,
+    stoppedError,
+} from './segmentRetrySource';
+import {
+    applyOwnedSubtitles,
+    commitOwnedSegmentReplacement,
+    createOwnedStreamingSession,
+    isTransientProviderError,
+    normalizeSegmentRows,
+    publishOwnedEvent,
+    segmentRetryCompletionStatus,
+} from './segmentRetryOwnership';
 
 const RETRY_DELAYS = [5, 10, 15, 20, 25];
 const INLINE_LARGE_SEGMENT_THRESHOLD_BYTES = 20 * 1024 * 1024;
 const FIXED_RETRY_FAILURE = 'segmentRetryFailed';
 const loadLifecycleOrchestrator = () => import('../services/lifecycleOrchestrator');
-
-const is503Error = (error) => !!(error?.message && (
-    error.message.includes('503')
-    || error.message.includes('overloaded')
-    || error.message.includes('UNAVAILABLE')
-));
-
-const is429Error = (error) => !!(error?.message && (
-    error.message.includes('429')
-    || error.message.includes('RESOURCE_EXHAUSTED')
-    || error.message.includes('quota')
-    || error.message.includes('rate limit')
-));
-
-const createRunId = () => (
-    typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2, 10)
-);
-
-const cloneSubtitles = (value) => (
-    Array.isArray(value) ? value.map((subtitle) => ({ ...subtitle })) : []
-);
-
-const normalizeSegmentRows = (rows, segment) => {
-    if (!Array.isArray(rows) || rows.length === 0) {
-        throw new Error('The segment retry returned no subtitles.');
-    }
-    const parsed = rows.map((row) => {
-        if (!row || !Number.isFinite(row.start) || !Number.isFinite(row.end)
-            || row.end <= row.start || typeof row.text !== 'string' || !row.text.trim()) {
-            throw new Error('The segment retry returned malformed subtitles.');
-        }
-        return { ...row, text: row.text };
-    });
-    const normalized = parsed
-        .map((row) => {
-            return {
-                ...row,
-                start: Math.max(row.start, segment.start),
-                end: Math.min(row.end, segment.end),
-            };
-        })
-        .filter((row) => row.end > row.start);
-    if (normalized.length === 0) {
-        throw new Error('The segment retry returned no subtitles in the selected range.');
-    }
-    return bindGeminiTranscriptionDeliveries(normalized, rows);
-};
-
-const stoppedError = () => new SubtitleOperationOwnershipError('subtitleOperationAborted');
-
-const assertResolvedSourceMatches = (context, sourceFile) => {
-    assertSubtitleOperationCurrent(context);
-    if (isNativeMediaDescriptor(sourceFile) && sourceFile.assetId !== context.assetId) {
-        throw new SubtitleOperationOwnershipError();
-    }
-};
-
-export const resolveCachedRetrySource = async (currentSource, url, {
-    nativeRuntime = isDesktopRuntime,
-    selectedMedia = getSelectedMedia,
-    fetchMedia = globalThis.fetch,
-    signal,
-    validateOwnership,
-    expectedAssetId = null,
-} = {}) => {
-    const validate = async () => {
-        if (signal?.aborted) throw stoppedError();
-        if (typeof validateOwnership === 'function') await validateOwnership();
-        if (signal?.aborted) throw stoppedError();
-    };
-    await validate();
-    const desktop = nativeRuntime();
-    if (desktop && isNativeMediaDescriptor(currentSource)
-        && currentSource.assetId === expectedAssetId) {
-        await validate();
-        return Object.freeze({ sourceFile: currentSource, usesOriginalMedia: true });
-    }
-    if (desktop) {
-        const media = await selectedMedia();
-        await validate();
-        if (!isNativeMediaDescriptor(media)) {
-            throw new Error('Select the media again before retrying this segment.');
-        }
-        if (typeof expectedAssetId !== 'string' || media.assetId !== expectedAssetId) {
-            throw new SubtitleOperationOwnershipError();
-        }
-        return Object.freeze({ sourceFile: media, usesOriginalMedia: true });
-    }
-    if (currentSource) {
-        await validate();
-        return Object.freeze({ sourceFile: currentSource, usesOriginalMedia: true });
-    }
-    if (isNativeMediaPlaybackUrl(url)) {
-        throw new Error('Native cached media cannot be fetched by the browser.');
-    }
-    const init = signal ? { signal } : undefined;
-    const response = await fetchBrowserResource(url, init, { fetchImpl: fetchMedia });
-    await validate();
-    if (!response.ok) throw new Error(`Failed to fetch cached clip: ${response.statusText}`);
-    const blob = await response.blob();
-    await validate();
-    const filename = url.split('?')[0].split('/').pop() || 'segment.mp4';
-    return Object.freeze({
-        sourceFile: new File([blob], filename, { type: blob.type || 'video/mp4' }),
-        usesOriginalMedia: false,
-    });
-};
-
-const applyOwnedSubtitles = async ({
-    context,
-    mountedRef,
-    setSubtitlesData,
-    subtitles = null,
-    update = null,
-    allowAborted = false,
-}) => {
-    await assertSubtitleOperationDurable(context, { allowAborted });
-    if (!mountedRef.current) return false;
-    return new Promise((resolve) => {
-        let settled = false;
-        const finish = (value) => {
-            if (settled) return;
-            settled = true;
-            context.signal.removeEventListener('abort', handleAbort);
-            resolve(value);
-        };
-        const handleAbort = () => finish(false);
-        if (!allowAborted) context.signal.addEventListener('abort', handleAbort, { once: true });
-        setSubtitlesData((current) => {
-            if (!mountedRef.current
-                || !isSubtitleOperationCurrent(context, { allowAborted })) {
-                finish(false);
-                return current;
-            }
-            const next = typeof update === 'function'
-                ? update(cloneSubtitles(current))
-                : cloneSubtitles(subtitles);
-            if (!Array.isArray(next)) {
-                finish(false);
-                return current;
-            }
-            finish(true);
-            return next;
-        });
-    });
-};
-
-const createOwnedStreamingSession = ({
-    context,
-    controller,
-    mountedRef,
-    setStatus,
-    canPresent,
-    mergeStreamingSubtitles,
-    t,
-}) => {
-    let queue = Promise.resolve();
-    let failure = null;
-    let previewRows = [];
-
-    const enqueue = (mutation) => {
-        queue = queue.then(async () => {
-            if (failure) return;
-            await assertSubtitleOperationDurable(context);
-            if (!mountedRef.current) throw stoppedError();
-            await mutation();
-        }).catch((error) => {
-            if (!failure) failure = error;
-            if (!context.signal.aborted) controller.abort(error);
-        });
-    };
-
-    return Object.freeze({
-        onStatus(status) {
-            enqueue(() => {
-                assertSubtitleOperationCurrent(context);
-                if (status?.type !== 'success' && canPresent()) setStatus(status);
-            });
-        },
-        onStreamingUpdate(rows, isStreaming) {
-            if (!Array.isArray(rows) || rows.length === 0) return;
-            let normalized;
-            try {
-                normalized = normalizeSegmentRows(rows, context.segment);
-            } catch (error) {
-                if (!failure) failure = error;
-                if (!context.signal.aborted) controller.abort(error);
-                return;
-            }
-            enqueue(() => {
-                if (isStreaming && mountedRef.current && canPresent()) {
-                    previewRows = mergeStreamingSubtitles(
-                        previewRows,
-                        normalized,
-                        context.segment
-                    );
-                    publishStreamingUpdate({
-                        subtitles: previewRows,
-                        segment: context.segment,
-                        runId: context.runId,
-                    });
-                    setStatus({
-                        message: t('output.streamingProgress', 'Streaming...'),
-                        type: 'loading',
-                    });
-                }
-            });
-        },
-        async settle(processError = null) {
-            await queue;
-            if (failure) throw failure;
-            if (processError) throw processError;
-        },
-    });
-};
 
 const runOwnedGeminiAttempt = async ({
     context,
@@ -324,13 +107,6 @@ const runOwnedGeminiAttempt = async ({
     await stream.settle(processError);
     await assertSubtitleOperationDurable(context);
     return normalizeSegmentRows(result, context.segment);
-};
-
-const publishOwnedEvent = async (context, mountedRef, name, detail, { allowAborted = false } = {}) => {
-    await assertSubtitleOperationDurable(context, { allowAborted });
-    if (!mountedRef.current) throw stoppedError();
-    assertSubtitleOperationCurrent(context, { allowAborted });
-    window.dispatchEvent(new CustomEvent(name, { detail }));
 };
 
 export const useSubtitlesSegmentRetry = ({
@@ -474,30 +250,12 @@ export const useSubtitlesSegmentRetry = ({
                 setStatus,
                 canPresent: () => canPresent(record, context),
             });
-            await assertSubtitleOperationDurable(context);
-            const receipt = await commitDurableSubtitleSegmentCheckpoint({
+            const { committedRows, deliveryCommit } = await commitOwnedSegmentReplacement({
                 context,
                 revision,
                 replacement,
-                validateOwnership: assertSubtitleOperationDurable,
+                onCommitted: () => { committed = true; },
             });
-            if (!isDurableSubtitleCheckpointReceipt(receipt, context)
-                || !Array.isArray(receipt.subtitles)
-                || receipt.subtitleCount !== receipt.subtitles.length) {
-                throw new Error('The segment retry checkpoint could not be verified.');
-            }
-            const committedRows = bindGeminiTranscriptionDeliveries(
-                receipt.subtitles,
-                replacement
-            );
-            committed = true;
-            const deliveryCommit = await acknowledgeGeminiTranscriptionDeliveries({
-                rows: committedRows,
-                receipt,
-                context,
-                validateOwnership: assertSubtitleOperationDurable,
-            });
-            await assertSubtitleOperationDurable(context);
             if (canPresent(record, context)) {
                 const applied = await applyOwnedSubtitles({
                     context,
@@ -518,16 +276,7 @@ export const useSubtitlesSegmentRetry = ({
                         shortMessage: t('output.success', 'Success'),
                     }]);
                     if (canPresent(record, context)) {
-                        setStatus(deliveryCommit.acknowledged ? {
-                            message: t('output.generationSuccess', 'Subtitles updated successfully!'),
-                            type: 'success',
-                        } : {
-                            message: t(
-                                'output.subtitlesDeliveryPending',
-                                'Subtitles were saved. Native result cleanup will retry automatically.'
-                            ),
-                            type: 'warning',
-                        });
+                        setStatus(segmentRetryCompletionStatus(deliveryCommit, t));
                     }
                 }
             }
@@ -668,7 +417,7 @@ export const useSubtitlesSegmentRetry = ({
                         break;
                     } catch (error) {
                         if (isSubtitleOperationCancellation(error, context.signal)) throw error;
-                        if ((is503Error(error) || is429Error(error)) && attempt < RETRY_DELAYS.length) {
+                        if (isTransientProviderError(error) && attempt < RETRY_DELAYS.length) {
                             const delay = RETRY_DELAYS[attempt];
                             attempt += 1;
                             await assertSubtitleOperationDurable(context);
@@ -705,30 +454,12 @@ export const useSubtitlesSegmentRetry = ({
                     }
                 }
 
-                await assertSubtitleOperationDurable(context);
-                const receipt = await commitDurableSubtitleSegmentCheckpoint({
+                const { committedRows, deliveryCommit } = await commitOwnedSegmentReplacement({
                     context,
                     revision,
                     replacement,
-                    validateOwnership: assertSubtitleOperationDurable,
+                    onCommitted: () => { committed = true; },
                 });
-                if (!isDurableSubtitleCheckpointReceipt(receipt, context)
-                    || !Array.isArray(receipt.subtitles)
-                    || receipt.subtitleCount !== receipt.subtitles.length) {
-                    throw new Error('The segment retry checkpoint could not be verified.');
-                }
-                const committedRows = bindGeminiTranscriptionDeliveries(
-                    receipt.subtitles,
-                    replacement
-                );
-                committed = true;
-                const deliveryCommit = await acknowledgeGeminiTranscriptionDeliveries({
-                    rows: committedRows,
-                    receipt,
-                    context,
-                    validateOwnership: assertSubtitleOperationDurable,
-                });
-                await assertSubtitleOperationDurable(context);
                 if (canPresent(record, context)) {
                     const applied = await applyOwnedSubtitles({
                         context,
@@ -749,16 +480,7 @@ export const useSubtitlesSegmentRetry = ({
                             runId: context.runId,
                         });
                         if (canPresent(record, context)) {
-                            setStatus(deliveryCommit.acknowledged ? {
-                                message: t('output.generationSuccess', 'Subtitles updated successfully!'),
-                                type: 'success',
-                            } : {
-                                message: t(
-                                    'output.subtitlesDeliveryPending',
-                                    'Subtitles were saved. Native result cleanup will retry automatically.'
-                                ),
-                                type: 'warning',
-                            });
+                            setStatus(segmentRetryCompletionStatus(deliveryCommit, t));
                         }
                     }
                 }
@@ -831,5 +553,3 @@ export const useSubtitlesSegmentRetry = ({
 
     return { retrySegment };
 };
-
-export default useSubtitlesSegmentRetry;

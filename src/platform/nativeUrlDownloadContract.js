@@ -9,6 +9,8 @@ import { DOWNLOAD_COOKIE_SOURCES } from './downloadCookiePreference';
 
 const MAX_PREFERRED_SUBTITLE_LANGUAGES = 32;
 const MAX_URL_CHARACTERS = 8_192;
+const MIN_QUALITY_HEIGHT = 144;
+const MAX_QUALITY_HEIGHT = 4_320;
 const cookieSources = new Set(DOWNLOAD_COOKIE_SOURCES);
 const requestKeys = Object.freeze([
   'url',
@@ -17,6 +19,7 @@ const requestKeys = Object.freeze([
   'onProgress',
   'onSubtitle',
   'preferredSubtitleLanguages',
+  'quality',
   'signal',
   'validateOwnership',
   'admitActivation',
@@ -152,6 +155,38 @@ export const normalizeCookieSource = (cookieSource) => {
     throw fixedFailure('invalidDownloadRequest');
   }
   return cookieSource;
+};
+
+/**
+ * An explicit video quality (`'720p'`) requested by a quality re-download, or null for the default
+ * best-quality download. Bounded to the heights the native download contract accepts.
+ */
+export const normalizeQuality = (quality) => {
+  if (quality === undefined || quality === null) return null;
+  const match = typeof quality === 'string' ? /^([1-9][0-9]{2,3})p$/.exec(quality) : null;
+  const height = match === null ? NaN : Number(match[1]);
+  if (!(height >= MIN_QUALITY_HEIGHT && height <= MAX_QUALITY_HEIGHT)) {
+    throw fixedFailure('invalidDownloadRequest');
+  }
+  return quality;
+};
+
+/** Prefer an exact inventory format at the requested height (combined audio first, then the higher
+ * bitrate); otherwise ask the host for the best format at most that tall. */
+export const selectNativeQuality = (inventory, quality) => {
+  const height = Number.parseInt(String(quality), 10);
+  const formats = Array.isArray(inventory?.formats?.video) ? inventory.formats.video : [];
+  const format = formats
+    .filter((candidate) => candidate.height === height)
+    .sort((left, right) => {
+      if (left.includesAudio !== right.includesAudio) return left.includesAudio ? -1 : 1;
+      return (right.bitrateKbps ?? 0) - (left.bitrateKbps ?? 0);
+    })[0];
+  if (format) return { mode: 'exact', formatId: format.formatId };
+  if (Number.isInteger(height) && height >= MIN_QUALITY_HEIGHT && height <= MAX_QUALITY_HEIGHT) {
+    return { mode: 'atMost', height };
+  }
+  throw new Error('The selected video quality is invalid');
 };
 
 export const selectSubtitle = (inventory, preferredLanguages) => {

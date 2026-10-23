@@ -3,9 +3,9 @@
 // overlap, or a smaller overlap that still eats a big fraction of the shorter clip. Tiny,
 // inaudible overlaps are not flagged.
 
-export const LARGE_OVERLAP_SEC = 0.35;
-export const NESTED_OVERLAP_MIN_SEC = 0.1;
-export const NESTED_OVERLAP_RATIO = 0.5;
+const LARGE_OVERLAP_SEC = 0.35;
+const NESTED_OVERLAP_MIN_SEC = 0.1;
+const NESTED_OVERLAP_RATIO = 0.5;
 
 const shouldFlagOverlap = (a, b) => {
   const overlap = Math.min(a.end, b.end) - Math.max(a.start, b.start);

@@ -30,7 +30,7 @@ const checkingCredential = Object.freeze({
   reason: 'checking',
 });
 
-export const unavailableNativeNarrationAvailability = () => Object.freeze(
+const unavailableNativeNarrationAvailability = () => Object.freeze(
   Object.fromEntries(availabilityBackends.map(({ key }) => [key, unavailable('unavailable')]))
 );
 export const managedNativeNarrationAvailability = () => Object.freeze(

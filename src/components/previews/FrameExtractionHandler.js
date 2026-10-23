@@ -36,7 +36,6 @@ export const extractFrame = async () => {
           const timestamp = `${minutes}m${seconds}s`;
 
           await exportGeneratedBlob(blob, `frame_${timestamp}.png`);
-          console.log("Frame extracted successfully");
         } catch (error) {
           console.error("Error exporting frame:", error);
           showErrorToast(error?.message || "The frame could not be saved.", 8000);

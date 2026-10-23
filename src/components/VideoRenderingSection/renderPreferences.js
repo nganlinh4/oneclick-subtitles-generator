@@ -188,7 +188,7 @@ export const storeRenderPreference = (key, value, { json = false, storage } = {}
   }
 };
 
-export class LegacyRenderSceneConsumptionError extends Error {
+class LegacyRenderSceneConsumptionError extends Error {
   constructor(message, cause) {
     super(message, { cause });
     this.name = 'LegacyRenderSceneConsumptionError';

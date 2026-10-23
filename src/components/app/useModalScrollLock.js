@@ -5,7 +5,7 @@ export const MODAL_SCROLL_LOCK_ATTRIBUTE = 'data-osg-modal-scroll-lock';
 // Modal implementations predate the common app shell and use several backdrop names. Keep the
 // compatibility vocabulary in one place: local overlays such as crop/loading are intentionally
 // absent because they do not take ownership of the whole page.
-export const MODAL_SURFACE_SELECTOR = [
+const MODAL_SURFACE_SELECTOR = [
   '.modal-overlay',
   '[class*="-modal-overlay"]',
   '.rules-editor-overlay',

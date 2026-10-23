@@ -54,7 +54,7 @@ const browserGetAllKeys = () => {
   return legacy?.trim() ? [legacy] : [];
 };
 
-export const initKeyManager = () => {
+const initKeyManager = () => {
   if (!browserMode()) {
     initializeCredentialState().catch(() => undefined);
     return undefined;
@@ -126,7 +126,7 @@ export const getCurrentKey = () => {
   return keys[getActiveKeyIndex() < keys.length ? getActiveKeyIndex() : 0] ?? null;
 };
 
-export const isKeyBlacklisted = (key) => {
+const isKeyBlacklisted = (key) => {
   if (!browserMode()) return false;
   loadBrowserBlacklist();
   const expiry = blacklistedKeys.get(key);

@@ -63,7 +63,7 @@ export const applyPhysics = (particle) => {
  * Apply return to origin behavior for a particle
  * @param {Object} particle - The particle to update
  */
-export const applyReturnToOrigin = (particle) => {
+const applyReturnToOrigin = (particle) => {
   if (!particle.returnToOrigin) return;
 
   // Apply stronger damping to gradually stop movement
@@ -85,7 +85,7 @@ export const applyReturnToOrigin = (particle) => {
  * @param {Object} particle - The particle to update
  * @param {Object} cursorPosition - Current cursor position
  */
-export const applyCursorInteraction = (particle, cursorPosition) => {
+const applyCursorInteraction = (particle, cursorPosition) => {
   // Calculate distance from cursor to particle
   const dx = (cursorPosition.x - particle.x);
   const dy = (cursorPosition.y - particle.y);
@@ -107,7 +107,7 @@ export const applyCursorInteraction = (particle, cursorPosition) => {
  * This changes the complexity from O(n^2) to roughly O(n), greatly improving performance.
  * @param {Array} particles - Array of particles
  */
-export const handleCollisions = (particles) => {
+const handleCollisions = (particles) => {
   // 1. Initialize the grid.
   const grid = [];
   for (let i = 0; i < NUM_GRID_CELLS; i++) {

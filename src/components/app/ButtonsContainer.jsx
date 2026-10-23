@@ -283,10 +283,7 @@ const ButtonsContainer = ({
             }
 
             // Abort all ongoing Gemini API requests (including streaming)
-            const aborted = abortAllRequests();
-            if (aborted) {
-              console.log('[ButtonsContainer] Successfully aborted all Gemini requests');
-            }
+            abortAllRequests();
 
             if (isDownloading && currentDownloadId) {
               handleCancelDownload();

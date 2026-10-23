@@ -22,7 +22,7 @@ const exactKeys = (value, keys) => (
   && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
 );
 
-export class NativeProviderServiceError extends Error {
+class NativeProviderServiceError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'NativeProviderServiceError';

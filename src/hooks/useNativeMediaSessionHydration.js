@@ -9,6 +9,8 @@ import {
   restoreMediaAsset,
 } from '../platform/mediaService';
 import {
+  ensureProjectOwnsNativeMedia,
+  forgetNativeMediaSessionDurably,
   loadDurableNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
@@ -27,7 +29,9 @@ import { restoreSubtitleDocument } from '../platform/subtitleDocumentProject';
  * the last run is dead, so the asset has to be reopened. That reopen is only permitted for media
  * its project still owns, so the remembered session pointer is resolved to a project, that exact
  * project is published, and only then is the asset reopened. Every step re-checks that the pointer
- * still describes this run; anything else fails closed without touching storage.
+ * still describes this run; anything else fails closed. Storage is touched only when the subtitle
+ * stores prove the pointer stale: then that exact record is withdrawn so later runs stop retrying
+ * it. A failed lookup or a refused reopen (for example a file on an unplugged drive) keeps it.
  */
 export const createNativeMediaSessionHydrator = ({
   read = getSelectedMedia,
@@ -35,13 +39,15 @@ export const createNativeMediaSessionHydrator = ({
   readSession = readNativeMediaSession,
   loadSession = async () => readSession(),
   resolveOwner = resolveOwnedNativeMediaProject,
+  forgetStale = (session) => forgetNativeMediaSessionDurably({ expectedSession: session }),
   activate = activateResolvedMediaProject,
   apply,
   validate = isNativeMediaDescriptor,
 }) => {
   if (typeof read !== 'function' || typeof restore !== 'function'
       || typeof readSession !== 'function' || typeof loadSession !== 'function'
-      || typeof resolveOwner !== 'function' || typeof activate !== 'function'
+      || typeof resolveOwner !== 'function' || typeof forgetStale !== 'function'
+      || typeof activate !== 'function'
       || typeof apply !== 'function' || typeof validate !== 'function') {
     throw new TypeError('Native media session hydration requires reviewed dependencies');
   }
@@ -82,8 +88,14 @@ export const createNativeMediaSessionHydrator = ({
     }
     if (!guard()) return false;
 
-    const resolved = await resolveOwner(session);
-    if (!guard() || resolved === null) return false;
+    let stale = false;
+    const resolved = await resolveOwner(session, { onStale: () => { stale = true; } });
+    if (!guard()) return false;
+    if (resolved === null) {
+      // The clear is conditional on this exact record, so a newer selection is never erased.
+      if (stale) await Promise.resolve().then(() => forgetStale(session)).catch(() => undefined);
+      return false;
+    }
 
     let activation;
     try {
@@ -195,6 +207,26 @@ export const applyNativeMediaSession = ({
       }
       return receipt;
     });
+};
+
+/**
+ * Attach freshly selected local media to its project and publish it under the alias that project
+ * actually owns. That alias is not always the asset ID: the first media attached to a subtitle
+ * document inherits the document's identity, and binding the asset alias instead would refuse.
+ */
+export const activateOwnedLocalMedia = async ({
+  media,
+  setUploadedFile,
+  ensureOwnership = ensureProjectOwnsNativeMedia,
+  applySession = applyNativeMediaSession,
+}) => {
+  const ownership = await ensureOwnership({ media, cacheId: media.assetId });
+  return applySession({
+    media,
+    cacheId: ownership.cacheId,
+    projectId: ownership.projectId,
+    setUploadedFile,
+  });
 };
 
 export const useNativeMediaSessionHydration = ({ setUploadedFile, setIsSrtOnlyMode }) => {

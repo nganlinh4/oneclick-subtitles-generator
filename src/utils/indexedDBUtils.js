@@ -90,31 +90,6 @@ const getItem = async (storeName, key) => {
 };
 
 /**
- * Retrieves all data from an object store
- * @param {string} storeName - The object store name
- * @returns {Promise<Array>}
- */
-const getAllItems = async (storeName) => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([storeName], 'readonly');
-    const store = transaction.objectStore(storeName);
-    const request = store.getAll();
-
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => {
-        resolve(request.result || []);
-        db.close();
-      };
-      request.onerror = () => reject(request.error);
-    });
-  } catch (error) {
-    console.error('Error retrieving all data from IndexedDB:', error);
-    throw error;
-  }
-};
-
-/**
  * Deletes data from IndexedDB
  * @param {string} storeName - The object store name
  * @param {string|number} key - The key to delete
@@ -139,32 +114,8 @@ const removeItem = async (storeName, key) => {
   }
 };
 
-/**
- * Clears all data from an object store
- * @param {string} storeName - The object store name
- * @returns {Promise<void>}
- */
-const clearStore = async (storeName) => {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction([storeName], 'readwrite');
-    const store = transaction.objectStore(storeName);
-    const request = store.clear();
-
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-
-      transaction.oncomplete = () => db.close();
-    });
-  } catch (error) {
-    console.error('Error clearing store in IndexedDB:', error);
-    throw error;
-  }
-};
-
 // Background images specific functions
-export const BACKGROUND_IMAGES_KEY = 'background_generated_images';
+const BACKGROUND_IMAGES_KEY = 'background_generated_images';
 
 /**
  * Saves background images to IndexedDB
@@ -257,5 +208,3 @@ export const clearBackgroundImages = async () => {
   }
 };
 
-// Export general functions for potential future use
-export { setItem, getItem, getAllItems, removeItem, clearStore };

@@ -129,7 +129,7 @@ const normalizeFailure = (error) => {
   return new MediaExportError(code, mediaExportFailureMessage(code));
 };
 
-export const normalizeMediaExportJob = (value) => {
+const normalizeMediaExportJob = (value) => {
   const snapshot = snapshotExactRecord(value, ['id', 'kind', 'state', 'progress', 'sequence']);
   const progress = snapshot === null
     ? null
@@ -388,9 +388,6 @@ export const createMediaExportService = ({
 };
 
 const mediaExportService = createMediaExportService();
-
-export const startMediaExport = mediaExportService.start;
-export const cancelMediaExport = mediaExportService.cancel;
 
 export const exportMediaAsset = async (
   assetId,
