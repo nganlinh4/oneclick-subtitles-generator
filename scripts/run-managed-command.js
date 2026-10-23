@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runSupervisedSync } = require('./windows-job-supervisor');
 const { tauriFrontendDistOverride } = require('./managed-build-context.js');
+const { defaultLedgerPath, startTiming } = require('./timing-ledger.js');
 
 const CACHE_SCHEMA_VERSION = 1;
 const MANAGED_LANES = new Set(['dev', 'package']);
@@ -266,8 +267,12 @@ const runManagedCommand = ({
   supervise = runSupervisedSync,
   pruneStamp = pruneStampPath(environment.OSG_DEV_CACHE_ROOT),
   now = Date.now,
+  timingLedger = defaultLedgerPath(environment),
 } = {}) => {
   const invocation = parseArguments(commandLine);
+  const timing = startTiming([invocation.command, ...invocation.args].join(' '), {
+    ledgerPath: timingLedger,
+  });
   const repository = path.resolve(repositoryRoot);
   const cacheRoot = environment.OSG_DEV_CACHE_ROOT;
   let lease;
@@ -355,6 +360,7 @@ const runManagedCommand = ({
     }
   }
 
+  timing.finish(primaryError === undefined && cleanupErrors.length === 0 ? 'pass' : 'fail');
   if (primaryError !== undefined) {
     if (cleanupErrors.length > 0) primaryError.cleanupErrors = cleanupErrors;
     throw primaryError;

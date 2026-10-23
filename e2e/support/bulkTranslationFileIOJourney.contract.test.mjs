@@ -18,8 +18,6 @@ const nativeGeminiJobLifecycle = read('..', '..', 'src', 'platform', 'nativeGemi
 const downloadUtils = read('..', '..', 'src', 'components', 'translation', 'utils', 'downloadUtils.js');
 const fileUtils = read('..', '..', 'src', 'utils', 'fileUtils.js');
 const translationErrorComponent = read('..', '..', 'src', 'components', 'translation', 'TranslationError.js');
-const translationPersistenceJourney = read('..', 'journeys', 'translationPersistence.journey.js');
-const translatedDocumentExportsJourney = read('..', 'journeys', 'translatedDocumentExports.journey.js');
 const subtitleDocumentOracle = read('..', 'support', 'subtitleDocumentOracle.js');
 
 const assertJourneyContract = (source) => {
@@ -160,11 +158,4 @@ test('bulk export writes each file through the same native save boundary the doc
   assert.match(downloadUtils, /await downloadSRT\(download\.subtitles, download\.filename\)/u);
   assert.match(fileUtils, /exportSubtitleDocument\(\{ suggestedName: filename, format, content \}\)/u);
   assert.match(subtitleDocumentOracle, /export const waitForNewDocumentExports/u);
-});
-
-test('this journey targets its own ground: it does not duplicate translationPersistence or translatedDocumentExports', () => {
-  assert.doesNotMatch(journey, /importSubtitles\(\)/u);
-  assert.match(translationPersistenceJourney, /importSubtitles\(\)/u);
-  assert.match(translatedDocumentExportsJourney, /importSubtitles\(\)/u);
-  assert.doesNotMatch(journey, /download-btn-primary|download-options-modal/u);
 });

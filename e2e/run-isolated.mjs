@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 
@@ -7,57 +7,54 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { runSupervisedSync } = require('../scripts/windows-job-supervisor.js');
+const { startTiming } = require('../scripts/timing-ledger.js');
 
 const E2E_ROOT = import.meta.dirname;
 const JOURNEY_ROOT = join(E2E_ROOT, 'journeys');
 const WDIO = join(E2E_ROOT, 'node_modules', '@wdio', 'cli', 'bin', 'wdio.js');
 const CONFIG = join(E2E_ROOT, 'wdio.conf.js');
 
-// These are intentionally not part of the ordinary product suite. The damaged-font journey needs a
-// staged application assembled by its scenario runner; the other two are diagnostic probes whose
-// output is useful only while narrowing a known failure. transcriptionRulesAndAnalysis runs the
-// reviewed local ASR engine to full completion TWICE end to end (once per compared segmentation
-// setting) in one process -- like nativeToolsInstall, it is a real single-process journey a
-// developer can still run directly by name, just not on every ordinary pass.
-// longMediaResourceBounds joins that same single-process heavy group: it decodes real PCM
-// proportional to a two-hour synthetic source (twice) and drives a real zoom/seek/playback session
-// (own script: test:long-media-resource-bounds). longMediaOperationRecovery is a two-process
-// PHASE-gated scenario like renderInterruptRecovery, needing scenarios/longMediaOperationRecovery.mjs.
+// Journeys outside the ordinary default sweep, each for a stated reason:
+// - scenario-driven: a two-process or private-store PHASE runner in scenarios/*.mjs owns them;
+// - live-provider: they need the reviewed Gemini credential pool from .env;
+// - heavy: transcriptionRulesAndAnalysis runs local ASR to completion twice, longMediaResourceBounds
+//   decodes a two-hour synthetic source, readmeScreenshots photographs a ten-minute download.
+// Any of them can still be run directly by name.
 const NON_DEFAULT_JOURNEYS = new Set([
-  'srtOnlyTranslationDiagnostic.journey.js',
-  'srtOnlyUrlAttach.journey.js',
-  'readmeScreenshots.journey.js',
-  'geminiMediaBenchmark.journey.js',
+  // scenario-driven
   'damagedFontPayload.journey.js',
   'editPersistRelaunch.journey.js',
-  'historyAcrossRestart.journey.js',
   'geminiBackgroundImageSuccess.journey.js',
+  'geminiMediaBenchmark.journey.js',
   'geminiMultiWindowTranscription.journey.js',
+  'historyAcrossRestart.journey.js',
+  'longMediaOperationRecovery.journey.js',
+  'multiWindowAsrPersistence.journey.js',
+  'nativeToolsInstall.journey.js',
+  'renderInterruptRecovery.journey.js',
+  'settingsAppearancePersistence.journey.js',
+  'settingsNarrationModelManagement.journey.js',
+  'settingsToolsRemoveAndFactoryReset.journey.js',
+  'translationPersistence.journey.js',
+  'unicodeCues.journey.js',
+  // live-provider
   'geminiDocumentSuccess.journey.js',
   'geminiLiveMusicSuccess.journey.js',
   'geminiTranscriptionSuccess.journey.js',
   'geminiTranslationSuccess.journey.js',
   'geminiVideoAnalysisSuccess.journey.js',
-  'longMediaOperationRecovery.journey.js',
-  'longMediaResourceBounds.journey.js',
-  'multiWindowAsrPersistence.journey.js',
-  'nativeToolsInstall.journey.js',
-  'reconnaissance.journey.js',
-  'renderInterruptRecovery.journey.js',
-  'settingsAppearancePersistence.journey.js',
   'settingsCredentialLifecycle.journey.js',
-  'settingsNarrationModelManagement.journey.js',
-  'settingsToolsRemoveAndFactoryReset.journey.js',
-  'transcriptionRulesAndAnalysis.journey.js',
-  'translationPersistence.journey.js',
-  'unicodeCues.journey.js',
-  'wordNativeAudioRangeProjection.journey.js',
-  'wordNativeCancelRetrySwitch.journey.js',
   'wordNativeFreshVideoSpeech.journey.js',
-  'wordNativePreviewDecodedExport.journey.js',
-  'wordNativeTranslationVisualCustom.journey.js',
-  'wordNativeVerticalSlice.journey.js',
+  // heavy
+  'longMediaResourceBounds.journey.js',
+  'readmeScreenshots.journey.js',
+  'transcriptionRulesAndAnalysis.journey.js',
 ]);
+
+// Fixture owners run first so every later journey reuses their cached result: urlToPreview
+// installs the native tools and downloads the real video, localAsrGeneration installs the one
+// local ASR engine the other ASR journeys refuse to download again.
+const BOOTSTRAP_ORDER = ['urlToPreview.journey.js', 'localAsrGeneration.journey.js'];
 
 const fail = (message) => {
   throw new Error(`isolated E2E runner: ${message}`);
@@ -74,9 +71,11 @@ export const defaultJourneys = () => readdirSync(JOURNEY_ROOT, { withFileTypes: 
   .map((entry) => entry.name)
   .filter((name) => !NON_DEFAULT_JOURNEYS.has(name))
   .sort((left, right) => {
-    if (left === 'urlToPreview.journey.js') return -1;
-    if (right === 'urlToPreview.journey.js') return 1;
-    return left < right ? -1 : left > right ? 1 : 0;
+    const rank = (name) => {
+      const index = BOOTSTRAP_ORDER.indexOf(name);
+      return index < 0 ? BOOTSTRAP_ORDER.length : index;
+    };
+    return rank(left) - rank(right) || (left < right ? -1 : left > right ? 1 : 0);
   })
   .map((name) => join(JOURNEY_ROOT, name));
 
@@ -228,6 +227,9 @@ export const run = async ({ repeat, journeys }) => {
         const label = `${basename(journey)} (${iteration}/${repeat})`;
         const workflow = workflowNameForJourney(journey);
         const failureCountBeforeLease = failures.length;
+        const timing = startTiming(`journey:${basename(journey)}`, {
+          write: (line) => process.stdout.write(`${line}\n`),
+        });
         try {
           cacheMaintenance.withLeases(({
             applicationLease, evidenceLease, stagingLease,
@@ -274,7 +276,6 @@ export const run = async ({ repeat, journeys }) => {
                     'downloadQualityCancellationIdentity.journey.js',
                     'failedDownloadNoStale.journey.js',
                     'mainPreviewControlsAndFullscreen.journey.js',
-                    'wordNativeCancelRetrySwitch.journey.js',
                   ]).has(journeyName);
                   const preparedSourceSwitch = needsSourceSwitch
                     ? ensureSourceSwitchVideo({ applicationLease })
@@ -313,26 +314,11 @@ export const run = async ({ repeat, journeys }) => {
                         'translation-',
                       );
                     }
-                    if (journeyName === 'mainPreviewControlsAndFullscreen.journey.js'
-                        || journeyName === 'wordNativeCancelRetrySwitch.journey.js') {
-                      const repoRoot = join(E2E_ROOT, '..');
-                      const amiLongVideo = join(repoRoot, 'target', 'subtitle-benchmark', 'real-video', 'IS1009a-60-210.mp4');
-                      const primaryMedia = (journeyName === 'wordNativeCancelRetrySwitch.journey.js' && existsSync(amiLongVideo))
-                        ? stageMedia(amiLongVideo, 'ami-')
-                        : environment.OSG_E2E_MEDIA_SELECTION;
-                      environment.OSG_E2E_MEDIA_SELECTION = primaryMedia;
-                      const stagedSwitch = stageMedia(preparedSourceSwitch, 'switch-');
+                    if (journeyName === 'mainPreviewControlsAndFullscreen.journey.js') {
                       environment.OSG_E2E_MEDIA_SELECTION_SEQUENCE = JSON.stringify([
-                        primaryMedia,
-                        stagedSwitch,
+                        environment.OSG_E2E_MEDIA_SELECTION,
+                        stageMedia(preparedSourceSwitch, 'switch-'),
                       ]);
-                    }
-                    if (journeyName === 'wordNativeAudioRangeProjection.journey.js') {
-                      const repoRoot = join(E2E_ROOT, '..');
-                      const amiLongVideo = join(repoRoot, 'target', 'subtitle-benchmark', 'real-video', 'IS1009a-60-210.mp4');
-                      if (existsSync(amiLongVideo)) {
-                        environment.OSG_E2E_MEDIA_SELECTION = stageMedia(amiLongVideo, 'ami-');
-                      }
                     }
                     if (journeyName === 'longMediaResourceBounds.journey.js') {
                       const stagedLong = stageMedia(preparedLongMedia);
@@ -471,10 +457,17 @@ export const run = async ({ repeat, journeys }) => {
             `\nFAILED ${label}: lease boundary error: ${boundedHarnessError(error).message}\n`,
           );
         }
+        timing.finish(failures.length === failureCountBeforeLease ? 'pass' : 'fail');
       }
     }
   } finally {
     refreshWorkflowEvidenceIndex();
+    try {
+      cacheMaintenance.flush();
+    } catch (error) {
+      failures.push({ label: 'cache maintenance', status: 'prune-error' });
+      process.stdout.write(`\nFAILED cache maintenance: ${boundedHarnessError(error).message}\n`);
+    }
   }
   const seconds = ((Date.now() - started) / 1_000).toFixed(1);
   process.stdout.write(

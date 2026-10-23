@@ -9,7 +9,7 @@
 // (TranscriptionRulesEditor) is reachable only once analysis has already produced some, so it
 // inherits the same gate -- there is no "type your own rules" path the way manual lyrics/subtitles
 // has one (manualLyricsAndGeniusBoundary.journey.js). This journey proves that refusal boundary
-// honestly, the same shape geminiCredentialBoundary.journey.js already proves for transcription.
+// honestly, the same shape providerBoundaries.journey.js already proves for transcription.
 //
 // This journey's SECOND half is genuinely credential-free: local ASR's public segmentation
 // settings (osg-asr's SegmentationOptions -- strategy/max_characters/max_words/pause_threshold_ms,

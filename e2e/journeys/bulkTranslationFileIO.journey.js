@@ -4,11 +4,9 @@
 //
 // GROUND TRUTH READ FROM SOURCE BEFORE WRITING ANY STEP.
 //
-// SCOPE, AND WHAT THIS JOURNEY DOES NOT DUPLICATE. translationPersistence.journey.js and
-// translatedDocumentExports.journey.js already own the MAIN (single-track) provider-free Format
-// translation: its ownership/persistence/preview-selection/relaunch (translationPersistence) and its
-// SRT/JSON/TXT export through the global Download Center (translatedDocumentExports). Neither ever
-// adds a bulk file. This journey owns the entirely separate bulk-pool surface instead:
+// SCOPE, AND WHAT THIS JOURNEY DOES NOT DUPLICATE. translationPersistence.journey.js already owns
+// the MAIN (single-track) provider-free Format translation: its ownership, preview selection,
+// relaunch and SRT/JSON/TXT export through the global Download Center. It never adds a bulk file. This journey owns the entirely separate bulk-pool surface instead:
 // src/components/translation/TranslationActions.js's OWN drop zone/file input (BulkTranslationPool
 // itself is mounted with hideDropZone -- its drop zone never renders; TranslationActions.js:106-206
 // duplicates BulkTranslationPool's parse/validate logic for the one drop target that actually
@@ -43,13 +41,13 @@
 // (targetLanguage === []) before ever calling runNativeGeminiText, using
 // formatSubtitlesWithChain (src/services/gemini/translationChainFormatter.js:51-111): each chain
 // item's value is concatenated in order, so a [delimiter("BULK: "), original] chain (built the same
-// way translatedDocumentExports/translationPersistence build a PREFIX chain) produces
+// way translationPersistence build a PREFIX chain) produces
 // "BULK: " + originalText for every cue, with start/end untouched. useTranslationBulk.js's
 // handleBulkTranslate (src/hooks/useTranslationBulk.js) runs this per bulk file and keeps the
 // SAME timings; export reuses src/components/translation/utils/downloadUtils.js's
 // handleBulkDownloadAll, which (on desktop) writes each file through
 // platform/subtitleDocumentExportService.js's exportSubtitleDocument -- THE SAME NATIVE SAVE
-// BOUNDARY subtitleDocumentRoundTrip/translatedDocumentExports already prove, just called once per
+// BOUNDARY subtitleDocumentRoundTrip/translationPersistence already prove, just called once per
 // bulk file instead of once. This journey therefore reuses support/subtitleDocumentOracle.js's
 // independent Node SRT/JSON parser rather than re-authoring one.
 //
@@ -66,7 +64,7 @@
 // nativeGeminiJobLifecycle.js's createNativeGeminiJobRunner: with no ready Gemini credential,
 // `getCredentialId()` resolves null immediately and it throws `fixedError('geminiCredentialUnavailable')`
 // before ANY native job is registered (lines 122-191) -- so no job ever appears in SQLite, matching
-// geminiCredentialBoundary's proof for generation. useTranslationBulk.js's handleBulkTranslate still
+// providerBoundaries's proof for generation. useTranslationBulk.js's handleBulkTranslate still
 // catches that per FILE inside its loop (it must, to keep the documented complete-with-warnings
 // semantics for a PARTIAL failure -- see the chosen semantics below), but now records each
 // failure's error `code` and, once every file in the run has finished, checks whether NOTHING
@@ -307,12 +305,12 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
     });
 
     // --- Part C: provider translation without a ready credential now refuses the WHOLE bulk-only
-    // run, matching (not merely echoing) geminiCredentialBoundary's single-track proof: every bulk
+    // run, matching (not merely echoing) providerBoundaries's single-track proof: every bulk
     // file fails with the exact same missing-credential signature, useTranslationBulk.js detects
     // that total-refusal shape and reuses the single-track's own setError -> TranslationError ->
     // showErrorToast path instead of reporting a misleading 'complete'. The toast IS the subject
     // under test here too, so its exact text is named through allowVisibleProblems -- the same
-    // pattern geminiCredentialBoundary.journey.js uses for its own refusal toast. ---
+    // pattern providerBoundaries.journey.js uses for its own refusal toast. ---
     await clickControl(ADD_LANGUAGE_BUTTON);
     const newLanguageInput = await $('.language-chain .chain-item:last-child input');
     await newLanguageInput.waitForDisplayed({ timeout: 15_000 });
@@ -356,7 +354,7 @@ describe('a customer imports, refuses malformed, and exports a bulk translation 
       allowVisibleProblems: {
         errorToasts: [{
           text: refusalToast,
-          reason: 'The visible missing-credential refusal is the customer state under test, the same as geminiCredentialBoundary.',
+          reason: 'The visible missing-credential refusal is the customer state under test, the same as providerBoundaries.',
         }],
       },
     });

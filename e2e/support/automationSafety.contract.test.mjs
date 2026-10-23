@@ -98,13 +98,11 @@ test('every active E2E launch route reaches the guarded embedded-driver configur
       `${name} bypasses the leased isolated parent runner`,
     );
   }
-  assert.equal(package_.scripts.recon,
-    'node run-isolated.mjs journeys/reconnaissance.journey.js');
   assert.equal('probe:restore' in package_.scripts, false,
     'a stale nonexistent restore probe remained an advertised launch route');
   const defaultBuild = package_.scripts.test.indexOf('node ../scripts/build-e2e-binary.js');
   const defaultJourney = package_.scripts.test.indexOf(
-    'node run-isolated.mjs journeys/startup.journey.js journeys/defaultFont.journey.js',
+    'node run-isolated.mjs journeys/startup.journey.js',
   );
   assert.ok(
     defaultBuild >= 0 && defaultJourney > defaultBuild,
@@ -379,7 +377,6 @@ test('the fast E2E profile has one canonical nonshipping build and cannot replac
   assert.doesNotMatch(binaryBuilder, /--release|profile\.release/u);
   assertCanonicalApplicationBinarySource(environment);
   const applicationLease = read('e2e', 'support', 'applicationLease.js');
-  const cacheMaintenance = read('e2e', 'support', 'cacheMaintenance.js');
   const evidenceLease = read('e2e', 'support', 'evidenceLease.js');
   const workflowEvidence = readSplitModule('e2e', 'support', 'workflowEvidence.js');
   const isolatedRunner = read('e2e', 'run-isolated.mjs');
@@ -405,16 +402,7 @@ test('the fast E2E profile has one canonical nonshipping build and cannot replac
     /createE2eCacheMaintenanceBatch\(\)[\s\S]*?cacheMaintenance\.withLeases\([\s\S]*?beginWorkflowEvidence\([\s\S]*?runSupervisedSync\([\s\S]*?finalizeWorkflowEvidence\(/u,
     'the runner must retain every cache lease from provenance through supervised evidence finalization',
   );
-  assert.match(
-    cacheMaintenance,
-    /withApplicationLease\([\s\S]*?if \(!preflightComplete\) \{[\s\S]*?prune\(\)[\s\S]*?withStaging\([\s\S]*?withEvidence\([\s\S]*?operation\([\s\S]*?cacheMaintenance: 'external'[\s\S]*?cacheMaintenance: 'external'[\s\S]*?cacheMaintenance: 'external'/u,
-    'one reviewed batch must retain all three leases while suppressing only their duplicate prunes',
-  );
-  assert.match(
-    cacheMaintenance,
-    /settleWithPostPrune\([\s\S]*?operation: run[\s\S]*?if \(applicationAcquired\) prune\(\)/u,
-    'the boundary prune must run only after the full reverse lease unwind',
-  );
+  // Lease nesting and prune ordering are behaviour, proven by support/cacheMaintenance.test.mjs.
   for (const child of [
     'native-tools', 'engine-packages', 'real-media', 'source-switch-media',
     'four-window-asr-media',

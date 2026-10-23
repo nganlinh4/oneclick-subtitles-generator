@@ -43,7 +43,7 @@
 // disabled path-- "app-update.check_completed" with `outcome: "disabled"`
 // (updater.rs:141-161's `diagnostics::record` calls) BEFORE returning. Both are real, both are
 // asserted directly, matching how this suite already treats the JSONL diagnostic log as
-// independent product-owned evidence (geminiCredentialBoundary.journey.js's own log assertion).
+// independent product-owned evidence (providerBoundaries.journey.js's own log assertion).
 
 /* global $, browser, describe, document, it */
 

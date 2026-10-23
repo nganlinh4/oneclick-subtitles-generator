@@ -1,5 +1,5 @@
 // Pure, node:test-checkable mirror of the reviewed engine/backend catalogs, so the ASR and
-// narration "matrix" journeys (alternateLocalAsrMatrix, narrationEngineMatrix) assert against the
+// narration "matrix" journeys (engineCatalogMatrix) assert against the
 // same source of truth the product ships instead of a hand-maintained guess that could silently
 // drift from it.
 //

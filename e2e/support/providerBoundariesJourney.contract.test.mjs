@@ -29,7 +29,6 @@ const geminiPanel = read('..', '..', 'src', 'components', 'VideoProcessingModalG
 const downloadOptionsModal = read('..', '..', 'src', 'components', 'DownloadOptionsModal.js');
 const translationActions = read('..', '..', 'src', 'components', 'translation', 'TranslationActions.js');
 const bulkTranslationJourney = read('..', 'journeys', 'bulkTranslationFileIO.journey.js');
-const geminiCredentialBoundaryJourney = read('..', 'journeys', 'geminiCredentialBoundary.journey.js');
 const database = read('..', 'support', 'database.js');
 
 test('the fixed refusal message this journey shares comes from the real credential-resolution wall, not a guess', () => {
@@ -126,13 +125,6 @@ test('main-track translation exercises the direct call path bulkTranslationFileI
   assert.match(journey, /add-chain-item-btn:not\(\.delimiter\):not\(\.original\)/u);
   assert.match(journey, /TARGET_LANGUAGE = 'Spanish'/u);
   assert.match(journey, /afterC\.cues, beforeC\.cues/u);
-});
-
-test('this journey follows the same refusal-boundary and log-silence shape geminiCredentialBoundary already proves', () => {
-  assert.match(geminiCredentialBoundaryJourney, /errorToasts:/u);
-  assert.match(geminiCredentialBoundaryJourney, /after\.jobs\.filter/u);
-  assert.match(journey, /jobsOfKind\(after\), jobsOfKind\(before\)/u);
-  assert.match(journey, /PROVIDER_JOB_KINDS/u);
 });
 
 test('the durable-state oracle this journey depends on reads real SQLite, not a fixture', () => {

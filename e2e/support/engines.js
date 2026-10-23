@@ -100,8 +100,9 @@ export const ensureEngineReady = async (id, {
   if (['not-installed', 'update-available', 'corrupt'].includes(last.state)) {
     if (!allowInstall) {
       throw new Error(
-        `${id} is not already installed (${last.state}); this journey forbids network installation. `
-        + 'Run the independently owned native-engine installation coverage first.',
+        `${id} is not already installed (${last.state}); this journey does not download it. `
+        + 'Install it once into the shared engine cache with the journey that owns it '
+        + '(`npm --prefix e2e run test:asr` for faster-whisper-turbo), then retry.',
       );
     }
     await clickControl(`${selector} .engine-card__btn`);

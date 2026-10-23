@@ -10,6 +10,7 @@ const {
   runManagedCommand,
 } = require('./run-managed-command');
 const { tauriFrontendDistOverride } = require('./managed-build-context');
+const { readRecords } = require('./timing-ledger');
 
 const repositoryRoot = path.resolve(__dirname, '..');
 const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-managed-command-test-'));
@@ -144,6 +145,9 @@ test('managed command leases the external Cargo lane for the complete child life
     calls[4].args.slice(calls[4].args.indexOf('-ProtectLane'), calls[4].args.indexOf('-ProtectLane') + 2),
     ['-ProtectLane', 'dev'],
   );
+  const timed = readRecords(path.join(cacheRoot, 'timings.jsonl')).at(-1);
+  assert.equal(timed.name, 'cargo check --locked');
+  assert.equal(timed.outcome, 'pass');
 });
 
 test('child failure keeps its exit code and still releases and prunes', () => {
@@ -173,6 +177,8 @@ test('child failure keeps its exit code and still releases and prunes', () => {
   const prunes = calls.filter(({ args }) => args.includes('Prune'));
   assert.equal(prunes.length, 2);
   assert.ok(prunes.every(({ args }) => !args.includes('-ProtectLane')));
+  const timed = readRecords(path.join(cacheRoot, 'timings.jsonl')).at(-1);
+  assert.deepEqual([timed.name, timed.outcome], ['cargo test', 'fail']);
 });
 
 test('a recent prune skips the one before the next command but never the one after it', () => {

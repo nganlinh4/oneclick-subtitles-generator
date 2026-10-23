@@ -4,8 +4,7 @@ Which downloadable ASR and narration engines can be proven end to end on an ordi
 machine. Sizes are the Windows totals recorded in
 `crates/osg-engine-packages/delivery/engine-packages.delivery.json` and
 `crates/osg-speech/delivery/speech-packages.delivery.json`; re-read them there when they change.
-The `alternateLocalAsrMatrix`, `narrationEngineMatrix` and `edgeTtsNarrationGeneration` journeys
-cite this page.
+The `engineCatalogMatrix` and `edgeTtsNarrationGeneration` journeys cite this page.
 
 - **Provable here**: small, credential-free, and covered by a real generate-and-verify journey.
 - **Size-gated**: needs a multi-gigabyte download before one generation can run, so journeys prove

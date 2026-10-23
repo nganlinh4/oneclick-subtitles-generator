@@ -32,6 +32,7 @@ const E2E_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WDIO = join(E2E_ROOT, 'node_modules', '@wdio', 'cli', 'bin', 'wdio.js');
 const require = createRequire(import.meta.url);
 const { runSupervisedSync } = require('../../scripts/windows-job-supervisor.js');
+const { startTiming } = require('../../scripts/timing-ledger.js');
 
 const sleepSync = (milliseconds) => {
   try {
@@ -184,7 +185,7 @@ export const runScenarioProcesses = ({
 /**
  * Begin evidence before custom fixture staging and publish any root diagnostics before the caller
  * deletes that root. The injectable publisher exists so copy/bootstrap throws are unit-testable
- * without opening the managed evidence lane.
+ * without opening the managed evidence lane or the timing ledger.
  */
 export const runScenarioAttemptWithEvidence = ({
   label, operation, publication, root, spec,
@@ -192,8 +193,10 @@ export const runScenarioAttemptWithEvidence = ({
   finalizeWorkflowEvidence,
   preserveRunRootEvidence,
   resetWorkflowEvidence,
+  startTiming: (name) => startTiming(name, { write: console.log }),
 }) => {
   const workflow = workflowNameForJourney(spec);
+  const timing = publisher.startTiming?.(`scenario:${basename(spec)}`);
   const attemptDirectory = publisher.resetWorkflowEvidence(workflow, {
     applicationHash: publication.applicationHash,
     binaryPath: publication.binaryPath,
@@ -224,6 +227,7 @@ export const runScenarioAttemptWithEvidence = ({
       exitStatus: succeeded ? 0 : 1,
       failure,
     });
+    timing?.finish(succeeded ? 'pass' : 'fail');
   }
   return succeeded;
 };

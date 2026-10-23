@@ -48,31 +48,46 @@ const settleWithPostPrune = ({ operation, prune }) => {
   return value;
 };
 
+// A full prune walks every lane, and the shared engine package alone is ~41k files, so one scan
+// costs ~20 s. Pruning after every journey made that the largest fixed cost of a sweep; the
+// managed-command wrapper already settles for once per interval, and so does this batch.
+const PRUNE_INTERVAL_MS = 15 * 60 * 1000;
+
 /**
- * Coordinate repeated journey lease sets without rescanning the complete cache five times each.
+ * Coordinate repeated journey lease sets without rescanning the complete cache after each one.
  *
  * The first prune happens only after the application/E2E-group lease is live, preserving the
  * existing protection of cargo/frontend/application/assets during preflight. Every operation then
- * releases evidence, staging, and application in the ordinary nested order before one post-prune.
- * That boundary prune is also the next operation's pre-prune, so N journeys perform N+1 scans.
+ * releases evidence, staging, and application in the ordinary nested order. A failed operation is
+ * always followed by a post-prune; a passing one prunes only once the interval has elapsed, and
+ * `flush()` runs any prune that was deferred, after the last journey.
  */
 export const createE2eCacheMaintenanceBatch = ({
   prune = pruneE2eRuntimeCache,
   withApplicationLease = withE2eApplicationLease,
   withEvidence = withEvidenceLease,
   withStaging = withStagingLease,
+  now = Date.now,
 } = {}) => {
   let preflightComplete = false;
+  let lastPruneAt = null;
+  let deferred = false;
+  const pruneNow = () => {
+    deferred = false;
+    prune();
+    lastPruneAt = now();
+  };
   return Object.freeze({
     withLeases: (operation) => {
       if (typeof operation !== 'function') {
         throw new TypeError('E2E cache maintenance requires a lease operation');
       }
       let applicationAcquired = false;
+      let failed = true;
       const run = () => withApplicationLease((applicationLease) => {
         applicationAcquired = true;
         if (!preflightComplete) {
-          prune();
+          pruneNow();
           preflightComplete = true;
         }
         return withStaging((stagingLease) => withEvidence((evidenceLease) => {
@@ -80,6 +95,7 @@ export const createE2eCacheMaintenanceBatch = ({
           if (value !== null && typeof value === 'object' && typeof value.then === 'function') {
             throw new TypeError('E2E lease operations must be synchronous');
           }
+          failed = false;
           return value;
         }, { cacheMaintenance: 'external' }), { cacheMaintenance: 'external' });
       }, { cacheMaintenance: 'external' });
@@ -87,9 +103,17 @@ export const createE2eCacheMaintenanceBatch = ({
       return settleWithPostPrune({
         operation: run,
         prune: () => {
-          if (applicationAcquired) prune();
+          if (!applicationAcquired) return;
+          if (failed || lastPruneAt === null || now() - lastPruneAt >= PRUNE_INTERVAL_MS) {
+            pruneNow();
+          } else {
+            deferred = true;
+          }
         },
       });
+    },
+    flush: () => {
+      if (deferred) pruneNow();
     },
   });
 };

@@ -12,7 +12,7 @@
     "A red entry is not a gap in coverage -- it is coverage that has found something. Source tests",
     "and screenshots of a surface alone never promote a customer outcome to green. A green label never means current source is proven: verify-inventory derives current-head, retained-historical, rotated-historical, missing, and installed classifications from immutable evidence."
   ],
-  "updated": "2026-08-31",
+  "updated": "2026-10-23",
   "binary": {
     "e2e": "npm run build:e2e-binary publishes the guarded nonshipping E2E application into the managed external cache; every launch holds the apps/e2e cache lease while re-verifying receipts/current.json, its immutable manifest, exact inventory and every file digest, with no repository-target fallback",
     "installed": "NSIS setup from --features production, exercised by the isolated installed smoke"
@@ -162,20 +162,6 @@
   ],
   "journeys": [
     {
-      "name": "freshInstallVisual",
-      "kind": "shell-visual",
-      "file": "journeys/freshInstallVisual.journey.js",
-      "capability": "Both first-run screens fill the real application window and preserve the original simple controls layout.",
-      "assertions": [
-        "welcome and preference overlays cover the viewport",
-        "the original theme, language and continue controls remain centred in one row and screenshot-backed"
-      ],
-      "status": "green",
-      "evidenceWorkflow": "fresh-install-visual",
-      "attemptId": "20260827145913228-72824-5a6e41da",
-      "binaryDigest": "ed05e4bd103e4bbf9c2b7eb3d1ae6d933653994c971c77047610ed7763aa0c53"
-    },
-    {
       "name": "geminiOutputPreview",
       "kind": "workflow",
       "file": "journeys/geminiOutputPreview.journey.js",
@@ -191,36 +177,25 @@
     },
     {
       "name": "startup",
-      "kind": "shell",
+      "kind": "shell-visual",
       "file": "journeys/startup.journey.js",
-      "capability": "The application launches and renders its editor.",
+      "capability": "The application launches hidden, renders its editor, loads the managed default font from its own bytes, and shows centred full-window first-run onboarding.",
       "assertions": [
         "React commits a non-empty root",
-        "no error surface is visible with every optional engine absent"
+        "no error surface is visible with every optional engine absent",
+        "native publishes a ready schema-1 font record and Google Sans measures differently from the sans-serif fallback",
+        "welcome and preference overlays cover the viewport",
+        "the original theme, language and continue controls remain centred in one row and screenshot-backed"
       ],
-      "oracles": [
-        "visible DOM"
-      ],
-      "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "startup",
-      "attemptId": "20260913002439927-6432-00378dd5",
-      "binaryDigest": "5658895c995e4e736daa978c444bf76ffd85e049ab0f53349e2518acafe30a8c"
-    },
-    {
-      "name": "defaultFont",
-      "kind": "shell",
-      "file": "journeys/defaultFont.journey.js",
-      "capability": "The default subtitle font is installed, verified and drawable on a clean profile.",
       "oracles": [
         "visible DOM",
-        "window.__OSG_FONT_READINESS__"
+        "window.__OSG_FONT_READINESS__",
+        "the automation.window_offscreen log marker"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "default-font",
-      "attemptId": "20260913002517020-6432-3188051d",
-      "binaryDigest": "5658895c995e4e736daa978c444bf76ffd85e049ab0f53349e2518acafe30a8c"
+      "status": "unproven",
+      "evidenceWorkflow": "startup",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Absorbs defaultFont and freshInstallVisual, which shared the same bare first launch."
     },
     {
       "name": "damagedFontPayload",
@@ -473,32 +448,6 @@
       "binaryDigest": "f47148d4fee0008b753344168b0405ed3cd0789e57ee3fa7d4d439e767acbeaa"
     },
     {
-      "name": "timelineBoundary",
-      "kind": "workflow",
-      "file": "journeys/timelineBoundary.journey.js",
-      "capability": "Timeline boundaries agree, delete-all is durable, and a new transcription streams without resurrecting deleted cues.",
-      "chain": [
-        "open real media through the guarded native file-selection boundary",
-        "import one ordinary cue and one ending exactly at the playable boundary",
-        "inspect actual waveform canvas pixels against the real video duration",
-        "select through the documented Ctrl+A shortcut and delete through the keyboard",
-        "start the real local ASR engine from the empty durable track",
-        "observe fresh visible cues while the overall generation operation is still active",
-        "wait separately for the same transcribe job to succeed"
-      ],
-      "oracles": [
-        "waveform canvas pixels before and after the calculated seekable boundary",
-        "the visible range action bar and cue list",
-        "the application's own SQLite cue count, read only",
-        "ordered screenshots under the managed external evidence lane/timeline-boundary"
-      ],
-      "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "timeline-boundary",
-      "result": "Proven on 2026-08-30 with real media, durable delete-all, fresh streaming local ASR, and no cue resurrection.",
-      "note": "Still unproven 2026-08-28: no evidence/timeline-boundary directory exists, so nothing binds and the screenshot oracle above is a claim about what a run WOULD record, not about a recorded run. Audited against source this pass and NO journey or product defect was found, so what is missing is one invocation of `npm --prefix e2e run test:timeline-boundary`, not a repair. Verified statically: (1) every selector it drives exists -- .subtitle-timeline (TimelineVisualization.js:454), .range-action-bar (TimelineRangeActionBar.js:109), [data-osg-waveform-state] (VolumeVisualizer.js:187), .timeline-container (TimelineVisualization.js:407), [data-osg-action=generate-subtitles] (ButtonsContainer.jsx:138) and [data-osg-action=process-subtitles] (VideoProcessingOptionsModal.js:273); (2) the click-timeline-then-Ctrl+A sequence is byte-for-byte the idiom the green localAsrGeneration journey uses (localAsrGeneration.journey.js:33-43), and its two uses here are both correct against useTimelineKeyboardShortcuts.js:68-118 -- with cues present Ctrl+A arms the action bar synchronously, with the track empty it opens the processing modal through onSegmentSelect; (3) LyricsDisplay renders whenever uploadedFile exists (OutputContainer.js:309), so delete-all does not unmount the timeline element the journey holds; (4) the boundary cue survives no rounding trap, because clearSubtitlesInRange filters on cueOverlapsTimelineRange (useLyricsEditorHelpers.js:45-48), deliberately overlap-based so a cue whose SRT-rounded end sits microseconds past media end is still cleared by a correctly media-bounded select-all; (5) its viewEnd = contentEnd * 1.05 pixel math matches createTimelineDomain's own END_GUTTER_RATIO (timelineDomain.js); (6) it passes the static timeoutMsg contract (support/automationSafetyTimeouts.contract.test.mjs). The journey owns two connected invariants -- shared waveform/Ctrl+A boundaries reducing to zero on delete, and generation starting cleanly from that empty checkpoint without resurrecting deleted text -- and neither has a passing real-binary attempt on record."
-    },
-    {
       "name": "longMediaResourceBounds",
       "kind": "workflow-performance",
       "file": "journeys/longMediaResourceBounds.journey.js",
@@ -560,25 +509,27 @@
       "name": "asrGeneration",
       "kind": "workflow",
       "file": "journeys/localAsrGeneration.journey.js",
-      "capability": "Subtitles are generated from the audio by a local ASR engine.",
+      "capability": "An imported track is cleared at the media boundary, then a local ASR engine generates fresh, streamed, durable, drawable subtitles.",
       "chain": [
         "open a real downloaded video through the real file control",
-        "verify/install and start Faster-Whisper Turbo from the reviewed managed package",
-        "select the full timeline through the documented Ctrl+A customer shortcut",
-        "extract audio through Media Foundation and transcribe it in the managed Python worker",
-        "publish cues into the editor, draw them through the persistent canvas, and persist them"
+        "verify/install and start Faster-Whisper Turbo from the reviewed managed package (the one owner of that install)",
+        "import one ordinary cue and one ending exactly at the playable boundary; waveform ink stops at media end",
+        "select through Ctrl+A and delete through the keyboard; zero visible and durable cues remain",
+        "select the full timeline through Ctrl+A and transcribe it in the managed Python worker",
+        "observe fresh visible cues while generation is still active, with no deleted cue resurrected",
+        "persist exactly one succeeded job, valid cues and a matching revision, and draw them through the canvas"
       ],
       "oracles": [
         "visible cue text",
         "the persistent composition canvas",
-        "the application's own SQLite jobs, cues and latest project revision, read only"
+        "the application's own SQLite jobs, cues and latest project revision, read only",
+        "waveform canvas pixels before and after the calculated seekable boundary",
+        "a MutationObserver stream witness on the cue list"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "note": "The first real run exposed two production defects that mocks missed: package-status polling launched overlapping full-tree scans during publication, reaching 562 threads and about 11 GiB private memory; and Rust emitted job_id/timeline_offset_ms while JavaScript required jobId/timelineOffsetMs, so the first progress event cancelled every healthy job. Both are fixed and the unchanged journey is green.",
-      "evidenceWorkflow": "local-asr-generation",
-      "attemptId": "20260827115156992-76320-ff822707",
-      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
+      "status": "unproven",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Absorbs timelineBoundary, whose last run spent 37 of its 38 minutes installing this same 4.56 GiB engine.",
+      "evidenceWorkflow": "local-asr-generation"
     },
     {
       "name": "multiWindowAsrGeneration",
@@ -631,45 +582,43 @@
       }
     },
     {
-      "name": "geminiCredentialBoundary",
+      "name": "providerBoundaries",
       "kind": "workflow",
-      "file": "journeys/geminiCredentialBoundary.journey.js",
-      "capability": "A clean profile without a Gemini credential refuses generation before any provider side effect.",
+      "file": "journeys/providerBoundaries.journey.js",
+      "capability": "Without a Gemini credential, transcription, document processing, main-track translation, background image and PromptDJ refuse before any provider side effect, while their credential-free controls work.",
       "oracles": [
         "the visible API-key error and returned-to-idle controls",
         "the application's SQLite jobs and cues, read only",
         "the native diagnostic log, requiring no Gemini request lifecycle event"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "gemini-credential-boundary",
-      "attemptId": "20260913005547998-31912-e65196cd",
-      "binaryDigest": "77eeeb9204151837bbed855eec4cfc1ed3e1bd200b41014b0231a5c884854d9e",
-      "note": "Re-bound 2026-08-28: attempt 20260828042603195-54960-8e94f586 passes with three steps, and 03-actionable-refusal carries the refusal toast under an exact-text allowance ('close Error Please set your API key in the settings first.'). The two preceding failures were a journey-side defect, not a product one: the capture whose subject IS the refusal toast declared no allowance (20260827092654466), then declared one whose text used the raw newline shape 'close\\nError\\n\\nPlease set your API key in the settings first.' while the evidence guard normalizes whitespace (20260827122714471), so the guard rejected its own subject both times. Fixed by e4316292 before this lane; the product refused correctly in every one of the three attempts. Drives the real file import, range selection, Gemini method choice and Process control; proves only safe refusal, never provider success. The binary this attempt ran against has since rotated out of the applications store, so the claim is historical evidence only."
+      "status": "unproven",
+      "evidenceWorkflow": "provider-boundaries",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. geminiCredentialBoundary folded its processing-footer containment, force-stop and Gemini log-silence checks into Part A."
     },
     {
       "name": "translation",
       "kind": "workflow",
-      "capability": "Subtitles are translated and the translation is persisted and drawn.",
+      "capability": "Subtitles are translated, the translation saves as SRT, JSON and timing-free TXT beside the untouched original, and it is persisted and drawn.",
       "file": "journeys/translationPersistence.journey.js",
       "chain": [
         "open real media and import real subtitle cues",
         "format the cues through the customer translation controls without a provider credential",
         "persist the exact project-owned translation revision",
+        "save the translated track as SRT, JSON and TXT and the original as SRT through the Download Center Subtitle Source selector",
         "select Translated and publish different canvas preview pixels",
         "start a second desktop process and hydrate the same translation and selection"
       ],
       "oracles": [
         "visible translated text and language selection",
         "the application's own SQLite auxiliary translation record, read only",
-        "native preview pixels before and after a complete process restart, compared independently by FFmpeg SSIM"
+        "native preview pixels before and after a complete process restart, compared independently by FFmpeg SSIM",
+        "every saved document parsed by the independent Node oracle against exact cues and timings, with pinned customer filenames"
       ],
       "runsAgainst": "two independent e2e-binary processes sharing one isolated profile",
-      "status": "green",
-      "note": "Format mode proves the complete ownership, persistence, projection and native drawing path without pretending to prove Gemini. Provider-backed translation is tracked separately by providerTranslation.",
-      "evidenceWorkflow": "translation-persistence",
-      "attemptId": "20260827140757224-72044-1b810f17",
-      "binaryDigest": "81e28db8084ead8448d28d141efde3dbd83383a12e738fb853d0a43294ebc851"
+      "status": "unproven",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Absorbs translatedDocumentExports, which repeated this seed exactly. Format mode proves ownership, export, persistence and drawing without pretending to prove Gemini; provider translation is tracked by providerTranslation.",
+      "evidenceWorkflow": "translation-persistence"
     },
     {
       "name": "narration",
@@ -1056,24 +1005,6 @@
       "note": "Real-binary evidence is bound above; also statically validated by support/timelineAdvancedEditingJourney.contract.test.mjs. Deliberately does not touch insert/delete/merge/split/save/checkpoint/reset (owned by the green editorCueCrudAndHistory) or Ctrl+A-then-delete-all/regeneration (owned by the green timelineBoundary); the range action bar's 'Regenerate subtitles' and 'Clear subtitles in range' buttons are left alone too, the latter because it drives the identical onClearRange/CLEAR_RANGE handler timelineBoundary's Ctrl+A+Delete already exercises. Narration-lane dragging (NarrationLaneControls) is out of scope: it requires generated narration audio, a separate credential/engine surface owned by the narration journeys, not a credential-free timeline-editing one. Former source-reading finding, now closed and asserted: useLyricsEditorDrag.js's sticky cascade (the `i > index && isSticky` branch of updateTimings) used to shift LATER cues by the dragged delta with no clamp against media duration at all, unlike the dragged cue's own field (handleDrag) and unlike the multi-cue range move (clampTimelineMoveDelta). The cascade now clamps its shared delta with the same clampTimelineMoveDelta helper the range move uses, and this journey's dedicated boundary-clamp step (dragging a cue end far past duration with sticky on) asserts the fix directly: the already-cascaded later cue's end never crosses real duration, checked against both the visible rows and durable SQLite, with the inter-cue gap preserved."
     },
     {
-      "name": "subtitleDocumentExports",
-      "kind": "workflow",
-      "capability": "Original and translated tracks save as valid SRT, JSON and timing-free TXT with the proposed customer filename.",
-      "status": "green",
-      "note": "Both halves now green: subtitleDocumentRoundTrip owns the original track saves; attempt 20260827011724168-70116-f2430726 (exe a4f06dc1307e…) saved the formatted translation as valid SRT, JSON and timing-free TXT plus the untouched original SRT, each independently parsed with exact texts and timings and distinct bytes. The journey first exposed the filename collision between a language-free translated SRT and the original.",
-      "file": "journeys/translatedDocumentExports.journey.js",
-      "evidenceWorkflow": "translated-document-exports",
-      "attemptId": "20260827011724168-70116-f2430726",
-      "binaryDigest": "a4f06dc1307e56a1a474e6cd9c28fc61fd7523a61cbbd90fd4080dedaf0c15e8",
-      "oracles": [
-        "the provider-free public Format mode producing the translated track, durable before any export",
-        "the Download Center Subtitle Source selector, honestly disabled before a translation exists",
-        "every saved SRT/JSON/TXT parsed by the independent Node oracle against exact expected cues and timings",
-        "the proposed customer filenames pinned: cues-ascii_translated.* for the translated track, cues-ascii.srt for the original, byte-distinct",
-        "export artifacts and two screenshots under the managed external evidence lane/translated-document-exports"
-      ]
-    },
-    {
       "name": "geminiDocumentConsolidateAndSummarize",
       "kind": "workflow",
       "file": "journeys/geminiDocumentSuccess.journey.js",
@@ -1108,32 +1039,32 @@
       }
     },
     {
-      "name": "alternateLocalAsrEngines",
+      "name": "engineCatalogMatrix",
       "kind": "workflow",
-      "file": "journeys/alternateLocalAsrMatrix.journey.js",
-      "capability": "Nvidia Parakeet, Faster-Whisper Large-v3, Qwen3-ASR 1.7B and Qwen3-ASR 0.6B report a truthful install state and offer a real, cancellable install; none installs, transcribes, streams or cleans up a completed run.",
+      "file": "journeys/engineCatalogMatrix.journey.js",
+      "capability": "Every ASR and narration catalog engine reports a truthful install state and offers a real, cancellable install; only Faster-Whisper Turbo, gTTS and Edge TTS have full generation journeys.",
       "variants": [
         "nvidia-parakeet",
         "faster-whisper-large-v3",
         "qwen3-asr-1.7b",
-        "qwen3-asr-0.6b"
+        "qwen3-asr-0.6b",
+        "f5tts",
+        "chatterbox",
+        "gemini"
       ],
       "oracles": [
         "each engine card's data-engine-state, cross-checked against an independent filesystem oracle (data/engine-packages/<id>, not the same native status call the card renders from)",
         "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
       ],
       "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "alternate-local-asr-matrix",
-      "attemptId": "20260831060704975-46692-7ab4f611",
-      "binaryDigest": "f8189ae887f40581b4f11f21723fbb8f5325add00a21bc2df7edab987526f195",
-      "recommendedJourney": "alternateLocalAsrMatrix",
-      "note": "GREEN SCOPE: the hidden real binary settled every ASR catalog card and each state matched the independent data/engine-packages/v1/<packageId> filesystem oracle. It then started a real native install for an uninstalled engine, observed the public Cancel state, cancelled, returned to not-installed and left the package directory at its exact baseline. Full multi-gigabyte installs and alternate-engine transcription remain outside this deliberately bounded capability.",
+      "evidenceWorkflow": "engine-catalog-matrix",
       "dependencies": {
         "owner": "project-delivery-and-test-hardware",
-        "requires": "reviewed managed packages plus 6-12 GiB of free disk and a multi-hour download window per engine to prove a SUCCESSFUL install, transcribe, stream, cancel-mid-progress and clean-uninstall cycle",
-        "note": "Only Faster-Whisper Turbo has a green real-binary generation journey. The truthful-status and bounded-install-offer half of this capability is now authored for the other four; full install-to-completion transcription remains size-gated and unproven."
-      }
+        "requires": "reviewed managed packages, 6-12 GiB of free disk and a multi-hour download window per engine to prove a full install-and-generate cycle for the alternate engines",
+        "note": "The truthful-status and bounded install-offer half is covered for both catalogs in one launch."
+      },
+      "status": "unproven",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Replaces alternateLocalAsrMatrix and narrationEngineMatrix, which were the same journey over two catalogs."
     },
     {
       "name": "transcriptionSegmentationRulesAndVideoAnalysis",
@@ -1248,33 +1179,6 @@
         "owner": "test-network",
         "requires": "network access to the real Edge TTS synthesis endpoint",
         "note": "No credential is required; only network access, matching gTTS's own dependency shape."
-      }
-    },
-    {
-      "name": "alternateNarrationEngines",
-      "kind": "workflow",
-      "file": "journeys/narrationEngineMatrix.journey.js",
-      "capability": "F5-TTS, Chatterbox and Gemini Live report a truthful install state and offer a real, cancellable install with their visible engine-specific settings; none generates project-owned playable narration in this pass. Edge TTS is proven separately (see the edgeTtsNarrationGeneration entry) and is no longer tracked as a gap here.",
-      "variants": [
-        "f5tts",
-        "chatterbox",
-        "gemini"
-      ],
-      "oracles": [
-        "each narration engine card's data-engine-state, cross-checked against an independent filesystem oracle (data/engine-packages/<packageId>, the same store ASR packages use)",
-        "a before/after directoryShapeDigest of the one engine's package directory around a real install-then-cancel"
-      ],
-      "runsAgainst": "e2e-binary",
-      "status": "green",
-      "evidenceWorkflow": "narration-engine-matrix",
-      "attemptId": "20260831060823333-45416-519171da",
-      "binaryDigest": "f8189ae887f40581b4f11f21723fbb8f5325add00a21bc2df7edab987526f195",
-      "recommendedJourney": "narrationEngineMatrix",
-      "note": "Real-binary evidence is bound above; also statically validated by support/engineCatalogOracle.test.mjs plus support/narrationEngineMatrixJourney.contract.test.mjs. GROUND TRUTH DETERMINED FROM SOURCE, RECORDED IN docs/rewrite/ENGINE_CATALOG_FEASIBILITY.md: F5-TTS is 4.28 GiB / 6.47 GiB installed and Chatterbox is 8.93 GiB / 11.12 GiB installed (crates/osg-speech/delivery/speech-packages.delivery.json) -- both size-gated the same way as settingsNarrationModelManagement.journey.js already established for F5-TTS's OWN dedicated Model Management tab; this journey proves the SAME truthful-status/bounded-install-cancel claim through the different, catalog-wide Tools EnginesPanel surface instead (src/components/engines/EnginesPanel.js), which is the literal 'engine selection surface' this capability is about. Gemini Live TTS is CREDENTIAL-GATED, not size-gated (19.29 MiB / 58.99 MiB installed) -- its narration method radio only enables once BOTH the package is ready and a usable Gemini credential exists (useAvailabilityCheck.js:216-217, geminiAvailable = geminiBackendAvailable && credentialAvailability.available); a fresh E2E profile has none, and this is the SAME method-radio enforcement point referenceVoiceAndPerCueNarration.journey.js already proved honest for F5-TTS, so a second dedicated credential-refusal journey is not authored here. No narration backend carries a hardware-gated verdict either, for the same reason recorded against alternateLocalAsrEngines.",
-      "dependencies": {
-        "owner": "project-delivery-user-and-test-hardware",
-        "requires": "reviewed local packages/models for F5-TTS and Chatterbox (multi-gigabyte, multi-hour installs), and a Gemini credential/network for Gemini Live",
-        "note": "gTTS and Edge TTS both have green/authored real-binary narration journeys. The truthful-status and bounded-install-offer half of this capability is now authored for F5-TTS/Chatterbox/Gemini Live; full voice-cloned generation (F5-TTS/Chatterbox) and credentialed generation (Gemini Live) remain unproven."
       }
     },
     {
@@ -1543,13 +1447,11 @@
       "name": "settingsCredentialsAndYoutubeOAuth",
       "kind": "workflow",
       "file": "journeys/settingsCredentialLifecycle.journey.js",
-      "capability": "Gemini, YouTube and Genius credentials plus a partial YouTube OAuth client save as write-only native references, leave no browser secret residue, persist and clear individually.",
-      "status": "green",
+      "capability": "The API-key header stays compact with zero keys, one key and in Vietnamese; Gemini, YouTube and Genius credentials plus a partial YouTube OAuth client save as write-only native references, leave no browser secret residue, persist and clear individually.",
+      "status": "unproven",
       "evidenceWorkflow": "settings-credential-lifecycle",
-      "attemptId": "20260831063505474-46764-6f3a528f",
-      "binaryDigest": "d5b05cba2a97155111991b74fd3b51244114fedc2b48337dcb78875dd0a7a0fe",
       "recommendedJourney": "settingsAndRecovery",
-      "note": "GREEN SCOPE: the hidden real binary enrolled one live Gemini credential through the public write-only control, saved local-only Genius and YouTube drafts, reopened Settings with every field and legacy browser alias empty, verified only safe native purpose references existed, removed each provider independently, then persisted and cleared a YouTube OAuth client while still unauthenticated. Live Gemini validity is already proven by the provider-success journeys. A completed Google OAuth redirect/token and authenticated YouTube query remain owned by authenticatedAndRestrictedUrlAcquisition, not implied here.",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Absorbs settingsApiKeysPresentation, which needed the same credential pool and API Keys tab.",
       "dependencies": {
         "owner": "user-or-isolated-test-account-provider",
         "requires": "scoped disposable credentials and an OAuth redirect fixture",
@@ -1669,6 +1571,26 @@
         "requires": "the private updater signing key, a signed old/new fixture pair and a non-legacy update manifest on an isolated Windows runner -- exactly what .github/workflows/updater-smoke.yml already exercises outside this e2e/journeys harness",
         "note": "installedGolden proves install/relaunch/uninstall of one build. The compiled-disabled channel path (no network attempt, honest failed-check UI, correct diagnostic log) is now proven through this WebdriverIO harness; a real signed update through THIS harness is structurally impossible (see the compile_error above) and remains the sole responsibility of the separate ci-updater-fixture CI workflow and a published signed GitHub release."
       }
+    },
+    {
+      "name": "presentationAudit",
+      "kind": "shell-visual",
+      "file": "journeys/presentationAudit.journey.js",
+      "capability": "Every model menu shows the same sorted names and quotas, and Settings plus generation stay usable after theme, font and language changes, in Vietnamese at enlarged and reduced interface scale.",
+      "assertions": [
+        "translation, Process Text, thinking and generation menus list the same ordered models with unclipped quotas",
+        "Escape closes a menu without closing its host",
+        "no error boundary across every Settings tab at enlarged scale",
+        "the tab highlight stays centred and the model menu stays anchored inside the viewport"
+      ],
+      "oracles": [
+        "visible DOM geometry",
+        "screenshots under the managed evidence lane"
+      ],
+      "runsAgainst": "e2e-binary",
+      "evidenceWorkflow": "presentation-audit",
+      "status": "unproven",
+      "note": "Merged 2026-10-23 to cut launches; unproven until the merged journey passes once against the real binary. Replaces modelPickerPresentation and responsiveVisualAudit, which shared one setup and the same generation model menu."
     }
   ],
   "knownProductFindings": [

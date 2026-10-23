@@ -31,7 +31,8 @@ const visibleState = () => browser.execute(() => ({
 describe('a customer turns a real URL into visible subtitles', () => {
   it('downloads, activates, obtains subtitles and draws without changing project ownership', async () => {
     await openEditor();
-    await ensureEngineReady(ENGINE);
+    // localAsrGeneration owns the one multi-gigabyte install; this journey reuses the cached package.
+    await ensureEngineReady(ENGINE, { allowInstall: false });
 
     const field = await $('.url-field');
     await field.waitForDisplayed({ timeout: 30_000 });

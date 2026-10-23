@@ -17,7 +17,6 @@ const modalHandlers = read('..', '..', 'src', 'components', 'app', 'ModalHandler
 const userSubtitlesStore = read('..', '..', 'src', 'utils', 'userSubtitlesStore.js');
 const processingHandlers = read('..', '..', 'src', 'components', 'app', 'handlers', 'processingHandlers.js');
 const geniusProviderCommand = read('..', '..', 'apps', 'desktop', 'src-tauri', 'src', 'providers.rs');
-const geminiCredentialBoundaryJourney = read('..', 'journeys', 'geminiCredentialBoundary.journey.js');
 const database = read('..', 'support', 'database.js');
 
 const assertJourneyContract = (source) => {
@@ -103,13 +102,6 @@ test('Genius lookup really refuses before any native call, with the exact copy t
 test('the Genius refusal surfaces only as a toast, matching the watched inline-error-over-video class', () => {
   assert.match(lyricsInputSection, /showErrorToast\(error\)/u);
   assert.doesNotMatch(lyricsInputSection, /className="error"|role="alert"/u);
-});
-
-test('this journey follows the same refusal-boundary shape geminiCredentialBoundary already proves', () => {
-  assert.match(geminiCredentialBoundaryJourney, /errorToasts:/u);
-  assert.match(geminiCredentialBoundaryJourney, /after\.jobs\.filter/u);
-  assert.match(journey, /errorToasts:/u);
-  assert.match(journey, /afterGenius\.jobs/u);
 });
 
 test('the database helper this journey depends on reads the real auxiliary row, not a fixture', () => {

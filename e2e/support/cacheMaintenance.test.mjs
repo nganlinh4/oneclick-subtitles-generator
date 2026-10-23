@@ -25,13 +25,19 @@ const leaseWrapper = (label, events, { acquireError, releaseError } = {}) => (
   return value;
 };
 
-test('two operations perform N+1 prunes with preflight inside the first application lease', () => {
+const lifecycle = (n) => [
+  'staging:acquire', 'evidence:acquire', `operation:${n}`,
+  'evidence:release', 'staging:release', 'application:release',
+];
+
+test('passing operations defer post-prunes inside the interval and flush runs the deferred one', () => {
   const events = [];
   const batch = createE2eCacheMaintenanceBatch({
     prune: () => events.push('prune'),
     withApplicationLease: leaseWrapper('application', events),
     withEvidence: leaseWrapper('evidence', events),
     withStaging: leaseWrapper('staging', events),
+    now: () => 0,
   });
 
   assert.equal(batch.withLeases(() => {
@@ -42,26 +48,33 @@ test('two operations perform N+1 prunes with preflight inside the first applicat
     events.push('operation:2');
     return 42;
   }), 42);
+  batch.flush();
+  batch.flush();
 
   assert.deepEqual(events, [
-    'application:acquire',
-    'prune',
-    'staging:acquire',
-    'evidence:acquire',
-    'operation:1',
-    'evidence:release',
-    'staging:release',
-    'application:release',
-    'prune',
-    'application:acquire',
-    'staging:acquire',
-    'evidence:acquire',
-    'operation:2',
-    'evidence:release',
-    'staging:release',
-    'application:release',
+    'application:acquire', 'prune', ...lifecycle(1),
+    'application:acquire', ...lifecycle(2),
     'prune',
   ]);
+});
+
+test('a passing operation prunes again once the interval has elapsed', () => {
+  const events = [];
+  let clock = 0;
+  const batch = createE2eCacheMaintenanceBatch({
+    prune: () => events.push('prune'),
+    withApplicationLease: leaseWrapper('application', events),
+    withEvidence: leaseWrapper('evidence', events),
+    withStaging: leaseWrapper('staging', events),
+    now: () => clock,
+  });
+
+  batch.withLeases(() => {
+    events.push('operation:1');
+    clock = 15 * 60 * 1000;
+  });
+  batch.flush();
+  assert.deepEqual(events, ['application:acquire', 'prune', ...lifecycle(1), 'prune']);
 });
 
 test('rejects a thenable before any lease wrapper can release around unfinished work', () => {

@@ -1,8 +1,8 @@
 // A customer restructures cue TIMING through the advanced timeline controls that
-// editorCueCrudAndHistory and timelineBoundary deliberately leave alone.
+// editorCueCrudAndHistory and localAsrGeneration deliberately leave alone.
 //
 // editorCueCrudAndHistory already owns text CRUD, insert/merge/split and the saved-checkpoint
-// system. timelineBoundary already owns waveform pixels and the Ctrl+A-then-Delete-everything
+// system. localAsrGeneration already owns waveform pixels and the Ctrl+A-then-Delete-everything
 // path. This journey owns the remaining advanced-editing surface: the sticky (cascade) timing
 // toggle, the per-cue start/end drag handles, the multi-cue range move handle, and the timeline
 // zoom control -- and the one invariant that connects them: NO cue may end beyond real, playable

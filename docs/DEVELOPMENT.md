@@ -54,6 +54,10 @@ until the cache is under 28 GiB. Leased or in-use lanes are never touched. Delet
 killed prune resumes safely. The wrapper prunes after every command and, at most every 15 minutes,
 before one too.
 
+Every managed command, journey and scenario appends its wall time to `timings.jsonl` in the cache
+root and prints it against the median of earlier passing runs, flagging a slowdown of 20% or more.
+`npm run timings` lists the slowest items and current regressions.
+
 ```powershell
 npm run cache:status
 npm run cache:prune          # dry run
@@ -68,11 +72,13 @@ the `e2e-automation` feature). Each run gets an isolated data root.
 
 ```powershell
 npm run build:e2e-binary
-npm --prefix e2e test           # contract tests, then the startup and default-font journeys
+npm --prefix e2e test           # contract tests, then the first-launch startup journey
 npm --prefix e2e run test:all   # every journey and scenario
 ```
 
-Single journeys have their own scripts in `e2e/package.json`.
+Single journeys have their own scripts in `e2e/package.json`. The default sweep runs the fixture
+owners first (`urlToPreview` installs tools and media, `localAsrGeneration` installs the ASR engine);
+other journeys reuse those caches and refuse rather than download them again.
 
 `scripts/test-installed-windows.ps1` installs the real NSIS bundle and only runs on a disposable CI
 runner. `scripts/test-installed-local.ps1` runs it on a developer machine inside guards; see

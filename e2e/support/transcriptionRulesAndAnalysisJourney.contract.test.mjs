@@ -23,7 +23,6 @@ const asrAdapter = read('..', '..', 'src', 'services', 'engines', 'AsrAdapter.js
 const runVideoProcess = read('..', '..', 'src', 'components', 'runVideoProcess.js');
 const asrOptionsRs = read('..', '..', 'crates', 'osg-asr', 'src', 'options.rs');
 const segmentRs = read('..', '..', 'crates', 'osg-asr', 'src', 'segment.rs');
-const geminiCredentialBoundaryJourney = read('..', 'journeys', 'geminiCredentialBoundary.journey.js');
 const runIsolated = read('..', 'run-isolated.mjs');
 
 const assertJourneyContract = (source) => {
@@ -127,12 +126,6 @@ test('ground truth: Rust enforces the public per-strategy word cap the journey a
   assert.match(segmentRs, /options\.strategy\(\) == SegmentStrategy::Word && index \+ 1 - start >= usize::from\(limit\)/u);
   // append_balanced with no max_words pushes the WHOLE group unsplit -- the "preserve sentences" path.
   assert.match(segmentRs, /let Some\(max_words\) = max_words\.map\(usize::from\) else \{/u);
-});
-
-test('this journey follows the same credential-refusal shape geminiCredentialBoundary.journey.js proves', () => {
-  assert.match(geminiCredentialBoundaryJourney, /providerKinds = new Set\(\['transcribe', 'translate', 'analyzeSubtitles'\]\)/u);
-  assert.match(journey, /PROVIDER_JOB_KINDS = Object\.freeze\(\['analyzeSubtitles', 'transcribe', 'translate'\]\)/u);
-  assert.match(geminiCredentialBoundaryJourney, /doesNotMatch\(log, \/"event":"gemini\\\.\(\?:started\|progress\|completed\|failed\|cancelled\)"\/\)/u);
 });
 
 test('run-isolated.mjs excludes this heavy two-run ASR journey from the ordinary default suite', () => {

@@ -9,7 +9,7 @@
 // the SAME source:
 //   1. the waveform and visible ruler stop at real, playable media duration, at the default view AND at
 //      a real product zoom-in interaction (src/components/lyrics/waveformRendering.js's
-//      waveformEnd/drawEnd clamp is the enforcement point; this is timelineBoundary's own proof,
+//      waveformEnd/drawEnd clamp is the enforcement point; this is localAsrGeneration's own proof,
 //      generalized to a duration that could actually expose an overflow);
 //   2. the desktop process's own working set, private bytes, handle count and thread count, the
 //      isolated run root's own file count/bytes, and the SQLite footprint all stay within generous,
@@ -190,7 +190,7 @@ const waveformInkBoundary = (mediaEnd, zoomValue, nearEndEpsilonSeconds) => brow
  * `waitUntil`'s own `timeoutMsg` must be a static string -- WebdriverIO (and this suite's own
  * automationSafetyTimeouts.contract.test.mjs) requires it, because the options object is evaluated eagerly
  * at call time, before the predicate ever runs. A diagnostic that needs LIVE state read at the
- * moment of failure goes through this wrapper instead, exactly like timelineBoundary.journey.js's
+ * moment of failure goes through this wrapper instead, exactly like localAsrGeneration.journey.js's
  * own helper of the same name.
  */
 async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {
@@ -251,7 +251,7 @@ describe('long media resource bounds', () => {
     // --- 3. Waveform ink stops at real media duration, at the default (zoom=1/pan=0) view. ---
     // Enforcement point: src/components/lyrics/waveformRendering.js's waveformEnd/drawEnd clamp
     // (`drawEnd = Math.min(visibleEnd, Math.min(waveform.durationSeconds, seekableEnd))`). This is
-    // timelineBoundary.journey.js's own proof, generalized to a duration that could actually expose
+    // localAsrGeneration.journey.js's own proof, generalized to a duration that could actually expose
     // an accumulation/overflow bug a 19-second clip cannot.
     let defaultMeasurement = null;
     await waitUntilWithFreshDiagnostic(async () => {

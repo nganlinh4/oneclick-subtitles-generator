@@ -80,7 +80,7 @@ export const verifySegmentationShapeDirection = ({ wordCapped, sentence }) => {
 
 /**
  * Prove no provider-owned job of any watched kind was created between two durable snapshots --
- * the same "before/after job diff" shape geminiCredentialBoundary.journey.js already uses, kept as
+ * the same "before/after job diff" shape providerBoundaries.journey.js already uses, kept as
  * a pure, independently testable function rather than duplicated inline per journey.
  */
 export const assertNoNewProviderJob = ({ before, after, providerKinds }) => {

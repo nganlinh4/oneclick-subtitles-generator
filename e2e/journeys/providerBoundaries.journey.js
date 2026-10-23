@@ -1,73 +1,25 @@
-// AUTHORED, NOT EXECUTED in this pass -- see e2e/inventory.json's entries this journey is cited
-// from (geminiDocumentConsolidateAndSummarize, geminiTranscriptionSuccessAndWindowing,
-// providerTranslation, backgroundImageGeneration, backgroundMusicPromptDj). Never launches the
-// desktop binary or wdio from this lane; the next lane to run it owns turning this into a passing
-// (or honestly failing) real-binary attempt.
+// Every Gemini-gated generator refuses safely without a credential, and its credential-free half
+// still works: transcription (both methods, the request-window control, the processing footer),
+// document processing, main-track translation, background image and PromptDJ.
 //
-// GROUND TRUTH READ FROM SOURCE BEFORE WRITING ANY STEP. This journey groups five customer
-// capabilities that all sit against the SAME wall: src/platform/nativeGeminiJobLifecycle.js's
-// createNativeGeminiJobRunner (used directly by transcription and, through
-// src/platform/nativeGeminiText.js, by document processing and translation) resolves a Gemini
-// credential BEFORE any native command is invoked. With none configured, `getCredentialId()`
-// resolves null, the attempt loop breaks immediately, and it throws the fixed
-// `NativeGeminiError('geminiCredentialUnavailable')` whose message is the actionable
-// `settings.geminiCredentialRequired` text -- no job/artifact row is ever written. That exact text
-// is asserted through e2e/support/providerRefusalOracle.js so document processing and translation
-// never retype it, and bulkTranslationFileIO.journey.js already proves the identical text for BULK
-// translation; this journey's Part C proves the MAIN-TRACK translation code path
-// (useTranslationState.js's direct `translateSubtitles` call, not the per-file bulk-failure
-// wrapper). geminiCredentialBoundary.journey.js already proves
-// this same wall for Gemini transcription end to end with full modal-layout containment checks;
-// this journey's Part A does not repeat those, it proves the INCREMENTAL fact that journey does
-// not: both transcription methods are offered and the max-duration request-window control is real.
-//
-// SPLIT DOCUMENT PROCESSING REPORTS AN INCOMPLETE RESULT, NOT THE CREDENTIAL TEXT. A nonzero split
-// duration takes src/services/gemini/consolidationService.js's completeDocumentByChunks path, which
-// catches each chunk's NativeGeminiError and resolves a `refused` result; LyricsDisplay.js then
-// shows its own "No usable output was returned" toast. Part B proves both paths.
-//
-// BACKGROUND IMAGE GENERATION MAPS THE ERROR CODE. src/components/background/errorMessages.js's
-// getFriendlyErrorMessage reads the bounded `geminiCredentialUnavailable` code and shows
-// `backgroundGenerator.error.apiKeyMissing` ("Gemini API key not set. Please set it in settings.").
-//
-// PROMPTDJ'S REFUSAL NEVER REACHES RUST AT ALL. src/components/BackgroundMusicSection.jsx posts
-// `{ type: 'pm-dj-native-init', available: getActiveGeminiCredentialId() !== null }` into the
-// embedded promptdj-midi app (promptdj-midi/index.tsx) on mount and on every credential-state
-// change; with no credential that is `available: false`. promptdj-midi/components/PromptDjMidi.ts's
-// `playPause()` checks `this.credentialAvailable` and, when false, dispatches an `error` CustomEvent
-// with the fixed text 'Please set your Gemini API key in the main app first.' BEFORE ever
-// dispatching the `play` event BackgroundMusicSection.jsx would forward as `pm-dj-native-start` --
-// so clicking play/pause without a credential never posts anything to the parent, never calls
-// `startLiveMusicSession`, and never invokes a Tauri command. apps/desktop/src-tauri/src/live_music.rs
-// has no `diagnostics::record` call at all, so there is no log event to assert against; SQLite
-// silence is the only oracle, exactly as the credential-free client-only refusal it is. Reading
-// PromptDJ's own state requires walking two same-origin iframes (the outer srcDoc wrapper
-// BackgroundMusicSection.jsx renders its direct PromptDJ application frame pointing at
-// /promptdj/index.html) via `contentDocument`/`contentWindow` from `browser.execute` -- there is no
-// existing harness precedent for this, so it is done explicitly and commented at each step rather
-// than through a shared helper that would hide the two-iframe shape.
-//
-// TRANSCRIPTION WINDOW SPLITTING: WHAT IS AND IS NOT PROVEN HERE.
-// src/utils/parallelProcessingUtils.js's splitSegmentForParallelProcessing is a pure function of
-// (segment, maxDurationPerRequest) with no credential dependency; it is proven directly, including
-// a 204s/60s -> 4-window case matching the real e2e/support/fourWindowAsrFixture.js shape, by the
-// colocated src/utils/parallelProcessingUtils.test.js (`npx vitest run`). The customer-visible
-// wiring for that math -- src/components/VideoProcessingModalGeminiPanel.js's
-// `#max-duration-slider` and its live ".parallel-info" split-count preview -- is proven here, but
-// the pinned real-media fixture this journey (like almost every other journey) opens through
-// openProjectWithMedia() is only ~19 seconds: even at the tightest 1-minute cap that is ONE request,
-// so the customer-visible split preview correctly stays absent and
-// src/components/app/handlers/processingHandlers.js's own `processing-ranges` CustomEvent (only
-// dispatched when `subSegments.length > 1`) never fires. Observing an ACTUAL N>1 Gemini
-// request-window split therefore needs either a Gemini credential or a purpose-built long-form
-// fixture through a dedicated scenario (the same shape multiWindowAsrPersistence.mjs already uses
-// for local ASR's four-window split, over e2e/support/fourWindowAsrFixture.js's 204-second real
-// speech clip) -- not built in this pass; recorded precisely in this journey's inventory entry
-// rather than left as a vague gap.
+// The wall: src/platform/nativeGeminiJobLifecycle.js resolves a credential BEFORE any native
+// command, so with none it throws `geminiCredentialUnavailable` and no job, artifact or Gemini log
+// event is ever written. The exact text is asserted through support/providerRefusalOracle.js.
+// - Split document processing (consolidationService.completeDocumentByChunks) resolves a `refused`
+//   chunk result instead, so LyricsDisplay shows "No usable output was returned".
+// - Background image maps the code to `backgroundGenerator.error.apiKeyMissing`.
+// - PromptDJ never reaches Rust: with `available: false` its playPause() dispatches an `error` event
+//   before `play`, so SQLite silence is the only oracle. Its state is read by walking the two
+//   same-origin iframes BackgroundMusicSection.jsx renders.
+// The 19 s fixture is one request even at a 1-minute cap, so the split preview stays absent here;
+// N>1 window splitting is proven by src/utils/parallelProcessingUtils.test.js and the four-window
+// scenarios.
 
-/* global $, browser, describe, document, it */
+/* global $, browser, describe, document, getComputedStyle, it */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import process from 'node:process';
 
 import { actuateNativeRange } from '../support/nativeRange.js';
@@ -171,6 +123,30 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     });
     await newMethod.click();
 
+    const modalLayout = await browser.execute(() => {
+      const modal = document.querySelector('.video-processing-modal');
+      const footer = modal?.querySelector('.modal-footer');
+      const box = (node) => {
+        if (node === null || node === undefined) return null;
+        const { left, top, right, bottom } = node.getBoundingClientRect();
+        return { left, top, right, bottom };
+      };
+      return {
+        modal: box(modal),
+        footer: box(footer),
+        button: box(footer?.querySelector('[data-osg-action="process-subtitles"]')),
+        token: box(footer?.querySelector('.footer-token-info')),
+        footerDisplay: footer === null || footer === undefined ? null : getComputedStyle(footer).display,
+      };
+    });
+    const isInside = (child, parent) => child !== null && parent !== null
+      && child.left >= parent.left - 1 && child.top >= parent.top - 1
+      && child.right <= parent.right + 1 && child.bottom <= parent.bottom + 1;
+    assert.equal(modalLayout.footerDisplay, 'flex', `processing footer lost its layout: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.footer, modalLayout.modal), `processing footer escaped its modal: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.button, modalLayout.footer), `process button escaped its footer: ${JSON.stringify(modalLayout)}`);
+    assert.ok(isInside(modalLayout.token, modalLayout.footer), `token summary escaped its footer: ${JSON.stringify(modalLayout)}`);
+
     const durationSlider = '#max-duration-slider';
     const actuated = await actuateNativeRange({
       driver: browser, selector: durationSlider, value: 1, label: 'max-duration-slider (tightest cap)',
@@ -197,10 +173,12 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       const idle = await browser.execute(() => ({
         generateDisabled: document.querySelector('[data-osg-action="generate-subtitles"]')?.disabled ?? null,
         processModalPresent: document.querySelector('.processing-modal-overlay') !== null,
+        forceStopPresent: document.querySelector('.force-stop-btn') !== null,
       }));
       return refusalA.errorMessages.some((message) => /API/i.test(message))
         && idle.generateDisabled === false
-        && idle.processModalPresent === false;
+        && idle.processModalPresent === false
+        && idle.forceStopPresent === false;
     }, {
       timeout: 30_000,
       interval: 250,
@@ -210,15 +188,22 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
     const afterA = durableState(root);
     assert.deepEqual(jobsOfKind(afterA), jobsOfKind(beforeA), 'missing credential started a provider job during transcription windowing');
     assert.equal(afterA.counts.cues, 0, 'missing credential published subtitle cues');
+    // SQLite and the native log distinguish a genuine pre-provider refusal from a request that was
+    // started and merely failed quickly.
+    assert.doesNotMatch(
+      readFileSync(join(root, 'logs', 'osg.log'), 'utf8'),
+      /"event":"gemini\.(?:started|progress|completed|failed|cancelled)"/u,
+      'missing credential still started a Gemini provider request',
+    );
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '02-transcription-refused',
-      description: 'The new Gemini transcription method refuses safely, with the native request-window control already proven responsive, before any provider job or cue.',
+      description: 'The new Gemini transcription method refuses safely from a contained processing footer, with the request-window control responsive, before any provider job, cue or Gemini request.',
       details: { errorToasts: refusalA.errorToasts },
       allowVisibleProblems: {
         errorToasts: refusalA.errorToasts.map((toast) => ({
           text: toast,
-          reason: 'The visible missing-credential refusal is the customer state under test, matching geminiCredentialBoundary.',
+          reason: 'The visible missing-credential refusal is the customer state under test.',
         })),
       },
     });

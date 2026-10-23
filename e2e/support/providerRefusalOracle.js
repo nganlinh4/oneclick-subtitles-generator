@@ -16,7 +16,7 @@
 
 export const GEMINI_CREDENTIAL_REQUIRED_MESSAGE = 'No Gemini API key is currently usable. Add or check a key in Settings → API Keys.';
 
-/** Native job kinds every credential-gated Gemini text call can register -- see geminiCredentialBoundary.journey.js. */
+/** Native job kinds every credential-gated Gemini text call can register -- see providerBoundaries.journey.js. */
 export const PROVIDER_JOB_KINDS = Object.freeze(['transcribe', 'translate', 'analyzeSubtitles']);
 
 /**

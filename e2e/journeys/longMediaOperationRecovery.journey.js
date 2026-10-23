@@ -63,7 +63,7 @@ const enableLongMediaWaveform = async () => {
 /**
  * `waitUntil`'s own `timeoutMsg` must be a static string -- the options object is evaluated eagerly
  * at call time, before the predicate ever runs. A diagnostic that needs LIVE state read at the
- * moment of failure goes through this wrapper instead, matching timelineBoundary.journey.js's own
+ * moment of failure goes through this wrapper instead, matching localAsrGeneration.journey.js's own
  * helper of the same name.
  */
 async function waitUntilWithFreshDiagnostic(predicate, { diagnostic, ...options }) {

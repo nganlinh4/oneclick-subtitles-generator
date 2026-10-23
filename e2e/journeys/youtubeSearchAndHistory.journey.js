@@ -9,7 +9,7 @@
 // `requireReadyCredential` throws `credentialNotFound` before invoking
 // the native `youtube_search` command at all -- the credential-free case never crosses the IPC
 // boundary. This journey therefore proves the credential-free REFUSAL boundary honestly, exactly as
-// geminiCredentialBoundary already does for Gemini, instead of pretending to prove search results.
+// providerBoundaries already does for Gemini, instead of pretending to prove search results.
 //
 // SEARCH IS GATED BEHIND A SETTING THAT DEFAULTS OFF. src/components/app/AppState.js:62 reads
 // `enable_youtube_search` from localStorage, defaulting to FALSE on a clean profile, and

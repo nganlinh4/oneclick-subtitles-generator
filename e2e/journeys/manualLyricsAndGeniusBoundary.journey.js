@@ -185,7 +185,7 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
     });
 
     // --- Part C: the Genius lookup refuses before any native call, as a toast, with no state
-    // corruption -- exactly the boundary geminiCredentialBoundary proves for Gemini generation. ---
+    // corruption -- exactly the boundary providerBoundaries proves for Gemini generation. ---
     await openManualModal();
     await clickControl(GENIUS_TOGGLE);
     const lyricsSection = await $('.lyrics-input-section');
@@ -235,7 +235,7 @@ describe('a customer enters manual subtitles and finds the Genius lookup credent
       allowVisibleProblems: {
         // The screenshot guard reads toast text single-spaced (trim + collapse); refusal.errorToasts
         // was normalized the same way by surfaceState(). The visible missing-credential refusal is
-        // the customer state this journey is proving (idiom: geminiCredentialBoundary.journey.js).
+        // the customer state this journey is proving (idiom: providerBoundaries.journey.js).
         errorToasts: refusal.errorToasts.map((toast) => ({
           text: toast.replace(/\s+/g, ' ').trim(),
           reason: 'The visible missing-credential Genius refusal is the customer state under test.',

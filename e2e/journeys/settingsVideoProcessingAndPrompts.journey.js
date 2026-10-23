@@ -18,7 +18,7 @@
 //          options modal and the native transcription request both consume.
 //        - src/services/gemini/promptManagement.js:165-176 (`getTranscriptionPromptImpl`) and
 //          src/services/gemini/core.js:120,147 (`callGeminiApi`) read `transcription_prompt` and
-//          hand it to `runNativeGeminiTranscription`, the exact call `geminiCredentialBoundary`
+//          hand it to `runNativeGeminiTranscription`, the exact call `providerBoundaries`
 //          proves is refused before any provider byte leaves and before any durable side effect.
 //        - src/platform/downloadCookiePreference.js:40-54 (`readDownloadCookiePreference`) reads
 //          `use_cookies_for_download` / `download_cookie_source` into the download job's cookie
@@ -33,7 +33,7 @@
 //      src/utils/geminiEffects/index.js:30,141 directly — this journey observes the real
 //      `window.geminiAnimationFrameId` / DOM particle-container side effect, not a storage mirror.
 //   4. `transcription_prompt` is additionally walked through the real generate-subtitles flow up to
-//      the same missing-credential refusal `geminiCredentialBoundary` proves is side-effect-free,
+//      the same missing-credential refusal `providerBoundaries` proves is side-effect-free,
 //      confirming the exact edited text is still what the request builder would have read at the
 //      moment the pipeline had to stop.
 /* global $, browser, describe, document, it, localStorage, window */
@@ -157,13 +157,13 @@ const adjustSlider = async (inputSelector, trackSelector, steps) => {
   );
 };
 
-/** The exact real generate flow, cut short at the same safe refusal geminiCredentialBoundary proves. */
+/** The exact real generate flow, cut short at the same safe refusal providerBoundaries proves. */
 const attemptCredentialFreeGeneration = async () => {
   await clickControl('[data-osg-action="generate-subtitles"]');
   const timeline = await $('.subtitle-timeline');
   await timeline.waitForDisplayed({ timeout: 60_000, timeoutMsg: 'the Gemini range selector never appeared' });
   await timeline.click();
-  await browser.keys(['', 'a', '']); // select-all range, matching geminiCredentialBoundary
+  await browser.keys(['\uE009', 'a', '\uE000']); // select-all range, matching providerBoundaries
   const method = await $('[data-transcription-method="new"]');
   await method.waitForClickable({ timeout: 60_000 });
   await method.click();
@@ -303,7 +303,7 @@ describe('a customer\'s video-processing and prompt choices reach the pipelines 
     assert.deepEqual(mirrored, durable, 'Save committed to SQLite without mirroring the same values into localStorage');
 
     // transcription_prompt: walk the real pipeline up to the same safe, side-effect-free refusal
-    // geminiCredentialBoundary proves, and confirm the value at that boundary is still the edit.
+    // providerBoundaries proves, and confirm the value at that boundary is still the edit.
     const beforeAttempt = durableState(root);
     const refusal = await attemptCredentialFreeGeneration();
     const promptAtRefusal = await browser.execute(() => localStorage.getItem('transcription_prompt'));

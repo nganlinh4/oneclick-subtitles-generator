@@ -1,7 +1,7 @@
 // A customer builds and restructures a subtitle track through the real editor controls.
 //
 // editPersistRelaunch already proves that one text edit survives a second process, and
-// timelineBoundary already proves Ctrl+A/Delete across the entire media domain. This journey owns
+// localAsrGeneration already proves Ctrl+A/Delete across the entire media domain. This journey owns
 // the remaining document-editing contract: empty-state creation, row insertion/deletion/merge,
 // pointer-range split, structural undo/redo, saved-state reset and session checkpoints. Every
 // settled claim is checked against the application's SQLite database as well as the visible rows.
@@ -345,7 +345,7 @@ describe('customer subtitle cue CRUD and history', () => {
     assert.equal(initial.counts.media, 1, 'editing must retain exactly one media asset');
 
     // Empty-state creation is a distinct control from row insertion. Reach it through the row delete
-    // buttons, not Ctrl+A: the latter is already owned by timelineBoundary.
+    // buttons, not Ctrl+A: the latter is already owned by localAsrGeneration.
     for (let remaining = imported.length; remaining > 0; remaining -= 1) {
       await clickControl(`.lyric-item[data-lyric-index="${remaining - 1}"] .delete-lyric-btn`);
       await waitForVisibleCues(imported.slice(0, remaining - 1), 'row deletion did not settle');
