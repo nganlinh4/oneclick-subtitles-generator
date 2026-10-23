@@ -1,16 +1,16 @@
+mod reply;
+
 use crate::artifact::StagedArtifact;
 use crate::program::native_process_path;
-use crate::protocol::{
-    CommandFrame, PROTOCOL_VERSION, WirePhase, WorkerCommand, WorkerResponse, write_frame,
-};
+use crate::protocol::{CommandFrame, PROTOCOL_VERSION, WorkerCommand, WorkerResponse, write_frame};
 use crate::session::{
     POLL_INTERVAL, WorkerCacheDirectory, WorkerCacheStaging, WorkerSession, spawn_group,
     wait_for_response,
 };
 use crate::{
     AudioFormat, ReferencePreparationPlan, Result, RunControl, SecretValue, SegmentId,
-    SpeechArtifact, SpeechBackend, SpeechError, SpeechOutput, SpeechPhase, SpeechProgress,
-    SynthesisRequest, VoiceConversionRequest, VoiceInventory, WorkerProgram,
+    SpeechArtifact, SpeechBackend, SpeechError, SpeechOutput, SpeechPhase, SynthesisRequest,
+    VoiceConversionRequest, VoiceInventory, WorkerProgram,
 };
 use serde::Serialize;
 use std::fmt;
@@ -19,6 +19,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, TryLockError};
 use std::time::Instant;
+
+use reply::{ExpectedReply, Reply, emit, emit_optional, wait_for_reply};
 
 const MAX_WORKER_TEXT_BYTES: u32 = 16 * 1024 * 1024;
 const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
@@ -489,26 +491,6 @@ fn remove_automation_authority_environment(command: &mut Command) {
     }
 }
 
-#[cfg(test)]
-mod automation_authority_tests {
-    use super::*;
-    use std::ffi::OsStr;
-
-    #[test]
-    fn speech_worker_drops_automation_authority() {
-        let mut command = Command::new("not-started");
-        remove_automation_authority_environment(&mut command);
-        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
-            assert!(
-                command
-                    .get_envs()
-                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
-                "{variable} would be inherited by the speech worker"
-            );
-        }
-    }
-}
-
 impl fmt::Debug for LazySpeechWorker {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -522,129 +504,6 @@ impl fmt::Debug for LazySpeechWorker {
             .field("status", &self.status())
             .finish_non_exhaustive()
     }
-}
-
-#[derive(Clone, Copy)]
-enum ExpectedReply {
-    Artifact,
-    Voices,
-}
-
-enum Reply {
-    Artifact(crate::protocol::WireArtifact),
-    Voices(Vec<crate::protocol::WireVoice>),
-}
-
-fn wait_for_reply(
-    session: &mut WorkerSession,
-    request_id: u64,
-    expected: ExpectedReply,
-    segment_id: Option<&SegmentId>,
-    control: &RunControl,
-    deadline: Instant,
-) -> Result<Reply> {
-    loop {
-        match wait_for_response(session, control, deadline)? {
-            WorkerResponse::Progress {
-                protocol,
-                request_id: response_id,
-                phase,
-                fraction_millionths,
-            } => {
-                validate_envelope(protocol, request_id, response_id)?;
-                let phase = match phase {
-                    WirePhase::LoadingModel => SpeechPhase::LoadingModel,
-                    WirePhase::Synthesizing => SpeechPhase::Synthesizing,
-                    WirePhase::Encoding => SpeechPhase::Encoding,
-                };
-                emit_optional(control, segment_id, phase, fraction_millionths)?;
-            }
-            WorkerResponse::Complete {
-                protocol,
-                request_id: response_id,
-                artifact,
-            } => {
-                validate_envelope(protocol, request_id, response_id)?;
-                return match expected {
-                    ExpectedReply::Artifact => Ok(Reply::Artifact(artifact)),
-                    ExpectedReply::Voices => {
-                        Err(SpeechError::Protocol("unexpected artifact response"))
-                    }
-                };
-            }
-            WorkerResponse::Voices {
-                protocol,
-                request_id: response_id,
-                voices,
-            } => {
-                validate_envelope(protocol, request_id, response_id)?;
-                return match expected {
-                    ExpectedReply::Voices => Ok(Reply::Voices(voices)),
-                    ExpectedReply::Artifact => {
-                        Err(SpeechError::Protocol("unexpected voice response"))
-                    }
-                };
-            }
-            WorkerResponse::Error {
-                protocol,
-                request_id: response_id,
-                code,
-                retryable,
-            } => {
-                validate_envelope(protocol, request_id, response_id)?;
-                return Err(SpeechError::WorkerRejected {
-                    code: safe_worker_code(&code),
-                    retryable,
-                });
-            }
-            WorkerResponse::Hello { .. } => {
-                return Err(SpeechError::Protocol("duplicate worker hello frame"));
-            }
-        }
-    }
-}
-
-fn validate_envelope(protocol: u16, expected_id: u64, response_id: u64) -> Result<()> {
-    if protocol != PROTOCOL_VERSION || expected_id != response_id {
-        return Err(SpeechError::Protocol(
-            "worker response envelope does not match",
-        ));
-    }
-    Ok(())
-}
-
-fn safe_worker_code(value: &str) -> &'static str {
-    match value {
-        "invalid_request" => "invalid_request",
-        "model_unavailable" => "model_unavailable",
-        "provider_unavailable" => "provider_unavailable",
-        "provider_rate_limited" => "provider_rate_limited",
-        "authentication_failed" => "authentication_failed",
-        "reference_rejected" => "reference_rejected",
-        "synthesis_failed" => "synthesis_failed",
-        "encoding_failed" => "encoding_failed",
-        _ => "worker_error",
-    }
-}
-
-fn emit(
-    control: &RunControl,
-    segment_id: &SegmentId,
-    phase: SpeechPhase,
-    fraction: u32,
-) -> Result<()> {
-    emit_optional(control, Some(segment_id), phase, fraction)
-}
-
-fn emit_optional(
-    control: &RunControl,
-    segment_id: Option<&SegmentId>,
-    phase: SpeechPhase,
-    fraction: u32,
-) -> Result<()> {
-    let progress = SpeechProgress::new(segment_id.cloned(), phase, fraction)?;
-    control.emit(&progress);
-    Ok(())
 }
 
 fn reject_if_cancelled(control: &RunControl) -> Result<()> {
@@ -694,4 +553,24 @@ fn is_session_fatal(error: &SpeechError) -> bool {
         error,
         SpeechError::WorkerRejected { .. } | SpeechError::InvalidInput(_)
     )
+}
+
+#[cfg(test)]
+mod automation_authority_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn speech_worker_drops_automation_authority() {
+        let mut command = Command::new("not-started");
+        remove_automation_authority_environment(&mut command);
+        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
+                "{variable} would be inherited by the speech worker"
+            );
+        }
+    }
 }

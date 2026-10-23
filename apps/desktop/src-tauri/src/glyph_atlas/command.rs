@@ -31,10 +31,6 @@ pub(crate) struct GlyphAtlasStageResponse {
 /// Stages one baked glyph atlas frame and returns an opaque handle for it.
 #[tauri::command]
 #[allow(
-    dead_code,
-    reason = "reachable once lib.rs registers the command; remove with the wiring change"
-)]
-#[allow(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State and Request as owned command extractors"
 )]

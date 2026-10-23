@@ -10,7 +10,7 @@
 //! The messages are written for a person, name no file and quote no text, so a refusal is safe to
 //! surface verbatim and safe to log.
 //!
-//! Several of these codes are not yet in `RENDER_COMMAND_CODES` in `src/platform/renderService.js`,
+//! Several of these codes are not yet in `RENDER_COMMAND_CODES` in `src/platform/renderErrors.js`,
 //! which is frozen: that module maps a code it does not know to `nativeRenderFailed` and shows its
 //! generic sentence. The refusal is still typed here and still typed in the diagnostics, so nothing
 //! is lost but the sentence, and the frontend change that teaches it these codes is recorded with

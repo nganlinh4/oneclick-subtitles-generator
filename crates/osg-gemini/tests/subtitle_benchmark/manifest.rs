@@ -106,6 +106,8 @@ impl Manifest {
         digest.update(include_bytes!("scoring.rs"));
         digest.update(b"\0runner-source\0");
         digest.update(include_bytes!("runner.rs"));
+        digest.update(b"\0request-source\0");
+        digest.update(include_bytes!("request.rs"));
         for (relative, _) in fixtures {
             digest.update(b"\0fixture\0");
             digest.update(relative.as_bytes());

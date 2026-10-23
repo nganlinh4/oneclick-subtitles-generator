@@ -17,7 +17,8 @@ pub(crate) const BAKER: &str = include_str!("../../../../src/platform/glyphAtlas
 ///
 /// A descriptor this side accepts must be one that side would have accepted, so the bound it
 /// applies is read out of its own source rather than described in a comment here.
-pub(crate) const STAGING: &str = include_str!("../../../../src/platform/glyphAtlasStaging.js");
+pub(crate) const STAGING: &str =
+    include_str!("../../../../src/platform/glyphAtlasStagingDescriptor.js");
 
 /// The advance every fixture cell carries, and therefore the pen step of the fixture line.
 pub(crate) const ADVANCE_PX: f64 = 13.2;

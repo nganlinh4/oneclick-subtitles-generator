@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, types::TranscriptionWord};
+use crate::{Error, Result, response::TranscriptionWord};
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 const NANOS_PER_MS: u64 = 1_000_000;

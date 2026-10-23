@@ -99,10 +99,6 @@ impl GlyphAtlasStore {
     ///
     /// This is what makes the bound least-recently-*used* rather than least-recently-staged: the
     /// compositor's own reads decide what survives.
-    #[allow(
-        dead_code,
-        reason = "the compositor wave consumes staged atlases by id; staging lands first"
-    )]
     pub(crate) fn resolve(
         &self,
         atlas_id: AssetId,

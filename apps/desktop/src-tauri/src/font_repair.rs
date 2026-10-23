@@ -42,7 +42,7 @@ pub(crate) fn font_readiness_retry(
 ) -> Result<FontReadinessRecord, String> {
     let authority = Arc::clone(&readiness);
     let publish = move |outcome: Result<PreparedUiFont, FontRefusal>| {
-        crate::late_font_ready(&app, &authority, outcome);
+        crate::startup::late_font_ready(&app, &authority, outcome);
     };
 
     UiFontRuntime::repair(&context.root, context.bundle.clone(), &readiness, publish)

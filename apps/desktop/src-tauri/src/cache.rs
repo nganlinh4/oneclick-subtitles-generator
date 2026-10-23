@@ -1,9 +1,8 @@
-use osg_infrastructure::storage::{
-    CacheCategory, CacheCategoryInfo, CacheClearOutcome, CacheInfo, DatabaseError,
-};
+use osg_infrastructure::storage::{CacheCategory, CacheCategoryInfo, CacheClearOutcome, CacheInfo};
 use serde::Serialize;
 use tauri::State;
 
+use crate::background;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -87,7 +86,7 @@ impl CacheClearResponse {
 )]
 pub(crate) async fn cache_info(state: State<'_, DesktopState>) -> CommandResult<CacheInfoResponse> {
     let database = state.database.clone();
-    run_cache_task("cache information", move || {
+    background::run_blocking("cache information", move || {
         database.cache_info().map(CacheInfoResponse::from)
     })
     .await
@@ -107,7 +106,7 @@ pub(crate) async fn cache_clear(
         .transpose()
         .map_err(CommandError::from)?;
     let database = state.database.clone();
-    run_cache_task("cache clear", move || {
+    background::run_blocking("cache clear", move || {
         database
             .clear_cache_with_info(category.as_ref())
             .map(CacheClearResponse::from_outcome)
@@ -126,23 +125,10 @@ pub(crate) async fn cache_prune_expired(
     state: State<'_, DesktopState>,
 ) -> CommandResult<CacheInfoResponse> {
     let database = state.database.clone();
-    run_cache_task("cache expiry pruning", move || {
+    background::run_blocking("cache expiry pruning", move || {
         database.cache_info().map(CacheInfoResponse::from)
     })
     .await
-}
-
-async fn run_cache_task<T>(
-    operation: &'static str,
-    task: impl FnOnce() -> Result<T, DatabaseError> + Send + 'static,
-) -> CommandResult<T>
-where
-    T: Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(task)
-        .await
-        .map_err(|_| CommandError::internal(format!("the {operation} task stopped unexpectedly")))?
-        .map_err(Into::into)
 }
 
 #[cfg(test)]

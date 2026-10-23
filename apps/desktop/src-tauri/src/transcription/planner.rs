@@ -27,7 +27,6 @@ pub(crate) struct WindowRange {
 }
 
 impl WindowRange {
-    #[allow(dead_code)]
     #[must_use]
     pub(crate) const fn new(index: usize, start_ms: i64, end_ms: i64) -> Self {
         Self {
@@ -59,16 +58,6 @@ impl WindowRange {
             0
         } else {
             dur.cast_unsigned() * 1_000
-        }
-    }
-
-    #[allow(dead_code)]
-    #[must_use]
-    pub(crate) const fn end_us(&self) -> u64 {
-        if self.end_ms < 0 {
-            0
-        } else {
-            self.end_ms.cast_unsigned() * 1_000
         }
     }
 }

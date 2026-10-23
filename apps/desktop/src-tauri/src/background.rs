@@ -9,6 +9,22 @@ use crate::error::{CommandError, CommandResult};
 
 pub(crate) type DesktopJobs = Arc<JobRegistry<Database>>;
 
+/// Runs blocking storage or credential work off the async runtime and maps its error into a
+/// command error. `operation` names the work in the path-free failure message.
+pub(crate) async fn run_blocking<T, E>(
+    operation: &'static str,
+    task: impl FnOnce() -> Result<T, E> + Send + 'static,
+) -> CommandResult<T>
+where
+    T: Send + 'static,
+    E: Into<CommandError> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|_| CommandError::internal(format!("the {operation} task stopped unexpectedly")))?
+        .map_err(Into::into)
+}
+
 pub(crate) async fn register_running(
     jobs: &DesktopJobs,
     kind: JobKind,
@@ -104,6 +120,28 @@ pub(crate) async fn finish_cancellation(
     .map_err(|_| CommandError::internal("the cancellation task stopped unexpectedly"))?
     .map(|ticket| ticket.snapshot().clone())
     .map_err(Into::into)
+}
+
+/// Settles a package or tool operation's job as cancelled from any pre-terminal state. A job that
+/// already reached a terminal outcome cannot be cancelled; `too_late` is the caller's refusal.
+pub(crate) fn confirm_cancelled(
+    jobs: &JobRegistry<Database>,
+    job_id: JobId,
+    too_late: &'static str,
+) -> CommandResult<JobSnapshot> {
+    let current = jobs.get(job_id)?;
+    let ticket = match current.snapshot().state() {
+        JobState::Queued | JobState::Running => {
+            jobs.apply(job_id, JobUpdate::RequestCancellation)?;
+            jobs.apply(job_id, JobUpdate::ConfirmCancelled)?
+        }
+        JobState::Cancelling => jobs.apply(job_id, JobUpdate::ConfirmCancelled)?,
+        JobState::Cancelled => current,
+        JobState::Succeeded | JobState::Failed | JobState::Interrupted => {
+            return Err(CommandError::internal(too_late));
+        }
+    };
+    Ok(ticket.snapshot().clone())
 }
 
 pub(crate) async fn finish_failure(jobs: &DesktopJobs, id: JobId) -> Option<JobSnapshot> {
