@@ -286,6 +286,9 @@ mod tests {
                         }
                     }
                 };
+                // Windows hands the accepted socket the listener's non-blocking mode, so a read that
+                // races the client's request would fail with WouldBlock instead of waiting.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
