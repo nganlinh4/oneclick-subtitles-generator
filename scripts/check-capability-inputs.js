@@ -146,4 +146,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { CAPABILITY_WORDS, DECLARATION, collectUnsupplied, declarationCount, run };
+module.exports = { DECLARATION, collectUnsupplied, declarationCount, run };

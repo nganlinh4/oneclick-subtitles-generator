@@ -218,7 +218,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  getGitInfo,
   formatGitVersion,
   generateVersionFile,
   main

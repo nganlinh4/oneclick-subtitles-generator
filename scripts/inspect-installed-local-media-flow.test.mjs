@@ -17,7 +17,7 @@ import {
   waitForValue,
   writePickerPhase,
 } from './inspect-installed-local-media-flow.mjs';
-import { sanitizeInspectorError } from './inspect-installed-media-flow.mjs';
+import { sanitizeInspectorError } from './installed-media-flow/capability.mjs';
 
 const assetId = '019ff572-2132-7ba1-9e9c-5a29894963bf';
 const priorAssetId = '019ff572-2132-7ba1-9e9c-5a29894963be';
@@ -305,17 +305,6 @@ test('does not re-click an active Upload File tab and activates it only when nec
     path.join(repositoryRoot, 'src/components/InputMethods.js'), 'utf8',
   );
   assert.equal((inputMethodsSource.match(/data-input-tab="file-upload"/g) || []).length, 1);
-  assert.match(
-    inputMethodsSource,
-    /<button\s+className=\{`tab-btn \$\{activeTab === 'file-upload' \? 'active' : ''\}`\}\s+data-input-tab="file-upload"\s+onClick=\{\(\) => setActiveTab\('file-upload'\)\}\s*>/,
-  );
-  const pillAnimationSource = fs.readFileSync(
-    path.join(repositoryRoot, 'src/utils/tabPillAnimation.js'), 'utf8',
-  );
-  assert.match(
-    pillAnimationSource,
-    /overlay\.className = 'pill-overlay';[\s\S]*?tabContainer\.appendChild\(overlay\);/,
-  );
   const alreadyActive = pickerExpressionHarness();
   assert.equal(alreadyActive.pillOverlay.classList.contains('pill-overlay'), true);
   assert.equal(alreadyActive.open(), 'already-active');

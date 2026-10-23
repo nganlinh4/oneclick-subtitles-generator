@@ -9,22 +9,10 @@
  *
  * `.gitattributes` pins `eol=lf` for `*.mjs`, `*.py`, `*.json`, `*.css` and friends, but `*.js`,
  * `*.jsx`, `*.ps1`, `*.rs`, `*.toml`, `*.yml` and `Cargo.lock` fall through to `text` /
- * `text=auto`. With `core.autocrlf=true` -- the default a Windows contributor gets, and what this
- * machine has -- git checks those out with CRLF. `*.ps1` matters most: PowerShell sources are
- * behind three of the five suites this fixes. Every search string in these suites is written with
- * LF, so `String.prototype.replace` found nothing, handed back its input unchanged, and
- * `assert.throws` then ran the gate against a fixture identical to the source it was supposed to
- * have broken.
- *
- * WHAT THAT ACTUALLY LOOKED LIKE, measured rather than assumed. On a faithful fresh-Windows-clone
- * simulation of the pre-fix code, 13 of 262 executed mutation sites were silent no-ops -- and every
- * one of them sat in a test that went RED. No test was green while asserting nothing; the failure
- * mode was a gate that fails on Windows for a reason that has nothing to do with what it guards,
- * which is how a real regression gets lost in noise the next person learns to ignore. Five tests in
- * `check-release-readiness.test.js` failed that way, not two. An earlier draft of this comment said
- * "two release gates were green and asserting nothing" -- wrong on both counts, and recorded here
- * because a mutation-testing helper that misdescribes its own defect is the exact failure it exists
- * to prevent.
+ * `text=auto`. With `core.autocrlf=true` -- the default a Windows contributor gets -- git checks
+ * those out with CRLF. Every search string in these suites is written with LF, so
+ * `String.prototype.replace` found nothing, handed back its input unchanged, and `assert.throws`
+ * then ran the gate against a fixture identical to the source it was supposed to have broken.
  *
  * Two independent defences, because either one alone can be forgotten:
  *   1. `readMutableSource` normalises line endings at the read boundary, so an LF search string

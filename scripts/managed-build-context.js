@@ -331,11 +331,9 @@ const assertFrontendInnerInvocation = (options = {}) => {
 };
 
 module.exports = {
-  MANAGED_ENVIRONMENT_KEYS,
   assertFrontendInnerInvocation,
   assertGitHubActionsIdentity,
   assertManagedBuildInvocation,
-  hasManagedBuildHint,
   hasManagedLeaseIdentity,
   overlaps,
   readPrivateJson,

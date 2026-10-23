@@ -23,9 +23,10 @@ function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-/** Both CJS helper modules resolve their own `require.main === module` guard against `import.meta.url`; requiring them via ESM interop only reads their named exports and never re-runs their CLI. */
+/** The CJS helper modules resolve their own `require.main === module` guard against `import.meta.url`; requiring them via ESM interop only reads their named exports and never re-runs their CLI. */
 async function loadCommonJsHelpers() {
-  const readiness = await import(pathToFileURL(path.join(SCRIPT_DIRECTORY, 'check-release-readiness.js')).href);
+  const readinessShared = await import(pathToFileURL(path.join(SCRIPT_DIRECTORY, 'release-readiness', 'shared.js')).href);
+  const tauriConfig = await import(pathToFileURL(path.join(SCRIPT_DIRECTORY, 'release-readiness', 'tauri-config.js')).href);
   const artifacts = await import(pathToFileURL(path.join(SCRIPT_DIRECTORY, 'check-release-artifacts.js')).href);
   const versions = await import(pathToFileURL(path.join(SCRIPT_DIRECTORY, 'check-version-consistency.js')).href);
   return {
@@ -33,8 +34,8 @@ async function loadCommonJsHelpers() {
     assertAllVersionsMatch: versions.assertAllVersionsMatch,
     assertWindowsMainExecutableArchitecture: artifacts.assertWindowsMainExecutableArchitecture,
     collectRepositoryVersions: versions.collectRepositoryVersions,
-    collectResourceMappings: readiness.collectResourceMappings,
-    sha256File: readiness.sha256File,
+    collectResourceMappings: tauriConfig.collectResourceMappings,
+    sha256File: readinessShared.sha256File,
   };
 }
 
@@ -73,7 +74,7 @@ function findMainExecutable(root, executableName) {
  * `osg-desktop.exe`, `ui-fonts/`, `workers/`, and `licenses/` cross into a second content-addressed
  * application publication."
  */
-export function expectedTopLevelEntries(mainExecutableName, mappings) {
+function expectedTopLevelEntries(mainExecutableName, mappings) {
   const directories = new Set(mappings.map((mapping) => mapping.destination.split('/')[0]));
   return [mainExecutableName, ...directories].sort();
 }
@@ -87,7 +88,7 @@ export function expectedTopLevelEntries(mainExecutableName, mappings) {
  */
 const NSIS_STRUCTURAL_ENTRIES = Object.freeze(['$PLUGINSDIR', 'uninstall.exe']);
 
-export function auditTopLevelShape(appRoot, mainExecutableName, mappings, options = {}) {
+function auditTopLevelShape(appRoot, mainExecutableName, mappings, options = {}) {
   const { installerStructure = false } = options;
   const expected = expectedTopLevelEntries(mainExecutableName, mappings);
   const tolerated = installerStructure ? NSIS_STRUCTURAL_ENTRIES : [];
@@ -103,7 +104,7 @@ export function auditTopLevelShape(appRoot, mainExecutableName, mappings, option
 }
 
 /** Every declared resource lands at its exact destination inside `appRoot` with unmodified bytes. */
-export function auditResources(appRoot, mappings, sha256File) {
+function auditResources(appRoot, mappings, sha256File) {
   const mismatches = [];
   for (const mapping of mappings) {
     const packagedPath = path.join(appRoot, ...mapping.destination.split('/'));
@@ -123,7 +124,7 @@ export function auditResources(appRoot, mappings, sha256File) {
   return { mismatches, total: mappings.length, verified: mappings.length - mismatches.length };
 }
 
-export function findLicenseLikeFiles(root) {
+function findLicenseLikeFiles(root) {
   return walkFiles(root)
     .map((absolute) => path.relative(root, absolute).split(path.sep).join('/'))
     .filter((relative) => {
@@ -140,7 +141,7 @@ export function findLicenseLikeFiles(root) {
  * notice gap SECURITY.md's "Open notice items" section asks callers to keep surfacing rather than
  * silently accept.
  */
-export function auditNotices(rootDirectory, licenseLikeFiles) {
+function auditNotices(rootDirectory, licenseLikeFiles) {
   const noticesPath = path.join(rootDirectory, 'THIRD_PARTY_NOTICES.md');
   invariant(fs.existsSync(noticesPath), 'Repository is missing THIRD_PARTY_NOTICES.md');
   const noticesText = fs.readFileSync(noticesPath, 'utf8').toLowerCase();
@@ -160,7 +161,7 @@ export function auditNotices(rootDirectory, licenseLikeFiles) {
  * repository input: it may not exist on a fresh checkout or a CI runner. Auto-discovery is
  * best-effort corroboration only; its absence is reported, never a failure.
  */
-export function discoverLatestE2eReferenceDirectory({ env = process.env, platform = process.platform } = {}) {
+function discoverLatestE2eReferenceDirectory({ env = process.env, platform = process.platform } = {}) {
   if (platform !== 'win32' || !env.LOCALAPPDATA) return null;
   const applicationsRoot = path.join(env.LOCALAPPDATA, 'OSG-Development', 'cache', 'apps', 'e2e', 'applications');
   if (!fs.existsSync(applicationsRoot)) return null;
@@ -172,7 +173,7 @@ export function discoverLatestE2eReferenceDirectory({ env = process.env, platfor
   return candidates[0]?.full ?? null;
 }
 
-export function crossCheckE2eReference(referenceDirectory, expectedTopLevel) {
+function crossCheckE2eReference(referenceDirectory, expectedTopLevel) {
   const actual = immediateChildren(referenceDirectory).filter((name) => !E2E_PUBLICATION_ONLY_ENTRIES.has(name));
   const actualSet = new Set(actual);
   const expectedSet = new Set(expectedTopLevel);

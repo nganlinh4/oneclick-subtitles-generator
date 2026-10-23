@@ -106,7 +106,6 @@ const renderVersionModule = (versionInfo) => (
 
 module.exports = {
   collectStrictReproducibleGitInfo,
-  defaultGitRunner,
   formatGitVersionUtc,
   renderVersionModule,
 };

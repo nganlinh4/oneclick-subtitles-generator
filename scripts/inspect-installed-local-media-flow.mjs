@@ -7,10 +7,7 @@ import { setTimeout } from 'node:timers';
 import { pathToFileURL } from 'node:url';
 
 import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
-import {
-  readPlaybackCapability,
-  sanitizeInspectorError,
-} from './inspect-installed-media-flow.mjs';
+import { readPlaybackCapability, sanitizeInspectorError } from './installed-media-flow/capability.mjs';
 
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000;
 const PICKER_TAB_ACTIVATION_TIMEOUT_MS = 30_000;
@@ -136,7 +133,7 @@ export function assertLocalMediaResult(value, expectedFileName, priorAssetId) {
   return value;
 }
 
-export function assertLocalMediaState(value, expectedFileName, priorAssetId) {
+function assertLocalMediaState(value, expectedFileName, priorAssetId) {
   invariant(CANONICAL_UUID_V7.test(priorAssetId ?? ''),
     'Prior installed local-media asset identity is invalid');
   invariant(hasExactKeys(value, [
@@ -381,7 +378,7 @@ export const LOCAL_MEDIA_RESULT_EXPRESSION = `
   };
 })()`;
 
-export const PRIOR_MEDIA_STATE_EXPRESSION = `
+const PRIOR_MEDIA_STATE_EXPRESSION = `
 (async () => {
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   let assetId = null;

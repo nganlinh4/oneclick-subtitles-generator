@@ -7,7 +7,7 @@ import { setTimeout } from 'node:timers';
 import { pathToFileURL } from 'node:url';
 
 import { CdpClient, discoverTarget } from './inspect-installed-webview.mjs';
-import { sanitizeInspectorError } from './inspect-installed-media-flow.mjs';
+import { sanitizeInspectorError } from './installed-media-flow/capability.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const TOOL_IDS = Object.freeze(['deno', 'media-tools', 'yt-dlp']);

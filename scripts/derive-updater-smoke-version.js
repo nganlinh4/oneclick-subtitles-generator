@@ -157,7 +157,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  MAX_WINDOWS_VERSION_COMPONENT,
   assertRepositoryVersionContract,
   assertUpdaterVersionPair,
   collectUpdaterVersionContract,

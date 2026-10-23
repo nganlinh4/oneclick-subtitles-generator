@@ -271,8 +271,6 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  FORBIDDEN_TRANSPORTS,
-  FORBIDDEN_WEB_ARTIFACTS,
   assertProductionTransportBoundary,
   assertNativeGeminiBoundary,
   assertReachableWebViewTransportBoundary,

@@ -37,7 +37,7 @@
     "test:gemini-catalog": "node scripts/verify-gemini-catalog.js",
     "test:frontend-env": "node --test scripts/vite-public-env.test.mjs scripts/vite-dev-freshness.test.mjs",
     "test:e2e-frontend-publication": "node --test scripts/e2e-build-metadata.test.js scripts/e2e-frontend-snapshot.test.js scripts/build-e2e-frontend.test.js",
-    "test:e2e-build-publication": "node --test scripts/e2e-build-metadata.test.js scripts/e2e-frontend-snapshot.test.js scripts/build-e2e-frontend.test.js scripts/e2e-application-publication.test.js scripts/build-e2e-binary.test.js",
+    "test:e2e-build-publication": "node --test scripts/e2e-build-metadata.test.js scripts/e2e-frontend-snapshot.test.js scripts/build-e2e-frontend.test.js \"scripts/e2e-application/*.test.js\" scripts/build-e2e-binary.test.js",
     "cache:status": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Status",
     "cache:prune": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Prune -ProtectUnit apps-e2e",
     "cache:prune:apply": "pwsh -NoProfile -NonInteractive -File scripts/dev-cache.ps1 -Action Prune -ProtectUnit apps-e2e -Apply -Confirm:$false",
@@ -64,13 +64,12 @@
     "test:version-consistency": "node --test scripts/check-version-consistency.test.js",
     "test:desktop-payload-size": "node --test scripts/check-desktop-payload-size.test.mjs",
     "test:installer-payload": "node --test scripts/inspect-installer-payload.test.mjs scripts/installer-payload-residue-rules.test.mjs scripts/installer-payload-extract.test.mjs scripts/read-windows-executable-metadata.test.mjs",
-    "test:installed-inspector-contracts": "node --test scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs",
+    "test:installed-inspector-contracts": "node --test scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs \"scripts/installed-media-flow/*.test.mjs\" scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs",
     "test:updater-fixture": "node --test scripts/derive-updater-smoke-version.test.js scripts/serve-updater-fixture.test.mjs scripts/inspect-installed-updater.test.mjs"
   },
   "dependencies": {
     "@material/web": "2.4.1",
     "@tauri-apps/api": "2.11.1",
-    "events": "^3.3.0",
     "i18next": "^23.8.0",
     "iso-639-1": "^3.1.5",
     "jszip": "^3.10.1",

@@ -163,8 +163,6 @@ const runSupervisedSync = ({
 module.exports = {
   SUPERVISOR,
   normalizeWindowsInvocation,
-  resolveExecutable,
   runSupervisedSync,
   supervisorArguments,
-  windowsEnvironmentValue,
 };

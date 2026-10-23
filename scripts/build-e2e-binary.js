@@ -405,7 +405,6 @@ if (require.main === module) {
 
 module.exports = {
   CACHE_SCHEMA_VERSION,
-  CARGO_ARGUMENT_PREFIX,
   CARGO_PROFILE,
   TARGET_TRIPLE,
   acquireE2eLease,

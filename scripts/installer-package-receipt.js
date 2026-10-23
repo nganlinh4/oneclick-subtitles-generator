@@ -487,9 +487,5 @@ module.exports = {
   packageReceiptBytes,
   payloadInventory,
   publishInstallerPackageReceipt,
-  readPayloadContract,
   readAndVerifyInstallerPackageReceipt,
-  readUpdaterMinisignPublicKey,
-  validatePayloadEntries,
-  verifyMinisign,
 };

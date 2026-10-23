@@ -345,7 +345,6 @@ module.exports = {
   CACHE_SCHEMA_VERSION,
   MANAGED_LANES,
   acquire,
-  hasAmbiguousSegment,
   invokeCacheManager,
   isWindowsNamespacePath,
   parseArguments,

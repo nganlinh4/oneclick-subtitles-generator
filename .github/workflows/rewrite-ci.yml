@@ -132,7 +132,7 @@ jobs:
           npm run verify:managed-delivery
 
       - name: Test release-readiness and artifact gates
-        run: node --test scripts/check-release-readiness.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/installer-package-receipt.test.js scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
+        run: node --test "scripts/release-readiness/*.test.js" scripts/mutation-testing.test.js scripts/check-release-artifacts.test.js scripts/check-desktop-payload-size.test.mjs scripts/check-production-transport.test.js scripts/check-tauri-command-contract.test.js scripts/frontend-bundle-boundary.test.mjs scripts/installer-package-receipt.test.js scripts/inspect-installed-webview.test.mjs scripts/inspect-installed-media-flow.test.mjs "scripts/installed-media-flow/*.test.mjs" scripts/inspect-installed-local-media-flow.test.mjs scripts/inspect-installed-native-tools.test.mjs scripts/inspect-installed-media-pipeline.test.mjs scripts/inspect-installed-editor-flow.test.mjs scripts/inspect-installed-updater.test.mjs scripts/serve-updater-fixture.test.mjs
 
   native-matrix:
     name: ${{ matrix.platform }} native build

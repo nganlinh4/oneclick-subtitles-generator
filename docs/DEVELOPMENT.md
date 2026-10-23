@@ -149,7 +149,12 @@ the complete side-effect catalog. Its argument-handling and dry-run behavior are
 npm run test:installed-local
 ```
 
-`compile` verifies source/repository invariants. The stricter target-specific `runtime-package`
+`compile` verifies source/repository invariants. The checks live in `scripts/release-readiness/`,
+one module per concern, with tests run by `node --test "scripts/release-readiness/*.test.js"`. They
+cover release outcomes and security boundaries -- toolchain and lockfile pins, CI credential scope,
+Tauri/CSP/updater configuration, delivery catalogs, packaged resources, notices, and compiled-out
+harness seams -- and never pin the source text of UI, journeys, or helper scripts; those are covered
+by their own behavioural tests. The stricter target-specific `runtime-package`
 profile passes for Windows x64. Linux and macOS intentionally fail until equivalent native-tool,
 model, renderer, and real-device proofs are published; bypassing it does not validate those targets.
 

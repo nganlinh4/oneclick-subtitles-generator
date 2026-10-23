@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { parseArguments } from './inspect-installed-media-pipeline.mjs';
+import { PIPELINE_EXPRESSION } from './installed-media-pipeline/expression.mjs';
 import {
-  PIPELINE_EXPRESSION,
   assertMediaPipelineResult,
-  parseArguments,
   summarizeMediaPipelineResult,
-} from './inspect-installed-media-pipeline.mjs';
+} from './installed-media-pipeline/guards.mjs';
 
 const SOURCE_ID = '019ff572-2132-7ba1-8e9c-5a29894963bf';
 const CLIP_ID = '019ff572-2133-7ba1-8e9c-5a29894963bf';

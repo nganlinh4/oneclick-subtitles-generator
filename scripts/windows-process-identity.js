@@ -72,7 +72,6 @@ const readCurrentWindowsProcessIdentity = (options = {}) => readWindowsProcessId
 });
 
 module.exports = {
-  WINDOWS_PROCESS_CREATION_PATTERN,
   assertWindowsProcessIdentity,
   readCurrentWindowsProcessIdentity,
   readWindowsProcessIdentity,
