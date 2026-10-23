@@ -145,6 +145,7 @@ fn an_export_refused_before_the_encoder_opens_leaves_no_file_at_the_output() {
 
     // The other half, which is what stops the assertion above from passing for a location nothing
     // could ever be written to.
+    crate::support::require_hardware_gpu!("The successful half of the refusal case");
     let summary = roundtrip::export(&source, &output, None, &case, &prepared)
         .expect("the same request with a real staging exports to the same location");
     assert!(output.is_file(), "the successful export produced no file");

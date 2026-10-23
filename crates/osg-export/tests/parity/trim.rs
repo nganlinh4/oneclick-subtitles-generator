@@ -141,6 +141,7 @@ fn a_trimmed_export_writes_the_untrimmed_exports_frames_from_the_same_source_ins
 
     // And the same claim about the frames a real export actually wrote, which is the only place the
     // encoder, the container timestamps and the decoder grid all take part.
+    crate::support::require_hardware_gpu!("The encoded half of the trim case");
     let output = directory.path().join("trimmed.mp4");
     let summary = roundtrip::export_text(&source, &output, None, &part, text.clone())
         .expect("the trimmed export runs to completion");
