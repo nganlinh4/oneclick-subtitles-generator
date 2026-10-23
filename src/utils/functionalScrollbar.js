@@ -353,6 +353,8 @@ if (typeof document !== 'undefined') {
     if (shouldReinit && initializationTimer === null) {
       initializationTimer = setTimeout(() => {
         initializationTimer = null;
+        // The debounced re-init can outlive the document it observed (a torn-down test DOM).
+        if (typeof document === 'undefined') return;
         initializeFunctionalScrollbars();
       }, 100);
     }
