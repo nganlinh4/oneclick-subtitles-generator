@@ -40,14 +40,3 @@
 
 }
 
-/* Old loading spinner styles removed - now using LoadingIndicator component */
-
-/* Hidden file input */
-.hidden-file-input {
-  opacity: 0;
-  position: absolute;
-  width: 0.1px;
-  height: 0.1px;
-  overflow: hidden;
-  z-index: -1;
-}

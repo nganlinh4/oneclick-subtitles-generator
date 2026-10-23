@@ -30,7 +30,7 @@ const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const pickerExpressionHarness = ({
   activeIndices = [1],
   includeControl = true,
-  includeInput = true,
+  includeInput = false,
   duplicateContainer = false,
   duplicateControl = false,
   duplicateSemanticTab = false,
@@ -72,7 +72,7 @@ const pickerExpressionHarness = ({
     }
 
     querySelector(selector) {
-      if (selector !== ':scope > input.hidden-file-input[type="file"]') return null;
+      if (selector !== 'input[type="file"]') return null;
       return includeInput ? input : null;
     }
 
@@ -146,7 +146,7 @@ const validResult = () => ({
   currentFileUrl: playbackUrl,
   displayedFileName: fileName,
   errorToastMessages: [],
-  htmlFileInput: { fileCount: 0, value: '' },
+  htmlFileInput: null,
   inspection: {
     assetId,
     audioCodec: 'aac',
@@ -384,7 +384,9 @@ test('fails closed on ambiguous tab state, incomplete controls, and prior-asset 
     assert.equal(ambiguous.ready(), false);
   }
   assert.equal(pickerExpressionHarness({ includeControl: false }).ready(), false);
-  assert.equal(pickerExpressionHarness({ includeInput: false }).ready(), false);
+  // A WebView file input inside the picker would be a browser fallback, never the native picker.
+  assert.equal(pickerExpressionHarness({ includeInput: true }).ready(), false);
+  assert.equal(pickerExpressionHarness({ includeInput: true }).click(), false);
   assert.equal(pickerExpressionHarness({ duplicateContainer: true }).click(), false);
   assert.equal(pickerExpressionHarness({ duplicateControl: true }).click(), false);
   for (const hostile of [

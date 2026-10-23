@@ -155,10 +155,9 @@ function assertLocalMediaState(value, expectedFileName, priorAssetId) {
     'Installed local-media flow did not render the selected display name');
   invariant(Array.isArray(value.errorToastMessages) && value.errorToastMessages.length === 0,
     'Installed local-media flow displayed an error toast');
-  invariant(hasExactKeys(value.htmlFileInput, ['fileCount', 'value'])
-    && value.htmlFileInput.fileCount === 0
-    && value.htmlFileInput.value === '',
-  'Installed local-media flow injected a path into the WebView file input');
+  // The desktop app has no WebView file input; any one present is a browser path fallback.
+  invariant(value.htmlFileInput === null,
+    'Installed local-media flow injected a path into the WebView file input');
   invariant(hasExactKeys(value.session, ['media', 'playback', 'subtitleTrack'])
     && hasExactKeys(value.session.media, [
       'displayName', 'extension', 'id', 'kind', 'sizeBytes',
@@ -296,11 +295,11 @@ export const PICKER_CONTROL_READY_EXPRESSION = `
   )];
   if (pickers.length !== 1) return false;
   const picker = pickers[0];
-  const input = picker?.querySelector(':scope > input.hidden-file-input[type="file"]');
+  // The desktop picker is native: a WebView file input inside it would be a browser fallback.
   return activeTabs.length === 1
     && activeTabs[0] === uploadTab
     && picker instanceof HTMLDivElement
-    && input instanceof HTMLInputElement;
+    && picker.querySelector('input[type="file"]') === null;
 })()`;
 
 export const CLICK_PICKER_EXPRESSION = `
@@ -330,8 +329,7 @@ export const CLICK_PICKER_EXPRESSION = `
       || activeTabs.length !== 1 || activeTabs[0] !== uploadTab
       || pickers.length !== 1 || !(pickers[0] instanceof HTMLDivElement)) return false;
   const picker = pickers[0];
-  const input = picker.querySelector(':scope > input.hidden-file-input[type="file"]');
-  if (!(input instanceof HTMLInputElement)) return false;
+  if (picker.querySelector('input[type="file"]') !== null) return false;
   picker.click();
   return true;
 })()`;
@@ -360,7 +358,7 @@ export const LOCAL_MEDIA_RESULT_EXPRESSION = `
       .slice(0, 4)
       .map((element) => (element.textContent ?? '').trim().slice(0, 1024)),
     htmlFileInput: (() => {
-      const input = document.querySelector('.hidden-file-input[type="file"]');
+      const input = document.querySelector('input[type="file"]');
       return input instanceof HTMLInputElement
         ? { fileCount: input.files?.length ?? null, value: input.value }
         : null;
