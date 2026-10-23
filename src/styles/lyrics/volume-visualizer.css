@@ -41,22 +41,6 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-.volume-visualizer-no-audio {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(var(--md-surface-variant-rgb), 0.1);
-  color: var(--md-outline);
-  font-size: 12px;
-  font-weight: 400;
-  border-radius: 4px;
-}
-
 /* Ensure the subtitle timeline has proper spacing when volume visualizer is present */
 .subtitle-timeline {
   margin-bottom: 2px;

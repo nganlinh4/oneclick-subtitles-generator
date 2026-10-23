@@ -169,7 +169,6 @@
   z-index: 0 !important;
 }
 
-
 /* Gemini effects now handled by dynamic particle system */
 
 /* Processing state */
@@ -196,27 +195,8 @@
   flex-shrink: 0;
 }
 
-
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 .srt-upload-button .processing-text {
   font-size: var(--md-label-medium-size);
-}
-
-.srt-upload-button .processing-dots::after {
-  content: '.';
-  animation: dots 1.5s steps(5, end) infinite;
-}
-
-@keyframes dots {
-  0%, 20% { content: '.'; }
-  40% { content: '..'; }
-  60% { content: '...'; }
-  80%, 100% { content: ''; }
 }
 
 /* Responsive styles */

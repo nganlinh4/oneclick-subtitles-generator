@@ -95,18 +95,6 @@
   color: var(--md-on-tertiary);
 }
 
-/* Selected model display */
-.selected-model {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 24px;
-  background-color: rgba(var(--md-surface-variant-rgb), 0.3);
-  color: var(--md-on-surface-variant);
-  font-size: 0.9rem;
-}
-
 .model-label {
   font-weight: 500;
 }
@@ -152,8 +140,4 @@
   color: var(--md-error);
   font-size: 0.9rem;
   border: 1px solid rgba(var(--md-error-rgb), 0.3);
-}
-
-.error-icon {
-  font-size: 1rem;
 }

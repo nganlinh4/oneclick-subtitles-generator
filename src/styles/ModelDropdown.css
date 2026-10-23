@@ -73,7 +73,6 @@
   transform: rotate(180deg);
 }
 
-
 /* Model icon container */
 .model-option-icon {
   display: flex;
@@ -97,10 +96,6 @@
 /* Special styling for each icon type */
 .star-icon {
   color: var(--md-tertiary);
-}
-
-.award-icon {
-  color: var(--md-secondary);
 }
 
 .zap-icon {
@@ -135,8 +130,6 @@
   align-items: center;
   gap: 8px;
 }
-
-
 
 /* Model description styling */
 .model-option-description {

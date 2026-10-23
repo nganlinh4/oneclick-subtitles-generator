@@ -116,18 +116,6 @@
   color: var(--text-primary);
 }
 
-/* Language selector in settings footer */
-.settings-footer .language-selector-container {
-  height: 40px; /* Match the height of factory-reset-btn */
-}
-
-/* Ensure language selector button in footer has consistent styling */
-.settings-footer .language-selector-button {
-  display: flex;
-  align-items: center;
-  height: 40px; /* Explicitly set height to match factory-reset-btn */
-}
-
 .settings-footer-right {
   display: flex;
   gap: 0.75rem;

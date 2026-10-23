@@ -29,17 +29,6 @@
   z-index: 0;
 }
 
-/* More compact lyrics header */
-.lyrics-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem; /* Further reduced margin */
-  flex-wrap: wrap;
-  gap: 8px; /* Reduced gap */
-  width: 100%;
-}
-
 /* Container for controls and timeline */
 .controls-timeline-container {
   display: flex;
@@ -96,28 +85,6 @@
   width: 100%;
   height: 33%;
   padding-top: 2px;
-}
-
-/* Material Design 3 typography for header */
-.lyrics-header h3 {
-  margin: 0;
-  font-size: var(--md-title-medium-size);
-  line-height: var(--md-title-medium-height);
-  font-weight: var(--md-title-medium-weight);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: color var(--transition-speed);
-}
-
-.lyrics-header h3 svg {
-  stroke: var(--text-primary);
-  transition: stroke var(--transition-speed), transform 0.3s ease;
-}
-
-.lyrics-header:hover h3 svg {
-  transform: rotate(15deg);
 }
 
 /* Material Design 3 container for lyrics - enhanced styling */

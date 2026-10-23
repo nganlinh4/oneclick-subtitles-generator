@@ -1,60 +1,3 @@
-/* Animation keyframes */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes pulse {
-  0% { opacity: 0.7; }
-  50% { opacity: 1; }
-  100% { opacity: 0.7; }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* Old spinner styles removed - now using LoadingIndicator component */
-
 /* Narration method transition animations */
 .narration-content-container {
   position: relative;
@@ -88,25 +31,11 @@
   animation-fill-mode: both;
 }
 
-/* Animation for reference audio section */
-.reference-audio-section {
-  animation: slideUp var(--md-duration-medium2) var(--md-easing-emphasized);
-  animation-fill-mode: both;
-  animation-delay: 150ms;
-}
-
 /* Animation for generate button */
 .generate-button-row {
   animation: slideUp var(--md-duration-medium2) var(--md-easing-emphasized);
   animation-fill-mode: both;
   animation-delay: 300ms;
-}
-
-/* Animation for results */
-.narration-results {
-  animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized);
-  animation-fill-mode: both;
-  animation-delay: 100ms;
 }
 
 /* Animation for individual result items */

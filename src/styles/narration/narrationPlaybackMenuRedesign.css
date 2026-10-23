@@ -1,17 +1,5 @@
 /* Redesigned Narration Playback Menu - Matching Subtitle Settings Styling */
 
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 /* Narration menu container */
 .narration-menu-container {
   position: relative;
@@ -32,8 +20,6 @@
 }
 
 /* Active state styling is handled by the buttons.css file */
-
-
 
 /* Radio pill group */
 .radio-pill-group {
@@ -82,14 +68,6 @@
   font-style: italic;
 }
 
-/* Slider container */
-.slider-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
 /* Disabled elements */
 label.disabled {
   opacity: 0.5;
@@ -125,16 +103,6 @@ input:disabled {
   background-color: rgba(var(--md-surface-rgb, 255, 255, 255), 0.1);
   z-index: 1;
   border-radius: 4px;
-}
-
-.range-value {
-  min-width: 48px;
-  text-align: center;
-  padding: 4px 8px;
-  background-color: var(--md-surface-1);
-  border-radius: var(--md-shape-pill);
-  border: 1px solid var(--md-outline-variant);
-  font-size: 0.85rem;
 }
 
 /* Narration panel specific styles */

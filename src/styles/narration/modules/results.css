@@ -64,20 +64,6 @@
   border: none;
 }
 
-/* Old loading spinner styles removed - now using LoadingIndicator component */
-
-.loading-from-cache-message {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  color: var(--md-on-surface-variant);
-  font-size: 0.9rem;
-  text-align: center;
-  animation: pulse 2s infinite ease-in-out;
-}
-
 /* Webkit scrollbar styling removed - virtualized list handles scrolling */
 
 /* Dark mode scrollbar styles removed - virtualized list handles scrolling */
@@ -115,12 +101,6 @@
   background-color: var(--md-surface-1);
   border-left-color: var(--md-tertiary);
   pointer-events: none;
-}
-
-.result-item.unprocessed {
-  border-left-color: var(--md-outline);
-  background-color: var(--md-surface-1);
-  opacity: 0.9;
 }
 
 .result-item.pending {
@@ -172,7 +152,6 @@
   gap: 0.5rem;
 }
 
-
 /* No results message styling */
 .no-results-message {
   padding: 1rem;
@@ -191,7 +170,6 @@
   overflow: visible; /* ensure the element itself doesn't clip */
   transform-origin: center; /* scale from center during pulse */
 }
-
 
 /* Virtualized list container */
 .results-virtualized-list {

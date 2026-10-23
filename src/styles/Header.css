@@ -40,58 +40,6 @@
   transform-origin: left center; /* Ensure scaling happens from left center */
 }
 
-.special-star-icon {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  opacity: 0.9;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  filter: drop-shadow(0 0 6px rgba(var(--primary-color-rgb), 0.4));
-  transform: translateY(2px); /* Move down slightly to align with title baseline */
-  animation: starGradientShift 4s ease-in-out infinite;
-}
-
-.special-star-icon:hover {
-  opacity: 1;
-  transform: translateY(2px) scale(1.15); /* Maintain vertical alignment while scaling */
-  filter: drop-shadow(0 0 12px rgba(var(--primary-color-rgb), 0.7));
-  animation: starGradientShiftHover 2s ease-in-out infinite;
-}
-
-/* Keyframes for animated gradient effect */
-@keyframes starGradientShift {
-  0% {
-    filter: drop-shadow(0 0 6px rgba(var(--primary-color-rgb), 0.4)) hue-rotate(0deg);
-  }
-  25% {
-    filter: drop-shadow(0 0 8px rgba(var(--accent-color-rgb), 0.5)) hue-rotate(15deg);
-  }
-  50% {
-    filter: drop-shadow(0 0 10px rgba(var(--secondary-color-rgb), 0.6)) hue-rotate(30deg);
-  }
-  75% {
-    filter: drop-shadow(0 0 8px rgba(var(--accent-color-rgb), 0.5)) hue-rotate(15deg);
-  }
-  100% {
-    filter: drop-shadow(0 0 6px rgba(var(--primary-color-rgb), 0.4)) hue-rotate(0deg);
-  }
-}
-
-@keyframes starGradientShiftHover {
-  0% {
-    filter: drop-shadow(0 0 12px rgba(var(--primary-color-rgb), 0.7)) hue-rotate(0deg) brightness(1.1);
-  }
-  33% {
-    filter: drop-shadow(0 0 16px rgba(var(--accent-color-rgb), 0.8)) hue-rotate(20deg) brightness(1.2);
-  }
-  66% {
-    filter: drop-shadow(0 0 14px rgba(var(--secondary-color-rgb), 0.9)) hue-rotate(40deg) brightness(1.15);
-  }
-  100% {
-    filter: drop-shadow(0 0 12px rgba(var(--primary-color-rgb), 0.7)) hue-rotate(0deg) brightness(1.1);
-  }
-}
-
 .header-title:hover {
   transform: translateY(4px); /* Keep the same vertical position */
   text-shadow: 0 0 10px rgba(var(--primary-rgb), 0.5);
@@ -225,7 +173,6 @@
   background: var(--md-primary);
   box-shadow: 0 0 0 4px rgba(var(--md-primary-rgb), 0.15);
 }
-
 
 /* Simple responsive design */
 @media (max-width: 768px) {
@@ -469,33 +416,6 @@
   .branch-switch-button {
     display: none; /* Hide on very small screens to save space */
   }
-}
-
-
-/* Vercel (npm start) mode: branch switch button disabled with distinct styling */
-.branch-switch-button.vercel-mode {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-  border: 1px solid var(--md-outline);
-  opacity: 0.7;
-}
-
-.branch-switch-button.vercel-mode:hover {
-  transform: none;
-  box-shadow: none;
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border: 1px solid var(--md-outline);
-}
-
-[data-theme="dark"] .branch-switch-button.vercel-mode {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  box-shadow: none;
-  border-color: var(--md-outline);
 }
 
 /* Fade-in animations for detection elements */

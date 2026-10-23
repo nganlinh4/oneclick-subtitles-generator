@@ -28,39 +28,6 @@
   width: 10px;
 }
 
-
-
-/* Horizontal variant for resizing heights */
-.panel-resizer--horizontal {
-  height: 8px;
-  width: 100%;
-  cursor: row-resize;
-  background: transparent;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s ease;
-}
-
-.panel-resizer--horizontal:hover {
-  background: rgba(var(--md-primary-rgb), 0.04);
-}
-
-.panel-resizer--horizontal::before {
-  content: '';
-  height: 2px;
-  width: 72px;
-  background: var(--md-outline-variant);
-  border-radius: 2px;
-  transition: all 0.2s ease;
-}
-
-.panel-resizer--horizontal:hover::before {
-  background: var(--md-primary);
-  height: 4px;
-}
-
 /* Floating resizer pill (for overlay on panels) */
 .floating-resizer-pill {
   position: absolute;

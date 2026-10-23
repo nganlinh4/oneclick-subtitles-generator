@@ -10,7 +10,6 @@
   animation: slideIn 0.5s ease-out;
 }
 
-
 .preview-section {
   margin-bottom: 2rem;
   animation: fadeIn 0.3s ease;
@@ -43,27 +42,6 @@
   transition: box-shadow var(--transition-speed);
 }
 
-.youtube-container {
-  position: relative;
-  width: 100%;
-  /* Removed fixed aspect ratio to allow dynamic video dimensions */
-  min-height: 200px;
-  max-height: 70vh;
-  overflow: hidden;
-  border-radius: 8px;
-  background-color: var(--background-tertiary);
-}
-
-#youtube-player,
-.youtube-container iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-
 .video-player {
   width: 100%;
   height: 100%;
@@ -92,47 +70,11 @@
  * `className` away from silently drawing over the frame the user approved.
  */
 
-.preview-container {
-  margin-bottom: 1.5rem;
-  background-color: var(--background-primary);
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 10px var(--shadow-color);
-  transition: background-color var(--transition-speed), box-shadow var(--transition-speed);
-}
-
-.preview-container h3 {
-  font-size: 1.2rem;
-  margin-bottom: 1rem;
-  color: var(--text-primary);
-  transition: color var(--transition-speed);
-}
-
 .download-options {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   margin-top: 1.5rem;
-}
-
-/* Material Design 3 pill-shaped buttons */
-.edit-btn {
-  padding: 12px 24px;
-  border-radius: 9999px !important; /* Force pill shape with !important */
-  font-size: var(--md-label-large-size);
-  line-height: var(--md-label-large-height);
-  font-weight: var(--md-label-large-weight);
-  cursor: pointer;
-  transition: box-shadow var(--md-duration-medium2) var(--md-easing-standard),
-              background-color var(--md-duration-medium2) var(--md-easing-standard),
-              transform var(--md-duration-medium2) var(--md-easing-emphasized);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 44px; /* Fixed height for consistency */
-  position: relative;
-  overflow: hidden;
 }
 
 /* SRT-only mode message */
@@ -167,112 +109,18 @@
 
 /* Download button styles moved to centralized button system in components/buttons.css */
 
-/* Material Design 3 edit button */
-.edit-btn {
-  background-color: transparent;
-  color: var(--md-primary);
-  border: 1px solid var(--md-outline);
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
-              color var(--md-duration-medium2) var(--md-easing-standard),
-              border-color var(--md-duration-medium2) var(--md-easing-standard),
-              box-shadow var(--md-duration-medium2) var(--md-easing-standard);
-}
-
-/* State layer for hover effect */
-.edit-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: transparent;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
-  pointer-events: none;
-  border-radius: 9999px !important; /* Force pill shape with !important */
-}
-
-.edit-btn:hover::before {
-  background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-hover-opacity));
-}
-
-.edit-btn:active::before {
-  background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-pressed-opacity));
-}
-
-.edit-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.edit-btn.active {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border: 1px solid var(--md-primary-container);
-}
-
-.edit-btn:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.edit-btn svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  transition: transform var(--md-duration-medium3) var(--md-easing-emphasized);
-}
-
-.edit-btn:hover svg:not(.edit-btn:disabled svg) {
-  transform: rotate(15deg);
-}
-
-/* Retry Gemini button styling */
-.retry-gemini-container {
-  margin: 1rem 0 1.5rem;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background-color: var(--background-tertiary);
-  border-radius: 8px;
-  transition: background-color var(--transition-speed);
-}
-
-.retry-hint {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-top: 0.75rem;
-  text-align: center;
-  transition: color var(--transition-speed);
-}
-
 @media (max-width: 768px) {
   .output-container {
-    padding: 1.25rem;
-  }
-
-  .preview-container {
     padding: 1.25rem;
   }
 
   .download-options {
     flex-direction: column;
   }
-
-  .edit-btn {
-    width: 100%;
-  }
 }
 
 @media (max-width: 480px) {
   .output-container {
-    padding: 1rem;
-  }
-
-  .preview-container {
     padding: 1rem;
   }
 

@@ -1,15 +1,5 @@
 /* Controls styles for buttons and interactive elements */
 
-/* Material Design 3 editing controls */
-.editing-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 100%;
-}
-
-
-
 /* Material Design 3 auto-scroll toggle - pill-shaped switch */
 .auto-scroll-toggle {
   display: flex;
@@ -227,5 +217,4 @@
   cursor: not-allowed;
   transform: none;
 }
-
 

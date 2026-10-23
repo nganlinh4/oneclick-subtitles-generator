@@ -1,8 +1,5 @@
 /* InputMethods.css - Main file that imports all modular components */
 
-/* Import base styles */
-@import './base/animations.css';
-
 /* Import component styles */
 @import './components/inputs.css';
 @import './components/tabs.css';

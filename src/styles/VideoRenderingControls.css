@@ -252,13 +252,7 @@
 
 .narration-selection-compact .refresh-icon-button svg { width: 16px; height: 16px; }
 
-
-
 .item-count { margin-left: 8px; font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; }
-
-/* Volume controls */
-.volume-control { display: flex; align-items: center; gap: 1rem; width: 100%; }
-.volume-value { font-size: 0.9rem; font-weight: 500; color: var(--text-primary); min-width: 40px; text-align: right; }
 
 /* Compact volume control wrapper */
 .compact-volume-control {

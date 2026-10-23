@@ -87,14 +87,6 @@
   margin-right: 4px;
 }
 
-/* Text container for better control */
-.buttons-container .generate-btn-text {
-  display: inline-block;
-  text-wrap: balance;
-  -webkit-text-wrap: balance;
-  word-break: keep-all; /* Prevent breaking within words */
-}
-
 /* Force balanced line breaks for specific patterns */
 .buttons-container .generate-btn[data-long-text="true"] {
   /* Apply to buttons with long text */

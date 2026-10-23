@@ -45,30 +45,6 @@
   color: var(--md-on-surface);
 }
 
-/* Selected model container */
-.selected-model {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  background-color: var(--md-surface-2);
-  border-radius: 12px;
-  border: 1px solid var(--md-outline-variant);
-  box-shadow: var(--md-elevation-level1);
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-  width: auto;
-  max-width: 600px;
-  margin-top: 0.75rem;
-}
-
-.selected-model:hover {
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-1px);
-  border-color: var(--md-primary);
-}
-
 /* Model header */
 .model-header {
   display: flex;
@@ -155,24 +131,10 @@
   margin-top: 0.75rem;
 }
 
-.error-icon {
-  margin-right: 0.5rem;
-  font-size: 1rem;
-  flex-shrink: 0;
-}
-
 /* Old spinner-circle styles removed - now using LoadingIndicator component */
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .selected-model {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 
   .model-dropdown {
     margin-left: 0;

@@ -35,7 +35,7 @@
 
 /* Override clear button positioning for audio preview inside music section header */
 .music-generator-section .audio-preview .clear-button {
-  top: 0 !important;        /* Remove offset from narration styles */
+  top: 0;        /* Remove offset from narration styles */
   position: static !important; /* Let it flow inline in header */
   align-self: center;       /* Keep vertical alignment */
 }

@@ -1,0 +1,183 @@
+/* Subtitles input modal: lyrics autofill section */
+
+/* Lyrics autofill section */
+.lyrics-autofill-toggle {
+  margin-bottom: 16px;
+}
+
+.lyrics-toggle-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--md-surface-2);
+  color: var(--text-color);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lyrics-toggle-button:hover {
+  background-color: var(--md-surface-3);
+}
+
+.lyrics-toggle-button.active {
+  background-color: rgba(var(--md-primary-rgb), 0.1);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.lyrics-input-section {
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Clearfix for floating elements */
+.lyrics-input-section::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.lyrics-input-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* When album art is present, change to a 3-line layout */
+.lyrics-input-section:has(.album-art-container) .lyrics-input-fields {
+  flex-direction: column;
+  width: calc(100% - 210px); /* Leave space for album art */
+  float: left;
+}
+
+.lyrics-input-field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.lyrics-input-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--text-color-secondary);
+}
+
+.lyrics-input-field input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--md-outline-variant);
+  background-color: var(--md-surface);
+  color: var(--text-color);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.lyrics-input-field input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(var(--md-primary-rgb), 0.2);
+}
+
+.fetch-lyrics-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 38px;
+  margin-top: auto;
+  align-self: flex-end;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.fetch-lyrics-button:hover:not(:disabled) {
+  background-color: var(--primary-color-dark);
+}
+
+.fetch-lyrics-button:disabled {
+  background-color: var(--md-surface-3);
+  color: var(--text-color-secondary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.album-art-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  min-height: 150px;
+  float: right;
+  width: 150px;
+}
+
+.album-art {
+  width: 150px;
+  height: 150px;
+  border-radius: 8px;
+  box-shadow: var(--md-elevation-level2);
+  border: 1px solid var(--md-outline-variant);
+  object-fit: cover;
+  background-color: var(--md-surface-1);
+  display: block;
+}
+
+/* Light theme adjustments */
+[data-theme="light"] .lyrics-toggle-button {
+  background-color: var(--md-surface-1);
+  border-color: var(--md-outline);
+}
+
+[data-theme="light"] .lyrics-toggle-button:hover {
+  background-color: var(--md-surface-2);
+}
+
+[data-theme="light"] .lyrics-input-section {
+  background-color: var(--md-surface);
+  border-color: var(--md-outline);
+}
+
+[data-theme="light"] .lyrics-input-field input {
+  background-color: white;
+  border-color: var(--md-outline);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .lyrics-input-fields {
+    flex-direction: column;
+  }
+
+  .lyrics-input-field {
+    min-width: 100%;
+  }
+
+  .fetch-lyrics-button {
+    width: 100%;
+    margin-top: 8px;
+  }
+}
+
+.example {
+  flex: 6; /* 60% of the space */
+  background-color: rgba(var(--md-primary-container-rgb), 0.1);
+  padding: 16px;
+  border-radius: 12px;
+  border-left: 4px solid var(--primary-color);
+  box-shadow: var(--md-elevation-level1);
+}

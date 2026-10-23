@@ -1,16 +1,5 @@
 /* Content area and scrollbar styles */
 
-/* Add a wrapper for the content to ensure scrollbar is contained */
-.settings-content-wrapper {
-  flex: 1;
-  overflow: hidden; /* Hide overflow to ensure scrollbar is contained */
-  position: relative;
-  /* Add padding at the bottom to create space between content and footer */
-  padding-bottom: 4px;
-  display: flex;
-  flex-direction: column;
-}
-
 .settings-content {
   padding: 20px 16px 25px 25px; /* Base padding */
   overflow-y: auto;

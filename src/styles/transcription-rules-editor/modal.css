@@ -1,0 +1,379 @@
+/* Transcription rules editor modal: layout, preset selector, scrollbars, fields and rule lists */
+
+.rules-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  backdrop-filter: blur(3px);
+  transition: opacity 0.2s var(--md-easing-emphasized-accelerate);
+}
+
+.rules-editor-overlay.closing {
+  opacity: 0;
+}
+
+.rules-editor-modal {
+  background-color: var(--md-surface);
+  border-radius: 32px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--md-elevation-level3);
+  overflow: hidden;
+  animation: modal-appear var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
+  transition: background-color var(--transition-speed), transform var(--md-duration-medium3) var(--md-easing-emphasized-accelerate), opacity var(--md-duration-medium3) var(--md-easing-emphasized-accelerate);
+  position: relative;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  contain: layout;
+}
+
+.rules-editor-modal > .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 16px 16px 24px;
+  flex: 0 0 auto;
+}
+
+.rules-editor-modal.closing {
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
+}
+
+/* Prompt preset selector */
+.prompt-preset-selector {
+  display: flex;
+  align-items: center;
+}
+
+.prompt-preset-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.prompt-preset-dropdown {
+  flex: 1;
+}
+
+.preset-select {
+  width: 100%;
+  padding: 8px 36px 8px 12px; /* More right padding for chevron */
+  border: 1px solid var(--md-outline);
+  border-radius: 20px;
+  background-color: var(--md-surface-container);
+  color: var(--md-on-surface);
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+/* Material Symbols Rounded dropdown arrow */
+.preset-select::after {
+  content: "expand_more";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--md-on-surface);
+  font-size: 16px;
+}
+
+.preset-select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 1px var(--md-primary);
+}
+
+/* Webkit (Chrome, Safari, Edge) scrollbar styling */
+.rules-editor-modal::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rules-editor-modal::-webkit-scrollbar-track {
+  background: var(--md-surface-container);
+  border-radius: 4px;
+}
+
+.rules-editor-modal::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline-variant);
+  border-radius: 4px;
+  border: 2px solid var(--md-surface-container);
+}
+
+.rules-editor-modal::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-outline);
+}
+
+/* Dark mode specific scrollbar styling for rules-editor-modal */
+[data-theme="dark"] .rules-editor-modal {
+  scrollbar-color: var(--md-outline) var(--md-surface-container-highest);
+  background-color: var(--md-surface);
+}
+
+[data-theme="dark"] .rules-editor-modal::-webkit-scrollbar-track {
+  background: var(--md-surface-container-highest) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline) !important;
+  border: 2px solid var(--md-surface-container-highest) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-primary) !important;
+}
+
+.rules-editor-modal .modal-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  max-height: 70vh;
+  background-color: var(--md-surface-container);
+
+  /* Firefox scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-outline-variant) var(--md-surface-container);
+}
+
+/* Webkit (Chrome, Safari, Edge) scrollbar styling */
+.rules-editor-modal .modal-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rules-editor-modal .modal-content::-webkit-scrollbar-track {
+  background: var(--md-surface-container);
+  border-radius: 4px;
+}
+
+.rules-editor-modal .modal-content::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline-variant);
+  border-radius: 4px;
+  border: 2px solid var(--md-surface-container);
+}
+
+.rules-editor-modal .modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-outline);
+}
+
+/* Dark mode specific scrollbar styling */
+[data-theme="dark"] .rules-editor-modal .modal-content {
+  scrollbar-color: var(--md-outline) var(--md-surface-container-highest);
+}
+
+[data-theme="dark"] .rules-editor-modal .modal-content::-webkit-scrollbar-track {
+  background: var(--md-surface-container-highest) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal .modal-content::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline) !important;
+  border: 2px solid var(--md-surface-container-highest) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal .modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-primary) !important;
+}
+
+.rules-editor-section {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--md-surface-variant);
+}
+
+.rules-editor-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rules-editor-section h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+  color: var(--md-on-surface);
+}
+
+.section-description {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--md-on-surface-variant);
+  font-size: 0.9rem;
+}
+
+.rules-editor-modal textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--md-outline);
+  border-radius: 8px;
+  background-color: var(--md-surface-container);
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+
+  /* Firefox scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-outline-variant) var(--md-surface-container);
+}
+
+/* Webkit (Chrome, Safari, Edge) scrollbar styling for textarea */
+.rules-editor-modal textarea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rules-editor-modal textarea::-webkit-scrollbar-track {
+  background: var(--md-surface-container);
+  border-radius: 4px;
+}
+
+.rules-editor-modal textarea::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline-variant);
+  border-radius: 4px;
+  border: 2px solid var(--md-surface-container);
+}
+
+.rules-editor-modal textarea::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-outline);
+}
+
+/* Dark mode specific scrollbar styling for textarea */
+[data-theme="dark"] .rules-editor-modal textarea {
+  scrollbar-color: var(--md-outline) var(--md-surface-container-highest);
+  background-color: var(--md-surface-container-high);
+}
+
+[data-theme="dark"] .rules-editor-modal textarea::-webkit-scrollbar-track {
+  background: var(--md-surface-container-high) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal textarea::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline) !important;
+  border: 2px solid var(--md-surface-container-high) !important;
+}
+
+[data-theme="dark"] .rules-editor-modal textarea::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-primary) !important;
+}
+
+.rules-editor-modal textarea:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 1px var(--md-primary);
+}
+
+.array-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.term-inputs {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+}
+
+.rules-editor-modal input {
+  padding: 10px 12px;
+  border: 1px solid var(--md-outline);
+  border-radius: 8px;
+  background-color: var(--md-surface-container);
+  color: var(--md-on-surface);
+  font-size: 0.95rem;
+  flex: 1;
+}
+
+.rules-editor-modal input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 1px var(--md-primary);
+}
+
+.definition-input {
+  flex: 2;
+}
+
+.full-width-input {
+  width: 100%;
+}
+
+.remove-item-button {
+  background-color: var(--md-error-container);
+  color: var(--md-on-error-container);
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  transform-origin: center;
+  flex-shrink: 0;
+}
+
+.remove-item-button svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease;
+}
+
+.remove-item-button:hover {
+  background-color: color-mix(in srgb, var(--md-error-container), black 10%);
+}
+
+.add-item-button {
+  background-color: var(--md-surface-container-high);
+  color: var(--md-primary);
+  border: 1px dashed var(--md-outline);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.add-item-button:hover {
+  background-color: var(--md-primary-container);
+  border-color: var(--md-primary);
+}
+
+.cancel-button {
+  background-color: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  border: 1px solid var(--md-outline);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cancel-button:hover {
+  background-color: var(--md-surface-container-highest);
+}

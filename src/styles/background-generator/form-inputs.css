@@ -132,14 +132,6 @@
   box-shadow: var(--md-elevation-level2);
 }
 
-.dropdown-label {
-  font-size: 14px;
-  color: var(--text-color-secondary);
-  white-space: nowrap;
-  font-family: 'Open Sans', sans-serif;
-}
-
-
 /* Use CustomDropdown pill only; remove legacy select rectangle behind */
 .custom-dropdown.image-count-dropdown {
   background: transparent !important;

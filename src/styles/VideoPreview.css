@@ -91,170 +91,7 @@
   color: white;
 }
 
-/* Refresh narration button - Material Design style */
-.refresh-narration-button {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: auto;
-}
-
-.video-container:hover .refresh-narration-button {
-  opacity: 1;
-}
-
-/* Gemini FPS Info button - Material Design style */
-.gemini-fps-info-button {
-  position: absolute;
-  top: 16px;
-  right: 200px; /* Position to the left of download button */
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: auto;
-}
-
-.video-container:hover .gemini-fps-info-button {
-  opacity: 1;
-}
-
-/* Download audio button - Material Design style */
-.download-audio-button {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: auto;
-}
-
-.video-container:hover .download-audio-button {
-  opacity: 1;
-}
-
-/* Common button styles for refresh, info, and download buttons */
-.refresh-narration-button button,
-.gemini-fps-info-button button,
-.download-audio-button button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(var(--md-secondary-rgb), 0.1);
-  color: var(--md-secondary);
-  border: 1px solid rgba(var(--md-secondary-rgb), 0.3);
-  padding: 10px 24px;
-  border-radius: var(--md-shape-pill); /* Pill shape */
-  cursor: pointer;
-  font-size: var(--md-label-large-size, 14px);
-  font-weight: var(--md-label-large-weight, 500);
-  letter-spacing: 0.1px;
-  transition: all var(--md-duration-medium2, 0.2s) var(--md-easing-standard);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.refresh-narration-button button:hover,
-.gemini-fps-info-button button:hover,
-.download-audio-button button:hover {
-  background-color: var(--md-secondary-container);
-  color: var(--md-on-secondary-container);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-  border-color: transparent;
-}
-
-.refresh-narration-button button:active,
-.gemini-fps-info-button button:active,
-.download-audio-button button:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-/* Specific styling for info button */
-.gemini-fps-info-button button {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%; /* Make it perfectly round */
-  padding: 0;
-  background-color: rgba(var(--md-primary-rgb), 0.1);
-  color: var(--md-primary);
-  border: 1px solid rgba(var(--md-primary-rgb), 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.gemini-fps-info-button button:hover {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-color: transparent;
-}
-
-/* Loading state */
-.download-audio-button button.downloading {
-  background-color: rgba(var(--md-secondary-rgb), 0.1);
-  color: var(--md-secondary);
-  cursor: wait;
-  transform: none;
-  border-color: rgba(var(--md-secondary-rgb), 0.3);
-}
-
-/* Old spinner animations removed - now using LoadingIndicator component */
-
-.download-audio-button svg {
-  margin-right: 8px;
-  width: 24px;
-  height: 24px;
-}
-
 /* Responsive styles for the refresh, info, and download buttons */
-@media (max-width: 768px) {
-  .refresh-narration-button {
-    top: 12px;
-    left: 12px;
-  }
-
-  .gemini-fps-info-button {
-    top: 12px;
-    right: 64px; /* Position to the left of download button on mobile */
-  }
-
-  .download-audio-button {
-    top: 12px;
-    right: 12px;
-  }
-
-  .refresh-narration-button button,
-  .gemini-fps-info-button button,
-  .download-audio-button button {
-    padding: 8px;
-    min-width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    justify-content: center;
-    background-color: rgba(var(--md-secondary-rgb), 0.1);
-  }
-
-  .refresh-narration-button .button-text,
-  .download-audio-button .button-text {
-    display: none;
-  }
-
-  .refresh-narration-button svg,
-  .gemini-fps-info-button svg,
-  .download-audio-button svg {
-    margin-right: 0;
-  }
-
-  .refresh-narration-button button:hover,
-  .gemini-fps-info-button button:hover,
-  .download-audio-button button:hover {
-    background-color: var(--md-secondary-container);
-  }
-}
 
 /* Material Web Switch styles for video preview */
 .material-switch-container {
@@ -262,10 +99,6 @@
   align-items: center;
   gap: 0.75rem;
 }
-
-
-
-
 
 .quality-info {
   font-size: 10px;
@@ -295,106 +128,6 @@
   outline: none !important;
 }
 
-/* Custom Video Player Styles (for YouTube fallback) */
-.custom-video-container {
-  position: relative;
-  width: 100%;
-  background-color: #000;
-  color: white;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.custom-video-preview {
-  position: relative;
-  width: 100%;
-  /* Removed fixed aspect ratio to allow dynamic video dimensions */
-  min-height: 200px;
-  max-height: 70vh;
-  background-color: #000;
-  background-size: cover;
-  background-position: center;
-}
-
-.custom-controls {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 2;
-}
-
-.play-pause-button {
-  background: rgba(0, 0, 0, 0.6);
-  border: none;
-  border-radius: 50%;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 24px;
-  color: white;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.play-pause-button:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
-.time-display {
-  position: absolute;
-  bottom: 40px;
-  left: 15px;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.custom-progress-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 3;
-}
-
-.progress-track {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  cursor: pointer;
-}
-
-.progress-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background-color: #4a6cf7;
-  transition: width 0.1s linear;
-}
-
-.player-notice {
-  background-color: #f8f9fa;
-  color: #555;
-  padding: 8px 12px;
-  text-align: center;
-  font-size: 14px;
-  border-top: 1px solid #eee;
-}
-
-.player-notice p {
-  margin: 0;
-}
-
 /* Error message */
 .error {
   background-color: #ffebee;
@@ -404,30 +137,9 @@
   font-size: 14px;
 }
 
-/* Empty state */
-.no-video-message {
-  padding: 60px 20px;
-  text-align: center;
-  color: #666;
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  font-size: 16px;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .video-player {
     max-height: 350px;
-  }
-
-  .play-pause-button {
-    width: 50px;
-    height: 50px;
-    font-size: 20px;
-  }
-
-  .time-display {
-    bottom: 30px;
-    font-size: 12px;
   }
 }

@@ -41,8 +41,6 @@
   transition: opacity 0.2s ease-out;
 }
 
-
-
 .history-header {
   display: flex;
   justify-content: space-between;
@@ -168,13 +166,6 @@
   font-size: var(--md-label-small-size);
   color: var(--text-secondary);
   flex-shrink: 0;
-}
-
-.no-history {
-  padding: 16px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-style: italic;
 }
 
 /* Responsive styles */

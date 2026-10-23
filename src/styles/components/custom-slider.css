@@ -93,16 +93,6 @@
   border-radius: 2px 16px 16px 2px; /* Figma design: small radius at handle, rounded end */
 }
 
-
-/* Pressed/dragged state - horizontal: handle becomes thinner (width) */
-.standard-slider-container.orientation-horizontal.dragging .standard-slider-handle,
-.standard-slider-container.orientation-Horizontal.dragging .standard-slider-handle {
-  width: 2px; /* Thinner when dragging (horizontal) */
-  height: 36px; /* Same height */
-  border-radius: 1px; /* Adjust border radius for thinner width */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
 /* Value badge that appears above handle when dragging */
 .standard-slider-value-badge {
   position: absolute;
@@ -129,23 +119,6 @@
 .standard-slider-container.dragging .standard-slider-value-badge {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
-}
-
-/* Track stop - small dot indicator */
-.standard-slider-track-stop {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  /* Position controlled by JavaScript */
-}
-
-.standard-slider-track-stop .dot {
-  width: 4px;
-  height: 4px;
-  background-color: var(--md-outline, #79747E);
-  border-radius: 50%;
 }
 
 /* End stop - dot at the end of inactive track (Material Design 3) */
@@ -232,10 +205,6 @@
   cursor: grabbing !important;
 }
 
-.standard-slider-container.dragging .standard-slider-active-track {
-  transition: none !important;
-}
-
 .standard-slider-container.dragging .standard-slider-inactive-track {
   transition: none !important;
 }
@@ -282,7 +251,6 @@
   pointer-events: none;
 }
 
-
 /* Global disabled appearance for StandardSlider (consistent across app) */
 .standard-slider-container.disabled,
 .standard-slider-container.state-disabled,
@@ -317,8 +285,6 @@
   box-shadow: none !important;
   cursor: not-allowed;
 }
-
-
 
 /* Size + Width combinations for specific control */
 .standard-slider-container.width-auto.size-small,
@@ -402,7 +368,6 @@
   border-radius: 16px 16px 2px 2px;
 }
 
-
 /* Vertical handle interaction sizing */
 .standard-slider-container.orientation-vertical .standard-slider-handle,
 .standard-slider-container.orientation-Vertical .standard-slider-handle {
@@ -436,7 +401,6 @@
   transform: translateX(-50%);
 }
 
-
 /* Value indicator - shown when enabled */
 .standard-slider-value-indicator {
   min-width: 50px; /* Smaller minimum width, closer to track */
@@ -459,23 +423,6 @@
   height: 36px; /* Match Figma height */
 }
 
-
-.custom-slider-track {
-  /* Legacy support - map to new structure */
-  display: none;
-}
-
-.custom-slider-fill {
-  /* Legacy support - map to new structure */
-  display: none;
-}
-
-.custom-slider-thumb {
-  /* Legacy support - map to new structure */
-  display: none;
-}
-
-
 .slider-value-display {
   /* Legacy support - compact value display */
   min-width: 50px; /* Smaller minimum width, closer to track */
@@ -486,7 +433,6 @@
   flex-shrink: 0; /* Don't allow shrinking */
   white-space: nowrap; /* Prevent text wrapping */
 }
-
 
 /* Reset icon button inside value display */
 .slider-with-value .slider-value-display {
@@ -561,8 +507,7 @@
 .range-slider .standard-slider-handle.handle-start { z-index: 11; }
 .range-slider .standard-slider-handle.handle-end { z-index: 12; }
 .range-slider.dragging .standard-slider-handle.handle-start { z-index: 12; } /* Bring dragging handle to front */
-.range-slider.dragging .standard-slider-handle.handle-end { z-index: 11; }
-.range-slider.dragging .standard-slider-handle.active-thumb { z-index: 15; } /* Ensure active thumb is always on top */
+.range-slider.dragging .standard-slider-handle.handle-end { z-index: 11; } /* Ensure active thumb is always on top */
 
 /* Active track for range slider needs rounded corners on both ends */
 .range-slider .standard-slider-active-track .track.range {
@@ -579,9 +524,7 @@
   border-radius: 2px 16px 16px 2px;
 }
 
-
 /* --- End Range Slider Styles --- */
-
 
 /* Pressed/dragged state - horizontal (duplicate scoped fix) */
 .standard-slider-container.orientation-horizontal.dragging .standard-slider-handle,
@@ -591,7 +534,6 @@
   border-radius: 1px; /* Adjust border radius for thinner width */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
-
 
 /* Add this to your existing CSS file */
 
@@ -626,7 +568,7 @@
 }
 
 .video-volume-slider .standard-slider-handle {
-  background-color: #FFFFFF !important;
+  background-color: #FFFFFF;
   /* Softer shadow */
   box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 0 1px rgba(0,0,0,0.15) !important;
 }

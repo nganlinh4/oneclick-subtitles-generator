@@ -1,22 +1,5 @@
 /* Language input styles */
 
-/* Language inputs container */
-.language-inputs-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
-  max-width: 600px;
-}
-
-/* Language input group */
-.language-input-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-}
-
 /* Language input styling */
 .language-input {
   width: 100%;
@@ -40,57 +23,6 @@
 
 .language-input:disabled {
   opacity: 0.7;
-  cursor: not-allowed;
-}
-
-/* Remove language button */
-.remove-language-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background-color: var(--md-error-container);
-  color: var(--md-on-error-container);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.remove-language-btn:hover {
-  background-color: var(--md-error);
-  color: var(--md-on-error);
-}
-
-.remove-language-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Add language button */
-.add-language-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 24px;
-  border: 1px dashed var(--md-outline);
-  background-color: transparent;
-  color: var(--md-primary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.add-language-btn:hover {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-color: var(--md-primary);
-}
-
-.add-language-btn:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 

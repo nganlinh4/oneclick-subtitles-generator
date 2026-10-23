@@ -121,43 +121,9 @@ video.video-player:focus:not(:focus-visible) {
     border-radius: 50%;
     background-color: #FFFFFF;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
-    /* box-shadow: 0 1px 2px rgba(0,0,0,0.5); /* Alternative to filter drop-shadow */
     cursor: pointer;
   }
-  /* Ensure volume slider thumb is also styled if it has a more specific selector */
-  /* video.video-player::-webkit-media-controls-volume-slider::-webkit-slider-thumb { ... } */
-
-
-  /*
-   * Removed theme-specific overrides for controls panel background, timer color, and icon filters
-   * as they are now universally styled for a transparent panel.
-   */
-  /* [data-theme="dark"] video.video-player::-webkit-media-controls-panel { ... } // REMOVED */
-  /* [data-theme="dark"] video.video-player::-webkit-media-controls-current-time-display, ... { ... } // REMOVED */
-  /* [data-theme="dark"] video.video-player::-webkit-media-controls-play-button, ... { ... } // REMOVED */
 }
-
-/*
- * -----------------------------------------------------------------------------
- * Firefox Specific Styles (If any truly unique styling is needed)
- * -----------------------------------------------------------------------------
- */
-@-moz-document url-prefix() {
-  /*
-   * For Firefox, to make the control panel transparent:
-   * video.video-player::-moz-media-controls-panel { background: transparent !important; }
-   * Then style icons (e.g., ::-moz-media-control-button) with fill: white; filter: drop-shadow(...);
-   * And time display (e.g., ::-moz-media-time-display) with color: white; text-shadow: ...;
-   */
-}
-
-/*
- * -----------------------------------------------------------------------------
- * Safari Specific Styles (If any truly unique styling is needed)
- * -----------------------------------------------------------------------------
- */
-/* Safari specific control styling would go here if needed */
-
 
 /*
  * -----------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 /* Optimize performance during dragging */
 body.lyrics-dragging {
-  cursor: grabbing !important;
+  cursor: grabbing;
 }
 
 body.lyrics-dragging * {

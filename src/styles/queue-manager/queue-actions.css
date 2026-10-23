@@ -1,0 +1,163 @@
+/* Render queue: item actions, responsive layout, entry animation, focus, high-contrast and reduced-motion rules */
+
+/* Item Actions */
+.item-actions {
+  display: flex;
+  justify-content: space-between; /* render time on the left, actions on the right */
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.render-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.render-time svg {
+  color: var(--md-secondary);
+}
+
+.remove-btn,
+.cancel-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 32px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remove-btn {
+  background: var(--md-error);
+  color: var(--md-on-error);
+}
+
+.remove-btn:hover {
+  background: var(--md-error-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.cancel-btn {
+  background: var(--md-warning);
+  color: var(--md-on-warning);
+}
+
+.cancel-btn:hover {
+  background: var(--md-warning-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .panel-header {
+    padding: 0.875rem 1rem;
+  }
+
+  .queue-manager-panel .panel-content {
+    padding: 0.875rem;
+  }
+
+  .queue-item {
+    padding: 0.875rem;
+  }
+
+  .queue-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .item-info {
+    width: 100%;
+  }
+
+  .item-status {
+    align-self: flex-end;
+  }
+
+  .completed-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .item-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .empty-queue {
+    padding: 2.5rem 1.25rem;
+  }
+
+  .empty-queue svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Grid layout responsive - single column on mobile */
+  .queue-list.grid-layout {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
+/* Animation for new queue items */
+.queue-item {
+  animation: slideInUp 0.3s ease;
+}
+
+/* Focus styles for accessibility */
+.remove-btn:focus,
+.cancel-btn:focus,
+.clear-queue-btn:focus,
+.download-btn-success:focus {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+.panel-header:focus {
+  outline: 2px solid var(--md-primary);
+  outline-offset: -2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .queue-item {
+    border-width: 2px;
+  }
+
+  .status-badge {
+    border: 1px solid var(--text-primary);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .queue-item {
+    animation: none;
+  }
+
+  .remove-btn:hover,
+  .cancel-btn:hover,
+  .clear-queue-btn:hover,
+  .download-btn:hover,
+  .queue-item:hover {
+    transform: none;
+  }
+}

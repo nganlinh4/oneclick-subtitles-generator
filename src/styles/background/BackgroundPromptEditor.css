@@ -70,7 +70,6 @@
   color: var(--md-on-primary-container);
 }
 
-
 /* Model dropdown row */
 .prompt-model-row {
   display: flex;
@@ -83,45 +82,6 @@
   color: var(--md-on-surface-variant);
   font-size: 0.9rem;
   min-width: 240px;
-}
-
-/* Compact, styled select */
-.prompt-model-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-color: var(--md-surface);
-  color: var(--md-on-surface);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-medium);
-  padding: 8px 36px 8px 12px;
-  font-size: var(--md-body-medium-size);
-  line-height: 1.2;
-  cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
-}
-
-.prompt-model-select::after {
-  content: 'expand_more';
-  font-family: var(--ms-font-family);
-  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
-  font-size: 16px;
-  color: #99a1a8;
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.prompt-model-select:hover {
-  background-color: var(--md-surface-2);
-}
-
-.prompt-model-select:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(var(--md-primary-rgb), 0.2);
 }
 
 /* Small screen tweaks */

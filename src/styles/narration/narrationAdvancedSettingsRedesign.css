@@ -26,7 +26,6 @@
   padding-bottom: 0.25rem;
 }
 
-
 /* Chatterbox control sliders - constrain width like rest-time-slider */
 .chatterbox-control-row .slider-with-value {
   max-width: 400px;
@@ -39,16 +38,6 @@
   padding: 0 7px;
 }
 
-.advanced-settings .custom-slider-track {
-  height: 3px;
-  border-radius: 1.5px;
-}
-
-.advanced-settings .custom-slider-thumb {
-  width: 14px;
-  height: 14px;
-}
-
 /* Slider value display */
 .slider-value-display {
   min-width: 32px;
@@ -58,21 +47,9 @@
   text-align: right;
 }
 
-/* Dark mode specific styles for custom slider */
-[data-theme="dark"] .custom-slider-track {
-  background-color: var(--md-surface-variant);
-}
-
-[data-theme="dark"] .custom-slider-fill,
-[data-theme="dark"] .custom-slider-thumb {
-  background-color: var(--md-primary);
-}
-
 [data-theme="dark"] .slider-value-display {
   color: var(--md-primary);
 }
-
-
 
 /* Number input styles - Compact */
 .number-input {
@@ -185,30 +162,6 @@
   cursor: not-allowed;
 }
 
-/* Switch container - Compact */
-.advanced-settings .switch-container {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 16px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  width: fit-content;
-}
-
-.advanced-settings .switch-container span {
-  font-size: 0.8rem;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-/* Dark mode switch container */
-[data-theme="dark"] .advanced-settings .switch-container {
-  background-color: var(--md-surface-2);
-  border-color: var(--md-outline-variant);
-}
-
 /* Switch styling for advanced settings - matching reference-content-row */
 .advanced-settings .switch {
   position: relative;
@@ -226,8 +179,6 @@
   padding: 0;
 }
 
-
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .settings-grid {
@@ -243,15 +194,5 @@
     flex: none;
     width: 100%;
     margin-bottom: 0.15rem;
-  }
-
-  .advanced-settings .switch-container {
-    width: 100%;
-    box-sizing: border-box;
-    justify-content: space-between;
-  }
-
-  .advanced-settings .switch-container span {
-    flex: 1;
   }
 }

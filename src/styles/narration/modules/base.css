@@ -11,51 +11,6 @@
 
 /* No fixed heights - content will determine the height */
 
-/* An optional engine that has not been installed is setup state, not a product error. */
-.narration-section.setup-required {
-  background-color: var(--md-surface-1);
-}
-
-/* Setup message styling */
-.narration-setup-message {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  background-color: var(--md-surface-2);
-  border-radius: 16px;
-  margin-top: 1rem;
-  border: 1px solid var(--md-outline-variant);
-}
-
-.narration-setup-message .setup-icon {
-  flex-shrink: 0;
-  color: var(--md-primary);
-}
-
-.narration-setup-message .message {
-  font-size: 1rem;
-  color: var(--md-on-surface-variant);
-  font-weight: 500;
-}
-
-/* Loading message styling */
-.narration-loading-message {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  background-color: rgba(var(--md-primary-rgb), 0.08);
-  border-radius: 16px;
-  margin-top: 1rem;
-  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
-}
-
-.narration-loading-message .loading-icon {
-  animation: spin 2s linear infinite;
-  color: var(--md-primary);
-}
-
 /* Header styles */
 .narration-header {
   margin-bottom: 1.5rem;

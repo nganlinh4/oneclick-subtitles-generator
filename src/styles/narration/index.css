@@ -156,16 +156,10 @@
   color: var(--md-on-surface-variant);
 }
 
-.example-audio-error,
 .example-audio-loading {
   padding: 12px 16px;
   text-align: center;
   color: var(--md-on-surface-variant);
   font-size: var(--md-body-small-size);
 }
-
-.example-audio-error {
-  color: var(--error-color);
-}
-
 

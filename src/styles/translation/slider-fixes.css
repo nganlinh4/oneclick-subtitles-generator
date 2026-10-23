@@ -26,11 +26,6 @@
   visibility: hidden;
 }
 
-/* Ensure the thumb doesn't create ghost effect */
-.translation-row.split-duration-row .slider-with-value .custom-slider-container.disabled .custom-slider-thumb {
-  box-shadow: none;
-}
-
 /* Additional fix for ghost duplicate effect */
 .translation-row.split-duration-row .slider-with-value .custom-slider-container.disabled {
   filter: grayscale(30%);
@@ -67,11 +62,6 @@
   visibility: hidden;
 }
 
-/* Ensure the thumb doesn't create ghost effect */
-.translation-row.rest-time-row .slider-with-value .custom-slider-container.disabled .custom-slider-thumb {
-  box-shadow: none;
-}
-
 /* Additional fix for ghost duplicate effect */
 .translation-row.rest-time-row .slider-with-value .custom-slider-container.disabled {
   filter: grayscale(30%);
@@ -81,5 +71,4 @@
 .rest-time-slider {
   z-index: 1;
 }
-
 

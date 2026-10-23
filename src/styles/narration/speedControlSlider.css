@@ -29,22 +29,6 @@
   width: 120px; /* Fixed width for speed control slider */
 }
 
-.speed-control-container .custom-slider-track {
-  height: 3px; /* Thinner track for compact design */
-  border-radius: 1.5px;
-  width: calc(100% - 14px); /* Adjust for compact padding */
-  left: 7px; /* Match compact padding */
-}
-
-.speed-control-container .custom-slider-fill {
-  border-radius: 1.5px 0 0 1.5px;
-}
-
-.speed-control-container .custom-slider-thumb {
-  width: 14px; /* Smaller thumb for compact design */
-  height: 14px;
-}
-
 /* Speed control value styling is now handled by .slider-value-display in custom-slider.css */
 
 .speed-control-apply-button {
@@ -93,22 +77,7 @@
   gap: 0.1rem;
 }
 
-.speed-control-filename {
-  font-size: 0.75rem;
-  opacity: 0.8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
 /* Old spinner styles removed - now using LoadingIndicator component */
-
-@keyframes pulse {
-  0% { opacity: 0.7; }
-  50% { opacity: 1; }
-  100% { opacity: 0.7; }
-}
 
 /* Dark mode styles are now handled by the modern custom-slider.css */
 
@@ -120,9 +89,5 @@
     margin-right: 0;
     max-width: none;
     flex-wrap: wrap;
-  }
-
-  .speed-control-slider-container {
-    min-width: 120px;
   }
 }

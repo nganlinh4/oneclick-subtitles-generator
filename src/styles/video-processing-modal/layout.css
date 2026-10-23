@@ -1,0 +1,263 @@
+/* Video processing modal: method header, content grid, local ASR panel and engine-unavailable overlay */
+
+/* Transcription Method Selection Overlay */
+.transcription-method-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  /* Higher than video processing modal */
+}
+
+.video-processing-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  isolation: isolate;
+}
+
+.video-processing-modal {
+  background-color: var(--md-surface-1);
+  border-radius: 32px;
+  box-shadow: var(--md-elevation-level4);
+  width: 90%;
+  max-width: 1100px;
+  /* Increased from 500px */
+  max-height: 85vh;
+  /* Increased from 90vh to reduce height slightly */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-appear 0.4s var(--md-easing-emphasized);
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
+  position: relative;
+  z-index: 1;
+  transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 16px 16px 24px;
+  background-color: #00000000;
+}
+
+.header-content {
+  display: contents;
+}
+
+/* Ensure label aligns to the right and sits close to the dropdown in the header group */
+.video-processing-modal .header-switch-group label {
+  display: inline-block;
+  text-align: right;
+  min-width: 80px;
+  /* give room for text to align to the right edge */
+  margin: 0;
+}
+
+/* Dim header method group when locked by retry */
+.video-processing-modal .header-switch-group.disabled {
+  opacity: 0.6;
+}
+
+.header-content h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.125rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.segment-time {
+  color: var(--md-primary);
+  font-weight: 600;
+  font-family: monospace;
+  font-size: 1rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  letter-spacing: 0.25px;
+}
+
+.modal-content {
+  padding: 1.5rem;
+  flex: 1;
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-outline-variant) var(--md-surface-1);
+}
+
+/* Webkit scrollbar styling */
+.modal-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+  background: var(--md-surface-1);
+  border-radius: 3px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+  background-color: var(--md-outline-variant);
+  border-radius: 3px;
+  border: 1px solid var(--md-surface-1);
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-outline);
+}
+
+/* Content Layout - Two Column Grid */
+.video-processing-modal .generation-audio-only-option {
+  margin-top: 12px;
+}
+
+.modal-content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+/* Local ASR options panel — spans the full content width, then lays its own controls out on the same
+   2-column rhythm as the Gemini panel so the spacing/gaps match. */
+.asr-content-wrapper {
+  position: relative;
+}
+
+.asr-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .asr-options-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* "Engine not available" overlay (shown when a local ASR engine isn't installed/running). The grid
+   underneath is dimmed inline; this message stays crisp on top. */
+.asr-disabled-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.asr-disabled-message {
+  background-color: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.5);
+  border-radius: var(--md-shape-large);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: var(--md-elevation-level2);
+}
+
+.segment-info {
+  background-color: var(--md-surface-container);
+  padding: 1rem;
+  border-radius: var(--md-shape-large);
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3);
+  grid-column: 1 / -1;
+  /* Span full width */
+}
+
+.segment-token-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.segment-details h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.segment-details p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--md-on-surface);
+  font-family: 'Roboto Mono', 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.option-group label {
+  display: block;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.875rem;
+  letter-spacing: 0.1px;
+}
+
+.option-group select,
+.language-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-medium);
+  background-color: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+  font-size: 0.875rem;
+  transition: all 0.2s var(--md-easing-standard);
+  font-family: inherit;
+}
+
+.option-group select:focus,
+.language-input:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 3px rgba(var(--md-primary-rgb), 0.12);
+  background-color: var(--md-surface-container);
+}
+
+.option-description {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.4;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.language-input::placeholder {
+  color: var(--md-on-surface-variant);
+  opacity: 0.7;
+}

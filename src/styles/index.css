@@ -1,5 +1,6 @@
 /* Bundled web fonts: no font is fetched from a CDN at runtime. */
 @import url('./fonts.css');
+@import url('./base/animations.css');
 @import url('./material-tokens.css');
 @import url('./components/custom-slider.css');
 @import url('./album-art-fix.css');
@@ -149,10 +150,21 @@ code {
   font-family: var(--font-code);
 }
 
-/* WebView's native rectangular focus chrome does not belong to the product surface. Using :where
-   keeps this at zero specificity, so components with an intentional branded :focus-visible style
-   retain it while unstyled controls never flash a browser-default box after pointer interaction. */
-:where(a, button, input, select, textarea, summary, [role], [tabindex]):focus {
+/* Focus rings. WebView's native rectangular focus chrome does not belong to the product surface,
+   so pointer focus stays outline-free while keyboard focus (:focus-visible) gets the brand ring.
+   :where keeps all three rules at zero specificity, so components with their own focus style win.
+   Text fields come last: they match :focus-visible on pointer focus too, and already show focus
+   through their own border/fill. */
+:where(a, button, input, select, textarea, summary, [role], [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+:where(a, button, input, select, textarea, summary, [role], [tabindex]):focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+:where(textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"])):focus {
   outline: none;
 }
 
@@ -183,12 +195,6 @@ h1, h2, h3, h4, h5, h6 {
 .title-round-0 {
   font-variation-settings: "GRAD" var(--headline-grad), "ROND" 0;
 }
-.title-round-50 {
-  font-variation-settings: "GRAD" var(--headline-grad), "ROND" 50;
-}
-.title-round-100 {
-  font-variation-settings: "GRAD" var(--headline-grad), "ROND" 100;
-}
 
 a {
   color: var(--primary-color);
@@ -205,75 +211,13 @@ input, select, textarea {
   transition: border-color var(--transition-speed), background-color var(--transition-speed);
 }
 
-/* Using Material Design 3 animations from material-tokens.css */
-/* These are kept for backward compatibility */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideIn {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes slideInUp {
-  from { transform: translateY(10px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.6; }
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-5px); }
-  40%, 80% { transform: translateX(5px); }
-}
-
-@keyframes modal-appear {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
 /* Common utility classes */
 .hidden {
   display: none;
 }
 
-.text-center {
-  text-align: center;
-}
-
-.mb-1 {
-  margin-bottom: 0.5rem;
-}
-
-.mb-2 {
-  margin-bottom: 1rem;
-}
-
-.mb-3 {
-  margin-bottom: 1.5rem;
-}
-
 .mb-4 {
   margin-bottom: 2rem;
-}
-
-
-/* Text balancing utility and global application */
-.text-balance {
-  text-wrap: balance;
-  -webkit-text-wrap: balance;
 }
 
 /* Apply text balancing to all row labels across the app */
@@ -284,7 +228,6 @@ input, select, textarea {
 
 /* Fallback for browsers without text-wrap: balance */
 @supports not (text-wrap: balance) {
-  .text-balance,
   .row-label {
     word-break: break-word;
     hyphens: manual;
@@ -296,40 +239,11 @@ input, select, textarea {
   animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);
 }
 
-.slide-in {
-  animation: slideIn var(--md-duration-medium4) var(--md-easing-emphasized-decelerate);
-}
-
-.slide-in-up {
-  animation: slideInUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
-}
-
 .pulse {
   animation: pulse var(--md-duration-long4) var(--md-easing-standard) infinite;
 }
 
 .spin {
   animation: spin var(--md-duration-long2) linear infinite !important;
-}
-
-.shake {
-  animation: shake var(--md-duration-medium4) var(--md-easing-emphasized);
-}
-
-.modal-appear {
-  animation: modal-appear var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
-}
-
-/* Material Design 3 animation classes */
-.md-fade-in {
-  animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);
-}
-
-.md-slide-in {
-  animation: slideIn var(--md-duration-medium4) var(--md-easing-emphasized-decelerate);
-}
-
-.md-slide-up {
-  animation: slideInUp var(--md-duration-medium3) var(--md-easing-emphasized-decelerate);
 }
 /* Status messages removed - now using centralized toast component */

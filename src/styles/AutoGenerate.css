@@ -33,8 +33,6 @@
   }
 }
 
-
-
 .generate-btn.auto-generate:hover:not(:disabled) {
   /* Hover behavior - transparent background with blue text like other buttons */
   background: transparent !important;
@@ -124,11 +122,6 @@
   height: 20px;
   opacity: 0.6;
   transition: opacity 0.3s ease;
-}
-
-.generate-btn.auto-generate .gemini-mini-icon.random-2 {
-  top: 15%;
-  left: 10%;
 }
 
 .generate-btn.auto-generate .gemini-mini-icon.random-4 {

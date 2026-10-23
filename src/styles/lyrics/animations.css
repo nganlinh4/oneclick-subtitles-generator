@@ -15,34 +15,3 @@
     box-shadow: var(--md-elevation-level4);
   }
 }
-
-/* Smooth slide-in animation for current lyric */
-@keyframes lyric-focus-slide {
-  0% {
-    transform: translateX(0);
-    background-color: transparent;
-    border-left: 4px solid transparent;
-  }
-  50% {
-    transform: translateX(4px);
-  }
-  100% {
-    transform: translateX(2px);
-    background-color: color-mix(in srgb, var(--md-primary), transparent 85%);
-    border-left: 4px solid var(--md-primary);
-  }
-}
-
-/* Smooth slide-out animation when lyric loses focus */
-@keyframes lyric-unfocus-slide {
-  0% {
-    transform: translateX(2px);
-    background-color: color-mix(in srgb, var(--md-primary), transparent 85%);
-    border-left: 4px solid var(--md-primary);
-  }
-  100% {
-    transform: translateX(0);
-    background-color: transparent;
-    border-left: 4px solid transparent;
-  }
-}

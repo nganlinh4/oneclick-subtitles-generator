@@ -1,0 +1,192 @@
+/* Video quality modal: footer buttons, animation, theme tweaks, scrollbar and responsive rules */
+
+/* Modal Footer - flat button design like Background Image Generator */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  background-color: var(--md-surface-1);
+}
+
+/* Flat Button Styles - inspired by Background Image Generator */
+.cancel-button,
+.confirm-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 36px;
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+  box-shadow: var(--md-elevation-level2);
+  font-family: 'Google Sans', 'Open Sans', sans-serif;
+}
+
+.cancel-button {
+  background-color: var(--md-surface-2);
+  color: var(--md-on-surface-variant);
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: var(--md-surface-3);
+  box-shadow: var(--md-elevation-level3);
+}
+
+.confirm-button {
+  /* Use primary tokens so it looks correct in light and dark */
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+}
+
+.confirm-button:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--md-primary), rgba(255, 255, 255, var(--md-state-hover-opacity)));
+  box-shadow: var(--md-elevation-level3);
+}
+
+.cancel-button:disabled,
+.confirm-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--md-surface-2);
+  color: var(--md-on-surface-variant);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.cancel-button:disabled:hover,
+.confirm-button:disabled:hover {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level1);
+}
+
+/* Animation - simple fade-in like Background Image Generator */
+/* Theme adjustments - minimal and clean */
+[data-theme="light"] .video-quality-modal {
+  background-color: var(--md-surface);
+}
+
+[data-theme="dark"] .video-quality-modal {
+  background-color: var(--md-surface-1);
+}
+
+/* Scrollbar styling for modal content */
+.video-quality-modal .modal-content {
+  scrollbar-width: thin;
+  overflow: auto;
+}
+
+.video-quality-modal .modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.video-quality-modal .modal-content::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px;
+  border-radius: 8px;
+}
+
+.video-quality-modal .modal-content::-webkit-scrollbar-thumb {
+  background-color: rgba(var(--md-on-surface-rgb, 0, 0, 0), 0.3);
+  border-radius: 8px;
+}
+
+.video-quality-modal .modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(var(--md-on-surface-rgb, 0, 0, 0), 0.5);
+}
+
+[data-theme="dark"] .modal-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .modal-content::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Responsive design - clean mobile layout */
+@media (max-width: 768px) {
+  .video-quality-modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+  }
+
+  .video-quality-modal .modal-content {
+    padding: 16px 20px;
+  }
+
+  .modal-actions {
+    padding: 16px 20px;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .video-info {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .info-row {
+    gap: 4px;
+  }
+
+  .info-row .label {
+    font-size: 0.7rem;
+  }
+
+  .quality-options-list {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .cancel-button,
+  .confirm-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .option-item {
+    padding: 12px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+
+  .option-item input[type="radio"] {
+    width: 14px;
+    height: 14px;
+    max-width: 14px;
+    flex-basis: auto;
+  }
+
+  .version-selector,
+  .quality-selector {
+    padding: 8px 10px;
+    margin-top: 8px;
+  }
+
+  .quality-options-list .radio-pill .quality-pill-label {
+    padding: 8px 6px;
+    height: 40px;
+    font-size: 0.75rem;
+  }
+
+  .version-selector .radio-pill .version-pill-label {
+    padding: 10px 12px;
+  }
+
+  .version-title {
+    font-size: 0.75rem;
+  }
+
+  .version-details {
+    font-size: 0.65rem;
+  }
+}

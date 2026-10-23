@@ -42,33 +42,6 @@
   transform: translateY(2px);
 }
 
-/* Browse button for file upload */
-.browse-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  padding: 0.9rem 1.6rem;
-  background-color: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.browse-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  background-color: var(--primary-color-hover, var(--primary-color));
-}
-
-.browse-button:active {
-  transform: translateY(0);
-}
-
 /* Material Design 3 pill-shaped remove button */
 .remove-file-btn {
   display: flex;
@@ -115,123 +88,6 @@
 
 .remove-file-btn:active {
   transform: translateY(0);
-}
-
-/* Material Design 3 download video button */
-.download-video-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 16px;
-  margin-top: 0.75rem;
-  background-color: transparent;
-  color: var(--md-primary);
-  border: 1px solid var(--md-outline);
-  border-radius: var(--md-shape-pill);
-  font-size: var(--md-label-medium-size);
-  line-height: var(--md-label-medium-height);
-  font-weight: var(--md-label-medium-weight);
-  cursor: pointer;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
-              color var(--md-duration-medium2) var(--md-easing-standard),
-              border-color var(--md-duration-medium2) var(--md-easing-standard),
-              box-shadow var(--md-duration-medium2) var(--md-easing-standard),
-              transform var(--md-duration-medium2) var(--md-easing-emphasized);
-  box-shadow: var(--md-elevation-level1);
-  align-self: flex-start;
-  position: relative;
-  overflow: hidden;
-  height: 36px; /* Fixed height for consistency */
-}
-
-/* State layer for hover effect */
-.download-video-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: transparent;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
-  pointer-events: none;
-  border-radius: var(--md-shape-pill);
-}
-
-.download-video-btn:hover::before {
-  background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-hover-opacity));
-}
-
-.download-video-btn:active::before {
-  background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-pressed-opacity));
-}
-
-.download-video-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.download-video-btn:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.download-video-btn svg {
-  width: 16px;
-  height: 16px;
-  transition: transform var(--md-duration-medium3) var(--md-easing-emphasized);
-}
-
-.download-video-btn:hover svg {
-  transform: translateY(2px);
-}
-
-/* Material Design 3 search download button */
-.search-download-btn {
-  margin-top: 0;
-  margin-left: 0.75rem;
-  padding: 8px;
-  border-radius: 50%;
-  box-shadow: var(--md-elevation-level1);
-  background-color: transparent;
-  color: var(--md-primary);
-  border: 1px solid var(--md-outline);
-  position: relative;
-  overflow: hidden;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard),
-              color var(--md-duration-medium2) var(--md-easing-standard),
-              border-color var(--md-duration-medium2) var(--md-easing-standard),
-              box-shadow var(--md-duration-medium2) var(--md-easing-standard),
-              transform var(--md-duration-medium2) var(--md-easing-emphasized);
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* State layer for hover effect */
-.search-download-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: transparent;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
-  pointer-events: none;
-  border-radius: 50%;
-}
-
-.search-download-btn:hover::before {
-  background-color: color-mix(in srgb, var(--md-primary), transparent var(--md-state-hover-opacity));
-}
-
-.search-download-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
 }
 
 /* Clear button for inputs */
@@ -311,27 +167,11 @@
   min-width: 180px;
 }
 
-.btn-medium {
-  padding: 10px 20px;
-  height: 40px;
-  font-size: var(--md-label-medium-size);
-  line-height: var(--md-label-medium-height);
-  min-width: 120px;
-}
-
 .btn-small {
   padding: 8px 16px;
   height: 36px;
   line-height: var(--md-label-small-height);
   min-width: 100px;
-}
-
-.btn-compact {
-  padding: 6px 12px;
-  height: 32px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  min-width: 80px;
 }
 
 /* Button variants */
@@ -343,30 +183,6 @@
 
 .btn-primary:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--md-primary), black 10%);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.btn-success {
-  background-color: var(--md-success);
-  color: var(--md-on-success);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.btn-success:hover:not(:disabled) {
-  background-color: var(--md-success-dark);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.btn-secondary {
-  background-color: var(--md-secondary-container);
-  color: var(--md-on-secondary-container);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-secondary-container), black 10%);
   transform: translateY(-2px);
   box-shadow: var(--md-elevation-level2);
 }
@@ -417,10 +233,6 @@
   /* Success download button - completed downloads */
 }
 
-.download-btn-secondary {
-  /* Secondary download button - alternative downloads */
-}
-
 /* Responsive styles */
 @media (max-width: 768px) {
   .btn-large {
@@ -430,25 +242,11 @@
     font-size: var(--md-label-medium-size);
   }
 
-  .btn-medium {
-    padding: 8px 16px;
-    height: 36px;
-    min-width: 100px;
-    font-size: var(--md-label-small-size);
-  }
-
   .btn-small {
     padding: 6px 12px;
     height: 32px;
     min-width: 80px;
     font-size: 0.75rem;
-  }
-
-  .btn-compact {
-    padding: 4px 8px;
-    height: 28px;
-    min-width: 60px;
-    font-size: 0.7rem;
   }
 }
 
@@ -463,26 +261,9 @@
   flex-wrap: wrap;
 }
 
-.radio-group-vertical {
-  flex-direction: column;
-  gap: 8px;
-}
-
 .radio-group-horizontal {
   flex-direction: row;
   flex-wrap: wrap;
-}
-
-.radio-group-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.radio-group-two-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
 }
 
 /* Base radio option styles */
@@ -521,30 +302,6 @@
   transform: translateY(-1px);
 }
 
-.radio-option-pill {
-  padding: 8px 16px;
-  height: 36px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.radio-option-pill:hover {
-  background-color: var(--md-surface-2);
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-2px);
-}
-
-.radio-option-minimal {
-  padding: 4px 8px;
-  border-radius: var(--md-shape-small);
-}
-
-.radio-option-minimal:hover {
-  background-color: var(--md-surface-2);
-}
-
 /* Checked states */
 .radio-option-base input[type="radio"]:checked ~ .radio-option-card,
 .radio-option-card.checked {
@@ -552,21 +309,6 @@
   color: var(--md-on-primary-container);
   border-color: var(--md-primary);
 }
-
-.radio-option-base input[type="radio"]:checked ~ .radio-option-pill,
-.radio-option-pill.checked {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-color: var(--md-primary);
-}
-
-.radio-option-base input[type="radio"]:checked ~ .radio-option-minimal,
-.radio-option-minimal.checked {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-
 
 /* Disabled states */
 .radio-option-base.disabled {
@@ -593,18 +335,6 @@
     gap: 8px;
   }
 
-  .radio-group-grid,
-  .radio-group-two-columns {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .radio-option-pill {
-    padding: 6px 12px;
-    height: 32px;
-    font-size: 0.85rem;
-  }
-
   .radio-option-card {
     padding: 6px 10px;
     font-size: 0.85rem;
@@ -613,9 +343,7 @@
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
-  .radio-option-card,
-  .radio-option-pill,
-  .radio-option-minimal {
+  .radio-option-card {
     border-width: 2px;
   }
 
@@ -624,9 +352,6 @@
     border-color: var(--md-primary);
   }
 }
-
-
-
 
 /* Legacy pill buttons used across various sections (migrated from VideoRenderingSection.css) */
 .pill-button {

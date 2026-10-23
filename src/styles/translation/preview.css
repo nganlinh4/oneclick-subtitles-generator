@@ -278,7 +278,7 @@
 
 /* Override margin only in translation preview context */
 .translation-preview .segment-indicator {
-  margin-right: 0 !important;
+  margin-right: 0;
 }
 
 .segment-line {
@@ -395,7 +395,6 @@
 .subtitle-retry-btn:hover .retry-icon {
   transform: rotate(10deg);
 }
-
 
 /* Content area (time + text) */
 .preview-content {
@@ -556,16 +555,6 @@
 }
 
 /* Keyframe animations */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.8; }
-}
-
 @keyframes retryPulse {
   0%, 100% { background-color: var(--md-surface-2); }
   50% { background-color: var(--md-surface-3); }
@@ -587,11 +576,4 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.preview-more {
-  margin-top: 0.5rem;
-  color: var(--text-secondary);
-  font-style: italic;
-  font-size: 0.9rem;
 }

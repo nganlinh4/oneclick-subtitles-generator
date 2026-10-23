@@ -1,8 +1,5 @@
 /* Material Web Switch Styling */
 
-/* Import Material Symbols font for icons */
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL@20..48,100..700,0..1');
-
 /* Global Material Web Switch theming */
 md-switch {
   /* Use Material Design 3 color tokens */

@@ -28,17 +28,6 @@
   overflow: hidden; /* Ensure header and footer don't overflow border radius */
 }
 
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Modal header */
 .modal-header {
   display: flex;
@@ -102,8 +91,7 @@
 }
 
 /* Constrain specific option groups to prevent layout shifts */
-.option-group:has(.radio-group-two-columns),
-.option-group.two-column-layout {
+.option-group:has(.radio-group-two-columns) {
   min-height: 120px; /* Ensure consistent height for 2-column radio groups */
   transition: min-height 0.3s var(--md-easing-standard);
 }
@@ -111,12 +99,6 @@
 .option-group:has(.radio-group-horizontal),
 .option-group.horizontal-layout {
   min-height: 90px; /* Ensure consistent height for horizontal radio groups */
-  transition: min-height 0.3s var(--md-easing-standard);
-}
-
-/* Fallback for browsers without :has() support */
-.option-group.constrained-height {
-  min-height: 120px;
   transition: min-height 0.3s var(--md-easing-standard);
 }
 
@@ -179,7 +161,6 @@
 
 /* Radio option styles moved to centralized system */
 
-
 /* Scoped layout corrections for radio groups inside DownloadOptionsModal */
 .download-options-modal .radio-group-base {
   display: flex;
@@ -190,12 +171,6 @@
 .download-options-modal .radio-group-horizontal {
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.download-options-modal .radio-group-two-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
@@ -251,7 +226,6 @@
   color: var(--md-on-surface);
   background-color: var(--md-surface-2);
 }
-
 
 /* Own this footer rather than depending on another modal's stylesheet. */
 .download-options-modal > .modal-footer {
@@ -327,16 +301,13 @@
     max-height: 80vh;
   }
 
-  .radio-group-base,
-  .radio-group-two-columns {
+  .radio-group-base {
     grid-template-columns: 1fr;
     gap: 8px;
   }
 
   /* Adjust min-heights for mobile */
-  .option-group:has(.radio-group-two-columns),
-  .option-group.two-column-layout,
-  .option-group.constrained-height {
+  .option-group:has(.radio-group-two-columns) {
     min-height: 140px; /* Slightly taller on mobile due to stacking */
   }
 

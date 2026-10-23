@@ -1,46 +1,5 @@
 /* Button styles */
 
-/* Update button */
-.update-btn {
-  padding: 10px 24px;
-  background-color: var(--md-tertiary-container, #e8def8);
-  color: var(--md-on-tertiary-container, #1d192b);
-  border: none;
-  border-radius: var(--md-shape-pill);
-  font-size: var(--md-label-large-size);
-  line-height: var(--md-label-large-height);
-  font-weight: var(--md-label-large-weight);
-  font-family: var(--font-title);
-  cursor: pointer;
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--md-elevation-level1);
-  position: relative;
-  overflow: hidden;
-  min-width: 120px;
-}
-
-.update-btn:hover:not(:disabled) {
-  background-color: var(--md-tertiary, #6750a4);
-  color: var(--md-on-tertiary, #ffffff);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.update-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
-.update-btn:disabled {
-  opacity: 0.38;
-  transform: none;
-  box-shadow: none;
-  cursor: not-allowed;
-}
-
 /* Factory reset button */
 .factory-reset-btn {
   padding: 10px 24px;

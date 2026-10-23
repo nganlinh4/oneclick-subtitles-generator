@@ -101,24 +101,8 @@
   background-image: url('../../assets/about-background-alternative.svg');
 }
 
-.about-section.alternative-bg-1::before {
-  background-image: url('../../assets/about-background-alternative1.svg');
-}
-
-.about-section.alternative-bg-2::before {
-  background-image: url('../../assets/about-background-alternative2.svg');
-}
-
-.about-section.alternative-bg-3::before {
-  background-image: url('../../assets/about-background-alternative3.svg');
-}
-
 .about-section.alternative-bg-4::before {
   background-image: url('../../assets/about-background-alternative4.svg');
-}
-
-.about-section.alternative-bg-5::before {
-  background-image: url('../../assets/about-background-alternative5.svg');
 }
 
 .about-app-title {
@@ -184,11 +168,6 @@
   background-color: var(--surface-container);
   border-radius: var(--md-shape-medium);
   border-left: 3px solid var(--md-primary);
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .latest-version-info {
@@ -295,11 +274,6 @@
   box-shadow: var(--md-elevation-1);
 }
 
-.installer-option.secondary-installer {
-  opacity: 0.8;
-  font-size: 0.8rem;
-}
-
 .installer-option strong {
   min-width: 80px;
   color: var(--text-primary);
@@ -394,8 +368,6 @@
   color: var(--md-primary-light);
   border-color: var(--outline-variant-dark, rgba(255, 255, 255, 0.16));
 }
-
-
 
 [data-theme="dark"] .check-icon {
   color: var(--md-success-light, #81C784);

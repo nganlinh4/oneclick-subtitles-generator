@@ -26,7 +26,6 @@
 
 /* Ensure header content is always rendered above the canvas */
 .header-title,
-.header-actions,
 .header-title-container,
 .settings-button {
   position: relative;

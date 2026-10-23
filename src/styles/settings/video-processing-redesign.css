@@ -64,11 +64,6 @@
   gap: 16px;
 }
 
-/* Combined card styling */
-.settings-card.combined-card .settings-card-content {
-  gap: 24px; /* Slightly more spacing between settings in combined card */
-}
-
 /* Accent line at the top of each card */
 .settings-card::before {
   content: '';
@@ -79,19 +74,6 @@
   height: 4px;
   background-color: var(--md-primary);
   opacity: 0.7;
-}
-
-/* Specific card accent colors */
-.settings-card.segments-card::before {
-  background-color: var(--md-primary);
-}
-
-.settings-card.ai-model-card::before {
-  background-color: var(--md-secondary);
-}
-
-.settings-card.combined-card::before {
-  background: linear-gradient(to right, var(--md-primary), var(--md-secondary));
 }
 
 .settings-card.analysis-card::before {
@@ -116,10 +98,6 @@
 
 .settings-card.custom-gemini-models-card::before {
   background-color: #009688; /* Teal - Customization & Tools */
-}
-
-.settings-card.optimization-card::before {
-  background-color: #00BFA5; /* Teal */
 }
 
 /* Compact setting item */
@@ -155,153 +133,11 @@
   padding-right: 10px;
 }
 
-/* Setting header with toggle - combines label/description and toggle */
-.setting-header-with-toggle {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.setting-header-with-toggle > div:first-child {
-  flex: 1;
-}
-
-.setting-header-with-toggle label {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.setting-header-with-toggle .setting-description {
-  margin-top: 4px;
-}
-
 /* Material Web Switch container */
 .material-switch-container {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-
-
-
-
-/* Improved select styling */
-.enhanced-select {
-  width: 100%;
-  padding: 10px 16px;
-  border-radius: var(--md-shape-medium);
-  border: 1px solid var(--md-outline-variant);
-  background-color: var(--md-surface);
-  color: var(--md-on-surface);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s var(--md-easing-standard);
-  box-shadow: none;
-  appearance: none;
-  padding-right: 36px;
-}
-
-.enhanced-select:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 1px var(--md-primary);
-}
-
-.enhanced-select:hover {
-  border-color: var(--md-primary);
-  background-color: color-mix(in srgb, var(--md-surface), var(--md-primary) 5%);
-}
-
-/* Checkbox styling */
-.enhanced-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  cursor: pointer;
-  padding: 8px 0;
-}
-
-.enhanced-checkbox input[type="checkbox"] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--md-outline);
-  border-radius: 4px;
-  background-color: var(--md-surface);
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-  margin: 0;
-  transition: all 0.2s var(--md-easing-standard);
-}
-
-.enhanced-checkbox input[type="checkbox"]:checked {
-  background-color: var(--md-primary);
-  border-color: var(--md-primary);
-}
-
-.enhanced-checkbox input[type="checkbox"]:checked::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-.enhanced-checkbox input[type="checkbox"]:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary), transparent 70%);
-}
-
-.enhanced-checkbox-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.enhanced-checkbox-label span {
-  font-weight: 500;
-  color: var(--md-on-surface);
-  font-size: 0.95rem;
-}
-
-.enhanced-checkbox-label small {
-  color: var(--md-on-surface-variant);
-  font-size: 0.85rem;
-}
-
-/* Disabled state */
-.enhanced-select:disabled,
-.enhanced-checkbox input[type="checkbox"]:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.enhanced-checkbox.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Material Symbols Rounded dropdown arrow for enhanced-select */
-.enhanced-select::after {
-  content: "expand_more";
-  font-family: var(--ms-font-family);
-  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--md-on-surface);
-  font-size: 1em;
 }
 
 /* Responsive adjustments */

@@ -91,10 +91,6 @@
     flex-direction: column;
   }
 
-  .image-actions {
-    flex-direction: column;
-  }
-
   /* Always show floating buttons on mobile for better usability */
   .floating-download-button,
   .floating-upload-button,
@@ -118,10 +114,6 @@
     justify-content: flex-start;
     width: 100%;
     margin-bottom: 8px;
-  }
-
-  .dropdown-label {
-    font-size: 12px;
   }
 }
 

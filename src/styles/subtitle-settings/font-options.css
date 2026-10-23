@@ -1,82 +1,11 @@
 /* Font options and preview styles for subtitle settings */
 
-/* Font select with proper styling for optgroups */
-.font-select {
-  font-family: inherit;
-  scrollbar-width: thin;
-  scrollbar-color: var(--md-outline-variant) var(--md-surface-1);
-  max-height: 300px; /* Ensure dropdown isn't too tall */
-  background-color: var(--md-surface-1); /* Match the select background */
-  color: var(--md-on-surface); /* Match the select text color */
-}
-
-/* Webkit scrollbar styles for font-select */
-.font-select::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.font-select::-webkit-scrollbar-track {
-  background: var(--md-surface-1);
-  border-radius: 3px;
-}
-
-.font-select::-webkit-scrollbar-thumb {
-  background-color: var(--md-outline-variant);
-  border-radius: 3px;
-}
-
-.font-select::-webkit-scrollbar-thumb:hover {
-  background-color: var(--md-outline);
-}
-
-.font-select optgroup {
-  font-weight: 600;
-  color: var(--md-primary);
-  font-size: 0.9rem;
-  padding: 4px 0;
-}
-
-.font-select option {
-  font-weight: normal;
-  color: var(--md-on-surface);
-  padding: 8px;
-  background-color: var(--md-surface-1);
-}
-
 /* Ensure dropdown has proper dark mode styling in all browsers */
-.font-select option:checked,
-.font-select option:hover,
-.font-select option:focus,
 select option:checked,
 select option:hover,
 select option:focus {
   background-color: var(--md-primary-container);
   color: var(--md-on-primary-container);
-}
-
-/* Font preview box */
-.font-preview {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background-color: var(--md-surface-1);
-  border-radius: var(--md-shape-medium);
-  border: 1px solid var(--md-outline-variant);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.font-preview-label {
-  font-size: var(--md-label-small-size, 0.75rem);
-  color: var(--md-on-surface-variant);
-  font-weight: 500;
-}
-
-.font-preview-samples {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 .font-preview-text {
@@ -87,32 +16,3 @@ select option:focus {
 }
 
 /* Font preview - each option shows in its own font */
-/* Korean fonts */
-.font-select option[value*="Noto Sans KR"] { font-family: 'Noto Sans KR', sans-serif; }
-.font-select option[value*="Nanum Gothic"] { font-family: 'Nanum Gothic', sans-serif; }
-.font-select option[value*="Malgun Gothic"] { font-family: 'Malgun Gothic', sans-serif; }
-.font-select option[value*="Nanum Myeongjo"] { font-family: 'Nanum Myeongjo', serif; }
-.font-select option[value*="Nanum Barun Gothic"] { font-family: 'Nanum Barun Gothic', sans-serif; }
-.font-select option[value*="Spoqa Han Sans"] { font-family: 'Spoqa Han Sans', sans-serif; }
-.font-select option[value*="KoPub Batang"] { font-family: 'KoPub Batang', serif; }
-.font-select option[value*="Gowun Dodum"] { font-family: 'Gowun Dodum', sans-serif; }
-
-/* Vietnamese fonts */
-.font-select option[value*="Google Sans"] { font-family: 'Google Sans', 'Be Vietnam Pro', sans-serif; }
-.font-select option[value*="Noto Sans Vietnamese"] { font-family: 'Noto Sans Vietnamese', sans-serif; }
-.font-select option[value*="Be Vietnam Pro"] { font-family: 'Be Vietnam Pro', sans-serif; }
-.font-select option[value*="Sarabun"] { font-family: 'Sarabun', sans-serif; }
-.font-select option[value*="Montserrat Alternates"] { font-family: 'Montserrat Alternates', sans-serif; }
-.font-select option[value*="Josefin Sans"] { font-family: 'Josefin Sans', sans-serif; }
-.font-select option[value*="Lexend"] { font-family: 'Lexend', sans-serif; }
-
-/* Multilingual and other fonts */
-.font-select option[value*="Google Sans"] { font-family: 'Google Sans', 'Open Sans', sans-serif; }
-.font-select option[value*="Noto Sans"] { font-family: 'Noto Sans', sans-serif; }
-
-.font-select option[value*="Arial Unicode"] { font-family: 'Arial Unicode MS', sans-serif; }
-.font-select option[value*="Source Sans Pro"] { font-family: 'Source Sans Pro', sans-serif; }
-.font-select option[value*="Open Sans"] { font-family: 'Open Sans', sans-serif; }
-.font-select option[value*="Noto Serif"] { font-family: 'Noto Serif', serif; }
-.font-select option[value*="Nanum Gothic Coding"] { font-family: 'Nanum Gothic Coding', monospace; }
-.font-select option[value*="JetBrains Mono"] { font-family: 'JetBrains Mono', monospace; }

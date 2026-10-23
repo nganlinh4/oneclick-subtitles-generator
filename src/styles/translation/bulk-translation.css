@@ -412,17 +412,6 @@
   animation: slideInUp 0.2s ease-out;
 }
 
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Scrollbar styling for file list */
 .bulk-files-list::-webkit-scrollbar {
   width: 6px;

@@ -1,0 +1,322 @@
+/* Video processing modal settings: switches, option rows, selects, sliders, helper icons and disabled states */
+
+/* Material Switch container for processing modal */
+.material-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Combined options row - side by side layout */
+.combined-options-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.combined-option-half {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  /* Allow children to span full width */
+}
+
+.combined-option-half label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  margin-bottom: 0px;
+}
+
+/* Select dropdown styles with proper chevron spacing */
+.modal-content select {
+  width: 100%;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  /* More right padding for chevron */
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  background-color: var(--md-surface-2);
+  color: var(--md-on-surface);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s var(--md-easing-standard);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+/* Material Symbols Rounded dropdown arrow */
+.modal-content select::after {
+  content: "expand_more";
+  font-family: var(--ms-font-family);
+  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--md-on-surface);
+  font-size: 16px;
+}
+
+.modal-content select:focus {
+  outline: none;
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 2px var(--md-primary-container);
+}
+
+.modal-content select:hover {
+  background-color: var(--md-surface-3);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.combined-option-half select {
+  align-self: stretch;
+  /* Make select fill the width */
+}
+
+/* Responsive: stack on smaller screens */
+@media (max-width: 600px) {
+  .combined-options-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+/* Individual setting items */
+.setting-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  margin-bottom: 4px;
+}
+
+/* Responsive: stack on smaller screens */
+@media (max-width: 800px) {
+
+  .video-processing-modal .footer-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .footer-buttons {
+    align-self: flex-end;
+  }
+
+  .header-content h3 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* Slider with value - horizontal layout with value on the right */
+.video-processing-modal .slider-with-value {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: none;
+  /* Allow full width in modal */
+}
+
+/* Ensure the slider fills available space and children can grow */
+.video-processing-modal .slider-with-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* allow flex child to grow/shrink within parent */
+}
+
+.video-processing-modal .slider-with-value .standard-slider-container {
+  flex: 1 1 0%;
+  /* take remaining space alongside value display */
+  width: auto;
+  max-width: none;
+  /* Avoid 354px cap inside modal */
+}
+
+.video-processing-modal .standard-slider-track-container {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+/* Reinforce track colors in modal to avoid theme bleed */
+.video-processing-modal .standard-slider-active-track .track {
+  background-color: var(--md-secondary, #2979FF);
+}
+
+.video-processing-modal .standard-slider-inactive-track .track {
+  background-color: var(--md-outline-variant, #CAC4D0);
+}
+
+/* Force explicit heights and visibility for StandardSlider tracks inside modal */
+.video-processing-modal .standard-slider-track-container {
+  height: 44px !important;
+  /* Ensure handle/tracks area height */
+}
+
+.video-processing-modal .standard-slider-active-track,
+.video-processing-modal .standard-slider-inactive-track {
+  height: 16px !important;
+  min-height: 16px !important;
+}
+
+.video-processing-modal .standard-slider-active-track .track,
+.video-processing-modal .standard-slider-inactive-track .track {
+  opacity: 1 !important;
+}
+
+/* Value display stays on the right with minimum width only */
+.video-processing-modal .slider-value-display {
+  font-size: 0.875rem;
+  color: var(--md-on-surface-variant);
+  font-weight: 500;
+  flex: 0 0 auto;
+  /* Don't grow or shrink */
+  white-space: nowrap;
+}
+
+/* When a slider is disabled, also dim the value display to avoid confusion */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled~.slider-value-display,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled~.slider-value-display {
+  opacity: 0.55;
+}
+
+/* Dim and gray-out disabled sliders (match chatterbox behavior) */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled {
+  position: relative;
+  overflow: hidden;
+  background: none !important;
+  filter: grayscale(50%);
+  opacity: 0.65;
+  /* subtle global dim */
+}
+
+.video-processing-modal .slider-with-value .standard-slider-container.disabled::after,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: rgba(var(--md-surface-rgb, 255, 255, 255), 0.05);
+  z-index: 3;
+  pointer-events: none;
+  /* do not block interactions (though disabled anyway) */
+}
+
+.video-processing-modal .slider-with-value .standard-slider-container.disabled .standard-slider-active-track,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled .standard-slider-active-track {
+  opacity: 0.35 !important;
+}
+
+.video-processing-modal .slider-with-value .standard-slider-container.disabled .standard-slider-handle,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled .standard-slider-handle {
+  box-shadow: none !important;
+}
+
+/* Additional info (like parallel requests) should be on its own line */
+.video-processing-modal .slider-value-display .parallel-info {
+  font-size: 0.7rem;
+  color: var(--md-on-surface-variant);
+  opacity: 0.8;
+  white-space: normal;
+  /* Allow wrapping for long parallel request info */
+  text-align: right;
+  max-width: 200px;
+}
+
+/* Slider value display min-widths for specific controls */
+.video-processing-modal .slider-with-value:has(#fps-slider) .slider-value-display {
+  min-width: 60px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#max-duration-slider) .slider-value-display {
+  min-width: 95px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#segment-processing-delay-slider) .slider-value-display {
+  min-width: 75px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#max-words-slider) .slider-value-display {
+  min-width: 40px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#outside-context-range) .slider-value-display {
+  min-width: 60px !important;
+}
+
+/* Local ASR sliders */
+.video-processing-modal .slider-with-value:has(#asr-max-duration-slider) .slider-value-display {
+  min-width: 95px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#asr-max-words) .slider-value-display {
+  min-width: 40px !important;
+}
+
+.video-processing-modal .slider-with-value:has(#asr-max-chars) .slider-value-display {
+  min-width: 70px !important;
+}
+
+/* Helper icon styles */
+.help-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+}
+
+.help-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--md-on-surface-variant);
+  opacity: 0.7;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.help-icon-container:hover .help-icon {
+  opacity: 1;
+  color: var(--md-primary);
+}
+
+.label-with-help {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Label subtitle for additional info like intervals */
+.label-subtitle {
+  font-size: 0.75rem;
+  color: var(--md-on-surface-variant);
+  opacity: 0.8;
+  font-weight: normal;
+  margin-left: 6px;
+}
+
+/* Gray out label/help when group is disabled */
+.video-processing-modal .label-with-help.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Ensure disabled standard slider shows no border/outline */
+.video-processing-modal .slider-with-value .standard-slider-container.disabled,
+.video-processing-modal .slider-with-value .standard-slider-container.state-Disabled {
+  border: none !important;
+  outline: none !important;
+}

@@ -1,52 +1,3 @@
-/* Improved checkbox styling for settings */
-
-.settings-modal .checkbox-label {
-  display: inline-flex;
-  align-items: center; /* Changed from baseline to center for better alignment */
-  gap: 0.75rem; /* Consistent gap */
-  cursor: pointer;
-  user-select: none;
-  margin-bottom: 0.5rem;
-  position: relative;
-  width: auto; /* Prevent spanning across the entire page */
-}
-
-.settings-modal .checkbox-label input[type="checkbox"] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--md-outline);
-  border-radius: 2px;
-  background-color: var(--md-surface-1);
-  position: relative;
-  cursor: pointer;
-  transition: background-color 0.2s var(--md-easing-standard),
-              border-color 0.2s var(--md-easing-standard);
-  flex-shrink: 0; /* Prevent checkbox from shrinking */
-  margin: 0; /* Remove any default margins */
-  position: relative;
-  left: 0; /* Reset any left positioning */
-}
-
-.settings-modal .checkbox-label input[type="checkbox"]:checked {
-  background-color: var(--md-primary);
-  border-color: var(--md-primary);
-  margin-left: 0; /* Reset any margin shifts */
-}
-
-.settings-modal .checkbox-label input[type="checkbox"]:checked::after {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 1px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
 /* Setting description alignment fix */
 .settings-modal .setting-description {
   margin: 0.25rem 0 1rem;
@@ -57,37 +8,9 @@
   max-width: 90%; /* Prevent descriptions from spanning the entire width */
 }
 
-/* Fix for video analysis section */
-.video-analysis-section .use-video-analysis-setting .checkbox-label,
-.video-analysis-section .video-analysis-model-setting .checkbox-label,
-.video-analysis-section .video-analysis-timeout-setting .checkbox-label,
-.video-optimization-section .optimize-videos-setting .checkbox-label,
-.video-optimization-section .use-optimized-preview-setting .checkbox-label,
-.structured-output-setting .checkbox-label,
-.waveform-setting .checkbox-label {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
-
 /* Fix for checkbox containers */
-.use-video-analysis-setting,
 .video-analysis-model-setting,
-.video-analysis-timeout-setting,
-.optimize-videos-setting,
-.use-optimized-preview-setting,
-.structured-output-setting,
-.waveform-setting {
+.video-analysis-timeout-setting {
   width: auto;
   display: block;
-}
-
-/* Fix for long checkbox labels */
-.settings-modal .checkbox-label {
-  flex-wrap: nowrap; /* Prevent wrapping */
-}
-
-/* Ensure the text doesn't wrap awkwardly */
-.settings-modal .checkbox-label span {
-  white-space: normal; /* Allow text to wrap naturally */
-  line-height: 1.4;
 }

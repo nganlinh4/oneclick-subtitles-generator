@@ -1,12 +1,6 @@
 /* Video processing section styles */
 
 .segment-duration-setting,
-.gemini-model-setting,
-.time-format-setting,
-.waveform-setting,
-.optimize-videos-setting,
-.optimized-resolution-setting,
-.use-optimized-preview-setting,
 .video-analysis-model-setting,
 .video-analysis-timeout-setting {
   margin-top: 0.5rem;
@@ -14,12 +8,6 @@
 }
 
 .segment-duration-setting label,
-.gemini-model-setting label,
-.time-format-setting label,
-.waveform-setting label,
-.optimize-videos-setting label,
-.optimized-resolution-setting label,
-.use-optimized-preview-setting label,
 .video-analysis-model-setting label,
 .video-analysis-timeout-setting label {
   display: block;
@@ -34,21 +22,8 @@
   font-size: 0.9rem;
 }
 
-.setting-description.optimization-always-enabled {
-  background-color: var(--md-surface-2);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-small);
-  padding: 0.75rem;
-  margin: 0.5rem 0 1rem;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
 /* Material Design 3 pill-style select controls */
 .segment-duration-select,
-.gemini-model-select,
-.time-format-select,
-.optimized-resolution-select,
 .video-analysis-model-select,
 .video-analysis-timeout-select {
   width: 100%;
@@ -68,9 +43,6 @@
 
 /* Material Design 3 focus and hover states */
 .segment-duration-select:focus,
-.gemini-model-select:focus,
-.time-format-select:focus,
-.optimized-resolution-select:focus,
 .video-analysis-model-select:focus,
 .video-analysis-timeout-select:focus {
   outline: none;
@@ -79,9 +51,6 @@
 }
 
 .segment-duration-select:hover,
-.gemini-model-select:hover,
-.time-format-select:hover,
-.optimized-resolution-select:hover,
 .video-analysis-model-select:hover,
 .video-analysis-timeout-select:hover {
   border-color: var(--md-primary-container);
@@ -92,9 +61,6 @@
 
 /* Material Design 3 option styles */
 .segment-duration-select option,
-.gemini-model-select option,
-.time-format-select option,
-.optimized-resolution-select option,
 .video-analysis-model-select option,
 .video-analysis-timeout-select option {
   background-color: var(--md-surface-2);
@@ -111,10 +77,6 @@
   margin-top: 0.4rem;
 }
 
-
-
-
-
 /* Video optimization section styles */
 .video-optimization-section {
   margin-top: 2rem;
@@ -128,20 +90,9 @@
   color: var(--text-primary);
 }
 
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  margin-right: 0.5rem;
-}
-
 /* Disabled state for dependent controls */
 select:disabled,
-input[type="checkbox"]:disabled,
-.checkbox-label.disabled {
+input[type="checkbox"]:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -181,9 +132,6 @@ input[type="checkbox"]:disabled,
 
 /* Material Symbols Rounded dropdown arrows for select elements */
 .segment-duration-select::after,
-.gemini-model-select::after,
-.time-format-select::after,
-.optimized-resolution-select::after,
 .video-analysis-model-select::after,
 .video-analysis-timeout-select::after {
   content: "expand_more";

@@ -101,7 +101,7 @@
   height: 100%; /* Always full height to prevent layout shifts */
   background-color: var(--md-primary);
   opacity: 0;
-  transition: none !important; /* Remove transition to prevent layout shifts */
+  transition: none; /* Remove transition to prevent layout shifts */
   pointer-events: none; /* Ensure it doesn't block clicks */
   z-index: 1; /* Keep it below interactive elements */
   border-radius: var(--md-shape-medium); /* Match the border-radius of the parent element */
@@ -208,7 +208,7 @@
               transform var(--md-duration-medium2) var(--md-easing-emphasized);
   position: relative;
   overflow: visible; /* Changed from hidden to ensure the button is clickable */
-  z-index: 100 !important; /* Ensure it's above ALL other elements */
+  z-index: 100; /* Ensure it's above ALL other elements */
   pointer-events: auto !important; /* Force pointer events to be enabled */
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Add shadow for emphasis */
 }

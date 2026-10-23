@@ -262,23 +262,13 @@
   padding: 1.25rem 1rem;
 }
 
-.btn-secondary, .btn-primary {
+.btn-primary {
   border-radius: 24px;
   padding: 0.6rem 1.2rem;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-}
-
-.btn-secondary {
-  background-color: var(--md-surface-3);
-  color: var(--text-primary);
-  border: 1px solid var(--md-outline-variant);
-}
-
-.btn-secondary:hover {
-  background-color: var(--md-surface-4);
 }
 
 .btn-primary {

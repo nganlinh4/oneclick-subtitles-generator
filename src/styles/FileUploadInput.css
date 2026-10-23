@@ -40,19 +40,6 @@
   transform: translateY(-5px);
 }
 
-.upload-text {
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  margin-bottom: 0.5rem;
-  text-align: center;
-}
-
-.upload-subtext {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  text-align: center;
-}
-
 .file-list {
   margin-top: 1rem;
   width: 100%;
@@ -88,20 +75,6 @@
   font-size: 0.85rem;
 }
 
-.remove-file {
-  padding: 0.5rem;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.remove-file:hover {
-  color: var(--error-color);
-  transform: scale(1.1);
-}
-
 @keyframes slide-in {
   from {
     opacity: 0;
@@ -111,18 +84,6 @@
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-/* Converting indicator */
-.converting-indicator {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  background-color: var(--primary-color-transparent);
-  border-radius: 4px;
-  color: var(--primary-color);
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
 }
 
 /* Loading state */
@@ -138,10 +99,5 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: var(--primary-color);
-}
-
-.loading-icon {
-  margin-bottom: 1.5rem;
   color: var(--primary-color);
 }

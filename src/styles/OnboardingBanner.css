@@ -106,17 +106,6 @@
   }
 }
 
-/* Fallback loading indicator */
-.fallback-banner {
-  width: 100%;
-  height: 300px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: rgba(86, 132, 209, 0.2);
-  border-radius: 10px;
-}
-
 /* Old spinner styles removed - now using LoadingIndicator component */
 
 /* Dismissing animations */
@@ -147,15 +136,6 @@
   position: relative !important; /* Needed for z-index to work */
   opacity: 1 !important; /* Ensure full opacity at the start */
   transition: none !important; /* Disable cursor avoidance transitions during dismissal */
-}
-
-@keyframes fadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 @keyframes flyOutAndZoom {

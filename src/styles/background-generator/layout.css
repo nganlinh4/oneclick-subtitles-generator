@@ -83,13 +83,6 @@
   height: calc(100% - 38px); /* Subtract the height of the header */
 }
 
-.image-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
 .prompt-header,
 .image-section-header {
   display: flex;

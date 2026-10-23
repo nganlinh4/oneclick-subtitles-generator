@@ -9,14 +9,6 @@
   margin-bottom: 2rem;
 }
 
-.app-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: var(--background-primary);
-  transition: background-color var(--transition-speed);
-}
-
 .app-main {
   flex: 1;
   max-width: 1200px;
@@ -25,32 +17,6 @@
   padding: 0 1.5rem 1.5rem 1.5rem; /* Remove top padding, keep others */
   display: flex;
   flex-direction: column;
-}
-
-/* Material Design 3 container with enhanced styling */
-.app-content {
-  background-color: var(--md-surface-1);
-  border-radius: var(--card-border-radius);
-  padding: 32px;
-  box-shadow: var(--md-elevation-level3);
-  transition: background-color var(--transition-speed), box-shadow var(--transition-speed);
-  border: 1px solid var(--md-outline-variant);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Add subtle background pattern for more visual interest */
-.app-content::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--md-primary), transparent 92%) 0%, transparent 50%);
-  opacity: 0.5;
-  pointer-events: none;
-  z-index: 0;
 }
 
 .buttons-container {
@@ -73,8 +39,7 @@
 .buttons-container button *:not(.material-symbols-rounded),
 .buttons-container button span:not(.material-symbols-rounded),
 .buttons-container .processing-text-container,
-.buttons-container .processing-text,
-.buttons-container .processing-dots {
+.buttons-container .processing-text {
   font-family: var(--font-title) !important;
 }
 

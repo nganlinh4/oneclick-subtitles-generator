@@ -107,7 +107,6 @@
   color: white;
 }
 
-
 .header-badge .badge-text {
   font-size: 0.75rem;
 }
@@ -121,7 +120,6 @@
   overflow-y: auto;
   background-color: var(--md-surface-1);
 }
-
 
 .info-row {
   display: flex;
@@ -291,6 +289,12 @@
   box-shadow: none;
 }
 
+/* The radio itself is hidden; keyboard focus is shown on its pill. */
+.quality-options-list .radio-pill input[type="radio"]:focus-visible + .quality-pill-label {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
 .quality-options-list .radio-pill .quality-pill-label {
   display: inline-flex;
   align-items: center;
@@ -338,37 +342,6 @@
   opacity: 0.5;
   cursor: not-allowed;
   color: var(--md-on-surface-variant);
-}
-
-/* Progress section - flat design */
-.download-progress-container {
-  padding: 16px 24px;
-  background-color: var(--md-surface-2);
-  border-top: 1px solid rgba(var(--md-on-surface-rgb), 0.1);
-  margin: 16px -24px 0;
-}
-
-.download-progress-bar {
-  width: 100%;
-  height: 6px;
-  background-color: rgba(var(--md-on-surface-rgb), 0.1);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.download-progress-fill {
-  height: 100%;
-  background-color: var(--md-on-surface);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.download-progress-text {
-  font-size: 0.75rem;
-  color: var(--md-on-surface-variant);
-  text-align: center;
-  line-height: 1.3;
 }
 
 /* Modal Footer - flat button design like VideoQualityModal */
@@ -436,18 +409,6 @@
   box-shadow: var(--md-elevation-level1);
 }
 
-/* Animation - simple fade-in like VideoQualityModal */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Responsive design - clean mobile layout */
 @media (max-width: 768px) {
   .download-only-modal {
@@ -501,5 +462,4 @@
     font-size: 0.75rem;
   }
 }
-
 

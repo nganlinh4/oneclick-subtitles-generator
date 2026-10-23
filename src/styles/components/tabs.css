@@ -22,7 +22,6 @@
   display: none;
 }
 
-
 /* ========================================================================== */
 /*  CSS Fallback Animation (for ::before element)
 /* ========================================================================== */
@@ -65,19 +64,6 @@
   opacity: 1;
 }
 
-.input-tabs.pill-animate::before {
-  animation: pill-bounce 720ms cubic-bezier(.25,.8,.2,1) both;
-}
-
-@keyframes pill-bounce {
-  0%   { transform: translateY(-50%) scaleX(1) scaleY(1); border-radius: 48px; }
-  20%  { transform: translateY(-50%) scaleX(clamp(1, calc(1 + (var(--pill-travel) / 320)), 1.28)) scaleY(calc(1 - (clamp(0, calc(var(--pill-travel) / 320), 0.28) * 0.55))); border-radius: 36px; }
-  48%  { transform: translateY(-50%) scaleX(0.96) scaleY(1.08); border-radius: 42px; }
-  72%  { transform: translateY(-50%) scaleX(1.04) scaleY(0.98); border-radius: 46px; }
-  100% { transform: translateY(-50%) scaleX(1) scaleY(1); border-radius: 48px; }
-}
-
-
 /* ========================================================================== */
 /*  ENHANCED GOOEY ANIMATION (100% Physics-driven)
 /* ========================================================================== */
@@ -106,7 +92,6 @@
   backface-visibility: hidden;
   contain: layout paint style size;
 }
-
 
 /* ========================================================================== */
 /*  Tab Button Styles
@@ -172,7 +157,6 @@
   opacity: 1;
   transform: scale(1.1);
 }
-
 
 /* ========================================================================== */
 /*  Compact Variant

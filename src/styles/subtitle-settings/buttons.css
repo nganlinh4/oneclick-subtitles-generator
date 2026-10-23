@@ -203,30 +203,3 @@
   background-color: var(--md-primary-container);
   color: var(--md-on-primary-container);
 }
-
-/* Material Design 3 button styles */
-.download-with-subtitles-btn.md-filled-tonal-button {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-.download-with-subtitles-btn.md-filled-tonal-button:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-primary-container), rgba(0, 0, 0, var(--md-state-hover-opacity)));
-}
-
-.download-with-subtitles-btn.md-filled-tonal-button:active:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-primary-container), rgba(0, 0, 0, var(--md-state-pressed-opacity)));
-}
-
-.download-with-translated-subtitles-btn.md-filled-tonal-button {
-  background-color: var(--md-tertiary-container);
-  color: var(--md-on-tertiary-container);
-}
-
-.download-with-translated-subtitles-btn.md-filled-tonal-button:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-tertiary-container), rgba(0, 0, 0, var(--md-state-hover-opacity)));
-}
-
-.download-with-translated-subtitles-btn.md-filled-tonal-button:active:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-tertiary-container), rgba(0, 0, 0, var(--md-state-pressed-opacity)));
-}

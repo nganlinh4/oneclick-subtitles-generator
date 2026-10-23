@@ -39,11 +39,6 @@
   box-shadow: 0 0 0 2px var(--primary-color-light);
 }
 
-.youtube-url-field.error-input {
-  border-color: var(--error-color);
-  box-shadow: 0 0 0 1px var(--error-color-light);
-}
-
 .clear-url-btn {
   position: absolute;
   right: 12px;
@@ -61,43 +56,6 @@
 
 .clear-url-btn:hover {
   color: var(--md-primary);
-}
-
-.youtube-instructions {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  background-color: var(--background-primary);
-  border-radius: 36px;
-  box-shadow: 0 2px 8px var(--shadow-color);
-  transition: background-color var(--transition-speed);
-  animation: fade-in 0.5s ease-out;
-}
-
-.youtube-instructions h3 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  transition: color var(--transition-speed);
-}
-
-.youtube-instructions ol {
-  padding-left: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.youtube-instructions li {
-  margin-bottom: 0.5rem;
-  color: var(--text-secondary);
-  transition: color var(--transition-speed);
-}
-
-.youtube-instructions h4 {
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-  transition: color var(--transition-speed);
 }
 
 .url-examples {

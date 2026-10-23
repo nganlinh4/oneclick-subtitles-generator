@@ -12,7 +12,6 @@
   z-index: 99999; /* High z-index to ensure it appears above other elements */
 }
 
-
 /* Chatterbox language selector uses the container as the pill (no button) */
 .narration-model-dropdown-container.chatterbox-pill {
   display: flex;
@@ -91,7 +90,6 @@
   pointer-events: none;
 }
 
-
 .narration-model-dropdown-btn:hover:not(:disabled) {
   background-color: var(--md-surface-2);
   box-shadow: var(--md-elevation-level2);
@@ -121,12 +119,6 @@
   color: var(--md-on-surface-variant);
   background-color: var(--md-surface-2);
   border-bottom: 1px solid var(--md-outline-variant);
-}
-
-/* Loading animation inside dropdown */
-.dropdown-loading {
-  padding: 12px 16px;
-  justify-content: center;
 }
 
 /* Error message styling */
@@ -218,17 +210,6 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .model-selection-modal-header {
   display: flex;
   align-items: center;
@@ -294,7 +275,7 @@
   cursor: pointer;
   transition: all 0.2s var(--md-easing-standard);
   display: flex !important;
-  align-items: flex-start !important;
+  align-items: flex-start;
   gap: 0.75rem;
   min-height: 60px;
   position: relative;
@@ -331,7 +312,6 @@
   background-color: rgba(var(--md-on-primary-container-rgb), 0.2);
 }
 
-
 /* Ensure emoji or regional letters center consistently */
 .model-selection-modal .model-option-icon .model-flag {
   display: inline-flex;
@@ -345,8 +325,8 @@
 
 .model-selection-modal .model-option-info {
   display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;
+  flex-direction: column;
+  justify-content: center;
   gap: 0.125rem;
   flex: 1;
   min-width: 0; /* Allow text to wrap/truncate */
@@ -382,10 +362,6 @@
 
 .model-group {
   margin-bottom: 2rem;
-}
-
-.model-group:last-child {
-  margin-bottom: 0;
 }
 
 .model-group-label {
@@ -496,7 +472,6 @@
     margin: 1rem;
   }
 
-
   .model-selection-modal-header h2 {
     font-size: 1.125rem;
   }
@@ -531,7 +506,6 @@
     border-radius: 0;
     margin: 0;
   }
-
 
   .model-selection-modal-content {
     padding: 0.75rem 1rem;

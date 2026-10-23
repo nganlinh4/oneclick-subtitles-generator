@@ -38,7 +38,7 @@
 .chatterbox-cfg-weight-slider.state-disabled .standard-slider-input,
 .chatterbox-cfg-weight-slider.state-Disabled .standard-slider-input {
   opacity: 0 !important;
-  visibility: hidden !important;
+  visibility: hidden;
   -webkit-appearance: none !important;
   appearance: none !important;
 }
@@ -104,7 +104,7 @@
 .chatterbox-cfg-weight-slider.state-disabled .standard-slider-value-badge,
 .chatterbox-cfg-weight-slider.state-Disabled .standard-slider-value-badge {
   opacity: 0 !important;
-  visibility: hidden !important;
+  visibility: hidden;
 }
 
 /* Ensure the tracks don't create ghost effect */

@@ -70,127 +70,6 @@
   box-shadow: 0 0 0 2px rgba(var(--md-primary-rgb, 93, 95, 239), 0.2);
 }
 
-.range-with-value {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
-}
-
-.range-with-value input[type="range"] {
-  flex: 1;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--md-surface-variant);
-  border-radius: 2px;
-  outline: none;
-}
-
-.range-with-value input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  box-shadow: var(--md-elevation-level1);
-  transition: transform 0.1s var(--md-easing-standard),
-              box-shadow 0.2s var(--md-easing-standard);
-}
-
-.range-with-value input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.range-with-value input[type="range"]::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  border: none;
-  box-shadow: var(--md-elevation-level1);
-  transition: transform 0.1s var(--md-easing-standard),
-              box-shadow 0.2s var(--md-easing-standard);
-}
-
-.range-with-value input[type="range"]::-moz-range-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.range-value {
-  min-width: 48px;
-  text-align: right;
-  font-size: var(--md-body-medium-size, 0.9rem);
-  font-weight: 500;
-  color: var(--md-on-surface);
-  padding: 0.25rem 0.5rem;
-  background-color: var(--md-surface-1);
-  border-radius: var(--md-shape-small);
-}
-
-/* Slider container for narration menu */
-.slider-container {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
-}
-
-.slider-container .range-slider {
-  flex: 1;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--md-surface-variant);
-  border-radius: 2px;
-  outline: none;
-}
-
-.slider-container .range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  box-shadow: var(--md-elevation-level1);
-  transition: transform 0.1s var(--md-easing-standard),
-              box-shadow 0.2s var(--md-easing-standard);
-}
-
-.slider-container .range-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.slider-container .range-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--md-primary);
-  cursor: pointer;
-  border: none;
-  box-shadow: var(--md-elevation-level1);
-  transition: transform 0.1s var(--md-easing-standard),
-              box-shadow 0.2s var(--md-easing-standard);
-}
-
-.slider-container .range-slider::-moz-range-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.slider-container .range-slider:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .position-labels {
   display: flex;
   justify-content: space-between;
@@ -207,16 +86,10 @@
   gap: 0.75rem;
 }
 
-
-
-
-
 /* Fix for ghost duplicate effect in disabled sliders */
 .subtitle-settings-panel .custom-slider-container.disabled {
   pointer-events: none;
 }
-
-
 
 /* Narration status indicator */
 .narration-status-indicator {
@@ -241,18 +114,6 @@
   animation: blink 1s infinite;
 }
 
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(var(--md-primary-rgb, 33, 150, 243), 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(var(--md-primary-rgb, 33, 150, 243), 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(var(--md-primary-rgb, 33, 150, 243), 0);
-  }
-}
-
 @keyframes blink {
   0%, 100% {
     opacity: 1;
@@ -260,59 +121,4 @@
   50% {
     opacity: 0.4;
   }
-}
-
-/* Checkbox styling */
-.checkbox-label {
-  display: flex;
-  align-items: baseline; /* Align by text baseline for perfect alignment */
-  gap: 1rem; /* Further increased gap for better spacing */
-  cursor: pointer;
-  user-select: none;
-  margin-bottom: 0.25rem; /* Add some bottom margin */
-}
-
-.checkbox-label input[type="checkbox"] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--md-outline);
-  border-radius: 2px;
-  background-color: var(--md-surface-1);
-  position: relative;
-  cursor: pointer;
-  transition: background-color 0.2s var(--md-easing-standard),
-              border-color 0.2s var(--md-easing-standard);
-  flex-shrink: 0; /* Prevent checkbox from shrinking */
-  margin: 0; /* Remove any default margins */
-  top: 2px; /* Adjust vertical position to align with text */
-  left: -12px;
-}
-
-.checkbox-label input[type="checkbox"]:checked {
-  background-color: var(--md-primary);
-  border-color: var(--md-primary);
-  margin-left: 12px;
-}
-
-.checkbox-label input[type="checkbox"]:checked::after {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 1px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-.checkbox-label span {
-  font-size: var(--md-body-medium-size, 0.9rem);
-  color: var(--md-on-surface);
-  line-height: 18px; /* Match the height of the checkbox */
-  display: inline-block; /* Ensure proper line height application */
-  position: relative;
-  top: 0; /* Reset vertical alignment */
 }

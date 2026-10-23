@@ -1,9 +1,7 @@
 /* Button styles for translation section */
 
 .translate-button,
-.download-translation-button,
 .reset-translation-button,
-.download-process-button,
 .cancel-translation-button {
   padding: 0 1rem; /* Reduced horizontal padding */
   height: 42px;
@@ -37,21 +35,6 @@
   line-height: 1;
 }
 
-/* Specific styling for the translating content container */
-.translating-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 100%;
-}
-
-/* Specific styling for the translating text */
-.translating-text {
-  line-height: 1;
-  position: relative;
-  top: 0px; /* Adjusted to align with the spinner */
-}
-
 .translate-button:hover:not(:disabled) {
   background-color: var(--md-primary);
   color: var(--md-on-primary);
@@ -70,9 +53,7 @@
 }
 
 .translate-button:disabled,
-.download-translation-button:disabled,
 .reset-translation-button:disabled,
-.download-process-button:disabled,
 .cancel-translation-button:disabled {
   opacity: 0.38;
   cursor: not-allowed;
@@ -107,42 +88,6 @@
   gap: 0.75rem;
 }
 
-.download-translation-button {
-  background-color: rgba(var(--md-primary-rgb), 0.1);
-  color: var(--md-primary);
-}
-
-.download-translation-button:hover {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.download-translation-button.json {
-  background-color: rgba(var(--md-tertiary-rgb), 0.1);
-  color: var(--md-tertiary);
-}
-
-.download-translation-button.txt {
-  background-color: rgba(var(--md-secondary-rgb), 0.1);
-  color: var(--md-secondary);
-}
-
-.download-translation-button.json:hover {
-  background-color: var(--md-tertiary-container);
-  color: var(--md-on-tertiary-container);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.download-translation-button.txt:hover {
-  background-color: var(--md-secondary-container);
-  color: var(--md-on-secondary-container);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
 .reset-translation-button {
   background-color: var(--md-surface-1);
   color: var(--md-on-surface-variant);
@@ -174,23 +119,6 @@
   box-shadow: var(--md-elevation-level1);
 }
 
-.download-process-button {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-}
-
-.download-process-button:hover {
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
-  transform: translateY(-2px);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.download-process-button:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-}
-
 /* Old loading spinner styles removed - now using LoadingIndicator component */
 
 /* Style for the model dropdown in translation section */
@@ -204,7 +132,6 @@
 /* Responsive styles */
 @media (max-width: 768px) {
   .translate-button,
-  .download-translation-button,
   .reset-translation-button,
   .cancel-translation-button {
     padding: 0 0.75rem;

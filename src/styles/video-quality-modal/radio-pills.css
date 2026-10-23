@@ -1,0 +1,183 @@
+/* Video quality modal: version and quality radio pills */
+
+/* Radio pill styling for version options */
+.version-selector .radio-pill {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.version-selector .radio-pill:last-child {
+  margin-bottom: 0;
+}
+
+.version-selector .radio-pill input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.version-selector .radio-pill input[type="radio"]:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* The radio itself is hidden; keyboard focus is shown on its pill. */
+.version-selector .radio-pill input[type="radio"]:focus-visible + .version-pill-label {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+.version-selector .radio-pill .version-pill-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 12px 16px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--md-on-surface);
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+  width: 100%;
+}
+
+.version-selector .radio-pill .version-pill-label:hover {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.version-selector .radio-pill .version-pill-label:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.version-selector .radio-pill input[type="radio"]:checked + .version-pill-label {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+}
+
+.version-selector .radio-pill input[type="radio"]:checked + .version-pill-label:hover {
+  background-color: var(--md-primary-container);
+  opacity: 0.9;
+}
+
+.version-selector .radio-pill input[type="radio"]:checked + .version-pill-label .version-details {
+  color: var(--md-on-primary-container);
+  opacity: 0.8;
+}
+
+/* Version title and details styling for pills */
+.version-title {
+  font-weight: 500;
+  color: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  letter-spacing: 0.1px;
+  margin-bottom: 4px;
+}
+
+.version-details {
+  font-size: 0.7rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.2;
+  opacity: 0.8;
+}
+
+.quality-selector-title {
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+  letter-spacing: 0.1px;
+}
+
+.scanning-indicator,
+.no-qualities {
+  padding: 12px;
+  text-align: center;
+  color: var(--md-on-surface-variant);
+  font-size: 0.8rem;
+  font-style: italic;
+  background-color: var(--md-surface-2);
+  border-radius: 12px;
+  border: 1px dashed rgba(var(--md-on-surface-rgb), 0.2);
+}
+
+.quality-options-list {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+/* Radio pill styling for quality options */
+.quality-options-list .radio-pill {
+  position: relative;
+}
+
+.quality-options-list .radio-pill input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.quality-options-list .radio-pill input[type="radio"]:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* The radio itself is hidden; keyboard focus is shown on its pill. */
+.quality-options-list .radio-pill input[type="radio"]:focus-visible + .quality-pill-label {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+.quality-options-list .radio-pill .quality-pill-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  height: 48px;
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-pill);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--md-on-surface);
+  box-sizing: border-box;
+  box-shadow: var(--md-elevation-level1);
+  width: 100%;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.quality-options-list .radio-pill .quality-pill-label:hover {
+  background-color: var(--md-surface-2);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.quality-options-list .radio-pill .quality-pill-label:active {
+  transform: translateY(0);
+  box-shadow: var(--md-elevation-level1);
+}
+
+.quality-options-list .radio-pill input[type="radio"]:checked + .quality-pill-label {
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-color: var(--md-primary);
+}
+
+.quality-options-list .radio-pill input[type="radio"]:checked + .quality-pill-label:hover {
+  background-color: var(--md-primary-container);
+  opacity: 0.9;
+}

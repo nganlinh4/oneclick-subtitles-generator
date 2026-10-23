@@ -40,17 +40,6 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .custom-modal-header {
   display: flex;
   align-items: center;
@@ -127,14 +116,6 @@
   line-height: 1.5;
 }
 
-/* Delete confirmation text */
-.delete-confirmation-text {
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  margin-bottom: 16px;
-}
-
 /* Form fields */
 .form-field {
   margin-bottom: 20px;
@@ -170,40 +151,7 @@
   outline: none;
 }
 
-/* Input with icon */
-.input-with-icon {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.input-with-icon svg {
-  position: absolute;
-  left: 12px;
-  color: var(--text-secondary);
-  font-size: 18px;
-}
-
-.input-with-icon input {
-  padding-left: 40px;
-}
-
-.helper-text {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
 /* Radio styles moved to centralized radio system in components/buttons.css */
-
-/* Language codes section */
-.language-codes-section {
-  margin-bottom: 20px;
-  padding: 20px;
-  border-radius: 24px;
-  background-color: var(--md-surface-2);
-  border: 1px solid var(--md-outline-variant);
-}
 
 .section-header {
   display: flex;
@@ -217,140 +165,7 @@
   font-size: 20px;
 }
 
-.language-codes-section h5 {
-  margin-top: 0;
-  margin-bottom: 0;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.language-codes-container {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.language-code-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0;
-  height: 36px; /* Match the height of the add button */
-}
-
-.language-code-field input {
-  width: 80px; /* Smaller width to save space */
-  flex: 0 0 auto;
-  height: 36px; /* Match the height of the add button */
-  box-sizing: border-box;
-  padding: 0 12px; /* Adjust padding to maintain consistent height */
-}
-
-/* Add language button */
-.add-language-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 12px;
-  border-radius: 100px; /* Fully rounded pill shape */
-  background-color: transparent;
-  color: var(--md-primary);
-  border: 1px solid var(--md-primary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
-  margin: 0;
-  height: 36px;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.add-language-btn:hover {
-  background-color: rgba(var(--md-primary-rgb), 0.1);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-
-/* Advanced options toggle */
-.advanced-options-toggle {
-  background: none;
-  border: none;
-  color: var(--md-primary);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 10px 16px;
-  margin-bottom: 16px;
-  text-decoration: none;
-  border-radius: 100px;
-  transition: background-color 0.2s;
-  display: inline-flex;
-  align-items: center;
-}
-
-.advanced-options-toggle:hover {
-  background-color: rgba(var(--md-primary-rgb), 0.1);
-}
-
-/* Button styles */
-.confirm-btn, .delete-btn {
-  padding: 8px 24px;
-  border-radius: 100px; /* Fully rounded pill shape */
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 100px;
-  height: 40px;
-}
-
-
-.confirm-btn {
-  background-color: var(--md-primary);
-  color: var(--md-on-primary);
-  border: none;
-}
-
-.confirm-btn:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--md-primary), black 10%);
-}
-
-.delete-btn {
-  background-color: var(--error-color);
-  color: white;
-  border: none;
-}
-
-.delete-btn:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--error-color), black 10%);
-}
-
-/* Disabled button styles */
-.confirm-btn:disabled,
-.delete-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 /* Old loading spinner styles removed - now using LoadingIndicator component */
-
-/* Storage info section */
-.storage-info .model-source {
-  font-weight: 500;
-  margin-top: 12px;
-  margin-bottom: 4px;
-  color: var(--text-primary);
-}
 
 .file-list {
   margin: 0.5rem 0;
@@ -373,7 +188,6 @@
     gap: 8px;
   }
 }
-
 
 /* Harmonize cancel button typography inside custom modal footer */
 .custom-modal-footer .cancel-btn {

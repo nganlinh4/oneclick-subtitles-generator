@@ -38,17 +38,6 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .font-modal-header {
   display: flex;
   align-items: center;
@@ -126,45 +115,6 @@
 .clear-search:hover {
   background-color: var(--md-primary);
   color: var(--md-on-primary);
-  box-shadow: var(--md-elevation-level1);
-}
-
-
-.category-select {
-  width: 100%;
-  padding: 0.75rem 2.5rem 0.75rem 1rem;
-  border: none;
-  border-radius: 32px;
-  background-color: var(--md-surface-2);
-  color: var(--md-on-surface);
-  font-size: 0.875rem;
-  outline: none;
-  transition: background-color 0.2s var(--md-easing-standard);
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-  background-size: 16px;
-  cursor: pointer;
-}
-
-/* Material Symbols Rounded dropdown arrow for category-select */
-.category-select::after {
-  content: "expand_more";
-  font-family: var(--ms-font-family);
-  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--md-on-surface);
-  font-size: 1em;
-}
-
-.category-select:focus {
-  background-color: var(--md-surface-3);
   box-shadow: var(--md-elevation-level1);
 }
 
@@ -280,14 +230,6 @@
   color: var(--md-on-surface);
 }
 
-.font-modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.75rem;
-  background-color: var(--md-surface-1);
-}
-
 .font-count {
   font-size: 0.875rem;
   color: var(--text-secondary);
@@ -296,23 +238,6 @@
 .modal-actions {
   display: flex;
   gap: 0.75rem;
-}
-
-.btn-secondary {
-  padding: 0.5rem 1rem;
-  background-color: var(--md-surface-3);
-  border: none;
-  border-radius: 24px;
-  color: var(--md-on-surface);
-  cursor: pointer;
-  font-size: 0.875rem;
-  transition: all 0.2s var(--md-easing-standard);
-  font-weight: 500;
-}
-
-.btn-secondary:hover {
-  background-color: var(--md-surface-4);
-  box-shadow: var(--md-elevation-level1);
 }
 
 .no-results {
@@ -392,7 +317,6 @@
     margin: 1rem;
   }
 
-
   .font-modal-header h2 {
     font-size: 1.125rem;
   }
@@ -432,11 +356,6 @@
     padding: 0.375rem 0.5rem;
   }
 
-  .font-modal-footer {
-    padding: 1rem 1.25rem;
-    /* Keep horizontal layout - count text and cancel button fit fine on mobile */
-  }
-
   .modal-actions {
     justify-content: center;
   }
@@ -457,10 +376,6 @@
   }
 
   .font-modal-content {
-    padding: 0.75rem 1rem;
-  }
-
-  .font-modal-footer {
     padding: 0.75rem 1rem;
   }
 

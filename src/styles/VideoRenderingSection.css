@@ -1,8 +1,6 @@
 /* Video Rendering Section Styles - Material Design 3 */
 /* Based on background-generator/container.css */
 
-
-
 .video-rendering-section.collapsed,
 .music-generator-section.collapsed {
   max-height: 128px; /* Small enough to show just the header and collapsed content */
@@ -64,8 +62,6 @@
   z-index: 1;
   border-radius: 24px;
 }
-
-
 
 .video-rendering-header .header-left {
   display: flex;
@@ -315,12 +311,6 @@
   border-radius: 8px;
 }
 
-
-
-
-
-
-
 /* Render controls */
 .render-controls {
   display: flex;
@@ -338,34 +328,12 @@
   width: 100%;
 }
 
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: var(--md-surface-variant);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 8px;
-  position: relative;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--md-primary);
-  transition: width var(--md-duration-medium3) var(--md-easing-emphasized);
-  border-radius: 12px;
-  width: 0%; /* Start at 0 */
-}
-
 .progress-text {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 0.9rem;
   color: var(--text-primary);
-}
-
-.progress-status {
-  flex: 1;
 }
 
 .progress-percentage {
@@ -381,15 +349,6 @@
   text-align: center;
 }
 
-
-/* Video results */
-.rendered-video-section video {
-  border-radius: 12px;
-  margin-bottom: 16px;
-  width: 100%;
-  max-width: 600px;
-}
-
 .video-actions {
   display: flex;
   gap: 12px;
@@ -397,39 +356,6 @@
 }
 
 /* Animations - matching background-generator exactly */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes expandContent {
-  from {
-    opacity: 0.7;
-    transform: translateY(-10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes rotate {
   from {
     transform: rotate(0deg);
@@ -438,8 +364,6 @@
     transform: rotate(360deg);
   }
 }
-
-
 
 /* Responsive design */
 @media (max-width: 768px) {
@@ -485,8 +409,6 @@
   }
 
   /* Radio groups already use block display, no changes needed for mobile */
-
-
 
   .render-controls {
     flex-direction: column;

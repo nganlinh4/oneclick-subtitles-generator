@@ -1,0 +1,118 @@
+/* Video processing modal: transcription method selection overlay */
+
+/* Method Selection Overlay */
+.method-selection-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  min-height: 400px;
+  position: relative;
+}
+
+.method-selection-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 2rem;
+}
+
+.method-selection-overlay-header h2 {
+  flex: 1;
+}
+
+.method-selection-overlay-header .close-button-component {
+  position: fixed;
+  right: 1.5rem;
+  top: 1.5rem;
+  z-index: 1300;
+}
+
+.method-selection-overlay h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 0;
+  letter-spacing: 0.25px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.methods-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2rem;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.method-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem;
+  border-radius: var(--md-shape-large);
+  background-color: var(--md-surface-container);
+  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.3);
+  cursor: pointer;
+  transition: all 0.2s var(--md-easing-standard);
+  text-align: center;
+}
+
+.method-column:hover {
+  background-color: var(--md-surface-container-high);
+  border-color: var(--md-primary);
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-2px);
+}
+
+.method-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--md-on-surface);
+  margin-bottom: 1rem;
+  letter-spacing: 0.1px;
+}
+
+.method-column img {
+  height: 155px;
+  object-fit: contain;
+  margin-bottom: 1rem;
+  border-radius: var(--md-shape-medium);
+}
+
+.method-desc {
+  font-size: 0.875rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Responsive for method selection */
+@media (max-width: 768px) {
+  .methods-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .method-selection-overlay {
+    padding: 1rem;
+    min-height: 300px;
+  }
+
+  .method-selection-overlay h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .method-column {
+    padding: 1rem;
+  }
+
+  .method-column img {
+    width: 60px;
+    height: 60px;
+  }
+}

@@ -117,60 +117,6 @@
   min-width: 120px;
 }
 
-.grouping-intensity-select {
-  padding: 8px 12px;
-  border-radius: var(--md-shape-pill); /* Changed to pill shape */
-  border: 1px solid var(--md-outline-variant);
-  background-color: var(--md-surface-1);
-  color: var(--md-on-surface);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--md-elevation-level1);
-  min-width: 120px;
-  appearance: none; /* Remove default appearance */
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  padding-right: 30px; /* Make room for custom dropdown indicator */
-  position: relative; /* For positioning the custom dropdown indicator */
-  /* Custom dropdown indicator - uses currentColor which will inherit from text color */
-}
-
-.grouping-intensity-select:hover:not(:disabled) {
-  border-color: var(--md-primary);
-  box-shadow: var(--md-elevation-level2);
-}
-
-.grouping-intensity-select:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 2px rgba(var(--md-primary-rgb), 0.2);
-}
-
-.grouping-intensity-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background-color: var(--md-surface-1);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline-variant);
-  box-shadow: none;
-  transform: none;
-}
-
-/* Material Symbols Rounded dropdown arrow for grouping-intensity-select */
-.grouping-intensity-select::after {
-  content: "expand_more";
-  font-family: var(--ms-font-family);
-  font-variation-settings: "wght" var(--ms-wght), "GRAD" var(--ms-grad), "opsz" var(--ms-opsz);
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--md-on-surface);
-  font-size: 1em;
-}
-
 /* Tooltip removed - now using HelpIcon for better UX */
 
 /* Grouping Controls Wrapper - Contains switch and info side by side */
@@ -286,17 +232,6 @@
   font-size: 0;
 }
 
-.language-refresh-button:hover {
-  background-color: var(--md-primary-container);
-  color: var(--md-on-primary-container);
-  border-color: var(--md-primary);
-  transform: rotate(90deg);
-}
-
-.language-refresh-button:active {
-  transform: rotate(180deg) scale(0.95);
-}
-
 /* Manual language selection button */
 .language-manual-button {
   display: inline-flex;
@@ -392,10 +327,6 @@
   gap: 8px;
 }
 
-.error-icon {
-  font-size: 1.1rem;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .subtitle-selection-container .radio-pill-group {
@@ -427,14 +358,6 @@
   .language-dropdown-wrapper {
     min-width: unset;
     width: 100%;
-  }
-
-  .language-input-container {
-    min-width: unset;
-  }
-
-  .suggestions-container {
-    max-height: 150px;
   }
 }
 

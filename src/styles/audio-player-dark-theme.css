@@ -6,229 +6,23 @@
  * consistent styling across browsers.
  */
 
-/* Base styles for all audio elements to match Material Design 3 */
-audio.audio-player {
-  border-radius: 24px; /* Pill shape according to MD3 */
-  box-shadow: var(--md-elevation-level1);
-  height: 36px; /* Consistent height for pill-shaped controls */
-  transition: all 0.2s var(--md-easing-standard);
-  color-scheme: auto; /* Respect the system/browser preference by default */
-}
-
-/* Light theme styles */
-[data-theme="light"] audio.audio-player {
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-}
-
-/* Dark theme styles */
-[data-theme="dark"] audio.audio-player {
-  background-color: var(--md-surface-3);
-  border: 1px solid var(--md-outline-variant);
-  color-scheme: dark; /* Tell the browser this is a dark theme element */
-}
-
-/* Audio player in the audio-preview container - more specific styling */
-.audio-preview .audio-player {
-  height: 32px; /* Match the height specified in the original CSS */
-}
-
-/* Dark theme specific for audio-preview */
-[data-theme="dark"] .audio-preview .audio-player {
-  background-color: var(--md-surface-4); /* Slightly darker for contrast */
-  border: 1px solid rgba(var(--md-primary-rgb), 0.2);
-}
-
 /*
  * Chrome/Edge specific styles
  * These target the specific parts of the audio player in Chromium browsers
  * to match Material Design 3 aesthetics
  */
-@media screen and (-webkit-min-device-pixel-ratio: 0) {
-  /* Light theme controls */
-  audio.audio-player::-webkit-media-controls-panel {
-    background-color: var(--md-surface-1);
-    border-radius: 24px; /* Pill shape */
-    padding: 0 8px;
-  }
-
-  audio.audio-player::-webkit-media-controls-current-time-display,
-  audio.audio-player::-webkit-media-controls-time-remaining-display {
-    color: var(--md-on-surface);
-    font-family: var(--font-primary);
-    font-size: 12px;
-  }
-
-  audio.audio-player::-webkit-media-controls-timeline {
-    background-color: var(--md-surface-variant);
-    border-radius: 12px; /* Pill shape for slider */
-    height: 4px; /* Thinner slider track for MD3 look */
-    margin: 0 8px;
-  }
-
-  audio.audio-player::-webkit-media-controls-timeline::-webkit-slider-thumb {
-    background-color: var(--md-primary);
-    border-radius: 50%;
-    width: 12px;
-    height: 12px;
-  }
-
-  audio.audio-player::-webkit-media-controls-volume-slider {
-    background-color: var(--md-surface-variant);
-    border-radius: 12px; /* Pill shape for slider */
-    height: 4px; /* Thinner slider track for MD3 look */
-  }
-
-  /* Dark theme controls */
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-panel {
-    background-color: var(--md-surface-3);
-    border-radius: 24px; /* Pill shape */
-  }
-
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-current-time-display,
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-time-remaining-display {
-    color: var(--md-on-surface);
-  }
-
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-play-button {
-    filter: brightness(1.2); /* Brighter button in dark mode */
-  }
-
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-timeline {
-    background-color: var(--md-surface-variant);
-    border-radius: 12px; /* Pill shape for slider */
-  }
-
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-volume-slider {
-    background-color: var(--md-surface-variant);
-    border-radius: 12px; /* Pill shape for slider */
-  }
-
-  [data-theme="dark"] audio.audio-player::-webkit-media-controls-mute-button {
-    filter: brightness(1.2); /* Brighter button in dark mode */
-  }
-}
 
 /* Firefox specific styles */
 @-moz-document url-prefix() {
-  /* Light theme */
-  audio.audio-player {
-    background-color: var(--md-surface-1);
-    border: 1px solid var(--md-outline-variant);
-    border-radius: 24px; /* Pill shape for MD3 */
-    padding: 2px;
-  }
-
-  /* Dark theme */
-  [data-theme="dark"] audio.audio-player {
-    background-color: var(--md-surface-3);
-    border: 1px solid var(--md-outline-variant);
-    border-radius: 24px; /* Pill shape for MD3 */
-  }
-
-  /* Firefox specific controls - both themes */
-  audio.audio-player::-moz-range-track {
-    background-color: var(--md-surface-variant);
-    border-radius: 12px; /* Pill shape for slider */
-    height: 4px; /* Thinner slider track for MD3 look */
-  }
-
-  audio.audio-player::-moz-range-thumb {
-    background-color: var(--md-primary);
-    border-radius: 50%;
-    border: none;
-    width: 12px;
-    height: 12px;
-  }
 }
 
 /* Safari specific styles */
-@media not all and (min-resolution: 0.001dpcm) {
-  @supports (-webkit-appearance: none) and (stroke-color: transparent) {
-    /* Light theme */
-    audio.audio-player {
-      background-color: var(--md-surface-1);
-      border: 1px solid var(--md-outline-variant);
-      border-radius: 24px; /* Pill shape for MD3 */
-    }
-
-    /* Dark theme */
-    [data-theme="dark"] audio.audio-player {
-      background-color: var(--md-surface-3);
-      border: 1px solid var(--md-outline-variant);
-      border-radius: 24px; /* Pill shape for MD3 */
-    }
-  }
-}
-
-/* Hover effects for better user experience - Material Design 3 state layers */
-audio.audio-player:hover {
-  box-shadow: var(--md-elevation-level2);
-  transform: translateY(-1px); /* Subtle lift effect on hover */
-  transition: all 0.2s var(--md-easing-standard);
-}
-
-[data-theme="light"] audio.audio-player:hover {
-  border-color: var(--md-primary);
-  background-color: color-mix(in srgb, var(--md-surface-1) 95%, var(--md-primary));
-}
-
-[data-theme="dark"] audio.audio-player:hover {
-  border-color: var(--md-primary);
-  background-color: color-mix(in srgb, var(--md-surface-3) 95%, var(--md-primary));
-}
-
-/* Focus styles for accessibility - Material Design 3 focus states */
-audio.audio-player:focus {
-  outline: 2px solid var(--md-primary);
-  outline-offset: 2px;
-}
-
-/* Active/pressed state - Material Design 3 */
-audio.audio-player:active {
-  transform: translateY(0);
-  box-shadow: var(--md-elevation-level1);
-  transition-duration: 0.1s;
-}
 
 /* Styles for the audio player container */
 .audio-player-container {
   background-color: transparent;
   transition: all 0.2s var(--md-easing-standard);
   min-width: 300px;
-}
-
-/* Ensure consistent styling in the narration results section */
-.results-list .audio-player {
-  border-radius: 24px; /* Pill shape for MD3 */
-  margin: 4px 0;
-}
-
-[data-theme="light"] .results-list .audio-player {
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-}
-
-[data-theme="dark"] .results-list .audio-player {
-  background-color: var(--md-surface-3);
-  border: 1px solid var(--md-outline-variant);
-}
-
-/* Playing state - Material Design 3 state indication */
-.audio-player.playing,
-.result-item.playing .audio-player {
-  border-color: var(--md-primary);
-  box-shadow: 0 0 0 1px var(--md-primary);
-}
-
-[data-theme="light"] .audio-player.playing,
-[data-theme="light"] .result-item.playing .audio-player {
-  background-color: color-mix(in srgb, var(--md-surface-1) 90%, var(--md-primary));
-}
-
-[data-theme="dark"] .audio-player.playing,
-[data-theme="dark"] .result-item.playing .audio-player {
-  background-color: color-mix(in srgb, var(--md-surface-3) 90%, var(--md-primary));
 }
 
 /* Ensure the audio player in the audio-preview has proper contrast */
@@ -270,96 +64,6 @@ audio.audio-player:active {
   border: 1px solid rgba(var(--md-primary-rgb), 0.2);
 }
 
-/* Add a subtle transition when switching between themes */
-audio.audio-player {
-  transition: background-color 0.3s var(--md-easing-standard),
-              border-color 0.3s var(--md-easing-standard),
-              box-shadow 0.3s var(--md-easing-standard),
-              transform 0.2s var(--md-easing-standard);
-}
-
-/* Custom audio progress bar styling - matches Material Design 3 */
-.audio-progress {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 4px;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 2px;
-  outline: none;
-  transition: all 0.2s var(--md-easing-standard);
-}
-
-/* Light theme progress bar */
-[data-theme="light"] .audio-progress {
-  background: var(--md-outline-variant);
-}
-
-/* Dark theme progress bar */
-[data-theme="dark"] .audio-progress {
-  background: var(--md-outline-variant);
-}
-
-/* Track styling for WebKit browsers */
-.audio-progress::-webkit-slider-track {
-  width: 100%;
-  height: 4px;
-  background: var(--md-outline-variant);
-  border-radius: 2px;
-  cursor: pointer;
-}
-
-/* Thumb styling for WebKit browsers */
-.audio-progress::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  background: var(--md-primary);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s var(--md-easing-standard);
-}
-
-.audio-progress::-webkit-slider-thumb:hover {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  transform: scale(1.1);
-}
-
-/* Track and thumb for Firefox */
-.audio-progress::-moz-range-track {
-  width: 100%;
-  height: 4px;
-  background: var(--md-outline-variant);
-  border-radius: 2px;
-  cursor: pointer;
-  border: none;
-}
-
-.audio-progress::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: var(--md-primary);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s var(--md-easing-standard);
-}
-
-.audio-progress::-moz-range-thumb:hover {
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  transform: scale(1.1);
-}
-
-/* Focus styles for accessibility */
-.audio-progress:focus {
-  outline: 2px solid var(--md-primary);
-  outline-offset: 2px;
-}
-
 /* Custom audio player container styling */
 .custom-audio-player {
   display: flex;
@@ -384,14 +88,4 @@ audio.audio-player {
 .custom-audio-player:hover {
   box-shadow: var(--md-elevation-level2);
   transform: translateY(-1px);
-}
-
-/* Time display styling */
-.custom-audio-player .time-display {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--md-on-surface);
-  white-space: nowrap;
-  min-width: 60px;
-  text-align: center;
 }

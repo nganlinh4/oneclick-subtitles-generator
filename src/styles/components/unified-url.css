@@ -132,17 +132,6 @@
   box-shadow: 0 2px 6px rgba(0, 123, 255, 0.2);
 }
 
-.dark-theme .unified-url-input .site-chip {
-  background-color: var(--background-tertiary-dark, #2a2a2a);
-  border-color: var(--border-color-dark, #444);
-}
-
-.dark-theme .unified-url-input .more-sites-chip {
-  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.15);
-  color: var(--primary-color, #0078d7);
-  border-color: rgba(var(--primary-rgb, 0, 123, 255), 0.3);
-}
-
 /* Selected video preview */
 .unified-url-input .selected-video-preview {
   display: flex;
@@ -266,7 +255,6 @@
   box-shadow: none;
 }
 
-
 /* History dropdown */
 .unified-url-input .history-dropdown-container {
   position: relative;
@@ -289,8 +277,6 @@
   border: 1px solid var(--primary-color);
   border-top: none;
 }
-
-
 
 .unified-url-input .history-header {
   display: flex;
@@ -339,20 +325,6 @@
 
 .unified-url-input .history-list::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-secondary);
-}
-
-/* Dark theme scrollbar */
-.dark-theme .unified-url-input .history-list {
-  scrollbar-color: var(--border-color-dark, #555) var(--background-secondary-dark, #2a2a2a);
-}
-
-.dark-theme .unified-url-input .history-list::-webkit-scrollbar-track {
-  background: var(--background-secondary-dark, #2a2a2a);
-}
-
-.dark-theme .unified-url-input .history-list::-webkit-scrollbar-thumb {
-  background-color: var(--border-color-dark, #555);
-  border: 2px solid var(--background-secondary-dark, #2a2a2a);
 }
 
 .unified-url-input .history-item {
@@ -439,53 +411,6 @@
   text-transform: capitalize;
   font-weight: 500;
   letter-spacing: 0.01em;
-}
-
-/* Dark mode adjustments */
-.dark-theme .unified-url-input .url-field {
-  background-color: var(--background-primary-dark, #1e1e1e);
-  border-color: var(--border-color-dark, #444);
-  color: #ffffff;
-}
-
-.dark-theme .unified-url-input .url-field:focus {
-  border-color: var(--primary-color, #0078d7);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb, 0, 123, 255), 0.3);
-}
-
-.dark-theme .unified-url-input .url-field::placeholder {
-  color: rgba(var(--text-tertiary-dark-rgb, 170, 170, 170), 0.8);
-}
-
-.dark-theme .unified-url-input .history-dropdown {
-  background-color: var(--background-primary-dark, #1e1e1e);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border-color: var(--primary-color);
-}
-
-.dark-theme .unified-url-input .history-header {
-  background-color: var(--background-primary-dark, #1e1e1e);
-  border-color: var(--border-color-dark, #444);
-}
-
-.dark-theme .unified-url-input .history-item {
-  border-color: var(--border-color-dark, #444);
-}
-
-.dark-theme .unified-url-input .history-item:hover {
-  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.08);
-}
-
-.dark-theme .unified-url-input .history-item:active {
-  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.12);
-}
-
-.dark-theme .unified-url-input .history-item-source {
-  background-color: rgba(var(--primary-rgb, 0, 123, 255), 0.15);
-}
-
-.dark-theme .unified-url-input .selected-video-preview {
-  background-color: var(--background-tertiary-dark);
 }
 
 @media (max-width: 768px) {

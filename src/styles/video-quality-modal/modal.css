@@ -1,0 +1,228 @@
+/* Video quality modal: container, header, cookie badge, content and option lists */
+
+.video-quality-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  backdrop-filter: blur(4px);
+  isolation: isolate;
+}
+
+.video-quality-modal {
+  background-color: var(--md-surface-1);
+  border-radius: 24px;
+  box-shadow: var(--md-elevation-level3);
+  max-width: 900px;
+  width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fade-in 0.3s ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header - flat design like Background Image Generator */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background-color: var(--md-surface-2);
+  color: var(--md-on-surface);
+  position: relative;
+  z-index: 1;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  letter-spacing: 0.1px;
+}
+
+.header-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: help;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.header-badge:hover {
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+}
+
+/* Cookie enabled state (green) */
+.header-badge.cookie-enabled {
+  background-color: #4caf50;
+  color: white;
+}
+
+.header-badge.cookie-enabled:hover {
+  background-color: #45a049;
+  color: white;
+}
+
+/* Cookie disabled state (blue - not a bad thing) */
+.header-badge.cookie-disabled {
+  background-color: #2196f3;
+  color: white;
+}
+
+.header-badge.cookie-disabled:hover {
+  background-color: #1976d2;
+  color: white;
+}
+
+.header-badge .badge-text {
+  font-size: 0.75rem;
+}
+
+/* Close button styles moved to src/components/common/CloseButton.css */
+
+/* Content - flat design with clean spacing */
+.video-quality-modal .modal-content {
+  padding: 24px;
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--md-surface-1);
+}
+
+.video-info {
+  background-color: var(--md-surface-2);
+  border-radius: 16px;
+  padding: 13px;
+  transition: all 0.2s ease;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-row .label {
+  font-weight: 500;
+  color: var(--md-on-surface);
+  font-size: 0.75rem;
+  letter-spacing: 0.1px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.info-row .value {
+  color: var(--md-on-surface);
+  word-break: break-word;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* Quality Options - flat design with subtle interactions */
+.quality-options {
+  padding-top: 20px;
+}
+
+.quality-options h4 {
+  margin: 0 0 16px 0;
+  color: var(--md-on-surface);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+}
+
+.option-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  background-color: var(--md-surface-2);
+  border-radius: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--md-elevation-level1);
+  border: 1px solid transparent;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.option-item:hover {
+  box-shadow: var(--md-elevation-level2);
+  transform: translateY(-1px);
+}
+
+.option-item:has(input:checked) {
+  background-color: var(--md-surface-3);
+  border: 1px solid rgba(var(--md-on-surface-rgb), 0.12);
+  box-shadow: var(--md-elevation-level2);
+}
+
+.option-item input[type="radio"] {
+  margin: 0;
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--md-on-surface);
+  flex-basis: auto;
+  max-width: 16px;
+}
+
+.option-content {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.option-title {
+  font-weight: 500;
+  color: var(--md-on-surface);
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  letter-spacing: 0.1px;
+}
+
+.option-description {
+  font-size: 0.8rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.4;
+}
+
+/* Nested selectors - flat design with clean indentation */
+.version-selector,
+.quality-selector {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background-color: var(--md-surface-3);
+  border-radius: 12px;
+  border-left: 3px solid rgba(var(--md-on-surface-rgb), 0.2);
+}

@@ -28,11 +28,6 @@
   visibility: hidden;
 }
 
-/* Ensure the thumb doesn't create ghost effect */
-.narration-row.gemini-concurrent-clients-row .slider-with-value .custom-slider-container.disabled .custom-slider-thumb {
-  box-shadow: none;
-}
-
 /* Additional fix for ghost duplicate effect */
 .narration-row.gemini-concurrent-clients-row .slider-with-value .custom-slider-container.disabled {
   filter: grayscale(30%);

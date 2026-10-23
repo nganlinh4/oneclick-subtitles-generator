@@ -110,33 +110,6 @@
   background-color: var(--md-surface-2);
 }
 
-.input-with-toggle {
-  display: flex;
-  position: relative;
-}
-
-/* Material Design 3 pill-style input */
-.input-with-toggle input {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: var(--md-body-medium-size);
-  width: 100%;
-  background-color: var(--md-surface-1);
-  color: var(--md-on-surface);
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-  box-shadow: var(--md-elevation-level1);
-}
-
-/* Material Design 3 focus and hover states for input */
-.input-with-toggle input:focus {
-  outline: none;
-  border-color: var(--md-primary);
-  box-shadow: var(--md-elevation-level2);
-}
-
 /* Custom API key input that avoids password fields entirely */
 .custom-api-key-input {
   display: flex;
@@ -189,13 +162,6 @@
   -moz-text-security: disc; /* For Firefox */
 }
 
-/* Fallback for browsers that don't support text-security */
-/* Removed @supports due to linter issues with vendor properties */
-/* .masked-input {
-  color: transparent;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-} */
-
 /* Make sure placeholder is visible even when input is masked */
 .masked-input::placeholder {
   color: var(--md-on-surface-variant);
@@ -211,23 +177,9 @@
 }
 
 /* Animations for showing/hiding keys */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 @keyframes fade-out {
   from { opacity: 1; }
   to { opacity: 0; }
-}
-
-/* Placeholder styling is now handled by the input's placeholder attribute */
-
-.input-with-toggle input:hover {
-  border-color: var(--md-primary-container);
-  background-color: color-mix(in srgb, var(--md-surface-1), var(--md-primary) 5%);
-  transform: translateY(-1px);
-  box-shadow: var(--md-elevation-level2);
 }
 
 /* Material Design 3 pill-style toggle button */
@@ -275,37 +227,6 @@
 
 .api-key-help a:hover {
   text-decoration: underline;
-}
-
-.api-key-link {
-  margin-bottom: 1rem;
-  grid-column: 1 / -1; /* Span full width */
-}
-
-.api-key-link .usage-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--primary-color);
-  text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 20px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  transition: all var(--md-duration-medium2) var(--md-easing-standard);
-}
-
-.api-key-link .usage-link:hover {
-  background-color: color-mix(in srgb, var(--md-surface-1), var(--md-primary) 5%);
-  border-color: var(--md-primary);
-  text-decoration: none;
-}
-
-.api-key-link .usage-link .material-symbols-rounded {
-  font-size: 16px;
-  color: var(--md-primary);
 }
 
 .api-key-instructions {
@@ -442,7 +363,6 @@
   border-color: var(--md-primary);
   background-color: color-mix(in srgb, var(--md-surface-1), var(--md-primary) 5%);
 }
-
 
 .gemini-key-content {
   display: flex;
@@ -652,24 +572,4 @@
 .add-key-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.multiple-keys-info {
-  margin-top: 15px;
-  padding: 24px;
-  background-color: var(--md-surface-1);
-  border-radius: 48px;
-  border-left: 4px solid var(--md-primary);
-}
-
-.multiple-keys-info h4 {
-  margin-top: 0;
-  color: var(--md-primary);
-}
-
-.multiple-keys-info p {
-  margin: 8px 0;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--md-on-surface-variant);
 }

@@ -27,40 +27,6 @@
   border-color: var(--accent-color);
 }
 
-.collapsed-header {
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.collapsed-icon {
-  font-size: 1.2rem;
-}
-
-.collapsed-title {
-  font-weight: 600;
-  color: var(--heading-color);
-  flex: 1;
-}
-
-.collapsed-status {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  background: var(--background-secondary);
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.expand-arrow {
-  color: var(--text-secondary);
-  transition: transform 0.3s ease;
-}
-
-.expand-arrow.expanded {
-  transform: rotate(90deg);
-}
-
 .panel-header {
   padding: 20px 24px;
   background: var(--background-secondary);
@@ -107,12 +73,6 @@
   display: block;
 }
 
-.video-preview-panel .preview-video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 /* Subtitle Overlay - Scoped to VideoPreviewPanel */
 .video-preview-panel .subtitle-overlay {
   pointer-events: none;
@@ -133,54 +93,6 @@
   padding: 12px 16px;
   background: var(--background-secondary);
   border-radius: 6px;
-}
-
-.video-preview-panel .play-pause-btn {
-  background: var(--accent-color);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.video-preview-panel .play-pause-btn:hover {
-  background: var(--accent-color-secondary);
-  transform: scale(1.05);
-}
-
-.video-preview-panel .time-display {
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  font-weight: 500;
-  min-width: 80px;
-}
-
-.video-preview-panel .progress-container {
-  flex: 1;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.video-preview-panel .progress-bar {
-  width: 100%;
-  height: 4px;
-  background: var(--border-color);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.video-preview-panel .progress-fill {
-  height: 100%;
-  background: var(--accent-color);
-  transition: width 0.1s ease;
 }
 
 .video-preview-panel .native-render-controls {
@@ -243,67 +155,15 @@
   cursor: pointer;
 }
 
-/* Preview Info - Scoped to VideoPreviewPanel */
-.video-preview-panel .preview-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 16px;
-  background: var(--background-secondary);
-  border-radius: 6px;
-}
-
 .video-preview-panel .info-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.video-preview-panel .info-label {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.video-preview-panel .info-value {
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-/* No Video Placeholder */
-.no-video-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.no-video-placeholder svg {
-  margin-bottom: 20px;
-  opacity: 0.5;
-}
-
-.no-video-placeholder h3 {
-  margin: 0 0 12px 0;
-  color: var(--heading-color);
-  font-size: 1.2rem;
-}
-
-.no-video-placeholder p {
-  margin: 0;
-  font-size: 0.9rem;
-  max-width: 300px;
-  line-height: 1.5;
-}
-
 /* Responsive Design - Scoped to VideoPreviewPanel */
 @media (max-width: 768px) {
-  .video-preview-panel .panel-header,
-  .video-preview-panel .collapsed-header {
+  .video-preview-panel .panel-header {
     padding: 16px 20px;
   }
 
@@ -314,43 +174,10 @@
     gap: 8px;
   }
 
-  .video-preview-panel .time-display {
-    min-width: auto;
-    font-size: 0.8rem;
-  }
-
-  .video-preview-panel .play-pause-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .video-preview-panel .preview-info {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 12px;
-  }
-
   .video-preview-panel .info-row {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
-  }
-
-  .video-preview-panel .no-video-placeholder {
-    padding: 40px 20px;
-  }
-
-  .video-preview-panel .no-video-placeholder svg {
-    width: 48px;
-    height: 48px;
-  }
-
-  .video-preview-panel .no-video-placeholder h3 {
-    font-size: 1.1rem;
-  }
-
-  .video-preview-panel .no-video-placeholder p {
-    font-size: 0.85rem;
   }
 }
 
@@ -370,29 +197,10 @@
   }
 }
 
-/* Focus styles for accessibility - Scoped to VideoPreviewPanel */
-.video-preview-panel .play-pause-btn:focus {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
-
-.video-preview-panel .progress-container:focus {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
-
-/* Loading state for video - Scoped to VideoPreviewPanel */
-.video-preview-panel .preview-video:not([src]) {
-  background: var(--background-secondary);
-}
-
 /* Removed panel-content scrollbar rules to prevent conflicts */
 
 /* High contrast mode support - Scoped to VideoPreviewPanel */
 @media (prefers-contrast: high) {
-  .video-preview-panel .progress-bar {
-    border: 1px solid var(--text-primary);
-  }
 
   .video-preview-panel .subtitle-overlay div {
     border: 1px solid var(--text-primary);
@@ -403,14 +211,6 @@
 @media (prefers-reduced-motion: reduce) {
   .video-preview-panel .subtitle-overlay div {
     animation: none;
-  }
-
-  .video-preview-panel .play-pause-btn:hover {
-    transform: none;
-  }
-
-  .video-preview-panel .expand-arrow {
-    transition: none;
   }
 }
 

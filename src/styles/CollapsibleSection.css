@@ -109,22 +109,6 @@
               transform var(--md-duration-medium3) var(--md-easing-emphasized);
 }
 
-/* Animations */
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes expandContent {
-  from { opacity: 0.7; transform: translateY(-10px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 /* Light mode adjustments - make buttons whiter */
 [data-theme="light"] .collapse-button {
   background-color: rgba(255, 255, 255, 0.75);

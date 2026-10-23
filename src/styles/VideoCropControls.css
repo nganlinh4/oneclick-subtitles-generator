@@ -136,14 +136,6 @@
   background: color-mix(in srgb, var(--md-error), transparent 92%);
 }
 
-.aspect-transform-separator {
-  width: 1px;
-  height: 24px;
-  background: color-mix(in srgb, var(--md-outline-variant), transparent 40%);
-  align-self: center;
-  margin: 0 6px;
-}
-
 /* Backwards-compatible class name used in JS markup */
 .aspect-separator {
   width: 1px;
@@ -221,10 +213,6 @@
   .aspect-btn { padding: 6px 8px; font-size: 12px; }
   .flip-btn { min-width: 36px; height: 32px; padding: 6px 8px; border-radius: 12px; font-size: 12px; }
   .aspect-separator { height: 16px; margin-left: 6px; margin-right: 6px; }
-}
-
-.aspect-icon {
-  font-size: 16px;
 }
 
 .aspect-label {
@@ -455,37 +443,9 @@
     background-color: var(--md-surface-variant, #49454f);
   }
 
-  .crop-toggle-button {
-    background-color: var(--md-surface, #1c1b1f);
-    color: var(--md-on-surface, #e6e1e5);
-    border-color: var(--md-outline, #938f99);
-  }
-
-  .crop-toggle-button:hover {
-    background-color: var(--md-surface-container, #211f26);
-  }
-
-  .crop-toggle-button.active {
-    background-color: var(--md-primary, #d0bcff);
-    color: var(--md-on-primary, #381e72);
-  }
-
-  .aspect-ratio-selector select,
-  .reset-crop-button {
-    background-color: var(--md-surface, #1c1b1f);
-    color: var(--md-on-surface, #e6e1e5);
-    border-color: var(--md-outline, #938f99);
-  }
-
-  .crop-info {
-    background-color: var(--md-surface, #1c1b1f);
-    border-color: var(--md-outline-variant, #49454f);
-  }
-
   .crop-handle {
     background-color: #fff;
     border-color: var(--md-primary, #d0bcff);
   }
-
 
 }

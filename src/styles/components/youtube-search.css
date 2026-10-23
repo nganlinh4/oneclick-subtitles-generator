@@ -11,12 +11,6 @@
   padding: 1.5rem;
 }
 
-.search-label {
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
-}
-
 .search-input-wrapper {
   position: relative;
   display: flex;
@@ -186,32 +180,12 @@
   animation: scale-in 0.3s ease-out;
 }
 
-.thumbnail-container {
-  flex-shrink: 0;
-  width: 160px;
-  height: 90px;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 6px var(--shadow-color);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.thumbnail-container:hover {
-  transform: scale(1.03);
-  box-shadow: 0 4px 10px var(--shadow-color);
-}
-
 .thumbnail {
   border-radius: 32px;
   height: 100%;
   object-fit: cover;
   transition: transform 0.5s ease;
 }
-
-.thumbnail-container:hover .thumbnail {
-  transform: scale(1.1);
-}
-
 
 .video-title {
   font-size: 1.1rem;

@@ -64,14 +64,6 @@
   border-color: var(--tooltip-bg, #fff) transparent transparent transparent;
 }
 
-/* Smart text balance for tooltip content */
-.balanced-text {
-  text-wrap: balance;
-  -webkit-text-wrap: balance;
-  word-break: keep-all;
-  hyphens: auto;
-}
-
 /* Theme variables for light/dark using Material tokens */
 :root[data-theme='light'] .oc-tooltip-content {
   --tooltip-bg: #ffffff;

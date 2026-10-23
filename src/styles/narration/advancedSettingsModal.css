@@ -139,20 +139,6 @@
   flex-shrink: 0;
 }
 
-/* Animation */
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(30px) scale(0.95);
-    filter: blur(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
-  }
-}
-
 /* Responsive styles */
 @media (max-width: 768px) {
   .advanced-settings-modal {

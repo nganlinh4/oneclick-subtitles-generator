@@ -26,11 +26,6 @@
   visibility: hidden;
 }
 
-/* Ensure the thumb doesn't create ghost effect */
-.subtitle-settings-panel.narration-panel .slider-with-value .custom-slider-container.disabled .custom-slider-thumb {
-  box-shadow: none;
-}
-
 /* Additional fix for ghost duplicate effect */
 .subtitle-settings-panel.narration-panel .slider-with-value .custom-slider-container.disabled {
   filter: grayscale(30%);

@@ -125,17 +125,9 @@
     min-width: 250px; /* Ensure minimum width on mobile */
   }
 
-
   /* Responsive reference content row */
   .reference-content-row {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .reference-content-row .switch-container {
-    margin-top: 0.75rem;
-    width: 100%;
-    justify-content: flex-start;
-    padding: 0.75rem;
   }
 }

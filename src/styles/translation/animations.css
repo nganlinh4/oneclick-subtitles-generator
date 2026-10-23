@@ -1,41 +1,5 @@
 /* Translation section animations */
 
-/* Fade in animation for translation section elements */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* Slide up animation for translation section elements */
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Fade out animation for translation section elements */
-@keyframes fadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-/* Slide in from right animation */
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 /* Slide in from left animation */
 @keyframes slideInLeft {
   from {
@@ -150,7 +114,6 @@
 
 /* Animation for sliders - Smooth zoom with soft landing */
 .slider-with-value,
-.slider-control,
 .standard-slider-container {
   animation: subtleZoomIn 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
   animation-fill-mode: both;
@@ -184,23 +147,4 @@
   animation: slideUp var(--md-duration-medium3) var(--md-easing-emphasized);
   animation-fill-mode: both;
   animation-delay: 300ms;
-}
-
-/* Animations for preview content */
-.preview-subtitle {
-  animation: slideInRight var(--md-duration-medium2) var(--md-easing-emphasized);
-  animation-fill-mode: both;
-}
-
-/* Staggered animations for preview subtitles */
-.preview-subtitle:nth-child(1) { animation-delay: 350ms; }
-.preview-subtitle:nth-child(2) { animation-delay: 400ms; }
-.preview-subtitle:nth-child(3) { animation-delay: 450ms; }
-.preview-subtitle:nth-child(4) { animation-delay: 500ms; }
-.preview-subtitle:nth-child(5) { animation-delay: 550ms; }
-
-.preview-more {
-  animation: fadeIn var(--md-duration-medium2) var(--md-easing-standard);
-  animation-fill-mode: both;
-  animation-delay: 600ms;
 }

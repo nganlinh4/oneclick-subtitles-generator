@@ -1,0 +1,502 @@
+/* Subtitle preset button looks, part 2: Kawaii through Forest */
+
+/* Kawaii Preset - Cute Japanese */
+.preset-buttons .pill-button:nth-child(16) {
+  background: linear-gradient(135deg, #ffffff 0%, #ffb6c1 100%);
+  color: #ff69b4;
+  border: 3px solid #ff69b4;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 600;
+  border-radius: 25px;
+  text-shadow: 1px 1px 2px rgba(255, 182, 193, 0.8);
+  box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(16)::after {
+  content: '♡';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  font-size: 0.6rem;
+  color: #ff69b4;
+  animation: kawaii-bounce 2s infinite;
+}
+
+@keyframes kawaii-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.preset-buttons .pill-button:nth-child(16):hover {
+  background: linear-gradient(135deg, #ffb6c1 0%, #ffc0cb 100%);
+  box-shadow: 0 6px 20px rgba(255, 105, 180, 0.5);
+}
+
+.preset-buttons .pill-button:nth-child(16).primary {
+  background: linear-gradient(135deg, #ffc0cb 0%, #ffffff 100%);
+  border-color: #ff1493;
+  color: #ff1493;
+  box-shadow: 0 0 0 2px rgba(255, 20, 147, 0.3), 0 6px 20px rgba(255, 105, 180, 0.6);
+}
+
+/* Grunge Preset - Raw edgy */
+.preset-buttons .pill-button:nth-child(17) {
+  background: linear-gradient(135deg, #2f2f2f 0%, #1a1a1a 100%);
+  color: #ffffff;
+  border: none;
+  font-family: 'Impact', sans-serif;
+  font-weight: 900;
+  border-radius: 0;
+  text-shadow: 2px 2px 4px #000000;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.8);
+  position: relative;
+  overflow: hidden;
+}
+
+.preset-buttons .pill-button:nth-child(17)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.1) 2px,
+    rgba(255, 255, 255, 0.1) 4px
+  );
+  opacity: 0.3;
+}
+
+.preset-buttons .pill-button:nth-child(17):hover {
+  background: linear-gradient(135deg, #404040 0%, #2f2f2f 100%);
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.9);
+}
+
+.preset-buttons .pill-button:nth-child(17).primary {
+  background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 0 2px #666666, 0 4px 12px rgba(0, 0, 0, 0.9);
+}
+
+/* Corporate Preset - Professional business */
+.preset-buttons .pill-button:nth-child(18) {
+  background: linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%);
+  color: #2c3e50;
+  border: 1px solid #95a5a6;
+  font-family: 'Open Sans', sans-serif;
+  font-weight: 400;
+  border-radius: 5px;
+  text-shadow: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.preset-buttons .pill-button:nth-child(18):hover {
+  background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.preset-buttons .pill-button:nth-child(18).primary {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: #ffffff;
+  border-color: #2980b9;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Anime Preset - Japanese animation */
+.preset-buttons .pill-button:nth-child(19) {
+  background: linear-gradient(135deg, #ff6b9d 0%, #ff8fab 100%);
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  border-radius: 15px;
+  text-shadow: 1px 1px 3px rgba(255, 20, 147, 0.8);
+  box-shadow: 0 4px 15px rgba(255, 107, 157, 0.4);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(19)::before {
+  content: '★';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  font-size: 0.55rem;
+  color: #ffff00;
+  animation: anime-sparkle 1.5s infinite;
+}
+
+@keyframes anime-sparkle {
+  0%, 100% { opacity: 1; transform: rotate(0deg); }
+  50% { opacity: 0.5; transform: rotate(180deg); }
+}
+
+.preset-buttons .pill-button:nth-child(19):hover {
+  background: linear-gradient(135deg, #ff8fab 0%, #ffb3c6 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 157, 0.6);
+}
+
+.preset-buttons .pill-button:nth-child(19).primary {
+  background: linear-gradient(135deg, #ff1493 0%, #ff6b9d 100%);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5), 0 6px 20px rgba(255, 20, 147, 0.7);
+}
+
+/* Vaporwave Preset - 80s aesthetic */
+.preset-buttons .pill-button:nth-child(20) {
+  background: linear-gradient(135deg, #1a0033 0%, #330066 100%);
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  background-image: linear-gradient(45deg, #ff00ff 0%, #00ffff 100%);
+  border: 2px solid #ff00ff;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 300;
+  border-radius: 0;
+  text-shadow: 0 0 10px #ff00ff;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.4), inset 0 0 20px rgba(0, 255, 255, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.preset-buttons .pill-button:nth-child(20):hover {
+  background: linear-gradient(135deg, #330066 0%, #4d0099 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(255, 0, 255, 0.6), inset 0 0 30px rgba(0, 255, 255, 0.2);
+  text-shadow: 0 0 15px #ff00ff, 0 0 15px #00ffff;
+}
+
+.preset-buttons .pill-button:nth-child(20).primary {
+  background: linear-gradient(135deg, #4d0099 0%, #1a0033 100%);
+  border-color: #00ffff;
+  box-shadow: 0 0 35px rgba(0, 255, 255, 0.8), inset 0 0 35px rgba(255, 0, 255, 0.3);
+}
+
+/* Steampunk Preset - Victorian industrial */
+.preset-buttons .pill-button:nth-child(21) {
+  background: linear-gradient(135deg, #2f1b14 0%, #8b4513 100%);
+  color: #cd853f;
+  border: 2px solid #8b4513;
+  font-family: 'Cinzel', serif;
+  font-weight: 600;
+  border-radius: 8px;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 3px 10px rgba(139, 69, 19, 0.4), inset 0 1px 0 rgba(205, 133, 63, 0.3);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(21)::before {
+  content: '⚙';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 0.5rem;
+  color: #cd853f;
+  animation: steampunk-rotate 4s linear infinite;
+}
+
+@keyframes steampunk-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.preset-buttons .pill-button:nth-child(21):hover {
+  background: linear-gradient(135deg, #8b4513 0%, #a0522d 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px rgba(139, 69, 19, 0.6), inset 0 2px 0 rgba(205, 133, 63, 0.5);
+}
+
+.preset-buttons .pill-button:nth-child(21).primary {
+  background: linear-gradient(135deg, #654321 0%, #2f1b14 100%);
+  border-color: #daa520;
+  color: #daa520;
+  box-shadow: 0 0 0 1px #daa520, 0 5px 15px rgba(218, 165, 32, 0.4);
+}
+
+/* Noir Preset - Film noir drama */
+.preset-buttons .pill-button:nth-child(22) {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  color: #ffffff;
+  border: none;
+  font-family: 'Bebas Neue', sans-serif;
+  font-weight: 400;
+  border-radius: 0;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(22)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.preset-buttons .pill-button:nth-child(22):hover::before {
+  opacity: 1;
+}
+
+.preset-buttons .pill-button:nth-child(22):hover {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.9), inset 0 2px 0 rgba(255, 255, 255, 0.2);
+}
+
+.preset-buttons .pill-button:nth-child(22).primary {
+  background: linear-gradient(135deg, #333333 0%, #000000 100%);
+  box-shadow: 0 0 0 2px #666666, 0 12px 24px rgba(0, 0, 0, 0.9);
+}
+
+/* Pastel Preset - Soft dreamy */
+.preset-buttons .pill-button:nth-child(23) {
+  background: linear-gradient(135deg, #f8f8ff 0%, #e6e6fa 100%);
+  color: #6b5b95;
+  border: 2px solid #dda0dd;
+  font-family: 'Quicksand', sans-serif;
+  font-weight: 500;
+  border-radius: 20px;
+  text-shadow: 1px 1px 2px rgba(230, 230, 250, 0.8);
+  box-shadow: 0 4px 12px rgba(221, 160, 221, 0.3);
+}
+
+.preset-buttons .pill-button:nth-child(23):hover {
+  background: linear-gradient(135deg, #e6e6fa 0%, #dda0dd 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(221, 160, 221, 0.5);
+}
+
+.preset-buttons .pill-button:nth-child(23).primary {
+  background: linear-gradient(135deg, #dda0dd 0%, #da70d6 100%);
+  color: #ffffff;
+  border-color: #da70d6;
+  box-shadow: 0 0 0 2px rgba(218, 112, 214, 0.3), 0 6px 18px rgba(221, 160, 221, 0.6);
+}
+
+/* Bold Preset - Maximum impact */
+.preset-buttons .pill-button:nth-child(24) {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  color: #ffffff;
+  border: 3px solid #ff0000;
+  font-family: 'Anton', sans-serif;
+  font-weight: 400;
+  border-radius: 5px;
+  text-shadow: 2px 2px 0px #ff0000, -2px -2px 0px #ff0000;
+  box-shadow: 0 0 15px rgba(255, 0, 0, 0.5), inset 0 0 15px rgba(255, 0, 0, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.preset-buttons .pill-button:nth-child(24):hover {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 0 25px rgba(255, 0, 0, 0.7), inset 0 0 25px rgba(255, 0, 0, 0.2);
+  text-shadow: 3px 3px 0px #ff0000, -3px -3px 0px #ff0000;
+}
+
+.preset-buttons .pill-button:nth-child(24).primary {
+  background: linear-gradient(135deg, #330000 0%, #000000 100%);
+  border-color: #ff0000;
+  box-shadow: 0 0 30px rgba(255, 0, 0, 0.9), inset 0 0 30px rgba(255, 0, 0, 0.3);
+}
+
+/* Sketch Preset - Hand-drawn */
+.preset-buttons .pill-button:nth-child(25) {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+  color: #2c3e50;
+  border: 2px solid #34495e;
+  font-family: 'Kalam', cursive;
+  font-weight: 400;
+  border-radius: 12px;
+  text-shadow: none;
+  box-shadow: 0 2px 8px rgba(52, 73, 94, 0.2);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(25)::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  border: 1px dashed #7f8c8d;
+  border-radius: 10px;
+  opacity: 0.5;
+}
+
+.preset-buttons .pill-button:nth-child(25):hover {
+  background: linear-gradient(135deg, #f5f5f5 0%, #ecf0f1 100%);
+  transform: translateY(-1px) rotate(1deg);
+  box-shadow: 0 4px 12px rgba(52, 73, 94, 0.3);
+}
+
+.preset-buttons .pill-button:nth-child(25).primary {
+  background: linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%);
+  border-color: #2c3e50;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.3), 0 4px 12px rgba(52, 73, 94, 0.4);
+}
+
+/* Glitch Preset - Digital corruption */
+.preset-buttons .pill-button:nth-child(26) {
+  background: linear-gradient(135deg, #000000 0%, #001100 100%);
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  border-radius: 0;
+  text-shadow: 0 0 10px #00ff00, 1px 0 0 #ff0000, -1px 0 0 #0000ff;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5), inset 0 0 20px rgba(0, 255, 0, 0.1);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.preset-buttons .pill-button:nth-child(26):hover {
+  background: linear-gradient(135deg, #001100 0%, #002200 100%);
+  box-shadow: 0 0 30px rgba(0, 255, 0, 0.7), inset 0 0 30px rgba(0, 255, 0, 0.2);
+  text-shadow: 0 0 15px #00ff00, 3px 0 0 #ff0000, -3px 0 0 #0000ff;
+}
+
+.preset-buttons .pill-button:nth-child(26).primary {
+  background: linear-gradient(135deg, #002200 0%, #000000 100%);
+  border-color: #00ff00;
+  box-shadow: 0 0 35px rgba(0, 255, 0, 0.9), inset 0 0 35px rgba(0, 255, 0, 0.3);
+}
+
+/* Royal Preset - Majestic luxury */
+.preset-buttons .pill-button:nth-child(27) {
+  background: linear-gradient(135deg, #4b0082 0%, #6a0dad 100%);
+  color: #ffd700;
+  border: 3px solid #ffd700;
+  font-family: 'Cinzel', serif;
+  font-weight: 600;
+  border-radius: 10px;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 215, 0, 0.3);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(27)::before {
+  content: '♔';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  color: #ffd700;
+  animation: royal-glow 3s infinite;
+}
+
+@keyframes royal-glow {
+  0%, 100% { text-shadow: 0 0 5px #ffd700; }
+  50% { text-shadow: 0 0 15px #ffd700, 0 0 25px #ffd700; }
+}
+
+.preset-buttons .pill-button:nth-child(27):hover {
+  background: linear-gradient(135deg, #6a0dad 0%, #8a2be2 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6), inset 0 2px 0 rgba(255, 215, 0, 0.5);
+}
+
+.preset-buttons .pill-button:nth-child(27).primary {
+  background: linear-gradient(135deg, #800080 0%, #4b0082 100%);
+  border-color: #ffd700;
+  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.5), 0 6px 20px rgba(255, 215, 0, 0.7);
+}
+
+/* Sunset Preset - Warm gradient */
+.preset-buttons .pill-button:nth-child(28) {
+  background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%);
+  color: #ffffff;
+  border: none;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 500;
+  border-radius: 15px;
+  text-shadow: 1px 1px 3px rgba(139, 69, 19, 0.8);
+  box-shadow: 0 4px 15px rgba(255, 126, 95, 0.4);
+}
+
+.preset-buttons .pill-button:nth-child(28):hover {
+  background: linear-gradient(135deg, #feb47b 0%, #ffcc99 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 126, 95, 0.6);
+}
+
+.preset-buttons .pill-button:nth-child(28).primary {
+  background: linear-gradient(135deg, #e55722 0%, #ff7e5f 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3), 0 6px 20px rgba(229, 87, 34, 0.7);
+}
+
+/* Ocean Preset - Blue gradient */
+.preset-buttons .pill-button:nth-child(29) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+  border: none;
+  font-family: 'Merriweather', serif;
+  font-weight: 400;
+  border-radius: 12px;
+  text-shadow: 1px 1px 3px rgba(15, 20, 25, 0.8);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.preset-buttons .pill-button:nth-child(29):hover {
+  background: linear-gradient(135deg, #764ba2 0%, #8e44ad 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.preset-buttons .pill-button:nth-child(29).primary {
+  background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3), 0 6px 20px rgba(90, 103, 216, 0.7);
+}
+
+/* Forest Preset - Nature green */
+.preset-buttons .pill-button:nth-child(30) {
+  background: linear-gradient(135deg, #2d5016 0%, #228b22 100%);
+  color: #90ee90;
+  border: 1px solid #228b22;
+  font-family: 'Lora', serif;
+  font-weight: 400;
+  border-radius: 8px;
+  text-shadow: 1px 1px 3px rgba(0, 100, 0, 0.8);
+  box-shadow: 0 3px 10px rgba(34, 139, 34, 0.4);
+  position: relative;
+}
+
+.preset-buttons .pill-button:nth-child(30)::before {
+  content: '🌿';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 0.55rem;
+  animation: forest-sway 3s ease-in-out infinite;
+}
+
+@keyframes forest-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+.preset-buttons .pill-button:nth-child(30):hover {
+  background: linear-gradient(135deg, #228b22 0%, #32cd32 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px rgba(34, 139, 34, 0.6);
+}
+
+.preset-buttons .pill-button:nth-child(30).primary {
+  background: linear-gradient(135deg, #006400 0%, #2d5016 100%);
+  border-color: #32cd32;
+  color: #98fb98;
+  box-shadow: 0 0 0 1px #32cd32, 0 5px 15px rgba(50, 205, 50, 0.4);
+}

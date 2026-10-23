@@ -50,7 +50,7 @@
 
   /* Completely hide ALL native scrollbars */
   scrollbar-width: none !important; /* Firefox */
-  -ms-overflow-style: none !important; /* IE and Edge */
+  -ms-overflow-style: none; /* IE and Edge */
 }
 
 /* Force hide webkit scrollbar completely */
@@ -96,7 +96,7 @@
 }
 
 .reference-text:not(:placeholder-shown) {
-  min-height: 80px !important; /* Slightly taller when it has content */
+  min-height: 80px; /* Slightly taller when it has content */
 }
 
 /* Custom scrollbar track */
@@ -182,21 +182,9 @@
   transition: none !important; /* Disable transitions while dragging */
 }
 
-/* Smooth scrolling for the textarea */
-.reference-text {
-  scroll-behavior: smooth;
-}
-
 /* Smooth scrolling */
 .reference-text {
   scroll-behavior: smooth;
-}
-
-/* Switch component */
-.switch-container {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 /* Material Web Switch container in reference content row */
@@ -211,19 +199,6 @@
   align-self: flex-start;
   box-shadow: var(--md-elevation-level1);
   margin-top: 0px;
-}
-
-/* Legacy support - keep for any remaining old switch containers */
-.reference-content-row .switch-container {
-  background-color: var(--md-surface-1);
-  padding: 0.5rem 0.75rem;
-  border-radius: 24px;
-  border: 1px solid var(--md-outline-variant);
-  position: relative;
-  flex-shrink: 0;
-  align-self: flex-start;
-  margin-top: 16px;
-  box-shadow: var(--md-elevation-level1);
 }
 
 /* Switch styling - Material Design toggle */
@@ -242,5 +217,4 @@
   margin: 0;
   padding: 0;
 }
-
 

@@ -192,17 +192,6 @@
 }
 
 /* Scale in animation for modal content */
-@keyframes scaleIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 .delimiter-option {
   width: 36px;
   height: 36px;
@@ -313,30 +302,6 @@
   background-color: var(--md-secondary-container);
   color: var(--md-on-secondary-container);
   border-color: var(--md-secondary);
-}
-
-/* Drop indicator */
-.drop-indicator {
-  width: 4px;
-  height: 40px;
-  background-color: var(--md-primary);
-  border-radius: 2px;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-  100% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
 }
 
 /* Drag and drop styles */

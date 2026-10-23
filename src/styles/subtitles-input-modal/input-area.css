@@ -1,0 +1,281 @@
+/* Subtitles input modal: example text, textarea, keyboard hints, buttons and responsive rules */
+
+/* Light theme example styling */
+[data-theme="light"] .example {
+  background-color: rgba(var(--md-primary-container-rgb), 0.08);
+  border-left: 4px solid var(--primary-color);
+}
+
+.example h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.example pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.subtitles-input-modal-content textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid transparent; /* Transparent border for focus state */
+  background-color: var(--md-surface-2);
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none; /* Remove resize handle */
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(var(--md-primary-rgb), 0.4) rgba(var(--md-outline-variant-rgb), 0.2); /* Firefox */
+  overflow: auto; /* Ensure scrollbar is contained */
+  box-shadow: var(--md-elevation-level1);
+  box-sizing: border-box; /* Ensure padding and border are included in the element's dimensions */
+  will-change: border-color, box-shadow, background-color; /* Hint for browser to optimize these properties */
+  transform: translateZ(0); /* Enable hardware acceleration */
+}
+
+/* Light theme textarea styling */
+[data-theme="light"] .subtitles-input-modal-content textarea {
+  background-color: var(--md-surface);
+  border: none;
+  box-shadow: var(--md-elevation-level1);
+}
+
+/* Dark theme textarea styling */
+[data-theme="dark"] .subtitles-input-modal-content textarea {
+  background-color: rgba(var(--md-surface-variant-rgb), 0.3);
+  /* Removed backdrop-filter which can cause performance issues */
+  border: none;
+  box-shadow: var(--md-elevation-level1);
+}
+
+/* Custom scrollbar for textarea in Webkit browsers */
+.subtitles-input-modal-content textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.subtitles-input-modal-content textarea::-webkit-scrollbar-track {
+  background: rgba(var(--md-outline-variant-rgb), 0.2);
+  border-radius: 8px;
+  margin: 4px; /* Add margin to ensure scrollbar respects rounded corners */
+}
+
+.subtitles-input-modal-content textarea::-webkit-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb), 0.4);
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.subtitles-input-modal-content textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb), 0.6);
+}
+
+/* Dark theme scrollbar adjustments for textarea */
+[data-theme="dark"] .subtitles-input-modal-content textarea::-webkit-scrollbar-track {
+  background: rgba(var(--md-outline-variant-rgb), 0.3);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content textarea::-webkit-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb), 0.5);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb), 0.7);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content textarea {
+  scrollbar-color: rgba(var(--md-primary-rgb), 0.5) rgba(var(--md-outline-variant-rgb), 0.3);
+}
+
+.subtitles-input-modal-content textarea:focus {
+  outline: none;
+  box-shadow: var(--md-elevation-level2);
+  border: 2px solid var(--primary-color);
+  /* No need to adjust padding with box-sizing: border-box */
+}
+
+/* Light theme focus state */
+[data-theme="light"] .subtitles-input-modal-content textarea:focus {
+  background-color: var(--md-surface-1);
+  box-shadow: var(--md-elevation-level2);
+  border: 2px solid var(--primary-color);
+}
+
+/* Dark theme focus state */
+[data-theme="dark"] .subtitles-input-modal-content textarea:focus {
+  background-color: rgba(var(--md-surface-variant-rgb), 0.4);
+  box-shadow: var(--md-elevation-level2);
+  border: 2px solid var(--primary-color);
+}
+
+.keyboard-shortcuts {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+}
+
+.keyboard-shortcuts-left {
+  display: flex;
+  gap: 16px;
+}
+
+.keyboard-shortcuts-right {
+  font-weight: 500;
+  color: var(--md-primary);
+}
+
+.keyboard-shortcuts kbd {
+  background-color: var(--md-surface-2);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 4px;
+  box-shadow: var(--md-elevation-level1);
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--md-on-surface);
+}
+
+/* Light theme kbd styling */
+[data-theme="light"] .keyboard-shortcuts kbd {
+  background-color: var(--md-surface-1);
+  border: 1px solid var(--md-outline);
+}
+
+.subtitles-input-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.subtitles-input-modal-footer .footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitles-input-modal-footer .footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cancel-button, .save-button {
+  padding: 8px 20px;
+  border-radius: 20px; /* Pill shape */
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 100px;
+  height: 36px;
+}
+
+.cancel-button:disabled,
+.save-button:disabled,
+.background-prompt-message:disabled,
+.lyrics-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cancel-button {
+  background-color: transparent;
+  color: var(--primary-color);
+  border: none;
+}
+
+.cancel-button:hover {
+  background-color: rgba(var(--md-primary-rgb), 0.08);
+}
+
+/* Light theme cancel button */
+[data-theme="light"] .cancel-button {
+  color: var(--primary-color);
+}
+
+[data-theme="light"] .cancel-button:hover {
+  background-color: rgba(var(--md-primary-rgb), 0.04);
+}
+
+.save-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  box-shadow: var(--md-elevation-level1);
+}
+
+.save-button:hover {
+  background-color: var(--primary-color-dark);
+  box-shadow: var(--md-elevation-level2);
+}
+
+/* Light theme save button */
+[data-theme="light"] .save-button {
+  box-shadow: var(--md-elevation-level1);
+}
+
+/* Active states for buttons */
+.cancel-button:active {
+  background-color: rgba(var(--md-primary-rgb), 0.12);
+  transform: scale(0.98);
+}
+
+.save-button:active {
+  box-shadow: var(--md-elevation-level1);
+  transform: scale(0.98);
+}
+
+/* Dark mode specific adjustments */
+[data-theme="dark"] .subtitles-input-modal {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .subtitles-input-modal {
+    width: 95%;
+    max-height: 95vh;
+  }
+
+  .keyboard-shortcuts {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .keyboard-shortcuts-left {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Stack explanation and example vertically on small screens */
+  .explanation-example-container {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .explanation, .example {
+    flex: none;
+    width: 100%;
+  }
+
+  .explanation {
+    margin-bottom: 0;
+  }
+}

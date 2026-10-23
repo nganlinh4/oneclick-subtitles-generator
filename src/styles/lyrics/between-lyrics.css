@@ -1,15 +1,5 @@
 /* Between lyrics controls and buttons */
 
-/* Material Design 3 between lyrics controls */
-.between-lyrics-controls {
-  position: absolute;
-  right: 16px; /* Align with the lyric controls */
-  bottom: -16px;
-  display: flex;
-  gap: 8px;
-  z-index: 100; /* Ensure it's above other elements */
-}
-
 /* Material Design 3 FAB buttons for insert and merge */
 .insert-lyric-button,
 .merge-lyrics-button {

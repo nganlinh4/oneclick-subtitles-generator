@@ -1,0 +1,172 @@
+/* Subtitles input modal: overlay, container, header and scrollable content */
+
+.subtitles-input-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  /* Removed backdrop-filter for better performance */
+  animation: overlay-appear 0.5s var(--md-easing-emphasized-decelerate);
+  transition: opacity 0.15s var(--md-easing-emphasized-accelerate);
+  will-change: opacity; /* Hint for browser to optimize opacity changes */
+  transform: translateZ(0); /* Enable hardware acceleration */
+  backdrop-filter:blur(3px)
+}
+
+@keyframes overlay-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.subtitles-input-modal-overlay.closing {
+  opacity: 0;
+}
+
+.subtitles-input-modal {
+  background-color: var(--md-surface-1);
+  border-radius: 32px;
+  box-shadow: var(--md-elevation-level3);
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-appear 0.5s var(--md-easing-emphasized-decelerate);
+  transition: transform 0.2s var(--md-easing-emphasized-accelerate), opacity 0.2s var(--md-easing-emphasized-accelerate);
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  /* Improve rendering performance */
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.subtitles-input-modal.closing {
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
+}
+
+/* Specific adjustments for light theme */
+[data-theme="light"] .subtitles-input-modal {
+  background-color: var(--md-surface);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.subtitles-input-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 16px 24px;
+}
+
+.subtitles-input-modal-header .header-title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.subtitles-input-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+/* Header badge styles - imported from DownloadOnlyModal.css */
+.subtitles-input-modal-header .header-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: default;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  max-width: fit-content;
+}
+
+.subtitles-input-modal-header .header-badge:hover {
+  background-color: var(--md-primary);
+  color: var(--md-on-primary);
+}
+
+.subtitles-input-modal-header .header-badge .badge-text {
+  font-size: 0.75rem;
+}
+
+/* Close button styles moved to src/components/common/CloseButton.css */
+
+.subtitles-input-modal-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--md-primary-rgb), 0.4) rgba(var(--md-outline-variant-rgb), 0);
+}
+
+/* Custom scrollbar for Webkit browsers */
+.subtitles-input-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.subtitles-input-modal-content::-webkit-scrollbar-track {
+  background: rgba(var(--md-outline-variant-rgb), 0.2);
+  border-radius: 10px;
+}
+
+.subtitles-input-modal-content::-webkit-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb), 0.4);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.subtitles-input-modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb), 0.6);
+}
+
+/* Dark theme scrollbar adjustments for modal content */
+[data-theme="dark"] .subtitles-input-modal-content::-webkit-scrollbar-track {
+  background: rgba(var(--md-outline-variant-rgb), 0.3);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content::-webkit-scrollbar-thumb {
+  background: rgba(var(--md-primary-rgb), 0.5);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--md-primary-rgb), 0.7);
+}
+
+[data-theme="dark"] .subtitles-input-modal-content {
+  scrollbar-color: rgba(var(--md-primary-rgb), 0.5) rgba(var(--md-outline-variant-rgb), 0.3);
+}
+
+.explanation-example-container {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  align-items: stretch;
+}
+
+.explanation {
+  flex: 4; /* 40% of the space */
+  color: var(--text-color-secondary);
+  line-height: 1.5;
+  display: flex;
+  align-items: center;
+}

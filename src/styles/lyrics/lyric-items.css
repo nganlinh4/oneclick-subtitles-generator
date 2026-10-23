@@ -71,7 +71,6 @@
   box-shadow: var(--md-elevation-level2);
 }
 
-
 /* Material Design 3 lyric content - improved for multi-line text */
 /* Use top padding (no bottom) to nudge content down without affecting neighbor hover in virtualized lists. */
 .lyric-content {
@@ -185,8 +184,7 @@
 
 /* Material Design 3 unified button styles for all lyric control buttons */
 .edit-lyric-btn,
-.delete-lyric-btn,
-.merge-lyric-btn {
+.delete-lyric-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -209,8 +207,7 @@
 
 /* State layer for hover effect */
 .edit-lyric-btn::before,
-.delete-lyric-btn::before,
-.merge-lyric-btn::before {
+.delete-lyric-btn::before {
   content: '';
   position: absolute;
   top: 0;
@@ -224,14 +221,12 @@
 }
 
 .edit-lyric-btn:hover::before,
-.delete-lyric-btn:hover::before,
-.merge-lyric-btn:hover::before {
+.delete-lyric-btn:hover::before {
   background-color: rgba(0, 0, 0, var(--md-state-hover-opacity));
 }
 
 .edit-lyric-btn:hover,
-.delete-lyric-btn:hover,
-.merge-lyric-btn:hover {
+.delete-lyric-btn:hover {
   transform: scale(1.1);
   box-shadow: var(--md-elevation-level2);
 }
@@ -258,7 +253,6 @@
 .arrow-button svg {
   fill: currentColor;
 }
-
 
 .edit-lyric-btn:hover svg {
   transform: rotate(15deg);
@@ -388,7 +382,6 @@
   overflow: visible;
   padding-right: 0;
 }
-
 
 /* Hide native scrollbar for lyric text (we will use functional custom scrollbar) */
 .lyric-item-container .lyric-text {

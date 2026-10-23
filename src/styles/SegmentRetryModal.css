@@ -32,17 +32,6 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-@keyframes modal-appear {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .segment-retry-modal-header {
   display: flex;
   align-items: center;
@@ -188,15 +177,6 @@
   line-height: 1.5;
 }
 
-.disabled-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 8px;
-  color: var(--warning-color);
-  font-size: 14px;
-}
-
 /* Simplified mode badge removed */
 
 .custom-subtitles {
@@ -292,71 +272,6 @@
   font-size: 13px;
   color: var(--text-color-secondary);
   line-height: 1.4;
-}
-
-.initial-subtitles-preview {
-  padding: 12px;
-  background-color: var(--md-surface-1);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: 8px;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-color);
-  white-space: pre-wrap;
-  max-height: 150px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(var(--md-primary-rgb), 0.4) rgba(var(--md-outline-variant-rgb), 0.2);
-}
-
-/* Light theme preview styling */
-[data-theme="light"] .initial-subtitles-preview {
-  background-color: var(--md-surface);
-  border: 1px solid var(--md-outline);
-}
-
-/* Dark theme preview styling */
-[data-theme="dark"] .initial-subtitles-preview {
-  background-color: rgba(var(--md-surface-variant-rgb), 0.3);
-  backdrop-filter: blur(2px);
-  border: 1px solid rgba(var(--md-outline-variant-rgb), 0.7);
-}
-
-.initial-subtitles-preview::-webkit-scrollbar {
-  width: 8px;
-}
-
-.initial-subtitles-preview::-webkit-scrollbar-track {
-  background: rgba(var(--md-outline-variant-rgb), 0.2);
-  border-radius: 10px;
-}
-
-.initial-subtitles-preview::-webkit-scrollbar-thumb {
-  background: rgba(var(--md-primary-rgb), 0.4);
-  border-radius: 10px;
-  transition: background 0.2s ease;
-}
-
-.initial-subtitles-preview::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--md-primary-rgb), 0.6);
-}
-
-/* Dark theme scrollbar adjustments for initial subtitles preview */
-[data-theme="dark"] .initial-subtitles-preview::-webkit-scrollbar-track {
-  background: rgba(var(--md-outline-variant-rgb), 0.3);
-}
-
-[data-theme="dark"] .initial-subtitles-preview::-webkit-scrollbar-thumb {
-  background: rgba(var(--md-primary-rgb), 0.5);
-}
-
-[data-theme="dark"] .initial-subtitles-preview::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--md-primary-rgb), 0.7);
-}
-
-[data-theme="dark"] .initial-subtitles-preview {
-  scrollbar-color: rgba(var(--md-primary-rgb), 0.5) rgba(var(--md-outline-variant-rgb), 0.3);
 }
 
 .segment-retry-modal-footer {
@@ -608,8 +523,6 @@
   align-items: center;
   gap: 8px;
 }
-
-
 
 .model-option-description {
   font-size: 13px;
