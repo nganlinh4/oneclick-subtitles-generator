@@ -332,7 +332,7 @@ const GeminiSubtitleSourceSelection = ({
                 <input
                   type="radio"
                   id="source-original"
-                  name="subtitle-source"
+                  name="narration-subtitle-source"
                   value="original"
                   checked={subtitleSource === 'original'}
                   onChange={() => handleSourceChange('original')}
@@ -363,7 +363,7 @@ const GeminiSubtitleSourceSelection = ({
                 <input
                   type="radio"
                   id="source-translated"
-                  name="subtitle-source"
+                  name="narration-subtitle-source"
                   value="translated"
                   checked={subtitleSource === 'translated'}
                   onChange={() => handleSourceChange('translated')}

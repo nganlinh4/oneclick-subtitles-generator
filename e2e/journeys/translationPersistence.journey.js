@@ -61,10 +61,10 @@ const seekToFirstCue = async () => {
 
 const modalState = () => browser.execute(() => ({
   open: document.querySelector('.download-options-modal') !== null,
-  selectedSource: document.querySelector('input[name="subtitle-source"]:checked')?.value ?? null,
-  translatedDisabled: document.querySelector('input[name="subtitle-source"][value="translated"]')
+  selectedSource: document.querySelector('.download-options-modal input[name="download-subtitle-source"]:checked')?.value ?? null,
+  translatedDisabled: document.querySelector('.download-options-modal input[name="download-subtitle-source"][value="translated"]')
     ?.disabled ?? null,
-  selectedFormat: document.querySelector('input[name="file-format"]:checked')?.value ?? null,
+  selectedFormat: document.querySelector('.download-options-modal input[name="file-format"]:checked')?.value ?? null,
 }));
 
 const openDownloadCenter = async () => {
@@ -78,12 +78,12 @@ const openDownloadCenter = async () => {
 
 const selectRadio = async (name, value, describeAs) => {
   const state = await modalState();
-  if ((name === 'subtitle-source' ? state.selectedSource : state.selectedFormat) !== value) {
-    await clickControl(`input[name="${name}"][value="${value}"] + .radio-option-card`);
+  if ((name === 'download-subtitle-source' ? state.selectedSource : state.selectedFormat) !== value) {
+    await clickControl(`.download-options-modal input[name="${name}"][value="${value}"] + .radio-option-card`);
   }
   await browser.waitUntil(async () => {
     const current = await modalState();
-    return (name === 'subtitle-source' ? current.selectedSource : current.selectedFormat) === value;
+    return (name === 'download-subtitle-source' ? current.selectedSource : current.selectedFormat) === value;
   }, {
     timeout: 10_000,
     interval: 50,
@@ -93,7 +93,7 @@ const selectRadio = async (name, value, describeAs) => {
 
 const saveDocument = async ({ output, source, format, expected }) => {
   await openDownloadCenter();
-  await selectRadio('subtitle-source', source, `the ${source} subtitle source`);
+  await selectRadio('download-subtitle-source', source, `the ${source} subtitle source`);
   await selectRadio('file-format', format, `the ${format.toUpperCase()} format`);
   const before = snapshotOutputDirectory(output);
   await clickControl('.download-options-modal .download-button');

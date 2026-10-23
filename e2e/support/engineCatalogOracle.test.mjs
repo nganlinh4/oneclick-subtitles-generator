@@ -56,13 +56,12 @@ test('every catalog entry is frozen and every list is frozen (accidental mutatio
   }
 });
 
-test('an installed package accepts exactly ready/installed-stopped/corrupt/update-available', () => {
+test('an installed package accepts exactly installed-on-demand/corrupt/update-available', () => {
   assert.deepEqual(
     expectedCardStatesForPackagePresence(true),
-    ['ready', 'installed-stopped', 'corrupt', 'update-available'],
+    ['installed-on-demand', 'corrupt', 'update-available'],
   );
-  assert.equal(isTruthfulCardState('ready', true), true);
-  assert.equal(isTruthfulCardState('installed-stopped', true), true);
+  assert.equal(isTruthfulCardState('installed-on-demand', true), true);
   assert.equal(isTruthfulCardState('corrupt', true), true);
   assert.equal(isTruthfulCardState('update-available', true), true);
   assert.equal(isTruthfulCardState('not-installed', true), false, (
@@ -84,7 +83,7 @@ test('SETTLED_CARD_STATES excludes the transient checking/status-error probe sta
   assert.equal(SETTLED_CARD_STATES.includes('checking'), false);
   assert.equal(SETTLED_CARD_STATES.includes('status-error'), false);
   assert.equal(SETTLED_CARD_STATES.includes('not-installed'), true);
-  assert.equal(SETTLED_CARD_STATES.includes('ready'), true);
+  assert.equal(SETTLED_CARD_STATES.includes('installed-on-demand'), true);
 });
 
 test('pickNotInstalledEngine finds the first catalog entry with no on-disk directory', () => {

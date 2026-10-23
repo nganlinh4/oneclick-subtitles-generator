@@ -193,7 +193,7 @@ const DownloadOptionsModal = ({
               <label className={`radio-option-base ${!hasOriginal ? 'disabled' : ''}`}>
                 <input
                   type="radio"
-                  name="subtitle-source"
+                  name="download-subtitle-source"
                   value="original"
                   checked={subtitleSource === 'original'}
                   onChange={() => setSubtitleSource('original')}
@@ -206,7 +206,7 @@ const DownloadOptionsModal = ({
               <label className={`radio-option-base ${!hasTranslation ? 'disabled' : ''}`}>
                 <input
                   type="radio"
-                  name="subtitle-source"
+                  name="download-subtitle-source"
                   value="translated"
                   checked={subtitleSource === 'translated'}
                   onChange={() => setSubtitleSource('translated')}

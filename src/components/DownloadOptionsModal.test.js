@@ -101,3 +101,25 @@ test('releases the synchronous lease when failure notification itself throws', a
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(onDownload).toHaveBeenCalledTimes(2);
 });
+
+test('choosing a subtitle source never unchecks another radio group on the page', () => {
+  // Radios outside a form group by name across the whole document; the narration panel's own
+  // source picker must keep its choice while the Download Center changes its.
+  const { container } = render(
+    <>
+      <input type="radio" name="narration-subtitle-source" value="original" defaultChecked readOnly />
+      <DownloadOptionsModal
+        isOpen
+        hasOriginal
+        hasTranslation
+        onClose={vi.fn()}
+        onDownload={vi.fn()}
+        onProcess={vi.fn()}
+      />
+    </>
+  );
+
+  fireEvent.click(container.querySelector('.download-options-modal input[value="translated"]'));
+  expect(container.querySelector('.download-options-modal input[value="translated"]')).toBeChecked();
+  expect(container.querySelector('input[name="narration-subtitle-source"]')).toBeChecked();
+});

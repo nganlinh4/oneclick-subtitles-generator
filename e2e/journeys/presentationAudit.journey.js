@@ -192,7 +192,8 @@ describe('model pickers and appearance settings in the real editor', () => {
     await clickControl('.subtitle-timeline');
     await browser.keys(['\uE009', 'a', '\uE000']);
     await clickControl('.range-action-bar > button:first-child');
-    await clickControl('[data-transcription-method="new"]');
+    // The method was chosen at the first generation above, so the modal now opens directly.
+    await $('.video-processing-modal').waitForDisplayed();
     await capture('vi-enlarged-generation', '.video-processing-modal');
     await clickControl('#generation-model');
     await capture('vi-enlarged-model-menu', '.custom-dropdown-clipper');

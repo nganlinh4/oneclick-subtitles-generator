@@ -51,12 +51,11 @@ export const NARRATION_CATALOG_ENGINES = Object.freeze([
   Object.freeze({ cardId: 'gemini-tts', packageId: 'gemini-tts', proven: false }),
 ]);
 
-// EngineCard.js:67-79: once a package is installed (state !== 'missing'/'unavailable'), the card
-// shows 'ready' (native runtime running) or 'installed-stopped' (not running yet) -- both are
-// truthful for "a package directory exists on disk". 'corrupt'/'update-available' also require an
-// on-disk presence (a corrupt or updatable package is still an installed one).
+// EngineCard.js: an installed native package shows 'installed-on-demand' (its runtime starts when
+// used). 'corrupt'/'update-available' also require an on-disk presence (a corrupt or updatable
+// package is still an installed one).
 const INSTALLED_CARD_STATES = Object.freeze([
-  'ready', 'installed-stopped', 'corrupt', 'update-available',
+  'installed-on-demand', 'corrupt', 'update-available',
 ]);
 const NOT_INSTALLED_CARD_STATES = Object.freeze(['not-installed']);
 
