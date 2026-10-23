@@ -373,7 +373,8 @@ export const LOCAL_MEDIA_RESULT_EXPRESSION = `
       .slice(0, 4)
       .map((element) => (element.textContent ?? '').trim().slice(0, 1024)),
     htmlFileInput: (() => {
-      const input = document.querySelector('input[type="file"]');
+      // Only the media picker's own subtree: SRT import and other panels keep their own inputs.
+      const input = document.querySelector('.input-methods-container input[type="file"]');
       return input instanceof HTMLInputElement
         ? { fileCount: input.files?.length ?? null, value: input.value }
         : null;
