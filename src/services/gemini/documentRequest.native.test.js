@@ -57,6 +57,20 @@ test('native document processing preserves structured title and content', async 
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
+test('only a translated source writes the document in the translation target language', async () => {
+  localStorage.setItem('translation_target_language', 'Korean');
+  runNativeGeminiText.mockResolvedValue({ text: 'Done' });
+  const getDefaultPrompt = vi.fn((text, language) => `${language ?? 'prompt-led'}: ${text}`);
+
+  await runGeminiDocumentRequest({ ...options, getDefaultPrompt });
+  await runGeminiDocumentRequest({ ...options, getDefaultPrompt, source: 'original' });
+  await runGeminiDocumentRequest({ ...options, getDefaultPrompt, source: 'translated' });
+
+  expect(getDefaultPrompt.mock.calls.map(([, language]) => language))
+    .toEqual([null, null, 'Korean']);
+  expect(localStorage.getItem('current_processing_source')).toBeNull();
+});
+
 test('native document processing keeps plain-text fallback semantics', async () => {
   runNativeGeminiText.mockResolvedValue({ text: 'A plain native response' });
 

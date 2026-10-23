@@ -6,7 +6,7 @@
 // YoutubeSearchInput.js checks `!isOAuthEnabled() && !apiKeysSet.youtube` and shows
 // `youtube.noApiKey` ("Please set your YouTube API key in the settings first.") BEFORE it ever calls
 // `searchYouTubeVideos`. Even if that guard were bypassed, src/platform/providerService.js's
-// `requireReadyCredential` throws `credentialNotFound` ("YouTube API key not found") before invoking
+// `requireReadyCredential` throws `credentialNotFound` before invoking
 // the native `youtube_search` command at all -- the credential-free case never crosses the IPC
 // boundary. This journey therefore proves the credential-free REFUSAL boundary honestly, exactly as
 // geminiCredentialBoundary already does for Gemini, instead of pretending to prove search results.

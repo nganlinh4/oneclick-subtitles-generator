@@ -298,14 +298,12 @@ const OnboardingStarryBackground = () => {
     const handleMouseLeave = () => { mouseRef.current.x = null; mouseRef.current.y = null; mouseRef.current.isClicked = false; };
     const handleMouseDown = () => { mouseRef.current.isClicked = true; };
     const handleMouseUp = () => { mouseRef.current.isClicked = false; };
-    const handleThemeChange = () => {}; // Colors are checked on each frame, so no action needed here.
 
     resizeCanvas();
     animate();
 
     const overlay = canvas.parentElement;
     window.addEventListener('resize', resizeCanvas);
-    window.addEventListener('storage', handleThemeChange);
     overlay.addEventListener('mousemove', handleMouseMove);
     overlay.addEventListener('mouseleave', handleMouseLeave);
     overlay.addEventListener('mousedown', handleMouseDown);
@@ -317,7 +315,6 @@ const OnboardingStarryBackground = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resizeCanvas);
-      window.removeEventListener('storage', handleThemeChange);
       if (overlay) {
         overlay.removeEventListener('mousemove', handleMouseMove);
         overlay.removeEventListener('mouseleave', handleMouseLeave);

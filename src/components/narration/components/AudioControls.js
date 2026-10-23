@@ -144,7 +144,7 @@ const AudioControls = ({
                                 onClick={clearReferenceAudio}
                                 title={t('narration.clearReference', 'Clear reference audio')}
                             >
-                                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
+                                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
                             </button>
 
                         </div>

@@ -2,7 +2,7 @@
  * Single source of truth for transcription METHODS (the frontend counterpart of the backend
  * server/engines/asrCatalog.js). Every method — Gemini ('new'/'old'), Parakeet ('nvidia-parakeet'),
  * and each catalog ASR engine — is one descriptor here, so the method dropdown, the modal options
- * body/footer/button, token counting, availability gating, and the runner dispatch all READ from this
+ * body/footer/button, token counting, and the runner dispatch all READ from this
  * registry instead of scattering `method === 'nvidia-parakeet'` / engine-id checks across the app.
  *
  * Descriptor shape:
@@ -11,7 +11,6 @@
  *  - labelKey, labelDefault : i18n for the method dropdown (engine name for ASR)
  *  - optionsPanel  : 'gemini' | 'asr'  (which body the modal renders)
  *  - capabilities  : { segmentation, language, tokenCounting }
- *  - availability  : (ctx) => boolean   ctx = { engineStatus (useEngineStatus result), isVercelMode }
  *  - route         : 'parakeet' | 'asr/<id>'  (AsrAdapter endpoint family; ASR only)
  *  - runnerKey     : key into METHOD_RUNNERS (ASR only)
  *  - supportedLanguagesBadges : truthy when the modal should show the static supported-languages strip
@@ -21,7 +20,6 @@
  */
 
 import { ASR_ENGINES } from './asrEngines';
-import { isDesktopRuntime } from '../../platform/desktopRuntime';
 
 const GEMINI_TRANSCRIBE = {
   id: 'gemini-transcribe',
@@ -30,7 +28,6 @@ const GEMINI_TRANSCRIBE = {
   labelDefault: 'Gemini Transcribe',
   optionsPanel: 'transcribe',
   capabilities: { segmentation: false, language: true, tokenCounting: false },
-  availability: () => isDesktopRuntime(),
 };
 
 const GEMINI_NEW = {
@@ -40,7 +37,6 @@ const GEMINI_NEW = {
   labelDefault: 'Gemini: New Method',
   optionsPanel: 'gemini',
   capabilities: { segmentation: false, language: false, tokenCounting: true },
-  availability: () => true,
 };
 
 const GEMINI_OLD = {
@@ -50,7 +46,6 @@ const GEMINI_OLD = {
   labelDefault: 'Gemini: Old Method',
   optionsPanel: 'gemini',
   capabilities: { segmentation: false, language: false, tokenCounting: true },
-  availability: (ctx) => !ctx.isVercelMode,
 };
 
 const PARAKEET = {
@@ -62,7 +57,6 @@ const PARAKEET = {
   route: 'parakeet',
   runnerKey: 'nvidia-parakeet',
   capabilities: { segmentation: true, language: false, tokenCounting: false },
-  availability: () => isDesktopRuntime(),
   supportedLanguagesBadges: true,
   defaultStrategy: 'sentence',
 };
@@ -76,7 +70,6 @@ const asrDescriptor = (e) => ({
   route: e.route || `asr/${e.id}`,
   runnerKey: e.id,
   capabilities: { segmentation: true, language: !!e.supportsLanguage, tokenCounting: false },
-  availability: () => isDesktopRuntime(),
   supportedLanguageCodes: e.supportedLanguageCodes,
   defaultStrategy: e.defaultStrategy || 'sentence',
 });
@@ -95,15 +88,5 @@ export const supportsLanguage = (method) => !!BY_ID[method]?.capabilities?.langu
 
 // All local (non-Gemini) method ids — for the useSubtitles dispatch/guard (single list).
 export const LOCAL_METHOD_IDS = DESCRIPTORS.filter((d) => d.type === 'asr').map((d) => d.id);
-
-/**
- * Ordered descriptors enriched with computed `available` for the method selector.
- * @param {object} engineStatus the useEngineStatus() result ({ isReady, ... })
- * @param {{ isVercelMode?: boolean }} opts
- */
-export const buildMethodDescriptors = (engineStatus, { isVercelMode = false } = {}) => {
-  const ctx = { engineStatus, isVercelMode };
-  return DESCRIPTORS.map((d) => ({ ...d, available: d.availability(ctx) }));
-};
 
 export { DESCRIPTORS };

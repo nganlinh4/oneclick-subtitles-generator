@@ -22,6 +22,7 @@ import {
 } from '../../platform/subtitleProjectBinding';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 import useQualityProgressTracking from './useQualityProgressTracking';
+import { readActiveMedia, updateActiveMedia } from '../../platform/activeMediaSource';
 
 vi.mock('@tauri-apps/api/core', () => ({ Channel: class Channel {}, invoke: vi.fn() }));
 vi.mock('../../platform/desktopRuntime', () => ({
@@ -110,10 +111,8 @@ let selected;
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  localStorage.setItem('current_video_url', URL);
-  localStorage.setItem('current_file_url', oldMedia.playbackUrl);
-  localStorage.setItem('current_file_name', oldMedia.name);
-  localStorage.setItem('split_result', '{"segments":[]}');
+  updateActiveMedia({ sourceUrl: URL });
+  updateActiveMedia({ playbackUrl: oldMedia.playbackUrl });
   session = Object.freeze({ assetId: OLD_ASSET_ID, cacheId: 'url-cache', projectId: PROJECT_ID });
   selected = oldMedia;
   readNativeMediaSession.mockImplementation(() => session);
@@ -186,9 +185,9 @@ it('publishes the re-downloaded asset as the active media of the same project an
   expect(onMediaReplaced).toHaveBeenCalledExactlyOnceWith(newMedia);
   expect(onMediaReplaced.mock.invocationCallOrder[0])
     .toBeLessThan(onConfirm.mock.invocationCallOrder[0]);
-  expect(localStorage.getItem('current_file_url')).toBe(newMedia.playbackUrl);
-  expect(localStorage.getItem('current_file_name')).toBe(newMedia.name);
-  expect(localStorage.getItem('split_result')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBe(newMedia.playbackUrl);
+  // The playback capability carries the media server's token and never reaches WebView storage.
+  expect(JSON.stringify({ ...localStorage })).not.toContain(newMedia.playbackUrl);
   expect(resolveProjectForCache).not.toHaveBeenCalledWith(expect.anything(), { create: true });
   expect(discardMediaCandidate).not.toHaveBeenCalled();
 });
@@ -210,9 +209,7 @@ it('restores the previous media, pointer and preview when publication fails afte
   expect(session).toEqual({ assetId: OLD_ASSET_ID, cacheId: 'url-cache', projectId: PROJECT_ID });
   expect(openMediaAsset).toHaveBeenCalledExactlyOnceWith(OLD_ASSET_ID);
   expect(onMediaReplaced).toHaveBeenCalledExactlyOnceWith(reopenedOld);
-  expect(localStorage.getItem('current_file_url')).toBe(reopenedOld.playbackUrl);
-  expect(localStorage.getItem('current_file_name')).toBe(oldMedia.name);
-  expect(localStorage.getItem('split_result')).toBe('{"segments":[]}');
+  expect(readActiveMedia().playbackUrl).toBe(reopenedOld.playbackUrl);
   expect(discardMediaCandidate).toHaveBeenCalledExactlyOnceWith(NEW_ASSET_ID);
   expect(onConfirm).not.toHaveBeenCalled();
 });

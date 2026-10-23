@@ -1,15 +1,9 @@
 {
   "title": "Chọn nguồn video",
   "unifiedUrl": "URL bất kỳ",
-  "allSitesUrl": "URL Tất cả trang",
-  "youtubeUrl": "URL YouTube",
   "youtubeSearch": "Tìm kiếm YouTube",
-  "douyinUrl": "URL Douyin",
   "fileUpload": "Tải lên tập tin",
-  "enterYoutubeUrl": "Nhập URL YouTube",
-  "searchForVideos": "Tìm kiếm video",
   "dragDropText": "Kéo & Thả Video hoặc Audio vào đây",
   "orText": "hoặc",
-  "browse": "Nhấp để chọn tập tin",
-  "supportedFormats": "Định dạng hỗ trợ: MP4, MOV, AVI, MP3, WAV, AAC, OGG"
+  "browse": "Nhấp để chọn tập tin"
 }

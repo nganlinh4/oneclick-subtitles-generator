@@ -37,14 +37,10 @@ vi.mock('./GeminiKeysManager', () => ({
 vi.mock('./YoutubeAuthSection', () => ({ default: () => <div /> }));
 
 const defaultProps = {
-  geminiApiKey: '',
-  setGeminiApiKey: vi.fn(),
   youtubeApiKey: '',
   setYoutubeApiKey: vi.fn(),
   geniusApiKey: '',
   setGeniusApiKey: vi.fn(),
-  showGeminiKey: false,
-  setShowGeminiKey: vi.fn(),
   showYoutubeKey: false,
   setShowYoutubeKey: vi.fn(),
   showGeniusKey: false,

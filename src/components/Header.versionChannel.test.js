@@ -5,9 +5,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key, fallback) => fallback ?? _key }),
 }));
 vi.mock('./GeminiHeaderAnimation', () => ({ default: () => null }));
-vi.mock('../platform/startupService', () => ({
-  detectStartupMode: vi.fn().mockResolvedValue({ backendAvailable: true, isVercelMode: false }),
-}));
 vi.mock('../platform/startupUpdateCoordinator', () => ({
   refreshDesktopUpdateCheck: vi.fn().mockResolvedValue({ configured: false, update: null }),
   startStartupUpdateCheck: vi.fn().mockResolvedValue({ configured: false, update: null }),
@@ -61,4 +58,11 @@ test('hides an experienced-user action and reveals it in the top-right discovery
   fireEvent.pointerMove(document, { clientX: window.innerWidth - 1, clientY: 1 });
   expect(button).toHaveClass('floating-visible');
   vi.useRealTimers();
+});
+
+test('never labels the desktop app as a hosted edition', () => {
+  const { container } = render(<Header onSettingsClick={vi.fn()} />);
+
+  expect(container.querySelector('.header-title')).toHaveTextContent(/^OSG$/);
+  expect(container.querySelector('.osg-version')).toBeNull();
 });

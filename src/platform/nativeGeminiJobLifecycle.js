@@ -15,6 +15,7 @@ import {
   ensureNativeJobRecoveryReady,
 } from './jobRecoveryCoordinator';
 import i18n from '../i18n/i18n';
+import { isNativeErrorCode } from './plainDataRecord';
 
 const RETRYABLE_CREDENTIAL_CODES = new Set([
   'geminiCredentialRejected',
@@ -29,7 +30,7 @@ const fixedError = (code = 'nativeGeminiFailed') => {
       : 'The native Gemini operation could not be completed';
   const error = new Error(message);
   error.name = 'NativeGeminiError';
-  error.code = typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
+  error.code = isNativeErrorCode(code)
     ? code
     : 'nativeGeminiFailed';
   return error;

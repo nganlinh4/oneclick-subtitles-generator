@@ -46,7 +46,7 @@ describe('Gemini model catalog contract', () => {
       if (model.quota.requestsPerDay !== null) expect(model.quota.requestsPerDay).toBeGreaterThan(0);
       expect(model.dailyUse).toBeTruthy();
     });
-    expect(Object.fromEntries(GEMINI_MODELS.map((model) => [model.id, model.freeRPD]))).toEqual({
+    expect(Object.fromEntries(GEMINI_MODELS.map((model) => [model.id, model.quota.requestsPerDay]))).toEqual({
       'gemini-3.5-flash-lite': 500,
       'gemini-3.7-flash': 20,
       'gemini-3.6-flash': 20,

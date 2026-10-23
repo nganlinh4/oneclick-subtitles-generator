@@ -45,6 +45,11 @@ const EdgeTTSControls = ({
   const [lifecycle, setLifecycle] = useState(() => getSpeechLifecycleSnapshot('edgeTts'));
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const voiceRequestSequence = useRef(0);
+  // The voice-loading effect reads this without re-running on a language change.
+  const voicesLoadFailedRef = useRef('');
+  useEffect(() => {
+    voicesLoadFailedRef.current = t('narration.voicesLoadFailed', 'Failed to load voices');
+  }, [t]);
 
   useEffect(() => subscribeSpeechLifecycle((snapshot) => {
     if (snapshot.backend === 'edgeTts') setLifecycle(snapshot);
@@ -90,7 +95,7 @@ const EdgeTTSControls = ({
         setVoices([]);
         setInventoryAvailable(false);
         console.error('Error loading Edge TTS voices:', err);
-        window.addToast('Failed to load voices', 'error', 5000);
+        window.addToast(voicesLoadFailedRef.current, 'error', 5000);
       } finally {
         if (voiceRequestSequence.current === sequence) setLoading(false);
       }

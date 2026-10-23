@@ -2,6 +2,8 @@
  * Utility functions for parsing SRT files
  */
 
+import { formatTimecodeMilliseconds } from './timeFormatter';
+
 /**
  * Parse SRT file content into subtitle objects
  * @param {string} srtContent - The content of the SRT file
@@ -47,8 +49,8 @@ export const parseSrtContent = (srtContent) => {
       start: start.totalMilliseconds / 1000,
       end: end.totalMilliseconds / 1000,
       text: textLines.join('\n').trim(),
-      startTime: formatSrtTimestamp(start.totalMilliseconds),
-      endTime: formatSrtTimestamp(end.totalMilliseconds),
+      startTime: formatTimecodeMilliseconds(start.totalMilliseconds),
+      endTime: formatTimecodeMilliseconds(end.totalMilliseconds),
     });
   }
 
@@ -72,36 +74,4 @@ const parseSrtTimestamp = (value) => {
     + seconds * 1_000
     + milliseconds;
   return Number.isSafeInteger(totalMilliseconds) ? { totalMilliseconds } : null;
-};
-
-const formatSrtTimestamp = (totalMilliseconds) => {
-  const hours = Math.floor(totalMilliseconds / 3_600_000);
-  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
-  const seconds = Math.floor((totalMilliseconds % 60_000) / 1_000);
-  const milliseconds = totalMilliseconds % 1_000;
-  return `${padZero(hours)}:${padZero(minutes)}:${padZero(seconds)},${padZero(milliseconds, 3)}`;
-};
-
-/**
- * Pad a number with leading zeros
- * @param {number} num - The number to pad
- * @param {number} length - The desired length (default: 2)
- * @returns {string} - Padded number as string
- */
-const padZero = (num, length = 2) => {
-  return String(num).padStart(length, '0');
-};
-
-/**
- * Convert seconds to SRT time format (HH:MM:SS,mmm)
- * @param {number} seconds - Time in seconds
- * @returns {string} - Formatted time string
- */
-export const secondsToSrtTime = (seconds) => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  const milliseconds = Math.floor((seconds % 1) * 1000);
-  
-  return `${padZero(hours)}:${padZero(minutes)}:${padZero(secs)},${padZero(milliseconds, 3)}`;
 };

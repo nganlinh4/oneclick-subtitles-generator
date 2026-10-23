@@ -1,6 +1,7 @@
 // Credential state model: purpose constants, snapshot/selection normalization, the controller's
 // error type, and the one-shot purge of legacy WebView-stored secrets. Pure: no IPC.
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { isRecord } from './plainDataRecord';
 
 export const MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MAX_LEGACY_GEMINI_KEYS = 32;
@@ -23,10 +24,6 @@ export const LEGACY_SECRET_KEYS = Object.freeze([
   'youtube_oauth_token',
 ]);
 export const LEGACY_SELECTION_KEYS = Object.freeze(['gemini_active_key_index']);
-
-export const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
 
 export const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;

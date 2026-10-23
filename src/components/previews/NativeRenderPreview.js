@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from 'react-i18next';
 
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
+import { formatClock } from '../../utils/timeFormatter';
 import VideoCropControls from '../VideoCropControls';
 import '../../styles/VideoPreviewPanel.css';
 import CanvasVideoPreview from './canvas/CanvasVideoPreview';
@@ -65,11 +66,7 @@ const normalizeCrop = (crop) => (crop ? {
   flipY: crop.flipY ?? false,
 } : { ...EMPTY_CROP });
 
-const formatTime = (seconds) => {
-  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-  const minutes = Math.floor(safe / 60);
-  return `${minutes}:${String(Math.floor(safe % 60)).padStart(2, '0')}`;
-};
+const formatTime = (seconds) => formatClock(seconds, { hours: 'never' });
 
 const NativeRenderPreview = forwardRef(({
   videoFile,
@@ -356,7 +353,7 @@ const NativeRenderPreview = forwardRef(({
           aria-label={isPlaying ? t('common.pause', 'Pause') : t('common.play', 'Play')}
           onClick={togglePlayback}
         >
-          <span className="material-symbols-rounded">{isPlaying ? 'pause' : 'play_arrow'}</span>
+          <span aria-hidden="true" className="material-symbols-rounded">{isPlaying ? 'pause' : 'play_arrow'}</span>
         </button>
         <span className="native-render-time">{formatTime(currentTime)}</span>
         <input
@@ -382,7 +379,7 @@ const NativeRenderPreview = forwardRef(({
           aria-label={isMuted ? t('common.unmute', 'Unmute') : t('common.mute', 'Mute')}
           onClick={toggleMute}
         >
-          <span className="material-symbols-rounded">{isMuted ? 'volume_off' : 'volume_up'}</span>
+          <span aria-hidden="true" className="material-symbols-rounded">{isMuted ? 'volume_off' : 'volume_up'}</span>
         </button>
         <button
           type="button"
@@ -391,7 +388,7 @@ const NativeRenderPreview = forwardRef(({
           aria-label={t('common.fullscreen', 'Fullscreen')}
           onClick={toggleFullscreen}
         >
-          <span className="material-symbols-rounded">fullscreen</span>
+          <span aria-hidden="true" className="material-symbols-rounded">fullscreen</span>
         </button>
       </div>
 

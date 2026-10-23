@@ -37,7 +37,6 @@
   "adjustSearch": "검색어나 카테고리 필터를 조정해 보세요.",
   "clearFilters": "필터 지우기",
   "fontsAvailable": "{{count}}개 글꼴 사용 가능",
-  "cancel": "취소",
   "categoryKorean Optimized": "한국어 최적화",
   "categoryVietnamese Optimized": "베트남어 최적화",
   "categoryChinese Optimized": "중국어 최적화",
@@ -48,6 +47,5 @@
   "categoryElegant": "우아한",
   "categoryGaming": "게이밍",
   "categoryCute": "귀여운",
-  "searchFonts": "글꼴 검색...",
   "selectCategory": "카테고리 선택"
 }

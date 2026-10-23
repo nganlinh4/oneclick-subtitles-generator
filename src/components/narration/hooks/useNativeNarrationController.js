@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { getSpeechLifecycleSnapshot } from '../../../platform/speechService';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { ensureManagedEngineReady } from '../../../platform/managedEngineService';
 import { flushDurableLyricsHistory } from '../../../platform/durableLyricsCheckpoint';
 import {
@@ -41,7 +40,6 @@ import {
 } from './nativeNarrationControllerSupport';
 
 const useNativeNarrationController = (state) => {
-  const native = isDesktopRuntime();
   const stateRef = useRef(state);
   const editInFlightRef = useRef(false);
   const preparationRef = useRef(null);
@@ -71,13 +69,6 @@ const useNativeNarrationController = (state) => {
 
   const run = useCallback(async (method, requestedSubtitles, { replace = true } = {}) => {
     const current = stateRef.current;
-    if (!native) {
-      current.setError(current.t(
-        'narration.serviceUnavailableMessage',
-        'Narration requires the desktop runtime',
-      ));
-      return false;
-    }
     const backend = backendByMethod[method];
     let lifecycle = null;
     const ownsLifecycle = () => {
@@ -359,7 +350,7 @@ const useNativeNarrationController = (state) => {
       preparationRef.current = null;
       current.setIsGenerating(false);
     }
-  }, [native, selectedSubtitlePlan]);
+  }, [selectedSubtitlePlan]);
 
   const retry = useCallback(async (method, subtitleId) => {
     const current = stateRef.current;
@@ -399,15 +390,13 @@ const useNativeNarrationController = (state) => {
   }, [run, selectedSubtitlePlan]);
 
   const cancel = useCallback(async (method) => {
-    if (!native) return false;
     const preparing = preparationRef.current;
     preparing?.abort();
     const cancelled = await cancelNativeNarrationJob(method).catch(() => false);
     return cancelled || preparing !== null;
-  }, [native]);
+  }, []);
 
   useEffect(() => {
-    if (!native) return undefined;
     let disposed = false;
     const current = stateRef.current;
     const selectedPlan = selectedSubtitlePlan();
@@ -443,10 +432,9 @@ const useNativeNarrationController = (state) => {
       ));
     });
     return () => { disposed = true; };
-  }, [native, selectedSubtitlePlan]);
+  }, [selectedSubtitlePlan]);
 
   useEffect(() => {
-    if (!native) return undefined;
     const handleEdit = (event) => {
       claimNativeNarrationEditCommit(event?.detail, async (edits) => {
         if (editInFlightRef.current) {
@@ -505,7 +493,7 @@ const useNativeNarrationController = (state) => {
     };
     window.addEventListener(NATIVE_NARRATION_EDIT_COMMIT_EVENT, handleEdit);
     return () => window.removeEventListener(NATIVE_NARRATION_EDIT_COMMIT_EVENT, handleEdit);
-  }, [native]);
+  }, []);
 
   return {
     handleGenerateNarration: () => run('f5tts'),

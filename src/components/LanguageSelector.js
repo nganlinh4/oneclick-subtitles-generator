@@ -72,7 +72,7 @@ const LanguageSelector = ({ disabled = false }) => {
       value={selectedLanguage}
       onChange={handleLanguageChange}
       options={dropdownOptions}
-      placeholder={t('language.selectLanguage') || 'Select language'}
+      placeholder={t('language.selectLanguage', 'Select language')}
       disabled={disabled}
     />
   );

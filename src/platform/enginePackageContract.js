@@ -1,6 +1,13 @@
 // Engine package wire contract: engine IDs, limits, typed failures and strict normalizers for
 // package status, jobs, Channel events, handler bags and run options.
 import { isUuidVersion } from './nativeDataSnapshot';
+import {
+  hasExactKeys,
+  hasOnlyKeys,
+  isAbortSignalLike,
+  isPlainDataRecord,
+  snapshotNativeError,
+} from './plainDataRecord';
 
 export const ENGINE_PACKAGE_ENGINE_IDS = Object.freeze([
   'parakeet',
@@ -47,8 +54,8 @@ const jobStates = new Set([
   'cancelled',
   'interrupted',
 ]);
-const statusKeys = new Set(['schemaVersion', 'engines']);
-const engineKeys = new Set([
+const statusKeys = Object.freeze(['schemaVersion', 'engines']);
+const engineKeys = Object.freeze([
   'id',
   'label',
   'deliveryAvailable',
@@ -62,7 +69,7 @@ const engineKeys = new Set([
   'availableInstalledBytes',
   'operation',
 ]);
-const operationKeys = new Set([
+const operationKeys = Object.freeze([
   'job',
   'engine',
   'action',
@@ -71,13 +78,12 @@ const operationKeys = new Set([
   'bytesDone',
   'totalBytes',
 ]);
-const jobKeys = new Set(['id', 'kind', 'state', 'progress', 'sequence']);
-const progressKeys = new Set(['basisPoints']);
-const progressEventKeys = new Set(['event', 'operation']);
-const terminalEventKeys = new Set(['event', 'job', 'engine', 'action']);
-const failedEventKeys = new Set(['event', 'job', 'engine', 'action', 'error']);
-const errorKeys = new Set(['code', 'message']);
-const handlerKeys = new Set([
+const jobKeys = Object.freeze(['id', 'kind', 'state', 'progress', 'sequence']);
+const progressKeys = Object.freeze(['basisPoints']);
+const progressEventKeys = Object.freeze(['event', 'operation']);
+const terminalEventKeys = Object.freeze(['event', 'job', 'engine', 'action']);
+const failedEventKeys = Object.freeze(['event', 'job', 'engine', 'action', 'error']);
+const handlerKeys = Object.freeze([
   'onEvent',
   'onProgress',
   'onCompleted',
@@ -87,26 +93,7 @@ const handlerKeys = new Set([
   'onHandlerError',
   'onCancellationError',
 ]);
-const optionKeys = new Set(['signal']);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainDataRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  if (Object.getOwnPropertySymbols(value).length > 0) return false;
-  return Object.values(Object.getOwnPropertyDescriptors(value))
-    .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
-};
-
-const hasExactKeys = (value, expected) => {
-  if (!isPlainDataRecord(value)) return false;
-  const keys = Object.keys(value);
-  return keys.length === expected.size && keys.every((key) => expected.has(key));
-};
+const optionKeys = Object.freeze(['signal']);
 
 const characterCountWithin = (value, maximum) => {
   let count = 0;
@@ -236,16 +223,14 @@ const normalizeOperation = (value, expectedEngine) => {
   });
 };
 
-const normalizeCommandError = (error) => {
-  if (!hasExactKeys(error, errorKeys)
-      || typeof error.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
-      || typeof error.message !== 'string'
+const normalizeCommandError = (value) => {
+  const error = snapshotNativeError(value);
+  if (error === null
       || !characterCountWithin(error.message, MAX_ERROR_MESSAGE_CHARACTERS)
       || containsControl(error.message)) {
     throw invalidResponse();
   }
-  return Object.freeze({ code: error.code, message: error.message });
+  return error;
 };
 
 export const normalizeEnginePackagesStatus = (value) => {
@@ -355,8 +340,7 @@ export const normalizeEnginePackageEvent = (value) => {
 
 export const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  if (!isPlainDataRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => typeof handler !== 'function')) {
     throw invalidRequest();
   }
@@ -365,16 +349,11 @@ export const normalizeHandlers = (handlers) => {
 
 export const normalizeOptions = (options) => {
   if (options === undefined) return Object.freeze({});
-  if (!isPlainDataRecord(options)
-      || Object.keys(options).some((key) => !optionKeys.has(key))) {
+  if (!hasOnlyKeys(options, optionKeys)) {
     throw invalidRequest();
   }
   const { signal } = options;
-  if (signal !== undefined
-      && (!isRecord(signal)
-        || typeof signal.aborted !== 'boolean'
-        || typeof signal.addEventListener !== 'function'
-        || typeof signal.removeEventListener !== 'function')) {
+  if (signal !== undefined && !isAbortSignalLike(signal)) {
     throw invalidRequest();
   }
   return options;

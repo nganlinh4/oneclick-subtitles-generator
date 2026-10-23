@@ -150,8 +150,9 @@ const GeminiResultRow = ({ index, style, data }) => {
               className="pill-button primary"
               onClick={() => playAudio(item)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
+              aria-label={currentlyPlaying === subtitle_id && isPlaying ? t('common.pause', 'Pause') : t('common.play', 'Play')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>
                 {currentlyPlaying === subtitle_id && isPlaying ? 'pause' : 'play_arrow'}
               </span>
             </button>
@@ -159,8 +160,9 @@ const GeminiResultRow = ({ index, style, data }) => {
               className="pill-button secondary"
               onClick={() => downloadAudio(item)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
+              aria-label={t('common.downloadAudio', 'Download audio')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
             </button>
             <button
               className={`pill-button secondary ${retryingSubtitleId === subtitle_id ? 'retrying' : ''}`}
@@ -176,7 +178,7 @@ const GeminiResultRow = ({ index, style, data }) => {
                   className="retry-loading-indicator"
                 />
               ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>
@@ -197,7 +199,7 @@ const GeminiResultRow = ({ index, style, data }) => {
                   className="generate-loading-indicator"
                 />
               ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>
@@ -218,7 +220,7 @@ const GeminiResultRow = ({ index, style, data }) => {
                   className="retry-loading-indicator"
                 />
               ) : (
-                <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
               )}
             </button>
           </>

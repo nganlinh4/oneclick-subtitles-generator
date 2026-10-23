@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { editNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
   isNativeNarrationResult,
@@ -28,15 +27,13 @@ const useNarrationAudioSpeed = ({ generationResults, t }) => {
 
   const fetchDurationsBatch = useCallback(async () => {
     const durations = {};
-    if (isDesktopRuntime()) {
-      (generationResults || []).filter(isNativeNarrationResult).forEach((result) => {
-        const duration = seconds(result);
-        if (result.filename && Number.isFinite(duration) && duration > 0) {
-          durations[result.filename] = duration;
-          durations[getBackupName(result.filename)] = duration;
-        }
-      });
-    }
+    (generationResults || []).filter(isNativeNarrationResult).forEach((result) => {
+      const duration = seconds(result);
+      if (result.filename && Number.isFinite(duration) && duration > 0) {
+        durations[result.filename] = duration;
+        durations[getBackupName(result.filename)] = duration;
+      }
+    });
     setItemDurations((previous) => ({ ...previous, ...durations }));
   }, [generationResults]);
 
@@ -49,7 +46,7 @@ const useNarrationAudioSpeed = ({ generationResults, t }) => {
   };
 
   const editResult = async (result, speed, range) => {
-    if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+    if (!isNativeNarrationResult(result)) {
       throw new Error('Native narration audio is unavailable');
     }
     const duration = seconds(result);

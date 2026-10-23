@@ -22,7 +22,7 @@ export const SPEECH_DELIVERY_CATALOG = resolve(
   import.meta.dirname, '..', '..', 'crates', 'osg-speech', 'delivery', 'speech-packages.delivery.json',
 );
 
-/** crates/osg-engine-packages/src/catalog.rs (`current_platform`). */
+/** crates/osg-delivery-core/src/identity.rs (`current_platform`). */
 const DELIVERY_PLATFORMS = Object.freeze({
   'win32:x64': 'windows-x86_64',
   'linux:x64': 'linux-x86_64',

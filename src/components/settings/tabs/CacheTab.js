@@ -278,7 +278,7 @@ const CacheTab = ({ isActive }) => {
                             category: displayName,
                           })}
                         >
-                          <span className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
+                          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16 }}>close</span>
                         </button>
                       )}
                     </div>

@@ -19,15 +19,14 @@ import {
   subtitleFormats,
   subtitleSources,
   unavailableReasons,
-  utf8ByteLength,
 } from './downloadServiceContract';
 import {
   exactRecord,
-  hasSnapshotKeys,
   isUuidVersion,
   snapshotDataArray,
   snapshotDataRecord,
 } from './nativeDataSnapshot';
+import { hasExactKeys, snapshotNativeError, utf8ByteLength } from './plainDataRecord';
 
 export const normalizeStatus = (value) => {
   const data = exactRecord(value, [
@@ -338,14 +337,9 @@ const normalizeSubtitle = (value, summary) => {
 };
 
 const normalizeError = (value) => {
-  const data = exactRecord(value, ['code', 'message'], invalidResponse);
-  const { code, message } = data;
-  if (typeof code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
-      || typeof message !== 'string'
-      || message.length > 2_048) {
-    throw invalidResponse();
-  }
+  const error = snapshotNativeError(value);
+  if (error === null || error.message.length > 2_048) throw invalidResponse();
+  const { code } = error;
   return Object.freeze({
     code: downloadCommandCodes.has(code) ? code : 'downloadCommandFailed',
     message: 'The native media download could not be completed',
@@ -365,7 +359,7 @@ export const normalizeDownloadEvent = (value) => {
   if (typeof data.event !== 'string') throw invalidResponse();
   switch (data.event) {
     case 'progress':
-      if (!hasSnapshotKeys(data, ['event', 'job', 'progress'])) throw invalidResponse();
+      if (!hasExactKeys(data, ['event', 'job', 'progress'])) throw invalidResponse();
       {
         const job = normalizeJob(data.job);
         if (!activeJobStates.has(job.state)) throw invalidResponse();
@@ -376,7 +370,7 @@ export const normalizeDownloadEvent = (value) => {
         });
       }
     case 'completed': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'media', 'summary', 'subtitle'])) {
+      if (!hasExactKeys(data, ['event', 'job', 'media', 'summary', 'subtitle'])) {
         throw invalidResponse();
       }
       const job = normalizeJob(data.job);
@@ -391,13 +385,13 @@ export const normalizeDownloadEvent = (value) => {
       });
     }
     case 'cancelled': {
-      if (!hasSnapshotKeys(data, ['event', 'job'])) throw invalidResponse();
+      if (!hasExactKeys(data, ['event', 'job'])) throw invalidResponse();
       const job = normalizeJob(data.job);
       if (job.state !== 'cancelled') throw invalidResponse();
       return Object.freeze({ event: 'cancelled', job });
     }
     case 'failed': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'error'])) throw invalidResponse();
+      if (!hasExactKeys(data, ['event', 'job', 'error'])) throw invalidResponse();
       const job = data.job === null ? null : normalizeJob(data.job);
       if (job !== null && job.state !== 'failed') throw invalidResponse();
       return Object.freeze({ event: 'failed', job, error: normalizeError(data.error) });

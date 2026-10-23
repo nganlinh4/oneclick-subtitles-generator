@@ -1,4 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import LiquidGlass from '../../common/LiquidGlass';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 import StandardSlider from '../../common/StandardSlider';
 
 const VolumeControlPill = ({
@@ -15,6 +17,7 @@ const VolumeControlPill = ({
   isVolumeDragging,
   setIsVolumeDragging
 }) => {
+  const { t } = useTranslation();
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
     if (videoRef.current) {
@@ -129,6 +132,10 @@ const VolumeControlPill = ({
               left: '50%',
               transform: 'translateX(-50%)'
             }}
+            role="button"
+            tabIndex={0}
+            aria-label={isMuted || volume === 0 ? t('common.unmute', 'Unmute') : t('common.mute', 'Mute')}
+            onKeyDown={activateOnKey}
             onClick={() => {
               if (videoRef.current) {
                 const newMuted = !videoRef.current.muted;
@@ -145,15 +152,15 @@ const VolumeControlPill = ({
             }}
           >
             {isMuted || volume === 0 ? (
-              <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
                 volume_off
               </span>
             ) : volume < 0.5 ? (
-              <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
                 volume_down
               </span>
             ) : (
-              <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
                 volume_up
               </span>
             )}

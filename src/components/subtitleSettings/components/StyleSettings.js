@@ -68,13 +68,13 @@ const StyleSettings = ({ settings, handleSettingChange, textAlignOptions, textTr
               title={option.label}
             >
               {option.value === 'left' && (
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_left</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_left</span>
               )}
               {option.value === 'center' && (
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_center</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_center</span>
               )}
               {option.value === 'right' && (
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_right</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>format_align_right</span>
               )}
             </button>
           ))}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import SrtUploadButton from '../SrtUploadButton';
 import AddSubtitlesButton from '../AddSubtitlesButton';
 import VideoAnalysisButton from '../VideoAnalysisButton';
@@ -30,8 +30,6 @@ const ButtonsContainer = ({
   currentDownloadId,
   isRetrying,
   setIsRetrying,
-  retryingSegments,
-  segmentsStatus,
   subtitlesData,
   userProvidedSubtitles,
   selectedVideo,
@@ -45,11 +43,6 @@ const ButtonsContainer = ({
   setIsProcessingSegment = () => {},
   apiKeysSet
 }) => {
-  // State for Vercel mode detection
-  const [isVercelMode] = useState(() => {
-    return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-  });
-
   // Ref for WavyProgressIndicator animations
   const wavyProgressRef = useRef(null);
 
@@ -65,7 +58,6 @@ const ButtonsContainer = ({
     t,
     handleGenerateSubtitles,
     handleProcessWithOptions,
-    isVercelMode
   });
 
   // The project handlers own durable upload/clear. This hook only presents their typed outcome.
@@ -128,8 +120,8 @@ const ButtonsContainer = ({
         />
       </div>
 
-      {/* Hide generate button when retrying segments, when isRetrying is true, or when any segment is being retried */}
-      {canGenerateFromMedia && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && (
+      {/* Hide generate buttons while a whole-media retry is running */}
+      {canGenerateFromMedia && !isRetrying && (
         <>
           {/* Semi-automatic Generate Button */}
           <Tooltip content={t('output.semiAutoTooltip', 'Tiết kiệm request và token vì không bắt buộc phân tích video')}>
@@ -223,7 +215,7 @@ const ButtonsContainer = ({
       )}
 
       {/* Add cancel button as a proper member of the buttons-container */}
-      {isDownloading && currentDownloadId && canGenerateFromMedia && retryingSegments.length === 0 && !isRetrying && !segmentsStatus.some(segment => segment.status === 'retrying') && !isAutoGenerating && (
+      {isDownloading && currentDownloadId && canGenerateFromMedia && !isRetrying && !isAutoGenerating && (
         <button
           className="cancel-download-btn"
           onClick={handleCancelDownload}
@@ -258,7 +250,7 @@ const ButtonsContainer = ({
         />
       )}
 
-      {(isGenerating || retryingSegments.length > 0 || isRetrying || isProcessingSegment || isAutoGenerating) && (
+      {(isGenerating || isRetrying || isProcessingSegment || isAutoGenerating) && (
         <button
           className="force-stop-btn"
           data-osg-action="cancel-generation"

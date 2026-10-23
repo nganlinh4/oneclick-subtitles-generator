@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
 import { subscribeSpeechLifecycle } from '../../../platform/speechService';
 import {
@@ -16,11 +15,6 @@ const availabilityBackends = Object.freeze([
   Object.freeze({ key: 'geminiTtsStatus', backend: 'geminiTts' }),
 ]);
 
-const unavailable = (reason) => Object.freeze({
-  available: false,
-  reason,
-  message: 'SERVICE_UNAVAILABLE',
-});
 const available = Object.freeze({ available: true, reason: 'ready' });
 const cold = Object.freeze({ available: true, reason: 'cold' });
 const installable = Object.freeze({ available: true, reason: 'installable' });
@@ -30,9 +24,6 @@ const checkingCredential = Object.freeze({
   reason: 'checking',
 });
 
-const unavailableNativeNarrationAvailability = () => Object.freeze(
-  Object.fromEntries(availabilityBackends.map(({ key }) => [key, unavailable('unavailable')]))
-);
 export const managedNativeNarrationAvailability = () => Object.freeze(
   Object.fromEntries(availabilityBackends.map(({ key }) => [key, installable]))
 );
@@ -126,11 +117,7 @@ const useAvailabilityCheck = ({
   setIsGTTSAvailable,
   setIsCheckingAvailability,
 }) => {
-  const [nativeAvailability, setNativeAvailability] = useState(() => (
-    isDesktopRuntime()
-      ? managedNativeNarrationAvailability()
-      : unavailableNativeNarrationAvailability()
-  ));
+  const [nativeAvailability, setNativeAvailability] = useState(managedNativeNarrationAvailability);
   const [nativeChecking, setNativeChecking] = useState(true);
   const [credentialAvailability, setCredentialAvailability] = useState(checkingCredential);
 
@@ -156,17 +143,13 @@ const useAvailabilityCheck = ({
       const requestRevision = lifecycleRevision;
       let next;
       try {
-        next = isDesktopRuntime()
-          ? await checkNativeNarrationAvailability(
-            nativeNarrationAdapter,
-            { probeInstalled }
-          )
-          : unavailableNativeNarrationAvailability();
+        next = await checkNativeNarrationAvailability(
+          nativeNarrationAdapter,
+          { probeInstalled }
+        );
       } catch (error) {
         console.error('Error checking service availability:', error);
-        next = isDesktopRuntime()
-          ? managedNativeNarrationAvailability()
-          : unavailableNativeNarrationAvailability();
+        next = managedNativeNarrationAvailability();
       }
       if (!disposed && lifecycleRevision === requestRevision) setNativeAvailability(next);
     };
@@ -192,14 +175,6 @@ const useAvailabilityCheck = ({
 
   useEffect(() => {
     let disposed = false;
-    if (!isDesktopRuntime()) {
-      setCredentialAvailability(Object.freeze({
-        checked: true,
-        available: false,
-        reason: 'unsupported',
-      }));
-      return undefined;
-    }
     const applySnapshot = (snapshot) => {
       if (!disposed) setCredentialAvailability(getGeminiCredentialAvailability(snapshot));
     };

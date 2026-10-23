@@ -1,5 +1,6 @@
 /** Build exact thinkingConfig payloads from the shared Gemini model contract. */
 import { getModelById, migrateGeminiModelId } from '../config/geminiModels';
+import { readPreference } from '../platform/preferences/store';
 
 const getThinkingProfile = (modelId) => getModelById(migrateGeminiModelId(modelId))?.thinking || null;
 
@@ -20,13 +21,8 @@ export const getThinkingBudget = (modelId) => {
   const fallback = getDefaultThinkingBudget(modelId);
   if (fallback === null) return null;
 
-  try {
-    const saved = JSON.parse(localStorage.getItem('thinking_budgets') || '{}')[migrateGeminiModelId(modelId)];
-    return validateThinkingBudget(modelId, saved) ? saved : fallback;
-  } catch (error) {
-    console.error('Error reading Gemini thinking settings:', error);
-    return fallback;
-  }
+  const saved = readPreference('thinking_budgets')[migrateGeminiModelId(modelId)];
+  return validateThinkingBudget(modelId, saved) ? saved : fallback;
 };
 
 const getLowestThinkingValue = (thinking) => {

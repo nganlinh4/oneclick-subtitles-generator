@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { downloadNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
   generateAlignedNarration,
@@ -19,9 +18,6 @@ const useAlignedDownload = ({ generationResults, getCurrentCues, t }) => {
       'Preparing aligned narration download...',
     ));
     try {
-      if (!isDesktopRuntime()) {
-        throw new Error('Native narration audio is unavailable');
-      }
       const currentCues = getCurrentCues?.();
       const plan = buildStrictNativeNarrationPlan(generationResults, currentCues);
       await generateAlignedNarration(generationResults, currentCues, (progress) => {

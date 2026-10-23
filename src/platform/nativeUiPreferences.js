@@ -1,5 +1,6 @@
 import { invokeDesktop } from './desktopRuntime';
 import { runNativeFirstSettingsMutation } from './settingsMutationCoordinator';
+import { notifyPreference } from './preferences/store';
 
 const preferenceKeyPattern = /^[a-z][a-z0-9_]{0,127}$/;
 const defaultStorage = () => globalThis.localStorage;
@@ -46,7 +47,7 @@ export const createEnumeratedUiPreference = ({ key, values }) => {
       invokeCommand = invokeDesktop,
       storage,
       apply = () => undefined,
-      publish = () => undefined,
+      publish = () => notifyPreference(key),
       onProjectionWarning = () => undefined,
     } = {}) {
       const preference = requireValue(value);

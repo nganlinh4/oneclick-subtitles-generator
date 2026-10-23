@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import {
   downloadNativeNarration,
   releaseNativeNarrationPlayback,
@@ -28,7 +27,7 @@ export const playAudio = async (result, {
   setCurrentlyPlaying,
   setIsPlaying,
 }) => {
-  if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+  if (!isNativeNarrationResult(result)) {
     releaseCurrent(audioRef);
     setIsPlaying(false);
     setCurrentlyPlaying(null);
@@ -70,7 +69,7 @@ export const playAudio = async (result, {
 
 export const downloadAudio = async (result, t) => {
   try {
-    if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+    if (!isNativeNarrationResult(result)) {
       throw new Error('Native narration audio is unavailable');
     }
     await downloadNativeNarration(result);

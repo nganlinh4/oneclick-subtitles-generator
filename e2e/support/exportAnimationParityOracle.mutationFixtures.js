@@ -13,7 +13,7 @@ import { compareFrames } from './nativeMediaOracle.js';
  * Shared fixture builders for exportAnimationParityOracle.mutation.test.mjs.
  *
  * Pulled out of the test file itself purely to keep that file under the project's 600-line file
- * budget (CLAUDE.md); this module has no `test()` calls of its own and is not a standalone suite.
+ * budget (AGENTS.md); this module has no `test()` calls of its own and is not a standalone suite.
  */
 
 export const WIDTH = 480;

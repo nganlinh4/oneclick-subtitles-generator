@@ -6,7 +6,6 @@ import {
 import {
   cancelWordNativeTranscription,
   getNativeTranscriptionJob,
-  isNativeWordTranscriptionSupported,
   startWordNativeTranscription,
 } from '../../platform/nativeWordTranscription';
 import { getActiveProjectSnapshot } from '../../platform/projectService';
@@ -119,7 +118,7 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
     || options?.task === 'native-transcribe'
   ) && !options?.forceLegacy;
 
-  if (isNativeWordTranscriptionSupported() && isExplicitTranscribe) {
+  if (isExplicitTranscribe) {
     return new Promise((resolve, reject) => {
       const requestCtrl = createRequestController(options?.signal);
       let taskId = null;
@@ -218,7 +217,6 @@ export const processGeminiSegment = async (file, segment, options, hooks = {}) =
         projectId: options?.projectId,
         expectedProjectStateVersion: options?.expectedProjectStateVersion,
         mediaAssetId: file?.assetId || options?.mediaAssetId || options?.assetId,
-        filePath: file?.path || file?.filePath || options?.filePath,
         rangeStartMs: segment?.start != null ? Math.round(segment.start * 1000) : undefined,
         rangeEndMs: segment?.end != null ? Math.round(segment.end * 1000) : undefined,
         windowDurationMs: options?.maxDurationPerRequest != null ? Math.round(options.maxDurationPerRequest * 1000) : undefined,

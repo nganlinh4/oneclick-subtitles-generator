@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { downloadNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import { isNativeNarrationResult } from '../../../platform/nativeNarrationCapabilities';
 import { showErrorToast } from '../../../utils/toastUtils';
@@ -8,7 +7,7 @@ import { showErrorToast } from '../../../utils/toastUtils';
  */
 export const downloadAudio = async (result, t) => {
   try {
-    if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+    if (!isNativeNarrationResult(result)) {
       throw new Error('Native narration audio is unavailable');
     }
     await downloadNativeNarration(result);

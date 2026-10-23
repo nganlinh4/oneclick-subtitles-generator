@@ -314,7 +314,7 @@ const GeminiSubtitleSourceSelection = ({
         title={t('narration.detectLanguage', 'Detect language')}
         type="button"
       >
-        <span className="material-symbols-rounded" style={{ fontSize: 12 }}>refresh</span>
+        <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 12 }}>refresh</span>
       </button>
     );
   };

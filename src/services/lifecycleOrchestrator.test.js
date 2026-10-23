@@ -1,20 +1,19 @@
-import { CHECKPOINT_SOURCE, EVENTS } from '../events/constants';
+import { CHECKPOINT_SOURCE } from '../events/constants';
+import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
 import {
   CHECKPOINT_TIMEOUT_MS,
   CheckpointBeforeUpdateError,
   checkpointBeforeUpdate,
 } from './lifecycleOrchestrator';
 
-const respondToCheckpoint = (detailFor) => {
-  const listener = (event) => {
-    window.removeEventListener(EVENTS.SAVE_BEFORE_UPDATE, listener);
-    window.dispatchEvent(new CustomEvent(EVENTS.SAVE_COMPLETE, {
-      detail: detailFor(event.detail),
-    }));
-  };
-  window.addEventListener(EVENTS.SAVE_BEFORE_UPDATE, listener);
-  return () => window.removeEventListener(EVENTS.SAVE_BEFORE_UPDATE, listener);
-};
+vi.mock('../platform/durableLyricsCheckpoint', () => ({
+  flushDurableLyricsHistory: vi.fn(),
+}));
+
+beforeEach(() => {
+  flushDurableLyricsHistory.mockReset();
+  flushDurableLyricsHistory.mockResolvedValue(undefined);
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -24,64 +23,23 @@ it('uses one bounded 15-second production checkpoint deadline', () => {
   expect(CHECKPOINT_TIMEOUT_MS).toBe(15_000);
 });
 
-it('resolves only an exactly successful response for the matching checkpoint', async () => {
-  const removeListener = respondToCheckpoint((request) => {
-    expect(request.checkpointId).toMatch(/^checkpoint-[0-9a-z]{10}-[0-9a-z]{6}$/);
-    return {
-      source: request.source,
-      checkpointId: request.checkpointId,
-      success: true,
-    };
-  });
-
-  await expect(checkpointBeforeUpdate({
-    source: 'segment-processing-start',
-    segment: { start: 1, end: 2 },
-    runId: 'run-1',
-  }, 100)).resolves.toBeUndefined();
-  removeListener();
+it.each([
+  CHECKPOINT_SOURCE.SEGMENT_PROCESSING_START,
+  CHECKPOINT_SOURCE.AUTO_GENERATION_START,
+  CHECKPOINT_SOURCE.TRANSLATION_START,
+])('resolves %s once the durable editor owner has flushed', async (source) => {
+  await expect(checkpointBeforeUpdate({ source, runId: 'run-1' }, 100)).resolves.toBeUndefined();
+  expect(flushDurableLyricsHistory).toHaveBeenCalledTimes(1);
 });
 
-it('accepts the automatic-generation checkpoint used by the unmocked orchestrator', async () => {
-  const removeListener = respondToCheckpoint((request) => ({
-    source: request.source,
-    checkpointId: request.checkpointId,
-    success: true,
-  }));
-
-  await expect(checkpointBeforeUpdate({
-    source: 'auto-generation-start',
-    runId: 'auto-run-1',
-  }, 100)).resolves.toBeUndefined();
-  removeListener();
+it('refuses an unknown checkpoint source before flushing', () => {
+  expect(() => checkpointBeforeUpdate({ source: 'manual' }, 100)).toThrow(TypeError);
+  expect(flushDurableLyricsHistory).not.toHaveBeenCalled();
 });
 
-it('accepts and aborts the exact translation-start checkpoint', async () => {
-  const controller = new AbortController();
-  const removeListener = respondToCheckpoint((request) => ({
-    source: request.source,
-    checkpointId: request.checkpointId,
-    success: true,
-  }));
-  await expect(checkpointBeforeUpdate({
-    source: CHECKPOINT_SOURCE.TRANSLATION_START,
-    runId: 'translation-run-1',
-    signal: controller.signal,
-  }, 100)).resolves.toBeUndefined();
-  removeListener();
-
-  const stopped = new AbortController();
-  const pending = checkpointBeforeUpdate({
-    source: CHECKPOINT_SOURCE.TRANSLATION_START,
-    runId: 'translation-run-stop',
-    signal: stopped.signal,
-  }, 100);
-  stopped.abort();
-  await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-});
-
-it('rejects a pending automatic checkpoint immediately when its owning run stops', async () => {
+it('rejects a pending checkpoint immediately when its owning run stops', async () => {
   vi.useFakeTimers();
+  flushDurableLyricsHistory.mockReturnValue(new Promise(() => {}));
   const controller = new AbortController();
   const checkpoint = checkpointBeforeUpdate({
     source: 'auto-generation-start',
@@ -98,43 +56,25 @@ it('rejects a pending automatic checkpoint immediately when its owning run stops
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it.each([false, 'true', 1, undefined])(
-  'rejects a matched checkpoint whose success is %j without reflecting its raw error',
-  async (success) => {
-    const removeListener = respondToCheckpoint((request) => ({
-      source: request.source,
-      checkpointId: request.checkpointId,
-      success,
-      error: 'C:\\private\\media\\secret-token.txt',
-    }));
+it('rejects a failed flush without reflecting its raw error', async () => {
+  flushDurableLyricsHistory.mockRejectedValue(new Error('C:\\private\\media\\secret-token.txt'));
 
-    const failure = checkpointBeforeUpdate({ source: 'video-processing-complete' }, 100);
-    await expect(failure).rejects.toMatchObject({
-      name: 'CheckpointBeforeUpdateError',
-      code: 'checkpointSaveFailed',
-      message: 'The subtitle checkpoint could not be saved',
-    });
-    await failure.catch((error) => {
-      expect(error).toBeInstanceOf(CheckpointBeforeUpdateError);
-      expect(String(error)).not.toContain('private');
-      expect(String(error)).not.toContain('secret-token');
-    });
-    removeListener();
-  }
-);
+  const failure = checkpointBeforeUpdate({ source: 'video-processing-complete' }, 100);
+  await expect(failure).rejects.toMatchObject({
+    name: 'CheckpointBeforeUpdateError',
+    code: 'checkpointSaveFailed',
+    message: 'The subtitle checkpoint could not be saved',
+  });
+  await failure.catch((error) => {
+    expect(error).toBeInstanceOf(CheckpointBeforeUpdateError);
+    expect(String(error)).not.toContain('private');
+    expect(String(error)).not.toContain('secret-token');
+  });
+});
 
-it('ignores another checkpoint response and rejects on timeout', async () => {
+it('rejects on timeout when the flush never settles', async () => {
   vi.useFakeTimers();
-  const listener = (event) => {
-    window.dispatchEvent(new CustomEvent(EVENTS.SAVE_COMPLETE, {
-      detail: {
-        source: event.detail.source,
-        checkpointId: `${event.detail.checkpointId}-other`,
-        success: true,
-      },
-    }));
-  };
-  window.addEventListener(EVENTS.SAVE_BEFORE_UPDATE, listener);
+  flushDurableLyricsHistory.mockReturnValue(new Promise(() => {}));
 
   const checkpoint = checkpointBeforeUpdate({ source: 'segment-processing-start' }, 25);
   const rejection = expect(checkpoint).rejects.toMatchObject({
@@ -143,5 +83,4 @@ it('ignores another checkpoint response and rejects on timeout', async () => {
   });
   await vi.advanceTimersByTimeAsync(25);
   await rejection;
-  window.removeEventListener(EVENTS.SAVE_BEFORE_UPDATE, listener);
 });

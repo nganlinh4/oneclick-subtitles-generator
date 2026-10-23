@@ -1,15 +1,9 @@
 {
-  "allSitesUrl": "모든 사이트 URL",
   "title": "비디오 소스 선택",
   "unifiedUrl": "비디오 URL",
-  "youtubeUrl": "YouTube URL",
   "youtubeSearch": "YouTube 검색",
-  "douyinUrl": "Douyin URL",
   "fileUpload": "파일 업로드",
-  "enterYoutubeUrl": "YouTube URL 입력",
-  "searchForVideos": "비디오 검색",
   "dragDropText": "비디오나 오디오를 여기에 끌어다 놓으세요",
   "orText": "또는",
-  "browse": "파일 찾아보기",
-  "supportedFormats": "지원 형식: MP4, MOV, AVI, MP3, WAV, AAC, OGG"
+  "browse": "파일 찾아보기"
 }

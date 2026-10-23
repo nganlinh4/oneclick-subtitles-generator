@@ -86,40 +86,6 @@
   flex-shrink: 0;
 }
 
-/* Model icon styling */
-.model-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--model-color, var(--md-primary));
-}
-
-/* Special styling for each icon type */
-.star-icon {
-  color: var(--md-tertiary);
-}
-
-.zap-icon {
-  color: var(--md-tertiary);
-}
-
-.trending-icon {
-  color: var(--md-tertiary);
-}
-
-.activity-icon {
-  color: var(--md-primary);
-}
-
-.cpu-icon {
-  color: var(--success-color);
-}
-
-/* Model text container */
-.model-option-text {
-  display: flex;
-  flex-direction: column;
-}
-
 /* Model name styling */
 .model-option-name {
   font-size: var(--md-body-medium-size);

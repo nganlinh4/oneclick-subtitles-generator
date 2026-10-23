@@ -122,28 +122,6 @@ const promptDjContentTypes = Object.freeze({
   '.svg': 'image/svg+xml',
 });
 
-const productionDesktopModuleMap = new Map([
-  [
-    resolve('src/services/gemini/keyManager.js'),
-    resolve('src/platform/desktopGeminiKeyManager.js'),
-  ],
-]);
-
-const productionDesktopModules = () => ({
-  name: 'osg-production-desktop-modules',
-  enforce: 'pre',
-  resolveId(source, importer) {
-    if (!importer || !source.startsWith('.')) return null;
-    const importerPath = importer.split('?')[0];
-    const base = resolve(dirname(importerPath), source);
-    for (const candidate of [base, `${base}.js`, resolve(base, 'index.js')]) {
-      const replacement = productionDesktopModuleMap.get(candidate);
-      if (replacement) return replacement;
-    }
-    return null;
-  },
-});
-
 const immutableE2eVersionMetadata = () => ({
   name: 'osg-immutable-e2e-version-metadata',
   enforce: 'pre',
@@ -176,20 +154,6 @@ const reactJsxInJavaScript = () => ({
       },
       sourcemap: true,
     });
-  },
-});
-
-// The production renderer is embedded exclusively in Tauri. Folding this host
-// check at build time lets Rolldown prove that legacy browser transports are
-// unreachable and omit them, instead of shipping dormant credential/network
-// code in the desktop webview. Development and Vitest retain runtime detection.
-const foldProductionDesktopBranches = () => ({
-  name: 'osg-fold-production-desktop-branches',
-  enforce: 'pre',
-  transform(source, id) {
-    if (!sourceJavaScriptPattern.test(id) || !source.includes('isDesktopRuntime')) return null;
-    const code = source.replace(/\bisDesktopRuntime\s*\(\s*\)/g, 'true');
-    return code === source ? null : { code, map: null };
   },
 });
 
@@ -312,9 +276,6 @@ export default defineConfig(({ mode }) => {
   plugins: [
     createDevFreshnessPlugin(),
     immutableE2eVersionMetadata(),
-    ...(mode === 'production'
-      ? [productionDesktopModules(), foldProductionDesktopBranches()]
-      : []),
     reactJsxInJavaScript(),
     createFrontendBundleBoundaryPlugin(),
     promptDjAssets(),

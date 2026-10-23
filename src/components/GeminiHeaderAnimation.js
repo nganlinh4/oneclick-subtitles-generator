@@ -303,7 +303,6 @@ const GeminiHeaderAnimation = () => {
     const handleMouseLeave = () => { mouseRef.current.x = null; mouseRef.current.y = null; mouseRef.current.isClicked = false; };
     const handleMouseDown = () => { mouseRef.current.isClicked = true; };
     const handleMouseUp = () => { mouseRef.current.isClicked = false; };
-    const handleThemeChange = () => {}; // Automatically handled in animate loop
     
     // Initial setup
     resizeCanvas();
@@ -313,7 +312,6 @@ const GeminiHeaderAnimation = () => {
     window.addEventListener('resize', resizeCanvas);
     const resizeObserver = new ResizeObserver(resizeCanvas);
     resizeObserver.observe(canvas.parentElement);
-    window.addEventListener('storage', handleThemeChange);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseleave', handleMouseLeave);
     canvas.addEventListener('mousedown', handleMouseDown);
@@ -326,7 +324,6 @@ const GeminiHeaderAnimation = () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resizeCanvas);
       resizeObserver.disconnect();
-      window.removeEventListener('storage', handleThemeChange);
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       canvas.removeEventListener('mousedown', handleMouseDown);

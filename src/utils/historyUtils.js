@@ -1,9 +1,12 @@
 /**
- * Bounded browser compatibility history. Provider images are native process-scoped capabilities;
- * history persists only stable source metadata and rehydrates images when they are displayed.
+ * Bounded recent-media history, kept as per-device preferences. Provider images are native
+ * process-scoped capabilities; history persists only stable source metadata and rehydrates images
+ * when they are displayed.
  */
 
 import { extractDouyinVideoId, extractYoutubeVideoId, isValidUrl } from './mediaUrl';
+import { isRecord } from '../platform/plainDataRecord';
+import { clearPreference, readPreference, writePreference } from '../platform/preferences/store';
 
 const YOUTUBE_URL_HISTORY_KEY = 'youtube_url_history';
 const YOUTUBE_SEARCH_HISTORY_KEY = 'youtube_search_history';
@@ -17,7 +20,6 @@ const MAX_TITLE_CHARACTERS = 1_000;
 const MAX_QUERY_CHARACTERS = 500;
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isTimestamp = (value) => Number.isSafeInteger(value) && value >= 0;
 const boundedText = (value, maximum, { minimum = 1 } = {}) => {
   if (typeof value !== 'string') return null;
@@ -66,15 +68,15 @@ const sanitizeSearchItem = (value) => {
 
 const readBoundedHistory = (key, sanitize, identity) => {
   try {
-    const serialized = localStorage.getItem(key);
-    if (serialized === null) return [];
+    const serialized = readPreference(key);
+    if (serialized === '') return [];
     if (serialized.length > MAX_HISTORY_JSON_CHARACTERS) {
-      localStorage.removeItem(key);
+      clearPreference(key);
       return [];
     }
     const parsed = JSON.parse(serialized);
     if (!Array.isArray(parsed)) {
-      localStorage.removeItem(key);
+      clearPreference(key);
       return [];
     }
 
@@ -91,7 +93,7 @@ const readBoundedHistory = (key, sanitize, identity) => {
     }
 
     if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
-      localStorage.setItem(key, JSON.stringify(sanitized));
+      writePreference(key, JSON.stringify(sanitized));
     }
     return sanitized;
   } catch (error) {
@@ -101,7 +103,7 @@ const readBoundedHistory = (key, sanitize, identity) => {
 };
 
 const writeHistory = (key, history) => {
-  localStorage.setItem(key, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
+  writePreference(key, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
 };
 
 const upsertHistoryItem = (history, item, identity) => [
@@ -135,7 +137,7 @@ export const addYoutubeUrlToHistory = (videoData) => {
 };
 
 export const clearYoutubeUrlHistory = () => {
-  localStorage.removeItem(YOUTUBE_URL_HISTORY_KEY);
+  clearPreference(YOUTUBE_URL_HISTORY_KEY);
 };
 
 export const getSearchQueryHistory = () => readBoundedHistory(
@@ -159,7 +161,7 @@ export const addSearchQueryToHistory = (query) => {
 };
 
 export const clearSearchQueryHistory = () => {
-  localStorage.removeItem(YOUTUBE_SEARCH_HISTORY_KEY);
+  clearPreference(YOUTUBE_SEARCH_HISTORY_KEY);
 };
 
 export const getDouyinUrlHistory = () => readBoundedHistory(

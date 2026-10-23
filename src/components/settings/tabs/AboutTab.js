@@ -8,6 +8,7 @@ import {
   subscribeDesktopUpdateStatus,
 } from '../../../platform/startupUpdateCoordinator';
 import LoadingIndicator from '../../common/LoadingIndicator';
+import { clearPreference } from '../../../platform/preferences/store';
 
 const AboutTab = ({ backgroundType }) => {
   const { t } = useTranslation();
@@ -85,8 +86,8 @@ const AboutTab = ({ backgroundType }) => {
 
   // Function to replay the onboarding animation
   const handleReplayOnboarding = () => {
-    // Remove the flag from localStorage so the onboarding will show again
-    localStorage.removeItem('has_visited_site');
+    // Forget the visit so the onboarding shows again
+    clearPreference('has_visited_site');
 
     // Reload the page to show the onboarding
     window.location.reload();
@@ -118,7 +119,7 @@ const AboutTab = ({ backgroundType }) => {
             </a>
           </p>
           <p>
-            <strong>Email:</strong>
+            <strong>{t('settings.emailLabel', 'Email')}:</strong>
             <a href="mailto:nganlinh4@gmail.com">
               nganlinh4@gmail.com
             </a>

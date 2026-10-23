@@ -1,34 +1,15 @@
-import {
-  DEFAULT_TRANSCRIPTION_MODEL_ID,
-  normalizeMediaModelId,
-} from '../../../config/geminiModels';
-
-const readStorage = (storage, key) => {
-  try {
-    return storage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const boundedNumber = (value, fallback, min, max) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? Math.min(max, Math.max(min, parsed))
-    : fallback;
-};
+import { readPreference } from '../../../platform/preferences/store';
+import { createPromptContext, effectivePromptPreset } from '../../videoProcessingPreferences';
 
 /**
  * Build the same Gemini processing contract as the options modal, without
- * automating that modal's DOM. Values are read from the user's persisted
- * choices and normalized at the action boundary so corrupt storage cannot
- * create an invalid native request.
+ * automating that modal's DOM. Values are the user's stored choices, which the
+ * preference store has already bounded, so corrupt storage cannot create an
+ * invalid native request.
  */
 export const buildAutoGenerateOptions = ({
-  storage = globalThis.localStorage,
   videoFile,
   duration,
-  isVercelMode = false,
   transcriptionRules = null,
   userProvidedSubtitles = '',
   autoRunContext = null,
@@ -38,77 +19,38 @@ export const buildAutoGenerateOptions = ({
     throw new Error('Auto-generation could not determine the media duration.');
   }
 
-  const fps = boundedNumber(readStorage(storage, 'video_processing_fps'), 0.25, 0.25, 5);
-  const rawResolution = readStorage(storage, 'video_processing_media_resolution');
-  const mediaResolution = rawResolution === 'medium' ? 'medium' : 'low';
-  const model = normalizeMediaModelId(
-    readStorage(storage, 'video_processing_model'),
-    DEFAULT_TRANSCRIPTION_MODEL_ID,
-  );
-  const maxDurationMinutes = boundedNumber(
-    readStorage(storage, 'video_processing_max_duration'),
-    10,
-    1,
-    20,
-  );
-  const segmentProcessingDelay = boundedNumber(
-    readStorage(storage, 'segment_processing_delay'),
-    0,
-    0,
-    60,
-  );
-  const maxWordsPerSubtitle = Math.round(boundedNumber(
-    readStorage(storage, 'video_processing_max_words'),
-    12,
-    1,
-    30,
-  ));
-  const method = isVercelMode ? 'new' : 'old';
+  const fps = readPreference('video_processing_fps');
+  const mediaResolution = readPreference('video_processing_media_resolution');
+  const model = readPreference('video_processing_model');
+  const maxDurationMinutes = readPreference('video_processing_max_duration');
+  const segmentProcessingDelay = readPreference('segment_processing_delay');
+  const maxWordsPerSubtitle = readPreference('video_processing_max_words');
   const useProvided = typeof userProvidedSubtitles === 'string'
     && userProvidedSubtitles.trim().length > 0;
-  const storedPreset = readStorage(storage, 'video_processing_prompt_preset') || 'settings';
-  const promptPreset = useProvided ? 'timing-generation' : storedPreset;
-  const useTranscriptionRules = readStorage(
-    storage,
-    'video_processing_use_transcription_rules'
-  ) === 'true';
-  let userPromptPresets = [];
-  try {
-    const parsed = JSON.parse(readStorage(storage, 'user_prompt_presets') || '[]');
-    if (Array.isArray(parsed)) userPromptPresets = parsed;
-  } catch {
-    userPromptPresets = [];
-  }
-  const promptContext = Object.freeze({
+  const promptPreset = useProvided
+    ? 'timing-generation'
+    : effectivePromptPreset(readPreference('video_processing_prompt_preset'), false);
+  const useTranscriptionRules = readPreference('video_processing_use_transcription_rules');
+  const promptContext = createPromptContext({
     presetId: promptPreset,
-    settingsPrompt: readStorage(storage, 'transcription_prompt') || '',
-    customLanguage: readStorage(storage, 'video_processing_custom_language') || '',
+    customLanguage: readPreference('video_processing_custom_language'),
     useTranscriptionRules,
-    transcriptionRules: useTranscriptionRules && transcriptionRules
-      ? JSON.parse(JSON.stringify(transcriptionRules))
-      : null,
-    userPromptPresets: JSON.parse(JSON.stringify(userPromptPresets)),
-    useOutsideResultsContext: false,
-    outsideContextText: '',
+    transcriptionRules,
   });
-  const isAudio = typeof videoFile.type === 'string' && videoFile.type.startsWith('audio/');
-  const oneRequest = isVercelMode && isAudio;
 
   return {
     segment: { start: 0, end: duration },
     generationScope: 'full-media',
-    audioOnly: readStorage(storage, 'video_processing_audio_only') === 'true',
+    audioOnly: readPreference('video_processing_audio_only'),
     fps,
     mediaResolution,
     model,
-    maxDurationPerRequest: oneRequest ? 999_999_999 : maxDurationMinutes * 60,
+    maxDurationPerRequest: maxDurationMinutes * 60,
     segmentProcessingDelay,
-    autoSplitSubtitles: useProvided
-      ? false
-      : readStorage(storage, 'show_favorite_max_length') !== 'false',
+    autoSplitSubtitles: useProvided ? false : readPreference('show_favorite_max_length'),
     maxWordsPerSubtitle,
-    inlineExtraction: method === 'old',
-    method,
+    inlineExtraction: true,
+    method: 'old',
     promptPreset,
     customLanguage: promptContext.customLanguage,
     useTranscriptionRules,

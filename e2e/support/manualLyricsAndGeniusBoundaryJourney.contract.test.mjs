@@ -90,9 +90,10 @@ test('Genius lookup really refuses before any native call, with the exact copy t
   const guardIndex = providerService.indexOf("requireReadyCredential(current, 'geniusAccessToken')");
   const invokeIndex = providerService.indexOf("invoke('genius_lyrics'");
   assert.ok(guardIndex >= 0 && invokeIndex > guardIndex, 'the credential guard must precede the native invoke');
-  assert.match(providerService, /'Genius API key not set\. Please provide it through the settings\.'/u);
   assert.match(geniusLyricsLocale, /"apiKeyNotSet": "Genius API key not set\. Please provide it through the settings\."/u);
-  assert.match(useGeniusLyrics, /err\.message\.includes\('Genius API key not set'\)/u);
+  // The refusal is classified by its native code, not by English message text.
+  assert.match(providerService, /new NativeProviderServiceError\(\s*'credentialNotFound',/u);
+  assert.match(useGeniusLyrics, /errorCodeOf\(error\) === 'credentialNotFound'/u);
   assert.match(useGeniusLyrics, /t\('lyrics\.genius\.apiKeyNotSet'\)/u);
   // The native command itself requires an already-resolved credential id argument, so a
   // credential-free attempt cannot reach it even if the JS guard were bypassed.

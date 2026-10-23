@@ -38,16 +38,6 @@ export const publishStreamingUpdate = (payload) => publish(EVENTS.STREAMING_UPDA
 export const publishStreamingComplete = (payload) => publish(EVENTS.STREAMING_COMPLETE, payload);
 
 /**
- * @param {import('./constants').SaveBeforeUpdatePayload} payload
- */
-export const publishSaveBeforeUpdate = (payload) => publish(EVENTS.SAVE_BEFORE_UPDATE, payload);
-
-/**
- * @param {import('./constants').SaveAfterStreamingPayload} payload
- */
-export const publishSaveAfterStreaming = (payload) => publish(EVENTS.SAVE_AFTER_STREAMING, payload);
-
-/**
  * @param {import('./constants').ProcessingRangesPayload} payload
  */
 export const publishProcessingRanges = (payload) => publish(EVENTS.PROCESSING_RANGES, payload);

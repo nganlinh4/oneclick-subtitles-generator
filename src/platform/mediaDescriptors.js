@@ -1,6 +1,8 @@
 // Validation of the native media DTOs: path-free descriptors, playback capabilities and
 // candidate envelopes. Pure functions only; IPC lives in the modules that import these.
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { hasExactKeys, isRecord } from './plainDataRecord';
+import { exactRecord } from './nativeDataSnapshot';
 
 const NATIVE_MEDIA_MARKER = '__nativeMedia';
 const MAX_DISPLAY_NAME_CHARACTERS = 512;
@@ -28,44 +30,6 @@ const DESCRIPTOR_KEYS = Object.freeze([
 ]);
 const PLAYBACK_URL_PATTERN = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/asset\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\?token=([0-9a-f]{64})$/i;
 const MIME_TYPE_PATTERN = /^(audio|video)\/[a-z0-9][a-z0-9.+-]{0,126}$/;
-
-const isRecord = (value) => (
-  value !== null
-  && typeof value === 'object'
-  && !Array.isArray(value)
-);
-
-export const hasExactKeys = (value, expectedKeys) => {
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value).sort();
-  return keys.length === expectedKeys.length
-    && keys.every((key, index) => key === expectedKeys[index]);
-};
-
-export const snapshotExactDataRecord = (value, expectedKeys, failure) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length !== expectedKeys.length
-        || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
-      throw failure();
-    }
-    const snapshot = {};
-    for (const key of expectedKeys) {
-      const descriptor = descriptors[key];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw failure();
-      }
-      snapshot[key] = descriptor.value;
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw failure();
-  }
-};
 
 const isUuidVersion = (value, expectedVersion) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -199,13 +163,13 @@ const createDescriptor = (media, playback) => Object.freeze({
 });
 
 export const normalizeMediaCandidate = (value) => {
-  const candidate = snapshotExactDataRecord(
+  const candidate = exactRecord(
     value,
     ['asset', 'contentIdentity'],
     invalidMediaResponse
   );
-  const assetSnapshot = snapshotExactDataRecord(candidate.asset, MEDIA_KEYS, invalidMediaResponse);
-  const identity = snapshotExactDataRecord(
+  const assetSnapshot = exactRecord(candidate.asset, MEDIA_KEYS, invalidMediaResponse);
+  const identity = exactRecord(
     candidate.contentIdentity,
     CONTENT_IDENTITY_KEYS,
     invalidMediaResponse

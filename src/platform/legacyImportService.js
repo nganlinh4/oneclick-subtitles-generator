@@ -2,10 +2,10 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import i18n from '../i18n/i18n';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { hasExactKeys, isNativeErrorCode } from './plainDataRecord';
 
 const MAX_IMPORT_ITEMS = 20_000;
 const MAX_IMPORT_HISTORY = 64;
-const ERROR_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 const SUMMARY_KEYS = Object.freeze([
   'sourceId',
   'state',
@@ -20,31 +20,6 @@ const IMPORT_STATES = new Set(['running', 'complete', 'failed']);
 const TOAST_KEY = 'legacy-data-import';
 const INSTALLATION_KEY = Symbol.for('osg.legacyImportKeyboardAction.v1');
 const INSTALLATION_OWNER = Symbol('osg.legacyImportKeyboardAction.owner');
-
-const isPlainRecord = (value) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-  } catch {
-    return false;
-  }
-};
-
-const hasExactKeys = (value, expectedKeys) => {
-  if (!isPlainRecord(value)) return false;
-  try {
-    const keys = Reflect.ownKeys(value);
-    return keys.length === expectedKeys.length
-      && keys.every((key) => {
-        if (typeof key !== 'string' || !expectedKeys.includes(key)) return false;
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
-        return descriptor?.enumerable === true && Object.hasOwn(descriptor, 'value');
-      });
-  } catch {
-    return false;
-  }
-};
 
 const isSafeCount = (value) => (
   Number.isSafeInteger(value) && value >= 0 && value <= MAX_IMPORT_ITEMS
@@ -75,7 +50,7 @@ const importBusy = () => new LegacyImportServiceError(
 
 const normalizeFailure = (error) => {
   if (error instanceof LegacyImportServiceError) return error;
-  const code = typeof error?.code === 'string' && ERROR_CODE_PATTERN.test(error.code)
+  const code = isNativeErrorCode(error?.code)
     ? error.code
     : 'legacyImportCommandFailed';
   return new LegacyImportServiceError(code);

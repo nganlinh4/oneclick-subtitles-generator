@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import CloseButton from '../../common/CloseButton';
 import LoadingIndicator from '../../common/LoadingIndicator';
 import '../../../styles/narration/narrationModelDropdown.css';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 /**
  * Model Selection Modal Component
@@ -126,6 +127,9 @@ const ModelSelectionModal = ({
                   key={lang}
                   className="model-option-card"
                   onClick={() => handleModelSelect(lang)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={activateOnKey}
                 >
                   <div className="model-option-icon" aria-hidden="true"><span className="model-flag">{flagFor(lang)}</span></div>
                   <div className="model-option-info">
@@ -211,9 +215,13 @@ const ModelSelectionModal = ({
                         key={model.id}
                         className={`model-option-card ${model.id === selectedModel ? 'selected' : ''}`}
                         onClick={() => handleModelSelect(model.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={activateOnKey}
+                        aria-pressed={model.id === selectedModel}
                       >
                         <div className="model-option-icon">
-                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>check_circle</span>
+                          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>check_circle</span>
                         </div>
                         <div className="model-option-info">
                           <div className="model-option-name">{model.id}</div>
@@ -257,9 +265,13 @@ const ModelSelectionModal = ({
                         key={model.id}
                         className={`model-option-card ${model.id === selectedModel ? 'selected' : ''}`}
                         onClick={() => handleModelSelect(model.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={activateOnKey}
+                        aria-pressed={model.id === selectedModel}
                       >
                         <div className="model-option-icon">
-                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>settings</span>
+                          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>settings</span>
                         </div>
                         <div className="model-option-info">
                           <div className="model-option-name">{model.id}</div>

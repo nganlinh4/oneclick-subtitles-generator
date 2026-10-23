@@ -1,9 +1,7 @@
 {
   "note": "참고",
   "cancel": "취소",
-  "undo": "실행 취소",
   "undoWithShortcut": "실행 취소 (Ctrl+Z)",
-  "redo": "다시 실행",
   "redoWithShortcut": "다시 실행 (Ctrl+Y 또는 Ctrl+Shift+Z)",
   "reset": "초기화",
   "resetWithShortcut": "저장된 상태로 초기화",
@@ -23,7 +21,6 @@
   "unmute": "음소거 해제",
   "fullscreen": "전체 화면",
   "done": "완료",
-  "jumpToCheckpoint": "마지막 체크포인트로 이동 (여러 단계 실행 취소)",
   "jumpToCheckpointWithShortcut": "마지막 체크포인트로 이동 (Ctrl+J)",
   "toast": {
     "error": "오류",
@@ -36,7 +33,6 @@
   "toastHistory": "알림 기록",
   "showToastHistory": "알림 기록 표시",
   "hideToastHistory": "알림 기록 숨기기",
-  "disabled": "번역 중에는 사용할 수 없습니다",
   "history": "기록",
   "reload": "새로고침",
   "resize": "높이 조절",
@@ -56,5 +52,12 @@
     "invalid": "해당 폴더는 올바른 이전 OSG 데이터가 아니거나 안전하지 않은 항목을 포함하고 있습니다.",
     "tooLarge": "해당 이전 데이터 폴더가 가져오기 안전 제한을 초과합니다.",
     "failed": "이전 데이터 가져오기를 완료하지 못했습니다. 원본 파일은 변경되지 않았습니다."
-  }
+  },
+  "expand": "펼치기",
+  "collapse": "접기",
+  "downloadAudio": "오디오 다운로드",
+  "clearInput": "입력 지우기",
+  "exitFullscreen": "전체 화면 종료",
+  "playPause": "재생/일시정지",
+  "audioSaveFailed": "오디오 녹음을 저장할 수 없습니다."
 }

@@ -1,13 +1,7 @@
 {
-  "title": "Chào mừng đến với Trình tạo phụ đề",
-  "promptSelectionSubtitle": "Đầu tiên, hãy chọn một mẫu lệnh cho phiên dịch của bạn",
-  "modelSelectionSubtitle": "Bây giờ, hãy chọn một mô hình Gemini cho phiên dịch của bạn",
-  "promptSelectionInstruction": "Chọn một mẫu phù hợp nhất với nhu cầu của bạn. Bạn luôn có thể thay đổi điều này sau trong phần cài đặt.",
-  "modelSelectionInstruction": "Chọn một mô hình Gemini. Các mô hình chính xác hơn có thể chậm hơn. Bạn luôn có thể thay đổi điều này sau trong phần cài đặt.",
-  "selectLanguage": "Chọn ngôn ngữ của bạn:",
-  "back": "Quay lại",
-  "next": "Tiếp theo",
-  "finish": "Hoàn thành",
   "letsGo": "Bắt đầu",
-  "completed": "Thiết lập hoàn tất! Bạn có thể thay đổi các cài đặt này bất cứ lúc nào."
+  "clickToContinue": "Nhấp vào bất kỳ đâu để tiếp tục",
+  "waitPrefix": "Vui lòng đợi ",
+  "waitSeconds": " giây...",
+  "waitSecond": " giây..."
 }

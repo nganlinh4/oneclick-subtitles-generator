@@ -54,7 +54,7 @@ describe('VideoCropControls aspect-ratio presets', () => {
     expect(onCropChange).toHaveBeenCalledTimes(1);
     const emitted = onCropChange.mock.calls[0][0];
 
-    // The exact key set `normalizeProjectRenderSceneValues`'s `exactSnapshot(crop, CROP_KEYS)`
+    // The exact key set `normalizeProjectRenderSceneValues`'s `snapshotExactRecord(crop, CROP_KEYS)`
     // requires. Before the fix, `handleAspectRatioChange` built a fresh object from only
     // `calculateCropDimensions`'s return (x/y/width/height) plus flipX/flipY -- six keys instead
     // of ten -- which the durable scene authority rejected outright (an uncaught

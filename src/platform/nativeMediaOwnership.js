@@ -8,6 +8,7 @@ import {
 } from './subtitleProjectStore';
 import { generateUrlBasedCacheId } from '../services/subtitleCache';
 import { resolveProjectForMedia } from './subtitleDocumentProject';
+import { readActiveMedia, updateActiveMedia } from './activeMediaSource';
 
 /**
  * Durable association between the media the app is showing and the subtitle project that owns it.
@@ -24,15 +25,15 @@ import { resolveProjectForMedia } from './subtitleDocumentProject';
  * refusal, never a wrong or unowned open.
  */
 
-export const NATIVE_MEDIA_SESSION_KEY = 'current_media_session';
+// Older builds mirrored the pointer into WebView storage; it is read once, then removed.
+export const LEGACY_SESSION_STORAGE_KEY = 'current_media_session';
 
 const MAX_CACHE_ID_CHARACTERS = 8_192;
-const SESSION_VERSION = 1;
-const SESSION_KEYS = Object.freeze(['assetId', 'cacheId', 'projectId', 'v']);
+const LEGACY_SESSION_VERSION = 1;
+const LEGACY_SESSION_KEYS = Object.freeze(['assetId', 'cacheId', 'projectId', 'v']);
 const WORKSPACE_STATE_KEYS = Object.freeze(['initialized', 'schemaVersion', 'workspace']);
 const ATTACH_REASON = 'Associate active media with its subtitle project';
 let latestWorkspacePublication = 0;
-let suppressedBrowserSession = null;
 
 class NativeMediaOwnershipError extends Error {
   constructor(code, message) {
@@ -130,84 +131,72 @@ export const subtitleAliasForActiveMedia = async ({ assetId, videoUrl = null }) 
   return cacheId;
 };
 
-export const readNativeMediaSession = ({
-  readValue = () => localStorage.getItem(NATIVE_MEDIA_SESSION_KEY),
-} = {}) => {
+const parseLegacySession = (raw) => {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_CACHE_ID_CHARACTERS * 2) {
+    return null;
+  }
   let parsed;
   try {
-    const raw = readValue();
-    if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_CACHE_ID_CHARACTERS * 2) {
-      if (raw === null) suppressedBrowserSession = null;
-      return null;
-    }
     parsed = JSON.parse(raw);
   } catch {
     return null;
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const keys = Object.keys(parsed);
-  if (keys.length !== SESSION_KEYS.length || keys.some((key) => !SESSION_KEYS.includes(key))) {
-    return null;
-  }
-  if (parsed.v !== SESSION_VERSION
+  if (keys.length !== LEGACY_SESSION_KEYS.length
+      || keys.some((key) => !LEGACY_SESSION_KEYS.includes(key))
+      || parsed.v !== LEGACY_SESSION_VERSION
       || !isUuidV7(parsed.assetId)
       || !isUuidV7(parsed.projectId)
       || !isCacheId(parsed.cacheId)) {
     return null;
   }
-  const session = Object.freeze({
+  return Object.freeze({
     assetId: parsed.assetId,
     cacheId: parsed.cacheId,
     projectId: parsed.projectId,
   });
-  if (sameSession(session, suppressedBrowserSession)) return null;
-  suppressedBrowserSession = null;
-  return session;
 };
 
-export const writeNativeMediaSession = (session, {
-  writeValue = (value) => localStorage.setItem(NATIVE_MEDIA_SESSION_KEY, value),
-} = {}) => {
+/** Read and remove the pointer older builds kept in WebView storage. Used once, for migration. */
+export const takeLegacyNativeMediaSession = ({ storage = globalThis.localStorage } = {}) => {
+  try {
+    const session = parseLegacySession(storage?.getItem(LEGACY_SESSION_STORAGE_KEY));
+    storage?.removeItem(LEGACY_SESSION_STORAGE_KEY);
+    return session;
+  } catch {
+    return null;
+  }
+};
+
+/** The in-memory mirror of the native pointer, used by synchronous ownership checks. */
+export const readNativeMediaSession = () => readActiveMedia().session;
+
+export const writeNativeMediaSession = (session) => {
   if (!isUuidV7(session?.assetId) || !isUuidV7(session?.projectId) || !isCacheId(session?.cacheId)) {
     throw ownershipFailure();
   }
-  writeValue(JSON.stringify({
-    v: SESSION_VERSION,
-    assetId: session.assetId,
-    cacheId: session.cacheId,
-    projectId: session.projectId,
-  }));
-  suppressedBrowserSession = null;
+  updateActiveMedia({
+    session: Object.freeze({
+      assetId: session.assetId,
+      cacheId: session.cacheId,
+      projectId: session.projectId,
+    }),
+  });
 };
 
-export const forgetNativeMediaSession = ({
-  expectedSession = null,
-  readValue = () => localStorage.getItem(NATIVE_MEDIA_SESSION_KEY),
-  removeValue = () => localStorage.removeItem(NATIVE_MEDIA_SESSION_KEY),
-} = {}) => {
-  const current = readNativeMediaSession({ readValue });
-  if (expectedSession !== null) {
-    if (current === null
-        || current.assetId !== expectedSession.assetId
-        || current.cacheId !== expectedSession.cacheId
-        || current.projectId !== expectedSession.projectId) {
-      return false;
-    }
-  }
-  try {
-    removeValue();
-    suppressedBrowserSession = null;
-    return true;
-  } catch {
-    // Native authority may already contain an empty tombstone. Suppress this exact stale mirror
-    // for the rest of the WebView lifetime so cleanup failure cannot roll the visible app back.
-    suppressedBrowserSession = current;
+/** Drop the mirror, but only while it still names `expectedSession` when one is given. */
+export const forgetNativeMediaSession = ({ expectedSession = null } = {}) => {
+  const current = readNativeMediaSession();
+  if (expectedSession !== null && (current === null || !sameSession(current, expectedSession))) {
     return false;
   }
+  updateActiveMedia({ session: null });
+  return true;
 };
 
-/** Persist the exact pointer through the typed native workspace boundary, then update the browser
- * mirror used by synchronous ownership checks in the current WebView. */
+/** Persist the exact pointer through the typed native workspace boundary, then update the
+ * in-memory mirror used by synchronous ownership checks. */
 export const persistNativeMediaSession = async (session, {
   invokeCommand = invokeDesktop,
   rememberMirror = writeNativeMediaSession,
@@ -233,28 +222,27 @@ export const persistNativeMediaSession = async (session, {
   return stored;
 };
 
-/** Load the native pointer before any media reconciliation. A legacy browser pointer is migrated
- * only after Rust proves the exact project currently owns that media. */
+/** Load the native pointer before any media reconciliation. A legacy WebView-storage pointer is
+ * migrated only while native authority is uninitialized, and only after Rust proves the exact
+ * project currently owns that media; otherwise the stale copy is simply discarded. */
 export const loadDurableNativeMediaSession = async ({
   invokeCommand = invokeDesktop,
-  readLegacy = readNativeMediaSession,
+  takeLegacy = takeLegacyNativeMediaSession,
   rememberMirror = writeNativeMediaSession,
-  forgetLegacy = forgetNativeMediaSession,
+  forgetMirror = forgetNativeMediaSession,
   persist = persistNativeMediaSession,
 } = {}) => {
   const state = sessionFromWorkspaceState(await invokeCommand('active_workspace_get', {}));
+  const legacy = takeLegacy();
   if (state.session !== null) {
-    const session = state.session;
-    rememberMirror(session);
-    return session;
+    rememberMirror(state.session);
+    return state.session;
   }
   if (state.initialized) {
-    // A native tombstone means an ordinary user removal already won. Clearing a stale browser
-    // mirror here closes the crash window between native clear and localStorage cleanup.
-    forgetLegacy();
+    // A native tombstone means an ordinary user removal already won.
+    forgetMirror();
     return null;
   }
-  const legacy = readLegacy();
   if (legacy === null) return null;
   return persist(legacy, { invokeCommand, rememberMirror });
 };
@@ -281,9 +269,8 @@ export const forgetNativeMediaSessionDurably = async ({
   if (!isUuidV7(intentId)) throw ownershipFailure();
   const cleared = await invokeCommand('active_workspace_clear', { expected, intentId });
   if (cleared !== true) return false;
-  // Native authority has committed the tombstone. Browser cleanup is conditional so a newer
-  // winner published while IPC was in flight cannot be erased, and cleanup failure cannot turn a
-  // durable success into a rollback request.
+  // Native authority has committed the tombstone. Mirror cleanup is conditional so a newer
+  // winner published while IPC was in flight cannot be erased.
   if (target !== null) forgetMirror({ expectedSession: target });
   return true;
 };

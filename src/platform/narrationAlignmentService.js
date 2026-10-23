@@ -6,6 +6,7 @@ import {
   releaseSpeechPlayback,
   resolveSpeechArtifact,
 } from './speechService';
+import { hasExactKeys, hasOnlyKeys, isAbortSignalLike, isPlainDataRecord } from './plainDataRecord';
 
 const MAX_ALIGNMENT_CLIPS = 1_000;
 const MAX_ALIGNMENT_DURATION_MICROS = 4 * 60 * 60 * 1_000_000;
@@ -27,29 +28,6 @@ const failureCodes = new Set([
   'mediaFailed',
   'artifactStorage',
 ]);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  if (Object.getOwnPropertySymbols(value).length !== 0) return false;
-  return Object.values(Object.getOwnPropertyDescriptors(value))
-    .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
-};
-
-const hasExactKeys = (value, keys) => (
-  isPlainRecord(value)
-  && Object.keys(value).length === keys.length
-  && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
-);
-
-const hasOnlyKeys = (value, keys) => (
-  isPlainRecord(value) && Object.keys(value).every((key) => keys.has(key))
-);
 
 const uuidHasVersion = (value, expectedVersion) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -234,7 +212,7 @@ export const normalizeAlignmentResult = (result) => {
 };
 
 const normalizeAlignmentEvent = (event) => {
-  if (!isPlainRecord(event) || typeof event.event !== 'string') throw invalidResponse();
+  if (!isPlainDataRecord(event) || typeof event.event !== 'string') throw invalidResponse();
   if (event.event === 'progress') {
     if (!hasExactKeys(event, ['event', 'jobId', 'phase', 'fractionMillionths'])
         || !uuidHasVersion(event.jobId, 7)
@@ -281,7 +259,7 @@ const normalizeAlignmentEvent = (event) => {
   throw invalidResponse();
 };
 
-const handlerKeys = new Set([
+const handlerKeys = Object.freeze([
   'onEvent',
   'onProgress',
   'onCompleted',
@@ -291,8 +269,8 @@ const handlerKeys = new Set([
   'onHandlerError',
   'onCancellationError',
 ]);
-const optionKeys = new Set(['signal']);
-const waitOptionKeys = new Set(['signal', 'pollIntervalMs', 'timeoutMs']);
+const optionKeys = Object.freeze(['signal']);
+const waitOptionKeys = Object.freeze(['signal', 'pollIntervalMs', 'timeoutMs']);
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
@@ -307,11 +285,7 @@ const normalizeOptions = (options) => {
   if (options === undefined) return Object.freeze({ signal: null });
   if (!hasOnlyKeys(options, optionKeys)) throw invalidRequest();
   const signal = options.signal ?? null;
-  if (signal !== null
-      && (!isRecord(signal)
-        || typeof signal.aborted !== 'boolean'
-        || typeof signal.addEventListener !== 'function'
-        || typeof signal.removeEventListener !== 'function')) {
+  if (signal !== null && !isAbortSignalLike(signal)) {
     throw invalidRequest();
   }
   return Object.freeze({ signal });
@@ -351,7 +325,7 @@ export const createNativeNarrationAlignmentService = ({
     } catch {
       throw invalidRequest();
     }
-    if (!isRecord(channel)) throw invalidRequest();
+    if (channel === null || typeof channel !== 'object') throw invalidRequest();
 
     const pending = [];
     let initial = null;
@@ -535,11 +509,7 @@ export const createNativeNarrationAlignmentService = ({
     if (!hasOnlyKeys(options, waitOptionKeys)) throw invalidRequest();
     const id = requireUuid(jobId, 7);
     const signal = options.signal ?? null;
-    if (signal !== null
-        && (!isRecord(signal)
-          || typeof signal.aborted !== 'boolean'
-          || typeof signal.addEventListener !== 'function'
-          || typeof signal.removeEventListener !== 'function')) {
+    if (signal !== null && !isAbortSignalLike(signal)) {
       throw invalidRequest();
     }
     const pollIntervalMs = requireInteger(options.pollIntervalMs ?? 250, 100, 5_000);

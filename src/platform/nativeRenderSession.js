@@ -19,14 +19,8 @@ import {
   normalizeRenderJob,
   normalizeRenderResultResponse,
 } from './renderResponse';
-import {
-  hasOnlyKeys,
-  isRecord,
-  requireUuid,
-  snapshotExactRecord,
-  snapshotPlainRecord,
-  uuidHasVersion,
-} from './renderValidation';
+import { hasOnlyKeys, snapshotExactRecord, snapshotPlainRecord } from './plainDataRecord';
+import { requireUuid, uuidHasVersion } from './renderValidation';
 
 const MAX_PENDING_EVENTS = 4_096;
 export const ACTIVE_JOB_STATES = new Set(['queued', 'running', 'cancelling']);
@@ -43,9 +37,9 @@ const RENDER_PHASE_ORDER = new Map([
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  const allowed = new Set([
+  const allowed = [
     'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed', 'onProtocolError',
-  ]);
+  ];
   const snapshot = snapshotPlainRecord(handlers);
   if (snapshot === null || !hasOnlyKeys(snapshot, allowed)
       || Object.values(snapshot).some(
@@ -191,7 +185,7 @@ export const createNativeRenderService = ({
       : normalizeExportText(options.text, ownedRequest);
     const handlers = normalizeHandlers(rawHandlers);
     const channel = new ChannelConstructor();
-    if (!isRecord(channel)) throw invalidRequest();
+    if (channel === null || typeof channel !== 'object') throw invalidRequest();
     const borrowedAbortMonitor = internalAbortMonitors.get(rawOptions) ?? null;
     const abortMonitor = borrowedAbortMonitor ?? createAbortMonitor(signal);
     const ownsAbortMonitor = borrowedAbortMonitor === null;

@@ -1,4 +1,5 @@
 import { DOWNLOAD_COOKIE_SOURCES } from './downloadCookiePreference';
+import { isNativeErrorCode } from './plainDataRecord';
 
 /**
  * The fixed wire vocabulary of a native URL download: the failures it may raise, the caller request
@@ -30,7 +31,7 @@ const requestKeys = Object.freeze([
 export const fixedFailure = (code = 'nativeDownloadFailed') => {
   const error = new Error('The native media download could not be completed');
   error.name = 'NativeUrlDownloadError';
-  error.code = typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
+  error.code = isNativeErrorCode(code)
     ? code
     : 'nativeDownloadFailed';
   return error;

@@ -1,14 +1,17 @@
 import { DEFAULT_TRANSCRIPTION_MODEL_ID } from '../../../config/geminiModels';
 import { buildAutoGenerateOptions } from './autoGenerateOptions';
 
-const storage = (values = {}) => ({
-  getItem: (key) => Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null,
-});
+// Seed WebView storage, the preference store's backing, and contribute nothing to the options.
+const seeded = (values = {}) => {
+  localStorage.clear();
+  Object.entries(values).forEach(([key, value]) => localStorage.setItem(key, value));
+  return {};
+};
 
 test('builds a desktop full-media request from normalized saved choices', () => {
   const videoFile = { assetId: 'asset-1', type: 'video/mp4' };
   const result = buildAutoGenerateOptions({
-    storage: storage({
+    ...seeded({
       video_processing_fps: '1.5',
       video_processing_media_resolution: 'medium',
       video_processing_max_duration: '4',
@@ -35,9 +38,9 @@ test('builds a desktop full-media request from normalized saved choices', () => 
   }));
 });
 
-test('bounds corrupt storage and uses the Files API method in the hosted app', () => {
+test('bounds corrupt storage at the action boundary', () => {
   const result = buildAutoGenerateOptions({
-    storage: storage({
+    ...seeded({
       video_processing_fps: '999',
       video_processing_media_resolution: 'hostile',
       video_processing_max_duration: '-4',
@@ -46,7 +49,6 @@ test('bounds corrupt storage and uses the Files API method in the hosted app', (
     }),
     videoFile: { name: 'clip.mp4' },
     duration: 1,
-    isVercelMode: true,
   });
 
   expect(result).toEqual(expect.objectContaining({
@@ -55,15 +57,15 @@ test('bounds corrupt storage and uses the Files API method in the hosted app', (
     maxDurationPerRequest: 60,
     segmentProcessingDelay: 0,
     maxWordsPerSubtitle: 1,
-    inlineExtraction: false,
-    method: 'new',
+    inlineExtraction: true,
+    method: 'old',
   }));
 });
 
 test('carries timing-generation subtitles and the active prompt/rules snapshot', () => {
   const context = { runId: 'run-1' };
   const result = buildAutoGenerateOptions({
-    storage: storage({
+    ...seeded({
       video_processing_prompt_preset: 'describe-video',
       video_processing_use_transcription_rules: 'true',
       transcription_prompt: 'My {contentType} prompt',
@@ -101,12 +103,12 @@ test('uses only the project-owned subtitle text, regardless of a stale browser f
   };
   const withProjectText = buildAutoGenerateOptions({
     ...common,
-    storage: storage({ use_user_provided_subtitles: 'false' }),
+    ...seeded({ use_user_provided_subtitles: 'false' }),
     userProvidedSubtitles: 'Durable project line',
   });
   const withoutProjectText = buildAutoGenerateOptions({
     ...common,
-    storage: storage({ use_user_provided_subtitles: 'true' }),
+    ...seeded({ use_user_provided_subtitles: 'true' }),
     userProvidedSubtitles: '',
   });
 
@@ -121,21 +123,20 @@ test('uses only the project-owned subtitle text, regardless of a stale browser f
   });
 });
 
-test('forces hosted audio into one Gemini request and clears stale outside context', () => {
+test('splits long audio by the saved request window and clears stale outside context', () => {
   const result = buildAutoGenerateOptions({
-    storage: storage({
+    ...seeded({
       video_processing_max_duration: '1',
       video_processing_use_outside_context: 'true',
       video_processing_outside_context_text: 'stale neighbouring subtitles',
     }),
     videoFile: { assetId: 'asset-1', type: 'audio/mpeg' },
     duration: 3_600,
-    isVercelMode: true,
   });
 
-  expect(result.method).toBe('new');
-  expect(result.inlineExtraction).toBe(false);
-  expect(result.maxDurationPerRequest).toBe(999_999_999);
+  expect(result.method).toBe('old');
+  expect(result.inlineExtraction).toBe(true);
+  expect(result.maxDurationPerRequest).toBe(60);
   expect(result.promptContext.useOutsideResultsContext).toBe(false);
   expect(result.promptContext.outsideContextText).toBe('');
 });
@@ -144,6 +145,17 @@ test.each([
   [{ duration: 0, videoFile: { name: 'clip.mp4' } }, 'duration'],
   [{ duration: 2, videoFile: null }, 'prepared media'],
 ])('fails closed when a required automatic-processing input is absent', (overrides, message) => {
-  expect(() => buildAutoGenerateOptions({ storage: storage(), ...overrides }))
+  expect(() => buildAutoGenerateOptions({ ...seeded(), ...overrides }))
     .toThrow(message);
+});
+
+test('falls back from a stored timing-generation preset when no subtitles were provided', () => {
+  const result = buildAutoGenerateOptions({
+    ...seeded({ video_processing_prompt_preset: 'timing-generation' }),
+    videoFile: { assetId: 'asset-1', type: 'video/mp4' },
+    duration: 5,
+  });
+
+  expect(result.promptPreset).toBe('settings');
+  expect(localStorage.getItem('video_processing_prompt_preset')).toBe('timing-generation');
 });

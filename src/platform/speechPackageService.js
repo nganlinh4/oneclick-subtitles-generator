@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { hasExactKeys, hasOnlyKeys, isAbortSignalLike, isPlainDataRecord } from './plainDataRecord';
 
 export const SPEECH_PACKAGE_BACKENDS = Object.freeze([
   'f5-tts',
@@ -46,37 +47,25 @@ const nativeFailureCodes = new Set([
   'jobRegistry',
   'database',
 ]);
-const statusKeys = new Set(['schemaVersion', 'packages']);
-const packageKeys = new Set([
+const statusKeys = Object.freeze(['schemaVersion', 'packages']);
+const packageKeys = Object.freeze([
   'id', 'label', 'deliveryAvailable', 'installed', 'updateAvailable', 'state',
   'version', 'availableVersion', 'installedBytes', 'downloadBytes',
   'availableInstalledBytes', 'operation',
 ]);
-const operationKeys = new Set([
+const operationKeys = Object.freeze([
   'job', 'backend', 'action', 'phase', 'basisPoints', 'bytesDone', 'totalBytes',
 ]);
-const jobKeys = new Set(['id', 'kind', 'state', 'progress', 'sequence']);
-const progressKeys = new Set(['basisPoints']);
-const errorKeys = new Set(['code', 'message']);
-const handlerKeys = new Set([
+const jobKeys = Object.freeze(['id', 'kind', 'state', 'progress', 'sequence']);
+const progressKeys = Object.freeze(['basisPoints']);
+const errorKeys = Object.freeze(['code', 'message']);
+const handlerKeys = Object.freeze([
   'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed',
   'onProtocolError', 'onHandlerError', 'onCancellationError',
 ]);
 const MAX_PENDING_EVENTS = 4_096;
 const MAX_JOB_EVENTS = 250_000;
 
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return (prototype === Object.prototype || prototype === null)
-    && Object.getOwnPropertySymbols(value).length === 0
-    && Object.values(Object.getOwnPropertyDescriptors(value))
-      .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
-};
-const hasExactKeys = (value, keys) => isPlainRecord(value)
-  && Object.keys(value).length === keys.size
-  && Object.keys(value).every((key) => keys.has(key));
 const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
   try {
@@ -301,13 +290,13 @@ const normalizeError = (value) => {
 };
 
 export const normalizeSpeechPackageEvent = (value) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
+  if (!isPlainDataRecord(value) || typeof value.event !== 'string') throw invalidResponse();
   if (value.event === 'progress') {
-    if (!hasExactKeys(value, new Set(['event', 'operation']))) throw invalidResponse();
+    if (!hasExactKeys(value, ['event', 'operation'])) throw invalidResponse();
     return Object.freeze({ event: 'progress', operation: normalizeOperation(value.operation) });
   }
   if (value.event === 'completed' || value.event === 'cancelled') {
-    if (!hasExactKeys(value, new Set(['event', 'job', 'backend', 'action']))) {
+    if (!hasExactKeys(value, ['event', 'job', 'backend', 'action'])) {
       throw invalidResponse();
     }
     const job = normalizeSpeechPackageJob(value.job);
@@ -323,7 +312,7 @@ export const normalizeSpeechPackageEvent = (value) => {
     });
   }
   if (value.event === 'failed') {
-    if (!hasExactKeys(value, new Set(['event', 'job', 'backend', 'action', 'error']))
+    if (!hasExactKeys(value, ['event', 'job', 'backend', 'action', 'error'])
         || !actionSet.has(value.action)) {
       throw invalidResponse();
     }
@@ -343,8 +332,7 @@ export const normalizeSpeechPackageEvent = (value) => {
 };
 
 const normalizeHandlers = (handlers = {}) => {
-  if (!isPlainRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => typeof handler !== 'function')) {
     throw invalidRequest();
   }
@@ -391,14 +379,9 @@ export const createNativeSpeechPackageService = ({
     requireDesktop();
     const backend = requireBackend(backendInput);
     const handlers = normalizeHandlers(handlersInput);
-    if (!isPlainRecord(options)
-        || Object.keys(options).some((key) => key !== 'signal')) throw invalidRequest();
+    if (!hasOnlyKeys(options, ['signal'])) throw invalidRequest();
     const { signal } = options;
-    if (signal !== undefined
-        && (!isRecord(signal)
-          || typeof signal.aborted !== 'boolean'
-          || typeof signal.addEventListener !== 'function'
-          || typeof signal.removeEventListener !== 'function')) throw invalidRequest();
+    if (signal !== undefined && !isAbortSignalLike(signal)) throw invalidRequest();
     if (signal?.aborted) throw cancelledRequest();
 
     const allowedActions = new Set(expectedActions);

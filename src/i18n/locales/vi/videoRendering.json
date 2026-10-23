@@ -228,11 +228,6 @@
   "errorPrefix": "Lỗi: {{message}}",
   "exitCrop": "Thoát cắt",
   "gradient": "Gradient",
-  "hintBlobRevoked": "Blob video tạm thời có thể đã bị thu hồi hoặc hết hạn. Hãy thử thêm lại video.",
-  "hintLabel": "Gợi ý",
-  "hintMixedContent": "Đã chặn nội dung hỗn hợp: trang dùng HTTPS nhưng video/API lại dùng HTTP. Hãy dùng HTTPS cho API/video hoặc chạy ứng dụng qua HTTP.",
-  "hintNetworkCors": "Sự cố mạng/CORS. Hãy kiểm tra tab Network để xem yêu cầu bị lỗi và nhật ký máy chủ.",
-  "hintOffline": "Có vẻ bạn đang ngoại tuyến.",
   "noValidNarrationFiles": "Không có tệp thuyết minh hợp lệ",
   "selectAlignment": "Chọn căn chỉnh",
   "selectAnimation": "Chọn hoạt ảnh",
@@ -245,5 +240,7 @@
   "validating": "Đang kiểm tra điều kiện kết xuất...",
   "queued": "Đã xếp hàng kết xuất",
   "loadingProjectScene": "Đang tải cài đặt kết xuất của dự án này…",
-  "subtitleFontRepaired": "Đã sửa phông chữ phụ đề: {{oldFont}} → {{newFont}}"
+  "subtitleFontRepaired": "Đã sửa phông chữ phụ đề: {{oldFont}} → {{newFont}}",
+  "currentVideo": "Video hiện tại",
+  "renderFailedToast": "Render video thất bại: {{error}}"
 }

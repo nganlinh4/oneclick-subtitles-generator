@@ -1,27 +1,11 @@
 import { resolveCacheIdForGeneration } from './useSubtitlesCaching';
-import { generateFileCacheId } from '../utils/cacheUtils';
-import { activateSubtitleProjectBinding } from '../platform/subtitleProjectBinding';
-import {
-  resolveActiveNativeMedia,
-} from '../platform/activeNativeMedia';
+import { resolveActiveNativeMedia } from '../platform/activeNativeMedia';
 
-vi.mock('../utils/cacheUtils', () => ({ generateFileCacheId: vi.fn() }));
-vi.mock('../utils/videoProcessor', () => ({ getVideoDuration: vi.fn() }));
 vi.mock('../services/subtitleCache', () => ({
-  generateUrlBasedCacheId: vi.fn(),
   getCachedSubtitles: vi.fn(),
-}));
-vi.mock('../utils/transcriptionRulesStore', () => ({ setCurrentCacheId: vi.fn() }));
-vi.mock('../utils/userSubtitlesStore', () => ({ setCurrentCacheId: vi.fn() }));
-vi.mock('../platform/subtitleProjectBinding', () => ({
-  activateSubtitleProjectBinding: vi.fn(),
 }));
 vi.mock('../platform/activeNativeMedia', () => ({
   resolveActiveNativeMedia: vi.fn(),
-}));
-vi.mock('../platform/desktopRuntime', async (importOriginal) => ({
-  ...(await importOriginal()),
-  isDesktopRuntime: vi.fn(() => true),
 }));
 
 const ASSET_ID = '019ffbce-1d1a-7341-b053-f70b9af1b4f1';
@@ -37,29 +21,23 @@ const nativeAudio = Object.freeze({
 });
 
 beforeEach(() => {
-  localStorage.clear();
   vi.clearAllMocks();
-  activateSubtitleProjectBinding.mockResolvedValue({ kind: 'subtitle-project-binding' });
-  const capability = Object.freeze({
+  resolveActiveNativeMedia.mockResolvedValue(Object.freeze({
     assetId: ASSET_ID,
     cacheId: ASSET_ID,
     projectId: '019ffbce-1d1a-7341-b053-f70b9af1b400',
     stateVersion: 1,
     media: nativeAudio,
-  });
-  resolveActiveNativeMedia.mockResolvedValue(capability);
+  }));
 });
 
-it('uses the opaque native asset ID as the generation cache key', async () => {
-  await expect(resolveCacheIdForGeneration({
-    input: nativeAudio,
-    inputType: 'file-upload',
-    currentVideoUrl: null,
-    t: (key) => key,
-    setStatus: vi.fn(),
-  })).resolves.toBe(ASSET_ID);
+it('uses the active native media alias as the generation cache key', async () => {
+  await expect(resolveCacheIdForGeneration({ input: nativeAudio })).resolves.toBe(ASSET_ID);
+  expect(resolveActiveNativeMedia).toHaveBeenCalledExactlyOnceWith({ candidate: nativeAudio });
+});
 
-  expect(generateFileCacheId).not.toHaveBeenCalled();
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
-  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
+it('resolves the active media without trusting a non-native candidate', async () => {
+  await expect(resolveCacheIdForGeneration({ input: { url: 'https://example.test/v' } }))
+    .resolves.toBe(ASSET_ID);
+  expect(resolveActiveNativeMedia).toHaveBeenCalledExactlyOnceWith({ candidate: null });
 });

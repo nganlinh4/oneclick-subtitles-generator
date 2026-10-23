@@ -6,27 +6,15 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { translateSubtitles } from '../services/geminiService';
-import { PartialTranslationError } from '../services/gemini/translationChunkProcessor';
 import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 import { useTranslationBulk } from './useTranslationBulk';
-import { CHECKPOINT_SOURCE } from '../events/constants';
 import { getActiveTranslationCacheId } from '../platform/translationPersistence';
 import {
   canonicalTranslationSourcePayload,
   createTranslationAbortError,
-  normalizeRunnableLanguageChain,
 } from '../utils/translationOwnership';
-import {
-  buildTerminal,
-  callCompletion,
-  isAbort,
-  nextRunId,
-  persistOwnedTranslationTerminal,
-  requireCompleteTranslationResult,
-  safeSetStorage,
-  snapshotBulkTranslationSource,
-} from './translationRunHelpers';
+import { callCompletion } from './translationRunHelpers';
+import { runTranslation } from './runTranslation';
 import { useTranslationPreferences } from './useTranslationPreferences';
 import { useTranslationRunOwnership } from './useTranslationRunOwnership';
 import { useTranslationHydration } from './useTranslationHydration';
@@ -54,8 +42,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     customTranslationPrompt,
     splitDuration,
     restTime,
-    includeRules,
-    setIncludeRules,
+    includeRules: storedIncludeRules,
     handleModelSelect,
     handleSavePrompt,
     handleSplitDurationChange,
@@ -65,6 +52,9 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
   const [rulesAvailable, setRulesAvailable] = useState(false);
   const [userProvidedSubtitles, setUserProvidedSubtitles] = useState('');
   const hasUserProvidedSubtitles = userProvidedSubtitles.trim() !== '';
+  // Rules join a run only when they exist and no user subtitles are supplied; an unavailable rule
+  // set never rewrites the stored choice.
+  const includeRules = storedIncludeRules && rulesAvailable && !hasUserProvidedSubtitles;
 
   const mountedRef = useRef(true);
   const activeLeaseRef = useRef(null);
@@ -229,15 +219,9 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         const hasRules = Boolean(getTranscriptionRulesSync());
         if (!mountedRef.current) return;
         setRulesAvailable(hasRules);
-        if (!hasRules) {
-          setIncludeRules(false);
-          safeSetStorage('translation_include_rules', 'false');
-        }
       } catch {
         if (!mountedRef.current) return;
         setRulesAvailable(false);
-        setIncludeRules(false);
-        safeSetStorage('translation_include_rules', 'false');
       }
     };
     void checkRulesAvailability();
@@ -246,7 +230,7 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
     return () => {
       window.removeEventListener('transcriptionRulesUpdated', refresh);
     };
-  }, [setIncludeRules]);
+  }, []);
 
   useEffect(() => {
     let current = true;
@@ -256,248 +240,42 @@ export const useTranslationState = (subtitles, onTranslationComplete) => {
         if (!current) return;
         const value = getUserProvidedSubtitlesSync() || '';
         setUserProvidedSubtitles(value);
-        if (value.trim()) {
-          setIncludeRules(false);
-          safeSetStorage('translation_include_rules', 'false');
-        }
       } catch {
         if (current) setUserProvidedSubtitles('');
       }
     })();
     return () => { current = false; };
-  }, [renderedCacheId, setIncludeRules]);
+  }, [renderedCacheId]);
 
-  const handleTranslate = useCallback(async (
+  const handleTranslate = useCallback((
     languages,
     delimiter = ' ',
     useParentheses = false,
     bracketStyle = null,
     chainItems = null
-  ) => {
-    if (activeLeaseRef.current?.kind === 'hydration') {
-      activeLeaseRef.current.controller.abort(createTranslationAbortError('Translation started'));
-      activeLeaseRef.current = null;
-    } else if (activeLeaseRef.current !== null) {
-      return { status: 'busy' };
-    }
-    const controller = new AbortController();
-    const lease = Object.freeze({ runId: nextRunId(), controller, kind: 'translation' });
-    activeLeaseRef.current = lease;
-
-    let context = null;
-    let normalizedChain = null;
-    try {
-      if (!Array.isArray(languages)) throw new TypeError('Translation languages must be an array');
-      if (languages.length === 0 && !chainItems) {
-        setError(t('translation.languageRequired', 'Please enter at least one target language'));
-        return { status: 'invalid' };
-      }
-      const hasMainSubtitles = Array.isArray(subtitles) && subtitles.length > 0;
-      const hasBulkFiles = bulkFiles.length > 0;
-      if (!hasMainSubtitles && !hasBulkFiles) {
-        setError(t('translation.noSubtitles', 'No subtitles to translate'));
-        return { status: 'invalid' };
-      }
-      normalizedChain = normalizeRunnableLanguageChain(chainItems, {
-        formatOnly: languages.length === 0,
-      });
-      const batchSource = hasBulkFiles ? snapshotBulkTranslationSource(bulkFiles) : null;
-      const batchSourcePayload = hasBulkFiles
-        ? canonicalTranslationSourcePayload(batchSource)
-        : null;
-      const runSource = hasMainSubtitles ? sourceRowsRef.current : batchSource;
-      context = await captureRunContext(lease, runSource, {
-        scope: hasMainSubtitles ? 'project' : 'batch',
-        batchSourcePayload: hasMainSubtitles ? batchSourcePayload : null,
-      });
-      await assertRunOwned(context);
-      const { checkpointBeforeUpdate } = await loadLifecycleOrchestrator();
-      await assertRunOwned(context);
-      await checkpointBeforeUpdate({
-        source: CHECKPOINT_SOURCE.TRANSLATION_START,
-        runId: context.runId,
-        signal: context.signal,
-      });
-      await assertRunOwned(context);
-
-      setError('');
-      await assertRunOwned(context);
-      setTranslationStatus('');
-      await assertRunOwned(context);
-      setIsTranslating(hasMainSubtitles);
-      await assertRunOwned(context);
-      setLoadedFromCache(false);
-      await assertRunOwned(context);
-
-      const ownership = {
-        signal: context.signal,
-        assertOwned: () => assertRunOwned(context),
-        publishStatus: async (message) => {
-          await assertRunOwned(context);
-          setTranslationStatus(message);
-          await assertRunOwned(context);
-        },
-        restTime,
-      };
-      if (hasBulkFiles) {
-        const bulkOutcome = await handleBulkTranslate(
-          languages,
-          delimiter,
-          useParentheses,
-          bracketStyle,
-          normalizedChain,
-          hasMainSubtitles,
-          ownership
-        );
-        await assertRunOwned(context);
-        if (bulkOutcome?.status === 'failed' && !hasMainSubtitles) return bulkOutcome;
-      }
-      if (!hasMainSubtitles) return { status: 'complete', scope: 'bulk' };
-
-      const streamedRows = new Map();
-      const mainOwnership = {
-        ...ownership,
-        publishRows: (rows) => {
-          if (context.signal.aborted || activeLeaseRef.current !== lease || !mountedRef.current) {
-            return;
-          }
-          rows.forEach((row) => streamedRows.set(row.originalId, row));
-          setTranslatedSubtitles(context.sourceSubtitles
-            .map((row) => streamedRows.get(row.originalId))
-            .filter(Boolean));
-        },
-      };
-      const translationResult = requireCompleteTranslationResult(await translateSubtitles(
-        context.sourceSubtitles,
-        languages.length === 1 ? languages[0] : languages,
-        selectedModel,
-        customTranslationPrompt,
-        splitDuration,
-        includeRules,
-        languages.length === 2 && useParentheses
-          ? delimiter
-          : (useParentheses ? null : delimiter),
-        useParentheses,
-        bracketStyle,
-        normalizedChain,
-        null,
-        false,
-        mainOwnership
-      ));
-      await assertRunOwned(context);
-      if (translationResult.rows.length === 0) {
-        throw new Error(t('translation.emptyResult', 'Translation returned no results'));
-      }
-      const terminal = buildTerminal({
-        sourceFingerprint: context.sourceFingerprint,
-        sourceEntryCount: context.sourceSubtitles.length,
-        languageChain: normalizedChain,
-        model: selectedModel,
-        status: 'complete',
-        rows: translationResult.rows,
-      });
-      await assertRunOwned(context);
-      const {
-        receipt,
-        acknowledged,
-        deliveryAcknowledgement,
-      } = await persistOwnedTranslationTerminal({
-        context,
-        terminal,
-        deliveries: translationResult.deliveries,
-        assertRunOwned,
-      });
-      await publishComplete(context, acknowledged);
-      await assertRunOwned(context);
-      setTranslationStatus(t('translation.translationComplete', 'Translation complete'));
-      await assertRunOwned(context);
-      safeSetStorage('translation_split_duration', String(splitDuration));
-      await assertRunOwned(context);
-      return {
-        status: 'complete',
-        receipt,
-        pendingDeliveryCount: deliveryAcknowledgement.pending,
-      };
-    } catch (translationError) {
-      let terminalError = translationError;
-      if (translationError instanceof PartialTranslationError && context && normalizedChain) {
-        try {
-          await assertRunOwned(context);
-          const partialResult = translationError.result ?? Object.freeze({
-            status: 'partial',
-            rows: translationError.completedSubtitles,
-            deliveries: Object.freeze([]),
-          });
-          const terminal = buildTerminal({
-            sourceFingerprint: context.sourceFingerprint,
-            sourceEntryCount: context.sourceSubtitles.length,
-            languageChain: normalizedChain,
-            model: selectedModel,
-            status: 'partial',
-            rows: partialResult.rows,
-            failures: translationError.failedChunks,
-          });
-          const {
-            receipt,
-            acknowledged,
-            deliveryAcknowledgement,
-          } = await persistOwnedTranslationTerminal({
-            context,
-            terminal,
-            deliveries: partialResult.deliveries,
-            assertRunOwned,
-          });
-          await publishPartial(context, acknowledged);
-          await assertRunOwned(context);
-          setTranslationStatus(t(
-            'translation.partialResult',
-            'Translation stopped with {{count}} failed chunks. Retry the translation to complete it.',
-            { count: acknowledged.record.failedChunks.length }
-          ));
-          await assertRunOwned(context);
-          return {
-            status: 'partial',
-            receipt,
-            pendingDeliveryCount: deliveryAcknowledgement.pending,
-          };
-        } catch (partialPersistenceError) {
-          terminalError = partialPersistenceError;
-        }
-      }
-      if (isAbort(terminalError) || controller.signal.aborted) {
-        return { status: 'cancelled' };
-      }
-      if (context) {
-        try {
-          await assertRunOwned(context);
-        } catch {
-          return { status: 'cancelled' };
-        }
-      }
-      if (mountedRef.current && activeLeaseRef.current === lease) {
-        setError(terminalError?.message || t(
-          'translation.error',
-          'Error translating subtitles. Please try again.'
-        ));
-        if (context) {
-          try {
-            await assertRunOwned(context);
-          } catch {
-            return { status: 'cancelled' };
-          }
-        }
-      }
-      return { status: 'failed', error: terminalError };
-    } finally {
-      if (releaseLease(lease)) {
-        if (mountedRef.current) {
-          setIsTranslating(false);
-          setIsBulkTranslating(false);
-          setCurrentBulkFileIndex(-1);
-        }
-      }
-    }
-  }, [
+  ) => runTranslation({
+    t,
+    mountedRef,
+    activeLeaseRef,
+    sourceRowsRef,
+    subtitles,
+    bulkFiles,
+    settings: { selectedModel, customTranslationPrompt, splitDuration, includeRules, restTime },
+    loadLifecycleOrchestrator,
+    captureRunContext,
+    assertRunOwned,
+    publishComplete,
+    publishPartial,
+    releaseLease,
+    handleBulkTranslate,
+    setError,
+    setTranslationStatus,
+    setIsTranslating,
+    setLoadedFromCache,
+    setTranslatedSubtitles,
+    setIsBulkTranslating,
+    setCurrentBulkFileIndex,
+  }, { languages, delimiter, useParentheses, bracketStyle, chainItems }), [
     assertRunOwned,
     bulkFiles,
     captureRunContext,

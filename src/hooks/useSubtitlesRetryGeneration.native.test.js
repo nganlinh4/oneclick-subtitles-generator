@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { useSubtitlesRetryGeneration } from './useSubtitlesRetryGeneration';
-import { getVideoDuration, processMediaFile } from '../utils/videoProcessor';
+import { getVideoDuration } from '../utils/videoProcessor';
 import { processGeminiSegment } from '../services/engines/GeminiAdapter';
 import { saveSubtitlesToCache } from '../services/subtitleCache';
 import {
@@ -10,7 +10,6 @@ import {
 
 vi.mock('../utils/videoProcessor', () => ({
   getVideoDuration: vi.fn(),
-  processMediaFile: vi.fn(),
 }));
 vi.mock('../services/engines/GeminiAdapter', () => ({
   processGeminiSegment: vi.fn(),
@@ -115,7 +114,6 @@ test('streams a full native retry and preserves the exact inspected duration', a
   });
 
   expect(succeeded).toBe(true);
-  expect(processMediaFile).not.toHaveBeenCalled();
   expect(processGeminiSegment).toHaveBeenCalledTimes(1);
   expect(processGeminiSegment.mock.calls[0][0]).toBe(media);
   expect(processGeminiSegment.mock.calls[0][1]).toEqual({ start: 0, end: 7.25 });
@@ -166,7 +164,6 @@ test('does not hide a failed native duration behind a nonstreaming fallback', as
 
   expect(succeeded).toBe(false);
   expect(processGeminiSegment).not.toHaveBeenCalled();
-  expect(processMediaFile).not.toHaveBeenCalled();
   expect(setStatus).toHaveBeenLastCalledWith({
     message: 'Error: duration unavailable',
     type: 'error',

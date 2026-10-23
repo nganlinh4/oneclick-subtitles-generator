@@ -1,14 +1,1 @@
-{
-  "fileTooBig": "File is too large ({{size}}MB). Recommended maximum size is {{maxSize}}MB.",
-  "proceedAnyway": "Proceed anyway",
-  "selectQuality": "Select quality",
-  "qualityWarning": "For long videos, lower quality is recommended to prevent processing issues.",
-  "processingLongVideo": "Processing long video...",
-  "splittingVideo": "Splitting video into segments...",
-  "optimizingVideo": "Optimizing video for processing...",
-  "analyzingVideo": "Analyzing video content... (If stuck, change \"Analysis Model\" and try again)",
-  "preparingVideoAnalysis": "Preparing video for analysis...",
-  "analysisError": "Video analysis failed, proceeding with default settings.",
-  "srtOnlyMode": "SRT only mode",
-  "segmentsPreparationFailed": "Subtitles loaded, but video segment preparation failed: {{message}}"
-}
+{}

@@ -103,7 +103,7 @@ const ResultRow = ({ index, style, data }) => {
                     className="generate-loading-indicator"
                   />
                 ) : (
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
+                  <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
                 )}
               </button>
             )}
@@ -196,8 +196,9 @@ const ResultRow = ({ index, style, data }) => {
               className="pill-button primary"
               onClick={() => playAudio(result)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
+              aria-label={currentAudio && currentAudio.id === subtitle_id && isPlaying ? t('common.pause', 'Pause') : t('common.play', 'Play')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>
                 {currentAudio && currentAudio.id === subtitle_id && isPlaying ? 'pause' : 'play_arrow'}
               </span>
             </button>
@@ -205,8 +206,9 @@ const ResultRow = ({ index, style, data }) => {
               className="pill-button secondary"
               onClick={() => downloadAudio(result)}
               disabled={!!data.itemProcessing[subtitle_id]?.inProgress}
+              aria-label={t('common.downloadAudio', 'Download audio')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>download</span>
             </button>
             {onRetry && (
               <button
@@ -248,7 +250,7 @@ const ResultRow = ({ index, style, data }) => {
                     className="retry-loading-indicator"
                   />
                 ) : (
-                  <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
+                  <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>refresh</span>
                 )}
               </button>
             )}

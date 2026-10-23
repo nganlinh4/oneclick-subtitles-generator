@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { normalizeAsrLanguage } from '../services/engines/asrEngines';
+import { hasStoredPreference, readPreference, writePreference } from '../platform/preferences/store';
 
 /**
  * Generic per-engine ASR options for the processing modal — segmentation (strategy / max chars /
@@ -14,34 +15,33 @@ import { normalizeAsrLanguage } from '../services/engines/asrEngines';
  * @param {string} engineId active ASR engine id ('nvidia-parakeet' | catalog id)
  * @param {{ hasLanguagesBadges?: boolean, defaultStrategy?: string }} opts
  */
-const legacyKeyFor = (engineId, suffix) =>
-  (engineId === 'nvidia-parakeet' ? `parakeet_${suffix}` : null);
+const optionKey = (engineId, option) => `asr_${engineId}_${option}`;
 
-// Read an option, falling back to the legacy parakeet_* key (seed-forward) then a default.
-const readOpt = (engineId, suffix, fallback) => {
-  const v = localStorage.getItem(`asr_${engineId}_${suffix}`);
-  if (v !== null) return v;
-  const legacy = legacyKeyFor(engineId, suffix);
-  if (legacy) {
-    const lv = localStorage.getItem(legacy);
-    if (lv !== null) return lv;
-  }
-  return fallback;
+// The engine's own value, else Parakeet's legacy parakeet_* value (seed-forward), else the default.
+const readOpt = (engineId, option) => {
+  const key = optionKey(engineId, option);
+  if (hasStoredPreference(key) || engineId !== 'nvidia-parakeet') return readPreference(key);
+  const legacy = `parakeet_${option}`;
+  return readPreference(hasStoredPreference(legacy) ? legacy : key);
 };
 
-const clampInt = (raw, lo, hi, def) => {
-  const n = parseInt(raw, 10);
-  return Math.min(hi, Math.max(lo, Number.isNaN(n) ? def : n));
-};
+const OPTION_FIELDS = Object.freeze({
+  strategy: 'segment_strategy',
+  maxChars: 'max_chars',
+  maxWords: 'max_words',
+  preserveSentences: 'preserve_sentences',
+  maxDurationPerRequest: 'max_duration_per_request',
+  language: 'language',
+});
 
 const loadFor = (engineId, defaultStrategy) => ({
   engineId,
-  strategy: readOpt(engineId, 'segment_strategy', defaultStrategy),
-  maxChars: clampInt(readOpt(engineId, 'max_chars', '60'), 5, 100, 60),
-  maxWords: clampInt(readOpt(engineId, 'max_words', '7'), 1, 50, 7),
-  preserveSentences: readOpt(engineId, 'preserve_sentences', 'false') === 'true',
-  maxDurationPerRequest: clampInt(readOpt(engineId, 'max_duration_per_request', '3'), 1, 10, 3),
-  language: normalizeAsrLanguage(engineId, readOpt(engineId, 'language', 'auto')),
+  strategy: readOpt(engineId, 'segment_strategy') || defaultStrategy,
+  maxChars: readOpt(engineId, 'max_chars'),
+  maxWords: readOpt(engineId, 'max_words'),
+  preserveSentences: readOpt(engineId, 'preserve_sentences'),
+  maxDurationPerRequest: readOpt(engineId, 'max_duration_per_request'),
+  language: normalizeAsrLanguage(engineId, readOpt(engineId, 'language')),
 });
 
 const useAsrOptions = (engineId, { hasLanguagesBadges = false, defaultStrategy = 'sentence' } = {}) => {
@@ -92,18 +92,15 @@ const useAsrOptions = (engineId, { hasLanguagesBadges = false, defaultStrategy =
     setOpts(loadFor(engineId, defaultStrategy));
   }, [engineId, defaultStrategy, opts.engineId]);
 
-  // Persist — only once the loaded state matches the active engine (skip the mid-switch render).
-  useEffect(() => {
-    if (opts.engineId !== engineId) return;
-    localStorage.setItem(`asr_${engineId}_segment_strategy`, opts.strategy);
-    localStorage.setItem(`asr_${engineId}_max_chars`, String(opts.maxChars));
-    localStorage.setItem(`asr_${engineId}_max_words`, String(opts.maxWords));
-    localStorage.setItem(`asr_${engineId}_preserve_sentences`, opts.preserveSentences ? 'true' : 'false');
-    localStorage.setItem(`asr_${engineId}_max_duration_per_request`, String(opts.maxDurationPerRequest));
-    localStorage.setItem(`asr_${engineId}_language`, opts.language);
-  }, [engineId, opts]);
-
-  const patch = useCallback((field) => (value) => setOpts((o) => ({ ...o, [field]: value })), []);
+  // A user change is stored under the active engine's key; loaded or normalized values are not.
+  const patch = useCallback((field) => (value) => {
+    try {
+      writePreference(optionKey(engineId, OPTION_FIELDS[field]), value);
+    } catch {
+      return; // An unrepresentable control value keeps the current option.
+    }
+    setOpts((o) => ({ ...o, [field]: value }));
+  }, [engineId]);
 
   return {
     languagesRef,
@@ -119,11 +116,8 @@ const useAsrOptions = (engineId, { hasLanguagesBadges = false, defaultStrategy =
     setMaxDurationPerRequest: patch('maxDurationPerRequest'),
     language: opts.language,
     setLanguage: useCallback(
-      (value) => setOpts((current) => ({
-        ...current,
-        language: normalizeAsrLanguage(engineId, value),
-      })),
-      [engineId]
+      (value) => patch('language')(normalizeAsrLanguage(engineId, value)),
+      [engineId, patch]
     ),
   };
 };

@@ -1,6 +1,5 @@
 // Presentation and project-ownership guards for one subtitle generation run.
 import { getActiveProjectSnapshot } from '../platform/projectService';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { loadExactProjectSubtitles } from '../platform/subtitleProjectStore';
 import { assertAutoGenerationContextCurrent } from '../utils/autoGenerationOwnership';
 import { getCurrentCacheId as getRulesCacheId } from '../utils/transcriptionRulesStore';
@@ -25,15 +24,13 @@ export const createGenerationPresentation = ({
     );
     const canPresent = () => {
         if (!ownsPresentation()) return false;
-        if (isDesktopRuntime()) {
-            const currentCache = typeof getSubtitlesCacheId === 'function' ? getSubtitlesCacheId() : null;
-            if (deliveryContext?.cacheId && currentCache && currentCache !== deliveryContext.cacheId) {
-                return false;
-            }
-            const activeProject = typeof getActiveProjectSnapshot === 'function' ? getActiveProjectSnapshot() : null;
-            if (deliveryContext?.projectId && activeProject?.metadata?.id && activeProject.metadata.id !== deliveryContext.projectId) {
-                return false;
-            }
+        const currentCache = typeof getSubtitlesCacheId === 'function' ? getSubtitlesCacheId() : null;
+        if (deliveryContext?.cacheId && currentCache && currentCache !== deliveryContext.cacheId) {
+            return false;
+        }
+        const activeProject = typeof getActiveProjectSnapshot === 'function' ? getActiveProjectSnapshot() : null;
+        if (deliveryContext?.projectId && activeProject?.metadata?.id && activeProject.metadata.id !== deliveryContext.projectId) {
+            return false;
         }
         if (!autoRunContext) return true;
         try {

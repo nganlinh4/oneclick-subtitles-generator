@@ -17,6 +17,8 @@ const scopeFailure = () => {
   return error;
 };
 
+// Host-absent renders (the Vite dev server in a plain browser, jsdom) defer persistence so an
+// imported SRT still renders for visual checks; inside Tauri every import is persisted.
 export const createImportedSubtitlePersistence = ({
   desktop = isDesktopRuntime,
   readCacheId = getCurrentCacheId,

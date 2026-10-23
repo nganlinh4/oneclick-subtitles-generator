@@ -7,6 +7,7 @@ import {
   modelAcceptsMedia,
 } from '../config/geminiModels';
 import { invokeDesktop } from './desktopRuntime';
+import { hasOnlyKeys, isNativeErrorCode, isRecord, utf8ByteLength } from './plainDataRecord';
 
 const GEMINI_TASKS = Object.freeze([
   'transcribe',
@@ -48,7 +49,7 @@ const jobStates = new Set([
   'cancelled',
   'interrupted',
 ]);
-const requestKeys = new Set([
+const requestKeys = Object.freeze([
   'credentialId',
   'task',
   'model',
@@ -65,7 +66,7 @@ const requestKeys = new Set([
   'expectedProjectStateVersion',
   'recoveryKey',
 ]);
-const handlerKeys = new Set([
+const handlerKeys = Object.freeze([
   'onEvent',
   'onChunk',
   'onCompleted',
@@ -99,28 +100,6 @@ const usageFields = Object.freeze([
   'thoughtsTokenCount',
   'cachedContentTokenCount',
 ]);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint <= 0x7f) bytes += 1;
-    else if (codePoint <= 0x7ff) bytes += 2;
-    else if (codePoint <= 0xffff) bytes += 3;
-    else bytes += 4;
-  }
-  return bytes;
-};
 
 const characterCountWithin = (value, maximum) => {
   let count = 0;
@@ -189,7 +168,7 @@ const cloneJsonValue = (value, seen, counters, depth) => {
   if (Array.isArray(value)) {
     clone = value.map((entry) => cloneJsonValue(entry, seen, counters, depth + 1));
   } else {
-    if (!isPlainRecord(value) || Object.getOwnPropertySymbols(value).length > 0) {
+    if (!isRecord(value) || Object.getOwnPropertySymbols(value).length > 0) {
       throw invalidRequest();
     }
     clone = Object.create(null);
@@ -219,8 +198,7 @@ const normalizeJsonSchema = (schema) => {
 };
 
 export const normalizeGeminiStartRequest = (request) => {
-  if (!isPlainRecord(request)
-      || Object.keys(request).some((key) => !requestKeys.has(key))) {
+  if (!hasOnlyKeys(request, requestKeys)) {
     throw invalidRequest();
   }
 
@@ -371,8 +349,7 @@ const normalizeUsage = (usage) => {
 
 const normalizeCommandError = (error) => {
   if (!isRecord(error)
-      || typeof error.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+      || !isNativeErrorCode(error.code)
       || typeof error.message !== 'string'
       || !characterCountWithin(error.message, MAX_ERROR_MESSAGE_CHARACTERS)) {
     throw invalidResponse();
@@ -425,8 +402,7 @@ export const normalizeGeminiJobEvent = (value) => {
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  if (!isPlainRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))) {
+  if (!hasOnlyKeys(handlers, handlerKeys)) {
     throw invalidRequest();
   }
   for (const handler of Object.values(handlers)) {

@@ -1,12 +1,8 @@
-import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
 import { resolveActiveNativeMedia } from '../../../platform/activeNativeMedia';
 import { resetGeminiButtonState } from '../../../utils/geminiEffects';
 import { downloadAndPrepareYouTubeVideo } from '../VideoProcessingHandlers';
 import { createProcessingHandlers } from './processingHandlers';
 
-vi.mock('../../../platform/runtimeEnvironment', () => ({
-  isDesktopRuntime: vi.fn(),
-}));
 vi.mock('../../../platform/activeNativeMedia', () => ({
   resolveActiveNativeMedia: vi.fn(),
 }));
@@ -49,7 +45,6 @@ const buildHandlers = (overrides = {}) => {
     setUploadedFile: vi.fn(),
     setUploadedFileData: vi.fn(),
     setIsRetrying: vi.fn(),
-    setSegmentsStatus: vi.fn(),
     setSelectedSegment: vi.fn(),
     setShowProcessingModal: vi.fn(),
     setIsProcessingSegment: vi.fn(),
@@ -61,7 +56,6 @@ const buildHandlers = (overrides = {}) => {
 };
 
 beforeEach(() => {
-  isDesktopRuntime.mockReset();
   resolveActiveNativeMedia.mockReset();
   downloadAndPrepareYouTubeVideo.mockReset();
   resetGeminiButtonState.mockReset();
@@ -75,7 +69,6 @@ afterAll(() => {
 });
 
 test('desktop retry preserves the durable project track until replacement succeeds', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   const media = Object.freeze({ __nativeMedia: true, assetId: 'asset-id' });
   resolveActiveNativeMedia.mockResolvedValue({
     cacheId: 'cache-id', projectId: 'project-id', media,
@@ -94,7 +87,6 @@ test('desktop retry preserves the durable project track until replacement succee
 });
 
 test('successful URL retry publishes its outcome and always releases retry lifecycle state', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   resolveActiveNativeMedia.mockRejectedValue(new Error('not downloaded yet'));
   const downloaded = Object.freeze({ __nativeMedia: true, assetId: 'downloaded' });
   downloadAndPrepareYouTubeVideo.mockResolvedValue(downloaded);
@@ -114,16 +106,6 @@ test('successful URL retry publishes its outcome and always releases retry lifec
   expect(values.setIsRetrying).toHaveBeenNthCalledWith(1, true);
   expect(values.setIsRetrying).toHaveBeenLastCalledWith(false);
   expect(resetGeminiButtonState).toHaveBeenCalledTimes(1);
-});
-
-test('browser retry never revives the retired localhost deletion request', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  localStorage.setItem('current_file_cache_id', 'cache-id');
-  const { handlers } = buildHandlers();
-
-  await handlers.handleRetryGeneration();
-
-  expect(global.fetch).not.toHaveBeenCalled();
 });
 
 test.each([true, false])('returns the real generation outcome (%s) to awaited callers', async (generated) => {
@@ -171,7 +153,7 @@ test('ordinary semi-auto processing prefers the modal media over a stale capture
   );
 });
 
-test('full-auto clears outside context and returns only the exact generation receipt', async () => {
+test('full-auto keeps the stored context choice and returns only the exact generation receipt', async () => {
   const media = { assetId: 'asset-prepared', type: 'video/mp4' };
   const autoRunContext = {
     kind: 'auto-generation-context',
@@ -182,7 +164,7 @@ test('full-auto clears outside context and returns only the exact generation rec
   const receipt = { kind: 'auto-generation-completion', runId: 'run-1' };
   const generateSubtitles = vi.fn().mockResolvedValue(receipt);
   localStorage.setItem('video_processing_use_outside_context', 'true');
-  localStorage.setItem('video_processing_outside_context_text', 'stale');
+  const promptContext = Object.freeze({ presetId: 'settings', useOutsideResultsContext: false });
   const { handlers } = buildHandlers({ uploadedFileData: { assetId: 'stale' }, generateSubtitles });
 
   await expect(handlers.handleProcessWithOptions({
@@ -191,11 +173,12 @@ test('full-auto clears outside context and returns only the exact generation rec
     generationScope: 'full-media',
     method: 'old',
     inlineExtraction: true,
+    promptContext,
     autoRunContext,
   })).resolves.toBe(receipt);
 
-  expect(localStorage.getItem('video_processing_use_outside_context')).toBe('false');
-  expect(localStorage.getItem('video_processing_outside_context_text')).toBeNull();
+  // The run carries its own (context-free) prompt inputs; the user's toggle is not rewritten.
+  expect(localStorage.getItem('video_processing_use_outside_context')).toBe('true');
   expect(generateSubtitles).toHaveBeenCalledWith(
     media,
     'file-upload',
@@ -204,6 +187,7 @@ test('full-auto clears outside context and returns only the exact generation rec
       segment: undefined,
       requestedSegment: { start: 0, end: 20 },
       generationScope: 'full-media',
+      promptContext,
       autoRunContext,
     }),
   );

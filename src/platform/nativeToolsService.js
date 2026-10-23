@@ -1,6 +1,13 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import {
+  hasExactKeys,
+  hasOnlyKeys,
+  isAbortSignalLike,
+  isPlainDataRecord,
+  snapshotNativeError,
+} from './plainDataRecord';
 
 export const NATIVE_TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
 const NATIVE_TOOL_STATES = Object.freeze([
@@ -33,10 +40,10 @@ const phases = new Set(NATIVE_TOOL_PHASES);
 const jobStates = new Set([
   'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'interrupted',
 ]);
-const catalogKeys = new Set(['schemaVersion', 'tools']);
-const catalogEntryKeys = new Set(['id', 'label', 'license']);
-const statusKeys = new Set(['schemaVersion', 'tools']);
-const statusEntryKeys = new Set([
+const catalogKeys = Object.freeze(['schemaVersion', 'tools']);
+const catalogEntryKeys = Object.freeze(['id', 'label', 'license']);
+const statusKeys = Object.freeze(['schemaVersion', 'tools']);
+const statusEntryKeys = Object.freeze([
   'id',
   'label',
   'deliveryAvailable',
@@ -52,19 +59,18 @@ const statusEntryKeys = new Set([
   'restartRequired',
   'operation',
 ]);
-const operationKeys = new Set([
+const operationKeys = Object.freeze([
   'job', 'tool', 'action', 'phase', 'basisPoints', 'bytesDone', 'totalBytes',
 ]);
-const jobKeys = new Set(['id', 'kind', 'state', 'progress', 'sequence']);
-const progressKeys = new Set(['basisPoints']);
-const progressEventKeys = new Set(['event', 'operation']);
-const terminalEventKeys = new Set(['event', 'job', 'tool', 'action']);
-const completedEventKeys = new Set([
+const jobKeys = Object.freeze(['id', 'kind', 'state', 'progress', 'sequence']);
+const progressKeys = Object.freeze(['basisPoints']);
+const progressEventKeys = Object.freeze(['event', 'operation']);
+const terminalEventKeys = Object.freeze(['event', 'job', 'tool', 'action']);
+const completedEventKeys = Object.freeze([
   'event', 'job', 'tool', 'action', 'restartRequired', 'deferred',
 ]);
-const failedEventKeys = new Set(['event', 'job', 'tool', 'action', 'error']);
-const errorKeys = new Set(['code', 'message']);
-const handlerKeys = new Set([
+const failedEventKeys = Object.freeze(['event', 'job', 'tool', 'action', 'error']);
+const handlerKeys = Object.freeze([
   'onEvent',
   'onProgress',
   'onCompleted',
@@ -74,24 +80,7 @@ const handlerKeys = new Set([
   'onHandlerError',
   'onCancellationError',
 ]);
-const optionKeys = new Set(['signal']);
-
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  if (Object.getOwnPropertySymbols(value).length !== 0) return false;
-  return Object.values(Object.getOwnPropertyDescriptors(value))
-    .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
-};
-
-const hasExactKeys = (value, expected) => {
-  if (!isPlainRecord(value)) return false;
-  const keys = Object.keys(value);
-  return keys.length === expected.size && keys.every((key) => expected.has(key));
-};
+const optionKeys = Object.freeze(['signal']);
 
 const isSafeInteger = (value, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) => (
   Number.isSafeInteger(value) && value >= minimum && value <= maximum
@@ -299,17 +288,13 @@ export const normalizeNativeToolsStatus = (value) => {
 };
 
 const normalizeCommandError = (value) => {
-  if (!hasExactKeys(value, errorKeys)
-      || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value.code)
-      || !isSafeText(value.message)) {
-    throw invalidResponse();
-  }
-  return Object.freeze({ code: value.code, message: value.message });
+  const error = snapshotNativeError(value);
+  if (error === null || !isSafeText(error.message)) throw invalidResponse();
+  return error;
 };
 
 export const normalizeNativeToolEvent = (value) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
+  if (!isPlainDataRecord(value) || typeof value.event !== 'string') throw invalidResponse();
   if (value.event === 'progress') {
     if (!hasExactKeys(value, progressEventKeys)) throw invalidResponse();
     return Object.freeze({ event: 'progress', operation: normalizeOperation(value.operation) });
@@ -364,8 +349,7 @@ export const normalizeNativeToolEvent = (value) => {
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  if (!isPlainRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => typeof handler !== 'function')) {
     throw invalidRequest();
   }
@@ -374,15 +358,11 @@ const normalizeHandlers = (handlers) => {
 
 const normalizeOptions = (options) => {
   if (options === undefined) return Object.freeze({});
-  if (!isPlainRecord(options) || Object.keys(options).some((key) => !optionKeys.has(key))) {
+  if (!hasOnlyKeys(options, optionKeys)) {
     throw invalidRequest();
   }
   const { signal } = options;
-  if (signal !== undefined
-      && (!isRecord(signal)
-        || typeof signal.aborted !== 'boolean'
-        || typeof signal.addEventListener !== 'function'
-        || typeof signal.removeEventListener !== 'function')) {
+  if (signal !== undefined && !isAbortSignalLike(signal)) {
     throw invalidRequest();
   }
   return options;

@@ -1,8 +1,19 @@
 /**
  * Forwards the main app's theme and font to the embedded PromptDJ frame, now and on every change
- * (the `data-theme` attribute, the system color scheme, and the `app_font` storage key).
+ * (the `data-theme` attribute, the system color scheme, and the `app_font` preference).
  */
 import { useEffect } from 'react';
+import { APP_FONT_PREFERENCE } from '../../platform/nativeUiPreferences';
+import { subscribePreference } from '../../platform/preferences/store';
+
+/** Posts the app's current font; advisory, so a failure is ignored. */
+export const postCurrentFont = (postToPromptDj) => {
+  try {
+    postToPromptDj({ type: 'pm-dj-set-font', font: APP_FONT_PREFERENCE.readMirror('google-sans') });
+  } catch {
+    // Font synchronization is advisory for the isolated iframe.
+  }
+};
 
 /** Posts the app's current theme; advisory, so a failure is ignored. */
 export const postCurrentTheme = (postToPromptDj) => {
@@ -57,16 +68,10 @@ const usePromptDjAppearanceSync = (postToPromptDj) => {
   }, [postToPromptDj]);
 
   // Watch main app font changes and forward to iframe
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === 'app_font') {
-        const font = e.newValue || 'google-sans';
-        postToPromptDj({ type: 'pm-dj-set-font', font });
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [postToPromptDj]);
+  useEffect(
+    () => subscribePreference('app_font', () => postCurrentFont(postToPromptDj)),
+    [postToPromptDj],
+  );
 };
 
 export default usePromptDjAppearanceSync;

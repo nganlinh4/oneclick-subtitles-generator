@@ -29,5 +29,6 @@
   "clickToCancel": "(nhấn bất kỳ đâu để hủy)",
   "waitingForAction": "Đang chờ hành động của bạn",
   "clickToEdit": "(nhấn để bắt đầu chỉnh sửa)",
-  "saveContinue": "Lưu & Tiếp tục"
+  "saveContinue": "Lưu & Tiếp tục",
+  "removeItem": "Xóa"
 }

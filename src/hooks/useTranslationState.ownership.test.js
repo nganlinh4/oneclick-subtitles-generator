@@ -80,7 +80,6 @@ it('canonicalizes the blank editor target out of a format-only run and durable r
     null,
     runnable,
     null,
-    false,
     expect.any(Object)
   );
   expect(mocks.persist).toHaveBeenCalledWith(
@@ -118,7 +117,6 @@ it('canonicalizes blank editor targets out of a translated run and durable recor
     null,
     runnable,
     null,
-    false,
     expect.any(Object)
   );
   expect(mocks.persist).toHaveBeenCalledWith(

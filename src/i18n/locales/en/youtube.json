@@ -1,12 +1,10 @@
 {
-  "searchLabel": "Search YouTube Video:",
   "searchPlaceholder": "Enter video title...",
   "searching": "Searching...",
   "noResults": "No results found.",
   "searchError": "Error searching YouTube. Please try again or enter a URL directly.",
   "noApiKey": "Please set your YouTube API key in the settings first.",
-  "noOAuth": "Please authenticate with YouTube in the settings first.",
   "authError": "YouTube authentication required. Please set up OAuth in settings.",
-  "downloadVideoOnly": "Download Video",
-  "recentVideos": "Recent Videos"
+  "recentVideos": "Recent Videos",
+  "clearSearch": "Clear search"
 }

@@ -14,7 +14,8 @@ import {
   callSafely,
   createNativeRenderService,
 } from './nativeRenderSession';
-import { requireInteger, snapshotPlainRecord, uuidHasVersion } from './renderValidation';
+import { snapshotPlainRecord } from './plainDataRecord';
+import { requireInteger, uuidHasVersion } from './renderValidation';
 
 export {
   buildNativeRenderRequest,

@@ -6,6 +6,7 @@ import '../styles/TranscriptionRulesEditor.css';
 import { PROMPT_PRESETS, getUserPromptPresets } from '../services/geminiService';
 import useCountdownTimer from './transcriptionRules/useCountdownTimer';
 import PresetSelector from './transcriptionRules/PresetSelector';
+import RulesListSection from './transcriptionRules/RulesListSection';
 import { showErrorToast } from '../utils/toastUtils';
 import { normalizeUserTranscriptionPromptPresets } from '../services/gemini/transcriptionPromptPresetSelection';
 import {
@@ -13,6 +14,8 @@ import {
   addArrayItem as appendArrayItem,
   removeArrayItem as deleteArrayItem
 } from './transcriptionRules/arrayItemHandlers';
+import { readPreference, readStoredPreference } from '../platform/preferences/store';
+import { activateOnKey } from '../utils/a11y/activateOnKey';
 
 const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCancel, onChangePrompt }) => {
   const { t } = useTranslation();
@@ -118,8 +121,8 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
       PROMPT_PRESETS.map(({ id }) => id),
     );
 
-    // Check what's currently saved in localStorage.
-    const savedPresetId = localStorage.getItem('video_processing_prompt_preset');
+    // The preset the processing modal has stored, if any.
+    const savedPresetId = readStoredPreference('video_processing_prompt_preset');
 
     // If there's an analysis recommendation and no saved preset, use the recommendation as initial value
     const sessionPresetId = sessionStorage.getItem('current_session_preset_id');
@@ -237,6 +240,63 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
 
   if (!isOpen) return null;
 
+  const listSections = [
+    {
+      category: 'terminology',
+      title: t('videoAnalysis.terminology', 'Terminology & Proper Nouns'),
+      description: t('rulesEditor.terminologyDescription', 'Add specialized terms, proper nouns, and their definitions'),
+      fields: [
+        { name: 'term', placeholder: t('rulesEditor.termPlaceholder', 'Term') },
+        { name: 'definition', placeholder: t('rulesEditor.definitionPlaceholder', 'Definition') },
+      ],
+      template: () => ({ term: '', definition: '' }),
+      addLabel: t('rulesEditor.addTerm', '+ Add Term'),
+    },
+    {
+      category: 'speakerIdentification',
+      title: t('videoAnalysis.speakerIdentification', 'Speaker Identification'),
+      description: t('rulesEditor.speakersDescription', 'Add information about different speakers'),
+      fields: [
+        { name: 'speakerId', placeholder: t('rulesEditor.speakerIdPlaceholder', 'Speaker ID (e.g., "Speaker 1", "John")') },
+        { name: 'description', placeholder: t('rulesEditor.speakerDescPlaceholder', 'Description') },
+      ],
+      template: () => ({ speakerId: '', description: '' }),
+      addLabel: t('rulesEditor.addSpeaker', '+ Add Speaker'),
+    },
+    {
+      category: 'formattingConventions',
+      title: t('videoAnalysis.formattingConventions', 'Formatting & Style Conventions'),
+      description: t('rulesEditor.formattingDescription', 'Add formatting and style rules'),
+      placeholder: t('rulesEditor.conventionPlaceholder', 'Formatting rule...'),
+      template: () => '',
+      addLabel: t('rulesEditor.addFormatting', '+ Add Formatting Rule'),
+    },
+    {
+      category: 'spellingAndGrammar',
+      title: t('videoAnalysis.spellingAndGrammar', 'Spelling, Grammar & Punctuation'),
+      description: t('rulesEditor.spellingDescription', 'Add spelling, grammar, and punctuation rules'),
+      placeholder: t('rulesEditor.spellingRulePlaceholder', 'Spelling or grammar rule...'),
+      template: () => '',
+      addLabel: t('rulesEditor.addSpellingRule', '+ Add Spelling/Grammar Rule'),
+    },
+    {
+      category: 'relationships',
+      title: t('videoAnalysis.relationships', 'Relationships & Social Hierarchy'),
+      description: t('rulesEditor.relationshipsDescription', 'Add information about relationships between people'),
+      placeholder: t('rulesEditor.relationshipPlaceholder', 'Relationship information...'),
+      template: () => '',
+      addLabel: t('rulesEditor.addRelationship', '+ Add Relationship'),
+    },
+    {
+      category: 'additionalNotes',
+      title: t('videoAnalysis.additionalNotes', 'Additional Notes'),
+      description: t('rulesEditor.notesDescription', 'Add any other notes for consistent transcription'),
+      placeholder: t('rulesEditor.notePlaceholder', 'Additional note...'),
+      template: () => '',
+      addLabel: t('rulesEditor.addNote', '+ Add Note'),
+    },
+  ];
+
   return (
     <div
       ref={overlayRef}
@@ -253,7 +313,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
         }}
       >
         {showCountdown && (
-          <div className="countdown-banner" onClick={handleUserInteraction}>
+          <div className="countdown-banner" onClick={handleUserInteraction} role="button" tabIndex={0} onKeyDown={activateOnKey}>
             <div className="countdown-content">
               {countdown === -1 ? (
                 <>
@@ -284,7 +344,7 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
                 <div
                   className="countdown-progress-bar"
                   style={{
-                    width: `${((parseInt(localStorage.getItem('video_analysis_timeout') || '10', 10) - countdown) / parseInt(localStorage.getItem('video_analysis_timeout') || '10', 10)) * 100}%`
+                    width: `${((parseInt(readPreference('video_analysis_timeout'), 10) - countdown) / parseInt(readPreference('video_analysis_timeout'), 10)) * 100}%`
                   }}
                 />
               </div>
@@ -317,239 +377,17 @@ const TranscriptionRulesEditor = ({ isOpen, onClose, initialRules, onSave, onCan
             />
           </div>
 
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.terminology', 'Terminology & Proper Nouns')}</h3>
-            <p className="section-description">{t('rulesEditor.terminologyDescription', 'Add specialized terms, proper nouns, and their definitions')}</p>
-
-            {(rules.terminology || []).map((term, index) => (
-              <div key={index} className="array-item-row">
-                <div className="term-inputs">
-                  <input
-                    value={term.term || ''}
-                    onChange={(e) => handleArrayItemChange('terminology', index, 'term', e.target.value)}
-                    onClick={handleUserInteraction}
-                    onFocus={handleUserInteraction}
-                    placeholder={t('rulesEditor.termPlaceholder', 'Term')}
-                  />
-                  <input
-                    value={term.definition || ''}
-                    onChange={(e) => handleArrayItemChange('terminology', index, 'definition', e.target.value)}
-                    onClick={handleUserInteraction}
-                    onFocus={handleUserInteraction}
-                    placeholder={t('rulesEditor.definitionPlaceholder', 'Definition')}
-                    className="definition-input"
-                  />
-                </div>
-                <button
-                  className="remove-item-button"
-                  onClick={() => {
-                    handleUserInteraction();
-                    removeArrayItem('terminology', index);
-                  }}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => {
-                handleUserInteraction();
-                addArrayItem('terminology', { term: '', definition: '' });
-              }}
-            >
-              {t('rulesEditor.addTerm', '+ Add Term')}
-            </button>
-          </div>
-
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.speakerIdentification', 'Speaker Identification')}</h3>
-            <p className="section-description">{t('rulesEditor.speakersDescription', 'Add information about different speakers')}</p>
-
-            {(rules.speakerIdentification || []).map((speaker, index) => (
-              <div key={index} className="array-item-row">
-                <div className="term-inputs">
-                  <input
-                    value={speaker.speakerId || ''}
-                    onChange={(e) => handleArrayItemChange('speakerIdentification', index, 'speakerId', e.target.value)}
-                    placeholder={t('rulesEditor.speakerIdPlaceholder', 'Speaker ID (e.g., "Speaker 1", "John")')}
-                  />
-                  <input
-                    value={speaker.description || ''}
-                    onChange={(e) => handleArrayItemChange('speakerIdentification', index, 'description', e.target.value)}
-                    placeholder={t('rulesEditor.speakerDescPlaceholder', 'Description')}
-                    className="definition-input"
-                  />
-                </div>
-                <button
-                  className="remove-item-button"
-                  onClick={() => removeArrayItem('speakerIdentification', index)}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => addArrayItem('speakerIdentification', { speakerId: '', description: '' })}
-            >
-              {t('rulesEditor.addSpeaker', '+ Add Speaker')}
-            </button>
-          </div>
-
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.formattingConventions', 'Formatting & Style Conventions')}</h3>
-            <p className="section-description">{t('rulesEditor.formattingDescription', 'Add formatting and style rules')}</p>
-
-            {(rules.formattingConventions || []).map((convention, index) => (
-              <div key={index} className="array-item-row">
-                <input
-                  value={convention || ''}
-                  onChange={(e) => handleArrayItemChange('formattingConventions', index, null, e.target.value)}
-                  placeholder={t('rulesEditor.conventionPlaceholder', 'Formatting rule...')}
-                  className="full-width-input"
-                />
-                <button
-                  className="remove-item-button"
-                  onClick={() => removeArrayItem('formattingConventions', index)}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => addArrayItem('formattingConventions', '')}
-            >
-              {t('rulesEditor.addFormatting', '+ Add Formatting Rule')}
-            </button>
-          </div>
-
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.spellingAndGrammar', 'Spelling, Grammar & Punctuation')}</h3>
-            <p className="section-description">{t('rulesEditor.spellingDescription', 'Add spelling, grammar, and punctuation rules')}</p>
-
-            {(rules.spellingAndGrammar || []).map((rule, index) => (
-              <div key={index} className="array-item-row">
-                <input
-                  value={rule || ''}
-                  onChange={(e) => handleArrayItemChange('spellingAndGrammar', index, null, e.target.value)}
-                  placeholder={t('rulesEditor.spellingRulePlaceholder', 'Spelling or grammar rule...')}
-                  className="full-width-input"
-                />
-                <button
-                  className="remove-item-button"
-                  onClick={() => removeArrayItem('spellingAndGrammar', index)}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => addArrayItem('spellingAndGrammar', '')}
-            >
-              {t('rulesEditor.addSpellingRule', '+ Add Spelling/Grammar Rule')}
-            </button>
-          </div>
-
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.relationships', 'Relationships & Social Hierarchy')}</h3>
-            <p className="section-description">{t('rulesEditor.relationshipsDescription', 'Add information about relationships between people')}</p>
-
-            {(rules.relationships || []).map((relationship, index) => (
-              <div key={index} className="array-item-row">
-                <input
-                  value={relationship || ''}
-                  onChange={(e) => handleArrayItemChange('relationships', index, null, e.target.value)}
-                  placeholder={t('rulesEditor.relationshipPlaceholder', 'Relationship information...')}
-                  className="full-width-input"
-                />
-                <button
-                  className="remove-item-button"
-                  onClick={() => removeArrayItem('relationships', index)}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => addArrayItem('relationships', '')}
-            >
-              {t('rulesEditor.addRelationship', '+ Add Relationship')}
-            </button>
-          </div>
-
-          <div className="rules-editor-section">
-            <h3>{t('videoAnalysis.additionalNotes', 'Additional Notes')}</h3>
-            <p className="section-description">{t('rulesEditor.notesDescription', 'Add any other notes for consistent transcription')}</p>
-
-            {(rules.additionalNotes || []).map((note, index) => (
-              <div key={index} className="array-item-row">
-                <input
-                  value={note || ''}
-                  onChange={(e) => handleArrayItemChange('additionalNotes', index, null, e.target.value)}
-                  placeholder={t('rulesEditor.notePlaceholder', 'Additional note...')}
-                  className="full-width-input"
-                />
-                <button
-                  className="remove-item-button"
-                  onClick={() => removeArrayItem('additionalNotes', index)}
-                >
-                  <span
-                    className="material-symbols-rounded"
-                    style={{ fontSize: 16, display: 'inline-block' }}
-                    aria-hidden="true"
-                  >
-                    close
-                  </span>
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="add-item-button"
-              onClick={() => addArrayItem('additionalNotes', '')}
-            >
-              {t('rulesEditor.addNote', '+ Add Note')}
-            </button>
-          </div>
+          {listSections.map(({ category, template, ...section }) => (
+            <RulesListSection
+              key={category}
+              {...section}
+              items={rules[category]}
+              onChangeItem={(index, field, value) => handleArrayItemChange(category, index, field, value)}
+              onRemoveItem={(index) => removeArrayItem(category, index)}
+              onAddItem={() => addArrayItem(category, template())}
+              onInteract={handleUserInteraction}
+            />
+          ))}
         </div>
 
         <div className="modal-footer">

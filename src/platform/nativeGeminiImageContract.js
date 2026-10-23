@@ -6,26 +6,12 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { normalizeJobSnapshot } from './geminiService';
 import { isNativeMediaPlaybackUrl } from './mediaService';
+import { hasExactKeys, isNativeErrorCode, isRecord, snapshotNativeError } from './plainDataRecord';
 
 const MAX_PROMPT_CHARACTERS = 1_048_576;
 const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 export const MAX_PROJECT_IMAGES = 64;
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-
-const isPlainRecord = (value) => (
-  value !== null
-  && typeof value === 'object'
-  && !Array.isArray(value)
-  && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
-);
-
-const hasExactKeys = (value, expected) => {
-  if (!isPlainRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const sorted = [...expected].sort();
-  return actual.length === sorted.length
-    && actual.every((key, index) => key === sorted[index]);
-};
 
 const uuidHasVersion = (value, expected) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -39,7 +25,7 @@ const uuidHasVersion = (value, expected) => {
 export const fixedError = (code = 'nativeGeminiImageFailed') => {
   const error = new Error('The native Gemini image operation could not be completed');
   error.name = 'NativeGeminiImageError';
-  error.code = typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
+  error.code = isNativeErrorCode(code)
     ? code
     : 'nativeGeminiImageFailed';
   return error;
@@ -75,14 +61,11 @@ export const requirePrompt = (value) => {
 };
 
 const normalizeError = (value) => {
-  if (!hasExactKeys(value, ['code', 'message'])
-      || typeof value.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value.code)
-      || typeof value.message !== 'string'
-      || value.message.length > 2_048) {
+  const error = snapshotNativeError(value);
+  if (error === null || error.message.length > 2_048) {
     throw fixedError('invalidGeminiImageResponse');
   }
-  return fixedError(value.code);
+  return fixedError(error.code);
 };
 
 const normalizeGeneratedImageDescriptor = (value, expectedProjectId = null) => {
@@ -123,7 +106,7 @@ export const normalizePlayableGeneratedImage = (value, expectedProjectId = null)
 };
 
 export const normalizeEvent = (value, expectedProjectId) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') {
+  if (!isRecord(value) || typeof value.event !== 'string') {
     throw fixedError('invalidGeminiImageResponse');
   }
   switch (value.event) {

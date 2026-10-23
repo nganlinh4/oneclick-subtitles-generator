@@ -3,10 +3,11 @@ import {
   getYouTubeThumbnailNative,
   searchYouTubeNative,
 } from './providerService';
+import { readPreference } from './preferences/store';
 
 // OAuth preference is non-secret UI state. Authentication itself is validated
 // by the native provider command against opaque credential IDs in the OS vault.
-export const isOAuthEnabled = () => localStorage.getItem('use_youtube_oauth') === 'true';
+export const isOAuthEnabled = () => readPreference('use_youtube_oauth');
 
 export const searchYouTubeVideos = (query, maxResults = 5) => searchYouTubeNative({
   query,

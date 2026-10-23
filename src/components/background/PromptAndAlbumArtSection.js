@@ -8,7 +8,6 @@ import {
   selectReferenceImagePlayback,
 } from '../../platform/imageService';
 import { getActiveGeneratedImageProjectId } from '../../platform/nativeGeminiImage';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import { showErrorToast } from '../../utils/toastUtils';
 
 /**
@@ -103,11 +102,6 @@ const PromptAndAlbumArtSection = ({
 
   const handleAlbumArtExport = async () => {
     try {
-      if (!isDesktopRuntime()) {
-        const { exportGeneratedResource } = await import('../../platform/generatedFileExportService');
-        await exportGeneratedResource(customAlbumArt, 'album-art.png');
-        return;
-      }
       const projectId = await getActiveGeneratedImageProjectId();
       await exportReferenceImagePlayback(customAlbumArt, projectId, 'album-art.png');
     } catch (error) {
@@ -116,45 +110,19 @@ const PromptAndAlbumArtSection = ({
     }
   };
 
-  const uploadControl = (className) => {
-    if (!isDesktopRuntime()) {
-      return (
-        <label className={className} title={t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}>
-          <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>upload</span>
-          {className === 'upload-button' && (
-            <span>{t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}</span>
-          )}
-          <input
-            type="file"
-            accept=".png,.jpg,.jpeg,.webp,.gif"
-            onChange={(event) => {
-              const file = event.target.files[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = (loadEvent) => {
-                setCustomAlbumArt(loadEvent.target.result);
-              };
-              reader.readAsDataURL(file);
-            }}
-            style={{ display: 'none' }}
-          />
-        </label>
-      );
-    }
-    return (
-      <button
-        type="button"
-        className={className}
-        title={t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}
-        onClick={handleNativeAlbumArtSelect}
-      >
-        <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>upload</span>
-        {className === 'upload-button' && (
-          <span>{t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}</span>
-        )}
-      </button>
-    );
-  };
+  const uploadControl = (className) => (
+    <button
+      type="button"
+      className={className}
+      title={t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}
+      onClick={handleNativeAlbumArtSelect}
+    >
+      <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>upload</span>
+      {className === 'upload-button' && (
+        <span>{t('backgroundGenerator.uploadAlbumArt', 'Upload Album Art')}</span>
+      )}
+    </button>
+  );
 
   return (
     <>
@@ -212,7 +180,7 @@ const PromptAndAlbumArtSection = ({
         <div className="album-art-preview">
           {customAlbumArt ? (
             <>
-              <img src={customAlbumArt} alt="Album Art" />
+              <img src={customAlbumArt} alt={t('backgroundGenerator.albumArt', 'Album Art')} />
               {/* Floating upload button */}
               {uploadControl('floating-upload-button')}
               {/* Floating download button */}
@@ -221,7 +189,7 @@ const PromptAndAlbumArtSection = ({
                 onClick={() => { void handleAlbumArtExport(); }}
                 title={t('backgroundGenerator.downloadAlbumArt', 'Download Album Art')}
               >
-                <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
               </button>
 
             </>

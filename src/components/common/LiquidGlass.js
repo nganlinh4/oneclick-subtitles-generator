@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 /**
  * LiquidGlass - A highly customizable liquid glass effect component
@@ -439,9 +440,11 @@ const LiquidGlass = ({
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        role={role}
+        // A clickable glass surface is a button unless the caller names another role.
+        role={role ?? (onClick ? 'button' : undefined)}
         aria-label={ariaLabel}
-        tabIndex={tabIndex}
+        tabIndex={tabIndex ?? (onClick ? 0 : undefined)}
+        onKeyDown={onClick ? activateOnKey : undefined}
       >
         {children}
       </div>

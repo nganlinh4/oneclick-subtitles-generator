@@ -158,7 +158,7 @@ const useVideoControls = ({
       // Don't handle spacebar if a modal is open (check for common modal classes)
       const hasOpenModal = document.querySelector(
         '.modal-overlay, .settings-modal-overlay, .advanced-settings-modal-overlay, ' +
-        '.download-modal-overlay, .segment-retry-modal-overlay, .prompt-editor-overlay, ' +
+        '.download-modal-overlay, .prompt-editor-overlay, ' +
         '.subtitles-input-modal-overlay, .custom-modal-overlay'
       );
       if (hasOpenModal) {

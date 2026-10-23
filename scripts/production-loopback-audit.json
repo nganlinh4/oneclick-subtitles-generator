@@ -1,7 +1,6 @@
 {
   "schemaVersion": 2,
   "productionPolicy": "native-only",
-  "guardModule": "src/platform/browserOnlyService.js",
   "artifactGate": "scripts/check-production-transport.js",
   "reviewedCompatibilitySources": [],
   "missingCapabilities": []

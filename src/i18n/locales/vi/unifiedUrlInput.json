@@ -1,17 +1,12 @@
 {
   "placeholder": "Nhập URL video bất kỳ (YouTube, Douyin, TikTok, v.v.)",
   "invalidUrl": "Định dạng URL không hợp lệ. Vui lòng nhập URL hợp lệ.",
-  "examplesTitle": "Các định dạng URL được hỗ trợ:",
-  "youtubeTitle": "YouTube:",
-  "douyinTitle": "Douyin:",
-  "otherSitesTitle": "Các trang khác:",
-  "ytDlpNote": "Được hỗ trợ bởi yt-dlp với hơn 1000+ trang web",
   "url": "URL:",
   "videoId": "ID Video:",
   "downloadOnly": "Chỉ tải xuống",
   "hundredsMoreWebsites": "...và hàng trăm trang web khác!",
   "viewAllSupportedSites": "Nhấp để xem tất cả các trang được hỗ trợ",
-  "downloadCompleted": "Tải xuống hoàn tất! Đã lưu tệp: {{file}}",
   "downloadFailed": "Tải xuống thất bại: {{message}}",
-  "downloading": "Đang tải xuống..."
+  "downloading": "Đang tải xuống...",
+  "videoFallback": "Video"
 }

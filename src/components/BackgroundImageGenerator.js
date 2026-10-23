@@ -8,10 +8,8 @@ import PromptAndAlbumArtSection from './background/PromptAndAlbumArtSection';
 import ImageGenerationSection from './background/ImageGenerationSection';
 
 import { generateBackgroundPrompt, generateBackgroundImage } from '../services/gemini/imageGenerationService';
-import { saveBackgroundImages } from '../utils/indexedDBUtils';
-import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { releaseNativeGeneratedImagePlayback } from '../platform/nativeGeminiImage';
-import { browserViewImage, nativeViewImage, releaseNativeImages } from './background/generatedImageViews';
+import { nativeViewImage, releaseNativeImages } from './background/generatedImageViews';
 import {
   assertPromptProjectAuthority,
   capturePromptProjectAuthority,
@@ -93,7 +91,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   // Generate prompt using Gemini
   const generatePrompt = async () => {
     if (!customLyrics.trim()) {
-      window.addToast('Please provide lyrics to generate a prompt', 'error', 5000);
+      window.addToast(t('backgroundGenerator.lyricsRequired', 'Please provide lyrics to generate a prompt'), 'error', 5000);
       return;
     }
 
@@ -104,7 +102,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
       const result = await generateBackgroundPrompt(
         customLyrics,
         customSongName || songName || 'Unknown Song',
-        authority ?? undefined,
+        authority,
       );
       assertPromptProjectAuthority(authority);
       setGeneratedPrompt(result.text);
@@ -144,12 +142,12 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     const imagesToGenerate = count || regularImageCount;
 
     if (!currentPrompt.trim()) {
-      window.addToast('Please generate a prompt first', 'error', 5000);
+      window.addToast(t('backgroundGenerator.promptRequired', 'Please generate a prompt first'), 'error', 5000);
       return;
     }
 
     if (!customAlbumArt) {
-      window.addToast('Please provide album art to generate an image', 'error', 5000);
+      window.addToast(t('backgroundGenerator.albumArtRequired', 'Please provide album art to generate an image'), 'error', 5000);
       return;
     }
 
@@ -160,11 +158,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     const run = generationRunRef.current + 1;
     generationRunRef.current = run;
 
-    if (isDesktopRuntime()) {
-      const previous = nativeImagesRef.current;
-      nativeImagesRef.current = [];
-      await releaseNativeImages(previous);
-    }
+    const previous = nativeImagesRef.current;
+    nativeImagesRef.current = [];
+    await releaseNativeImages(previous);
     if (controller.signal.aborted || generationRunRef.current !== run) return null;
 
     // Prepare the grid with placeholders
@@ -189,19 +185,14 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           const image = await generateBackgroundImage(currentPrompt, customAlbumArt, {
             signal: controller.signal,
           });
-          const nativeRuntime = isDesktopRuntime();
-          if (nativeRuntime && promptDelivery !== null) {
+          if (promptDelivery !== null) {
             await acknowledgeConsumedPromptDeliveries(promptDelivery);
           }
           if (generationRunRef.current !== run || controller.signal.aborted) {
-            if (nativeRuntime) {
-              await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
-            }
+            await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
             break;
           }
-          const generated = nativeRuntime
-            ? nativeViewImage(image, currentPrompt)
-            : browserViewImage(image, currentPrompt);
+          const generated = nativeViewImage(image, currentPrompt);
 
           publishGeneratedImage(newImages, i, generated);
         } catch (err) {
@@ -257,22 +248,6 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     }
   }, [isExpanded, userHasCollapsed]);
 
-  // Save generated images to IndexedDB whenever they change
-  useEffect(() => {
-    if (isDesktopRuntime()) return undefined;
-    const saveImages = async () => {
-      try {
-        await saveBackgroundImages(generatedImages);
-      } catch (error) {
-        console.error('Error saving generated images to IndexedDB:', error);
-      }
-    };
-
-    // Only save if we have images or if we're clearing them (empty array)
-    void saveImages();
-    return undefined;
-  }, [generatedImages]);
-
   // Update state when lyrics or albumArt props change, but preserve generated images
   useEffect(() => {
     const previous = sourceInputsRef.current;
@@ -314,12 +289,12 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
   // Generate new prompt and then generate image
   const generateWithNewPrompt = async (count = null) => {
     if (!customLyrics.trim()) {
-      window.addToast('Please provide lyrics to generate a prompt', 'error', 5000);
+      window.addToast(t('backgroundGenerator.lyricsRequired', 'Please provide lyrics to generate a prompt'), 'error', 5000);
       return;
     }
 
     if (!customAlbumArt) {
-      window.addToast('Please provide album art to generate an image', 'error', 5000);
+      window.addToast(t('backgroundGenerator.albumArtRequired', 'Please provide album art to generate an image'), 'error', 5000);
       return;
     }
 
@@ -334,11 +309,9 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
     const run = generationRunRef.current + 1;
     generationRunRef.current = run;
 
-    if (isDesktopRuntime()) {
-      const previous = nativeImagesRef.current;
-      nativeImagesRef.current = [];
-      await releaseNativeImages(previous);
-    }
+    const previous = nativeImagesRef.current;
+    nativeImagesRef.current = [];
+    await releaseNativeImages(previous);
     if (controller.signal.aborted || generationRunRef.current !== run) return;
 
     // Create placeholder array
@@ -364,7 +337,7 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           const promptResult = await generateBackgroundPrompt(
             customLyrics,
             customSongName || songName || 'Unknown Song',
-            authority ?? undefined,
+            authority,
           );
           assertPromptProjectAuthority(authority);
           const uniquePrompt = promptResult.text;
@@ -385,19 +358,14 @@ const BackgroundImageGenerator = ({ lyrics, albumArt, songName, isExpanded = fal
           const image = await generateBackgroundImage(uniquePrompt, customAlbumArt, {
             signal: controller.signal,
           });
-          const nativeRuntime = isDesktopRuntime();
-          if (nativeRuntime && promptResult.delivery !== null) {
+          if (promptResult.delivery !== null) {
             await acknowledgeConsumedPromptDeliveries(promptResult.delivery);
           }
           if (generationRunRef.current !== run || controller.signal.aborted) {
-            if (nativeRuntime) {
-              await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
-            }
+            await releaseNativeGeneratedImagePlayback(image).catch(() => undefined);
             break;
           }
-          const generated = nativeRuntime
-            ? nativeViewImage(image, uniquePrompt)
-            : browserViewImage(image, uniquePrompt);
+          const generated = nativeViewImage(image, uniquePrompt);
 
           publishGeneratedImage(newImages, i, generated);
         } catch (err) {

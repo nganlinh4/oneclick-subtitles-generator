@@ -17,7 +17,6 @@ import { computeTimelineBands } from './timelineBands';
  * @param {boolean} isActivePanning - Whether the user is actively panning
  * @param {string} timeFormat - Time format to use
  * @param {Object} segmentData - Segment selection data
- * @param {Map} segmentProcessingStartTimes - Map of segment processing start times (for delayed segment processing)
  */
 export const drawTimeline = (
     canvas,
@@ -29,7 +28,6 @@ export const drawTimeline = (
     isActivePanning,
     timeFormat,
     segmentData = null,
-    segmentProcessingStartTimes = null,
     narrationSegments = null, // optional narration-lane segments
     reserveBottom = 0 // px reserved at the bottom (e.g. for the waveform overlay)
 ) => {
@@ -98,7 +96,6 @@ export const drawTimeline = (
         isDark,
         isActivePanning,
         segmentData ? segmentData.newSegments : null,
-        segmentProcessingStartTimes,
         subtitleBand
     );
     // Inspectable paint result, not the size of an unrelated draft-text store.

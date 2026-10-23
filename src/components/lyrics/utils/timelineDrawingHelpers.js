@@ -81,7 +81,6 @@ export const drawLyricSegments = (
     isDark,
     isActivePanning,
     newSegments = null,
-    segmentProcessingStartTimes = null,
     band = null // optional { top, height } — when set, draw within this vertical band
 ) => {
     // Minimum segment width - always show segments with at least 1px
@@ -178,16 +177,7 @@ export const drawLyricSegments = (
                 const segmentData = newSegments.get(segmentKey);
                 if (segmentData) {
                     isNewSegment = true;
-                    let effectiveStartTime = segmentData.startTime;
-
-                    // If we have delayed processing times, use the actual processing start time
-                    if (segmentProcessingStartTimes && segmentProcessingStartTimes.has(segmentKey)) {
-                        const processingInfo = segmentProcessingStartTimes.get(segmentKey);
-                        effectiveStartTime = processingInfo.actualStartTime;
-                    }
-
-                    const elapsed = performance.now() - effectiveStartTime;
-                    // Only show animation after the segment's actual processing start time
+                    const elapsed = performance.now() - segmentData.startTime;
                     animationProgress = Math.max(0, Math.min(elapsed / 800, 1)); // 800ms animation
                 }
             }

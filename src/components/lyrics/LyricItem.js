@@ -5,6 +5,7 @@ import '../../utils/functionalScrollbar';
 
 import CustomScrollbarTextarea from '../common/CustomScrollbarTextarea.jsx';
 import Tooltip from '../common/Tooltip.jsx';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 import ContinuousProgressIndicator from './ContinuousProgressIndicator.jsx';
 
 const LyricItem = ({
@@ -231,8 +232,9 @@ const LyricItem = ({
                 <button
                   className="edit-lyric-btn"
                   onClick={handleEditClick}
+                  aria-label={t('lyrics.editTooltip', 'Edit lyrics')}
                 >
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit</span>
+                  <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>edit</span>
                 </button>
               </Tooltip>
               <button
@@ -243,7 +245,7 @@ const LyricItem = ({
                 }}
                 title={t('lyrics.deleteTooltip', 'Delete lyrics')}
               >
-                <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>delete</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>delete</span>
               </button>
               {/* Always show insert and merge buttons for all lyrics */}
               <div
@@ -272,7 +274,7 @@ const LyricItem = ({
                       }}
                       onMouseLeave={handleInsertArrowMouseLeave}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_up</span>
+                      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_up</span>
                     </button>
                     <button
                       className="arrow-button down"
@@ -287,7 +289,7 @@ const LyricItem = ({
                       }}
                       onMouseLeave={handleInsertArrowMouseLeave}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_down</span>
+                      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_down</span>
                     </button>
                   </div>
                 )}
@@ -319,7 +321,7 @@ const LyricItem = ({
                       }}
                       onMouseLeave={handleMergeArrowMouseLeave}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_up</span>
+                      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_up</span>
                     </button>
                     <button
                       className="arrow-button down"
@@ -335,7 +337,7 @@ const LyricItem = ({
                       }}
                       onMouseLeave={handleMergeArrowMouseLeave}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_down</span>
+                      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '24px' }}>keyboard_arrow_down</span>
                     </button>
                   </div>
                 )}
@@ -369,12 +371,17 @@ const LyricItem = ({
                  placeholder={t('lyrics.editPlaceholder', 'Edit lyric text')}
                />
             ) : (
-              <span onClick={(e) => {
-                e.stopPropagation(); // Stop propagation to prevent double click handling
-                if (!isEditing) {
-                  onLyricClick(lyric.start);
-                }
-              }}>
+              <span
+                role="button"
+                tabIndex={0}
+                onKeyDown={activateOnKey}
+                onClick={(e) => {
+                  e.stopPropagation(); // Stop propagation to prevent double click handling
+                  if (!isEditing) {
+                    onLyricClick(lyric.start);
+                  }
+                }}
+              >
                 {lyric.text.split('\n').map((line, lineIndex) => (
                   <React.Fragment key={lineIndex}>
                     {lineIndex > 0 && <br />}
@@ -421,17 +428,16 @@ const LyricItem = ({
   );
 };
 
-// Use memo to prevent unnecessary re-renders
-const MemoizedLyricItem = memo(LyricItem, (prevProps, nextProps) => {
-  // Only re-render if these props change
-  if (prevProps.isCurrentLyric !== nextProps.isCurrentLyric) return false;
-  if (prevProps.isCurrentLyric && prevProps.currentTime !== nextProps.currentTime) return false;
-  if (prevProps.lyric !== nextProps.lyric) return false;
-  if (prevProps.isDragging !== nextProps.isDragging) return false;
-  if (prevProps.isEditing !== nextProps.isEditing) return false;
-
-  // Don't re-render for other prop changes
+// Every rendered prop counts, except that playback time only matters to the current row.
+const areLyricItemPropsEqual = (prevProps, nextProps) => {
+  const keys = new Set([...Object.keys(prevProps), ...Object.keys(nextProps)]);
+  for (const key of keys) {
+    if (key === 'currentTime' && !prevProps.isCurrentLyric && !nextProps.isCurrentLyric) continue;
+    if (!Object.is(prevProps[key], nextProps[key])) return false;
+  }
   return true;
-});
+};
+
+const MemoizedLyricItem = memo(LyricItem, areLyricItemPropsEqual);
 
 export default MemoizedLyricItem;

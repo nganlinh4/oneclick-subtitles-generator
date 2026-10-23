@@ -33,8 +33,8 @@ const NATIVE_OWNED_SETTING_KEYS = Object.freeze([
 ]);
 
 // Runtime handles, capability URLs, generated results, and recomputable caches must not be copied
-// into the durable settings table. In particular, `current_file_url` can contain the private media
-// server's bearer token and Gemini file-cache rows historically included provider metadata.
+// into the durable settings table. Media capability URLs carry the private media server's bearer
+// token, and Gemini file-cache rows historically included provider metadata.
 const TRANSIENT_SETTING_KEYS = Object.freeze([
   'currentRenderId',
   'currentRenderItem',

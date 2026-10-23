@@ -12,6 +12,9 @@ import { setCurrentCacheId as setRulesCacheId } from '../utils/transcriptionRule
 import { setCurrentCacheId as setSubtitlesCacheId } from '../utils/userSubtitlesStore';
 
 import { candidateProject, createHarness, flush } from './nativeUrlDownloadAdapterTestFixtures';
+import { readActiveMedia, updateActiveMedia } from './activeMediaSource';
+import { resolveProjectForCache } from './subtitleProjectStore';
+import { writeNativeMediaSession } from './nativeMediaOwnership';
 
 vi.mock('./downloadService', () => ({
   cancelDownload: vi.fn(),
@@ -180,17 +183,14 @@ it('keeps native picker media opaque while preparing the file workflow', async (
   const setIsUploading = vi.fn();
   const setIsDownloading = vi.fn();
   const createObjectUrl = vi.spyOn(URL, 'createObjectURL');
+  const projectId = uuidv7();
   isNativeMediaDescriptor.mockReturnValueOnce(true);
   getCachedSubtitles.mockResolvedValueOnce(null);
-  activateSubtitleProjectBinding.mockImplementationOnce(async (cacheId) => {
-    setRulesCacheId(cacheId);
-    setSubtitlesCacheId(cacheId);
-    return {
-      kind: 'subtitle-project-binding',
-      cacheId,
-      projectId: `project:${cacheId}`,
-    };
-  });
+  resolveProjectForCache.mockImplementation(async () => ({ projectId }));
+  // The upload input already committed the native selection and bound its project.
+  writeNativeMediaSession({ assetId, cacheId: assetId, projectId });
+  setRulesCacheId(assetId);
+  setSubtitlesCacheId(assetId);
 
   const { startBackgroundVideoProcessing } = createDownloadHandlers({
     selectedVideo: null,
@@ -213,10 +213,10 @@ it('keeps native picker media opaque while preparing the file workflow', async (
   await expect(startBackgroundVideoProcessing(nativeMedia, 'file-upload')).resolves.toBe(nativeMedia);
 
   expect(createObjectUrl).not.toHaveBeenCalled();
-  expect(localStorage.getItem('current_file_url')).toBe(nativeMedia.playbackUrl);
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBe(nativeMedia.playbackUrl);
+  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
   expect(getCachedSubtitles).toHaveBeenCalledWith(assetId, null, {
-    expectedProjectId: `project:${assetId}`,
+    expectedProjectId: projectId,
   });
   expect(setUploadedFile).toHaveBeenCalledWith(nativeMedia);
   expect(setUploadedFileData).toHaveBeenCalledWith(nativeMedia);
@@ -225,6 +225,8 @@ it('keeps native picker media opaque while preparing the file workflow', async (
   expect(setStatus).toHaveBeenLastCalledWith({});
   expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'info' }));
   createObjectUrl.mockRestore();
+  resolveProjectForCache.mockImplementation(async (cacheId) => ({ projectId: `project:${cacheId}` }));
+  updateActiveMedia({ session: null, playbackUrl: null });
 });
 
 it('fails closed when the completed playback capability cannot be described', async () => {

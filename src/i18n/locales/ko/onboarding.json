@@ -1,13 +1,7 @@
 {
-  "title": "자막 생성기에 오신 것을 환영합니다",
-  "promptSelectionSubtitle": "먼저, 트랜스크립션을 위한 프롬프트 프리셋을 선택해보세요",
-  "modelSelectionSubtitle": "이제, 트랜스크립션을 위한 Gemini 모델을 선택해보세요",
-  "promptSelectionInstruction": "당신의 요구에 가장 적합한 프리셋을 선택하세요. 나중에 설정에서 언제든지 변경할 수 있습니다.",
-  "modelSelectionInstruction": "Gemini 모델을 선택하세요. 더 정확한 모델은 더 느릴 수 있습니다. 나중에 설정에서 언제든지 변경할 수 있습니다.",
-  "selectLanguage": "언어 선택:",
-  "back": "뒤로",
-  "next": "다음",
-  "finish": "완료",
   "letsGo": "시작하기",
-  "completed": "설정이 완료되었습니다! 언제든지 이 설정을 변경할 수 있습니다."
+  "clickToContinue": "아무 곳이나 클릭하여 계속하세요",
+  "waitPrefix": "잠시 기다려 주세요 ",
+  "waitSeconds": "초...",
+  "waitSecond": "초..."
 }

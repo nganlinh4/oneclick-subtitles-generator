@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import PlayPauseMorphType4 from './PlayPauseMorphType4';
 import WavyProgressIndicator from './WavyProgressIndicator';
 import { downloadAudioSource } from './audioDownload';
 import { showErrorToast } from '../../utils/toastUtils';
+import { formatSecondsFraction } from '../../utils/timeFormatter';
 
-// Local formatter for time display with one decimal
-const formatTimeOneDecimal = (timeInSeconds) => {
-  const truncated = Math.floor(timeInSeconds * 10) / 10;
-  const formatted = truncated.toFixed(1);
-  const cleanFormatted = formatted.replace(/\.0$/, '');
-  return cleanFormatted + 's';
-};
+const formatTimeOneDecimal = (timeInSeconds) => (
+  `${formatSecondsFraction(timeInSeconds, 1).replace(/\.0$/, '')}s`
+);
 
 const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 } }) => {
+  const { t } = useTranslation();
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -280,7 +279,7 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
               setDownloadSuccess(true);
               setTimeout(() => setDownloadSuccess(false), 500);
             } catch (e) {
-              showErrorToast(e?.message || 'The audio recording could not be saved.');
+              showErrorToast(e?.message || t('common.audioSaveFailed', 'The audio recording could not be saved.'));
             }
           }}
           style={{
@@ -295,9 +294,9 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
             justifyContent: 'center',
             padding: 0
           }}
-          title="Download audio"
+          title={t('common.downloadAudio', 'Download audio')}
         >
-          <span className="material-symbols-rounded">{downloadSuccess ? 'done' : 'arrow_downward_alt'}</span>
+          <span aria-hidden="true" className="material-symbols-rounded">{downloadSuccess ? 'done' : 'arrow_downward_alt'}</span>
         </button>
       )}
       <audio
@@ -308,9 +307,7 @@ const AudioPlayer = ({ audioSrc, referenceAudio, height = 18, style = { flex: 1 
         onTimeUpdate={() => setCurrentTime(audioRef.current.currentTime)}
         onEnded={() => setPlaying(false)}
         style={{ display: 'none' }}
-      >
-        Your browser does not support the audio element.
-      </audio>
+      />
     </div>
   );
 };

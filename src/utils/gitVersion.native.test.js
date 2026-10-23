@@ -150,30 +150,5 @@ test.each([
   expect(container).not.toHaveTextContent('OSG_installer_Windows.bat');
 });
 
-test('browser builds preserve the legacy GitHub commit lookup', async () => {
-  window.isTauri = false;
-  global.fetch.mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      sha: 'abcdef0123456789',
-      html_url: 'https://github.com/nganlinh4/oneclick-subtitles-generator/commit/abcdef0',
-      commit: {
-        message: 'Browser release',
-        committer: { date: '2026-08-10T03:04:05Z' },
-        author: { name: 'OSG', email: 'osg@example.invalid' },
-      },
-    }),
-  });
-
-  await expect(getLatestVersion()).resolves.toMatchObject({
-    shortHash: 'abcdef0',
-    source: 'github-commits',
-  });
-  expect(global.fetch).toHaveBeenCalledWith(
-    'https://api.github.com/repos/nganlinh4/oneclick-subtitles-generator/commits/main',
-    expect.any(Object)
-  );
-  expect(checkDesktopUpdate).not.toHaveBeenCalled();
-});
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AboutTab from '../components/settings/tabs/AboutTab';

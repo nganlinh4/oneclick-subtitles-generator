@@ -335,7 +335,6 @@ export const clearTranscriptionRules = async () => {
   sessionStorage.removeItem('last_applied_recommendation');
   sessionStorage.removeItem('current_session_video_fingerprint');
   sessionStorage.removeItem('current_session_prompt');
-  localStorage.removeItem('video_analysis_result');
   if (currentCacheId === requestedCacheId) {
     publishRules(null, { cacheId: requestedCacheId });
   }

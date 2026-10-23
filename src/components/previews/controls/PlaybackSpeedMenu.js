@@ -1,5 +1,6 @@
 import LiquidGlass from '../../common/LiquidGlass';
 import ActionButtons from './ActionButtons';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 const PlaybackSpeedMenu = ({
   isFullscreen,
@@ -53,6 +54,7 @@ const PlaybackSpeedMenu = ({
                 transitionDelay: isSpeedMenuVisible ? `${(6 - index) * 0.015}s` : `${index * 0.015}s`,
                 pointerEvents: isSpeedMenuVisible ? 'auto' : 'none'
               }}
+              tabIndex={isSpeedMenuVisible ? 0 : -1}
               onClick={() => {
                 setPlaybackSpeed(speed);
                 if (videoRef.current) videoRef.current.playbackRate = speed;
@@ -116,6 +118,9 @@ const PlaybackSpeedMenu = ({
               cursor: 'pointer',
               transition: 'all 0.2s ease'
             }}
+            role={isCompactMode ? 'button' : undefined}
+            tabIndex={isCompactMode ? 0 : undefined}
+            onKeyDown={isCompactMode ? activateOnKey : undefined}
             onClick={(e) => {
               e.stopPropagation();
               if (isCompactMode) {

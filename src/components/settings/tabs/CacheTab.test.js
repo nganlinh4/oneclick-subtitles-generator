@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { clearCache, getCacheInfo } from '../../../platform/cacheService';
 import CacheTab from './CacheTab';
+import { readActiveMedia, updateActiveMedia } from '../../../platform/activeMediaSource';
 
 vi.mock('../../../platform/cacheService', () => ({
   clearCache: vi.fn(),
@@ -71,9 +72,8 @@ it('never invalidates the active project media identity when clearing cache data
       formattedTotalSize: '1 KB',
     },
   });
-  localStorage.setItem('current_video_url', 'https://example.test/watch/source');
-  localStorage.setItem('current_file_url', 'http://127.0.0.1:49152/asset/active');
-  localStorage.setItem('current_file_cache_id', 'durable-asset-id');
+  updateActiveMedia({ sourceUrl: 'https://example.test/watch/source' });
+  updateActiveMedia({ playbackUrl: 'http://127.0.0.1:49152/asset/active' });
   localStorage.setItem('narration_cache', 'active-narration-state');
 
   render(<CacheTab isActive />);
@@ -83,11 +83,10 @@ it('never invalidates the active project media identity when clearing cache data
   await waitFor(() => expect(clearCache).toHaveBeenCalledWith());
   await waitFor(() => expect(getCacheInfo).toHaveBeenCalledTimes(2));
 
-  expect(localStorage.getItem('current_video_url'))
+  expect(readActiveMedia().sourceUrl)
     .toBe('https://example.test/watch/source');
-  expect(localStorage.getItem('current_file_url'))
+  expect(readActiveMedia().playbackUrl)
     .toBe('http://127.0.0.1:49152/asset/active');
-  expect(localStorage.getItem('current_file_cache_id')).toBe('durable-asset-id');
   expect(localStorage.getItem('narration_cache')).toBe('active-narration-state');
 });
 

@@ -2,16 +2,12 @@ import {
   exportSubtitleArchive,
   exportSubtitleDocument,
 } from '../../../platform/subtitleDocumentExportService';
-import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
 import {
   handleBulkDownloadAll,
   handleBulkDownloadZip,
   runOwnedBulkExport,
 } from './downloadUtils';
 
-vi.mock('../../../platform/runtimeEnvironment', () => ({
-  isDesktopRuntime: vi.fn(() => true),
-}));
 vi.mock('../../../platform/subtitleDocumentExportService', async () => {
   const actual = await vi.importActual('../../../platform/subtitleDocumentExportService');
   return {
@@ -42,7 +38,6 @@ const createTrackedPendingRef = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  isDesktopRuntime.mockReturnValue(true);
   exportSubtitleArchive.mockResolvedValue({ status: 'saved' });
   exportSubtitleDocument.mockResolvedValue({ status: 'saved' });
   localStorage.clear();

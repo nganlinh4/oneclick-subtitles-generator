@@ -1,48 +1,21 @@
-// Translation request preferences, mirrored to best-effort localStorage compatibility keys.
-import { useCallback, useState } from 'react';
+// Translation request preferences of this device.
+import { useCallback } from 'react';
 import { DEFAULT_TRANSLATION_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
-import { boundedIntegerSetting, safeGetStorage, safeSetStorage } from './translationRunHelpers';
+import { hasStoredPreference, readPreference, usePreference } from '../platform/preferences/store';
 
 export const useTranslationPreferences = () => {
-  const [selectedModel, setSelectedModel] = useState(() => migrateGeminiModelId(
-    safeGetStorage('translation_model') || safeGetStorage('gemini_model'),
+  const [storedModel, handleModelSelect] = usePreference('translation_model');
+  // Without a translation choice, follow an explicit Settings model, else the translation default.
+  const selectedModel = migrateGeminiModelId(
+    storedModel || (hasStoredPreference('gemini_model') ? readPreference('gemini_model') : null),
     DEFAULT_TRANSLATION_MODEL_ID
-  ));
-  const [customTranslationPrompt, setCustomTranslationPrompt] = useState(
-    () => safeGetStorage('custom_prompt_translation') || null
   );
-  const [splitDuration, setSplitDuration] = useState(
-    () => boundedIntegerSetting('translation_split_duration', 0, 24 * 60)
-  );
-  const [restTime, setRestTime] = useState(
-    () => boundedIntegerSetting('translation_rest_time', 0, 24 * 60 * 60)
-  );
-  const [includeRules, setIncludeRules] = useState(
-    () => safeGetStorage('translation_include_rules') === 'true'
-  );
-
-  const handleModelSelect = useCallback((modelId) => {
-    setSelectedModel(modelId);
-    safeSetStorage('translation_model', modelId);
-  }, []);
-
-  const handleSavePrompt = useCallback((prompt) => {
-    setCustomTranslationPrompt(prompt);
-    safeSetStorage('custom_prompt_translation', prompt);
-  }, []);
-
-  const handleSplitDurationChange = useCallback((value) => {
-    setSplitDuration(value);
-    safeSetStorage('translation_split_duration', String(value));
-  }, []);
-  const handleRestTimeChange = useCallback((value) => {
-    setRestTime(value);
-    safeSetStorage('translation_rest_time', String(value));
-  }, []);
-  const handleIncludeRulesChange = useCallback((value) => {
-    setIncludeRules(value);
-    safeSetStorage('translation_include_rules', String(value));
-  }, []);
+  const [storedPrompt, setStoredPrompt] = usePreference('custom_prompt_translation');
+  const customTranslationPrompt = storedPrompt || null;
+  const handleSavePrompt = useCallback((prompt) => setStoredPrompt(prompt ?? ''), [setStoredPrompt]);
+  const [splitDuration, handleSplitDurationChange] = usePreference('translation_split_duration');
+  const [restTime, handleRestTimeChange] = usePreference('translation_rest_time');
+  const [includeRules, handleIncludeRulesChange] = usePreference('translation_include_rules');
 
   return {
     selectedModel,
@@ -50,7 +23,6 @@ export const useTranslationPreferences = () => {
     splitDuration,
     restTime,
     includeRules,
-    setIncludeRules,
     handleModelSelect,
     handleSavePrompt,
     handleSplitDurationChange,

@@ -1,7 +1,6 @@
 // Abort-signal observation for native renders: one guarded listener per caller signal, shared by
 // the start/run/wait layers so a hostile signal is touched exactly once.
 import { cancelled, invalidRequest } from './renderErrors';
-import { isRecord } from './renderValidation';
 
 export const internalAbortMonitors = new WeakMap();
 
@@ -11,7 +10,7 @@ export const createAbortMonitor = (signal) => {
   let addEventListener;
   let removeEventListener;
   try {
-    if (!isRecord(signal)) throw invalidRequest();
+    if (typeof signal !== 'object') throw invalidRequest();
     initiallyAborted = signal.aborted;
     addEventListener = signal.addEventListener;
     removeEventListener = signal.removeEventListener;

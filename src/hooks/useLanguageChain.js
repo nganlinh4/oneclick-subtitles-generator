@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { normalizeLanguageChain } from '../utils/translationOwnership';
+import { clearPreference, readPreference, writePreference } from '../platform/preferences/store';
 
 const MAX_LANGUAGE_CHAIN_STORAGE_BYTES = 16 * 1024;
 let languageChainIdSequence = 0;
@@ -62,14 +63,10 @@ const useLanguageChain = (includeOriginal = false) => {
   // Chain items can be languages or delimiters
   // Languages: { id: number, type: 'language', value: string, isOriginal: boolean }
   // Delimiters: { id: number, type: 'delimiter', value: string, style: { open: string, close: string } }
-  const [chainItems, setChainItems] = useState(() => {
-    try {
-      const savedChain = localStorage.getItem('language_chain_items');
-      return loadPersistedLanguageChain(savedChain, includeOriginal);
-    } catch {
-      return defaultLanguageChain(includeOriginal);
-    }
-  });
+  const [chainItems, setChainItems] = useState(() => loadPersistedLanguageChain(
+    readPreference('language_chain_items'),
+    includeOriginal,
+  ));
 
   /**
    * Add a new language to the chain
@@ -285,16 +282,10 @@ const useLanguageChain = (includeOriginal = false) => {
   }, [chainItems]);
 
   /**
-   * Reset the chain to its initial state and clear localStorage
+   * Reset the chain to its initial state and forget the saved chain
    */
   const resetChain = useCallback(() => {
-    // Clear saved chain from localStorage
-    try {
-      localStorage.removeItem('language_chain_items');
-
-    } catch (error) {
-      console.error('Error clearing saved chain from localStorage:', error);
-    }
+    clearPreference('language_chain_items');
 
     // Reset to initial state
     setChainItems(() => {
@@ -302,17 +293,15 @@ const useLanguageChain = (includeOriginal = false) => {
     });
   }, [includeOriginal]);
 
-  // Save chain items to localStorage whenever they change
+  // Save the chain whenever it changes
   useEffect(() => {
     try {
-      // Don't save if the chain is empty or only has default items
       if (chainItems.length > 0) {
         const normalized = normalizeLanguageChain(chainItems, { allowEmptyLanguage: true });
-        localStorage.setItem('language_chain_items', JSON.stringify(normalized));
-
+        writePreference('language_chain_items', JSON.stringify(normalized));
       }
     } catch (error) {
-      console.error('Error saving chain to localStorage:', error);
+      console.error('Error saving the language chain:', error);
     }
   }, [chainItems]);
 

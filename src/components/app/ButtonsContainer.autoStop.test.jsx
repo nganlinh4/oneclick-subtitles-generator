@@ -43,8 +43,6 @@ const baseProps = () => ({
   currentDownloadId: 'manual-download',
   isRetrying: true,
   setIsRetrying: vi.fn(),
-  retryingSegments: [],
-  segmentsStatus: [],
   subtitlesData: [],
   setSubtitlesData: vi.fn(),
   status: {},

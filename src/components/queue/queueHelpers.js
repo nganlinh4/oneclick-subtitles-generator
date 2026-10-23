@@ -1,3 +1,4 @@
+import { readPreference, writePreference } from '../../platform/preferences/store';
 export const getStatusIcon = (status) => {
   switch (status) {
     case 'pending':
@@ -73,44 +74,16 @@ export const getVideoNumber = (item) => {
     timestamp = Date.now();
   }
 
-  // Use localStorage to maintain a persistent counter across sessions
-  const STORAGE_KEY = 'videoRenderCounter';
-  const TIMESTAMP_MAP_KEY = 'videoTimestampMap';
-
-  // Get existing timestamp-to-number mapping
-  let timestampMap = {};
-  try {
-    const stored = localStorage.getItem(TIMESTAMP_MAP_KEY);
-    if (stored) {
-      timestampMap = JSON.parse(stored);
-    }
-  } catch (e) {
-    // ignore
-  }
-
+  // A persistent counter numbers renders across sessions; each job timestamp keeps its number.
+  const timestampMap = { ...readPreference('videoTimestampMap') };
   if (timestampMap[timestamp]) {
     return timestampMap[timestamp];
   }
 
-  let counter = 1;
-  try {
-    const storedCounter = localStorage.getItem(STORAGE_KEY);
-    if (storedCounter) {
-      counter = parseInt(storedCounter) + 1;
-    }
-  } catch (e) {
-    // ignore
-  }
-
+  const counter = readPreference('videoRenderCounter') + 1;
   timestampMap[timestamp] = counter;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, counter.toString());
-    localStorage.setItem(TIMESTAMP_MAP_KEY, JSON.stringify(timestampMap));
-  } catch (e) {
-    // ignore
-  }
-
+  writePreference('videoRenderCounter', counter);
+  writePreference('videoTimestampMap', timestampMap);
   return counter;
 };
 

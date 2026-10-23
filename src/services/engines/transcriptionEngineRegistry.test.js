@@ -5,12 +5,8 @@ import {
   supportsTokenCounting,
   supportsLanguage,
   LOCAL_METHOD_IDS,
-  buildMethodDescriptors,
+  DESCRIPTORS,
 } from './transcriptionEngineRegistry';
-
-vi.mock('../../platform/desktopRuntime', () => ({
-  isDesktopRuntime: () => true,
-}));
 
 describe('transcriptionEngineRegistry', () => {
   test('gemini methods are type gemini: token counting, no segmentation/language', () => {
@@ -53,14 +49,13 @@ describe('transcriptionEngineRegistry', () => {
     expect(getEngineDescriptor('faster-whisper-turbo').supportedLanguageCodes).toBeNull();
   });
 
-  test('local engines stay selectable while cold because generation prepares them on demand', () => {
-    const engineStatus = { isReady: () => false };
-    const list = buildMethodDescriptors(engineStatus, { isVercelMode: true });
-    const byId = Object.fromEntries(list.map((d) => [d.id, d]));
-    expect(byId.new.available).toBe(true);
-    expect(byId.old.available).toBe(false); // disabled in Vercel mode
-    expect(byId['nvidia-parakeet'].available).toBe(true);
-    expect(byId['faster-whisper-turbo'].available).toBe(true);
+  test('lists every method in dropdown order with no availability gate', () => {
+    const ids = DESCRIPTORS.map((d) => d.id);
+    expect(ids.slice(0, 5)).toEqual([
+      'new', 'old', 'gemini-transcribe', 'gemini-transcribe-live', 'nvidia-parakeet',
+    ]);
+    expect(ids).toContain('faster-whisper-turbo');
+    expect(DESCRIPTORS.some((d) => 'availability' in d)).toBe(false);
   });
 
   test('getEngineType defaults to gemini for an unknown method', () => {

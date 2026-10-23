@@ -1,6 +1,5 @@
 {
   "title": "Trình tạo hình nền",
-  "lyrics": "Lời bài hát",
   "lyricsPlaceholder": "Nhập lời bài hát vào đây...",
   "songName": "Tên bài hát",
   "songNamePlaceholder": "Nhập tên bài hát (tùy chọn)",
@@ -20,13 +19,9 @@
   "downloadImage": "Tải xuống",
   "downloadAllImages": "Tải tất cả",
   "generationFailed": "Tạo thất bại",
-  "images": "ảnh",
-  "uniqueImages": "ảnh",
   "generateWithNewPrompt": "Tạo (điểm nhấn riêng biệt)",
   "generateWithNewPromptTooltip": "Tạo một điểm nhấn riêng biệt cho mỗi hình ảnh",
   "generatingWithNewPrompt": "Đang tạo...",
-  "uniquePromptCountTooltip": "Số lượng hình ảnh cần tạo, mỗi hình với một điểm nhấn riêng biệt",
-  "samePromptCountTooltip": "Số lượng hình ảnh cần tạo sử dụng cùng một điểm nhấn",
   "expand": "Mở rộng",
   "collapse": "Thu gọn",
   "clearImages": "Xóa",
@@ -39,7 +34,6 @@
     "modelUnavailable": "Mô hình tạo ảnh đã chọn không khả dụng. Chọn mô hình khác rồi thử lại.",
     "requestRejected": "Gemini từ chối mô hình tạo ảnh hoặc yêu cầu. Kiểm tra quyền truy cập mô hình rồi thử lại.",
     "quotaExceeded": "Đã vượt hạn mức. Kiểm tra gói và thanh toán của bạn.",
-    "rateLimited": "Vượt quá giới hạn. Vui lòng chờ và thử lại.",
     "unauthorized": "Không được phép: API key không hợp lệ hoặc thiếu.",
     "forbidden": "Bị từ chối truy cập. Kiểm tra thanh toán/hạn ngạch hoặc quyền truy cập model.",
     "badRequest": "Yêu cầu không hợp lệ. Hãy điều chỉnh prompt hoặc ảnh bìa và thử lại.",
@@ -53,5 +47,9 @@
     "noPromptReturned": "Không có prompt được trả về. Vui lòng thử lại sau.",
     "network": "Lỗi mạng. Kiểm tra kết nối và thử lại."
   },
-  "errorSavingPrompts": "Lỗi khi lưu prompt: {{message}}"
+  "errorSavingPrompts": "Lỗi khi lưu prompt: {{message}}",
+  "lyricsRequired": "Vui lòng nhập lời bài hát để tạo prompt",
+  "promptRequired": "Vui lòng tạo prompt trước",
+  "albumArtRequired": "Vui lòng thêm ảnh bìa album để tạo hình ảnh",
+  "generatedImageAlt": "Hình nền đã tạo"
 }

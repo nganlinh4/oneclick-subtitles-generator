@@ -9,6 +9,7 @@ import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutub
 import { downloadUrlToUserDestination } from '../../platform/userMediaExportFlow';
 import { getDownloadCookieSource } from '../../platform/downloadCookiePreference';
 import { showErrorToast } from '../../utils/toastUtils';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 import DownloadOnlyModal from '../DownloadOnlyModal';
 import {
   isValidYoutubeUrl,
@@ -278,9 +279,9 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
               setSelectedVideo(null);
               setUrlType('');
             }}
-            aria-label="Clear input"
+            aria-label={t('common.clearInput', 'Clear input')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: 18 }}>close</span>
+            <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 18 }}>close</span>
           </button>
         )}
       </div>
@@ -299,6 +300,9 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
                   key={`${item.id}-${index}`}
                   className="history-item"
                   onClick={() => handleSelectFromHistory(item)}
+                  onKeyDown={activateOnKey}
+                  role="button"
+                  tabIndex={showHistory ? 0 : -1}
                 >
                   <div className="history-item-content">
                     {item.source === 'youtube' && item.thumbnail && (
@@ -322,7 +326,7 @@ const UnifiedUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
                       />
                     )}
                     <div className="history-item-info">
-                      <div className="history-item-title">{item.title || 'Video'}</div>
+                      <div className="history-item-title">{item.title || t('unifiedUrlInput.videoFallback', 'Video')}</div>
                       <div className="history-item-meta">
                         <span className="history-item-source">{item.source}</span>
                         <span className="history-item-time">{formatTimestamp(item.timestamp)}</span>

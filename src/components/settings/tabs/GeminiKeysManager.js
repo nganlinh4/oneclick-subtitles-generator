@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getAllKeys, addKey, removeKey, getActiveKeyIndex, setActiveKeyIndex } from '../../../services/gemini/keyManager';
 import {
   addGeminiCredential,
   formatCredentialReference,
@@ -10,15 +9,14 @@ import {
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { revealCredential } from '../../../platform/credentialService';
-import { animateToggle, toggleKeyVisibility } from '../utils/keyVisibilityAnimation';
+import { animateToggle } from '../utils/keyVisibilityAnimation';
 import { showToast } from '../../../utils/toastUtils';
 
-// Hook owning the multiple Gemini API key state + handlers.
-export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
+// Hook owning the multiple Gemini API key state + handlers. Keys live in the native credential
+// vault; React only ever holds masked references and an on-demand revealed value.
+export const useGeminiKeys = ({ setApiKeysSet }) => {
   const { t } = useTranslation();
-  const nativeCredentialMode = isDesktopRuntime();
   const [geminiApiKeys, setGeminiApiKeys] = useState([]);
   const [newGeminiKey, setNewGeminiKey] = useState('');
   const [showNewGeminiKey, setShowNewGeminiKey] = useState(false);
@@ -55,123 +53,66 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
 
   // Load all Gemini API keys on mount
   useEffect(() => {
-    if (nativeCredentialMode) {
-      let mounted = true;
-      const unsubscribe = subscribeCredentialState((snapshot) => {
-        if (mounted) applyNativeSnapshot(snapshot);
-      });
-      initializeCredentialState().catch(() => {
-        if (mounted) {
-          setApiKeysSet((previous) => ({ ...previous, gemini: false }));
-          showToast(t('settings.credentialLoadFailed', 'Saved keys could not be loaded. Reopen Settings to retry.'), 'error', 8000);
-        }
-      });
-      return () => {
-        mounted = false;
-        unsubscribe();
-      };
-    }
+    let mounted = true;
+    const unsubscribe = subscribeCredentialState((snapshot) => {
+      if (mounted) applyNativeSnapshot(snapshot);
+    });
+    initializeCredentialState().catch(() => {
+      if (mounted) {
+        setApiKeysSet((previous) => ({ ...previous, gemini: false }));
+        showToast(t('settings.credentialLoadFailed', 'Saved keys could not be loaded. Reopen Settings to retry.'), 'error', 8000);
+      }
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [applyNativeSnapshot, setApiKeysSet, t]);
 
-    const keys = getAllKeys();
-    setGeminiApiKeys(keys);
-    setActiveKeyIndexState(getActiveKeyIndex());
-    return undefined;
-  }, [applyNativeSnapshot, nativeCredentialMode, setApiKeysSet, t]);
-
-  // Update the active key when it changes
   const handleSetActiveKey = async (index) => {
-    if (nativeCredentialMode) {
-      const reference = geminiApiKeys[index];
-      const id = credentialIdByReference.current.get(reference);
-      if (!id) return false;
-      try {
-        await selectGeminiCredential(id);
-        return true;
-      } catch {
-        reportMutationFailure();
-        return false;
-      }
-    }
-
-    setActiveKeyIndex(index);
-    setActiveKeyIndexState(index);
-    // Update the single key for backward compatibility
-    setGeminiApiKey(geminiApiKeys[index]);
-    return true;
-  };
-
-  // Add a new Gemini API key
-  const handleAddGeminiKey = async () => {
-    if (newGeminiKey && newGeminiKey.trim()) {
-      if (nativeCredentialMode) {
-        if (nativeAddPending.current) return false;
-        nativeAddPending.current = true;
-        const secret = newGeminiKey;
-        // Clear the write-only field before crossing the IPC boundary. The local variable exists
-        // only for this one submit call and is never copied into durable or shared React state.
-        setNewGeminiKey('');
-        try {
-          await addGeminiCredential(secret);
-          setShowNewGeminiKey(false);
-          showToast(t('settings.credentialAdded', 'Key saved. You can use Gemini now; no need to click Save.'), 'success');
-          return true;
-        } catch {
-          reportMutationFailure();
-          return false;
-        } finally {
-          nativeAddPending.current = false;
-        }
-      }
-
-      if (addKey(newGeminiKey)) {
-        const updatedKeys = getAllKeys();
-        setGeminiApiKeys(updatedKeys);
-        setNewGeminiKey('');
-        setShowNewGeminiKey(false);
-
-        // Update API keys set status
-        setApiKeysSet(prevState => ({
-          ...prevState,
-          gemini: true
-        }));
-        return true;
-      }
-    }
-    return false;
-  };
-
-  // Remove a Gemini API key
-  const handleRemoveGeminiKey = async (key) => {
-    if (nativeCredentialMode) {
-      const id = credentialIdByReference.current.get(key);
-      if (!id) return false;
-      try {
-        return await removeGeminiCredential(id);
-      } catch {
-        reportMutationFailure();
-        return false;
-      }
-    }
-
-    if (removeKey(key)) {
-      const updatedKeys = getAllKeys();
-      setGeminiApiKeys(updatedKeys);
-
-      // Update API keys set status
-      setApiKeysSet(prevState => ({
-        ...prevState,
-        gemini: updatedKeys.length > 0
-      }));
+    const id = credentialIdByReference.current.get(geminiApiKeys[index]);
+    if (!id) return false;
+    try {
+      await selectGeminiCredential(id);
       return true;
+    } catch {
+      reportMutationFailure();
+      return false;
     }
-    return false;
+  };
+
+  const handleAddGeminiKey = async () => {
+    if (!newGeminiKey || !newGeminiKey.trim() || nativeAddPending.current) return false;
+    nativeAddPending.current = true;
+    const secret = newGeminiKey;
+    // Clear the write-only field before crossing the IPC boundary. The local variable exists
+    // only for this one submit call and is never copied into durable or shared React state.
+    setNewGeminiKey('');
+    try {
+      await addGeminiCredential(secret);
+      setShowNewGeminiKey(false);
+      showToast(t('settings.credentialAdded', 'Key saved. You can use Gemini now; no need to click Save.'), 'success');
+      return true;
+    } catch {
+      reportMutationFailure();
+      return false;
+    } finally {
+      nativeAddPending.current = false;
+    }
+  };
+
+  const handleRemoveGeminiKey = async (key) => {
+    const id = credentialIdByReference.current.get(key);
+    if (!id) return false;
+    try {
+      return await removeGeminiCredential(id);
+    } catch {
+      reportMutationFailure();
+      return false;
+    }
   };
 
   const handleToggleKeyVisibility = async (index) => {
-    if (!nativeCredentialMode) {
-      toggleKeyVisibility(index, setVisibleKeyIndices);
-      return;
-    }
     if (visibleKeyIndices[index]) {
       setVisibleKeyIndices((current) => ({ ...current, [index]: false }));
       setRevealedKeyValues((current) => ({ ...current, [index]: '' }));
@@ -189,7 +130,6 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
   };
 
   return {
-    nativeCredentialMode,
     geminiApiKeys,
     newGeminiKey,
     setNewGeminiKey,
@@ -208,7 +148,6 @@ export const useGeminiKeys = ({ setGeminiApiKey, setApiKeysSet }) => {
 
 // Presentational component rendering the multi-key management UI.
 const GeminiKeysManager = ({
-  nativeCredentialMode,
   geminiApiKeys,
   newGeminiKey,
   setNewGeminiKey,
@@ -247,7 +186,7 @@ const GeminiKeysManager = ({
                     <div className="gemini-key-display">
                       <div className="gemini-key-text">
                         <div className="gemini-key-visible">
-                          {nativeCredentialMode ? revealedKeyValues[index] : key}
+                          {revealedKeyValues[index]}
                         </div>
                       </div>
                     </div>
@@ -278,20 +217,14 @@ const GeminiKeysManager = ({
                           onClick={() => handleRemoveGeminiKey(key)}
                           title={t('settings.removeKey', 'Remove key')}
                         >
-                          <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
+                          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
                         </button>
                       </div>
                     </div>
                   </>
                 ) : (
                   <div className="gemini-key-row">
-                    {nativeCredentialMode ? (
-                      <div className="gemini-key-text gemini-key-masked">•••••••• {key.slice(-4)}</div>
-                    ) : (
-                      <div className="gemini-key-text gemini-key-masked" title={key}>
-                        {key ? `${key.substring(0, 4)}••••••${key.substring(key.length - 4)}` : ''}
-                      </div>
-                    )}
+                    <div className="gemini-key-text gemini-key-masked">•••••••• {key.slice(-4)}</div>
                     <div className="gemini-key-actions">
                       <button
                         type="button"
@@ -318,7 +251,7 @@ const GeminiKeysManager = ({
                         onClick={() => handleRemoveGeminiKey(key)}
                         title={t('settings.removeKey', 'Remove key')}
                       >
-                        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
+                        <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
                       </button>
                     </div>
                   </div>

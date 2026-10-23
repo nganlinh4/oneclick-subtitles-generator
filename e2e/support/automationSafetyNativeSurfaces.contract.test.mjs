@@ -153,15 +153,11 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
     [],
     'the WebView must not call the native dialog or external-opener plugins directly',
   );
-  for (const source of [
-    read('crates', 'osg-asr', 'src', 'process.rs'),
-    read('crates', 'osg-download', 'src', 'process.rs'),
-    read('crates', 'osg-media', 'src', 'process.rs'),
-    read('crates', 'osg-speech', 'src', 'session.rs'),
-  ]) {
-    assert.match(source, /const CREATE_NO_WINDOW:\s*u32\s*=\s*0x0800_0000/u);
-    assert.match(source, /\.creation_flags\(CREATE_NO_WINDOW\)/u);
-  }
+  // Every native child goes through osg-process: a console-free process group and an environment
+  // rebuilt from a fixed allowlist, so automation authority can never be inherited.
+  const processGroup = read('crates', 'osg-process', 'src', 'group.rs');
+  assert.match(processGroup, /const CREATE_NO_WINDOW:\s*u32\s*=\s*0x0800_0000/u);
+  assert.match(processGroup, /\.creation_flags\(CREATE_NO_WINDOW\)/u);
 
   const automationAuthorityVariables = [
     '__WDIO_TAURI_APP_BINARY__',
@@ -182,52 +178,36 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
     'WDIO_EMBEDDED_SERVER',
     'WDIO_WORKER_ID',
   ];
+  const childEnvironment = read('crates', 'osg-process', 'src', 'environment.rs');
+  const isolate = childEnvironment.match(/pub fn isolate\([\s\S]*?\n\}/u)?.[0] ?? '';
+  assert.match(isolate, /command\.env_clear\(\);/u, 'native children must start from a cleared environment');
+  for (const variable of automationAuthorityVariables) {
+    assert.doesNotMatch(
+      childEnvironment,
+      new RegExp(`"${variable}"`, 'u'),
+      `the child environment allowlist must not carry ${variable}`,
+    );
+  }
+  assert.ok(
+    childEnvironment.includes('fn a_spawned_child_sees_exactly_the_allowlist_plus_explicit_additions()'),
+    'the child environment allowlist lacks its spawned-child behavior test',
+  );
   const nativeChildLaunchers = [
-    {
-      label: 'downloader',
-      source: read('crates', 'osg-download', 'src', 'process.rs'),
-      construction: 'let mut command = Command::new(request.binary);',
-      removal: 'remove_automation_authority_environment(&mut command);',
-      spawn: 'let child = spawn_group(&mut command)?;',
-      behaviorTest: 'fn downloader_process_drops_automation_authority()',
-    },
-    {
-      label: 'media tool',
-      source: read('crates', 'osg-media', 'src', 'process.rs'),
-      construction: 'let mut command = Command::new(binary.path());',
-      removal: 'remove_automation_authority_environment(&mut command);',
-      spawn: 'let child = spawn_group(&mut command, tool)?;',
-      behaviorTest: 'fn media_tool_process_drops_automation_authority()',
-    },
-    {
-      label: 'speech worker',
-      source: read('crates', 'osg-speech', 'src', 'worker.rs'),
-      construction: 'let mut command = Command::new(native_process_path(self.program.executable())?);',
-      removal: 'remove_automation_authority_environment(&mut command);',
-      spawn: 'let child = spawn_group(&mut command)?;',
-      behaviorTest: 'fn speech_worker_drops_automation_authority()',
-    },
+    { label: 'downloader', source: read('crates', 'osg-download', 'src', 'process.rs') },
+    { label: 'media tool', source: read('crates', 'osg-media', 'src', 'process.rs') },
+    { label: 'speech worker', source: read('crates', 'osg-speech', 'src', 'worker.rs') },
+    { label: 'ASR worker', source: read('crates', 'osg-asr', 'src', 'program.rs') },
   ];
   for (const launcher of nativeChildLaunchers) {
-    for (const variable of automationAuthorityVariables) {
-      assert.match(
-        launcher.source,
-        new RegExp(`"${variable}"`, 'u'),
-        `${launcher.label} does not remove ${variable}`,
-      );
-    }
-    const construction = launcher.source.indexOf(launcher.construction);
-    const removal = launcher.source.indexOf(launcher.removal, construction);
-    const spawn = launcher.source.indexOf(launcher.spawn, removal);
-    assert.ok(
-      construction >= 0 && removal > construction && spawn > removal,
-      `${launcher.label} must drop automation authority before its native process can spawn`,
+    assert.match(
+      launcher.source,
+      /environment::isolate\(/u,
+      `${launcher.label} must start from the allowlisted environment`,
     );
-    assert.ok(
-      launcher.source.includes(launcher.behaviorTest)
-        && /command\s*\.get_envs\(\)\s*\.any\(\|\(key, value\)\|/u.test(launcher.source)
-        && /value\.is_none\(\)/u.test(launcher.source),
-      `${launcher.label} lacks a behavior test for inherited automation authority`,
+    assert.doesNotMatch(
+      launcher.source,
+      /CommandGroup|group_spawn|\.creation_flags\(/u,
+      `${launcher.label} must spawn through the shared ManagedChild`,
     );
   }
 
@@ -238,20 +218,9 @@ test('the compiled automation boundary owns dialogs, off-screen placement, and i
     /pub\(crate\) fn command\(&self\) -> Command[\s\S]*?apply_sanitized_environment\(&mut command\);[\s\S]*?command/u,
     'the ASR command must sanitize its inherited environment before it is returned to the spawner',
   );
-  const asrSanitizer = asrProgram.match(
-    /fn apply_sanitized_environment\(command: &mut Command\) \{[\s\S]*?\n\}/u,
-  )?.[0] ?? '';
-  assert.match(asrSanitizer, /command\.env_clear\(\);/u, 'ASR must clear its ambient environment');
-  for (const variable of automationAuthorityVariables) {
-    assert.doesNotMatch(
-      asrSanitizer,
-      new RegExp(`"${variable}"`, 'u'),
-      `ASR must not re-add ${variable} after clearing inherited state`,
-    );
-  }
   assert.match(
     asrProcess,
-    /let mut command = program\.command\(\);[\s\S]*?\.creation_flags\(CREATE_NO_WINDOW\)[\s\S]*?\.spawn\(\)/u,
+    /let mut command = program\.command\(\);[\s\S]*?ManagedChild::spawn\(&mut command\)/u,
     'the ASR spawner must only launch the sanitized WorkerProgram command',
   );
   assert.match(environment, /WEBVIEW2_USER_DATA_FOLDER:\s*join\(root, 'webview'\)/u);

@@ -5,6 +5,7 @@ import AdvancedSettingsToggle from '../components/AdvancedSettingsToggle';
 import GenerateButton from '../components/GenerateButton';
 import NarrationResults from '../components/NarrationResults';
 import { getF5TtsLanguageSupport } from '../../../platform/nativeNarrationCapabilities';
+import { writePreference } from '../../../platform/preferences/store';
 
 /**
  * F5-TTS narration UI branch. Pure, props-driven component.
@@ -150,16 +151,8 @@ const F5TTSNarrationSection = ({
           }
 
           // Update the selected narration model
-          if (modelId) {
-            setSelectedNarrationModel(modelId);
-
-            // Save the automatically selected model to localStorage for future sessions
-            try {
-              localStorage.setItem('last_used_narration_model', modelId);
-            } catch (error) {
-              console.error('Error saving automatically selected narration model:', error);
-            }
-          }
+          // The narration state persists the model for future sessions.
+          if (modelId) setSelectedNarrationModel(modelId);
 
           // Update the appropriate language state
           if (source === 'original') {
@@ -168,17 +161,7 @@ const F5TTSNarrationSection = ({
             setTranslatedLanguage(language);
           }
 
-          // Store in localStorage for persistence
-          try {
-            localStorage.setItem('detected_language', JSON.stringify({
-              source,
-              language,
-              modelId,
-              modelError
-            }));
-          } catch (e) {
-            console.error('Error storing detected language in localStorage:', e);
-          }
+          writePreference('detected_language', { source, language, modelId, modelError });
         }}
       />
 

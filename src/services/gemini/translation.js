@@ -6,7 +6,6 @@ import i18n from '../../i18n/i18n';
 import { createTranslationSchema } from '../../utils/schemaUtils';
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import { formatSubtitles, formatSubtitlesWithChain } from './translationChainFormatter';
 import { PartialTranslationError, translateSubtitlesByChunks } from './translationChunkProcessor';
 import { processTranslationResponse } from './translationResponseParser';
@@ -18,6 +17,7 @@ import {
     createTranslationAbortError,
     normalizeRunnableLanguageChain,
 } from '../../utils/translationOwnership';
+import { readPreference, writePreference } from '../../platform/preferences/store';
 
 const canonicalSourceId = (subtitle, index) => {
     if (typeof subtitle?.originalId === 'string' && subtitle.originalId.length > 0) {
@@ -130,7 +130,7 @@ Translate every row according to the system instruction.`;
  * @param {Array} chainItems - Optional chain items for chain-based formatting
  * @returns {Promise<Array>} - Array of translated subtitles
  */
-const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, preserveOriginalSubtitlesMap = false, ownership = {}, inheritedDeliverySink = null) => {
+const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRANSLATION_MODEL_ID, customPrompt = null, splitDuration = 0, includeRules = false, delimiter = ' ', useParentheses = false, bracketStyle = null, chainItems = null, fileContext = null, ownership = {}, inheritedDeliverySink = null) => {
     const localController = ownership.signal ? null : new AbortController();
     const signal = ownership.signal ?? localController.signal;
     const assertOwned = typeof ownership.assertOwned === 'function'
@@ -178,56 +178,18 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
     if (!isFormatMode) {
         await assertBoundary();
         try {
-            localStorage.setItem('translation_target_language', isMultiLanguage ? JSON.stringify(targetLanguage) : targetLanguage);
+            writePreference(
+                'translation_target_language',
+                isMultiLanguage ? JSON.stringify(targetLanguage) : targetLanguage,
+            );
         } catch {
             // Compatibility metadata cannot own the translation run.
         }
     }
 
-    // Get bracket style if using parentheses in single language mode and no custom style was provided
+    // Parentheses mode without a custom style wraps translations in plain parentheses.
     if (!bracketStyle && useParentheses) {
-        try {
-            const savedStyle = localStorage.getItem('bracketStyle');
-            if (savedStyle) {
-                bracketStyle = { open: JSON.parse(savedStyle)[0], close: JSON.parse(savedStyle)[1] };
-            } else {
-                bracketStyle = { open: '(', close: ')' };
-            }
-        } catch (error) {
-            console.warn('Error loading bracket style:', error);
-            bracketStyle = { open: '(', close: ')' };
-        }
-    }
-
-    // Native translation preserves timing from its typed input and must not copy project subtitles
-    // into durable WebView storage. Browser compatibility still uses the legacy parser map. Replace
-    // it for every top-level browser translation; recursive chunk calls keep the complete map.
-    if (!preserveOriginalSubtitlesMap) {
-        if (isDesktopRuntime()) {
-            try {
-                localStorage.removeItem('original_subtitles_map');
-            } catch {
-                // Compatibility metadata cannot own the translation run.
-            }
-        } else {
-            const originalSubtitlesMap = {};
-            sourceSubtitles.forEach((sub, index) => {
-                // Ensure each subtitle has a unique ID
-                const id = sub.id || index + 1;
-                // Store the subtitle with its ID and index for reference
-                originalSubtitlesMap[id] = {
-                    ...sub,
-                    id: id,  // Ensure ID is set
-                    index: index  // Store the index for order-based matching
-                };
-            });
-
-            try {
-                localStorage.setItem('original_subtitles_map', JSON.stringify(originalSubtitlesMap));
-            } catch {
-                // Compatibility metadata cannot own the translation run.
-            }
-        }
+        bracketStyle = { open: '(', close: ')' };
     }
 
     // If in format mode, we don't need to call the API, just format the subtitles
@@ -260,7 +222,7 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
 
         const restTime = Number.isSafeInteger(ownership.restTime) && ownership.restTime >= 0
             ? ownership.restTime
-            : parseInt(localStorage.getItem('translation_rest_time') || '0');
+            : readPreference('translation_rest_time');
         const translateChunk = async (
             chunkSubtitles,
             chunkTargetLanguage,
@@ -285,7 +247,6 @@ const translateSubtitles = async (subtitles, targetLanguage, model = DEFAULT_TRA
                 chunkBracketStyle,
                 chunkChainItems,
                 fileContext,
-                true,
                 ownership,
                 deliverySink
             );

@@ -5,7 +5,6 @@ import {
     isDurableSubtitleCheckpointReceipt,
 } from '../services/subtitleCache';
 import { CHECKPOINT_SOURCE } from '../events/constants';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
     assertAutoGenerationContextCurrent,
     assertAutoGenerationContextDurable,
@@ -31,7 +30,6 @@ import { createActiveProjectValidator } from './subtitleGenerationOwnership';
  */
 export const prepareGeminiGeneration = async ({
     input,
-    inputType,
     options,
     segment,
     runId,
@@ -49,18 +47,8 @@ export const prepareGeminiGeneration = async ({
         setGenerationSubtitlesData,
     } = presentation;
     let presentationRollbackRows = null;
-    const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
-        ? (typeof input === 'string' ? input : input?.url ?? null)
-        : null;
 
-    // URL-based vs file-based cache key resolution (see useSubtitlesCaching)
-    const cacheId = await resolveCacheIdForGeneration({
-        input,
-        inputType,
-        currentVideoUrl,
-        t,
-        setStatus: setGenerationStatus,
-    });
+    const cacheId = await resolveCacheIdForGeneration({ input });
     if (autoRunContext) {
         assertAutoGenerationContextCurrent(autoRunContext);
         if (cacheId !== autoRunContext.cacheId) {
@@ -73,9 +61,8 @@ export const prepareGeminiGeneration = async ({
     const resolvedProject = await resolveProjectForCache(cacheId, { create: true });
     if (!resolvedProject?.projectId
         || (autoRunContext && resolvedProject.projectId !== autoRunContext.projectId)
-        || (getNativeMediaCapability()
-            && (resolvedProject.projectId !== getNativeMediaCapability().projectId
-                || cacheId !== getNativeMediaCapability().cacheId))) {
+        || resolvedProject.projectId !== getNativeMediaCapability().projectId
+        || cacheId !== getNativeMediaCapability().cacheId) {
         throw new Error('The subtitle project changed before Gemini transcription.');
     }
     const deliveryContext = bindDeliveryContext(autoRunContext ?? Object.freeze({
@@ -113,17 +100,15 @@ export const prepareGeminiGeneration = async ({
             ...(options.signal ? { signal: options.signal } : {}),
         });
     }
-    if (getNativeMediaCapability() !== null) {
-        await validateDeliveryOwnership(deliveryContext);
-        const durableRows = await loadExactProjectSubtitles(
-            deliveryContext.cacheId,
-            deliveryContext.projectId,
-        );
-        await validateDeliveryOwnership(deliveryContext);
-        presentationRollbackRows = durableRows === null ? [] : durableRows;
-        if (!Array.isArray(presentationRollbackRows)) {
-            throw new Error('The native subtitle project returned an invalid track.');
-        }
+    await validateDeliveryOwnership(deliveryContext);
+    const durableRows = await loadExactProjectSubtitles(
+        deliveryContext.cacheId,
+        deliveryContext.projectId,
+    );
+    await validateDeliveryOwnership(deliveryContext);
+    presentationRollbackRows = durableRows === null ? [] : durableRows;
+    if (!Array.isArray(presentationRollbackRows)) {
+        throw new Error('The native subtitle project returned an invalid track.');
     }
     const priorDeliveryRecovery = await retryPendingGeminiTranscriptionDeliveries({
         cacheId: deliveryContext.cacheId,
@@ -147,7 +132,6 @@ export const prepareGeminiGeneration = async ({
             ({ cacheHit, cachedSubtitles } = await loadCachedSubtitlesIfAvailable({
                 cacheId,
                 segment,
-                currentVideoUrl,
             }));
             await validateDeliveryOwnership(deliveryContext);
             if (cacheHit) {

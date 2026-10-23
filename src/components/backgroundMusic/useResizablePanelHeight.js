@@ -1,10 +1,10 @@
 /**
- * Drag-to-resize height for the PromptDJ panel. The height persists in localStorage; while a drag
+ * Drag-to-resize height for the PromptDJ panel. The height is a device preference; while a drag
  * is active `isResizing` lets the caller cover the iframe so it cannot swallow pointer events.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { readPreference, writePreference } from '../../platform/preferences/store';
 
-const STORAGE_KEY = 'bg_music_panel_height';
 const DEFAULT_HEIGHT = 600;
 const MIN_HEIGHT = 280;
 const MAX_HEIGHT = 1400;
@@ -14,10 +14,7 @@ const pointerClientY = (e) => (
 );
 
 const useResizablePanelHeight = () => {
-  const [panelHeight, setPanelHeight] = useState(() => {
-    const saved = parseInt(localStorage.getItem(STORAGE_KEY) || String(DEFAULT_HEIGHT), 10);
-    return Number.isFinite(saved) ? saved : DEFAULT_HEIGHT;
-  });
+  const [panelHeight, setPanelHeight] = useState(() => readPreference('bg_music_panel_height'));
   const [isResizing, setIsResizing] = useState(false);
 
   const panelRef = useRef(null);
@@ -46,9 +43,7 @@ const useResizablePanelHeight = () => {
       // The panel can unmount while a resize gesture is ending.
     }
     const finalH = Math.round(panelRef.current?.offsetHeight || latestHeightRef.current || DEFAULT_HEIGHT);
-    try { localStorage.setItem(STORAGE_KEY, String(finalH)); } catch {
-      // Persisting the optional panel preference is best effort.
-    }
+    writePreference('bg_music_panel_height', finalH);
     // Remove all possible listeners
     window.removeEventListener('pointermove', onAnyMove);
     window.removeEventListener('pointerup', endResize);
@@ -87,9 +82,7 @@ const useResizablePanelHeight = () => {
 
   const resetPanelHeight = () => {
     setPanelHeight(DEFAULT_HEIGHT);
-    try { localStorage.setItem(STORAGE_KEY, String(DEFAULT_HEIGHT)); } catch {
-      // Persisting the optional panel preference is best effort.
-    }
+    writePreference('bg_music_panel_height', DEFAULT_HEIGHT);
   };
 
   return { panelRef, panelHeight, isResizing, onResizePointerDown, resetPanelHeight };

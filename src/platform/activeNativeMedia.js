@@ -331,5 +331,5 @@ export const refreshActiveNativeMedia = activeNativeMediaResolver.refresh;
  * A bare playback URL can never prove project ownership and is therefore rejected.
  */
 export const resolveActiveNativeMediaAssetId = (value) => (
-  isDesktopRuntime() && isNativeMediaDescriptor(value) ? value.assetId : null
+  isNativeMediaDescriptor(value) ? value.assetId : null
 );

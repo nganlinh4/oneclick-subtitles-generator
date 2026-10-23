@@ -60,6 +60,6 @@ it('enables only methods proven ready and persists only a valid selection', () =
   expect(localStorage.getItem('narration_method')).toBeNull();
 
   fireEvent.click(gtts);
+  // Persisting the choice is the narration state's job, not this control's.
   expect(setNarrationMethod).toHaveBeenCalledWith('gtts');
-  expect(localStorage.getItem('narration_method')).toBe('gtts');
 });

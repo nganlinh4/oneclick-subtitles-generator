@@ -82,7 +82,6 @@ const TimelineVisualization = ({
         newSegments,
         setNewSegments,
         isStreamingActive,
-        segmentProcessingStartTimes,
         processingRanges
     } = useTimelineStreamingState({ lyrics });
 
@@ -284,13 +283,12 @@ const TimelineVisualization = ({
             tempPanOffset !== null, // isActivePanning
             timeFormat,
             segmentData,
-            segmentProcessingStartTimes,
             narrationForDraw,
             videoSource ? 30 : 0 // reserve the waveform overlay's bottom strip
         );
 
 
-    }, [lyrics, narrationForDraw, currentTime, timelineDomain, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, boundedSelectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, newSegments, actionBarRange, hiddenActionBarRange, segmentProcessingStartTimes, videoSource, processingRanges]);
+    }, [lyrics, narrationForDraw, currentTime, timelineDomain, getTimeRange, panOffset, getVisibleRangeWithTempOffset, timeFormat, boundedSelectedSegment, isDraggingSegment, dragStartTime, dragCurrentTime, isProcessingSegment, newSegments, actionBarRange, hiddenActionBarRange, videoSource, processingRanges]);
 
     // Render-coordination side effects (new-segment animation, resize, zoom,
     // timeline updates, playhead auto-scroll, unmount cleanup)

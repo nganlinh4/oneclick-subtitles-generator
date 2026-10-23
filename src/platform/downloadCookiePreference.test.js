@@ -2,8 +2,8 @@ import {
   DOWNLOAD_COOKIE_ENABLED_SETTING_KEY,
   DOWNLOAD_COOKIE_SOURCE_SETTING_KEY,
   getDownloadCookieSource,
+  normalizeDownloadCookieBrowser,
   readDownloadCookiePreference,
-  writeDownloadCookiePreference,
 } from './downloadCookiePreference';
 
 beforeEach(() => localStorage.clear());
@@ -51,21 +51,22 @@ it.each([['not-a-browser'], ['none'], [' Chrome '], [''], [null]])(
   }
 );
 
-it('persists only a strict enabled flag and a validated browser', () => {
-  expect(writeDownloadCookiePreference({ enabled: 1, selectedSource: 'invalid' })).toEqual({
-    enabled: false,
-    selectedSource: 'chrome',
-    cookieSource: 'none',
-  });
-  expect(localStorage.getItem(DOWNLOAD_COOKIE_ENABLED_SETTING_KEY)).toBe('false');
-  expect(localStorage.getItem(DOWNLOAD_COOKIE_SOURCE_SETTING_KEY)).toBe('chrome');
+it('normalizes a saved browser to a supported source', () => {
+  expect(normalizeDownloadCookieBrowser('invalid')).toBe('chrome');
+  expect(normalizeDownloadCookieBrowser('firefox')).toBe('firefox');
 });
 
 it('fails closed if preference storage cannot be read', () => {
-  const storage = { getItem: () => { throw new Error('denied'); } };
-  expect(readDownloadCookiePreference(storage)).toEqual({
-    enabled: false,
-    selectedSource: 'chrome',
-    cookieSource: 'none',
+  const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('denied');
   });
+  try {
+    expect(readDownloadCookiePreference()).toEqual({
+      enabled: false,
+      selectedSource: 'chrome',
+      cookieSource: 'none',
+    });
+  } finally {
+    getItem.mockRestore();
+  }
 });

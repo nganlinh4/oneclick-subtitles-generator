@@ -25,12 +25,11 @@
 // GENIUS LOOKUP HAS NO CREDENTIAL-FREE PATH EITHER, AND NEVER REACHES NATIVE IPC.
 // src/platform/providerService.js:253-266's fetchGeniusLyrics calls requireReadyCredential(current,
 // 'geniusAccessToken') BEFORE invoke('genius_lyrics', ...) -- with no ready credential it throws
-// NativeProviderServiceError('credentialNotFound', 'Genius API key not set. Please provide it
-// through the settings.') synchronously; the native genius_lyrics Tauri command
+// NativeProviderServiceError('credentialNotFound', ...) synchronously; the native genius_lyrics Tauri command
 // (apps/desktop/src-tauri/src/providers.rs:135-159, which requires an already-resolved
 // CredentialId argument) is never invoked, so there is no network call, no job, and nothing for the
-// native log to record. src/hooks/useGeniusLyrics.js:134-141 recognises that exact message text and
-// re-maps it through t('lyrics.genius.apiKeyNotSet') (identical English copy), sets its `error`
+// native log to record. src/hooks/useGeniusLyrics.js recognises that error code and maps it
+// through t('lyrics.genius.apiKeyNotSet'), sets its `error`
 // state, and src/components/LyricsInputSection.js:38-42 turns that into a TOAST
 // (showErrorToast) -- never inline copy. This matches the watched inline-error-over-video defect
 // class this lane checks against: the refusal must stay a toast, never paint over the editor or the

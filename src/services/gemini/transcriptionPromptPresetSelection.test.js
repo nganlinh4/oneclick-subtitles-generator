@@ -12,6 +12,21 @@ const PRESETS = [
   { id: 'missing-prompt' },
 ];
 
+afterEach(() => vi.restoreAllMocks());
+
+// Seed the preference store's WebView storage, then record the writes made after seeding.
+const seedPreferences = (entries = {}) => {
+  localStorage.clear();
+  Object.entries(entries).forEach(([key, value]) => localStorage.setItem(key, value));
+  const setItem = vi.spyOn(Storage.prototype, 'setItem');
+  return {
+    get operations() {
+      return setItem.mock.calls.map(([key, value]) => ['set', key, String(value)]);
+    },
+    getItem: (key) => localStorage.getItem(key),
+  };
+};
+
 const storage = (entries = {}) => {
   const values = new Map(Object.entries(entries));
   const operations = [];
@@ -30,7 +45,7 @@ const storage = (entries = {}) => {
 };
 
 it('keeps the current normalized Settings prompt when custom has no prompt field', () => {
-  const persistentStorage = storage({
+  const persistentStorage = seedPreferences({
     transcription_prompt: 'My exact {contentType} instructions',
   });
   const transientStorage = storage();
@@ -39,7 +54,6 @@ it('keeps the current normalized Settings prompt when custom has no prompt field
     requestedPresetId: 'custom',
     availablePresets: PRESETS,
     defaultPrompt: DEFAULT_PROMPT,
-    persistentStorage,
   });
 
   expect(selection).toEqual(expect.objectContaining({
@@ -57,7 +71,7 @@ it('keeps the current normalized Settings prompt when custom has no prompt field
 });
 
 it('normalizes a legacy Settings prompt without changing recommendation session state', () => {
-  const persistentStorage = storage({ transcription_prompt: 'Legacy settings prompt  ' });
+  const persistentStorage = seedPreferences({ transcription_prompt: 'Legacy settings prompt  ' });
   const transientStorage = storage({
     current_session_preset_id: 'general',
     current_session_prompt: 'stale derived bytes',
@@ -67,7 +81,6 @@ it('normalizes a legacy Settings prompt without changing recommendation session 
     requestedPresetId: 'custom',
     availablePresets: PRESETS,
     defaultPrompt: DEFAULT_PROMPT,
-    persistentStorage,
   });
 
   expect(selection.prompt).toBe('Legacy settings prompt\n\n{contentType}');
@@ -82,7 +95,7 @@ it.each([
   ['hostile-duplicate', 'Before {contentType} after '],
   ['legacy-missing-token', 'Legacy preset\n\n{contentType}'],
 ])('normalizes preset %s while preserving the Settings-owned prompt', (presetId, expectedPrompt) => {
-  const persistentStorage = storage({
+  const persistentStorage = seedPreferences({
     transcription_prompt: 'Do not overwrite {contentType}',
   });
   const transientStorage = storage({ current_session_preset_id: 'general' });
@@ -91,7 +104,6 @@ it.each([
     requestedPresetId: presetId,
     availablePresets: PRESETS,
     defaultPrompt: DEFAULT_PROMPT,
-    persistentStorage,
   });
 
   expect(selection).toEqual(expect.objectContaining({
@@ -112,7 +124,7 @@ it.each([
 it.each(['missing-prompt', 'unknown', '', undefined])(
   'rejects invalid preset %s before any browser state mutates',
   (requestedPresetId) => {
-    const persistentStorage = storage({
+    const persistentStorage = seedPreferences({
       transcription_prompt: 'Still safe {contentType}',
       video_processing_prompt_preset: 'general',
     });
@@ -125,7 +137,6 @@ it.each(['missing-prompt', 'unknown', '', undefined])(
       requestedPresetId,
       availablePresets: PRESETS,
       defaultPrompt: DEFAULT_PROMPT,
-      persistentStorage,
     })).toThrow(expect.objectContaining({ code: 'invalidTranscriptionPromptPreset' }));
 
     expect(persistentStorage.operations).toEqual([]);
@@ -151,7 +162,7 @@ it('resolves the settings alias through the same custom authority', () => {
 it.each(['undefined', 'null'])(
   'recovers a legacy literal %s Settings value without persisting the sentinel again',
   (legacySentinel) => {
-    const persistentStorage = storage({ transcription_prompt: legacySentinel });
+    const persistentStorage = seedPreferences({ transcription_prompt: legacySentinel });
 
     const selection = applyTranscriptionPromptPresetSelection({
       requestedPresetId: 'custom',

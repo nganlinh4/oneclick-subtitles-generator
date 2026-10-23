@@ -1,6 +1,6 @@
 import Tooltip from './Tooltip';
 
-const HelpIcon = ({ title, size = 14, className = '', style, onClick }) => {
+const HelpIcon = ({ title, size = 14, className = '', style }) => {
   const icon = (
     <span
       className="material-symbols-rounded help-icon"
@@ -19,7 +19,7 @@ const HelpIcon = ({ title, size = 14, className = '', style, onClick }) => {
   if (title) {
     return (
       <Tooltip content={title} className={className}>
-        <div className="help-icon-container" style={style} onClick={onClick}>
+        <div className="help-icon-container" style={style}>
           {icon}
         </div>
       </Tooltip>
@@ -27,7 +27,7 @@ const HelpIcon = ({ title, size = 14, className = '', style, onClick }) => {
   }
 
   return (
-    <div className={`help-icon-container ${className}`.trim()} style={style} onClick={onClick}>
+    <div className={`help-icon-container ${className}`.trim()} style={style}>
       {icon}
     </div>
   );

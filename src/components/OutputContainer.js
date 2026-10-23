@@ -6,12 +6,9 @@ import VideoPreview from './previews/VideoPreview';
 import LyricsDisplay from './LyricsDisplay';
 import TranslationSection from './translation';
 import { UnifiedNarrationSection } from './narration';
-import ParallelProcessingStatus from './ParallelProcessingStatus';
 import { hasValidDownloadedVideo } from '../utils/videoUtils';
 import { useLyricsSave } from '../hooks/useLyricsSave';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
-// BackgroundImageGenerator moved back to AppLayout
 
 const markSavedOutsideEditor = () => undefined;
 
@@ -23,20 +20,9 @@ const OutputContainer = ({
   selectedVideo,
   uploadedFile,
   isDownloading = false,
-  segmentsStatus = [],
-  activeTab,
-  onRetrySegment,
-  onRetryWithModel,
-  onGenerateSegment,
-  videoSegments = [],
-  retryingSegments = [],
   timeFormat = 'seconds',
   useOptimizedPreview = false,
   isSrtOnlyMode = false,
-  onViewRules,
-  userProvidedSubtitles = '',
-  onUserSubtitlesAdd: _onUserSubtitlesAdd,
-  onGenerateBackground: _onGenerateBackground,
   onRenderVideo,
   onActualVideoUrlChange,
   onSegmentSelect = null, // Callback for segment selection
@@ -50,13 +36,11 @@ const OutputContainer = ({
   const [seekTime, setSeekTime] = useState(null); // Track when seeking happens
   const [lyricSeekRequest, setLyricSeekRequest] = useState(null);
   const lyricSeekGenerationRef = useRef(0);
-  const [browserVideoSource, setBrowserVideoSource] = useState('');
-  const [browserFileType, setBrowserFileType] = useState('');
   const nativeMedia = isNativeMediaDescriptor(uploadedFile) ? uploadedFile : null;
   // Native activation publishes an opaque playback capability as part of the media descriptor.
   // Derive it during render so project B can never render with project A's effect-synchronized URL.
-  const videoSource = nativeMedia?.playbackUrl ?? browserVideoSource;
-  const fileType = nativeMedia?.type ?? browserFileType;
+  const videoSource = nativeMedia?.playbackUrl ?? '';
+  const fileType = nativeMedia?.type ?? '';
   const [playheadState, setPlayheadState] = useState({ mediaKey: videoSource, time: 0 });
   const [durationState, setDurationState] = useState({ mediaKey: videoSource, value: 0 });
   const [actualVideoState, setActualVideoState] = useState({ mediaKey: videoSource, url: '' });
@@ -158,55 +142,9 @@ const OutputContainer = ({
       endTime: sub.end
     })) || [], [subtitlesData]);
 
-
-  // Background Image Generator functionality moved back to AppLayout
-
-  // When subtitles are loaded from cache, they should be considered as the source of truth
-  // This ensures that saved edits are properly loaded when the page is reloaded
-
-  // Download functionality moved to LyricsDisplay component
-
-  // Set video source when a video is selected or file is uploaded
   const activeVideoTitle = nativeMedia
     ? uploadedFile.name.replace(/\.[^/.]+$/, '')
     : selectedVideo?.title || uploadedFile?.name?.replace(/\.[^/.]+$/, '') || 'subtitles';
-  useEffect(() => {
-    setBrowserFileType('');
-
-    if (isNativeMediaDescriptor(uploadedFile)) {
-      setBrowserVideoSource('');
-      return undefined;
-    }
-
-    // The browser build has no native playback host. A browser File gets an object URL owned by
-    // this effect and revoked on replacement; it is never persisted or reused as identity.
-    if (!isDesktopRuntime() && uploadedFile instanceof File) {
-      const objectUrl = URL.createObjectURL(uploadedFile);
-      setBrowserVideoSource(objectUrl);
-      setBrowserFileType(uploadedFile.type || '');
-      return () => URL.revokeObjectURL(objectUrl);
-    }
-
-    if (!isDesktopRuntime() && selectedVideo?.url) {
-      // Special case: If we're in SRT-only mode, don't set videoSource
-      if (isSrtOnlyMode) {
-        setBrowserVideoSource('');
-        setBrowserFileType('');
-        return;
-      }
-
-      setBrowserVideoSource(selectedVideo.url);
-      // For YouTube/Douyin URLs, assume video
-      setBrowserFileType('video/mp4');
-      return undefined;
-    }
-
-    // Clear video source if nothing is selected
-    setBrowserVideoSource('');
-    setBrowserFileType('');
-    return undefined;
-  }, [selectedVideo, uploadedFile, isSrtOnlyMode]);
-
   // Notify parent when actualVideoUrl changes
   useEffect(() => {
     if (onActualVideoUrlChange) {
@@ -257,132 +195,92 @@ const OutputContainer = ({
     }
   }, [status, statusEventId, t]);
 
-  // Background Image Generator functionality moved back to AppLayout
-
-  // Determine if there's any content to show
-  const hasParallelProcessingStatus = segmentsStatus.length > 0 && (subtitlesData || !activeTab.includes('youtube'));
-  const hasMainContent = Boolean(subtitlesData || uploadedFile || isUploading);
-
   // Don't render anything if there's no content to show
-  if (!hasParallelProcessingStatus && !hasMainContent) {
+  if (!subtitlesData && !uploadedFile && !isUploading) {
     return null;
   }
 
   return (
     <div className="output-container">
-      {/* Add Subtitles Button removed - now only in buttons-container */}
+      {!isDownloading && (
+        <div className="preview-section">
+        {/* Check if we should hide sections for URL + SRT without downloaded video */}
+        {(() => {
+          // Show sections if:
+          // 1. Not in SRT-only mode AND
+          // 2. Either we have an uploaded file OR we have a valid downloaded video
+          const hasActualVideo = uploadedFile || hasValidDownloadedVideo(uploadedFile);
+          return !isSrtOnlyMode && hasActualVideo;
+        })() && (
+          <VideoPreview
+            currentTime={currentTabIndex}
+            setCurrentTime={setCurrentTabIndex}
+            videoSource={videoSource}
+            fileType={fileType}
+            setDuration={setVideoDuration}
+            onSeek={handleVideoSeek}
+            seekRequest={lyricSeekRequest}
+            onSeekRequestConsumed={handleLyricSeekConsumed}
+            translatedSubtitles={translatedSubtitles}
+            subtitlesArray={subtitlesData}
+            onVideoUrlReady={setActualVideoUrl}
+            useOptimizedPreview={useOptimizedPreview}
+            onReferenceAudioChange={setReferenceAudio}
+            onRenderVideo={onRenderVideo}
+          />
+        )}
 
-      {/* Show status message or segments status - Combined logic to avoid duplicate rendering */}
-      {hasParallelProcessingStatus ? (
-        <ParallelProcessingStatus
-          segments={segmentsStatus}
-          overallStatus={
-            // Translate common status messages that might be hardcoded
-            typeof status?.message === 'string'
-              ? status.message
-              : t('output.segmentsReady', 'Video segments are ready for processing!')
-          }
-          statusType={status?.type || 'success'}
-          onRetrySegment={(segmentIndex, _, options) => {
-            onRetrySegment && onRetrySegment(segmentIndex, videoSegments, options);
-          }}
-          userProvidedSubtitles={userProvidedSubtitles}
-          onRetryWithModel={(segmentIndex, modelId) => {
-            onRetryWithModel && onRetryWithModel(segmentIndex, modelId, videoSegments);
-          }}
-          onGenerateSegment={(segmentIndex) => {
-            onGenerateSegment && onGenerateSegment(segmentIndex, videoSegments);
-          }}
-          retryingSegments={retryingSegments}
-          onViewRules={onViewRules}
-        />
-      ) : null}
-
-      {hasMainContent && (
-        <>
-          {!isDownloading && (
-            <div className="preview-section">
-            {/* Check if we should hide sections for URL + SRT without downloaded video */}
-            {(() => {
-              // Show sections if:
-              // 1. Not in SRT-only mode AND
-              // 2. Either we have an uploaded file OR we have a valid downloaded video
-              const hasActualVideo = uploadedFile || hasValidDownloadedVideo(uploadedFile);
-              return !isSrtOnlyMode && hasActualVideo;
-            })() && (
-              <VideoPreview
-                currentTime={currentTabIndex}
-                setCurrentTime={setCurrentTabIndex}
-                videoSource={videoSource}
-                fileType={fileType}
-                setDuration={setVideoDuration}
-                onSeek={handleVideoSeek}
-                seekRequest={lyricSeekRequest}
-                onSeekRequestConsumed={handleLyricSeekConsumed}
-                translatedSubtitles={translatedSubtitles}
-                subtitlesArray={subtitlesData}
-                onVideoUrlReady={setActualVideoUrl}
-                useOptimizedPreview={useOptimizedPreview}
-                onReferenceAudioChange={setReferenceAudio}
-                onRenderVideo={onRenderVideo}
-              />
-            )}
-
-            {isSrtOnlyMode && (
-              <div className="srt-only-message">
-                <div className="info-icon">
-                  <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>info</span>
-                </div>
-                <p>{t('output.srtOnlyModeInfo', 'Working with SRT file only. No video source available.')}</p>
-                <p>{t('output.srtOnlyModeHint', 'You can still edit, translate, and download the subtitles.')}</p>
-              </div>
-            )}
-            <LyricsDisplay
-              key={videoSource || 'no-video-source'}
-              matchedLyrics={displayLyrics}
-              currentTime={currentTabIndex}
-              onLyricClick={handleLyricClick}
-              onUpdateLyrics={handleUpdateLyrics}
-              onSaveSubtitles={handleSaveSubtitles}
-              allowEditing={true}
-              duration={videoDuration}
-              seekTime={seekTime}
-              timeFormat={timeFormat}
-              videoSource={isSrtOnlyMode ? null : actualVideoUrl}
-              translatedSubtitles={translatedSubtitles}
-              videoTitle={activeVideoTitle}
-              onSegmentSelect={onSegmentSelect}
-              selectedSegment={selectedSegment}
-              isProcessingSegment={isProcessingSegment}
-            />
-
-            {/* Download buttons moved to LyricsDisplay component */}
+        {isSrtOnlyMode && (
+          <div className="srt-only-message">
+            <div className="info-icon">
+              <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>info</span>
             </div>
-          )}
+            <p>{t('output.srtOnlyModeInfo', 'Working with SRT file only. No video source available.')}</p>
+            <p>{t('output.srtOnlyModeHint', 'You can still edit, translate, and download the subtitles.')}</p>
+          </div>
+        )}
+        <LyricsDisplay
+          key={videoSource || 'no-video-source'}
+          matchedLyrics={displayLyrics}
+          currentTime={currentTabIndex}
+          onLyricClick={handleLyricClick}
+          onUpdateLyrics={handleUpdateLyrics}
+          onSaveSubtitles={handleSaveSubtitles}
+          allowEditing={true}
+          duration={videoDuration}
+          seekTime={seekTime}
+          timeFormat={timeFormat}
+          videoSource={isSrtOnlyMode ? null : actualVideoUrl}
+          translatedSubtitles={translatedSubtitles}
+          videoTitle={activeVideoTitle}
+          onSegmentSelect={onSegmentSelect}
+          selectedSegment={selectedSegment}
+          isProcessingSegment={isProcessingSegment}
+        />
 
-          {/* Translation Section */}
-          {!isDownloading && (
-            <TranslationSection
-              subtitles={subtitlesData}
-              videoTitle={activeVideoTitle}
-              onTranslationComplete={onTranslatedSubtitlesChange}
-            />
-          )}
+        {/* Download buttons moved to LyricsDisplay component */}
+        </div>
+      )}
 
-          {/* Unified Narration Section - Now separate from Translation */}
-          {!isDownloading && (
-            <UnifiedNarrationSection
-              subtitles={translatedSubtitles || subtitlesData}
-              originalSubtitles={subtitlesData}
-              translatedSubtitles={translatedSubtitles}
-              referenceAudio={referenceAudio}
-              videoPath={actualVideoUrl}
-              onReferenceAudioChange={setReferenceAudio}
-            />
-          )}
+      {/* Translation Section */}
+      {!isDownloading && (
+        <TranslationSection
+          subtitles={subtitlesData}
+          videoTitle={activeVideoTitle}
+          onTranslationComplete={onTranslatedSubtitlesChange}
+        />
+      )}
 
-          {/* Background Image Generator moved back to AppLayout */}
-        </>
+      {/* Unified Narration Section - Now separate from Translation */}
+      {!isDownloading && (
+        <UnifiedNarrationSection
+          subtitles={translatedSubtitles || subtitlesData}
+          originalSubtitles={subtitlesData}
+          translatedSubtitles={translatedSubtitles}
+          referenceAudio={referenceAudio}
+          videoPath={actualVideoUrl}
+          onReferenceAudioChange={setReferenceAudio}
+        />
       )}
     </div>
   );

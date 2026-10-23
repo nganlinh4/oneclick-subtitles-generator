@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { nativeMediaDropService, sharedNativeMediaDropService } from '../../platform/mediaDropService';
 import { isPhysicalPointInsideElement } from '../../platform/nativeMediaDropTarget';
 import {
@@ -12,7 +11,10 @@ import {
   getSelectedMedia,
   isNativeMediaPlaybackUrl,
 } from '../../platform/mediaService';
-import { forgetBrowserMediaBlob } from '../../platform/browserMediaBlobRegistry';
+import {
+  readActiveMedia,
+  updateActiveMedia,
+} from '../../platform/activeMediaSource';
 import { activateSubtitleProjectBinding } from '../../platform/subtitleProjectBinding';
 import { reconcileSelectedNativeMedia } from './nativeMediaSelection';
 
@@ -22,7 +24,7 @@ import { reconcileSelectedNativeMedia } from './nativeMediaSelection';
  * selection, drop and release; a newer operation makes older async results inert.
  */
 const useNativeMediaInput = ({
-  fileInputRef,
+  dropZoneRef,
   isLoading,
   isSrtOnlyMode,
   onVideoSelect,
@@ -51,18 +53,7 @@ const useNativeMediaInput = ({
     });
     if (!isCurrent()) return;
 
-    localStorage.removeItem('current_video_url');
-    localStorage.removeItem('split_result');
-    const previousUrl = localStorage.getItem('current_file_url');
-    if (previousUrl?.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(previousUrl);
-      } catch {
-        // A stale object URL is already inert.
-      }
-      forgetBrowserMediaBlob(previousUrl);
-    }
-    localStorage.setItem('current_file_url', media.playbackUrl);
+    updateActiveMedia({ sourceUrl: null, playbackUrl: media.playbackUrl });
 
     if (onVideoSelect) onVideoSelect(null);
     if (isSrtOnlyMode && setIsSrtOnlyMode) setIsSrtOnlyMode(false);
@@ -85,17 +76,14 @@ const useNativeMediaInput = ({
   }, [isLoading]);
 
   useEffect(() => {
-    if (!isDesktopRuntime()) return undefined;
-
     let cancelled = false;
     let subscription = null;
     let activeDragId = null;
     let lastSequence = 0;
 
-    const containsPhysicalPosition = (position) => {
-      const dropZone = fileInputRef.current?.closest('.file-upload-input');
-      return isPhysicalPointInsideElement(position, dropZone);
-    };
+    const containsPhysicalPosition = (position) => (
+      isPhysicalPointInsideElement(position, dropZoneRef.current)
+    );
 
     const showNativeDropError = (error) => {
       const message = error?.message || t('fileUpload.nativeSelectionError', 'Could not open the selected media.');
@@ -175,12 +163,12 @@ const useNativeMediaInput = ({
       cancelled = true;
       if (subscription) subscription.unsubscribe().catch(() => {});
     };
-  }, [activateNativeMedia, fileInputRef, setIsDragOver, setIsLoading, setStatus, t]);
+  }, [activateNativeMedia, dropZoneRef, setIsDragOver, setIsLoading, setStatus, t]);
 
   // Reconcile WebView state with Rust after remounts. Expired loopback capabilities from a prior
   // process are removed instead of being replayed as if they were still authorized.
   useEffect(() => {
-    if (!isDesktopRuntime() || nativeHydratedRef.current) return undefined;
+    if (nativeHydratedRef.current) return undefined;
     nativeHydratedRef.current = true;
     const operation = ++nativeOperationRef.current;
     let mounted = true;
@@ -210,9 +198,8 @@ const useNativeMediaInput = ({
             },
           });
         }
-        const staleUrl = localStorage.getItem('current_file_url');
-        if (isNativeMediaPlaybackUrl(staleUrl)) {
-          localStorage.removeItem('current_file_url');
+        if (isNativeMediaPlaybackUrl(readActiveMedia().playbackUrl)) {
+          updateActiveMedia({ playbackUrl: null });
         }
       })
       .catch((error) => {

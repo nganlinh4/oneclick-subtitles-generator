@@ -1,20 +1,12 @@
 import { translateSubtitles } from './translation';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 
-const runtimeMocks = vi.hoisted(() => ({
-  isDesktopRuntime: vi.fn(() => true),
-}));
-
-vi.mock('../../platform/runtimeEnvironment', () => ({
-  isDesktopRuntime: runtimeMocks.isDesktopRuntime,
-}));
 vi.mock('../../platform/nativeGeminiText', () => ({
   runNativeGeminiText: vi.fn(),
 }));
 
 beforeEach(() => {
   localStorage.clear();
-  runtimeMocks.isDesktopRuntime.mockReturnValue(true);
   global.fetch = vi.fn(() => {
     throw new Error('native translation must not use browser fetch');
   });
@@ -34,9 +26,6 @@ const providerText = (subtitles, languageRows = { Korean: [] }) => JSON.stringif
 });
 
 test('native translation uses the Rust task and preserves subtitle timing', async () => {
-  localStorage.setItem('original_subtitles_map', JSON.stringify({
-    1: { id: 1, start: 90, end: 91, text: 'Stale project' },
-  }));
   const subtitles = [
     { id: 1, start: 0, end: 1, text: 'Hello' },
     { id: 2, start: 1, end: 2, text: 'World' },
@@ -72,7 +61,6 @@ test('native translation uses the Rust task and preserves subtitle timing', asyn
   expect(request.prompt).toContain('[{"ordinal":0,"text":"Hello"}');
   expect(request.prompt).not.toContain('Translate the following 1 subtitle');
   expect(request.prompt).not.toContain('include BOTH the original');
-  expect(localStorage.getItem('original_subtitles_map')).toBeNull();
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
@@ -208,48 +196,7 @@ test('chunked translation reuses the explicit native translator without a module
   expect(runNativeGeminiText).toHaveBeenCalledTimes(2);
   expect(firstAck).not.toHaveBeenCalled();
   expect(secondAck).not.toHaveBeenCalled();
-  expect(localStorage.getItem('original_subtitles_map')).toBeNull();
   expect(global.fetch).not.toHaveBeenCalled();
-});
-
-test('browser compatibility replaces the full map while recursive chunks preserve it', async () => {
-  runtimeMocks.isDesktopRuntime.mockReturnValue(false);
-  localStorage.setItem('original_subtitles_map', JSON.stringify({
-    1: { id: 1, start: 90, end: 91, text: 'Stale project' },
-  }));
-  runNativeGeminiText
-    .mockResolvedValueOnce({
-      text: providerText([{ id: 1, start: 0, end: 1, text: 'One' }], { Korean: ['하나'] }),
-    })
-    .mockResolvedValueOnce({
-      text: providerText([{ id: 2, start: 70, end: 71, text: 'Two' }], { Korean: ['둘'] }),
-    });
-
-  await translateSubtitles([
-    { id: 1, start: 0, end: 1, text: 'One' },
-    { id: 2, start: 70, end: 71, text: 'Two' },
-  ], 'Korean', 'gemini-3.5-flash-lite', null, 1);
-
-  expect(JSON.parse(localStorage.getItem('original_subtitles_map'))).toEqual({
-    1: {
-      id: 1,
-      start: 0,
-      end: 1,
-      text: 'One',
-      originalId: 'number:1',
-      sourceOrder: 0,
-      index: 0,
-    },
-    2: {
-      id: 2,
-      start: 70,
-      end: 71,
-      text: 'Two',
-      originalId: 'number:2',
-      sourceOrder: 1,
-      index: 1,
-    },
-  });
 });
 
 test('native cancellation preserves the established translation error contract', async () => {
@@ -373,7 +320,6 @@ test('publishes each validated structured row while the native response streams'
     null,
     null,
     null,
-    false,
     { publishRows }
   );
 
@@ -405,7 +351,6 @@ test('an owned signal wins when the native provider settles after ignoring abort
     null,
     null,
     'main',
-    false,
     { signal: controller.signal, assertOwned: vi.fn(async () => {}) }
   );
   await vi.waitFor(() => expect(runNativeGeminiText).toHaveBeenCalledTimes(1));

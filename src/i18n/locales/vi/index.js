@@ -29,7 +29,6 @@ import videoAnalysis from './videoAnalysis.json';
 import rulesEditor from './rulesEditor.json';
 import fileUpload from './fileUpload.json';
 import subtitlesInput from './subtitlesInput.json';
-import segmentRetry from './segmentRetry.json';
 import videoRendering from './videoRendering.json';
 import fontModal from './fontModal.json';
 import videoQuality from './videoQuality.json';
@@ -75,7 +74,6 @@ const vi = {
   rulesEditor,
   fileUpload,
   subtitlesInput,
-  segmentRetry,
   narration,
   backgroundGenerator,
   backgroundMusic,

@@ -31,13 +31,6 @@ const GeminiVoiceSelection = ({
 
   const handleVoiceChange = (newVoice) => {
     setSelectedVoice(newVoice);
-
-    // Store in localStorage for persistence
-    try {
-      localStorage.setItem('gemini_voice', newVoice);
-    } catch (e) {
-      console.error('Error storing voice in localStorage:', e);
-    }
   };
 
   const playVoiceSample = async (voiceId) => {
@@ -138,7 +131,6 @@ const GeminiVoiceSelection = ({
                     const firstFemaleVoice = femaleVoices[0];
                     if (firstFemaleVoice) {
                       setSelectedVoice(firstFemaleVoice.id);
-                      localStorage.setItem('gemini_voice', firstFemaleVoice.id);
                     }
                   }}
                   disabled={isGenerating}
@@ -160,7 +152,6 @@ const GeminiVoiceSelection = ({
                     const firstMaleVoice = maleVoices[0];
                     if (firstMaleVoice) {
                       setSelectedVoice(firstMaleVoice.id);
-                      localStorage.setItem('gemini_voice', firstMaleVoice.id);
                     }
                   }}
                   disabled={isGenerating}

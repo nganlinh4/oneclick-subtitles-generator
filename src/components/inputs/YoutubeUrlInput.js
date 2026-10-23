@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { addYoutubeUrlToHistory, getYoutubeUrlHistory, clearYoutubeUrlHistory, formatTimestamp } from '../../utils/historyUtils';
-import { getVideoDetails, getVideoThumbnail } from '../../platform/desktopYoutubeService';
+import { getVideoDetails, getVideoThumbnail, isOAuthEnabled } from '../../platform/desktopYoutubeService';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
+import { classifyYoutubeError, YOUTUBE_ERROR_KIND, youtubeQuotaMessage } from './youtubeErrors';
 
 const loadHistoryWithNativeThumbnails = async () => {
   const stored = getYoutubeUrlHistory();
@@ -84,9 +86,9 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
     } catch (error) {
       console.error('Error fetching video title:', error);
 
-      // Check for quota exceeded error
-      if (error.message.includes('quota exceeded')) {
-        window.addToast(error.message, 'error', 8000);
+      if (classifyYoutubeError(error, { oauth: isOAuthEnabled() })
+          === YOUTUBE_ERROR_KIND.QUOTA_EXCEEDED) {
+        window.addToast(youtubeQuotaMessage(t), 'error', 8000);
       }
 
       try {
@@ -190,9 +192,9 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
               setUrl('');
               setSelectedVideo(null);
             }}
-            aria-label="Clear input"
+            aria-label={t('common.clearInput', 'Clear input')}
           >
-            <span className="material-symbols-rounded">close</span>
+            <span aria-hidden="true" className="material-symbols-rounded">close</span>
           </button>
         )}
 
@@ -214,6 +216,9 @@ const YoutubeUrlInput = ({ setSelectedVideo, selectedVideo, className }) => {
                   key={`${item.id}-${index}`}
                   className="history-item"
                   onClick={() => handleSelectFromHistory(item)}
+                  onKeyDown={activateOnKey}
+                  role="button"
+                  tabIndex={showHistory ? 0 : -1}
                 >
                   <div className="history-item-content">
                     <img

@@ -13,9 +13,10 @@ import { DEFAULT_GEMINI_MODEL_ID } from '../../config/geminiModels';
  * @param {string} subtitlesText - Plain text content from subtitles
  * @param {string} model - Gemini model to use
  * @param {string} customPrompt - Optional custom prompt to use
+ * @param {'original'|'translated'} source - Which subtitles the text came from
  * @returns {Promise<string>} - Summarized document text
  */
-export const summarizeDocument = async (subtitlesText, model = DEFAULT_GEMINI_MODEL_ID, customPrompt = null) => {
+export const summarizeDocument = async (subtitlesText, model = DEFAULT_GEMINI_MODEL_ID, customPrompt = null, source = 'original') => {
     if (!subtitlesText || subtitlesText.trim() === '') {
         throw new Error('No text to process');
     }
@@ -24,6 +25,7 @@ export const summarizeDocument = async (subtitlesText, model = DEFAULT_GEMINI_MO
         subtitlesText,
         model,
         customPrompt,
+        source,
         getDefaultPrompt: getDefaultSummarizePrompt,
         createSchema: createSummarizationSchema,
         errorLabel: 'Summary error:',

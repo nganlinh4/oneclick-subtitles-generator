@@ -10,6 +10,7 @@ import {
   snapshotGroupingSource,
 } from '../services/gemini/subtitleGroupingService';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
+import { hasExactKeys } from './plainDataRecord';
 
 const contexts = new WeakSet();
 const receipts = new WeakMap();
@@ -27,18 +28,9 @@ class ProjectSubtitleLanguageError extends Error {
 
 const failed = (code, message) => new ProjectSubtitleLanguageError(code, message);
 
-const exactDataObject = (value, keys) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)
-      || Object.getPrototypeOf(value) !== Object.prototype) return false;
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  return Reflect.ownKeys(descriptors).length === keys.length
-    && keys.every((key) => Object.hasOwn(descriptors, key)
-      && Object.hasOwn(descriptors[key], 'value'));
-};
-
 export const normalizeProjectLanguageResult = (value) => {
   const keys = ['languageCode', 'languageName', 'isMultiLanguage', 'secondaryLanguages'];
-  if (!exactDataObject(value, keys)) {
+  if (!hasExactKeys(value, keys)) {
     throw failed('invalidSubtitleLanguageResult', 'Language detection returned an invalid result');
   }
   const languageCode = value.languageCode.trim();

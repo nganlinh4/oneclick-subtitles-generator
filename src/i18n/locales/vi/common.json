@@ -1,8 +1,6 @@
 {
   "cancel": "Hủy",
-  "undo": "Hoàn tác",
   "undoWithShortcut": "Hoàn tác (Ctrl+Z)",
-  "redo": "Làm lại",
   "redoWithShortcut": "Làm lại (Ctrl+Y hoặc Ctrl+Shift+Z)",
   "reset": "Đặt lại",
   "resetWithShortcut": "Đặt lại về trạng thái đã lưu",
@@ -22,7 +20,6 @@
   "mute": "Tắt tiếng",
   "unmute": "Bật tiếng",
   "fullscreen": "Toàn màn hình",
-  "jumpToCheckpoint": "Nhảy đến mốc lưu gần nhất (hoàn tác nhiều bước)",
   "jumpToCheckpointWithShortcut": "Nhảy đến mốc lưu gần nhất (Ctrl+J)",
   "toast": {
     "error": "Lỗi",
@@ -35,7 +32,6 @@
   "toastHistory": "Lịch sử thông báo",
   "showToastHistory": "Hiển thị lịch sử thông báo",
   "hideToastHistory": "Ẩn lịch sử thông báo",
-  "disabled": "Đã tắt trong khi dịch",
   "done": "Xong",
   "history": "Lịch sử",
   "reload": "Tải lại",
@@ -56,5 +52,12 @@
     "invalid": "Thư mục đó không phải dữ liệu OSG cũ hợp lệ hoặc chứa các mục không an toàn.",
     "tooLarge": "Thư mục dữ liệu cũ đó vượt quá giới hạn an toàn khi nhập.",
     "failed": "Không thể hoàn tất việc nhập dữ liệu cũ. Các tệp gốc không bị thay đổi."
-  }
+  },
+  "expand": "Mở rộng",
+  "collapse": "Thu gọn",
+  "downloadAudio": "Tải âm thanh xuống",
+  "clearInput": "Xóa nội dung đã nhập",
+  "exitFullscreen": "Thoát toàn màn hình",
+  "playPause": "Phát/Tạm dừng",
+  "audioSaveFailed": "Không thể lưu bản ghi âm."
 }

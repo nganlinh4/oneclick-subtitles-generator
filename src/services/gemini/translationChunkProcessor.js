@@ -5,6 +5,7 @@
 
 import i18n from '../../i18n/i18n';
 import { createTranslationAbortError } from '../../utils/translationOwnership';
+import { isNativeErrorCode } from '../../platform/plainDataRecord';
 
 export class PartialTranslationError extends Error {
   constructor(completedSubtitles, failedChunks) {
@@ -69,7 +70,7 @@ const splitIntoDurationChunks = (subtitles, splitDuration) => {
 
 const errorCodeForChunk = (error) => {
   const candidate = typeof error?.code === 'string' ? error.code : 'translationChunkFailed';
-  return /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(candidate)
+  return isNativeErrorCode(candidate)
     ? candidate
     : 'translationChunkFailed';
 };

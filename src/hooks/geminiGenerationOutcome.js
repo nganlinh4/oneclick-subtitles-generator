@@ -9,7 +9,7 @@ import {
     saveSubtitlesToCache
 } from '../services/subtitleCache';
 import { reportKnownGeminiSubtitleError } from '../utils/geminiSubtitleErrors';
-import { isSubtitleOperationCancellation } from '../utils/subtitleOperationOwnership';
+import { isSubtitleOperationCancellation } from '../utils/subtitleOperationCancellation';
 import {
     assertAutoGenerationContextDurable,
     createAutoGenerationCompletion,

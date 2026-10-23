@@ -43,7 +43,7 @@ const PresetButtonsGrid = ({
           <button
             className="custom-preset-delete-button pc-clear"
             onClick={() => onDeleteCustomPreset(customPreset.id)}
-            title="Delete preset"
+            title={t('presetButtons.deletePreset', 'Delete preset')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor">
               <path d="m480-384-67 66q-20 20-47.5 20.5T318-318q-20-20-20-48t20-47l66-67-67-67q-20-20-20-47.5t21-47.5q20-20 47.5-20t47.5 20l67 66 67-66q20-20 47.5-20t47.5 20q20 19 20 47t-20 48l-66 67 66 67q20 20 20 47.5T642-318q-19 19-47 19t-48-19l-67-66Z"/>

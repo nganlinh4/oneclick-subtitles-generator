@@ -1,14 +1,10 @@
 {
   "placeholder": "Enter any video URL (YouTube, Douyin, TikTok, etc.)",
   "invalidUrl": "Invalid URL format. Please enter a valid URL.",
-  "examplesTitle": "Supported URL formats:",
-  "youtubeTitle": "YouTube:",
-  "douyinTitle": "Douyin:",
-  "otherSitesTitle": "Other Sites:",
-  "ytDlpNote": "Powered by yt-dlp which supports 1000+ sites",
   "url": "URL:",
   "videoId": "Video ID:",
   "downloadOnly": "Download Only",
   "hundredsMoreWebsites": "...and hundreds more websites!",
-  "viewAllSupportedSites": "Click to view all supported sites"
+  "viewAllSupportedSites": "Click to view all supported sites",
+  "videoFallback": "Video"
 }

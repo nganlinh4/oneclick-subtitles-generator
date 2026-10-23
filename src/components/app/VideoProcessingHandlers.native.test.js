@@ -17,11 +17,7 @@ import {
   AutoGenerationOwnershipError,
   createAutoGenerationRequest,
 } from '../../utils/autoGenerationOwnership';
-import {
-  clearBrowserMediaBlobs,
-  getBrowserMediaBlob,
-  registerBrowserMediaBlob,
-} from '../../platform/browserMediaBlobRegistry';
+import { readActiveMedia, updateActiveMedia } from '../../platform/activeMediaSource';
 
 vi.mock('../../platform/desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
@@ -117,7 +113,6 @@ beforeEach(() => {
   forgetNativeMediaSessionDurably.mockResolvedValue(true);
   clearSubtitleProjectBinding.mockImplementation(() => true);
   localStorage.clear();
-  clearBrowserMediaBlobs();
   invokeDesktop.mockImplementation(async (command) => {
     if (command === 'get_session_snapshot' || command === 'clear_media') {
       return { media: null, playback: null, subtitleTrack: null };
@@ -213,9 +208,8 @@ it('withdraws video A by exact native identity before attempting URL B and leave
   downloadNativeVideo.mockRejectedValueOnce(Object.assign(new Error('rate limited'), {
     code: 'downloaderRateLimited',
   }));
-  localStorage.setItem('current_file_name', 'source.mkv');
-  localStorage.setItem('current_file_url', source.playbackUrl);
-  localStorage.setItem('current_video_url', 'https://example.test/video-a');
+  updateActiveMedia({ playbackUrl: source.playbackUrl });
+  updateActiveMedia({ sourceUrl: 'https://example.test/video-a' });
   const setUploadedFile = vi.fn();
 
   await expect(downloadAndPrepareYouTubeVideo(
@@ -230,9 +224,8 @@ it('withdraws video A by exact native identity before attempting URL B and leave
   )).resolves.toBeUndefined();
 
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
-  expect(localStorage.getItem('current_file_name')).toBeNull();
-  expect(localStorage.getItem('current_file_url')).toBeNull();
-  expect(localStorage.getItem('current_video_url')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBeNull();
+  expect(readActiveMedia().sourceUrl).toBeNull();
   expect(invokeDesktop).toHaveBeenCalledWith('clear_media', {
     expectedAssetId: source.assetId,
     expectedPlaybackId: source.playbackId,
@@ -242,9 +235,7 @@ it('withdraws video A by exact native identity before attempting URL B and leave
 it('activates the URL project before publishing downloaded media to React', async () => {
   generateUrlBasedCacheId.mockResolvedValue('reviewed');
   const setUploadedFile = vi.fn();
-  localStorage.setItem('current_file_url', 'blob:replaced');
-  registerBrowserMediaBlob('blob:replaced', new Blob(['old-media']));
-  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  updateActiveMedia({ playbackUrl: 'http://127.0.0.1:49152/asset/replaced' });
 
   await expect(downloadAndPrepareYouTubeVideo(
     { url: 'https://www.youtube.com/watch?v=reviewed' },
@@ -273,16 +264,11 @@ it('activates the URL project before publishing downloaded media to React', asyn
   });
   expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
     .toBeLessThan(setUploadedFile.mock.invocationCallOrder.at(-1));
-  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:replaced');
-  expect(getBrowserMediaBlob('blob:replaced')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBe(source.playbackUrl);
 });
 
-it('never revives the replaced browser source when post-publication ownership is lost', async () => {
-  const previousBlob = new Blob(['previous-media']);
-  localStorage.setItem('current_file_url', 'blob:previous-media');
-  localStorage.setItem('current_file_name', 'previous.mp4');
-  registerBrowserMediaBlob('blob:previous-media', previousBlob);
-  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+it('never revives the replaced source when post-publication ownership is lost', async () => {
+  updateActiveMedia({ playbackUrl: 'http://127.0.0.1:49152/asset/previous-media' });
   downloadNativeVideo.mockImplementationOnce(async (request) => {
     const cacheId = await generateUrlBasedCacheId.mock.results.at(-1)?.value;
     const binding = await request.admitActivation({
@@ -318,10 +304,7 @@ it('never revives the replaced browser source when post-publication ownership is
     vi.fn(),
   )).resolves.toBeUndefined();
 
-  expect(localStorage.getItem('current_file_url')).toBeNull();
-  expect(localStorage.getItem('current_file_name')).toBeNull();
-  expect(getBrowserMediaBlob('blob:previous-media')).toBeNull();
-  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:previous-media');
+  expect(readActiveMedia().playbackUrl).toBeNull();
 });
 
 it('publishes neither compatibility identity nor React media before the binding receipt', async () => {
@@ -344,8 +327,7 @@ it('publishes neither compatibility identity nor React media before the binding 
 
   await vi.waitFor(() => expect(activateSubtitleProjectBinding).toHaveBeenCalled());
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
-  expect(localStorage.getItem('current_file_url')).toBeNull();
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBeNull();
 
   releaseBinding({
     kind: 'subtitle-project-binding',
@@ -374,8 +356,7 @@ it('leaves the prepared media unpublished when exact-project binding fails', asy
   )).resolves.toBeUndefined();
 
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(null);
-  expect(localStorage.getItem('current_file_url')).toBeNull();
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBeNull();
   expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }));
 });
 
@@ -402,7 +383,7 @@ it('a stale automatic download cannot clear or overwrite a newer download presen
   ];
   const controllerA = new AbortController();
   const requestA = createAutoGenerationRequest({ runId: 'run-a', signal: controllerA.signal });
-  localStorage.setItem('current_video_url', 'https://example.test/a');
+  updateActiveMedia({ sourceUrl: 'https://example.test/a' });
   const a = downloadAndPrepareYouTubeVideo(
     { url: 'https://example.test/a' },
     ...common,
@@ -412,7 +393,7 @@ it('a stale automatic download cannot clear or overwrite a newer download presen
 
   const controllerB = new AbortController();
   const requestB = createAutoGenerationRequest({ runId: 'run-b', signal: controllerB.signal });
-  localStorage.setItem('current_video_url', 'https://example.test/b');
+  updateActiveMedia({ sourceUrl: 'https://example.test/b' });
   const b = downloadAndPrepareYouTubeVideo(
     { url: 'https://example.test/b' },
     ...common,
@@ -523,9 +504,8 @@ it('a manual A download which finishes after B cannot bind, select, or publish A
     expectedProjectId: 'project:project-b',
   });
   expect(setUploadedFile.mock.calls).toEqual([[null], [null], [sourceB]]);
-  expect(localStorage.getItem('current_video_url')).toBe('https://example.test/b');
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
-  expect(localStorage.getItem('current_file_url')).toBe(sourceB.playbackUrl);
+  expect(readActiveMedia().sourceUrl).toBe('https://example.test/b');
+  expect(readActiveMedia().playbackUrl).toBe(sourceB.playbackUrl);
   expect(setStatus).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'success' }));
 });
 

@@ -29,5 +29,6 @@
   "clickToCancel": "(click anywhere to cancel)",
   "waitingForAction": "Waiting for your action",
   "clickToEdit": "(click to start editing)",
-  "saveContinue": "Save & Continue"
+  "saveContinue": "Save & Continue",
+  "removeItem": "Remove"
 }

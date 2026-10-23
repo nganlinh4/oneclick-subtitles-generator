@@ -2,14 +2,10 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import '../styles/QueueManagerPanel.css';
-import { getVideoNumber } from './queue/queueHelpers';
 import { fetchPreviewInfo, fetchPreviewExtra, fetchHeadInfo } from './queue/previewDataFetching';
 import QueueItemRow from './queue/QueueItemRow';
 import PreviewModal from './queue/PreviewModal';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { exportMediaAsset } from '../platform/mediaExportService';
-import { isNativeMediaPlaybackUrl } from '../platform/mediaService';
-import { fetchBrowserResource } from '../platform/browserFetch';
 
 const QueueManagerPanel = ({
   queue,
@@ -60,54 +56,18 @@ const QueueManagerPanel = ({
   useEffect(() => {
     queue.forEach((item) => {
       if (item.status === 'failed' && item.error && !shownErrorToasts.has(item.id)) {
-        window.addToast(`Video rendering failed: ${item.error}`, 'error', 8000);
+        window.addToast(t('videoRendering.renderFailedToast', 'Video rendering failed: {{error}}', { error: item.error }), 'error', 8000);
         setShownErrorToasts(prev => new Set([...prev, item.id]));
       }
     });
-  }, [queue, shownErrorToasts]);
+  }, [queue, shownErrorToasts, t]);
 
-  const handleDownloadVideo = async (outputPath, item) => {
+  const handleDownloadVideo = async (_outputPath, item) => {
     try {
-      if (isDesktopRuntime()) {
-        if (!item?.outputAssetId) throw new Error('Native rendered media is unavailable');
-        await exportMediaAsset(item.outputAssetId);
-        return;
-      }
-      if (isNativeMediaPlaybackUrl(outputPath)) {
-        throw new Error('Native rendered media requires native export');
-      }
-      // Fetch the video as a blob
-      const response = await fetchBrowserResource(outputPath);
-      if (!response.ok) {
-        throw new Error('Failed to fetch video');
-      }
-
-      const blob = await response.blob();
-
-      // Create a download link
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `subtitled-video-${getVideoNumber(item)}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
+      if (!item?.outputAssetId) throw new Error('Native rendered media is unavailable');
+      await exportMediaAsset(item.outputAssetId);
     } catch (error) {
       console.error('Error downloading video:', error);
-      if (isDesktopRuntime() || isNativeMediaPlaybackUrl(outputPath)) return;
-      // Fallback to direct link if fetch fails
-      const a = document.createElement('a');
-      a.href = outputPath;
-      a.download = `subtitled-video-${getVideoNumber(item)}.mp4`;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
     }
   };
 
@@ -170,7 +130,7 @@ const QueueManagerPanel = ({
             disabled={currentQueueItem !== null}
             title={t('videoRendering.clearQueue', 'Clear Queue')}
           >
-            <span className="material-symbols-rounded" style={{ fontSize: '22px' }}>delete_sweep</span>
+            <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '22px' }}>delete_sweep</span>
           </button>
         )}
       </div>

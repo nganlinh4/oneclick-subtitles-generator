@@ -46,44 +46,16 @@ test('rejects an unbound native playback capability before browser fetch', async
   expect(fetchAudio).not.toHaveBeenCalled();
 });
 
-test('keeps the browser blob download used by generated background music', async () => {
-  const blob = new Blob(['music'], { type: 'audio/wav' });
-  const fetchAudio = vi.fn(async () => ({ blob: async () => blob }));
-  const createObjectUrl = vi.fn(() => 'blob:download');
-  const revokeObjectUrl = vi.fn();
-  const anchor = { click: vi.fn() };
-
-  await expect(downloadAudioSource('blob:recording', { filename: 'background_music.wav' }, {
-    fetchAudio,
-    createObjectUrl,
-    revokeObjectUrl,
-    createAnchor: () => anchor,
-    isNativeRuntime: () => false,
-  })).resolves.toBe(true);
-  expect(fetchAudio).toHaveBeenCalledWith('blob:recording', undefined);
-  expect(createObjectUrl).toHaveBeenCalledWith(blob);
-  expect(anchor).toMatchObject({
-    href: 'blob:download',
-    download: 'background_music.wav',
-  });
-  expect(anchor.click).toHaveBeenCalledTimes(1);
-  expect(revokeObjectUrl).toHaveBeenCalledWith('blob:download');
-});
-
 test('exports generated background music through the native save dialog', async () => {
   const blob = new Blob(['RIFF0000WAVEdata'], { type: 'audio/wav' });
   const fetchAudio = vi.fn(async () => ({ blob: async () => blob }));
   const exportGenerated = vi.fn(async () => true);
-  const createAnchor = vi.fn();
 
   await expect(downloadAudioSource('blob:recording', { filename: 'background_music.wav' }, {
     fetchAudio,
     exportGenerated,
-    createAnchor,
-    isNativeRuntime: () => true,
   })).resolves.toBe(true);
   expect(exportGenerated).toHaveBeenCalledWith(blob, 'background_music.wav');
-  expect(createAnchor).not.toHaveBeenCalled();
 });
 
 test('exports an owned recording blob without re-fetching its ephemeral playback URL', async () => {
@@ -99,7 +71,6 @@ test('exports an owned recording blob without re-fetching its ephemeral playback
   }, {
     fetchAudio,
     exportGenerated,
-    isNativeRuntime: () => true,
   })).resolves.toBe(true);
   expect(fetchAudio).not.toHaveBeenCalled();
   expect(exportGenerated).toHaveBeenCalledWith(blob, 'background_music.wav');

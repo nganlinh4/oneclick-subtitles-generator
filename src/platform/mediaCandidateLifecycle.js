@@ -9,7 +9,6 @@ import {
   isUuidV7,
   MEDIA_KEYS,
   normalizeMediaCandidate,
-  snapshotExactDataRecord,
   validateAssetId,
 } from './mediaDescriptors';
 import { openMediaAsset } from './mediaSessionCommands';
@@ -18,9 +17,10 @@ import {
   mutateProject,
   undoDetachedProject,
 } from './projectService';
+import { exactRecord } from './nativeDataSnapshot';
 
 const normalizeCandidateClaimOptions = (value) => {
-  const options = snapshotExactDataRecord(
+  const options = exactRecord(
     value,
     ['expectedStateVersion', 'projectId'],
     invalidMediaRequest
@@ -34,12 +34,12 @@ const normalizeCandidateClaimOptions = (value) => {
 };
 
 const candidateProjectSnapshot = (value, options, asset) => {
-  const project = snapshotExactDataRecord(
+  const project = exactRecord(
     value,
     ['metadata', 'stateVersion', 'media', 'tracks'],
     invalidMediaRequest
   );
-  const metadata = snapshotExactDataRecord(
+  const metadata = exactRecord(
     project.metadata,
     ['id', 'name'],
     invalidMediaRequest
@@ -92,12 +92,12 @@ const committedCandidateSnapshot = (value, options, asset) => {
         && commit.stateVersion !== options.expectedStateVersion + 1)) {
     throw invalidMediaResponse();
   }
-  const snapshot = snapshotExactDataRecord(
+  const snapshot = exactRecord(
     commit.snapshot,
     ['metadata', 'stateVersion', 'media', 'tracks'],
     invalidMediaResponse
   );
-  const metadata = snapshotExactDataRecord(
+  const metadata = exactRecord(
     snapshot.metadata,
     ['id', 'name'],
     invalidMediaResponse
@@ -109,7 +109,7 @@ const committedCandidateSnapshot = (value, options, asset) => {
       || !Array.isArray(snapshot.tracks)) {
     throw invalidMediaResponse();
   }
-  const committedAsset = snapshotExactDataRecord(snapshot.media[0], MEDIA_KEYS, invalidMediaResponse);
+  const committedAsset = exactRecord(snapshot.media[0], MEDIA_KEYS, invalidMediaResponse);
   if (committedAsset.id !== asset.id
       || committedAsset.displayName !== asset.displayName
       || committedAsset.extension !== asset.extension
@@ -124,12 +124,12 @@ const committedCandidateSnapshot = (value, options, asset) => {
 };
 
 const requireActiveCandidateProject = (value, options, stateVersion, asset = null) => {
-  const project = snapshotExactDataRecord(
+  const project = exactRecord(
     value,
     ['metadata', 'stateVersion', 'media', 'tracks'],
     invalidMediaRequest
   );
-  const metadata = snapshotExactDataRecord(
+  const metadata = exactRecord(
     project.metadata,
     ['id', 'name'],
     invalidMediaRequest
@@ -142,7 +142,7 @@ const requireActiveCandidateProject = (value, options, stateVersion, asset = nul
   }
   if (asset !== null) {
     if (project.media.length !== 1) throw invalidMediaRequest();
-    const currentAsset = snapshotExactDataRecord(project.media[0], MEDIA_KEYS, invalidMediaRequest);
+    const currentAsset = exactRecord(project.media[0], MEDIA_KEYS, invalidMediaRequest);
     if (currentAsset.id !== asset.id
         || currentAsset.displayName !== asset.displayName
         || currentAsset.extension !== asset.extension

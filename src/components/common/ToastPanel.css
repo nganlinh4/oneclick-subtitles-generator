@@ -121,7 +121,8 @@
     transition: color 0.2s ease, opacity 0.2s ease;
 }
 .close-icon:hover { color: var(--clr); }
-.toast-item.live:hover .close-icon { opacity: 1; }
+.toast-item.live:hover .close-icon,
+.close-icon:focus-visible { opacity: 1; }
 
 .toast-button {
     margin-top: 12px;

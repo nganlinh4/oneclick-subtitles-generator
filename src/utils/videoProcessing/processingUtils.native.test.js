@@ -72,7 +72,7 @@ it('routes native segment processing through the clipping-aware core and restore
     segmentInfo: { start: 10, end: 20, duration: 10 },
     videoMetadata: { start_offset: '10s', end_offset: '20s', fps: undefined },
     runId: 'run-1',
-  }, expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
+  }, expect.any(Function), expect.any(Function), expect.any(Function));
   expect(result).toEqual([
     { start: 11, end: 12, text: 'relative' },
     { start: 19, end: 20, text: 'clamped' },

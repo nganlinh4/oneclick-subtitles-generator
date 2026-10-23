@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   saveProjectSubtitles: vi.fn(),
   clearProjectSubtitles: vi.fn(),
   cacheListeners: new Set(),
-  desktop: false,
   nativeSession: null,
   resolveOwnedNativeMediaProject: vi.fn(),
 }));
@@ -26,9 +25,6 @@ vi.mock('../platform/subtitleProjectStore', () => ({
   clearProjectSubtitles: mocks.clearProjectSubtitles,
   loadProjectSubtitles: vi.fn(),
 }));
-vi.mock('../platform/desktopRuntime', () => ({
-  isDesktopRuntime: () => mocks.desktop,
-}));
 vi.mock('../platform/nativeMediaOwnership', () => ({
   readNativeMediaSession: () => mocks.nativeSession,
   resolveOwnedNativeMediaProject: mocks.resolveOwnedNativeMediaProject,
@@ -48,6 +44,9 @@ import {
   isAutoGenerationCompletion,
   subscribeAutoGenerationOwnership,
 } from './autoGenerationOwnership';
+import { updateActiveMedia } from '../platform/activeMediaSource';
+
+const SESSION = Object.freeze({ assetId: 'asset-1', cacheId: 'cache-1', projectId: 'project-1' });
 
 const createContext = (cachedSubtitles = null) => {
   const controller = new AbortController();
@@ -74,25 +73,16 @@ beforeEach(() => {
   mocks.clearProjectSubtitles.mockReset();
   mocks.clearProjectSubtitles.mockResolvedValue(true);
   mocks.cacheListeners.clear();
-  mocks.desktop = false;
-  mocks.nativeSession = null;
+  mocks.nativeSession = SESSION;
   mocks.resolveOwnedNativeMediaProject.mockReset();
   mocks.resolveOwnedNativeMediaProject.mockResolvedValue({ projectId: 'project-1' });
   localStorage.clear();
-  localStorage.setItem('current_file_cache_id', 'asset-1');
 });
 
-test('desktop ownership uses the exact native session tuple instead of compatibility mirrors', async () => {
-  mocks.desktop = true;
-  mocks.nativeSession = Object.freeze({
-    assetId: 'asset-1',
-    cacheId: 'cache-1',
-    projectId: 'project-1',
-  });
+test('ownership uses the exact native session tuple instead of compatibility mirrors', async () => {
   const { context } = createContext();
 
-  localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
-  localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
+  updateActiveMedia({ sourceUrl: 'https://wrong.example.test/video' });
   expect(assertAutoGenerationContextCurrent(context)).toBe(context);
   await expect(assertAutoGenerationContextDurable(context)).resolves.toBe(context);
   expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledWith(mocks.nativeSession);
@@ -107,13 +97,7 @@ test('desktop ownership uses the exact native session tuple instead of compatibi
   );
 });
 
-test('desktop capture resolves the owned asset without creating from a browser alias', async () => {
-  mocks.desktop = true;
-  mocks.nativeSession = Object.freeze({
-    assetId: 'asset-1',
-    cacheId: 'cache-1',
-    projectId: 'project-1',
-  });
+test('capture resolves the owned asset without creating from an alias', async () => {
   const controller = new AbortController();
   const media = Object.freeze({ assetId: 'asset-1', type: 'video/mp4' });
 
@@ -133,8 +117,7 @@ test('desktop capture resolves the owned asset without creating from a browser a
   expect(mocks.resolveProjectForCache).not.toHaveBeenCalled();
 });
 
-test('desktop capture refuses a stale session before any durable resolver can mutate state', async () => {
-  mocks.desktop = true;
+test('capture refuses a stale session before any durable resolver can mutate state', async () => {
   mocks.nativeSession = Object.freeze({
     assetId: 'asset-stale',
     cacheId: 'cache-1',
@@ -160,7 +143,7 @@ test('the active-run watcher reports a source-only switch and detaches after los
     pollIntervalMs: 10,
   });
 
-  localStorage.setItem('current_file_cache_id', 'asset-2');
+  mocks.nativeSession = Object.freeze({ ...SESSION, assetId: 'asset-2' });
   await vi.advanceTimersByTimeAsync(10);
 
   expect(onLost).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -209,8 +192,9 @@ test('keeps the preparation cache candidate immutable and rejects structural con
 test.each([
   ['rules cache switch', () => { mocks.rulesCacheId = 'cache-2'; }],
   ['user-subtitle cache switch', () => { mocks.subtitlesCacheId = 'cache-2'; }],
-  ['source switch', () => { localStorage.setItem('current_file_cache_id', 'asset-2'); }],
-  ['URL takeover', () => { localStorage.setItem('current_video_url', 'https://example.test/new'); }],
+  ['media switch', () => { mocks.nativeSession = Object.freeze({ ...SESSION, assetId: 'asset-2' }); }],
+  ['project remap', () => { mocks.nativeSession = Object.freeze({ ...SESSION, projectId: 'project-2' }); }],
+  ['media release', () => { mocks.nativeSession = null; }],
 ])('rejects a %s before a run-owned mutation', (_label, mutate) => {
   const { context } = createContext();
   mutate();
@@ -229,12 +213,12 @@ test('rejects an aborted run even when the media identity still matches', () => 
 
 test('re-resolves and rejects an alias remap before native or durable work', async () => {
   const { context } = createContext();
-  mocks.resolveProjectForCache.mockResolvedValueOnce({ projectId: 'project-2' });
+  mocks.resolveOwnedNativeMediaProject.mockResolvedValueOnce({ projectId: 'project-2' });
 
   await expect(assertAutoGenerationContextDurable(context)).rejects.toMatchObject({
     code: 'autoGenerationOwnershipLost',
   });
-  expect(mocks.resolveProjectForCache).toHaveBeenCalledWith('cache-1', { create: false });
+  expect(mocks.resolveOwnedNativeMediaProject).toHaveBeenCalledWith(SESSION);
 });
 
 test('accepts only an exact privately-issued nonempty or explicit no-speech durable terminal', async () => {

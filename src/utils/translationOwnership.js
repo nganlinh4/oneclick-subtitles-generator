@@ -13,6 +13,7 @@ import {
   readData,
   textEncoder,
 } from './translationDataGuards';
+import { isNativeErrorCode } from '../platform/plainDataRecord';
 
 export const TRANSLATION_SCHEMA_VERSION = 1;
 
@@ -140,7 +141,7 @@ const normalizeStyle = (style, field) => {
   };
 };
 
-/** Strict parser for the localStorage language-chain compatibility setting. */
+/** Strict parser for the stored language-chain preference. */
 export const normalizeLanguageChain = (
   value,
   { allowEmptyLanguage = true, requireRunnable = false } = {}
@@ -318,7 +319,7 @@ const normalizeFailedChunk = (chunk, index) => {
     `${field}.errorCode`,
     128
   );
-  if (!/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(errorCode)) {
+  if (!isNativeErrorCode(errorCode)) {
     throw new TranslationDataError('invalidTranslationData', `${field}.errorCode is invalid`);
   }
   return Object.freeze({ chunkIndex, startOrder, endOrder, errorCode });

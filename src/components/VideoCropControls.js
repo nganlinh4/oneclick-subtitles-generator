@@ -205,7 +205,7 @@ const VideoCropControls = ({
               onClick={onClear}
               title={t('videoRendering.clearCrop', 'Clear crop')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>close</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px' }}>close</span>
             </button>
           )}
         </div>
@@ -236,7 +236,7 @@ const VideoCropControls = ({
               title={t('videoRendering.exitCrop', 'Exit crop')}
               style={{ cursor: uiDrag?.kind === 'toggle' ? 'grabbing' : 'grab' }}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>transform</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px' }}>transform</span>
             </button>
           </div>
 

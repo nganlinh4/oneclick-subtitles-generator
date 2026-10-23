@@ -4,12 +4,12 @@ import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
 
 import { defaultCustomization } from '../components/subtitleCustomization/defaultCustomization';
 import {
-  animationEasing,
-  animationTypes,
-  borderStyleOptions,
-  positionOptions,
-  textAlignOptions,
-  textTransformOptions,
+  getAnimationEasing,
+  getAnimationTypes,
+  getBorderStyleOptions,
+  getPositionOptions,
+  getTextAlignOptions,
+  getTextTransformOptions,
 } from '../components/subtitleCustomization/fontOptions';
 
 import { buildNativeRenderRequest } from './renderService';
@@ -135,13 +135,15 @@ export const requestWith = ({
   crop,
 });
 
+const catalogLabel = (_key, fallback) => fallback;
+
 export const editorCustomizationCatalogs = Object.freeze([
-  ['animationEasing', animationEasing],
-  ['animationType', animationTypes],
-  ['borderStyle', borderStyleOptions],
-  ['position', positionOptions],
-  ['textAlign', textAlignOptions],
-  ['textTransform', textTransformOptions],
+  ['animationEasing', getAnimationEasing(catalogLabel)],
+  ['animationType', getAnimationTypes(catalogLabel)],
+  ['borderStyle', getBorderStyleOptions(catalogLabel)],
+  ['position', getPositionOptions(catalogLabel)],
+  ['textAlign', getTextAlignOptions(catalogLabel)],
+  ['textTransform', getTextTransformOptions(catalogLabel)],
 ]);
 
 export const job = (overrides = {}) => ({

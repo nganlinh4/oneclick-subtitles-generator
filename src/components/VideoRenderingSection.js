@@ -73,13 +73,8 @@ const VideoRenderingSection = ({
     isDragging,
     selectedVideoFile,
     setSelectedVideoFile,
-    handleVideoUpload,
     handleBrowseClick,
     nativeDropZoneRef,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
   } = useVideoUpload({ onNativeVideoSelected });
 
   const {
@@ -418,10 +413,6 @@ const VideoRenderingSection = ({
       <div
         ref={sectionRef}
         className={`video-rendering-section ${isCollapsed ? 'collapsed' : 'expanded'} ${isDragging ? 'dragging' : ''}`}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
       >
       <VideoRenderingHeader
         isCollapsed={isCollapsed}
@@ -462,7 +453,6 @@ const VideoRenderingSection = ({
           <InputSelectionRow
             selectedVideoFile={selectedVideoFile}
             hasSubtitles={getCurrentSubtitles().length > 0}
-            handleVideoUpload={handleVideoUpload}
             handleBrowseClick={handleBrowseClick}
             nativeDropZoneRef={nativeDropZoneRef}
             subtitlesData={subtitlesData}

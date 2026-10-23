@@ -1,6 +1,7 @@
 import useSettingsPersistence from './useSettingsPersistence';
 import { upsertSingletonCredential } from '../../../platform/credentialStateController';
 import { invokeDesktop } from '../../../platform/desktopRuntime';
+import { readPreference, subscribePreference } from '../../../platform/preferences/store';
 
 vi.mock('../../../platform/credentialStateController', () => ({
   upsertSingletonCredential: vi.fn(),
@@ -14,7 +15,6 @@ vi.mock('../../../platform/desktopRuntime', () => ({
 }));
 
 const createParams = (overrides = {}) => ({
-  geminiApiKey: 'stale-gemini-secret',
   youtubeApiKey: 'fresh-youtube-secret',
   geniusApiKey: 'fresh-genius-secret',
   segmentDuration: 5,
@@ -42,9 +42,6 @@ const createParams = (overrides = {}) => ({
   thinkingBudgets: {},
   customGeminiModels: [],
   setOriginalSettings: vi.fn(),
-  setHasChanges: vi.fn(),
-  setIsSettingsLoaded: vi.fn(),
-  setGeminiApiKey: vi.fn(),
   setYoutubeApiKey: vi.fn(),
   setGeniusApiKey: vi.fn(),
   setYoutubeClientId: vi.fn(),
@@ -77,7 +74,6 @@ it('submits native drafts once, clears form fields, and never stores or forwards
       clientSecret: 'oauth-client-secret',
     })],
   ]);
-  expect(params.setGeminiApiKey).toHaveBeenCalledWith('');
   expect(params.setYoutubeApiKey).toHaveBeenCalledWith('');
   expect(params.setGeniusApiKey).toHaveBeenCalledWith('');
   expect(params.setYoutubeClientId).toHaveBeenCalledWith('');
@@ -85,7 +81,7 @@ it('submits native drafts once, clears form fields, and never stores or forwards
   expect(localStorage.getItem('gemini_api_key')).toBeNull();
   expect(localStorage.getItem('youtube_api_key')).toBeNull();
   expect(localStorage.getItem('genius_token')).toBeNull();
-  expect(params.onSave.mock.calls[0].slice(0, 3)).toEqual(['', '', '']);
+  expect(params.onSave).toHaveBeenCalledExactlyOnceWith();
   expect(invokeDesktop).toHaveBeenCalledWith('settings_set_many', {
     values: expect.objectContaining({
       segment_duration: '5',
@@ -100,7 +96,6 @@ it('submits native drafts once, clears form fields, and never stores or forwards
     'youtube_client_secret',
   ]));
   expect(params.setOriginalSettings.mock.calls[0][0]).toEqual(expect.objectContaining({
-    geminiApiKey: '',
     youtubeApiKey: '',
     geniusApiKey: '',
     youtubeClientId: '',
@@ -114,7 +109,6 @@ it('clears native form drafts even when secure submission fails', async () => {
 
   await expect(useSettingsPersistence(params).handleSave()).rejects.toThrow('safe failure');
 
-  expect(params.setGeminiApiKey).toHaveBeenCalledWith('');
   expect(params.setYoutubeApiKey).toHaveBeenCalledWith('');
   expect(params.setGeniusApiKey).toHaveBeenCalledWith('');
   expect(params.setYoutubeClientId).toHaveBeenCalledWith('');
@@ -133,7 +127,7 @@ it('never revives raw-key persistence when legacy server flags are present', asy
   expect(localStorage.getItem('gemini_api_keys')).toBeNull();
   expect(localStorage.getItem('youtube_api_key')).toBeNull();
   expect(localStorage.getItem('genius_token')).toBeNull();
-  expect(params.onSave.mock.calls[0].slice(0, 3)).toEqual(['', '', '']);
+  expect(params.onSave).toHaveBeenCalledExactlyOnceWith();
 });
 
 it('persists the cookie toggle and selected browser as one preference', async () => {
@@ -235,6 +229,30 @@ it('does not publish browser state, success, or close when SQLite persistence fa
   expect(params.onSave).not.toHaveBeenCalled();
   expect(params.setOriginalSettings).not.toHaveBeenCalled();
   expect(params.setTranscriptionPrompt).not.toHaveBeenCalled();
-  expect(params.setHasChanges).not.toHaveBeenCalled();
   expect(params.handleClose).not.toHaveBeenCalled();
+});
+
+it('notifies the subscribers of every saved preference instead of a keyless storage event', async () => {
+  const timeFormatListener = vi.fn();
+  const maxWordsListener = vi.fn();
+  const unsubscribeTime = subscribePreference('time_format', timeFormatListener);
+  const unsubscribeWords = subscribePreference('video_processing_max_words', maxWordsListener);
+  const storageEvents = vi.fn();
+  window.addEventListener('storage', storageEvents);
+  const params = createParams({
+    timeFormat: 'seconds',
+    favoriteMaxSubtitleLength: 9,
+    youtubeClientId: '',
+    youtubeClientSecret: '',
+  });
+
+  await useSettingsPersistence(params).handleSave();
+
+  expect(timeFormatListener).toHaveBeenCalled();
+  expect(maxWordsListener).toHaveBeenCalled();
+  expect(readPreference('video_processing_max_words')).toBe(9);
+  expect(storageEvents).not.toHaveBeenCalled();
+  window.removeEventListener('storage', storageEvents);
+  unsubscribeTime();
+  unsubscribeWords();
 });

@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { parseSrtContent } from '../../utils/srtParser';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 /**
  * Bulk translation file pool component
@@ -222,9 +223,13 @@ const BulkTranslationPool = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={handleBrowseClick}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          onKeyDown={activateOnKey}
+          aria-disabled={disabled || undefined}
         >
           <div className="drop-zone-content">
-            <span className="material-symbols-rounded" style={{ fontSize: '18px' }}>description</span>
+            <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '18px' }}>description</span>
             <span className="drop-zone-text">
               {bulkFiles.length === 0
                 ? t('translation.bulk.dropFiles', 'Drop SRT/JSON files for bulk translation')
@@ -295,7 +300,7 @@ const BulkTranslationPool = ({
                   disabled={disabled}
                   title={t('translation.bulk.removeFile', 'Remove file')}
                 >
-                  <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
+                  <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>close</span>
                 </button>
               </div>
             ))}

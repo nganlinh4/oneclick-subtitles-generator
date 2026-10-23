@@ -1,4 +1,4 @@
-import { parseSrtContent, secondsToSrtTime } from './srtParser';
+import { parseSrtContent } from './srtParser';
 
 it('parses BOM, CRLF, multiline text, optional indexes, and fractional variants exactly', () => {
   expect(parseSrtContent(
@@ -34,8 +34,4 @@ it.each([
   ['unsafe duration', `1\n${'9'.repeat(30)}:00:00,000 --> ${'9'.repeat(30)}:00:01,000\nBad`],
 ])('rejects the whole document for %s', (_case, input) => {
   expect(parseSrtContent(input)).toEqual([]);
-});
-
-it('keeps the existing seconds formatter contract', () => {
-  expect(secondsToSrtTime(3_661.007)).toBe('01:01:01,007');
 });

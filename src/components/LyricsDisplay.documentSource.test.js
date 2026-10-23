@@ -47,6 +47,8 @@ test('Download Center captures the chosen subtitle source after switching or edi
   await waitFor(() => expect(mocks.downloadText).toHaveBeenLastCalledWith(
     'Summary: Translated first\n\nTranslated second', expect.any(String),
   ));
+  expect(mocks.summarize.mock.calls.map(([, , , source]) => source))
+    .toEqual(['original', 'translated']);
 
   fireEvent.click(screen.getByRole('button', { name: 'Edit cue' }));
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Summarize original' })));

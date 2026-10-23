@@ -1,6 +1,6 @@
 // Channel ownership for one native speech job: buffers events until the start reply arrives, checks
 // every event against the requested segments and the runtime lifecycle epoch, and cancels on drift.
-import { hasOnlyKeys, isRecord } from './plainDataRecord';
+import { hasOnlyKeys, isAbortSignalLike } from './plainDataRecord';
 import {
   MAX_JOB_EVENTS,
   MAX_PENDING_EVENTS,
@@ -11,7 +11,7 @@ import {
 } from './speechContract';
 import { normalizeJobSnapshot, normalizeSpeechJobEvent } from './speechResponses';
 
-const handlerKeys = new Set([
+const handlerKeys = Object.freeze([
   'onEvent',
   'onProgress',
   'onSegmentCompleted',
@@ -23,7 +23,7 @@ const handlerKeys = new Set([
   'onHandlerError',
   'onCancellationError',
 ]);
-const startOptionKeys = new Set(['signal']);
+const startOptionKeys = Object.freeze(['signal']);
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
@@ -41,12 +41,7 @@ const normalizeStartOptions = (options) => {
   if (!hasOnlyKeys(options, startOptionKeys)) throw invalidRequest();
   const signal = options.signal;
   if (signal === undefined || signal === null) return Object.freeze({ signal: null });
-  if (!isRecord(signal)
-      || typeof signal.aborted !== 'boolean'
-      || typeof signal.addEventListener !== 'function'
-      || typeof signal.removeEventListener !== 'function') {
-    throw invalidRequest();
-  }
+  if (!isAbortSignalLike(signal)) throw invalidRequest();
   return Object.freeze({ signal });
 };
 
@@ -252,7 +247,7 @@ export const createSpeechJobStarter = ({
     } catch {
       throw invalidRequest();
     }
-    if (!isRecord(channel)) throw invalidRequest();
+    if (channel === null || typeof channel !== 'object') throw invalidRequest();
 
     const unsubscribe = lifecycleState.subscribe((status) => {
       if (status.backend === ownership.backend && !lifecycleMatches()) failOwnership();

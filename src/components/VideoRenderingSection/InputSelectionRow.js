@@ -11,7 +11,6 @@ import HelpIcon from '../common/HelpIcon';
  */
 const InputSelectionRow = ({
   selectedVideoFile,
-  handleVideoUpload,
   handleBrowseClick,
   nativeDropZoneRef,
   subtitlesData,
@@ -39,8 +38,7 @@ const InputSelectionRow = ({
             <div className="selected-video-info-row top-row">
               <span className="material-symbols-rounded video-file-icon">video_file</span>
               <span className="video-name">
-                {(selectedVideoFile instanceof File ? selectedVideoFile.name :
-                  (selectedVideoFile.name || selectedVideoFile.title || 'Current Video'))}
+                {selectedVideoFile.name || selectedVideoFile.title || t('videoRendering.currentVideo', 'Current Video')}
               </span>
             </div>
             <div className="selected-video-info-row bottom-row">
@@ -70,13 +68,6 @@ const InputSelectionRow = ({
             </span>
           </div>
         )}
-        <input
-          id="video-upload-input"
-          type="file"
-          accept="video/*"
-          onChange={handleVideoUpload}
-          style={{ display: 'none' }}
-        />
       </div>
 
       {/* Subtitle Selection */}

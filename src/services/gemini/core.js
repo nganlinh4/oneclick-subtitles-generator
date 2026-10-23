@@ -25,6 +25,7 @@ import {
   assertAutoGenerationContextDurable,
   isAutoGenerationContext,
 } from '../../utils/autoGenerationOwnership';
+import { readPreference } from '../../platform/preferences/store';
 
 const nativeMediaRequired = () => new Error(
   'Select the media again before starting native Gemini transcription.'
@@ -88,7 +89,7 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
   if (!isNativeMediaDescriptor(input)) throw nativeMediaRequired();
 
   const model = normalizeMediaModelId(
-    options.modelId || localStorage.getItem('gemini_model'),
+    options.modelId || readPreference('gemini_model'),
     DEFAULT_TRANSCRIPTION_MODEL_ID
   );
   const autoRunContext = isAutoGenerationContext(options.autoRunContext)
@@ -210,11 +211,6 @@ export const callGeminiApi = async (input, _inputType, options = {}) => {
   }
 };
 
-/** Compatibility name retained for existing processing flows; there is no Files API path. */
-export const callGeminiApiWithFilesApi = (input, options = {}) => (
-  callGeminiApi(input, 'file-upload', options)
-);
-
 /** Compatibility name retained for analysis callers that still use the former Files API shape. */
 export const callGeminiApiWithFilesApiForAnalysis = async (
   input,
@@ -223,7 +219,7 @@ export const callGeminiApiWithFilesApiForAnalysis = async (
 ) => {
   if (!isNativeMediaDescriptor(input)) throw nativeMediaRequired();
   const model = normalizeMediaModelId(
-    options.modelId || localStorage.getItem('video_analysis_model'),
+    options.modelId || readPreference('video_analysis_model'),
     DEFAULT_ANALYSIS_MODEL_ID
   );
   const result = await runNativeGeminiMediaAnalysis({
@@ -243,11 +239,9 @@ const streamThroughNativeTranscription = async (
   options,
   onChunk,
   onComplete,
-  onError,
-  onProgress
+  onError
 ) => {
   try {
-    onProgress?.({ native: true });
     const subtitles = await callGeminiApi(input, 'file-upload', {
       ...options,
       ...(typeof onChunk === 'function' ? { onChunk } : {}),

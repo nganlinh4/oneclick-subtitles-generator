@@ -245,7 +245,7 @@ const ModelManagementTab = ({ activeTab }) => {
             <div className="model-card-content narration-model-package__body">
               <h5 className="model-title">F5-TTS v1 Base</h5>
               <p className="model-source">{t('settings.modelManagement.source', 'Source')}: F5-TTS</p>
-              <div className="model-languages"><span className="language-chip zh">Chinese</span><span className="language-chip en">English</span></div>
+              <div className="model-languages"><span className="language-chip zh">{t('settings.modelManagement.languageChinese', 'Chinese')}</span><span className="language-chip en">{t('settings.modelManagement.languageEnglish', 'English')}</span></div>
               <span className={`narration-model-package__state state-${status?.state ?? 'checking'}`}>{stateCopy(t, status)}</span>
               {status?.operation ? <div className="narration-model-package__progress"><div style={{ width: `${status.operation.basisPoints / 100}%` }} /></div> : null}
             </div>
@@ -272,7 +272,7 @@ const ModelManagementTab = ({ activeTab }) => {
             <div className="model-card-content">
               <h5 className="model-title">F5-TTS v1 Base</h5>
               <p className="model-author">{t('settings.modelManagement.by', 'by')} F5-TTS</p>
-              <div className="model-languages"><span className="language-chip zh">Chinese</span><span className="language-chip en">English</span></div>
+              <div className="model-languages"><span className="language-chip zh">{t('settings.modelManagement.languageChinese', 'Chinese')}</span><span className="language-chip en">{t('settings.modelManagement.languageEnglish', 'English')}</span></div>
               <span className={`narration-model-package__state state-${status?.state ?? 'checking'}`}>{stateCopy(t, status)}</span>
               {status?.operation ? <div className="narration-model-package__progress"><div style={{ width: `${status.operation.basisPoints / 100}%` }} /></div> : null}
             </div>

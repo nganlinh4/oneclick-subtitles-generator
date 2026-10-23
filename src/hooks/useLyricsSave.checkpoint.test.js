@@ -11,10 +11,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key, fallback) => fallback }),
 }));
 
-vi.mock('../platform/desktopRuntime', () => ({
-  invokeDesktop: vi.fn(),
-  isDesktopRuntime: () => true,
-}));
 
 vi.mock('../platform/durableLyricsCheckpoint', () => ({
   flushDurableLyricsHistory: mocks.flush,
@@ -104,7 +100,7 @@ it('runs translation-start without depending on save UI or toast presentation', 
   unmount();
 });
 
-it('ignores every mounted lifecycle listener on desktop and flushes once centrally', async () => {
+it('flushes once centrally however many editors are mounted', async () => {
   const updateSavedLyrics = vi.fn();
   const { unmount } = renderHook(() => {
     useLyricsSave({
@@ -116,7 +112,6 @@ it('ignores every mounted lifecycle listener on desktop and flushes once central
       lyrics: rows,
       updateSavedLyrics,
       onSaveSubtitles: vi.fn(),
-      listenForLifecycle: false,
     });
   });
 

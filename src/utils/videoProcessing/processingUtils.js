@@ -1,16 +1,10 @@
 import { projectClipSubtitles } from './segmentTimestamps';
-import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import { isNativeMediaDescriptor } from '../../platform/mediaService';
 import { bindGeminiTranscriptionDeliveries } from '../../services/gemini/transcriptionDelivery';
 import { shouldSplitGeneratedSubtitles } from '../../services/gemini/promptManagement';
 
 /**
- * Legacy processing utilities for video/audio processing
- * @deprecated These functions are deprecated. Use simplifiedProcessing.js instead.
- *
- * This file provides backward compatibility for legacy code that still uses
- * the old segment-based processing approach. All functions now redirect to
- * the new simplified processing system for better performance.
+ * Segment streaming for native Gemini transcription (used by GeminiAdapter).
  */
 
 /**
@@ -35,7 +29,7 @@ const mapMediaResolution = (resolution) => {
  * @returns {Promise<Array>} - Final subtitle array
  */
 export const processSegmentWithStreaming = async (file, segment, options, setStatus, onSubtitleUpdate, t) => {
-  if (isDesktopRuntime() && !isNativeMediaDescriptor(file)) {
+  if (!isNativeMediaDescriptor(file)) {
     throw new Error('Select the media again before starting native Gemini transcription.');
   }
 
@@ -176,16 +170,7 @@ export const processSegmentWithStreaming = async (file, segment, options, setSta
           finalApiOptions,
           (chunk) => processor.processChunk(chunk),
           (finalText) => processor.complete(finalText),
-          (error) => processor.error(error),
-          (progress) => {
-            // Handle parallel processing progress updates
-            if (progress && progress.segmentProgress) {
-              // Dispatch progress event for UI updates
-              window.dispatchEvent(new CustomEvent('parallel-processing-progress', {
-                detail: progress
-              }));
-            }
-          }
+          (error) => processor.error(error)
         );
       }).then((result) => {
         providerResult = result;

@@ -3,6 +3,8 @@ import { buildOutsideContextText, getSelectedPromptText } from './videoProcessin
 import { getEngineType } from '../services/engines/transcriptionEngineRegistry';
 import { isNativeMediaDescriptor } from '../platform/mediaService';
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
+import { createPromptContext } from './videoProcessingPreferences';
+import { getTranscriptionRulesSync } from '../utils/transcriptionRulesStore';
 
 /**
  * Read a video file's duration via a throwaway <video> element, with a 2s cap.
@@ -32,17 +34,16 @@ const readVideoDuration = (videoFile) => {
 /**
  * Assemble the processing options from current modal state and invoke onProcess.
  *
- * Mirrors the original modal's submit handler exactly: audio + Gemini-new auto-
- * expands the range to the whole video, outside-context text is persisted just
- * before processing, parallel splitting is disabled for retry/audio cases, and
- * retry-from-cache forces the old method with a single request window.
+ * Audio + Gemini-new auto-expands the range to the whole video, the run's prompt
+ * inputs (including outside-range context) travel as an immutable promptContext,
+ * parallel splitting is disabled for retry/audio cases, and retry-from-cache
+ * forces the old method with a single request window.
  */
 const runVideoProcess = async ({
     selectedSegment,
     isUploading,
     videoFile,
     inlineExtraction,
-    isVercelMode,
     retryLock,
     onSelectedSegmentChange,
     useOutsideResultsContext,
@@ -110,32 +111,21 @@ const runVideoProcess = async ({
         }
     }
 
-    // Persist outside-context text just before processing (user-provided flow reads it in promptManagement)
-    try {
-        const ctxText = buildOutsideContextText(useOutsideResultsContext, outsideContext);
-        if (useOutsideResultsContext && ctxText) {
-            localStorage.setItem('video_processing_outside_context_text', ctxText);
-            localStorage.setItem('video_processing_use_outside_context', 'true');
-        } else {
-            localStorage.removeItem('video_processing_outside_context_text');
-            // keep the toggle key accurate
-            localStorage.setItem('video_processing_use_outside_context', 'false');
-        }
-    } catch {
-        // Compatibility context persistence must not block processing.
-    }
+    // The run's prompt inputs travel with the request; the user's stored choices are untouched.
+    const promptContext = createPromptContext({
+        presetId: selectedPromptPreset,
+        customLanguage,
+        useTranscriptionRules,
+        transcriptionRules: useTranscriptionRules ? getTranscriptionRulesSync() : null,
+        outsideContextText: buildOutsideContextText(useOutsideResultsContext, outsideContext),
+    });
 
     // Determine if parallel processing should be disabled (infinite duration)
     const shouldDisableParallelProcessing = (() => {
         if (retryLock) return true;
         if (isNativeMediaDescriptor(videoFile)) return false;
-        if (videoFile?.type?.startsWith('audio/')) {
-            // In Vercel mode, disable parallel processing for all audio
-            if (isVercelMode) return true;
-            // In non-Vercel mode, disable parallel processing for audio with new method
-            if (!inlineExtraction) return true;
-        }
-        return false;
+        // Audio with the new (Files API) method is sent as a single request.
+        return Boolean(videoFile?.type?.startsWith('audio/')) && !inlineExtraction;
     })();
 
     const options = {
@@ -150,6 +140,7 @@ const runVideoProcess = async ({
         promptPreset: selectedPromptPreset,
         customLanguage: selectedPromptPreset === 'translate-directly' ? customLanguage : undefined,
         useTranscriptionRules, // Include the transcription rules setting
+        promptContext,
         maxDurationPerRequest: shouldDisableParallelProcessing
             ? 999999999 // Very large value to prevent splitting (infinite duration)
             : (getEngineType(method) === 'asr' ? asrMaxDurationPerRequest : maxDurationPerRequest) * 60, // Convert to seconds

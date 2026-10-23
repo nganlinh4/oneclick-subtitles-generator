@@ -8,7 +8,6 @@ import {
   resolveActiveNativeMedia,
   refreshActiveNativeMedia,
 } from '../../platform/activeNativeMedia';
-import { isDesktopRuntime } from '../../platform/desktopRuntime';
 import {
   renderWaveform as renderWaveformImpl,
   updateVisualization as updateVisualizationImpl,
@@ -100,9 +99,6 @@ const VolumeVisualizer = ({ audioSource, duration, visibleTimeRange, height = 26
 
     const run = async () => {
       try {
-        if (!isDesktopRuntime()) {
-          throw new Error('Native waveform processing requires the desktop runtime');
-        }
         const capability = await resolveWaveformCapability(audioSource, controller.signal);
         if (!isCurrent()) return;
         let nextWaveform = cachedWaveform(capability.assetId);

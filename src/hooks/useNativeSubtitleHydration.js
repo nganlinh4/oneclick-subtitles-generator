@@ -151,6 +151,8 @@ export const createNativeSubtitleHydrator = ({
 
 export const useNativeSubtitleHydration = ({ setSubtitlesData, revisionRef, t }) => {
   useEffect(() => {
+    // Host-absent renders (the Vite dev server in a plain browser, jsdom) skip native hydration
+    // so they never surface a failure toast; inside Tauri this always runs.
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeSubtitleHydrator({
       readRevision: () => revisionRef.current,

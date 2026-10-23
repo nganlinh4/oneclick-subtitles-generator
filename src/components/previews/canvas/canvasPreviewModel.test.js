@@ -31,6 +31,13 @@ describe('canvas preview geometry boundary', () => {
     }))).toEqual({ code: 'glyphAtlasFaceSubstituted', retryable: false });
   });
 
+  it('keeps any code of the shared native shape and replaces a malformed one', () => {
+    const longest = `a${'b'.repeat(127)}`;
+    expect(canvasPreviewFailure({ code: longest }).code).toBe(longest);
+    expect(canvasPreviewFailure({ code: `${longest}c` }).code).toBe('canvasPreviewRejected');
+    expect(canvasPreviewFailure({ code: 'not a code' }).code).toBe('canvasPreviewRejected');
+  });
+
   it('adapts the native widthPx/heightPx contract into finite canvas dimensions', () => {
     expect(canvasCompositionSize({
       resolution: '1080p',

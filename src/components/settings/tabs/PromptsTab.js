@@ -7,6 +7,7 @@ import {
   hasExactlyOneContentTypeToken,
   normalizeTranscriptionPrompt,
 } from '../../../services/gemini/transcriptionPromptInvariant';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
   const { t } = useTranslation();
@@ -306,6 +307,9 @@ const PromptsTab = ({ transcriptionPrompt, setTranscriptionPrompt }) => {
             <div
               className="add-preset-card"
               onClick={() => setShowAddPresetForm(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={activateOnKey}
             >
               <div className="add-preset-icon">+</div>
               <p>{t('settings.addPreset', 'Add New Preset')}</p>

@@ -15,10 +15,6 @@ function assertLoopbackAuditManifest(rootDirectory) {
   invariant(audit.schemaVersion === 2, 'Production transport audit must use schemaVersion 2');
   invariant(audit.productionPolicy === 'native-only',
     'Production transport audit must enforce the native-only policy');
-  invariant(audit.guardModule === 'src/platform/browserOnlyService.js',
-    'Production transport audit must name the reviewed inspection guard module');
-  invariant(fs.existsSync(path.join(rootDirectory, audit.guardModule)),
-    `Production inspection guard module is missing: ${audit.guardModule}`);
   invariant(audit.artifactGate === 'scripts/check-production-transport.js',
     'Production transport audit must name the compiled-artifact transport gate');
   invariant(fs.existsSync(path.join(rootDirectory, audit.artifactGate)),
@@ -76,83 +72,6 @@ function assertLoopbackAuditManifest(rootDirectory) {
 
 const LOCAL_SERVICE_ENDPOINT = /(?:https?|wss?):\/\/(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){0,3}|\[(?:::1|0:0:0:0:0:0:0:1)\])(?::(?:\d+|\$\{[^}]+}))?(?=[/?#'"`\s),;]|$)/i;
 
-function findClosingParenthesis(source, openingIndex) {
-  let depth = 0;
-  let quote = null;
-  for (let index = openingIndex; index < source.length; index += 1) {
-    const character = source[index];
-    const next = source[index + 1];
-    if (quote !== null) {
-      if (character === '\\') {
-        index += 1;
-      } else if (character === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (character === '/' && next === '/') {
-      const newline = source.indexOf('\n', index + 2);
-      if (newline === -1) return -1;
-      index = newline;
-      continue;
-    }
-    if (character === '/' && next === '*') {
-      const closing = source.indexOf('*/', index + 2);
-      if (closing === -1) return -1;
-      index = closing + 1;
-      continue;
-    }
-    if (character === "'" || character === '"' || character === '`') {
-      quote = character;
-      continue;
-    }
-    if (character === '(') depth += 1;
-    if (character === ')') {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-}
-
-function importsReviewedBrowserOnlyGuard(source, sourcePath, guardPath) {
-  const guardImports = /import\s*\{[^}]*\bguardBrowserOnlyServiceOrigin\b[^}]*}\s*from\s*['"]([^'"]+)['"]/g;
-  for (const match of source.matchAll(guardImports)) {
-    const moduleSpecifier = match[1];
-    if (!moduleSpecifier.startsWith('.')) continue;
-    const resolved = path.resolve(path.dirname(sourcePath), moduleSpecifier);
-    const resolvedWithExtension = path.extname(resolved) ? resolved : `${resolved}.js`;
-    if (path.normalize(resolvedWithExtension) === path.normalize(guardPath)) return true;
-  }
-  return false;
-}
-
-function maskGuardedBrowserServiceOrigins(source, sourcePath, guardPath) {
-  if (!importsReviewedBrowserOnlyGuard(source, sourcePath, guardPath)) return source;
-
-  const masked = [...source];
-  const functionName = 'guardBrowserOnlyServiceOrigin';
-  let cursor = 0;
-  while (cursor < source.length) {
-    const callStart = source.indexOf(functionName, cursor);
-    if (callStart === -1) break;
-    let opening = callStart + functionName.length;
-    while (/\s/.test(source[opening] || '')) opening += 1;
-    if (source[opening] !== '(') {
-      cursor = opening;
-      continue;
-    }
-    const closing = findClosingParenthesis(source, opening);
-    if (closing === -1) break;
-    const invocation = source.slice(callStart, closing + 1);
-    if (LOCAL_SERVICE_ENDPOINT.test(invocation) && !/\bnativeRuntime\b/.test(invocation)) {
-      for (let index = callStart; index <= closing; index += 1) masked[index] = ' ';
-    }
-    cursor = closing + 1;
-  }
-  return masked.join('');
-}
-
 const TEST_FILE = /\.(?:test|spec)\.(?:js|jsx|ts|tsx)$/;
 // Shared test-only modules (`fooTestFixtures.js`, `fooTestHarness.js`): exempt from the scan only
 // because no production module may import them, which assertNoProductionTestSupportImports checks.
@@ -179,12 +98,9 @@ function assertNoProductionTestSupportImports(rootDirectory) {
 
 function assertNoUnmanagedLocalServices(rootDirectory) {
   assertNoProductionTestSupportImports(rootDirectory);
-  const reviewedGuardPath = path.join(rootDirectory, 'src/platform/browserOnlyService.js');
-  const offenders = productionSourceFiles(rootDirectory).filter((candidate) => LOCAL_SERVICE_ENDPOINT.test(maskGuardedBrowserServiceOrigins(
-    fs.readFileSync(candidate, 'utf8'),
-    candidate,
-    reviewedGuardPath,
-  )));
+  const offenders = productionSourceFiles(rootDirectory).filter((candidate) => (
+    LOCAL_SERVICE_ENDPOINT.test(fs.readFileSync(candidate, 'utf8'))
+  ));
   const displayed = offenders
     .slice(0, 12)
     .map((candidate) => toRepositoryPath(rootDirectory, candidate));

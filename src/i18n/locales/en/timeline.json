@@ -1,8 +1,4 @@
 {
-  "zoomIn": "Zoom In",
-  "zoomOut": "Zoom Out",
-  "resetZoom": "Reset Zoom",
-  "waveformDisabled": "Audio waveform visualization has been automatically disabled for videos longer than 30 minutes to improve performance.",
   "srtOnlyMode": "SRT-only mode - Timeline visualization based on subtitle timings",
   "generateReplace": "Regenerate subtitles",
   "clearInRangeWithShortcut": "Clear subtitles in range (Del/Backspace)",

@@ -246,3 +246,18 @@ test('blocks ambient history chrome over a modal while preserving live actionabl
   expect(screen.queryByText('Earlier completed action')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
 });
+
+test('a live toast closes from the keyboard through its named close control', async () => {
+  render(<ToastPanel />);
+  await waitFor(() => expect(typeof window.addToast).toBe('function'));
+  act(() => {
+    window.addToast('keyboard dismissal', 'error', 30_000);
+  });
+
+  const message = await screen.findByText('keyboard dismissal');
+  const close = screen.getByRole('button', { name: 'Close' });
+  fireEvent.keyDown(close, { key: 'Enter' });
+
+  expect(message.closest('.toast-item')).toHaveClass('dismissing');
+  await waitFor(() => expect(screen.queryByText('keyboard dismissal')).not.toBeInTheDocument());
+});

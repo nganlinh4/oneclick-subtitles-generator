@@ -38,7 +38,6 @@ export const useAppHandlers = (appState) => {
     retryGeneration,
     isRetrying,
     setIsRetrying,
-    setSegmentsStatus,
     // Video processing workflow
     setIsUploading,
     setSelectedSegment,
@@ -46,13 +45,6 @@ export const useAppHandlers = (appState) => {
     uploadedFileData,
     setUploadedFileData,
     setIsProcessingSegment,
-    // Settings setters consumed by saveApiKeys
-    setTimeFormat,
-    setShowWaveformLongVideos,
-    setOptimizedResolution,
-    setUseOptimizedPreview,
-    setUseCookiesForDownload,
-    setEnableYoutubeSearch,
     t = (key, defaultValue) => defaultValue, // Provide a default implementation if t is not available
   } = appState;
   // Holds auto-downloaded subtitle content until video download completes
@@ -90,12 +82,6 @@ export const useAppHandlers = (appState) => {
       setDownloadProgress,
       setCurrentDownloadId,
       setIsSrtOnlyMode,
-      setTimeFormat,
-      setShowWaveformLongVideos,
-      setOptimizedResolution,
-      setUseOptimizedPreview,
-      setUseCookiesForDownload,
-      setEnableYoutubeSearch,
       setApiKeysSet,
       t,
     });
@@ -139,7 +125,6 @@ export const useAppHandlers = (appState) => {
       setUploadedFile,
       setUploadedFileData,
       setIsRetrying,
-      setSegmentsStatus,
       setSelectedSegment,
       setShowProcessingModal,
       setIsProcessingSegment,
@@ -175,9 +160,6 @@ export const useAppHandlers = (appState) => {
       type: "loading",
     });
 
-
-    // Clear the segments-status before starting the generation process
-    setSegmentsStatus([]);
 
     // Start background upload and wait for segment selection
     if (

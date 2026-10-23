@@ -1,9 +1,6 @@
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
 import { isNativeMediaDescriptor } from "../../../platform/mediaService";
-import {
-  generateUrlBasedCacheId,
-  getCachedSubtitles,
-} from "../../../services/subtitleCache";
+import { getCachedSubtitles } from "../../../services/subtitleCache";
 import {
   getCurrentCacheId as getRulesCacheId,
 } from "../../../utils/transcriptionRulesStore";
@@ -11,7 +8,6 @@ import {
   getCurrentCacheId as getSubtitlesCacheId,
 } from "../../../utils/userSubtitlesStore";
 import { resolveProjectForCache } from "../../../platform/subtitleProjectStore";
-import { activateSubtitleProjectBinding } from "../../../platform/subtitleProjectBinding";
 import { parseSrtContent } from "../../../utils/srtParser";
 import {
   assertAutoGenerationRequestActive,
@@ -22,10 +18,10 @@ import {
   sourceIdentityForAsset,
   sourceIdentityForUrl,
 } from "../../../utils/autoGenerationOwnership";
-import { isDesktopRuntime } from "../../../platform/desktopRuntime";
 import { readNativeMediaSession } from "../../../platform/nativeMediaOwnership";
-import { registerBrowserMediaBlob } from "../../../platform/browserMediaBlobRegistry";
+import { updateActiveMedia } from "../../../platform/activeMediaSource";
 import { showErrorToast, showWarningToast } from "../../../utils/toastUtils";
+import { readPreference, writePreference } from "../../../platform/preferences/store";
 
 const pendingSubtitleEntries = new WeakMap();
 const activePreparationTokens = new WeakMap();
@@ -37,13 +33,6 @@ const entriesForPendingRef = (pendingRef) => {
     pendingSubtitleEntries.set(pendingRef, entries);
   }
   return entries;
-};
-
-const activateProjectCache = async (cacheId) => {
-  if (typeof cacheId !== "string" || cacheId.length === 0) {
-    throw new Error("The prepared media could not be bound to a subtitle project.");
-  }
-  return activateSubtitleProjectBinding(cacheId);
 };
 
 /**
@@ -114,35 +103,18 @@ export const createDownloadHandlers = ({
         if (!ownsPreparation()) throw ownershipFailure();
         if (guardedAutoRequest) {
           assertAutoGenerationRequestActive(guardedAutoRequest);
-          if (isDesktopRuntime()) {
-            // Before a URL download publishes its candidate there is deliberately no active B
-            // media identity yet. The preparation token and abort signal own that interval; the
-            // URL input must never forge ownership by overwriting A's compatibility keys. Once B
-            // is claimed, its exact native asset/session becomes mandatory at every boundary.
-            if (expectedAssetId !== null) {
-              const session = readNativeMediaSession();
-              if (session === null
-                  || session.assetId !== expectedAssetId
-                  || (projectCacheId !== null && session.cacheId !== projectCacheId)
-                  || (expectedProjectId !== null && session.projectId !== expectedProjectId)) {
-                throw new AutoGenerationOwnershipError();
-              }
-            }
-          } else if (sourceIdentity?.startsWith('url:')) {
-            const currentUrl = localStorage.getItem('current_video_url');
-            if (`url:${currentUrl ?? ''}` !== sourceIdentity) {
+          // Before a URL download publishes its candidate there is deliberately no active B
+          // media identity yet. The preparation token and abort signal own that interval; the
+          // URL input must never forge ownership by overwriting A's compatibility keys. Once B
+          // is claimed, its exact native asset/session becomes mandatory at every boundary.
+          if (expectedAssetId !== null) {
+            const session = readNativeMediaSession();
+            if (session === null
+                || session.assetId !== expectedAssetId
+                || (projectCacheId !== null && session.cacheId !== projectCacheId)
+                || (expectedProjectId !== null && session.projectId !== expectedProjectId)) {
               throw new AutoGenerationOwnershipError();
             }
-          } else if (sourceIdentity?.startsWith('asset:')) {
-            const currentAssetId = localStorage.getItem('current_file_cache_id');
-            if (`asset:${currentAssetId ?? ''}` !== sourceIdentity) {
-              throw new AutoGenerationOwnershipError();
-            }
-          }
-          if (!isDesktopRuntime()
-              && expectedAssetId !== null
-              && localStorage.getItem('current_file_cache_id') !== expectedAssetId) {
-            throw new AutoGenerationOwnershipError();
           }
         }
         if (expectedProjectId !== null
@@ -176,26 +148,18 @@ export const createDownloadHandlers = ({
         // Download YouTube video in background
         const systemTabChange = (tab) => {
           // Only update the current active tab for system-initiated changes
-          localStorage.setItem("lastActiveTab", tab);
+          writePreference("lastActiveTab", tab);
           setActiveTab(tab);
         };
         let preferredSubtitleLanguages = [];
-        if (localStorage.getItem('auto_import_site_subtitles') !== 'false') {
-          try {
-            const stored = localStorage.getItem('preferred_subtitle_langs');
-            const navigationLanguage = navigator.language || 'en-US';
-            preferredSubtitleLanguages = stored
-              ? JSON.parse(stored)
-              : [navigationLanguage, navigationLanguage.split('-')[0], 'en-US', 'en'];
-            if (!Array.isArray(preferredSubtitleLanguages)) preferredSubtitleLanguages = [];
-            preferredSubtitleLanguages = preferredSubtitleLanguages
-              .filter((language) => (
-                typeof language === 'string' && /^[A-Za-z0-9._-]{1,35}$/.test(language)
-              ))
-              .slice(0, 32);
-          } catch {
-            preferredSubtitleLanguages = [];
-          }
+        if (readPreference('auto_import_site_subtitles')) {
+          const navigationLanguage = navigator.language || 'en-US';
+          preferredSubtitleLanguages = (readPreference('preferred_subtitle_langs')
+            ?? [navigationLanguage, navigationLanguage.split('-')[0], 'en-US', 'en'])
+            .filter((language) => (
+              typeof language === 'string' && /^[A-Za-z0-9._-]{1,35}$/.test(language)
+            ))
+            .slice(0, 32);
         }
 
         processedFile = await downloadAndPrepareYouTubeVideo(
@@ -236,76 +200,43 @@ export const createDownloadHandlers = ({
         // so this must not be hidden behind an instanceof File check.
         if (processedFile) {
           try {
-            const nativeAuthority = isDesktopRuntime()
-              && isNativeMediaDescriptor(processedFile);
-            const currentVideoUrl = nativeAuthority
-              ? input.url
-              : localStorage.getItem("current_video_url");
-            if (currentVideoUrl) {
-              let urlBasedCacheId;
-              if (nativeAuthority) {
-                // Native download activation already committed this exact media/project pair.
-                // Rebinding it here created a second publisher and a race with newer selections.
-                await adoptNativeProjectAuthority(processedFile);
-                urlBasedCacheId = projectCacheId;
-              } else {
-                urlBasedCacheId = await generateUrlBasedCacheId(currentVideoUrl);
-                const binding = await activateProjectCache(urlBasedCacheId);
-                projectCacheId = urlBasedCacheId;
-                projectId = binding.projectId;
-                if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
-                assertPreparationOwnership(projectId);
-              }
+            // Native download activation already committed this exact media/project pair.
+            // Rebinding it here created a second publisher and a race with newer selections.
+            await adoptNativeProjectAuthority(processedFile);
 
-
-              let cachedSubtitles;
-              try {
-                cachedSubtitles = await getCachedSubtitles(
-                  urlBasedCacheId,
-                  currentVideoUrl,
-                  { expectedProjectId: projectId }
-                );
-              } catch (error) {
-                await assertPreparationProjectOwnership(projectId);
-                throw error;
-              }
+            let cachedSubtitles;
+            try {
+              cachedSubtitles = await getCachedSubtitles(
+                projectCacheId,
+                input.url,
+                { expectedProjectId: projectId }
+              );
+            } catch (error) {
               await assertPreparationProjectOwnership(projectId);
+              throw error;
+            }
+            await assertPreparationProjectOwnership(projectId);
 
-              if (
-                cachedSubtitles &&
-                cachedSubtitles.length > 0
-              ) {
-                if (guardedAutoRequest) {
-                  preparedSubtitleCandidate = cachedSubtitles;
-                } else {
-                  setSubtitlesData(cachedSubtitles);
-                  setStatus({
-                    message: t(
-                      "output.subtitlesLoadedFromCache",
-                      "Subtitles loaded from cache! Select a segment to generate more."
-                    ),
-                    type: "success",
-                  });
-                }
+            if (
+              cachedSubtitles &&
+              cachedSubtitles.length > 0
+            ) {
+              if (guardedAutoRequest) {
+                preparedSubtitleCandidate = cachedSubtitles;
               } else {
-                // The processing modal already owns the selected range and next action. Clear the
-                // transient download/upload state instead of covering that modal with a redundant
-                // "ready for segment selection" toast.
-                setStatus({});
-              }
-
-              if (processedFile instanceof File) {
-                // Browser builds still use a file hash for Files API upload reuse.
-                const { generateFileCacheId } = await import(
-                  "../../../utils/cacheUtils"
-                );
-                const fileCacheId = await generateFileCacheId(processedFile);
-                localStorage.setItem("current_file_cache_id", fileCacheId);
+                setSubtitlesData(cachedSubtitles);
+                setStatus({
+                  message: t(
+                    "output.subtitlesLoadedFromCache",
+                    "Subtitles loaded from cache! Select a segment to generate more."
+                  ),
+                  type: "success",
+                });
               }
             } else {
-              console.warn(
-                "[AppHandlers] No current video URL found for downloaded video"
-              );
+              // The processing modal already owns the selected range and next action. Clear the
+              // transient download/upload state instead of covering that modal with a redundant
+              // "ready for segment selection" toast.
               setStatus({});
             }
           } catch (error) {
@@ -326,54 +257,20 @@ export const createDownloadHandlers = ({
       } else {
         // File upload case - prepare the video for the new workflow
         processedFile = input; // uploadedFile
-        const nativeMedia = inputIsNativeMedia;
+        if (!inputIsNativeMedia) throw ownershipFailure();
 
-        // Clear any stale YouTube URL reference so Files API uses file-based caching for uploads
-        try { localStorage.removeItem("current_video_url"); } catch {
-          // Compatibility storage cleanup is best effort.
-        }
-
-        if (nativeMedia) {
-          // Native media is already owned by the desktop runtime. Preserve its
-          // opaque playback capability instead of treating the descriptor as a
-          // browser File/Blob.
-          localStorage.setItem("current_file_url", processedFile.playbackUrl);
-        } else {
-          // Check if we already have a blob URL for this browser file.
-          let blobUrl = localStorage.getItem("current_file_url");
-          if (!blobUrl || !blobUrl.startsWith("blob:")) {
-            blobUrl = URL.createObjectURL(processedFile);
-            localStorage.setItem("current_file_url", blobUrl);
-            registerBrowserMediaBlob(blobUrl, processedFile);
-          }
-        }
-        localStorage.setItem("current_file_name", processedFile.name);
+        // An upload has no site URL, so subtitle caching keys on the native asset. Preserve its
+        // opaque playback capability.
+        updateActiveMedia({ sourceUrl: null, playbackUrl: processedFile.playbackUrl });
 
         // IMPORTANT: Check for cached subtitles immediately for file uploads
         // This ensures the timeline shows cached subtitles right when output container appears
         try {
-          let cacheId = processedFile.assetId;
-          if (!nativeMedia) {
-            const { generateFileCacheId } = await import(
-              "../../../utils/cacheUtils"
-            );
-            cacheId = await generateFileCacheId(processedFile);
-          }
-          let binding = null;
-          if (nativeMedia && isDesktopRuntime()) {
-            // FileUploadInput has already committed the native selection and its project. Consume
-            // that capability instead of opening another activation transaction for the same file.
-            await adoptNativeProjectAuthority(processedFile);
-            cacheId = projectCacheId;
-          } else {
-            binding = await activateProjectCache(cacheId);
-          }
-          if (sourceIdentity === null) sourceIdentity = sourceIdentityForAsset(cacheId);
-          projectCacheId = cacheId;
-          projectId = binding?.projectId ?? projectId;
-          if (!projectId) throw new Error('The prepared media has no durable subtitle project.');
+          // FileUploadInput has already committed the native selection and its project. Consume
+          // that capability instead of opening another activation transaction for the same file.
+          await adoptNativeProjectAuthority(processedFile);
+          const cacheId = projectCacheId;
           assertPreparationOwnership(projectId);
-          if (!nativeMedia) localStorage.setItem("current_file_cache_id", cacheId);
 
           // Publish only after the durable project identity is active.
           setUploadedFile(processedFile);

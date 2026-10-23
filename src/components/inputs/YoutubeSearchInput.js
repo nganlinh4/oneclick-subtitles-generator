@@ -2,6 +2,27 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { searchYouTubeVideos, isOAuthEnabled } from '../../platform/desktopYoutubeService';
 import { addSearchQueryToHistory, getSearchQueryHistory, clearSearchQueryHistory, formatTimestamp } from '../../utils/historyUtils';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
+import { youtubeSearchErrorToast } from './youtubeErrors';
+
+const MIN_QUERY_LENGTH = 3;
+const EMPTY_RESULTS = Object.freeze([]);
+
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, setSelectedVideo, className }) => {
   const { t } = useTranslation();
@@ -12,71 +33,36 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
   const [history, setHistory] = useState([]);
   const historyDropdownRef = useRef(null);
   const inputRef = useRef(null);
+  // Each search takes a token; only the newest token may publish results, errors or the spinner.
+  const searchTokenRef = useRef(0);
 
-  // Debounce function for search
-  const useDebounce = (value, delay) => {
-    const [debouncedValue, setDebouncedValue] = useState(value);
+  const cancelSearch = useCallback(() => {
+    searchTokenRef.current += 1;
+    setIsSearching(false);
+  }, []);
 
-    useEffect(() => {
-      const handler = setTimeout(() => {
-        setDebouncedValue(value);
-      }, delay);
+  useEffect(() => () => { searchTokenRef.current += 1; }, []);
 
-      return () => {
-        clearTimeout(handler);
-      };
-    }, [value, delay]);
-
-    return debouncedValue;
-  };
-
-
-
-  // Search YouTube API - using useCallback to allow it in the dependency array
   const searchYouTube = useCallback(async (query) => {
+    searchTokenRef.current += 1;
+    const token = searchTokenRef.current;
+    const isCurrent = () => searchTokenRef.current === token;
     setIsSearching(true);
 
     try {
-      let results = [];
-
-      // Use the YouTube API service
-      results = await searchYouTubeVideos(query);
-
-      if (results.length > 0) {
-        setSearchResults(results);
-      } else {
-        setSearchResults([]);
+      const results = await searchYouTubeVideos(query);
+      if (!isCurrent()) return;
+      setSearchResults(results);
+      if (results.length === 0) {
         window.addToast(t('youtube.noResults', 'No results found.'), 'error', 5000);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Error searching YouTube:', error);
-
-      // Provide more specific error messages
-      if (isOAuthEnabled()) {
-        // Only show OAuth-specific errors if OAuth is enabled
-        if (error.message.includes('OAuth') || error.message.includes('Not authenticated')) {
-          window.addToast(t('youtube.authError', 'YouTube authentication required. Please set up OAuth in settings.'), 'error', 8000);
-        } else if (error.message.includes('quota exceeded')) {
-          window.addToast(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'), 'error', 8000);
-        } else if (error.message.includes('api not enabled')) {
-          window.addToast(t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project. Please enable it by visiting the Google Cloud Console and enabling the YouTube Data API v3 service.'), 'error', 8000);
-        } else {
-          window.addToast(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'), 'error', 5000);
-        }
-      } else {
-        // API key method is selected
-        if (error.message.includes('API key not found') || error.message.includes('API key')) {
-          window.addToast(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'), 'error', 5000);
-        } else if (error.message.includes('quota exceeded')) {
-          window.addToast(t('errors.quotaExceeded', 'Quota exceeded, please wait tomorrow, or create a new Google Cloud project and update API or OAuth.'), 'error', 8000);
-        } else if (error.message.includes('api not enabled')) {
-          window.addToast(t('errors.youtubeApiNotEnabled', 'YouTube Data API v3 is not enabled in your Google Cloud project. Please enable it by visiting the Google Cloud Console and enabling the YouTube Data API v3 service.'), 'error', 8000);
-        } else {
-          window.addToast(t('youtube.searchError', 'Error searching YouTube. Please try again or enter a URL directly.'), 'error', 5000);
-        }
-      }
+      const [message, duration] = youtubeSearchErrorToast(t, error, { oauth: isOAuthEnabled() });
+      window.addToast(message, 'error', duration);
     } finally {
-      setIsSearching(false);
+      if (isCurrent()) setIsSearching(false);
     }
   }, [t]);
 
@@ -107,30 +93,40 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
 
   // Search YouTube when query changes
   useEffect(() => {
-    if (debouncedSearchQuery.length < 3) {
-      setSearchResults([]);
+    if (debouncedSearchQuery.length < MIN_QUERY_LENGTH) {
+      cancelSearch();
+      setSearchResults(EMPTY_RESULTS);
       return;
     }
 
     // Check authentication method and status
     if (!isOAuthEnabled() && !apiKeysSet.youtube) {
+      cancelSearch();
       window.addToast(t('youtube.noApiKey', 'Please set your YouTube API key in the settings first.'), 'error', 5000);
       return;
     }
 
     // Add to search history if query is valid
-    if (debouncedSearchQuery.trim().length >= 3) {
+    if (debouncedSearchQuery.trim().length >= MIN_QUERY_LENGTH) {
       addSearchQueryToHistory(debouncedSearchQuery);
       // Refresh history list
       setHistory(getSearchQueryHistory());
     }
 
     searchYouTube(debouncedSearchQuery);
-  }, [debouncedSearchQuery, apiKeysSet.youtube, t, searchYouTube]);
+  }, [debouncedSearchQuery, apiKeysSet.youtube, t, searchYouTube, cancelSearch]);
 
-  // Handle search input change
+  // A query too short to search drops the in-flight search and its results at once.
+  const updateSearchQuery = (value) => {
+    setSearchQuery(value);
+    if (value.length < MIN_QUERY_LENGTH) {
+      cancelSearch();
+      setSearchResults(EMPTY_RESULTS);
+    }
+  };
+
   const handleSearchChange = (e) => {
-    setSearchQuery(e.target.value);
+    updateSearchQuery(e.target.value);
   };
 
   // Handle search result selection
@@ -147,7 +143,7 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
 
   // Handle selecting a query from history
   const handleSelectFromHistory = (query) => {
-    setSearchQuery(query);
+    updateSearchQuery(query);
     setShowHistory(false);
     // Focus the input field
     if (inputRef.current) {
@@ -193,10 +189,10 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
           {searchQuery && (
             <button
               className="clear-search-btn"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
+              onClick={() => updateSearchQuery('')}
+              aria-label={t('youtube.clearSearch', 'Clear search')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>close</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 18 }}>close</span>
             </button>
           )}
 
@@ -218,8 +214,11 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
                     key={`${item.query}-${index}`}
                     className="history-query-item"
                     onClick={() => handleSelectFromHistory(item.query)}
+                    onKeyDown={activateOnKey}
+                    role="button"
+                    tabIndex={showHistory ? 0 : -1}
                   >
-                    <span className="material-symbols-rounded history-query-icon" style={{ fontSize: 16 }}>search</span>
+                    <span aria-hidden="true" className="material-symbols-rounded history-query-icon" style={{ fontSize: 16 }}>search</span>
                     <span className="history-query-text">{item.query}</span>
                     <span className="history-query-time">{formatTimestamp(item.timestamp)}</span>
                   </div>
@@ -248,6 +247,10 @@ const YoutubeSearchInput = ({ apiKeysSet = { youtube: false }, selectedVideo, se
               <div
                 className="search-result-content"
                 onClick={() => handleVideoSelect(video)}
+                onKeyDown={activateOnKey}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedVideo?.id === video.id}
               >
                 <div className="search-thumbnail-container">
                   <img

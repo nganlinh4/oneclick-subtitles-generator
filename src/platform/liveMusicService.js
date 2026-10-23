@@ -1,6 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { hasExactKeys, hasOnlyKeys, isRecord } from './plainDataRecord';
 
 export const LIVE_MUSIC_MODEL = 'models/lyria-realtime-exp';
 export const LIVE_MUSIC_SAMPLE_RATE_HZ = 48_000;
@@ -37,8 +38,8 @@ const eventFailureMessages = new Map([
   ['liveMusicChannelClosed', 'The native live music output channel closed.'],
   ['liveMusicCancelled', 'The native live music session was cancelled.'],
 ]);
-const requestKeys = new Set(['credentialId', 'weightedPrompts']);
-const handlerKeys = new Set([
+const requestKeys = Object.freeze(['credentialId', 'weightedPrompts']);
+const handlerKeys = Object.freeze([
   'onEvent',
   'onAudio',
   'onReady',
@@ -50,16 +51,6 @@ const handlerKeys = new Set([
   'onProtocolError',
   'onHandlerError',
 ]);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const isPlainRecord = (value) => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
 
 const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -123,16 +114,13 @@ const requireSessionId = (value) => {
   return value;
 };
 
-const hasOnlyKeys = (value, keys) => Object.keys(value).every((key) => keys.has(key));
-
 export const normalizeWeightedPrompts = (value) => {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_PROMPTS) {
     throw invalidRequest();
   }
   let totalCharacters = 0;
   const normalized = value.map((prompt) => {
-    if (!isPlainRecord(prompt)
-        || Object.keys(prompt).some((key) => key !== 'text' && key !== 'weight')
+    if (!hasOnlyKeys(prompt, ['text', 'weight'])
         || !characterCountWithin(prompt.text, MAX_PROMPT_CHARACTERS)
         || prompt.text.trim().length === 0
         || typeof prompt.weight !== 'number'
@@ -149,8 +137,7 @@ export const normalizeWeightedPrompts = (value) => {
 };
 
 const normalizeStartRequest = (request) => {
-  if (!isPlainRecord(request)
-      || Object.keys(request).some((key) => !requestKeys.has(key))) {
+  if (!hasOnlyKeys(request, requestKeys)) {
     throw invalidRequest();
   }
   return Object.freeze({
@@ -160,8 +147,7 @@ const normalizeStartRequest = (request) => {
 };
 
 const normalizeLiveMusicSession = (value) => {
-  if (!isRecord(value)
-      || !hasOnlyKeys(value, new Set(['id', 'model', 'sampleRateHz', 'channels', 'format']))
+  if (!hasOnlyKeys(value, ['id', 'model', 'sampleRateHz', 'channels', 'format'])
       || !isUuidV7(value.id)
       || value.model !== LIVE_MUSIC_MODEL
       || value.sampleRateHz !== LIVE_MUSIC_SAMPLE_RATE_HZ
@@ -184,10 +170,7 @@ const boundedNotice = (value, maximum = MAX_NOTICE_CHARACTERS) => {
 };
 
 const normalizePublicError = (value) => {
-  if (!isRecord(value)
-      || !hasOnlyKeys(value, new Set(['code', 'message']))
-      || Object.keys(value).length !== 2
-      || typeof value.code !== 'string') {
+  if (!hasExactKeys(value, ['code', 'message']) || typeof value.code !== 'string') {
     throw invalidResponse();
   }
   boundedNotice(value.message);
@@ -205,10 +188,10 @@ export const normalizeLiveMusicEvent = (value) => {
   switch (value.event) {
     case 'ready':
     case 'closed':
-      if (!hasOnlyKeys(value, new Set(['event', 'sessionId']))) throw invalidResponse();
+      if (!hasOnlyKeys(value, ['event', 'sessionId'])) throw invalidResponse();
       return Object.freeze({ event: value.event, sessionId: value.sessionId });
     case 'controlApplied':
-      if (!hasOnlyKeys(value, new Set(['event', 'sessionId', 'control']))
+      if (!hasOnlyKeys(value, ['event', 'sessionId', 'control'])
           || !providerControls.has(value.control)) throw invalidResponse();
       return Object.freeze({
         event: value.event,
@@ -216,7 +199,7 @@ export const normalizeLiveMusicEvent = (value) => {
         control: value.control,
       });
     case 'filteredPrompt':
-      if (!hasOnlyKeys(value, new Set(['event', 'sessionId', 'text', 'reason']))) {
+      if (!hasOnlyKeys(value, ['event', 'sessionId', 'text', 'reason'])) {
         throw invalidResponse();
       }
       return Object.freeze({
@@ -226,7 +209,7 @@ export const normalizeLiveMusicEvent = (value) => {
         reason: boundedNotice(value.reason),
       });
     case 'warning':
-      if (!hasOnlyKeys(value, new Set(['event', 'sessionId', 'message']))) {
+      if (!hasOnlyKeys(value, ['event', 'sessionId', 'message'])) {
         throw invalidResponse();
       }
       return Object.freeze({
@@ -235,7 +218,7 @@ export const normalizeLiveMusicEvent = (value) => {
         message: boundedNotice(value.message),
       });
     case 'failed':
-      if (!hasOnlyKeys(value, new Set(['event', 'sessionId', 'error']))) {
+      if (!hasOnlyKeys(value, ['event', 'sessionId', 'error'])) {
         throw invalidResponse();
       }
       return Object.freeze({
@@ -259,8 +242,7 @@ export const normalizePcmChunk = (value) => {
 };
 
 const normalizeHandlers = (handlers = {}) => {
-  if (!isPlainRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => handler !== undefined && typeof handler !== 'function')) {
     throw invalidRequest();
   }

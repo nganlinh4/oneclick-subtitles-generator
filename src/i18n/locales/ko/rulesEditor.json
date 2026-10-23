@@ -29,5 +29,6 @@
   "clickToCancel": "(취소하려면 아무 곳이나 클릭)",
   "waitingForAction": "사용자 작업 대기 중",
   "clickToEdit": "(편집을 시작하려면 클릭)",
-  "saveContinue": "저장 및 계속"
+  "saveContinue": "저장 및 계속",
+  "removeItem": "삭제"
 }

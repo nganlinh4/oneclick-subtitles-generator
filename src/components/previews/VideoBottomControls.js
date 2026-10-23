@@ -1,9 +1,11 @@
 import { useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import LiquidGlass from '../common/LiquidGlass';
 import PlayPauseMorphType4 from '../common/PlayPauseMorphType4';
 import WavyProgressIndicator from '../common/WavyProgressIndicator';
 import VolumeControlPill from './controls/VolumeControlPill';
 import PlaybackSpeedMenu from './controls/PlaybackSpeedMenu';
+import { formatClock } from '../../utils/timeFormatter';
 
 const DEFAULT_KEYBOARD_SEEK_FPS = 30;
 
@@ -47,6 +49,7 @@ const VideoBottomControls = ({
   videoSource,
   fileType
 }) => {
+  const { t } = useTranslation();
   const wavyProgressRef = useRef(null);
   const authoredFrameRate = Number.isFinite(frameRate) && frameRate > 0
     ? frameRate
@@ -196,7 +199,7 @@ const VideoBottomControls = ({
           animateOnHover={true}
           hoverScale={1.1}
           updateOnMouseMove={true}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
+          aria-label={isPlaying ? t('common.pause', 'Pause') : t('common.play', 'Play')}
           onClick={() => {
             const video = videoRef.current;
             if (video === null || video === undefined) return;
@@ -230,7 +233,7 @@ const VideoBottomControls = ({
 
         {/* Progress */}
         <div
-          aria-label="Seek video"
+          aria-label={t('videoPreview.seek', 'Seek video')}
           aria-valuemax={videoDuration > 0 ? videoDuration : 0}
           aria-valuemin={0}
           aria-valuenow={isDragging ? dragTime : currentTime}
@@ -316,7 +319,7 @@ const VideoBottomControls = ({
           pointerEvents: isFullscreen ? (controlsVisible ? 'auto' : 'none') : (isVideoHovered || controlsVisible) ? 'auto' : 'none',
           userSelect: 'none'
         }}>
-          {Math.floor((isDragging ? dragTime : currentTime) / 60)}:{String(Math.floor((isDragging ? dragTime : currentTime) % 60)).padStart(2, '0')} / {Math.floor(videoDuration / 60)}:{String(Math.floor(videoDuration % 60)).padStart(2, '0')}
+          {formatClock(isDragging ? dragTime : currentTime, { hours: 'never' })} / {formatClock(videoDuration, { hours: 'never' })}
         </div>
 
         {/* Volume pill */}
@@ -364,7 +367,7 @@ const VideoBottomControls = ({
           animateOnHover={true}
           hoverScale={1.1}
           updateOnMouseMove={true}
-          aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          aria-label={isFullscreen ? t('common.exitFullscreen', 'Exit Fullscreen') : t('common.fullscreen', 'Fullscreen')}
           onClick={() => {
             if (isFullscreen) {
               handleFullscreenExit();

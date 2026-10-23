@@ -1,30 +1,13 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { autoSplitSubtitle, countWords } from '../../../utils/subtitle/splitUtils';
-
-const readInitialLimit = () => {
-  try {
-    const saved = localStorage.getItem('translation_post_split_max_words');
-    const parsed = /^(0|[1-9]\d*)$/.test(saved ?? '') ? Number(saved) : 31;
-    if (!Number.isFinite(parsed) || parsed === 0) return 31;
-    return Math.min(31, Math.max(1, parsed));
-  } catch {
-    return 31;
-  }
-};
+import { usePreference } from '../../../platform/preferences/store';
 
 /**
  * Compute a presentation-only post-split view. The durable base translation is never replaced.
  */
 const usePostSplitSubtitles = ({ translatedSubtitles }) => {
-  const [postSplitMaxWords, setPostSplitMaxWords] = useState(readInitialLimit);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('translation_post_split_max_words', String(postSplitMaxWords));
-    } catch {
-      // This display preference is best-effort.
-    }
-  }, [postSplitMaxWords]);
+  const [storedMaxWords, setPostSplitMaxWords] = usePreference('translation_post_split_max_words');
+  const postSplitMaxWords = storedMaxWords === 0 ? 31 : storedMaxWords;
 
   const presentedSubtitles = useMemo(() => {
     if (!Array.isArray(translatedSubtitles) || translatedSubtitles.length === 0) {

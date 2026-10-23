@@ -79,12 +79,8 @@ export const subtitlesRetryGenerationMock = () => ({
   useSubtitlesRetryGeneration: () => ({ retryGeneration: vi.fn() }),
 });
 
-export const subtitlesSegmentRetryMock = () => ({
-  useSubtitlesSegmentRetry: () => ({ retrySegment: vi.fn() }),
-});
-
 export const eventBusMock = () => ({
-  EVENTS: { SEGMENT_STATUS_UPDATE: 'segment-status-update' },
+  EVENTS: { GEMINI_REQUESTS_ABORTED: 'gemini-requests-aborted' },
   publishStreamingComplete: mocks.publishStreamingComplete,
   subscribe: () => () => undefined,
 });
@@ -116,7 +112,6 @@ export const userSubtitlesStoreMock = () => ({
 
 export const lifecycleOrchestratorMock = () => ({
   checkpointBeforeUpdate: mocks.checkpointBeforeUpdate,
-  autoSaveAfterStreaming: vi.fn(),
 });
 
 export const promptManagementMock = () => ({

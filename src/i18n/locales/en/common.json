@@ -1,8 +1,6 @@
 {
   "cancel": "Cancel",
-  "undo": "Undo",
   "undoWithShortcut": "Undo (Ctrl+Z)",
-  "redo": "Redo",
   "redoWithShortcut": "Redo (Ctrl+Y or Ctrl+Shift+Z)",
   "reset": "Reset",
   "resetWithShortcut": "Reset to saved state",
@@ -22,7 +20,6 @@
   "mute": "Mute",
   "unmute": "Unmute",
   "fullscreen": "Fullscreen",
-  "jumpToCheckpoint": "Jump to last checkpoint (undo multiple steps)",
   "jumpToCheckpointWithShortcut": "Jump to last checkpoint (Ctrl+J)",
   "toast": {
     "error": "Error",
@@ -45,5 +42,12 @@
     "invalid": "That folder is not valid legacy OSG data or contains unsafe entries.",
     "tooLarge": "That legacy data folder exceeds the import safety limits.",
     "failed": "Legacy data import could not be completed. Original files were not changed."
-  }
+  },
+  "expand": "Expand",
+  "collapse": "Collapse",
+  "downloadAudio": "Download audio",
+  "clearInput": "Clear input",
+  "exitFullscreen": "Exit Fullscreen",
+  "playPause": "Play/Pause",
+  "audioSaveFailed": "The audio recording could not be saved."
 }

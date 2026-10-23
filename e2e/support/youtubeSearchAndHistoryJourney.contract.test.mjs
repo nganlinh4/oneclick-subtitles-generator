@@ -11,6 +11,7 @@ const searchInput = read('..', '..', 'src', 'components', 'inputs', 'YoutubeSear
 const unifiedUrlInput = read('..', '..', 'src', 'components', 'inputs', 'UnifiedUrlInput.js');
 const inputMethods = read('..', '..', 'src', 'components', 'InputMethods.js');
 const appState = read('..', '..', 'src', 'components', 'app', 'AppState.js');
+const settingsKeys = read('..', '..', 'src', 'platform', 'preferences', 'settingsKeys.js');
 const providerService = read('..', '..', 'src', 'platform', 'providerService.js');
 const historyUtils = read('..', '..', 'src', 'utils', 'historyUtils.js');
 const mediaUrl = read('..', '..', 'src', 'utils', 'mediaUrl.js');
@@ -100,11 +101,11 @@ test('search really has no credential-free path: the guard fires before the nati
   const searchCallIndex = searchInput.indexOf('searchYouTube(debouncedSearchQuery)');
   assert.ok(guardIndex >= 0 && historyWriteIndex > guardIndex && searchCallIndex > historyWriteIndex);
   assert.match(providerService, /requireReadyCredential\(current, 'youtubeApiKey'\)/u);
-  assert.match(providerService, /'YouTube API key not found'/u);
 });
 
 test('the search tab really is gated off by default and unlocked by the exact setting the journey toggles', () => {
-  assert.match(appState, /enable_youtube_search.*===\s*'true'/u);
+  assert.match(appState, /usePreference\('enable_youtube_search'\)/u);
+  assert.match(settingsKeys, /enable_youtube_search: bool\(false\)/u);
   assert.match(inputMethods, /\{enableYoutubeSearch && \(/u);
   assert.doesNotMatch(inputMethods, /data-input-tab="youtube-search"/u);
 });

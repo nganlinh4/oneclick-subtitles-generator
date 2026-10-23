@@ -2,6 +2,10 @@
 
 // Adds custom matchers like `toBeInTheDocument` / `toHaveClass`.
 import '@testing-library/jest-dom';
+import { resetActiveMediaForTests } from './platform/activeMediaSource';
+
+// The active media is process memory, not storage: start every test from no media.
+beforeEach(() => resetActiveMediaForTests());
 
 // jsdom doesn't implement the Performance Timeline API. Provide a no-op for components
 // which inspect navigation timing so rendering them does not throw.

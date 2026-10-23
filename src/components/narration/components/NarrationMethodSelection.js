@@ -43,8 +43,6 @@ const NarrationMethodSelection = ({
   const handleMethodChange = (method) => {
     if (!isGenerating && availableMethods[method] === true) {
       setNarrationMethod(method);
-      // Save to localStorage for persistence
-      localStorage.setItem('narration_method', method);
     }
   };
 
@@ -67,7 +65,7 @@ const NarrationMethodSelection = ({
                 disabled={isGenerating || !isF5Available}
               />
               <label htmlFor="method-f5tts" className={`method-f5tts ${!isF5Available ? 'unavailable' : ''}`}>
-                <span className="voice-clone-badge">Voice Clone</span>
+                <span className="voice-clone-badge">{t('narration.voiceCloneBadge', 'Voice Clone')}</span>
                 <span className="method-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 0 24 24" width="16px" fill="currentColor">
                     <path d="M0 0h24v24H0V0z" fill="none"/>
@@ -91,7 +89,7 @@ const NarrationMethodSelection = ({
                 disabled={isGenerating || !isChatterboxAvailable}
               />
               <label htmlFor="method-chatterbox" className={`method-chatterbox ${!isChatterboxAvailable ? 'unavailable' : ''}`}>
-                <span className="voice-clone-badge">Voice Clone</span>
+                <span className="voice-clone-badge">{t('narration.voiceCloneBadge', 'Voice Clone')}</span>
                 <span className="method-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 97 113">
                     <path d="M97 49c14-20 2-47-22-49-14 0-36 0-42 2C16 8 0 26 0 49v62c0 2 2 2 3 2l15-9 4-1h53c7-1 14-4 19-9 4-3 7-8 8-13 3-11 0-21-7-29l2-3ZM52 62h19s14-1 14 11c0 13-14 11-14 11H52a33 33 0 0 1 0-66h19s14 0 14 12-14 11-14 11H52a10 10 0 0 0 0 21Z"/>
@@ -182,7 +180,7 @@ const NarrationMethodSelection = ({
                 disabled={true}
               />
               <label htmlFor="method-ms-vibevoice" className="method-ms-vibevoice unavailable">
-                <span className="voice-clone-badge">Voice Clone</span>
+                <span className="voice-clone-badge">{t('narration.voiceCloneBadge', 'Voice Clone')}</span>
                 <span className="method-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor">
                     <path d="M560-690q0-25-20.5-44.5T492-754q-18 0-36 7t-33 19q-29 29-64 35t-61-11q-29-19-33-50.5t20-61.5q36-48 90-72.5T492-913q100 0 165 63.5T722-690q0 50-28.5 105.5T614-478q-5 5-15 18.5T579-434q-19 31-41 45.5T493-374q-33 0-55-20t-22-47q0-44 24-87t63-68q28-16 42.5-39.5T560-690ZM492-96q-47 0-79.5-32.5T380-208q0-47 32.5-80t79.5-33q47 0 80 33t33 80q0 47-33 79.5T492-96Z"/>

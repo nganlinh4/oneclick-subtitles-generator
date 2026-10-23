@@ -15,6 +15,7 @@ import {
   runGeminiDocumentRequestResult,
 } from './documentRequest';
 import { DEFAULT_GEMINI_MODEL_ID } from '../../config/geminiModels';
+import { isNativeErrorCode } from '../../platform/plainDataRecord';
 
 const WORDS_PER_MINUTE = 150;
 
@@ -34,11 +35,12 @@ const validConsolidationOutput = ({ processedText, structured, structuredParsed 
     && structured.content.trim().length > 0;
 };
 
-const requestConsolidation = (subtitlesText, model, customPrompt) => (
+const requestConsolidation = (subtitlesText, model, customPrompt, source) => (
   runGeminiDocumentRequestResult({
     subtitlesText,
     model,
     customPrompt,
+    source,
     getDefaultPrompt: getDefaultConsolidatePrompt,
     createSchema: createConsolidationSchema,
     errorLabel: 'Document completion error:',
@@ -65,7 +67,7 @@ const splitIntoChunks = (subtitlesText, splitDuration) => {
 };
 
 const boundedFailureCode = (error) => (
-  typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+  isNativeErrorCode(error?.code)
     ? error.code
     : 'documentChunkFailed'
 );
@@ -75,6 +77,7 @@ const completeDocumentByChunks = async (
   model,
   customPrompt,
   splitDuration,
+  source,
 ) => {
   const chunks = splitIntoChunks(subtitlesText, splitDuration);
   dispatchStatus('split', i18n.t(
@@ -96,7 +99,7 @@ const completeDocumentByChunks = async (
     ));
 
     try {
-      const result = await requestConsolidation(chunks[index], model, customPrompt);
+      const result = await requestConsolidation(chunks[index], model, customPrompt, source);
       deliveries.push(...result.deliveries);
       if (result.status === 'complete') {
         completedChunks.push({ chunkId, text: result.text });
@@ -154,6 +157,7 @@ export const completeDocumentWithResult = async (
   model = DEFAULT_GEMINI_MODEL_ID,
   customPrompt = null,
   splitDuration = 0,
+  source = 'original',
 ) => {
   if (!subtitlesText || subtitlesText.trim() === '') {
     throw new Error('No text to process');
@@ -168,10 +172,10 @@ export const completeDocumentWithResult = async (
       'Splitting text into chunks of {{duration}} minutes',
       { duration: splitDuration },
     ));
-    return completeDocumentByChunks(subtitlesText, model, customPrompt, splitDuration);
+    return completeDocumentByChunks(subtitlesText, model, customPrompt, splitDuration, source);
   }
 
-  return requestConsolidation(subtitlesText, model, customPrompt);
+  return requestConsolidation(subtitlesText, model, customPrompt, source);
 };
 
 /**

@@ -29,7 +29,6 @@ const VideoProcessingModalGeminiPanel = ({
     maxDurationPerRequest,
     setMaxDurationPerRequest,
     retryLock,
-    isVercelMode,
     inlineExtraction,
     selectedSegment,
     selectedPromptPreset,
@@ -152,12 +151,8 @@ const VideoProcessingModalGeminiPanel = ({
                         <div className={`label-with-help ${retryLock ? 'disabled' : ''}`} aria-disabled={retryLock ? 'true' : 'false'}>
                             <label>{t('processing.maxDurationPerRequest', 'Max duration per request')}</label>
                             <HelpIcon title={(() => {
-                                if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/')) {
-                                    if (isVercelMode) {
-                                        return t('processing.maxDurationAudioVercel', 'Parallel processing is not available for audio files in Vercel version. Audio files must be processed as a single request.');
-                                    } else if (!inlineExtraction) {
-                                        return t('processing.maxDurationAudioNewMethod', 'Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.');
-                                    }
+                                if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/') && !inlineExtraction) {
+                                    return t('processing.maxDurationAudioNewMethod', 'Parallel processing is not available for audio files with the new method. Use the old method for audio parallel processing.');
                                 }
                                 return t('processing.maxDurationPerRequestDesc', 'Maximum duration for each Gemini request. Longer ranges are divided into independent requests.');
                             })()} />
@@ -173,12 +168,8 @@ const VideoProcessingModalGeminiPanel = ({
                                 size="XSmall"
                                 state={(() => {
                                     if (retryLock) return 'Disabled';
-                                    if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/')) {
-                                        // In Vercel mode, disable slider for all audio
-                                        if (isVercelMode) return 'Disabled';
-                                        // In non-Vercel mode, disable slider for audio with new method
-                                        if (!inlineExtraction) return 'Disabled';
-                                    }
+                                    // Audio with the new method is sent as one request.
+                                    if (!isNativeMediaDescriptor(videoFile) && videoFile?.type?.startsWith('audio/') && !inlineExtraction) return 'Disabled';
                                     return 'Enabled';
                                 })()}
                                 id="max-duration-slider"

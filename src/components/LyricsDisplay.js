@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EVENTS, subscribe } from '../events/bus';
 import '../styles/LyricsDisplay.css';
 import TimelineVisualization from './lyrics/TimelineVisualization';
 import LyricsHeader from './lyrics/LyricsHeader';
@@ -23,6 +22,7 @@ import { saveCompleteDocumentResult } from './lyrics/documentProcessingResult';
 import { subtitleImportFileNameForCache } from '../platform/subtitleImportProvenance';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
 import { showErrorToast, showInfoToast } from '../utils/toastUtils';
+import { readPreference, usePreference, writePreference } from '../platform/preferences/store';
 
 const CONSOLIDATION_PROGRESS_TOAST_KEY = 'document-processing-progress';
 
@@ -52,10 +52,7 @@ const LyricsDisplay = ({
   const listRef = useRef(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [splitDuration, setSplitDuration] = useState(() => {
-    // Get the split duration from localStorage or use default (0 = no split)
-    return parseInt(localStorage.getItem('consolidation_split_duration') || '0');
-  });
+  const [splitDuration, setSplitDuration] = useState(() => readPreference('consolidation_split_duration'));
   const [selectedRange, setSelectedRange] = useState(null); // Track selected range for subtitle split
 
   // Get naming information for downloads
@@ -69,7 +66,7 @@ const LyricsDisplay = ({
     // Get target languages
     let targetLanguages = [];
     try {
-      const translationTargetLanguage = localStorage.getItem('translation_target_language');
+      const translationTargetLanguage = readPreference('translation_target_language');
       if (translationTargetLanguage) {
         // Try to parse as JSON first (for multi-language)
         try {
@@ -94,14 +91,8 @@ const LyricsDisplay = ({
       targetLanguages
     };
   };
-  const [showWaveformLongVideos, setShowWaveformLongVideos] = useState(() => {
-    // Load from localStorage, default to false if not set
-    return localStorage.getItem('show_waveform_long_videos') === 'true';
-  });
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(() => {
-    // Load from localStorage, default to true (auto-scroll enabled) if not set
-    return localStorage.getItem('lyrics_auto_scroll') !== 'false';
-  });
+  const [showWaveformLongVideos] = usePreference('show_waveform_long_videos');
+  const [autoScrollEnabled, setAutoScrollEnabled] = usePreference('lyrics_auto_scroll');
 
   // NEW: Simplified and deterministic row height calculation.
   // We calculate height based on the number of newline characters (\n),
@@ -126,33 +117,6 @@ const LyricsDisplay = ({
     return height;
   };
 
-
-  // Listen for changes to the waveform settings in localStorage
-  useEffect(() => {
-    const handleStorageChange = (event) => {
-      if (event.key === 'show_waveform_long_videos') {
-        setShowWaveformLongVideos(event.newValue === 'true');
-      }
-    };
-
-    // Also listen for custom events for immediate updates
-    const handleWaveformLongVideosChange = (event) => {
-      setShowWaveformLongVideos(event.detail.value);
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('waveformLongVideosChanged', handleWaveformLongVideosChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('waveformLongVideosChanged', handleWaveformLongVideosChange);
-    };
-  }, []);
-
-  // Save auto-scroll setting to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('lyrics_auto_scroll', autoScrollEnabled.toString());
-  }, [autoScrollEnabled]);
 
   // Listen for consolidation status updates
   useEffect(() => {
@@ -196,7 +160,6 @@ const LyricsDisplay = ({
     updateSavedLyrics,
     handleSplitSubtitles,
     handleSpeakerUpdate,
-    captureStateBeforeMerge,
     clearSubtitlesInRange,
     moveSubtitlesInRange,
     beginRangeMove,
@@ -269,9 +232,6 @@ const LyricsDisplay = ({
   const handleProcess = async (source, processType, model, splitDurationParam, customPrompt, namingInfo = {}) => {
     const subtitlesToUse = source === 'translated' ? translatedSubtitles : lyrics;
 
-    // Store the current source in localStorage for language detection
-    localStorage.setItem('current_processing_source', source);
-
     if (!subtitlesToUse || subtitlesToUse.length === 0) return;
 
     // A new request always captures the selected source's current cue text.
@@ -280,8 +240,7 @@ const LyricsDisplay = ({
     // Use the provided split duration or the state value
     const splitDurationToUse = splitDurationParam !== undefined ? splitDurationParam : splitDuration;
 
-    // Save the split duration setting to localStorage
-    localStorage.setItem('consolidation_split_duration', splitDurationToUse.toString());
+    writePreference('consolidation_split_duration', splitDurationToUse);
 
     // Update the state
     setSplitDuration(splitDurationToUse);
@@ -297,6 +256,7 @@ const LyricsDisplay = ({
           model,
           customPrompt,
           splitDurationToUse,
+          source,
         );
         if (documentResult.status !== 'complete') {
           const failedChunks = documentResult.failedChunkIds.join(', ');
@@ -313,7 +273,7 @@ const LyricsDisplay = ({
         }
         result = documentResult.text;
       } else if (processType === 'summarize') {
-        result = await summarizeDocument(textContent, model, customPrompt);
+        result = await summarizeDocument(textContent, model, customPrompt, source);
         documentResult = { status: 'complete', text: result };
       }
 
@@ -392,32 +352,12 @@ const LyricsDisplay = ({
     }
   };
 
-  // Save current subtitles to cache + handle save-before-update / save-after-streaming events
+  // Save current subtitles into the active native project
   const { handleSave } = useLyricsSave({
     lyrics,
     updateSavedLyrics,
     onSaveSubtitles,
-    listenForLifecycle: false,
   });
-
-  // Listen for capture-before-merge events to support undo/redo for merging operations
-  useEffect(() => {
-    const handleCaptureBeforeMerge = () => {
-
-
-      // Capture the current state before merging happens
-      if (lyrics && lyrics.length > 0) {
-
-        captureStateBeforeMerge();
-      }
-    };
-
-    const unsubscribe3 = subscribe(EVENTS.CAPTURE_BEFORE_MERGE, handleCaptureBeforeMerge);
-
-    return () => {
-      unsubscribe3();
-    };
-  }, [lyrics, captureStateBeforeMerge]); // Include captureStateBeforeMerge in dependencies
 
   // Mouse + touch drag handlers for adjusting lyric timings
   const { handleMouseDown, handleTouchStart } = useLyricsDrag({

@@ -7,13 +7,13 @@
 import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { generateNativeGeminiImage } from '../../platform/nativeGeminiImage';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import {
   DEFAULT_BACKGROUND_PROMPT_MODEL_ID,
   DEFAULT_IMAGE_GENERATION_MODEL_ID,
   migrateGeminiModelId,
   normalizeImageGenerationModelId
 } from '../../config/geminiModels';
+import { readPreference } from '../../platform/preferences/store';
 
 const placeholder = (name) => `\${${name}}`;
 const SONG_NAME_PLACEHOLDER = placeholder("songName || 'Unknown Song'");
@@ -79,16 +79,13 @@ export async function generateBackgroundPrompt(
   if (!lyrics || !lyrics.trim()) throw new Error('Lyrics are required');
 
   const model = migrateGeminiModelId(
-    localStorage.getItem('background_prompt_model'),
+    readPreference('background_prompt_model'),
     DEFAULT_BACKGROUND_PROMPT_MODEL_ID
   );
 
-  // Use user-customizable template from the Background Prompt Editor (localStorage),
-  // falling back to the default template if not set.
-  const template = localStorage.getItem('background_prompt_one') || DEFAULT_PROMPT_ONE;
+  // The Background Prompt Editor's template, or the default when none (or an empty one) is saved.
+  const template = readPreference('background_prompt_one') || DEFAULT_PROMPT_ONE;
   const content = renderTemplate(template, { lyrics, songName });
-
-  if (!isDesktopRuntime()) throw new Error('Gemini image prompting requires the desktop runtime.');
 
   const thinking = getThinkingBudget(model);
   const result = await runNativeGeminiText({
@@ -107,14 +104,13 @@ export async function generateBackgroundImage(prompt, albumArtUrl, { signal } = 
   if (!albumArtUrl) throw new Error('Album art URL is required');
 
   const model = normalizeImageGenerationModelId(
-    localStorage.getItem('background_image_model') || DEFAULT_IMAGE_GENERATION_MODEL_ID
+    readPreference('background_image_model') || DEFAULT_IMAGE_GENERATION_MODEL_ID
   );
 
   // Use Prompt Two template to build the final instruction text that references ${prompt}
-  const promptTemplate = localStorage.getItem('background_prompt_two') || DEFAULT_PROMPT_TWO;
+  const promptTemplate = readPreference('background_prompt_two') || DEFAULT_PROMPT_TWO;
   const finalPrompt = renderTemplate(promptTemplate, { prompt });
 
-  if (!isDesktopRuntime()) throw new Error('Gemini image generation requires the desktop runtime.');
   const generated = await generateNativeGeminiImage({
     referencePlaybackUrl: albumArtUrl,
     prompt: finalPrompt,

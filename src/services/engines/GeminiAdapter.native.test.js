@@ -11,7 +11,6 @@ vi.mock('../../platform/nativeWordTranscription', () => ({
   startWordNativeTranscription: vi.fn(),
   cancelWordNativeTranscription: vi.fn().mockResolvedValue({ id: 'cancelled' }),
   getNativeTranscriptionJob: vi.fn().mockResolvedValue({ state: 'running' }),
-  isNativeWordTranscriptionSupported: vi.fn(() => true),
 }));
 
 vi.mock('../../utils/videoProcessing/processingUtils', () => ({
@@ -69,7 +68,7 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
     const onStreamingUpdate = vi.fn();
 
     const result = await processGeminiSegment(
-      media,
+      { ...media, path: 'C:\\Users\\victim\\source.mp4' },
       { start: 0, end: 60 },
       { model: 'gemini-3.5-transcribe', projectId: 'proj-abc', maxDurationPerRequest: 60 },
       { onStatus, onStreamingUpdate },
@@ -86,6 +85,7 @@ describe('GeminiAdapter on Native Desktop Runtime', () => {
       }),
       expect.any(Object),
     );
+    expect(startWordNativeTranscription.mock.calls[0][0]).not.toHaveProperty('filePath');
 
     expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({
       message: 'Transcribing...',

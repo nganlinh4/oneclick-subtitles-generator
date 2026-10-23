@@ -201,7 +201,6 @@ const sourceFiles = () => {
 };
 
 const resolveDynamicTarget = (importer, specifier) => {
-  if (specifier === 'jszip') return 'node_modules/jszip/dist/jszip.min.js';
   if (!specifier.startsWith('.')) return null;
   const base = resolve(dirname(importer), specifier);
   for (const candidate of [base, `${base}.js`, `${base}.jsx`, join(base, 'index.js')]) {

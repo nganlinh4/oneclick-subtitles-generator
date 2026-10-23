@@ -22,6 +22,7 @@ import {
   initializeEffectiveAppFont,
   initializeEffectiveAppUiScale,
 } from './platform/nativeUiPreferences';
+import { prepareStoredPreferences } from './platform/preferences/startup';
 
 // Suppress harmless ResizeObserver loop error
 const suppressResizeObserverError = () => {
@@ -66,6 +67,7 @@ const suppressResizeObserverError = () => {
 
 // Initialize error suppression
 suppressResizeObserverError();
+prepareStoredPreferences();
 installAppCloseCheckpoint();
 installDesktopExternalLinkGuard();
 installLegacyImportKeyboardAction();

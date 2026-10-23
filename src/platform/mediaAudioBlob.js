@@ -2,7 +2,6 @@
 import { invokeDesktop, invokeDesktopRaw } from './desktopRuntime';
 import {
   hasControlCharacter,
-  hasExactKeys,
   invalidMediaRequest,
   invalidMediaResponse,
   isSafePositiveSize,
@@ -10,6 +9,7 @@ import {
   normalizeMedia,
   validateAssetId,
 } from './mediaDescriptors';
+import { hasExactKeys } from './plainDataRecord';
 
 const MAX_AUDIO_BLOB_BYTES = 64 * 1024 * 1024;
 const AUDIO_BLOB_MARKER = '__nativeAudioBlob';

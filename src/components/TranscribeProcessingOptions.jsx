@@ -2,18 +2,19 @@ import { useTranslation } from 'react-i18next';
 import MaterialSwitch from './common/MaterialSwitch';
 import SliderWithValue from './common/SliderWithValue';
 import CustomDropdown from './common/CustomDropdown';
+import { plannedTranscriptionWindowCount } from '../utils/transcriptionWindowPlan';
 
 // Method-specific controls inside the existing modal, using its existing primitives.
 export default function TranscribeProcessingOptions({ value, onChange, selectedSegment, method }) {
     const { t } = useTranslation();
     const update = (key, next) => onChange({ ...value, [key]: next });
     const windowMinutes = Math.max(1, Math.round(value.windowDurationSecs / 60));
-    const physicalWindowSeconds = windowMinutes * 60;
-    const ownedWindowSeconds = method === 'gemini-transcribe-live'
-        ? Math.max(1, physicalWindowSeconds - 3)
-        : physicalWindowSeconds;
-    const segmentSeconds = Math.max(0, (selectedSegment?.end || 0) - (selectedSegment?.start || 0));
-    const requestCount = Math.max(1, Math.ceil(segmentSeconds / ownedWindowSeconds));
+    const requestCount = plannedTranscriptionWindowCount({
+        rangeStartMs: Math.round((selectedSegment?.start || 0) * 1000),
+        rangeEndMs: Math.round((selectedSegment?.end || 0) * 1000),
+        preferredWindowMs: windowMinutes * 60_000,
+        live: method === 'gemini-transcribe-live',
+    });
     return <>
         <div className="option-group">
             <label htmlFor="transcribe-language">{t('processing.languageLabel', 'Language')}</label>

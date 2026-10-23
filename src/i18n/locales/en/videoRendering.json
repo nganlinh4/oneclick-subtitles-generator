@@ -190,5 +190,7 @@
   "audioBitrateLabel": "Audio bitrate",
   "containerLabel": "Container",
   "loadingProjectScene": "Loading this project’s render settings…",
-  "subtitleFontRepaired": "Subtitle font repaired: {{oldFont}} → {{newFont}}"
+  "subtitleFontRepaired": "Subtitle font repaired: {{oldFont}} → {{newFont}}",
+  "currentVideo": "Current Video",
+  "renderFailedToast": "Video rendering failed: {{error}}"
 }

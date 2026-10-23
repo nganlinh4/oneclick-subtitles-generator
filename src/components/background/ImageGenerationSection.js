@@ -2,9 +2,7 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import LoadingIndicator from '../common/LoadingIndicator';
 import CustomDropdown from '../common/CustomDropdown';
-import { clearBackgroundImages } from '../../utils/indexedDBUtils';
 import { showErrorToast } from '../../utils/toastUtils';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import {
   clearNativeGeneratedImages,
   exportNativeGeneratedImage,
@@ -51,12 +49,6 @@ const ImageGenerationSection = ({
     if (!imageToDownload) return;
 
     try {
-      if (!isDesktopRuntime()) {
-        const filename = `background-${index !== null ? index + 1 : new Date().getTime()}.png`;
-        const { exportGeneratedResource } = await import('../../platform/generatedFileExportService');
-        await exportGeneratedResource(imageToDownload, filename);
-        return true;
-      }
       const nativeImage = image?.nativeImage
         ?? generatedImages.find((candidate) => candidate?.url === imageToDownload)?.nativeImage;
       if (!nativeImage) {
@@ -93,27 +85,23 @@ const ImageGenerationSection = ({
   // Clear all generated images
   const clearGeneratedImages = async () => {
     try {
-      if (isDesktopRuntime()) {
-        const capturedImages = generatedImages;
-        const displayedProjectIds = new Set(generatedImages
-          .map((image) => image?.nativeImage?.artifact?.projectId)
-          .filter((projectId) => typeof projectId === 'string'));
-        if (displayedProjectIds.size !== 1) {
-          throw new Error('The displayed generated-image project is unavailable.');
-        }
-        const [displayedProjectId] = displayedProjectIds;
-        const activeProjectId = await getActiveGeneratedImageProjectId();
-        if (activeProjectId !== displayedProjectId) {
-          throw new Error('The active generated-image project changed.');
-        }
-        await clearNativeGeneratedImages(displayedProjectId);
-        const confirmedProjectId = await getActiveGeneratedImageProjectId();
-        if (confirmedProjectId !== displayedProjectId
-            || renderedImagesRef.current !== capturedImages) {
-          throw new Error('The active generated-image view changed while clearing.');
-        }
-      } else {
-        await clearBackgroundImages();
+      const capturedImages = generatedImages;
+      const displayedProjectIds = new Set(generatedImages
+        .map((image) => image?.nativeImage?.artifact?.projectId)
+        .filter((projectId) => typeof projectId === 'string'));
+      if (displayedProjectIds.size !== 1) {
+        throw new Error('The displayed generated-image project is unavailable.');
+      }
+      const [displayedProjectId] = displayedProjectIds;
+      const activeProjectId = await getActiveGeneratedImageProjectId();
+      if (activeProjectId !== displayedProjectId) {
+        throw new Error('The active generated-image project changed.');
+      }
+      await clearNativeGeneratedImages(displayedProjectId);
+      const confirmedProjectId = await getActiveGeneratedImageProjectId();
+      if (confirmedProjectId !== displayedProjectId
+          || renderedImagesRef.current !== capturedImages) {
+        throw new Error('The active generated-image view changed while clearing.');
       }
       setGeneratedImages([]);
       setGeneratedImage('');
@@ -224,13 +212,13 @@ const ImageGenerationSection = ({
                   <div className={`image-preview ${image.isLoading ? 'loading' : ''}`}>
                     {image.url ? (
                       <>
-                        <img src={image.url} alt={`Generated Background ${index + 1}`} />
+                        <img src={image.url} alt={`${t('backgroundGenerator.generatedImageAlt', 'Generated Background')} ${index + 1}`} />
                         <button
                           className="floating-download-button"
                           onClick={() => downloadImage(image, index)}
                           title={t('backgroundGenerator.downloadImage', 'Download')}
                         >
-                          <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
+                          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
                         </button>
                       </>
                     ) : image.isLoading ? (
@@ -262,13 +250,13 @@ const ImageGenerationSection = ({
           </>
         ) : generatedImage ? (
           <div className="image-preview single-image">
-            <img src={generatedImage} alt="Generated Background" />
+            <img src={generatedImage} alt={t('backgroundGenerator.generatedImageAlt', 'Generated Background')} />
             <button
               className="floating-download-button"
               onClick={() => downloadImage()}
               title={t('backgroundGenerator.downloadImage', 'Download')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px' }}>download</span>
             </button>
           </div>
         ) : (

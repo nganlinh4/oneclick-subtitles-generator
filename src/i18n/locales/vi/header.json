@@ -1,23 +1,5 @@
 {
-  "aiUsage": "Mức sử dụng AI",
-  "appTitle": "Trình Tạo Phụ Đề One-Click",
-  "appTitleFull": "OSG (bản local)",
-  "appTitleLite": "OSG (bản local)",
-  "versionFull": "bản local",
-  "versionLite": "bản local",
-  "versionVercel": "bản Vercel",
-  "vercelLimited": "nhiều tính năng sẽ hạn chế",
-  "appLogoAlt": "Logo Trình Tạo Phụ Đề One-Click",
   "settings": "Cài đặt",
   "settingsAria": "Mở cài đặt",
-  "tagline": "Tạo phụ đề có thời gian với AI",
-  "tryNewVersion": "Thử phiên bản mới",
-  "oldVersion": "Dùng phiên bản cũ",
-  "switching": "Đang chuyển...",
-  "switchError": "Không thể chuyển phiên bản. Vui lòng thử lại.",
-  "tryNewVersionTooltip": "Đừng lo, hoàn toàn có thể quay lại phiên bản cũ",
-  "oldVersionTooltip": "Quay lại phiên bản cũ",
-  "switchingVersions": "Đang chuyển phiên bản...",
-  "reloadingPage": "Đang tải lại ứng dụng...",
   "autoGenerateTooltip": "Tạo phụ đề hoàn toàn tự động kèm phân tích và thiết lập tối ưu"
 }

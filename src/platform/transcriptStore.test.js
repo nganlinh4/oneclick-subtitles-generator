@@ -7,11 +7,10 @@ import {
   subscribeActiveTranscript,
   loadProjectTranscript,
 } from './transcriptStore';
-import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { invokeDesktop } from './desktopRuntime';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
-  isDesktopRuntime: vi.fn(() => true),
 }));
 
 describe('transcriptStore', () => {
@@ -79,11 +78,8 @@ describe('transcriptStore', () => {
     expect(getActiveTranscript()).toBe(result);
   });
 
-  it('returns null when not in desktop runtime or missing projectId', async () => {
+  it('returns null without a projectId and without invoking the host', async () => {
     expect(await loadProjectTranscript('')).toBeNull();
-
-    isDesktopRuntime.mockReturnValueOnce(false);
-    expect(await loadProjectTranscript('proj-1')).toBeNull();
     expect(invokeDesktop).not.toHaveBeenCalled();
   });
 });

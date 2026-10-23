@@ -5,8 +5,6 @@ import {
   loadNativeGeneratedImages,
   releaseNativeGeneratedImagePlayback,
 } from '../platform/nativeGeminiImage';
-import { isDesktopRuntime } from '../platform/runtimeEnvironment';
-import { loadBackgroundImages, saveBackgroundImages } from '../utils/indexedDBUtils';
 import { subscribeCurrentCacheId } from '../utils/userSubtitlesStore';
 import {
   generateBackgroundImage,
@@ -57,11 +55,6 @@ vi.mock('../services/gemini/imageGenerationService', () => ({
   generateBackgroundImage: vi.fn(),
   generateBackgroundPrompt: vi.fn(),
 }));
-vi.mock('../utils/indexedDBUtils', () => ({
-  loadBackgroundImages: vi.fn(),
-  saveBackgroundImages: vi.fn(),
-}));
-vi.mock('../platform/runtimeEnvironment', () => ({ isDesktopRuntime: vi.fn() }));
 vi.mock('../platform/nativeGeminiImage', () => ({
   getActiveGeneratedImageProjectId: vi.fn(),
   loadNativeGeneratedImages: vi.fn(),
@@ -131,7 +124,6 @@ const playableLate = Object.freeze({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  isDesktopRuntime.mockReturnValue(true);
   getActiveGeneratedImageProjectId.mockResolvedValue(PROJECT_A);
   loadNativeGeneratedImages.mockResolvedValue([playable]);
   releaseNativeGeneratedImagePlayback.mockResolvedValue(true);
@@ -147,14 +139,12 @@ beforeEach(() => {
   window.addToast = vi.fn();
 });
 
-test('reopens the active project library after remount without reading or writing global IndexedDB', async () => {
+test('reopens the active project library after remount', async () => {
   const first = render(
     <BackgroundImageGenerator lyrics="lyrics" albumArt="cover" songName="song" isExpanded />
   );
   await waitFor(() => expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_A));
   expect(loadNativeGeneratedImages).toHaveBeenCalledWith(PROJECT_A);
-  expect(loadBackgroundImages).not.toHaveBeenCalled();
-  expect(saveBackgroundImages).not.toHaveBeenCalled();
 
   first.unmount();
   await waitFor(() => expect(releaseNativeGeneratedImagePlayback).toHaveBeenCalledWith(playable));
@@ -162,7 +152,6 @@ test('reopens the active project library after remount without reading or writin
   render(<BackgroundImageGenerator lyrics="lyrics" albumArt="cover" songName="song" isExpanded />);
   await waitFor(() => expect(loadNativeGeneratedImages).toHaveBeenCalledTimes(2));
   expect(screen.getByTestId('generated-image-list')).toHaveTextContent(ARTIFACT_A);
-  expect(saveBackgroundImages).not.toHaveBeenCalled();
 });
 
 test('a user-selected native album-art capability is not overwritten by unchanged source props', async () => {
@@ -185,7 +174,6 @@ test('drops and releases a reopened capability when the active project changes d
 
   await waitFor(() => expect(releaseNativeGeneratedImagePlayback).toHaveBeenCalledWith(playable));
   expect(screen.getByTestId('generated-image-list')).toHaveTextContent('');
-  expect(saveBackgroundImages).not.toHaveBeenCalled();
 });
 
 test('an exact cache-project switch with unchanged visual props releases A and loads B', async () => {

@@ -1,8 +1,3 @@
 {
-  "deleteCustomPreset": "Xóa Preset tùy chỉnh",
-  "noChanges": "Không có thay đổi để lưu",
-  "saveAsPreset": "Lưu thành cài đặt sẵn",
-  "saveCurrentAsPreset": "Lưu thiết lập hiện tại thành cài đặt sẵn tùy chỉnh",
-  "saveError": "Không thể lưu cài đặt sẵn tùy chỉnh.",
-  "saving": "Đang lưu..."
+  "deletePreset": "Xóa Preset"
 }

@@ -1,13 +1,7 @@
 {
-  "title": "Welcome to Subtitles Generator",
-  "promptSelectionSubtitle": "First, let's select a prompt preset for your transcriptions",
-  "modelSelectionSubtitle": "Now, let's select a Gemini model for your transcriptions",
-  "promptSelectionInstruction": "Choose a preset that best fits your needs. You can always change this later in the settings.",
-  "modelSelectionInstruction": "Choose a Gemini model. More accurate models may be slower. You can always change this later in the settings.",
-  "selectLanguage": "Select your language:",
-  "back": "Back",
-  "next": "Next",
-  "finish": "Finish",
   "letsGo": "Let's go",
-  "completed": "Setup complete! You can change these settings anytime."
+  "clickToContinue": "Click anywhere to continue",
+  "waitPrefix": "Please wait ",
+  "waitSeconds": "seconds...",
+  "waitSecond": "second..."
 }

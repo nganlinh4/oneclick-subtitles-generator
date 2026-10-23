@@ -4,13 +4,11 @@ import {
   startWordNativeTranscription,
   cancelWordNativeTranscription,
   getNativeTranscriptionJob,
-  isNativeWordTranscriptionSupported,
 } from './nativeWordTranscription';
 import { invokeDesktop } from './desktopRuntime';
 
 vi.mock('./desktopRuntime', () => ({
   invokeDesktop: vi.fn(),
-  isDesktopRuntime: vi.fn(() => false),
 }));
 
 vi.mock('@tauri-apps/api/core', () => {
@@ -26,10 +24,6 @@ vi.mock('@tauri-apps/api/core', () => {
 describe('nativeWordTranscription', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('detects desktop runtime capability correctly', () => {
-    expect(isNativeWordTranscriptionSupported()).toBe(false);
   });
 
   it('invokes start_word_native_transcription with normalized request and wires event channel', async () => {
@@ -138,6 +132,26 @@ describe('nativeWordTranscription', () => {
     invokeDesktop.mockResolvedValue(snapshot);
     await expect(getNativeTranscriptionJob(taskId)).resolves.toBe(snapshot);
     expect(invokeDesktop).toHaveBeenCalledWith('job_get', { id: taskId });
+  });
+
+  it('sends only the owned asset ID and never a native file path', async () => {
+    invokeDesktop.mockResolvedValue({ id: uuidv7() });
+    await startWordNativeTranscription({
+      projectId: uuidv7(),
+      mediaAssetId: 'asset-1',
+      filePath: 'C:\\Users\\victim\\secrets.wav',
+    });
+    const sent = invokeDesktop.mock.calls[0][1].request;
+    expect(sent.mediaAssetId).toBe('asset-1');
+    expect(sent).not.toHaveProperty('filePath');
+  });
+
+  it('rejects a path-only request without invoking desktop', async () => {
+    await expect(startWordNativeTranscription({
+      projectId: uuidv7(),
+      filePath: 'C:\\Users\\victim\\secrets.wav',
+    })).rejects.toThrow(/media asset ID/i);
+    expect(invokeDesktop).not.toHaveBeenCalled();
   });
 
   it('rejects immediately when projectId is missing without invoking desktop', async () => {

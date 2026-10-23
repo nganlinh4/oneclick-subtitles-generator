@@ -12,17 +12,9 @@
  * start disagreeing.
  */
 
-import { invokeDesktop, isDesktopRuntime } from '../platform/desktopRuntime';
+import { invokeDesktop } from '../platform/desktopRuntime';
 
 const FONT_REPAIR_COMMAND = 'font_readiness_retry';
 
-/**
- * Start a repair. Resolves with the state the attempt begins from, normally `repairing`.
- *
- * Returns `null` outside the desktop runtime rather than throwing: a browser context has no managed
- * package to repair, and a caller offering a retry button should not have to know that.
- */
-export const retryManagedFont = async () => {
-  if (!isDesktopRuntime()) return null;
-  return invokeDesktop(FONT_REPAIR_COMMAND, {});
-};
+/** Start a repair. Resolves with the state the attempt begins from, normally `repairing`. */
+export const retryManagedFont = async () => invokeDesktop(FONT_REPAIR_COMMAND, {});

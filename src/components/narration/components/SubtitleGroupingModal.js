@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import CloseButton from '../../common/CloseButton';
+import { formatClock } from '../../../utils/timeFormatter';
 import '../../../styles/narration/subtitleGroupingModal.css';
 
 /**
@@ -58,16 +59,12 @@ const SubtitleGroupingModal = ({ open, onClose, originalSubtitles, groupedSubtit
     return originalId === firstId;
   };
 
-  // Format time (seconds) to MM:SS.mmm
-  const formatTime = (seconds) => {
-    if (seconds === undefined || seconds === null) return '';
-
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 1000);
-
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-  };
+  // MM:SS.mmm with hours folded into the minutes.
+  const formatTime = (seconds) => (
+    seconds === undefined || seconds === null
+      ? ''
+      : formatClock(seconds, { fractionDigits: 3, hours: 'never', minuteDigits: 2 })
+  );
 
   // Use useEffect to prevent body scrolling when modal is open
   React.useEffect(() => {

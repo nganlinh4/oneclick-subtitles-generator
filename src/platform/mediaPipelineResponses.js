@@ -25,10 +25,10 @@ import {
 } from './mediaPipelineContract';
 import {
   exactRecord,
-  hasSnapshotKeys,
   snapshotDataArray,
   snapshotDataRecord,
 } from './nativeDataSnapshot';
+import { hasExactKeys, snapshotNativeError } from './plainDataRecord';
 
 export const normalizeJob = (value, expectedKind = null) => {
   const data = exactRecord(value, ['id', 'kind', 'state', 'progress', 'sequence'], invalidResponse);
@@ -245,7 +245,7 @@ const normalizeResult = (value, operation, sourceAssetId) => {
   if (data.kind === 'media') return normalizeMediaResult(data, operation, sourceAssetId);
   if (data.kind === 'waveform') {
     if (operation !== 'generateWaveform'
-        || !hasSnapshotKeys(data, ['kind', 'assetId', 'cacheHit', 'waveform'])
+        || !hasExactKeys(data, ['kind', 'assetId', 'cacheHit', 'waveform'])
         || data.assetId !== sourceAssetId
         || typeof data.cacheHit !== 'boolean') {
       throw invalidResponse();
@@ -261,14 +261,9 @@ const normalizeResult = (value, operation, sourceAssetId) => {
 };
 
 const normalizeError = (value) => {
-  const data = exactRecord(value, ['code', 'message'], invalidResponse);
-  const { code, message } = data;
-  if (typeof code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(code)
-      || typeof message !== 'string'
-      || message.length > 2_048) {
-    throw invalidResponse();
-  }
+  const error = snapshotNativeError(value);
+  if (error === null || error.message.length > 2_048) throw invalidResponse();
+  const { code } = error;
   return Object.freeze({
     code: mediaPipelineCommandCodes.has(code) ? code : 'mediaPipelineFailed',
     message: mediaFailureMessage(code),
@@ -295,7 +290,7 @@ export const normalizeMediaPipelineEvent = (value, expected = {}) => {
   const jobKind = expectedJobKind(operation);
   switch (data.event) {
     case 'progress': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'phase', 'fraction'])
+      if (!hasExactKeys(data, ['event', 'job', 'operation', 'phase', 'fraction'])
           || !phases.has(data.phase)
           || (data.fraction !== null
             && (!isFiniteNumber(data.fraction) || data.fraction < 0 || data.fraction > 1))) {
@@ -312,7 +307,7 @@ export const normalizeMediaPipelineEvent = (value, expected = {}) => {
       });
     }
     case 'completed': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'result'])
+      if (!hasExactKeys(data, ['event', 'job', 'operation', 'result'])
           || !isUuidV7(expectedData.assetId)) {
         throw invalidResponse();
       }
@@ -326,13 +321,13 @@ export const normalizeMediaPipelineEvent = (value, expected = {}) => {
       });
     }
     case 'cancelled': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'operation'])) throw invalidResponse();
+      if (!hasExactKeys(data, ['event', 'job', 'operation'])) throw invalidResponse();
       const job = normalizeJob(data.job, jobKind);
       if (job.state !== 'cancelled') throw invalidResponse();
       return Object.freeze({ event: 'cancelled', job, operation });
     }
     case 'failed': {
-      if (!hasSnapshotKeys(data, ['event', 'job', 'operation', 'error'])) throw invalidResponse();
+      if (!hasExactKeys(data, ['event', 'job', 'operation', 'error'])) throw invalidResponse();
       const job = data.job === null ? null : normalizeJob(data.job, jobKind);
       if (job !== null && job.state !== 'failed') throw invalidResponse();
       return Object.freeze({

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import Tooltip from '../common/Tooltip';
 import '../../styles/translation/languageChain.css';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 /**
  * Language Chain component - a chain-line UI for language and delimiter configuration
@@ -284,7 +285,7 @@ const LanguageChain = ({
                       disabled={disabled}
                       title={t('translation.removeLanguage', 'Remove')}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: '12px' }}>close</span>
+                      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '12px' }}>close</span>
                     </button>
                   </>
                 </Tooltip>
@@ -294,6 +295,10 @@ const LanguageChain = ({
                   <div
                     className={`delimiter-display ${activeDelimiter === item.id ? 'active' : ''}`}
                     onClick={(e) => toggleDelimiterDropdown(item.id, e)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateOnKey}
+                    aria-expanded={activeDelimiter === item.id}
                   >
                     {getDelimiterDisplay(item)}
                   </div>
@@ -307,7 +312,7 @@ const LanguageChain = ({
                     disabled={disabled}
                     title={t('translation.removeDelimiter', 'Remove delimiter')}
                   >
-                    <span className="material-symbols-rounded" style={{ fontSize: '10px' }}>close</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '10px' }}>close</span>
                   </button>
 
                   {/* Render the modal using createPortal to ensure it's at the root level */}

@@ -33,8 +33,6 @@ const AsrProcessingOptions = ({
     supportsLanguage = false,
     supportedLanguageCodes = null,
     selectedSegment,
-    disabled,
-    engineName,
 }) => {
     const { t } = useTranslation();
 
@@ -218,10 +216,7 @@ const AsrProcessingOptions = ({
 
     return (
         <div className="asr-content-wrapper" style={{ gridColumn: '1 / -1' }}>
-            <div
-                className="asr-options-grid"
-                style={disabled ? { opacity: 0.5, pointerEvents: 'none', userSelect: 'none' } : undefined}
-            >
+            <div className="asr-options-grid">
                 {groups.map((groupHalves, idx) => (
                     <div className="option-group" key={idx}>
                         <div className="combined-options-row">
@@ -230,13 +225,6 @@ const AsrProcessingOptions = ({
                     </div>
                 ))}
             </div>
-            {disabled && (
-                <div className="asr-disabled-overlay">
-                    <div className="asr-disabled-message">
-                        {t('processing.engineServiceUnavailable', '{{engine}} service is not available', { engine: engineName || t('processing.engineGeneric', 'The ASR engine') })}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

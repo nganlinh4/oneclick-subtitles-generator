@@ -1,7 +1,8 @@
 // Helper: map raw error to friendly, localized message.
 // `t` is the i18next translate function, passed in to keep this module pure.
+import { isNativeErrorCode } from '../../platform/plainDataRecord';
 export const boundedBackgroundErrorCode = (error) => (
-  typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+  isNativeErrorCode(error?.code)
     ? error.code
     : null
 );

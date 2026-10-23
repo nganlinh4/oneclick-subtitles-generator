@@ -1,6 +1,6 @@
 /**
  * View records for the background image grid, and release of the native playback capabilities
- * those records hold. Browser builds carry inline data URLs and own no native capability.
+ * those records hold.
  */
 import { releaseNativeGeneratedImagePlayback } from '../../platform/nativeGeminiImage';
 
@@ -10,13 +10,6 @@ export const nativeViewImage = (image, prompt = '') => ({
   prompt,
   isLoading: false,
   nativeImage: image,
-});
-
-export const browserViewImage = (image, prompt = '') => ({
-  url: `data:${image.mime_type};base64,${image.data}`,
-  timestamp: Date.now(),
-  prompt,
-  isLoading: false,
 });
 
 export const releaseNativeImages = async (images) => {

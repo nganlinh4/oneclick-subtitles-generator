@@ -1,33 +1,23 @@
-
+import { useTranslation } from 'react-i18next';
 import {
   resolveActiveNativeMedia,
   revalidateActiveNativeMedia,
 } from '../../../platform/activeNativeMedia';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { exportMediaAsset } from '../../../platform/mediaExportService';
 import { showErrorToast } from '../../../utils/toastUtils';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 export const downloadPreviewMedia = async ({ videoSource, currentSource }) => {
-  if (isDesktopRuntime()) {
-    const candidate = videoSource ?? currentSource;
-    let capability;
-    try {
-      capability = await resolveActiveNativeMedia({ candidate });
-    } catch {
-      throw new Error('Select the media again before exporting it.');
-    }
-    const exported = await exportMediaAsset(capability.assetId);
-    await revalidateActiveNativeMedia(capability);
-    return exported;
+  const candidate = videoSource ?? currentSource;
+  let capability;
+  try {
+    capability = await resolveActiveNativeMedia({ candidate });
+  } catch {
+    throw new Error('Select the media again before exporting it.');
   }
-  if (!currentSource) return null;
-  const link = document.createElement('a');
-  link.href = currentSource;
-  link.download = `video_${Date.now()}.mp4`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  return { status: 'started' };
+  const exported = await exportMediaAsset(capability.assetId);
+  await revalidateActiveNativeMedia(capability);
+  return exported;
 };
 
 const ActionButtons = ({
@@ -35,6 +25,7 @@ const ActionButtons = ({
   isAudioFile,
   videoSource,
 }) => {
+  const { t } = useTranslation();
   return (
     <>
       <div
@@ -49,6 +40,10 @@ const ActionButtons = ({
           cursor: 'pointer',
           transition: 'all 0.2s ease'
         }}
+        role="button"
+        tabIndex={0}
+        aria-label={t('videoPreview.downloadMedia', 'Download media')}
+        onKeyDown={activateOnKey}
         onClick={(e) => {
           e.stopPropagation();
           void downloadPreviewMedia({
@@ -56,11 +51,11 @@ const ActionButtons = ({
             currentSource: videoRef.current?.src,
           }).catch((error) => {
             console.error('Preview media export failed:', error);
-            showErrorToast(error?.message || 'The media file could not be exported.', 8000);
+            showErrorToast(error?.message || t('videoPreview.exportFailed', 'The media file could not be exported.'), 8000);
           });
         }}
       >
-        <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+        <span aria-hidden="true" className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
           download
         </span>
       </div>
@@ -79,6 +74,10 @@ const ActionButtons = ({
             cursor: 'pointer',
             transition: 'all 0.2s ease'
           }}
+          role="button"
+          tabIndex={0}
+          aria-label={t('videoPreview.pictureInPicture', 'Picture-in-picture')}
+          onKeyDown={activateOnKey}
           onClick={async (e) => {
             e.stopPropagation();
             if (videoRef.current) {
@@ -94,7 +93,7 @@ const ActionButtons = ({
             }
           }}
         >
-          <span className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
+          <span aria-hidden="true" className="material-symbols-rounded" style={{ color: 'white', fontSize: 18, textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)', display: 'inline-block' }}>
             picture_in_picture_alt
           </span>
         </div>

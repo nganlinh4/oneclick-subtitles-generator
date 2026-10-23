@@ -201,9 +201,9 @@ const PromptEditor = ({
               {currentPromptType === 'translation' ? (
                 <p>{t('promptEditor.defaultTranslationTemplate', 'Translate the following subtitles to')} <span className="variable-highlight">{'{targetLanguage}'}</span>.</p>
               ) : currentPromptType === 'consolidate' ? (
-                <p>I have a collection of subtitles from a video or audio. Please convert these into a coherent document.</p>
+                <p>{t('promptEditor.defaultConsolidateTemplate', 'I have a collection of subtitles from a video or audio. Please convert these into a coherent document.')}</p>
               ) : (
-                <p>I have a collection of subtitles from a video or audio. Please create a concise summary.</p>
+                <p>{t('promptEditor.defaultSummarizeTemplate', 'I have a collection of subtitles from a video or audio. Please create a concise summary.')}</p>
               )}
               <p className="custom-instructions-placeholder">{t('promptEditor.customInstructionsPlaceholder', '[Your custom instructions will appear here]')}</p>
               <p><span className="variable-highlight">{'{subtitlesText}'}</span></p>
@@ -231,22 +231,22 @@ const PromptEditor = ({
               <ul>
                 <li>{t('promptEditor.exampleFormalTone', 'Maintain a formal tone')}</li>
                 <li>{t('promptEditor.exampleTerminology', 'Use specific terminology or vocabulary')}</li>
-                <li>Adapt cultural references</li>
-                <li>Preserve humor or wordplay when possible</li>
+                <li>{t('promptEditor.exampleCulturalReferences', 'Adapt cultural references')}</li>
+                <li>{t('promptEditor.exampleHumor', 'Preserve humor or wordplay when possible')}</li>
               </ul>
             ) : title && title.includes('Consolidation') ? (
               <ul>
-                <li>Organize content by topics or themes</li>
-                <li>Maintain chronological order of events</li>
-                <li>Preserve technical terminology</li>
-                <li>Improve readability while maintaining original meaning</li>
+                <li>{t('promptEditor.exampleOrganizeTopics', 'Organize content by topics or themes')}</li>
+                <li>{t('promptEditor.exampleChronological', 'Maintain chronological order of events')}</li>
+                <li>{t('promptEditor.exampleTechnicalTerms', 'Preserve technical terminology')}</li>
+                <li>{t('promptEditor.exampleReadability', 'Improve readability while maintaining original meaning')}</li>
               </ul>
             ) : title && title.includes('Summarization') ? (
               <ul>
-                <li>Focus on key points and main ideas</li>
-                <li>Highlight important facts and statistics</li>
-                <li>Maintain the original tone (formal/informal)</li>
-                <li>Include all critical information</li>
+                <li>{t('promptEditor.exampleKeyPoints', 'Focus on key points and main ideas')}</li>
+                <li>{t('promptEditor.exampleFacts', 'Highlight important facts and statistics')}</li>
+                <li>{t('promptEditor.exampleOriginalTone', 'Maintain the original tone (formal/informal)')}</li>
+                <li>{t('promptEditor.exampleCriticalInfo', 'Include all critical information')}</li>
               </ul>
             ) : (
               <ul>

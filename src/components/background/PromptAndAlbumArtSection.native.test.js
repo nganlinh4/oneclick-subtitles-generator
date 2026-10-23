@@ -6,8 +6,6 @@ import {
   selectReferenceImagePlayback,
 } from '../../platform/imageService';
 import { getActiveGeneratedImageProjectId } from '../../platform/nativeGeminiImage';
-import { exportGeneratedResource } from '../../platform/generatedFileExportService';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import PromptAndAlbumArtSection from './PromptAndAlbumArtSection';
 
 vi.mock('react-i18next', () => ({
@@ -17,9 +15,6 @@ vi.mock('../common/LoadingIndicator', () => ({ default: () => null }));
 vi.mock('../common/CustomScrollbarTextarea', () => ({
   default: ({ value, onChange }) => <textarea value={value} onChange={onChange} />,
 }));
-vi.mock('../../platform/generatedFileExportService', () => ({
-  exportGeneratedResource: vi.fn(),
-}));
 vi.mock('../../platform/imageService', () => ({
   exportReferenceImagePlayback: vi.fn(),
   releaseReferenceImagePlayback: vi.fn(),
@@ -28,7 +23,6 @@ vi.mock('../../platform/imageService', () => ({
 vi.mock('../../platform/nativeGeminiImage', () => ({
   getActiveGeneratedImageProjectId: vi.fn(),
 }));
-vi.mock('../../platform/runtimeEnvironment', () => ({ isDesktopRuntime: vi.fn() }));
 vi.mock('../../utils/toastUtils', () => ({ showErrorToast: vi.fn() }));
 
 const PROJECT_A = '01890f39-7b62-7c4e-8c9a-000000000401';
@@ -60,7 +54,6 @@ const props = (overrides = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  isDesktopRuntime.mockReturnValue(true);
   releaseReferenceImagePlayback.mockResolvedValue(true);
   exportReferenceImagePlayback.mockResolvedValue(true);
   getActiveGeneratedImageProjectId.mockResolvedValue(PROJECT_A);
@@ -159,44 +152,5 @@ test('desktop album-art export uses only the active project and native playback 
     PROJECT_A,
     'album-art.png'
   ));
-  expect(exportGeneratedResource).not.toHaveBeenCalled();
 });
 
-test('browser upload retains FileReader behavior and never opens the native picker', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  const readAsDataURL = vi.fn(function read() {
-    this.onload({ target: { result: 'data:image/png;base64,cG5n' } });
-  });
-  const OriginalFileReader = global.FileReader;
-  global.FileReader = vi.fn(function Reader() {
-    this.onload = null;
-    this.readAsDataURL = readAsDataURL;
-  });
-  const browserProps = props();
-  const view = render(<PromptAndAlbumArtSection {...browserProps} />);
-  const file = new File(['png'], 'cover.png', { type: 'image/png' });
-  fireEvent.change(view.container.querySelector('input[type="file"]'), {
-    target: { files: [file] },
-  });
-
-  await waitFor(() => expect(browserProps.setCustomAlbumArt)
-    .toHaveBeenCalledWith('data:image/png;base64,cG5n'));
-  expect(readAsDataURL).toHaveBeenCalledWith(file);
-  expect(selectReferenceImagePlayback).not.toHaveBeenCalled();
-  global.FileReader = OriginalFileReader;
-});
-
-test('browser album-art export retains the lazy legacy exporter', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  exportGeneratedResource.mockResolvedValueOnce(true);
-  render(<PromptAndAlbumArtSection {...props({
-    customAlbumArt: 'data:image/png;base64,cG5n',
-  })} />);
-  fireEvent.click(screen.getByTitle('Download Album Art'));
-
-  await waitFor(() => expect(exportGeneratedResource).toHaveBeenCalledWith(
-    'data:image/png;base64,cG5n',
-    'album-art.png'
-  ));
-  expect(exportReferenceImagePlayback).not.toHaveBeenCalled();
-});

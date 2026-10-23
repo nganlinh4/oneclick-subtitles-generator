@@ -1,5 +1,6 @@
 // Lyrics editor history state helpers: durable-identity row comparison and the entry/byte bounds
 // that keep the in-memory undo, redo and checkpoint stacks finite.
+import { utf8ByteLength } from '../platform/plainDataRecord';
 
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 const identityKey = (value) => {
@@ -41,22 +42,6 @@ const MAX_LOCAL_LYRICS_HISTORY_BYTES = 256 * 1024 * 1024;
 const MAX_LOCAL_LYRICS_CHECKPOINTS = 4;
 const MAX_LOCAL_LYRICS_CHECKPOINT_BYTES = 128 * 1024 * 1024;
 const STATE_SIZE_CACHE = new WeakMap();
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code <= 0x7f) bytes += 1;
-    else if (code <= 0x7ff) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff
-        && value.charCodeAt(index + 1) >= 0xdc00
-        && value.charCodeAt(index + 1) <= 0xdfff) {
-      bytes += 4;
-      index += 1;
-    } else bytes += 3;
-  }
-  return bytes;
-};
 
 const stateByteLength = (value) => {
   if (value == null || typeof value !== 'object') return Number.POSITIVE_INFINITY;

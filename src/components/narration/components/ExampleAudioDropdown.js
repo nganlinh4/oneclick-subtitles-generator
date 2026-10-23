@@ -136,11 +136,11 @@ const ExampleAudioDropdown = ({ onExampleSelect, disabled = false }) => {
         className={`pill-button primary ${isOpen ? 'active-dropdown-btn' : ''} ${disabled ? 'disabled' : ''}`}
         onClick={handleButtonClick}
         disabled={disabled || isLoading}
-        title={disabled ? 'Service not available' : 'Use example reference audio'}
+        title={disabled ? t('narration.exampleServiceUnavailable', 'Service not available') : t('narration.useExampleTitle', 'Use example reference audio')}
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
-        <span className="material-symbols-rounded" style={{ fontSize: '16px' }}>library_music</span>
+        <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '16px' }}>library_music</span>
         {isLoading ? t('narration.loading', 'Loading...') : t('narration.useExample', 'Use example')}
         <span className={`material-symbols-rounded dropdown-chevron ${!isOpen ? 'open' : ''}`} style={{ fontSize: '12px' }}>expand_more</span>
       </button>

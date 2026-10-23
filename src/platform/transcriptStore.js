@@ -1,4 +1,4 @@
-import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { invokeDesktop } from './desktopRuntime';
 
 /**
  * @typedef {Object} TimedWord
@@ -82,7 +82,7 @@ export const subscribeActiveTranscript = (listener) => {
  * @returns {Promise<ProjectTranscript|null>}
  */
 export const loadProjectTranscript = async (projectId) => {
-  if (!projectId || typeof projectId !== 'string' || !isDesktopRuntime()) {
+  if (!projectId || typeof projectId !== 'string') {
     return null;
   }
   try {

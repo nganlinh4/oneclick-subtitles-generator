@@ -6,11 +6,10 @@ import {
   FONT_REPAIR_KEYS,
   FONT_SELECTION_KEYS,
   ProjectRenderSceneError,
-  exactSnapshot,
   normalizeProjectRenderSceneValues,
-  plainSnapshot,
   sceneResponse,
 } from './projectRenderSceneValues';
+import { snapshotExactRecord, snapshotPlainRecord } from './plainDataRecord';
 
 /** The admission half of one render-scene authority; returns its `admitOwner(owner)`. */
 export const createProjectRenderSceneAdmission = ({
@@ -71,7 +70,7 @@ export const createProjectRenderSceneAdmission = ({
         } catch (cause) {
           throw failInvalidFontAdmission(owner, cause);
         }
-        const admissionRecord = exactSnapshot(admission, FONT_ADMISSION_KEYS);
+        const admissionRecord = snapshotExactRecord(admission, FONT_ADMISSION_KEYS);
         if (admissionRecord === null) {
           throw failInvalidFontAdmission(owner, new TypeError(
             'The subtitle-font admission inspector returned an invalid record',
@@ -88,7 +87,7 @@ export const createProjectRenderSceneAdmission = ({
           const error = new ProjectRenderSceneError(
             'projectSubtitleFontUnavailable',
             'The saved subtitle font is unavailable on this computer',
-            { fontReason: plainSnapshot(admissionRecord.resolution)?.reason ?? null },
+            { fontReason: snapshotPlainRecord(admissionRecord.resolution)?.reason ?? null },
           );
           publishFontAdmissionFailure(owner, error);
           throw error;
@@ -113,9 +112,9 @@ export const createProjectRenderSceneAdmission = ({
           ));
         }
 
-        const repair = exactSnapshot(admissionRecord.repair, FONT_REPAIR_KEYS);
-        const repairFrom = exactSnapshot(repair?.from, FONT_SELECTION_KEYS);
-        const repairTo = exactSnapshot(repair?.to, FONT_SELECTION_KEYS);
+        const repair = snapshotExactRecord(admissionRecord.repair, FONT_REPAIR_KEYS);
+        const repairFrom = snapshotExactRecord(repair?.from, FONT_SELECTION_KEYS);
+        const repairTo = snapshotExactRecord(repair?.to, FONT_SELECTION_KEYS);
         const customization = owner.values.customization;
         if (repair === null || repairFrom === null || repairTo === null
             || typeof repair.reason !== 'string' || repair.reason.length === 0

@@ -1,13 +1,10 @@
+import { isRecord } from './plainDataRecord';
 const STORAGE_KEY = 'uploaded_srt_info';
 const SCHEMA_VERSION = 2;
 const MAX_FILE_NAME_CHARACTERS = 512;
 const MAX_CACHE_ID_CHARACTERS = 8_192;
 const SERIALIZED_LIMIT = 12_000;
 const EXACT_KEYS = Object.freeze(['cacheId', 'fileName', 'v']);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
 
 const hasControlCharacter = (value) => Array.from(value).some((character) => {
   const codePoint = character.codePointAt(0);

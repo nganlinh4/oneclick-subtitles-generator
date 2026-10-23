@@ -5,11 +5,12 @@ import {
   removeSpeechPackage,
 } from '../platform/speechPackageService';
 import { getF5ModelsStatus } from '../platform/f5ModelService';
+import { hasOnlyKeys } from '../platform/plainDataRecord';
 
 const PACKAGE_BACKEND = 'f5-tts';
 const DEFAULT_NARRATION_MODEL_ID = 'f5tts-v1-base';
 
-const handlerKeys = new Set([
+const handlerKeys = Object.freeze([
   'onEvent', 'onProgress', 'onCompleted', 'onCancelled', 'onFailed',
   'onProtocolError', 'onHandlerError', 'onCancellationError',
 ]);
@@ -52,18 +53,8 @@ const modelPackageBusy = () => new ModelServiceError(
   'Another narration model package operation is already running',
 );
 
-const isPlainDataRecord = (value) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return (prototype === Object.prototype || prototype === null)
-    && Object.getOwnPropertySymbols(value).length === 0
-    && Object.values(Object.getOwnPropertyDescriptors(value))
-      .every((descriptor) => descriptor.enumerable && 'value' in descriptor);
-};
-
 const requireHandlers = (handlers = {}) => {
-  if (!isPlainDataRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => typeof handler !== 'function')) {
     throw invalidModelRequest();
   }

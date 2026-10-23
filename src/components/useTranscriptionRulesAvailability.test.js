@@ -20,18 +20,15 @@ beforeEach(() => {
 
 test('uses the active project store instead of a stale localStorage rules copy', () => {
   localStorage.setItem('transcription_rules', JSON.stringify({ atmosphere: 'stale' }));
-  const disable = vi.fn();
 
-  const { result } = renderHook(() => useTranscriptionRulesAvailability(true, disable));
+  const { result } = renderHook(() => useTranscriptionRulesAvailability());
 
   expect(result.current).toBe(false);
-  expect(disable).toHaveBeenCalledWith(false);
 });
 
 test('ignores a late rules event from another cache and accepts the active cache snapshot', () => {
   store.rules = { atmosphere: 'active' };
-  const disable = vi.fn();
-  const { result } = renderHook(() => useTranscriptionRulesAvailability(true, disable));
+  const { result } = renderHook(() => useTranscriptionRulesAvailability());
   expect(result.current).toBe(true);
 
   act(() => {
@@ -47,5 +44,4 @@ test('ignores a late rules event from another cache and accepts the active cache
     }));
   });
   expect(result.current).toBe(false);
-  expect(disable).toHaveBeenCalledWith(false);
 });

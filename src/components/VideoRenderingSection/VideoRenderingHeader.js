@@ -24,8 +24,10 @@ const VideoRenderingHeader = ({ isCollapsed, isClickDisabled, onToggleCollapsed 
         className="collapse-button"
         disabled={isClickDisabled}
         onClick={onToggleCollapsed}
+        aria-label={isCollapsed ? t('common.expand', 'Expand') : t('common.collapse', 'Collapse')}
+        aria-expanded={!isCollapsed}
       >
-        <span className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
+        <span aria-hidden="true" className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
       </button>
     </div>
   );

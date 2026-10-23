@@ -1,6 +1,4 @@
 {
-  "themeSelector": "테마",
   "dark": "다크 모드",
-  "light": "라이트 모드",
-  "system": "시스템 설정 사용"
+  "light": "라이트 모드"
 }

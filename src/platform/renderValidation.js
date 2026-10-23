@@ -2,53 +2,9 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invalidRequest, invalidResponse } from './renderErrors';
+import { isRecord, utf8ByteLength } from './plainDataRecord';
 
 const MAX_RENDER_DURATION_MICROS = 24 * 60 * 60 * 1_000_000;
-
-export const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-export const snapshotPlainRecord = (value) => {
-  try {
-    if (!isRecord(value)) return null;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null
-        || Object.getOwnPropertySymbols(value).length !== 0) {
-      return null;
-    }
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Object.values(descriptors).some(
-      (descriptor) => !descriptor.enumerable || !('value' in descriptor)
-    )) {
-      return null;
-    }
-    return Object.freeze(Object.fromEntries(
-      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value])
-    ));
-  } catch {
-    return null;
-  }
-};
-
-export const isPlainRecord = (value) => snapshotPlainRecord(value) !== null;
-
-export const snapshotExactRecord = (value, keys) => {
-  const snapshot = snapshotPlainRecord(value);
-  if (snapshot === null || Object.keys(snapshot).length !== keys.length
-      || !keys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))) {
-    return null;
-  }
-  return snapshot;
-};
-
-export const hasExactKeys = (value, keys) => (
-  snapshotExactRecord(value, keys) !== null
-);
-
-export const hasOnlyKeys = (value, keys) => (
-  isPlainRecord(value) && Object.keys(value).every((key) => keys.has(key))
-);
 
 export const uuidHasVersion = (value, expectedVersion) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -122,8 +78,6 @@ export const hasControlCharacter = (value, allowTextWhitespace = false) => {
   }
   return false;
 };
-
-export const utf8ByteLength = (value) => new TextEncoder().encode(value).byteLength;
 
 export const requireString = (value, maximumBytes = 16_384, options = {}) => {
   const { allowTextWhitespace = false } = options;

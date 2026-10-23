@@ -1,6 +1,5 @@
 {
   "title": "Background Image Generator",
-  "lyrics": "Lyrics",
   "lyricsPlaceholder": "Enter lyrics here...",
   "songName": "Song Name",
   "songNamePlaceholder": "Enter song name (optional)",
@@ -20,13 +19,9 @@
   "downloadImage": "Download",
   "downloadAllImages": "All",
   "generationFailed": "Generation failed",
-  "images": "images",
-  "uniqueImages": "images",
   "generateWithNewPrompt": "Gen with Unique Prompts",
   "generateWithNewPromptTooltip": "Generates a unique prompt for each image",
   "generatingWithNewPrompt": "Generating...",
-  "uniquePromptCountTooltip": "Number of images to generate, each with a unique prompt",
-  "samePromptCountTooltip": "Number of images to generate using the same prompt",
   "expand": "Expand",
   "collapse": "Collapse",
   "clearImages": "Clear",
@@ -39,7 +34,6 @@
     "modelUnavailable": "The selected image model is unavailable. Choose another image model and try again.",
     "requestRejected": "Gemini rejected the image model or request. Check model access and try again.",
     "quotaExceeded": "Quota exceeded. Check your plan and billing.",
-    "rateLimited": "Rate limit exceeded. Please wait and try again.",
     "unauthorized": "Unauthorized: API key invalid or missing.",
     "forbidden": "Access forbidden. Check billing/quota or model access.",
     "badRequest": "Invalid request. Adjust prompt or album art and try again.",
@@ -52,5 +46,9 @@
     "noImageReturned": "No image was returned. Try again or simplify the prompt.",
     "noPromptReturned": "No prompt was returned. Try again later.",
     "network": "Network error. Check your connection and try again."
-  }
+  },
+  "lyricsRequired": "Please provide lyrics to generate a prompt",
+  "promptRequired": "Please generate a prompt first",
+  "albumArtRequired": "Please provide album art to generate an image",
+  "generatedImageAlt": "Generated Background"
 }

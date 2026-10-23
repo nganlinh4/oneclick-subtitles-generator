@@ -41,6 +41,7 @@ import useSettingsPersistence from './hooks/useSettingsPersistence';
 import { useSettingsTabPillInit, useSettingsTabPillUpdate } from './utils/settingsAnimationHelpers';
 import { clearApplicationStateAndReload } from './utils/applicationStateReset';
 import { pickNextAboutBackground } from './utils/aboutBackground';
+import { readPreference, writePreference } from '../../platform/preferences/store';
 
 const SETTINGS_TAB_IDS = new Set([
   'api-keys',
@@ -60,7 +61,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => {
     // A stale or damaged preference must never produce a modal with no active content.
-    return normalizeSettingsTab(localStorage.getItem('settings_last_active_tab'));
+    return normalizeSettingsTab(readPreference('settings_last_active_tab'));
   });
 
   // Reference to the tabs container
@@ -83,10 +84,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
 
 
   // State for tracking which About background to show
-  const [backgroundType, setBackgroundType] = useState(() => {
-    // Initialize from localStorage
-    return localStorage.getItem('about_background_type') || 'default';
-  });
+  const [backgroundType, setBackgroundType] = useState(() => readPreference('about_background_type'));
 
   // Update availability for About tab badge
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -115,10 +113,8 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
   const settings = useSettingsState();
   const {
     hasChanges,
-    geminiApiKey, setGeminiApiKey,
     youtubeApiKey, setYoutubeApiKey,
     geniusApiKey, setGeniusApiKey,
-    showGeminiKey, setShowGeminiKey,
     showYoutubeKey, setShowYoutubeKey,
     showGeniusKey, setShowGeniusKey,
     useOAuth, setUseOAuth,
@@ -149,9 +145,9 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     customGeminiModels, setCustomGeminiModels,
   } = settings;
 
-  // Save active tab to localStorage when it changes
+  // Remember the active tab for the next time Settings opens
   useEffect(() => {
-    localStorage.setItem('settings_last_active_tab', activeTab);
+    writePreference('settings_last_active_tab', activeTab);
   }, [activeTab]);
 
   const scheduleClose = useCallback((allowActiveSave = false) => {
@@ -245,7 +241,7 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
     );
   };
 
-  // Handle save button click (localStorage + server persistence + callback dispatch)
+  // Handle save button click (native persistence + callback dispatch)
   const { handleSave } = useSettingsPersistence({
     ...settings,
     onSave,
@@ -379,14 +375,10 @@ const SettingsModal = ({ onClose, onSave, apiKeysSet, setApiKeysSet }) => {
           {/* API Keys Tab Content */}
           <div key="settings-tab-api-keys" className={`settings-tab-content ${activeTab === 'api-keys' ? 'active' : ''} settings-tab-content-slide-${animationDirection}`}>
             <ApiKeysTab
-              geminiApiKey={geminiApiKey}
-              setGeminiApiKey={setGeminiApiKey}
               youtubeApiKey={youtubeApiKey}
               setYoutubeApiKey={setYoutubeApiKey}
               geniusApiKey={geniusApiKey}
               setGeniusApiKey={setGeniusApiKey}
-              showGeminiKey={showGeminiKey}
-              setShowGeminiKey={setShowGeminiKey}
               showYoutubeKey={showYoutubeKey}
               setShowYoutubeKey={setShowYoutubeKey}
               showGeniusKey={showGeniusKey}

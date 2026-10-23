@@ -4,10 +4,11 @@ import { createNativeMediaSessionHydrator } from './useNativeMediaSessionHydrati
 import { createMediaProjectActivation } from '../platform/mediaProjectActivation';
 import { createNativeMediaDescriptor } from '../platform/mediaService';
 import {
-  NATIVE_MEDIA_SESSION_KEY,
+  LEGACY_SESSION_STORAGE_KEY,
   loadDurableNativeMediaSession,
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
+  writeNativeMediaSession,
 } from '../platform/nativeMediaOwnership';
 
 const ASSET = '018f47a2-7c20-7f70-8000-000000000011';
@@ -149,9 +150,9 @@ it('never resolves a downloaded project through its asset ID', async () => {
   expect(run.resolveProject.mock.calls.map(([alias]) => alias)).toEqual([URL_ALIAS]);
 });
 
-it('fails closed and drops a stale browser mirror when the host record no longer holds', async () => {
+it('fails closed and drops a stale legacy browser pointer when the host record no longer holds', async () => {
   // The host invalidates the record itself once its project stops owning the media.
-  localStorage.setItem(NATIVE_MEDIA_SESSION_KEY, JSON.stringify({
+  localStorage.setItem(LEGACY_SESSION_STORAGE_KEY, JSON.stringify({
     v: 1, assetId: ASSET, cacheId: URL_ALIAS, projectId: PROJECT,
   }));
   const run = freshProcess({
@@ -161,7 +162,8 @@ it('fails closed and drops a stale browser mirror when the host record no longer
 
   await expect(run.hydrator.hydrate()).resolves.toBe(false);
 
-  expect(localStorage.getItem(NATIVE_MEDIA_SESSION_KEY)).toBeNull();
+  expect(localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)).toBeNull();
+  expect(readNativeMediaSession()).toBeNull();
   expect(run.resolveProject).not.toHaveBeenCalled();
   expect(run.restore).not.toHaveBeenCalled();
   expect(run.published()).toBeNull();
@@ -234,9 +236,7 @@ it('does not withdraw a record that a newer selection replaced during the lookup
   const pending = run.hydrator.hydrate();
   await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
   // A newer selection publishes its own pointer before the stale answer arrives.
-  localStorage.setItem(NATIVE_MEDIA_SESSION_KEY, JSON.stringify({
-    v: 1, assetId: OTHER_ASSET, cacheId: OTHER_ASSET, projectId: OTHER_PROJECT,
-  }));
+  writeNativeMediaSession({ assetId: OTHER_ASSET, cacheId: OTHER_ASSET, projectId: OTHER_PROJECT });
   answer(projectFor(URL_ALIAS, { projectId: OTHER_PROJECT }));
 
   await expect(pending).resolves.toBe(false);

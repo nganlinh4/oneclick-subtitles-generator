@@ -2,6 +2,7 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invokeDesktop } from './desktopRuntime';
 import { isNativeMediaPlaybackUrl } from './mediaService';
+import { hasExactKeys } from './plainDataRecord';
 
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 const IMAGE_FORMATS = Object.freeze({
@@ -13,21 +14,6 @@ const IMAGE_FORMATS = Object.freeze({
 const descriptorKeys = Object.freeze(['assetId', 'mimeType', 'sizeBytes']);
 const playbackDescriptorKeys = Object.freeze(['id', 'playbackUrl', 'mimeType', 'byteLength']);
 const PLAYBACK_URL_PATTERN = /^http:\/\/127\.0\.0\.1:(?:[1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])\/asset\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\?token=[0-9a-f]{64}$/i;
-
-const isPlainRecord = (value) => (
-  value !== null
-  && typeof value === 'object'
-  && !Array.isArray(value)
-  && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
-);
-
-const hasExactKeys = (value, expected) => {
-  if (!isPlainRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const sorted = [...expected].sort();
-  return actual.length === sorted.length
-    && actual.every((key, index) => key === sorted[index]);
-};
 
 const isUuidVersion = (value, expectedVersion) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;

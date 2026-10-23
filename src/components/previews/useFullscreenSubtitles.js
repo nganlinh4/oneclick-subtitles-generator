@@ -1,15 +1,114 @@
 import { useEffect, useState, useCallback } from 'react';
 
 /**
- * Owns all fullscreen DOM logic for VideoPreview:
- *  - handleFullscreenChange (resize/style the video to fill the screen, cleanup on exit)
- *  - handleFullscreenExit (used by both the button and the ESC/F key path)
- *
- * Keeps videoRef/videoContainerRef external (passed in) and threads the control
- * setters it needs (controls visibility / custom controls / hover) up to the parent.
+ * Owns the fullscreen DOM logic for VideoPreview: it forces the video, wrapper and container to
+ * fill the screen on entry, resets those styles on exit, and threads the control setters it
+ * needs (controls visibility / custom controls / hover) up to the parent.
  *
  * Returns { isFullscreen, setIsFullscreen, handleFullscreenExit }.
  */
+
+const VIDEO_FULLSCREEN_STYLES = Object.freeze([
+  ['width', '100vw'],
+  ['height', '100vh'],
+  ['object-fit', 'contain'],
+  ['position', 'fixed'],
+  ['top', '0'],
+  ['left', '0'],
+  ['z-index', '1'],
+  ['max-width', 'none'],
+  ['max-height', 'none'],
+  ['min-width', '100vw'],
+  ['min-height', '100vh'],
+  ['transform', 'none'],
+  ['border-radius', '0'],
+]);
+const WRAPPER_FULLSCREEN_STYLES = Object.freeze([
+  ['width', '100vw'],
+  ['height', '100vh'],
+  ['position', 'fixed'],
+  ['top', '0'],
+  ['left', '0'],
+  ['z-index', '1'], // below the subtitle container
+  ['overflow', 'hidden'],
+]);
+const CONTAINER_FULLSCREEN_STYLES = Object.freeze([
+  ['width', '100vw'],
+  ['height', '100vh'],
+  ['position', 'fixed'],
+  ['top', '0'],
+  ['left', '0'],
+  ['z-index', '998'],
+  ['display', 'block'],
+  ['padding', '0'],
+  ['margin', '0'],
+]);
+const FULLSCREEN_CONTROL_STYLES = Object.freeze([
+  ['opacity', '1'],
+  ['pointer-events', 'auto'],
+  ['z-index', '999999'],
+  ['display', 'flex'],
+  ['visibility', 'visible'],
+  ['transform', 'none'],
+]);
+
+const VIDEO_RESET = VIDEO_FULLSCREEN_STYLES.map(([name]) => name);
+const WRAPPER_RESET = WRAPPER_FULLSCREEN_STYLES.map(([name]) => name);
+const CONTAINER_POSITION_RESET = Object.freeze(['width', 'height', 'position', 'top', 'left', 'z-index']);
+const CONTAINER_BOX_RESET = Object.freeze(['display', 'padding', 'margin']);
+
+const applyImportant = (element, styles) => {
+  styles.forEach(([name, value]) => element.style.setProperty(name, value, 'important'));
+};
+
+const removeStyles = (element, names) => {
+  names.forEach((name) => element.style.removeProperty(name));
+};
+
+const resetVideo = (video) => {
+  removeStyles(video, VIDEO_RESET);
+  video.classList.remove('fullscreen-video');
+};
+
+const resetContainer = (container, extraNames) => {
+  removeStyles(container, CONTAINER_POSITION_RESET);
+  removeStyles(container, extraNames);
+  container.style.cursor = 'default';
+};
+
+const currentFullscreenElement = () => document.fullscreenElement
+  || document.webkitFullscreenElement
+  || document.mozFullScreenElement
+  || document.msFullscreenElement
+  || null;
+
+const isStillFullscreenStyled = (element) => (
+  element.style.position === 'fixed' || element.style.width === '100vw'
+);
+
+// className can be an SVGAnimatedString on SVG elements, so read the attribute as a fallback.
+const isInteractiveGlass = (element) => {
+  const classAttr = typeof element.className === 'string'
+    ? element.className
+    : (element.getAttribute && element.getAttribute('class')) || '';
+  const hasClasses = element.classList
+    && element.classList.contains('liquid-glass')
+    && element.classList.contains('interactive');
+  return hasClasses || (classAttr.includes('liquid-glass') && classAttr.includes('interactive'));
+};
+
+const exitDocumentFullscreen = () => {
+  if (document.exitFullscreen) {
+    document.exitFullscreen().catch(console.error);
+  } else if (document.webkitExitFullscreen) {
+    document.webkitExitFullscreen();
+  } else if (document.mozCancelFullScreen) {
+    document.mozCancelFullScreen();
+  } else if (document.msExitFullscreen) {
+    document.msExitFullscreen();
+  }
+};
+
 const useFullscreenSubtitles = ({
   videoRef,
   videoContainerRef,
@@ -17,379 +116,124 @@ const useFullscreenSubtitles = ({
   setShowCustomControls,
   setIsVideoHovered,
 }) => {
-  const [isFullscreen, setIsFullscreen] = useState(false); // Track fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Function to handle fullscreen exit (used by both button and ESC key)
-  const handleFullscreenExit = useCallback(() => {
-
-    // Try all exit fullscreen methods
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(console.error);
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    } else if (document.mozCancelFullScreen) {
-      document.mozCancelFullScreen();
-    } else if (document.msExitFullscreen) {
-      document.msExitFullscreen();
-    }
-
-    // Force state update if needed
-    setTimeout(() => {
-      const stillFullscreen = !!(document.fullscreenElement ||
-                               document.webkitFullscreenElement ||
-                               document.mozFullScreenElement ||
-                               document.msFullscreenElement);
-      if (!stillFullscreen) {
-
-        // Reset all styles
-        const videoElement = document.querySelector('.native-video-container video');
-        const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
-        const container = document.querySelector('.native-video-container');
-
-        if (videoElement) {
-          videoElement.style.removeProperty('width');
-          videoElement.style.removeProperty('height');
-          videoElement.style.removeProperty('object-fit');
-          videoElement.style.removeProperty('position');
-          videoElement.style.removeProperty('top');
-          videoElement.style.removeProperty('left');
-          videoElement.style.removeProperty('z-index');
-          videoElement.style.removeProperty('max-width');
-          videoElement.style.removeProperty('max-height');
-          videoElement.style.removeProperty('min-width');
-          videoElement.style.removeProperty('min-height');
-          videoElement.style.removeProperty('transform');
-          videoElement.style.removeProperty('border-radius');
-          videoElement.classList.remove('fullscreen-video');
-        }
-
-        if (videoWrapper) {
-          videoWrapper.style.removeProperty('width');
-          videoWrapper.style.removeProperty('height');
-          videoWrapper.style.removeProperty('position');
-          videoWrapper.style.removeProperty('top');
-          videoWrapper.style.removeProperty('left');
-          videoWrapper.style.removeProperty('z-index');
-          videoWrapper.style.removeProperty('overflow');
-        }
-
-        if (container) {
-          container.style.removeProperty('width');
-          container.style.removeProperty('height');
-          container.style.removeProperty('position');
-          container.style.removeProperty('top');
-          container.style.removeProperty('left');
-          container.style.removeProperty('z-index');
-          container.style.removeProperty('background');
-          // Reset cursor to default
-          container.style.cursor = 'default';
-        }
-
-        setIsFullscreen(false);
-        setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-        // FIX: Check if mouse is still hovering and set state accordingly
-        if (videoContainerRef.current?.matches(':hover')) {
-          setIsVideoHovered(true);
-        } else {
-          setIsVideoHovered(false);
-        }
-      }
-    }, 100);
+  // Normal (non-fullscreen) mode shows controls on hover, so resync hover on every exit.
+  const leaveFullscreenState = useCallback(() => {
+    setControlsVisible(false);
+    setIsVideoHovered(Boolean(videoContainerRef.current?.matches(':hover')));
   }, [videoContainerRef, setControlsVisible, setIsVideoHovered]);
 
-  // Handle fullscreen changes
+  // Used by the exit button and the ESC/F key path.
+  const handleFullscreenExit = useCallback(() => {
+    exitDocumentFullscreen();
+
+    setTimeout(() => {
+      if (currentFullscreenElement()) return;
+      const videoElement = document.querySelector('.native-video-container video');
+      const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
+      const container = document.querySelector('.native-video-container');
+      if (videoElement) resetVideo(videoElement);
+      if (videoWrapper) removeStyles(videoWrapper, WRAPPER_RESET);
+      if (container) resetContainer(container, ['background']);
+      setIsFullscreen(false);
+      leaveFullscreenState();
+    }, 100);
+  }, [leaveFullscreenState]);
+
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    // Function to handle fullscreen change events
+    const enterFullscreen = (container) => {
+      videoElement.classList.add('fullscreen-video');
+      setControlsVisible(true);
+      setShowCustomControls(true);
+
+      // Force the custom controls visible over the fullscreen video.
+      setTimeout(() => {
+        const current = videoContainerRef.current;
+        if (!current) return;
+        current.querySelectorAll('[style*="opacity"]').forEach((element) => {
+          if (isInteractiveGlass(element)) applyImportant(element, FULLSCREEN_CONTROL_STYLES);
+        });
+      }, 100);
+
+      // Force video and container to fill the screen, overriding any existing styles.
+      setTimeout(() => {
+        applyImportant(videoElement, VIDEO_FULLSCREEN_STYLES);
+        videoElement.removeAttribute('width');
+        videoElement.removeAttribute('height');
+        const videoWrapper = videoElement.closest('.video-wrapper');
+        if (videoWrapper) applyImportant(videoWrapper, WRAPPER_FULLSCREEN_STYLES);
+        if (container) applyImportant(container, CONTAINER_FULLSCREEN_STYLES);
+      }, 100);
+    };
+
+    const exitFullscreen = (isDocFullscreen) => {
+      videoElement.classList.remove('fullscreen-video');
+
+      // Deferred so the browser's own cleanup runs first.
+      setTimeout(() => {
+        const video = document.querySelector('.native-video-container video');
+        const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
+        const container = videoContainerRef.current;
+        if (video) resetVideo(video);
+        if (videoWrapper) removeStyles(videoWrapper, WRAPPER_RESET);
+        if (container) resetContainer(container, ['background', ...CONTAINER_BOX_RESET]);
+      }, 50);
+
+      if (isDocFullscreen) return;
+      // Sweep any element still carrying fullscreen styles, then settle React state.
+      setTimeout(() => {
+        document.querySelectorAll('video').forEach((video) => {
+          if (isStillFullscreenStyled(video)) resetVideo(video);
+        });
+        document.querySelectorAll('.video-wrapper').forEach((wrapper) => {
+          if (isStillFullscreenStyled(wrapper)) removeStyles(wrapper, WRAPPER_RESET);
+        });
+        document.querySelectorAll('.native-video-container').forEach((container) => {
+          if (isStillFullscreenStyled(container)) resetContainer(container, CONTAINER_BOX_RESET);
+        });
+        setIsFullscreen(false);
+        leaveFullscreenState();
+      }, 50);
+    };
+
     const handleFullscreenChange = () => {
-      const isDocFullscreen = !!document.fullscreenElement ||
-                             !!document.webkitFullscreenElement ||
-                             !!document.mozFullScreenElement ||
-                             !!document.msFullscreenElement;
-
-      // Check if our video container is the fullscreen element
+      const fullscreenElement = currentFullscreenElement();
       const container = videoContainerRef.current;
-      const isVideoFullscreen = isDocFullscreen &&
-                              (document.fullscreenElement === container ||
-                               document.webkitFullscreenElement === container ||
-                               document.mozFullScreenElement === container ||
-                               document.msFullscreenElement === container);
-
+      const isVideoFullscreen = fullscreenElement !== null && fullscreenElement === container;
 
       setIsFullscreen(isVideoFullscreen);
-
-      // Reset control states when exiting fullscreen
-      if (!isVideoFullscreen) {
-        setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-        // FIX: Check hover state when exiting
-        if (videoContainerRef.current?.matches(':hover')) {
-          setIsVideoHovered(true);
-        } else {
-          setIsVideoHovered(false);
-        }
-      }
-
-      // If entering fullscreen, create the subtitle container and setup controls
       if (isVideoFullscreen) {
-        // Add a class to the video element to help with styling
-        videoElement.classList.add('fullscreen-video');
-
-        setControlsVisible(true);
-        setShowCustomControls(true); // Force custom controls to be rendered
-
-        // Force controls to be visible by directly setting CSS
-        setTimeout(() => {
-          const container = videoContainerRef.current;
-          if (container) {
-            const controlElements = container.querySelectorAll('[style*="opacity"]');
-            controlElements.forEach((element) => {
-              // className can be an object on SVG elements (SVGAnimatedString), so don't assume it's a string
-              const classAttr = typeof element.className === 'string'
-                ? element.className
-                : (element.getAttribute && element.getAttribute('class')) || '';
-              const hasLiquidGlass = element.classList && element.classList.contains('liquid-glass');
-              const hasInteractive = element.classList && element.classList.contains('interactive');
-
-              if ((hasLiquidGlass && hasInteractive) || (classAttr.includes('liquid-glass') && classAttr.includes('interactive'))) {
-                element.style.setProperty('opacity', '1', 'important');
-                element.style.setProperty('pointer-events', 'auto', 'important');
-                element.style.setProperty('z-index', '999999', 'important');
-                element.style.setProperty('display', 'flex', 'important');
-                element.style.setProperty('visibility', 'visible', 'important');
-                element.style.setProperty('transform', 'none', 'important');
-              }
-            });
-          }
-        }, 100);
-
-        // Force video and container to fill fullscreen with JavaScript
-        setTimeout(() => {
-          if (videoElement) {
-
-            // Use setProperty with important flag to override any existing styles
-            videoElement.style.setProperty('width', '100vw', 'important');
-            videoElement.style.setProperty('height', '100vh', 'important');
-            videoElement.style.setProperty('object-fit', 'contain', 'important');
-            videoElement.style.setProperty('position', 'fixed', 'important');
-            videoElement.style.setProperty('top', '0', 'important');
-            videoElement.style.setProperty('left', '0', 'important');
-            videoElement.style.setProperty('z-index', '1', 'important');
-            videoElement.style.setProperty('max-width', 'none', 'important');
-            videoElement.style.setProperty('max-height', 'none', 'important');
-            videoElement.style.setProperty('min-width', '100vw', 'important');
-            videoElement.style.setProperty('min-height', '100vh', 'important');
-            videoElement.style.setProperty('transform', 'none', 'important');
-            videoElement.style.setProperty('border-radius', '0', 'important');
-
-            // Also remove any conflicting attributes
-            videoElement.removeAttribute('width');
-            videoElement.removeAttribute('height');
-
-
-            // Force video wrapper styles
-            const videoWrapper = videoElement.closest('.video-wrapper');
-            if (videoWrapper) {
-              videoWrapper.style.setProperty('width', '100vw', 'important');
-              videoWrapper.style.setProperty('height', '100vh', 'important');
-              videoWrapper.style.setProperty('position', 'fixed', 'important');
-              videoWrapper.style.setProperty('top', '0', 'important');
-              videoWrapper.style.setProperty('left', '0', 'important');
-              videoWrapper.style.setProperty('z-index', '1', 'important'); // Lower than subtitle container
-              videoWrapper.style.setProperty('overflow', 'hidden', 'important');
-            }
-
-            // Force container styles
-            if (container) {
-              container.style.setProperty('width', '100vw', 'important');
-              container.style.setProperty('height', '100vh', 'important');
-              container.style.setProperty('position', 'fixed', 'important');
-              container.style.setProperty('top', '0', 'important');
-              container.style.setProperty('left', '0', 'important');
-              container.style.setProperty('z-index', '998', 'important');
-              container.style.setProperty('display', 'block', 'important');
-              container.style.setProperty('padding', '0', 'important');
-              container.style.setProperty('margin', '0', 'important');
-            }
-
-          }
-        }, 100);
+        enterFullscreen(container);
       } else {
-        // If exiting fullscreen, force our manual exit function to ensure proper cleanup
-
-        videoElement.classList.remove('fullscreen-video');
-
-        // Call our manual exit function to ensure all styles are properly reset
-        // Use setTimeout to avoid potential conflicts with the browser's own cleanup
-        setTimeout(() => {
-
-          // Reset all styles using the same logic as the button
-          const videoElement = document.querySelector('.native-video-container video');
-          const videoWrapper = document.querySelector('.native-video-container .video-wrapper');
-          const container = videoContainerRef.current;
-
-          if (videoElement) {
-            videoElement.style.removeProperty('width');
-            videoElement.style.removeProperty('height');
-            videoElement.style.removeProperty('object-fit');
-            videoElement.style.removeProperty('position');
-            videoElement.style.removeProperty('top');
-            videoElement.style.removeProperty('left');
-            videoElement.style.removeProperty('z-index');
-            videoElement.style.removeProperty('max-width');
-            videoElement.style.removeProperty('max-height');
-            videoElement.style.removeProperty('min-width');
-            videoElement.style.removeProperty('min-height');
-            videoElement.style.removeProperty('transform');
-            videoElement.style.removeProperty('border-radius');
-            videoElement.classList.remove('fullscreen-video');
-          }
-
-          if (videoWrapper) {
-            videoWrapper.style.removeProperty('width');
-            videoWrapper.style.removeProperty('height');
-            videoWrapper.style.removeProperty('position');
-            videoWrapper.style.removeProperty('top');
-            videoWrapper.style.removeProperty('left');
-            videoWrapper.style.removeProperty('z-index');
-            videoWrapper.style.removeProperty('overflow');
-          }
-
-          if (container) {
-            container.style.removeProperty('width');
-            container.style.removeProperty('height');
-            container.style.removeProperty('position');
-            container.style.removeProperty('top');
-            container.style.removeProperty('left');
-            container.style.removeProperty('z-index');
-            container.style.removeProperty('background');
-            container.style.removeProperty('display');
-            container.style.removeProperty('padding');
-            container.style.removeProperty('margin');
-            // Reset cursor to default
-            container.style.cursor = 'default';
-          }
-
-        }, 50);
-
-        // Additional cleanup: If we're not in fullscreen but still have fullscreen styles, force cleanup
-        if (!isDocFullscreen) {
-          setTimeout(() => {
-            // Force reset all possible fullscreen styles
-            const allVideos = document.querySelectorAll('video');
-            allVideos.forEach(video => {
-              if (video.style.position === 'fixed' || video.style.width === '100vw') {
-                video.style.removeProperty('width');
-                video.style.removeProperty('height');
-                video.style.removeProperty('object-fit');
-                video.style.removeProperty('position');
-                video.style.removeProperty('top');
-                video.style.removeProperty('left');
-                video.style.removeProperty('z-index');
-                video.style.removeProperty('max-width');
-                video.style.removeProperty('max-height');
-                video.style.removeProperty('min-width');
-                video.style.removeProperty('min-height');
-                video.style.removeProperty('transform');
-                video.style.removeProperty('border-radius');
-                video.classList.remove('fullscreen-video');
-              }
-            });
-
-            // Force reset all video wrappers
-            const allWrappers = document.querySelectorAll('.video-wrapper');
-            allWrappers.forEach(wrapper => {
-              if (wrapper.style.position === 'fixed' || wrapper.style.width === '100vw') {
-                wrapper.style.removeProperty('width');
-                wrapper.style.removeProperty('height');
-                wrapper.style.removeProperty('position');
-                wrapper.style.removeProperty('top');
-                wrapper.style.removeProperty('left');
-                wrapper.style.removeProperty('z-index');
-                wrapper.style.removeProperty('overflow');
-              }
-            });
-
-            // Force reset all video containers
-            const allContainers = document.querySelectorAll('.native-video-container');
-            allContainers.forEach(container => {
-              if (container.style.position === 'fixed' || container.style.width === '100vw') {
-                container.style.removeProperty('width');
-                container.style.removeProperty('height');
-                container.style.removeProperty('position');
-                container.style.removeProperty('top');
-                container.style.removeProperty('left');
-                container.style.removeProperty('z-index');
-                container.style.removeProperty('display');
-                container.style.removeProperty('padding');
-                container.style.removeProperty('margin');
-                container.style.cursor = 'default';
-              }
-            });
-
-            // Ensure React state is also updated
-            setIsFullscreen(false);
-            setControlsVisible(false); // Reset controls to hidden when exiting fullscreen (normal mode uses hover)
-            // FIX: Check hover state when exiting
-            if (videoContainerRef.current?.matches(':hover')) {
-              setIsVideoHovered(true);
-            } else {
-              setIsVideoHovered(false);
-            }
-          }, 50);
-        }
+        leaveFullscreenState();
+        exitFullscreen(fullscreenElement !== null);
       }
     };
 
-    // Add event listeners for all browser variants
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-    // Add window-level listener to catch any missed fullscreen changes
+    // Catches an exit whose fullscreenchange event was missed.
     const handleWindowResize = () => {
-      // Check if we think we're in fullscreen but actually aren't
-      const isActuallyFullscreen = !!(document.fullscreenElement ||
-                                     document.webkitFullscreenElement ||
-                                     document.mozFullScreenElement ||
-                                     document.msFullscreenElement);
-
-      if (isFullscreen && !isActuallyFullscreen) {
-        handleFullscreenChange();
-      }
+      if (isFullscreen && !currentFullscreenElement()) handleFullscreenChange();
     };
 
+    const fullscreenEvents = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
+    fullscreenEvents.forEach((name) => document.addEventListener(name, handleFullscreenChange));
     window.addEventListener('resize', handleWindowResize);
 
-    // Add ESC key listener - let browser handle exit, but ensure our cleanup runs
-    const handleEscKey = (event) => {
-      if (event.key === 'Escape' && isFullscreen) {
-        // Don't prevent default - let browser handle the exit
-        // Our handleFullscreenChange will be called and will do the proper cleanup
-      }
-    };
-
-    document.addEventListener('keydown', handleEscKey);
-
-    // Clean up
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      fullscreenEvents.forEach((name) => document.removeEventListener(name, handleFullscreenChange));
       window.removeEventListener('resize', handleWindowResize);
-      document.removeEventListener('keydown', handleEscKey);
     };
   }, [
     videoRef,
     videoContainerRef,
-    handleFullscreenExit,
     isFullscreen,
+    leaveFullscreenState,
     setControlsVisible,
     setShowCustomControls,
-    setIsVideoHovered,
   ]);
 
   return { isFullscreen, setIsFullscreen, handleFullscreenExit };

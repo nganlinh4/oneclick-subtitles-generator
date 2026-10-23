@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { downloadUrlToUserDestination } from '../../platform/userMediaExportFlow';
 import { getVideoDetails } from '../../platform/desktopYoutubeService';
 import UnifiedUrlInput from './UnifiedUrlInput';
+import { readActiveMedia, updateActiveMedia } from '../../platform/activeMediaSource';
 
 vi.mock('../../platform/userMediaExportFlow', () => ({
   downloadUrlToUserDestination: vi.fn(),
@@ -40,29 +41,22 @@ beforeEach(() => {
 
 it('stages URL B without overwriting active media A compatibility identity', async () => {
   const setSelectedVideo = vi.fn();
-  const videoChanged = vi.fn();
-  localStorage.setItem('current_video_url', 'https://youtube.com/watch?v=AAAAAAAAAAA');
-  localStorage.setItem('current_file_url', 'http://127.0.0.1/active-a');
+  updateActiveMedia({ sourceUrl: 'https://youtube.com/watch?v=AAAAAAAAAAA' });
+  updateActiveMedia({ playbackUrl: 'http://127.0.0.1/active-a' });
   localStorage.setItem('latest_segment_subtitles', 'owned-by-a');
-  window.addEventListener('video-changed', videoChanged);
-  try {
-    render(<UnifiedUrlInput setSelectedVideo={setSelectedVideo} selectedVideo={null} />);
-    fireEvent.change(screen.getByPlaceholderText('Video URL'), {
-      target: { value: 'https://youtube.com/watch?v=BBBBBBBBBBB' },
-    });
+  render(<UnifiedUrlInput setSelectedVideo={setSelectedVideo} selectedVideo={null} />);
+  fireEvent.change(screen.getByPlaceholderText('Video URL'), {
+    target: { value: 'https://youtube.com/watch?v=BBBBBBBBBBB' },
+  });
 
-    await waitFor(() => expect(setSelectedVideo).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'BBBBBBBBBBB',
-      url: 'https://youtube.com/watch?v=BBBBBBBBBBB',
-    })));
-    expect(localStorage.getItem('current_video_url'))
-      .toBe('https://youtube.com/watch?v=AAAAAAAAAAA');
-    expect(localStorage.getItem('current_file_url')).toBe('http://127.0.0.1/active-a');
-    expect(localStorage.getItem('latest_segment_subtitles')).toBe('owned-by-a');
-    expect(videoChanged).not.toHaveBeenCalled();
-  } finally {
-    window.removeEventListener('video-changed', videoChanged);
-  }
+  await waitFor(() => expect(setSelectedVideo).toHaveBeenCalledWith(expect.objectContaining({
+    id: 'BBBBBBBBBBB',
+    url: 'https://youtube.com/watch?v=BBBBBBBBBBB',
+  })));
+  expect(readActiveMedia().sourceUrl)
+    .toBe('https://youtube.com/watch?v=AAAAAAAAAAA');
+  expect(readActiveMedia().playbackUrl).toBe('http://127.0.0.1/active-a');
+  expect(localStorage.getItem('latest_segment_subtitles')).toBe('owned-by-a');
 });
 
 it('propagates the selected browser source through Unified URL direct export', async () => {

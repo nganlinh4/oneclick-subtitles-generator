@@ -1,9 +1,1 @@
-{
-  "videoQuality": "Chất lượng video",
-  "lowestQuality": "Chất lượng thấp nhất (khuyến nghị cho video > 1 giờ)",
-  "lowQuality": "Chất lượng thấp",
-  "mediumQuality": "Chất lượng trung bình (mặc định)",
-  "highQuality": "Chất lượng cao",
-  "hdQuality": "Chất lượng HD (có thể gây lỗi với video dài)",
-  "longVideoWarning": "Chọn chất lượng nhỏ hơn hoặc lớn hơn 360p sẽ làm tăng thời gian tải xuống do quá trình ghép âm thanh"
-}
+{}

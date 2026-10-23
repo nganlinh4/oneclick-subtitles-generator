@@ -11,11 +11,12 @@ import {
   persistNativeMediaSession,
   readNativeMediaSession,
 } from '../../platform/nativeMediaOwnership';
+import { publishOwnedUrlMedia } from '../../platform/urlMediaPublication';
 import {
-  captureMediaCompatibility,
-  publishOwnedUrlMedia,
-  restoreMediaCompatibility,
-} from '../../platform/urlMediaPublication';
+  captureActiveMediaSource,
+  restoreActiveMediaSource,
+  updateActiveMedia,
+} from '../../platform/activeMediaSource';
 import {
   activateSubtitleProjectBinding,
   clearSubtitleProjectBinding,
@@ -30,7 +31,6 @@ import {
   isAutoGenerationRequest,
   sourceIdentityForUrl,
 } from '../../utils/autoGenerationOwnership';
-import { forgetBrowserMediaBlob } from '../../platform/browserMediaBlobRegistry';
 
 let activeDownloadPresentation = null;
 
@@ -47,16 +47,10 @@ const withdrawVisibleMediaForUrlIntent = async ({
 
   // Selecting URL B is itself a media intent. Video A remains durable in its project history, but
   // it must stop being the active/visible media immediately; otherwise a failed B download lies by
-  // continuing to show A. Clear every compatibility surface before the fallible network work.
-  const replacedFileUrl = localStorage.getItem('current_file_url');
+  // continuing to show A. Withdraw the active source before the fallible network work.
   setUploadedFile(null);
   setIsSrtOnlyMode?.(documentCacheId !== null);
-  for (const key of [
-    'current_file_name',
-    'current_file_url',
-    'split_result',
-    'current_video_url',
-  ]) localStorage.removeItem(key);
+  updateActiveMedia({ sourceUrl: null, playbackUrl: null });
   const cleared = await forgetNativeMediaSessionDurably();
   // The native clear is conditional, and its reply may arrive after a newer URL has already
   // activated. Only its current owner may withdraw the browser project or proceed to download.
@@ -76,14 +70,6 @@ const withdrawVisibleMediaForUrlIntent = async ({
   }
   if (!ownsPresentation()) throw new AutoGenerationOwnershipError();
 
-  if (replacedFileUrl?.startsWith('blob:')) {
-    try {
-      URL.revokeObjectURL(replacedFileUrl);
-    } catch {
-      // A stale browser blob is already unusable and needs no further cleanup.
-    }
-    forgetBrowserMediaBlob(replacedFileUrl);
-  }
   return documentCacheId;
 };
 
@@ -142,7 +128,7 @@ export const downloadAndPrepareYouTubeVideo = async (
 
     let previousMedia = null;
     let previousSession = null;
-    let previousCompatibility = null;
+    let previousSource = null;
     const nativeMedia = await downloadNativeVideo({
       url: selectedVideo.url,
       cookieSource: getDownloadCookieSource(),
@@ -158,7 +144,7 @@ export const downloadAndPrepareYouTubeVideo = async (
         previousMedia = await getSelectedMedia();
         await validateOwnership();
         previousSession = readNativeMediaSession();
-        previousCompatibility = captureMediaCompatibility();
+        previousSource = captureActiveMediaSource();
         let binding = null;
         try {
           binding = await activateSubtitleProjectBinding(projectCacheId, {
@@ -203,7 +189,7 @@ export const downloadAndPrepareYouTubeVideo = async (
         }
         if (previousSession === null) await forgetNativeMediaSessionDurably();
         else await persistNativeMediaSession(previousSession);
-        if (previousCompatibility !== null) restoreMediaCompatibility(previousCompatibility);
+        if (previousSource !== null) restoreActiveMediaSource(previousSource);
       },
       onStarted: (jobId) => present(() => setCurrentDownloadId(jobId)),
       onProgress: (progress) => present(() => setDownloadProgress(progress)),

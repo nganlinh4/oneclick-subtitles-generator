@@ -1,6 +1,6 @@
 import { createNativeMediaDescriptor } from './mediaService';
 import {
-  NATIVE_MEDIA_SESSION_KEY,
+  LEGACY_SESSION_STORAGE_KEY,
   canonicalAssetFromDescriptor,
   ensureProjectOwnsNativeMedia,
   forgetNativeMediaSession,
@@ -10,6 +10,7 @@ import {
   readNativeMediaSession,
   resolveOwnedNativeMediaProject,
   subtitleAliasForActiveMedia,
+  takeLegacyNativeMediaSession,
   writeNativeMediaSession,
 } from './nativeMediaOwnership';
 
@@ -89,11 +90,9 @@ it.each([
   });
 });
 
-it('round-trips a session pointer through storage', () => {
+it('keeps the session mirror in memory, never in WebView storage', () => {
   writeNativeMediaSession({ assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A });
-  expect(JSON.parse(localStorage.getItem(NATIVE_MEDIA_SESSION_KEY))).toEqual({
-    v: 1, assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A,
-  });
+  expect(localStorage.length).toBe(0);
   expect(readNativeMediaSession()).toEqual({
     assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A,
   });
@@ -145,7 +144,7 @@ it('honours a native empty tombstone and erases a stale browser mirror after a c
 
 it('migrates a browser pointer only while native workspace authority is uninitialized', async () => {
   const legacy = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
-  writeNativeMediaSession(legacy);
+  localStorage.setItem(LEGACY_SESSION_STORAGE_KEY, JSON.stringify({ v: 1, ...legacy }));
   const persist = vi.fn(async session => session);
 
   await expect(loadDurableNativeMediaSession({
@@ -160,6 +159,21 @@ it('migrates a browser pointer only while native workspace authority is uninitia
     legacy,
     expect.objectContaining({ rememberMirror: expect.any(Function) }),
   );
+  expect(localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)).toBeNull();
+});
+
+it('discards a legacy browser pointer once native authority is initialized', async () => {
+  localStorage.setItem(LEGACY_SESSION_STORAGE_KEY, JSON.stringify({
+    v: 1, assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A,
+  }));
+  const persist = vi.fn();
+
+  await expect(loadDurableNativeMediaSession({
+    invokeCommand: vi.fn(async () => ({ schemaVersion: 1, initialized: true, workspace: null })),
+    persist,
+  })).resolves.toBeNull();
+  expect(persist).not.toHaveBeenCalled();
+  expect(localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)).toBeNull();
 });
 
 it.each([
@@ -307,21 +321,6 @@ it('forgets a session only when the exact captured tuple is still current', () =
   expect(readNativeMediaSession()).toBeNull();
 });
 
-it('suppresses an exact stale browser mirror when localStorage cleanup fails', () => {
-  const sessionA = { assetId: ASSET_A, cacheId: URL_ALIAS, projectId: PROJECT_A };
-  const sessionB = { assetId: ASSET_B, cacheId: 'newer', projectId: PROJECT_B };
-  writeNativeMediaSession(sessionA);
-
-  expect(forgetNativeMediaSession({
-    expectedSession: sessionA,
-    removeValue: () => { throw new Error('storage unavailable'); },
-  })).toBe(false);
-  expect(readNativeMediaSession()).toBeNull();
-
-  writeNativeMediaSession(sessionB);
-  expect(readNativeMediaSession()).toEqual(sessionB);
-});
-
 it.each([
   ['absent', null],
   ['not JSON', 'not-json'],
@@ -343,9 +342,10 @@ it.each([
   ['an over-long alias', JSON.stringify({
     v: 1, assetId: ASSET_A, cacheId: 'a'.repeat(9_000), projectId: PROJECT_A,
   })],
-])('reads no session when the pointer is %s', (_label, raw) => {
-  if (raw !== null) localStorage.setItem(NATIVE_MEDIA_SESSION_KEY, raw);
-  expect(readNativeMediaSession()).toBeNull();
+])('migrates no legacy session when the stored pointer is %s', (_label, raw) => {
+  if (raw !== null) localStorage.setItem(LEGACY_SESSION_STORAGE_KEY, raw);
+  expect(takeLegacyNativeMediaSession()).toBeNull();
+  expect(localStorage.getItem(LEGACY_SESSION_STORAGE_KEY)).toBeNull();
 });
 
 it.each([

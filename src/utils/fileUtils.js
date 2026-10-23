@@ -4,7 +4,6 @@ import {
 } from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
-import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
 import {
   serializeJsonSubtitleDocument,
@@ -12,33 +11,15 @@ import {
   serializeTextSubtitleDocument,
 } from './subtitleDocumentSerializer';
 
-const downloadBrowserDocument = (content, mimeType, filename) => {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  setTimeout(() => {
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-  }, 100);
-  return Object.freeze({ status: 'saved' });
-};
-
-const saveSubtitleDocument = async (content, format, filename, mimeType) => {
-  if (!isDesktopRuntime()) {
-    return downloadBrowserDocument(content, mimeType, filename);
-  }
-  return exportSubtitleDocument({ suggestedName: filename, format, content });
-};
+const saveSubtitleDocument = async (content, format, filename) => (
+  exportSubtitleDocument({ suggestedName: filename, format, content })
+);
 
 export const downloadTextDocument = async (content, filename = 'document.txt') => {
   if (typeof content !== 'string') {
     throw new TypeError('A text document is required');
   }
-  return saveSubtitleDocument(content, 'txt', filename, 'text/plain;charset=utf-8');
+  return saveSubtitleDocument(content, 'txt', filename);
 };
 
 /**
@@ -64,8 +45,7 @@ export const downloadSRT = async (subtitles, filename) => {
   return saveSubtitleDocument(
     content,
     'srt',
-    filename || 'subtitles.srt',
-    'text/plain;charset=utf-8'
+    filename || 'subtitles.srt'
   );
 };
 
@@ -92,8 +72,7 @@ export const downloadJSON = async (subtitles, filename) => {
   return saveSubtitleDocument(
     content,
     'json',
-    filename || 'subtitles.json',
-    'application/json;charset=utf-8'
+    filename || 'subtitles.json'
   );
 };
 
@@ -120,8 +99,7 @@ export const downloadTXT = async (subtitles, filename) => {
   const result = await saveSubtitleDocument(
     content,
     'txt',
-    filename || 'subtitles.txt',
-    'text/plain;charset=utf-8'
+    filename || 'subtitles.txt'
   );
 
   return Object.freeze({ ...result, content });

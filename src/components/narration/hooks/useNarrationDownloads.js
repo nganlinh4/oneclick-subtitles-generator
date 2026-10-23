@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import {
   downloadNativeNarrations,
   resolveNativeNarrationPlayback,
@@ -17,7 +16,7 @@ const useNarrationDownloads = ({
 }) => {
   const playAudio = async (result) => {
     try {
-      if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+      if (!isNativeNarrationResult(result)) {
         throw new Error('Native narration audio is unavailable');
       }
       if (isPlaying && currentAudio?.id === result.subtitle_id) {
@@ -51,8 +50,7 @@ const useNarrationDownloads = ({
     );
     try {
       const successful = generationResults.filter((result) => result.success);
-      if (!isDesktopRuntime()
-          || successful.length === 0
+      if (successful.length === 0
           || !successful.every(isNativeNarrationResult)) {
         throw new Error('Native narration audio is unavailable');
       }

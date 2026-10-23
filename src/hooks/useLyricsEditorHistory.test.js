@@ -308,52 +308,6 @@ it('treats non-durable display aliases as the same native undo target', async ()
   expect(result.current.redoStack).toEqual([rows('B')]);
 });
 
-it('coalesces progressive external previews into one revision after the quiet edge', async () => {
-  vi.useFakeTimers();
-  const { result } = renderHook(() => useHarness(rows('Before')));
-
-  act(() => {
-    result.current.captureStateBeforeMerge();
-    result.current.observeExternalLyrics(rows('Preview 1'));
-    result.current.observeExternalLyrics(rows('Preview 2'));
-    vi.advanceTimersByTime(749);
-  });
-  expect(controller.record).not.toHaveBeenCalled();
-
-  await act(async () => {
-    vi.advanceTimersByTime(1);
-    await Promise.resolve();
-  });
-  expect(controller.record).toHaveBeenCalledWith(
-    rows('Before'),
-    rows('Preview 2'),
-    LYRICS_EDITOR_ACTIONS.EXTERNAL_MERGE
-  );
-  expect(result.current.history).toEqual([rows('Before')]);
-  vi.useRealTimers();
-});
-
-it('does not create a volatile or durable entry when an external merge returns to baseline', async () => {
-  vi.useFakeTimers();
-  const { result } = renderHook(() => useHarness(rows('Before')));
-
-  act(() => {
-    result.current.captureStateBeforeMerge();
-    result.current.observeExternalLyrics(rows('Preview'));
-    result.current.observeExternalLyrics(rows('Before'));
-  });
-  expect(result.current.history).toEqual([rows('Before')]);
-
-  await act(async () => {
-    vi.advanceTimersByTime(750);
-    await Promise.resolve();
-  });
-  expect(controller.record).not.toHaveBeenCalled();
-  expect(result.current.history).toEqual([]);
-  expect(result.current.redoStack).toEqual([]);
-  vi.useRealTimers();
-});
-
 it('ignores an older navigation correction after a newer local edit', async () => {
   const pendingUndo = deferred();
   controller.undo.mockReturnValue(pendingUndo.promise);

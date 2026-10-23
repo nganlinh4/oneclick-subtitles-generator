@@ -5,15 +5,13 @@ import CloseButton from './common/CloseButton';
 import '../styles/DownloadOnlyModal.css';
 import { scanVideoQualities } from '../utils/qualityScanner';
 import { downloadUrlToUserDestination } from '../platform/userMediaExportFlow';
-import {
-  getDownloadCookieSource,
-  readDownloadCookiePreference,
-} from '../platform/downloadCookiePreference';
+import { getDownloadCookieSource } from '../platform/downloadCookiePreference';
 
 import { cancelDownloadOnly } from '../utils/downloadOnlyUtils';
 import { showErrorToast, showSuccessToast } from '../utils/toastUtils';
 import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
+import { usePreference } from '../platform/preferences/store';
 
 // Global singleton to prevent multiple download modals
 let activeDownloadModal = null;
@@ -33,9 +31,7 @@ const DownloadOnlyModal = ({
   const [downloadVideoId, setDownloadVideoId] = useState(null);
 
   // Get current cookie setting as state
-  const [useCookiesEnabled, setUseCookiesEnabled] = useState(
-    readDownloadCookiePreference().enabled
-  );
+  const [useCookiesEnabled] = usePreference('use_cookies_for_download');
 
   // Ref for WavyProgressIndicator animations
   const wavyProgressRef = useRef(null);
@@ -120,32 +116,6 @@ const DownloadOnlyModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType, videoInfo?.url]);
 
-  // Listen for changes to cookie setting and update when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      // Update cookie setting when modal opens
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    }
-
-    const handleStorageChange = () => {
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    };
-
-    const handleFocus = () => {
-      // Update when window regains focus (e.g., after closing settings modal)
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    };
-
-    // Listen for storage events (when localStorage changes in other tabs/windows)
-    window.addEventListener('storage', handleStorageChange);
-    // Listen for focus events (when user returns to tab/window)
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isOpen]);
 
   const handleScanQualities = async () => {
     if (!videoInfo?.url) return;

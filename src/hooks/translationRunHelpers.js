@@ -1,4 +1,4 @@
-// Pure helpers for translation runs: run IDs, preference storage, terminal records and commits.
+// Pure helpers for translation runs: run IDs, terminal records and commits.
 import {
   assertTranslationPersistenceReceipt,
   persistTranslationForIdentity,
@@ -13,29 +13,6 @@ let translationRunSequence = 0;
 export const nextRunId = () => {
   translationRunSequence = (translationRunSequence + 1) % Number.MAX_SAFE_INTEGER;
   return `translation-${Date.now().toString(36)}-${translationRunSequence.toString(36)}`;
-};
-
-export const safeGetStorage = (key) => {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-
-export const safeSetStorage = (key, value) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Compatibility preferences are best-effort and never own a durable result.
-  }
-};
-
-export const boundedIntegerSetting = (key, fallback, maximum) => {
-  const raw = safeGetStorage(key);
-  if (!/^(0|[1-9]\d*)$/.test(raw ?? '')) return fallback;
-  const number = Number(raw);
-  return Number.isSafeInteger(number) && number <= maximum ? number : fallback;
 };
 
 export const callCompletion = (callback, subtitles) => {

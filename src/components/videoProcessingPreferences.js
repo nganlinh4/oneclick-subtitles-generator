@@ -1,52 +1,71 @@
 import { getEngineDescriptor } from '../services/engines/transcriptionEngineRegistry';
+import { readPreference, writePreference } from '../platform/preferences/store';
 
-const TRANSCRIBE_WINDOW_KEY = 'video_processing_transcribe_window_seconds';
-const TRANSCRIBE_LANGUAGES_KEY = 'video_processing_transcribe_language_hints';
-const TRANSCRIBE_DIARIZATION_KEY = 'video_processing_transcribe_diarization';
+const TIMING_GENERATION_PRESET = 'timing-generation';
 
-const boundedInteger = (value, fallback, minimum, maximum) => {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
-};
+const validMethod = (method) => (getEngineDescriptor(method) ? method : 'new');
 
-export const readProcessingMethod = () => {
-  const saved = localStorage.getItem('video_processing_method');
-  return saved && getEngineDescriptor(saved) ? saved : 'new';
-};
+export const readProcessingMethod = () => validMethod(readPreference('video_processing_method'));
 
 export const writeProcessingMethod = (method) => {
-  const validated = getEngineDescriptor(method) ? method : 'new';
-  localStorage.setItem('video_processing_method', validated);
+  const validated = validMethod(method);
+  writePreference('video_processing_method', validated);
   return validated;
 };
 
-export const readTranscribeOptions = () => {
-  let languageHints = [];
-  try {
-    const saved = JSON.parse(localStorage.getItem(TRANSCRIBE_LANGUAGES_KEY) || '[]');
-    if (Array.isArray(saved)) {
-      languageHints = saved.filter((value) => typeof value === 'string' && value.trim()).slice(0, 8);
-    }
-  } catch {
-    // A damaged preference must restore safe defaults rather than break the modal.
-  }
-  return {
-    windowDurationSecs: boundedInteger(localStorage.getItem(TRANSCRIBE_WINDOW_KEY), 600, 60, 600),
-    languageHints,
-    diarization: localStorage.getItem(TRANSCRIBE_DIARIZATION_KEY) === 'true',
-  };
-};
+/**
+ * The prompt preset a run actually uses. Timing generation needs user-provided subtitles, so it
+ * falls back to the Settings prompt without them; the stored choice itself is left unchanged.
+ */
+export const effectivePromptPreset = (preset, hasUserSubtitles) => (
+  preset === TIMING_GENERATION_PRESET && !hasUserSubtitles ? 'settings' : preset
+);
+
+export const isTimingGenerationPreset = (preset) => preset === TIMING_GENERATION_PRESET;
+
+const snapshot = (value) => (value == null ? null : JSON.parse(JSON.stringify(value)));
+
+/**
+ * The immutable prompt inputs of one run. Callers pass the values the run actually uses (the
+ * effective preset, toggles already combined with availability); stored prompts and user presets
+ * are read here, so prompt building never falls back to WebView storage mid-run.
+ */
+export const createPromptContext = ({
+  presetId,
+  customLanguage,
+  useTranscriptionRules,
+  transcriptionRules = null,
+  outsideContextText = '',
+}) => Object.freeze({
+  presetId,
+  settingsPrompt: readPreference('transcription_prompt'),
+  customLanguage,
+  useTranscriptionRules: useTranscriptionRules === true,
+  transcriptionRules: useTranscriptionRules === true ? snapshot(transcriptionRules) : null,
+  userPromptPresets: snapshot(readPreference('user_prompt_presets')),
+  useOutsideResultsContext: outsideContextText !== '',
+  outsideContextText,
+});
+
+const languageHints = (value) => (
+  Array.isArray(value)
+    ? value.filter((hint) => typeof hint === 'string' && hint.trim()).slice(0, 8)
+    : []
+);
+
+export const readTranscribeOptions = () => ({
+  windowDurationSecs: readPreference('video_processing_transcribe_window_seconds'),
+  languageHints: languageHints(readPreference('video_processing_transcribe_language_hints')),
+  diarization: readPreference('video_processing_transcribe_diarization'),
+});
 
 export const writeTranscribeOptions = (options) => {
-  const normalized = {
-    windowDurationSecs: boundedInteger(options?.windowDurationSecs, 600, 60, 600),
-    languageHints: Array.isArray(options?.languageHints)
-      ? options.languageHints.filter((value) => typeof value === 'string' && value.trim()).slice(0, 8)
-      : [],
-    diarization: options?.diarization === true,
-  };
-  localStorage.setItem(TRANSCRIBE_WINDOW_KEY, String(normalized.windowDurationSecs));
-  localStorage.setItem(TRANSCRIBE_LANGUAGES_KEY, JSON.stringify(normalized.languageHints));
-  localStorage.setItem(TRANSCRIBE_DIARIZATION_KEY, String(normalized.diarization));
-  return normalized;
+  const windowSeconds = Number.parseInt(options?.windowDurationSecs, 10);
+  writePreference(
+    'video_processing_transcribe_window_seconds',
+    Number.isFinite(windowSeconds) ? windowSeconds : 600,
+  );
+  writePreference('video_processing_transcribe_language_hints', languageHints(options?.languageHints));
+  writePreference('video_processing_transcribe_diarization', options?.diarization === true);
+  return readTranscribeOptions();
 };

@@ -7,7 +7,7 @@
 // interaction below is public UI: paste, Generate, Cancel, retry, paste B, Generate. No dialog,
 // command invocation, React mutation, or browser storage write is used.
 
-/* global $, browser, describe, document, it, localStorage, process */
+/* global $, browser, describe, document, it, process, window */
 
 import { strict as assert } from 'node:assert';
 import { relative, resolve, sep } from 'node:path';
@@ -65,14 +65,12 @@ const visibleDownloadState = () => browser.execute(() => {
   const canvas = document.querySelector(
     '.video-preview canvas[data-osg-preview-engine="canvas-atlas"]',
   );
-  const sessionRaw = localStorage.getItem('current_media_session');
-  let session = null;
-  if (sessionRaw !== null) {
-    try { session = JSON.parse(sessionRaw); } catch { session = { malformed: true }; }
-  }
+  // The active media lives in WebView memory; e2e builds expose a read-only snapshot of it.
+  const active = window.__OSG_E2E_ACTIVE_MEDIA__?.() ?? null;
+  const session = active?.session ?? null;
   return {
-    sourceUrl: localStorage.getItem('current_video_url'),
-    fileUrl: localStorage.getItem('current_file_url'),
+    sourceUrl: active?.sourceUrl ?? null,
+    fileUrl: active?.playbackUrl ?? null,
     fileName: (document.querySelector('.file-info-card .file-name')?.textContent || '').trim(),
     session,
     selectedUrl: (document.querySelector('.video-url-value')?.textContent || '').trim(),
@@ -173,7 +171,6 @@ const waitForPlayable = async (url, expected) => {
       state = await visibleDownloadState();
       return state.sourceUrl === url
         && state.session !== null
-        && state.session.malformed !== true
         && state.video !== null
         && state.video.readyState >= 2
         && state.video.width === expected.width

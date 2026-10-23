@@ -4,6 +4,7 @@ import SettingsFooterControls from './settings/SettingsFooterControls';
 import OnboardingStarryBackground from './OnboardingStarryBackground';
 import initGeminiButtonEffects from '../utils/geminiEffects';
 import '../styles/OnboardingFooterReveal.css';
+import { readPreference, writePreference } from '../platform/preferences/store';
 
 /**
  * OnboardingFooterReveal
@@ -18,7 +19,7 @@ const OnboardingFooterReveal = () => {
 
   useEffect(() => {
     // Show only if user hasn't dismissed this helper yet
-    const dismissed = localStorage.getItem('onboarding_controls_dismissed') === 'true';
+    const dismissed = readPreference('onboarding_controls_dismissed');
     if (!dismissed) {
       setVisible(true);
     }
@@ -29,7 +30,7 @@ const OnboardingFooterReveal = () => {
     if (visible) {
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
-        if (localStorage.getItem('enable_gemini_effects') !== 'false') {
+        if (readPreference('enable_gemini_effects')) {
           initGeminiButtonEffects();
         }
       }, 100);
@@ -43,7 +44,7 @@ const OnboardingFooterReveal = () => {
 
     // After animation completes, hide and remember
     setTimeout(() => {
-      localStorage.setItem('onboarding_controls_dismissed', 'true');
+      writePreference('onboarding_controls_dismissed', true);
       setVisible(false);
       setDismissing(false);
     }, 500); // Match animation duration

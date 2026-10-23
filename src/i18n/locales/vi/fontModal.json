@@ -37,7 +37,6 @@
   "adjustSearch": "Thử điều chỉnh từ khóa tìm kiếm hoặc bộ lọc danh mục.",
   "clearFilters": "Xóa Bộ lọc",
   "fontsAvailable": "{{count}} phông chữ có sẵn",
-  "cancel": "Hủy",
   "categoryKorean Optimized": "Tối ưu cho tiếng Hàn",
   "categoryVietnamese Optimized": "Tối ưu cho tiếng Việt",
   "categoryChinese Optimized": "Tối ưu cho tiếng Trung",
@@ -48,6 +47,5 @@
   "categoryElegant": "Thanh lịch",
   "categoryGaming": "Game",
   "categoryCute": "Dễ thương",
-  "searchFonts": "Tìm kiếm phông chữ...",
   "selectCategory": "Chọn danh mục"
 }

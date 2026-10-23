@@ -21,8 +21,8 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3), 0 -12px 30px inset rgba(0, 0, 0, 0.2);
 }
 
-/* Focus styles for accessibility */
-.liquid-glass:focus {
+/* Keyboard focus only: pointer clicks on a clickable glass surface show no ring. */
+.liquid-glass:focus-visible {
   outline: 2px solid var(--md-primary, #007bff);
   outline-offset: 2px;
 }

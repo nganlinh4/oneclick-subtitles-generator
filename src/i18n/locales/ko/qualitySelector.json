@@ -1,9 +1,1 @@
-{
-  "videoQuality": "동영상 품질",
-  "lowestQuality": "최저 품질 (1시간 이상 동영상에 권장)",
-  "lowQuality": "저 품질",
-  "mediumQuality": "중간 품질 (기본값)",
-  "highQuality": "고 품질",
-  "hdQuality": "HD 품질 (긴 동영상에서 문제 발생 가능)",
-  "longVideoWarning": "360p보다 낮거나 높은 화질을 선택하면 오디오 스티칭 과정으로 인해 다운로드 시간이 증가합니다"
-}
+{}

@@ -28,7 +28,6 @@ import lyrics from './lyrics.json';
 import inputMethods from './inputMethods.json';
 import download from './download.json';
 import subtitlesInput from './subtitlesInput.json';
-import segmentRetry from './segmentRetry.json';
 import narration from './narration.json';
 import backgroundGenerator from './backgroundGenerator.json';
 import backgroundMusic from './backgroundMusic.json';
@@ -78,7 +77,6 @@ const enTranslations = {
   inputMethods,
   download,
   subtitlesInput,
-  segmentRetry,
   narration,
   backgroundGenerator,
   backgroundMusic,

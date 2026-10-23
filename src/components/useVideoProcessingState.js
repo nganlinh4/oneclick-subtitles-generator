@@ -1,15 +1,13 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showInfoToast } from '../utils/toastUtils';
-import { useEngineStatus } from '../hooks/useEngineStatus';
 import useModalHeight from './useModalHeight';
 import useTokenCounting from './useTokenCounting';
-import useStartupMode from './useStartupMode';
 import useAsrOptions from './useAsrOptions';
 import { getEngineDescriptor, isAsr } from '../services/engines/transcriptionEngineRegistry';
 import useTranscriptionRulesAvailability from './useTranscriptionRulesAvailability';
 import runVideoProcess from './runVideoProcess';
-import { DEFAULT_TRANSCRIPTION_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
+import { DEFAULT_TRANSCRIPTION_MODEL_ID } from '../config/geminiModels';
 import {
     buildResolutionOptions,
     buildModelOptions,
@@ -18,15 +16,29 @@ import {
     computeOutsideContext,
     getSelectedPromptText,
 } from './videoProcessingOptionsHelpers';
-import { readProcessingMethod, writeProcessingMethod } from './videoProcessingPreferences';
+import {
+    effectivePromptPreset,
+    isTimingGenerationPreset,
+    writeProcessingMethod,
+} from './videoProcessingPreferences';
+import { readPreference, usePreference } from '../platform/preferences/store';
+
+const firstSelectableModel = (modelOptions, selectedModel) => {
+    if (!modelOptions?.some((option) => option.value === selectedModel && option.disabled)) {
+        return selectedModel;
+    }
+    const preferred = modelOptions.find((option) => (
+        option.value === DEFAULT_TRANSCRIPTION_MODEL_ID && !option.disabled
+    )) || modelOptions.find((option) => !option.disabled);
+    return preferred ? preferred.value : selectedModel;
+};
 
 /**
  * Owns all state, persistence, and derived values for the video processing modal.
  *
- * Extracted from VideoProcessingOptionsModal so the component file stays focused on
- * rendering. Behaviour is preserved verbatim: every piece of state, localStorage
- * sync effect, availability check, and option builder lives here and is returned to
- * the component, which only wires the results into JSX.
+ * Stored choices come from the preference store. Values the modal derives for a run (timing
+ * generation forcing auto-split off, context or rules that are unavailable, a disabled model)
+ * are computed here and never written back over the user's choices.
  */
 const useVideoProcessingState = ({
     isOpen,
@@ -43,37 +55,25 @@ const useVideoProcessingState = ({
 }) => {
     const { t } = useTranslation();
 
-    // Vercel vs local startup mode (seeded + synced from localStorage)
-    const { isVercelMode } = useStartupMode();
-
-    // Per-engine availability (polled) — drives the registry's availability checks.
-    const engineStatus = useEngineStatus();
-
-    // Processing method: 'new' (Files API), 'old' (inline), 'nvidia-parakeet'
-    const [method, setMethodState] = useState(readProcessingMethod);
+    // Processing method: 'new' (Files API), 'old' (inline), or a local/live engine id.
+    const [storedMethod] = usePreference('video_processing_method');
+    const method = getEngineDescriptor(storedMethod) ? storedMethod : 'new';
     const setMethod = useCallback((nextMethod) => {
-        setMethodState((previousMethod) => {
-            const requested = typeof nextMethod === 'function' ? nextMethod(previousMethod) : nextMethod;
-            return writeProcessingMethod(requested);
-        });
+        writeProcessingMethod(
+            typeof nextMethod === 'function' ? nextMethod(readPreference('video_processing_method')) : nextMethod
+        );
     }, []);
+    // The old Gemini method is the inline-extraction one.
+    const inlineExtraction = method === 'old';
 
     // First-time method selection overlay
-    const [showMethodSelection, setShowMethodSelection] = useState(() => {
-        const seen = localStorage.getItem('has_seen_transcription_method_selection');
-        return !seen;
-    });
+    const [showMethodSelection, setShowMethodSelection] = useState(
+        () => !readPreference('has_seen_transcription_method_selection')
+    );
 
-    // Back-compat flag for old/new methods
-    const [inlineExtraction, setInlineExtraction] = useState(() => {
-        const saved = localStorage.getItem('video_processing_inline_extraction');
-        return saved === 'true';
-    });
-
-    // The current method's descriptor + its availability, and the active local-ASR engine (the selected
-    // one, or Parakeet as a stable default while a Gemini method is selected).
+    // The current method's descriptor and the active local-ASR engine (the selected one, or Parakeet
+    // as a stable default while a Gemini method is selected).
     const descriptor = getEngineDescriptor(method) || getEngineDescriptor('new');
-    const engineAvailable = descriptor.availability({ engineStatus, isVercelMode });
     const activeAsrEngineId = isAsr(method) ? method : 'nvidia-parakeet';
     const activeAsrDescriptor = getEngineDescriptor(activeAsrEngineId) || {};
 
@@ -100,160 +100,62 @@ const useVideoProcessingState = ({
     // Smooth modal height transitions (refs + content-change/open effects)
     const { modalRef, contentRef } = useModalHeight(isOpen, method);
 
-    // Reset to the default method if the selected ASR engine isn't available (covers Parakeet AND every
-    // catalog engine going offline). Wait for the first status poll so a saved method isn't reset on load.
+    const [audioOnly, setAudioOnly] = usePreference('video_processing_audio_only');
+    const [fps, setFps] = usePreference('video_processing_fps');
+    const [mediaResolution, setMediaResolution] = usePreference('video_processing_media_resolution');
+    const [storedModel, setSelectedModel] = usePreference('video_processing_model');
+    const [storedPromptPreset, setStoredPromptPreset] = usePreference('video_processing_prompt_preset');
+    const [customLanguage, setCustomLanguage] = usePreference('video_processing_custom_language');
+    const [storedUseTranscriptionRules, setUseTranscriptionRules] = usePreference(
+        'video_processing_use_transcription_rules'
+    );
+    const [storedUseOutsideContext, setUseOutsideResultsContext] = usePreference(
+        'video_processing_use_outside_context'
+    );
+    const [outsideContextRange, setOutsideContextRange] = usePreference(
+        'video_processing_outside_context_range'
+    );
+    // Maximum duration per request (minutes) and the delay between segment requests (seconds).
+    const [maxDurationPerRequest, setMaxDurationPerRequest] = usePreference('video_processing_max_duration');
+    const [segmentProcessingDelay, setSegmentProcessingDelay] = usePreference('segment_processing_delay');
+    // Auto-split and its word limit are the Settings modal's own values (native settings).
+    const [storedAutoSplit, setStoredAutoSplit] = usePreference('show_favorite_max_length');
+    const [maxWordsPerSubtitle, setMaxWordsPerSubtitle] = usePreference('video_processing_max_words');
+
+    const hasUserProvidedSubtitles = Boolean(
+        useUserProvidedSubtitles && userProvidedSubtitles && userProvidedSubtitles.trim() !== ''
+    );
+
+    // Opening the modal with user-provided subtitles proposes timing generation for this session
+    // only; an explicit preset choice replaces the proposal and is the one that gets stored.
+    const [proposedPreset, setProposedPreset] = useState(null);
     useEffect(() => {
-        if (isAsr(method) && !engineStatus.loading && !engineAvailable) {
-            setMethod('new');
-        }
-    }, [engineAvailable, engineStatus.loading, method, setMethod]);
-
-    // Prevent old method selection in Vercel mode
-    useEffect(() => {
-        if (isVercelMode && method === 'old') {
-            setMethod('new');
-        }
-    }, [isVercelMode, method, setMethod]);
-
-    // Processing options state with localStorage persistence
-    const [audioOnly, setAudioOnly] = useState(() => localStorage.getItem('video_processing_audio_only') === 'true');
-    useEffect(() => {
-        localStorage.setItem('video_processing_audio_only', String(audioOnly));
-    }, [audioOnly]);
-    const [fps, setFps] = useState(() => {
-        const saved = localStorage.getItem('video_processing_fps');
-        return saved ? parseFloat(saved) : 0.25; // Default to 0.25 FPS for efficiency
-    });
-    const [mediaResolution, setMediaResolution] = useState(() => {
-        const saved = localStorage.getItem('video_processing_media_resolution');
-        return saved || 'low'; // Default to low resolution for efficiency
-    });
-    const [selectedModel, setSelectedModel] = useState(() => {
-        const saved = localStorage.getItem('video_processing_model');
-        return normalizeMediaModelId(saved, DEFAULT_TRANSCRIPTION_MODEL_ID);
-    });
-    const [selectedPromptPreset, setSelectedPromptPreset] = useState(() => {
-        // SIMPLE: Just use what's saved in localStorage, always
-        const saved = localStorage.getItem('video_processing_prompt_preset');
-        return saved || 'settings'; // Default to "Prompt from Settings"
-    });
-
-    // Check if user has provided subtitles
-    const hasUserProvidedSubtitles = useUserProvidedSubtitles && userProvidedSubtitles && userProvidedSubtitles.trim() !== '';
-
-    const [customLanguage, setCustomLanguage] = useState(() => {
-        const saved = localStorage.getItem('video_processing_custom_language');
-        return saved || '';
-    });
-    const [useTranscriptionRules, setUseTranscriptionRules] = useState(() => {
-        const saved = localStorage.getItem('video_processing_use_transcription_rules');
-        // Default to false - switch is OFF unless explicitly turned on
-        return saved !== null ? saved === 'true' : false;
-    });
-    const transcriptionRulesAvailable = useTranscriptionRulesAvailability(useTranscriptionRules, setUseTranscriptionRules);
-
-    // New: Outside results context toggle state (default ON unless explicitly disabled)
-    const [useOutsideResultsContext, setUseOutsideResultsContext] = useState(() => {
-        const saved = localStorage.getItem('video_processing_use_outside_context');
-        return saved !== 'false';
-    });
-    const [outsideContextAvailable, setOutsideContextAvailable] = useState(false);
-
-    // Outside context range (1-20, 21 = Unlimited)
-    const [outsideContextRange, setOutsideContextRange] = useState(() => {
-        const saved = localStorage.getItem('video_processing_outside_context_range');
-        const num = saved ? parseInt(saved, 10) : 5;
-        return Number.isFinite(num) ? num : 5;
-    });
-
-    // Maximum duration per request (in minutes) for parallel processing
-    const [maxDurationPerRequest, setMaxDurationPerRequest] = useState(() => {
-        const saved = localStorage.getItem('video_processing_max_duration');
-        return saved ? parseInt(saved, 10) : 10; // Default to 10 minutes for Gemini
-    });
-
-    // Delay between segment processing (in seconds) for Gemini
-    const [segmentProcessingDelay, setSegmentProcessingDelay] = useState(() => {
-        const saved = localStorage.getItem('segment_processing_delay');
-        return saved ? parseInt(saved, 10) : 0; // Default to 0 (all at once)
-    });
-
-    // Auto-split subtitles settings (synced with Settings modal)
-    const [autoSplitSubtitles, setAutoSplitSubtitles] = useState(() => {
-        // Use the same key as Settings modal for consistency
-        const saved = localStorage.getItem('show_favorite_max_length');
-        // Default to true (enabled) if not previously saved
-        return saved !== null ? saved === 'true' : true;
-    });
-
-    // Track previous auto-split setting when switching to timing generation
-    const [previousAutoSplitSetting, setPreviousAutoSplitSetting] = useState(() => {
-        const saved = localStorage.getItem('show_favorite_max_length');
-        return saved !== null ? saved === 'true' : true;
-    });
-
-    // Track if we're currently in timing generation mode
-    const [isInTimingGenerationMode, setIsInTimingGenerationMode] = useState(false);
-
-    // Custom setter for auto-split that handles timing generation mode
-    const handleAutoSplitToggle = useCallback((newValue) => {
-        if (isInTimingGenerationMode) {
-            // If we're in timing generation mode, we still allow manual toggling
-            // but we need to update the previous setting so when we exit timing generation,
-            // we restore to the user's manual choice
-            setPreviousAutoSplitSetting(newValue);
-        }
-        setAutoSplitSubtitles(newValue);
-    }, [isInTimingGenerationMode]);
-
-    // Complex logic for timing generation preset and auto-split interaction
-    useEffect(() => {
-        // Track when we're switching to timing generation
-        const isTimingGeneration = selectedPromptPreset === 'timing-generation';
-        const wasTimingGeneration = isInTimingGenerationMode;
-
-        if (isTimingGeneration && !wasTimingGeneration) {
-            // Switching TO timing generation - save current auto-split state and disable it
-            setPreviousAutoSplitSetting(autoSplitSubtitles);
-            setAutoSplitSubtitles(false);
-            setIsInTimingGenerationMode(true);
-        } else if (!isTimingGeneration && wasTimingGeneration) {
-            // Switching FROM timing generation - restore previous auto-split state
-            setAutoSplitSubtitles(previousAutoSplitSetting);
-            setIsInTimingGenerationMode(false);
-        }
-    }, [selectedPromptPreset, autoSplitSubtitles, isInTimingGenerationMode, previousAutoSplitSetting]);
-
-    // Auto-select timing generation preset when subtitles are added (but preserve the above logic)
-    useEffect(() => {
-        if (isOpen && hasUserProvidedSubtitles) {
-            setSelectedPromptPreset('timing-generation');
-        }
+        setProposedPreset(isOpen && hasUserProvidedSubtitles ? 'timing-generation' : null);
     }, [isOpen, hasUserProvidedSubtitles]);
+    const setSelectedPromptPreset = useCallback((preset) => {
+        setProposedPreset(null);
+        setStoredPromptPreset(preset);
+    }, [setStoredPromptPreset]);
+    const selectedPromptPreset = effectivePromptPreset(
+        proposedPreset ?? storedPromptPreset,
+        hasUserProvidedSubtitles,
+    );
 
-    // If timing-generation is selected but unavailable, fall back to 'settings' and restore auto-split
+    // Timing generation keeps the existing cue boundaries, so it runs without auto-split unless
+    // the user turns auto-split on again while that preset is selected.
+    const timingGeneration = isTimingGenerationPreset(selectedPromptPreset);
+    const [autoSplitChosenForTiming, setAutoSplitChosenForTiming] = useState(false);
     useEffect(() => {
-        if (isOpen && !hasUserProvidedSubtitles && selectedPromptPreset === 'timing-generation') {
-            // If we're leaving timing generation due to no subtitles, restore auto-split state
-            if (isInTimingGenerationMode) {
-                setAutoSplitSubtitles(previousAutoSplitSetting);
-                setIsInTimingGenerationMode(false);
-            }
-            setSelectedPromptPreset('settings');
-        }
-    }, [isOpen, hasUserProvidedSubtitles, selectedPromptPreset, isInTimingGenerationMode, previousAutoSplitSetting]);
+        if (!timingGeneration || !isOpen) setAutoSplitChosenForTiming(false);
+    }, [timingGeneration, isOpen]);
+    const autoSplitSubtitles = timingGeneration && !autoSplitChosenForTiming ? false : storedAutoSplit;
+    const handleAutoSplitToggle = useCallback((enabled) => {
+        if (timingGeneration) setAutoSplitChosenForTiming(true);
+        setStoredAutoSplit(enabled);
+    }, [setStoredAutoSplit, timingGeneration]);
 
-    // Reset timing generation mode when modal closes
-    useEffect(() => {
-        if (!isOpen) {
-            setIsInTimingGenerationMode(false);
-        }
-    }, [isOpen]);
-
-    const [maxWordsPerSubtitle, setMaxWordsPerSubtitle] = useState(() => {
-        const saved = localStorage.getItem('video_processing_max_words');
-        return saved ? parseInt(saved, 10) : 12;
-    });
+    const transcriptionRulesAvailable = useTranscriptionRulesAvailability();
+    const useTranscriptionRules = storedUseTranscriptionRules && transcriptionRulesAvailable;
 
     // The former retry-from-browser-cache mode has no native artifact owner and was removed.
     const retryLock = false;
@@ -274,116 +176,12 @@ const useVideoProcessingState = ({
         () => computeOutsideContext(subtitlesData, selectedSegment, outsideContextRange),
         [subtitlesData, selectedSegment, outsideContextRange]
     );
-    // Persist range changes
-    useEffect(() => {
-        const val = outsideContextRange === 21 ? 21 : Math.max(1, Math.min(20, Number(outsideContextRange) || 5));
-        localStorage.setItem('video_processing_outside_context_range', String(val));
-    }, [outsideContextRange]);
-
-    // Persist max duration per request
-    useEffect(() => {
-        localStorage.setItem('video_processing_max_duration', maxDurationPerRequest.toString());
-    }, [maxDurationPerRequest]);
-
-    // Persist segment processing delay
-    useEffect(() => {
-        localStorage.setItem('segment_processing_delay', segmentProcessingDelay.toString());
-    }, [segmentProcessingDelay]);
-
-    // Persist auto-split settings (synced with Settings modal)
-    useEffect(() => {
-        localStorage.setItem('show_favorite_max_length', autoSplitSubtitles.toString());
-    }, [autoSplitSubtitles]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_max_words', maxWordsPerSubtitle.toString());
-    }, [maxWordsPerSubtitle]);
-
-
-    // Keep availability and persisted toggle in sync
-    useEffect(() => {
-        setOutsideContextAvailable(outsideContext.available);
-        if (!outsideContext.available && useOutsideResultsContext) {
-            setUseOutsideResultsContext(false);
-        }
-    }, [outsideContext.available, useOutsideResultsContext]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_use_outside_context', useOutsideResultsContext ? 'true' : 'false');
-    }, [useOutsideResultsContext]);
+    const outsideContextAvailable = outsideContext.available;
+    const useOutsideResultsContext = storedUseOutsideContext && outsideContextAvailable;
 
     const resolutionOptions = buildResolutionOptions(t);
     const modelOptions = buildModelOptions(t);
-
-
-    // Ensure a valid selectable model is chosen whenever the current selection becomes disabled
-    useEffect(() => {
-        if (!isOpen) return;
-        const currentIsDisabled = modelOptions?.some(o => o.value === selectedModel && o.disabled);
-        if (currentIsDisabled) {
-            const preferred = modelOptions.find(o => o.value === DEFAULT_TRANSCRIPTION_MODEL_ID && !o.disabled) ||
-                modelOptions.find(o => !o.disabled);
-            if (preferred && preferred.value !== selectedModel) {
-                setSelectedModel(preferred.value);
-            }
-        }
-    }, [isOpen, selectedModel, modelOptions]);
-
-    // Listen for storage changes to sync auto-split setting
-    useEffect(() => {
-        const handleStorageChange = (e) => {
-            if (e.key === 'show_favorite_max_length') {
-                const newValue = e.newValue === 'true';
-                setAutoSplitSubtitles(newValue);
-            } else if (e.key === 'video_processing_max_words') {
-                const newValue = parseInt(e.newValue, 10) || 10;
-                setMaxWordsPerSubtitle(newValue);
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
-    }, []);
-
-    // Persist processing options to localStorage
-    useEffect(() => {
-        localStorage.setItem('video_processing_fps', fps.toString());
-    }, [fps]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_media_resolution', mediaResolution);
-    }, [mediaResolution]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_model', selectedModel);
-    }, [selectedModel]);
-
-    useEffect(() => {
-        // Always persist user preset selections to localStorage
-        // This ensures user changes in Rules Editor are maintained
-        localStorage.setItem('video_processing_prompt_preset', selectedPromptPreset);
-    }, [selectedPromptPreset]);
-
-    // Persist method selection
-    useEffect(() => {
-        localStorage.setItem('video_processing_method', method);
-        // Keep inlineExtraction in sync when user toggles between new/old methods via the dropdown
-        if (method === 'new') {
-            setInlineExtraction(false);
-            localStorage.setItem('video_processing_inline_extraction', 'false');
-        } else if (method === 'old') {
-            setInlineExtraction(true);
-            localStorage.setItem('video_processing_inline_extraction', 'true');
-        }
-    }, [method]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_custom_language', customLanguage);
-    }, [customLanguage]);
-
-    useEffect(() => {
-        localStorage.setItem('video_processing_use_transcription_rules', useTranscriptionRules.toString());
-    }, [useTranscriptionRules]);
+    const selectedModel = firstSelectableModel(modelOptions, storedModel);
 
     // Dispatch toast notification for upload status
     useEffect(() => {
@@ -432,7 +230,6 @@ const useVideoProcessingState = ({
         isUploading,
         videoFile,
         inlineExtraction,
-        isVercelMode,
         retryLock,
         onSelectedSegmentChange,
         useOutsideResultsContext,
@@ -482,10 +279,8 @@ const useVideoProcessingState = ({
         modalRef,
         contentRef,
         languagesRef,
-        // mode flags + current method descriptor/availability
-        isVercelMode,
+        // current method descriptor
         descriptor,
-        engineAvailable,
         method,
         setMethod,
         showMethodSelection,

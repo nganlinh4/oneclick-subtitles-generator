@@ -1,14 +1,1 @@
-{
-  "fileTooBig": "Tập tin quá lớn ({{size}}MB). Kích thước tối đa khuyến nghị là {{maxSize}}MB.",
-  "proceedAnyway": "Vẫn tiếp tục",
-  "selectQuality": "Chọn chất lượng",
-  "qualityWarning": "Đối với video dài, khuyến nghị chọn chất lượng thấp để tránh các vấn đề xử lý.",
-  "processingLongVideo": "Đang xử lý video dài...",
-  "splittingVideo": "Đang chia video thành các phân đoạn...",
-  "optimizingVideo": "Đang tối ưu hóa video để xử lý...",
-  "analyzingVideo": "Đang phân tích nội dung video... (Nếu bị kẹt, hãy thay đổi \"Mô hình phân tích\" và thử lại)",
-  "preparingVideoAnalysis": "Đang chuẩn bị video để phân tích...",
-  "analysisError": "Phân tích video thất bại, tiếp tục với cài đặt mặc định.",
-  "srtOnlyMode": "Chế độ chỉ SRT",
-  "segmentsPreparationFailed": "Đã tải phụ đề, nhưng chuẩn bị phân đoạn video thất bại: {{message}}"
-}
+{}

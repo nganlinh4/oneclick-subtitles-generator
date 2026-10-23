@@ -242,15 +242,6 @@
   padding: 16px !important; /* Maintain our padding */
 }
 
-/* Override SegmentRetryModal textarea styles */
-.custom-subtitles .custom-scrollbar-textarea,
-.custom-subtitles .custom-scrollbar-textarea:focus {
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
-}
-
 /* Override BackgroundGenerator textarea styles */
 .background-generator-container .custom-scrollbar-textarea,
 .background-generator-container .custom-scrollbar-textarea:focus {

@@ -35,8 +35,6 @@ vi.mock('./narration', () => ({
 vi.mock('./ParallelProcessingStatus', () => ({ default: () => null }));
 vi.mock('../events/bus', () => ({
   EVENTS: {
-    RETRY_SEGMENT_FROM_CACHE: 'retry',
-    RETRY_SEGMENT_FROM_CACHE_COMPLETE: 'retry-done',
     STREAMING_COMPLETE: 'stream-done',
     STREAMING_UPDATE: 'stream',
   },

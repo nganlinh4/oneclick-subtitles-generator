@@ -8,6 +8,8 @@ import { getThinkingBudget } from '../../utils/thinkingBudgetUtils';
 import { runNativeGeminiText } from '../../platform/nativeGeminiText';
 import { createRequestController, removeRequestController } from './requestManagement';
 import { processStructuredJsonResponse, processTextResponse } from './responseProcessingService';
+import { isNativeErrorCode } from '../../platform/plainDataRecord';
+import { readPreference } from '../../platform/preferences/store';
 
 const freezeDeliveries = (deliveries) => Object.freeze(deliveries.map((delivery) => (
   Object.freeze({ ...delivery })
@@ -15,7 +17,7 @@ const freezeDeliveries = (deliveries) => Object.freeze(deliveries.map((delivery)
 
 const validChunkId = (value) => Number.isSafeInteger(value) && value > 0;
 const validResultCode = (value) => (
-  typeof value === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(value)
+  isNativeErrorCode(value)
 );
 
 const freezeCompletedChunks = (chunks) => {
@@ -117,15 +119,14 @@ export const documentResultError = (result) => {
 };
 
 /**
- * Resolve the processing language from localStorage.
- * When the user is working from translated subtitles, the translation target language is used;
- * otherwise we let the prompt drive the language (returns null).
+ * The output language of a document request. Working from translated subtitles uses the last
+ * translation's target language; otherwise the prompt drives the language (null).
+ * @param {'original'|'translated'} source - which subtitles the request reads
  * @returns {string|null}
  */
-const resolveProcessingLanguage = () => {
-  const translatedLanguage = localStorage.getItem('translation_target_language');
-  const source = localStorage.getItem('current_processing_source');
-  return source === 'translated' && translatedLanguage ? translatedLanguage : null;
+const resolveProcessingLanguage = (source) => {
+  if (source !== 'translated') return null;
+  return readPreference('translation_target_language') || null;
 };
 
 /**
@@ -134,6 +135,7 @@ const resolveProcessingLanguage = () => {
  * @param {string} opts.subtitlesText - plain text to process
  * @param {string} opts.model - Gemini model id
  * @param {string|null} opts.customPrompt - optional prompt template ({subtitlesText} placeholder)
+ * @param {'original'|'translated'} [opts.source] - which subtitles the text came from
  * @param {(text: string, language: string|null) => string} opts.getDefaultPrompt - default prompt builder
  * @param {() => object} opts.createSchema - response-schema factory
  * @param {string} opts.errorLabel - console.error label on failure
@@ -145,6 +147,7 @@ export const runGeminiDocumentRequestResult = async ({
   subtitlesText,
   model,
   customPrompt,
+  source = 'original',
   getDefaultPrompt,
   createSchema,
   errorLabel,
@@ -154,7 +157,7 @@ export const runGeminiDocumentRequestResult = async ({
   const { requestId, signal } = createRequestController();
 
   try {
-    const language = resolveProcessingLanguage();
+    const language = resolveProcessingLanguage(source);
 
     const documentPrompt = customPrompt
       ? customPrompt.replace('{subtitlesText}', subtitlesText)

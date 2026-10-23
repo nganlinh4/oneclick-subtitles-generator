@@ -2,15 +2,14 @@ import { useTranslation } from 'react-i18next';
 import CustomDropdown from './common/CustomDropdown';
 import HelpIcon from './common/HelpIcon';
 import specialStarIcon from '../assets/specialStar.svg';
-import { useEngineStatus } from '../hooks/useEngineStatus';
-import { buildMethodDescriptors } from '../services/engines/transcriptionEngineRegistry';
+import { DESCRIPTORS } from '../services/engines/transcriptionEngineRegistry';
 
 /**
  * Method selector for the video processing modal header.
  *
  * Renders the labelled method dropdown, contextual help, and the button that re-opens the first-time
  * method selection overlay. Options are built from the transcription-engine registry (single source of
- * truth) — Gemini, Parakeet, and every catalog ASR engine — each disabled per its computed availability.
+ * truth) — Gemini, Parakeet, and every catalog ASR engine.
  * Pure: all option state lives in the parent.
  */
 
@@ -26,34 +25,20 @@ const methodIcon = (id) => {
 };
 
 const VideoProcessingModalMethodSelector = ({
-    isVercelMode,
     method,
     setMethod,
     retryLock,
     onReopenSelection,
 }) => {
     const { t } = useTranslation();
-    const engineStatus = useEngineStatus();
-
-    const descriptors = buildMethodDescriptors(engineStatus, { isVercelMode });
-    const methodOptions = descriptors.map((d) => {
-        const text = d.labelKey ? t(d.labelKey, d.labelDefault) : d.labelDefault;
-        let suffix = '';
-        if (!d.available) {
-            suffix = d.id === 'old'
-                ? ` (${t('processing.notAvailableVercelVersion', 'not available in Vercel version')})`
-                : ` (${t('processing.engineStartingUp', 'starting up…')})`;
-        }
-        return {
-            value: d.id,
-            disabled: !d.available,
-            label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                    {methodIcon(d.id)}{text}{suffix}
-                </span>
-            ),
-        };
-    });
+    const methodOptions = DESCRIPTORS.map((d) => ({
+        value: d.id,
+        label: (
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                {methodIcon(d.id)}{d.labelKey ? t(d.labelKey, d.labelDefault) : d.labelDefault}
+            </span>
+        ),
+    }));
 
     return (
         <div className={`header-switch-group ${retryLock ? 'disabled' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -68,9 +53,7 @@ const VideoProcessingModalMethodSelector = ({
             />
             <HelpIcon title={retryLock
                 ? t('processing.changeTranscriptionMethodRetryLocked', 'Cannot change method while in retry mode with old Gemini method')
-                : isVercelMode
-                    ? t('processing.methodHelpVercel', 'Only the new method is available in Vercel version. The old method requires server-side video processing capabilities.')
-                    : t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')
+                : t('processing.inlineExtractionHelp', 'Use the old method when the new method fails; may be slower depending on the situation')
             } />
             <button
                 onClick={onReopenSelection}
@@ -107,7 +90,7 @@ const VideoProcessingModalMethodSelector = ({
                     e.target.style.boxShadow = 'var(--md-elevation-level1)';
                 }}
             >
-                <span className="material-symbols-rounded" style={{ fontSize: '20px', display: 'inline-block', verticalAlign: 'middle' }}>view_apps</span>
+                <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '20px', display: 'inline-block', verticalAlign: 'middle' }}>view_apps</span>
             </button>
         </div>
     );

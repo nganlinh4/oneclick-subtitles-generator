@@ -1,4 +1,5 @@
 // UI rendering helpers for the unified URL input.
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 // Get the appropriate icon based on URL type
 export const getUrlIcon = (urlType) => {
@@ -168,13 +169,14 @@ export const renderExamples = ({ selectedVideo, t }) => {
         <div
           className="site-chip more-sites-chip"
           onClick={openSupportedSitesDoc}
+          onKeyDown={activateOnKey}
           title={t('unifiedUrlInput.viewAllSupportedSites', 'Click to view all supported sites')}
           role="button"
-          tabIndex="0"
+          tabIndex={0}
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
         >
           <span>{t('unifiedUrlInput.hundredsMoreWebsites', '...and hundreds more websites!')}</span>
-          <span className="material-symbols-rounded" style={{ fontSize: 14 }}>open_in_new</span>
+          <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 14 }}>open_in_new</span>
         </div>
       </div>
     </div>

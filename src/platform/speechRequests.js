@@ -46,14 +46,14 @@ const normalizeSpeechText = (value, maximumCharacters = MAX_SEGMENT_TEXT_CHARACT
 };
 
 const profileKeys = Object.freeze({
-  f5Tts: new Set([
+  f5Tts: [
     'backend', 'referenceText', 'model', 'speechRateMilli', 'nfeSteps', 'swayMilli',
     'guidanceMilli', 'seed', 'removeSilence',
-  ]),
-  chatterbox: new Set(['backend', 'language', 'exaggerationMilli', 'cfgWeightMilli']),
-  edgeTts: new Set(['backend', 'voice', 'ratePercent', 'volumePercent', 'pitchHz']),
-  gtts: new Set(['backend', 'language', 'domain', 'slow']),
-  geminiTts: new Set(['backend', 'credentialIds', 'model', 'voice', 'language', 'maxConcurrency']),
+  ],
+  chatterbox: ['backend', 'language', 'exaggerationMilli', 'cfgWeightMilli'],
+  edgeTts: ['backend', 'voice', 'ratePercent', 'volumePercent', 'pitchHz'],
+  gtts: ['backend', 'language', 'domain', 'slow'],
+  geminiTts: ['backend', 'credentialIds', 'model', 'voice', 'language', 'maxConcurrency'],
 });
 
 export const normalizeSpeechProfile = (profile) => {
@@ -149,10 +149,10 @@ export const normalizeSpeechProfile = (profile) => {
 };
 
 export const normalizeSpeechStartRequest = (request) => {
-  const allowed = new Set([
+  const allowed = [
     'projectId', 'expectedProjectStateVersion', 'segments', 'profile',
     'referenceArtifactId', 'lifecycleEpoch',
-  ]);
+  ];
   if (!hasOnlyKeys(request, allowed) || !Array.isArray(request.segments)) throw invalidRequest();
   if (request.segments.length === 0 || request.segments.length > MAX_SPEECH_SEGMENTS) {
     throw invalidRequest();

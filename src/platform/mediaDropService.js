@@ -1,6 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop } from './desktopRuntime';
+import { hasExactKeys, isRecord } from './plainDataRecord';
 
 const SUBSCRIPTION_KEYS = Object.freeze(['id']);
 const POSITION_KEYS = Object.freeze(['x', 'y']);
@@ -12,19 +13,6 @@ const EVENT_KEYS = Object.freeze({
   rejected: ['dragId', 'position', 'reason', 'sequence', 'type'],
 });
 const REJECTION_REASONS = new Set(['multipleFiles', 'noFiles']);
-
-const isRecord = (value) => (
-  value !== null
-  && typeof value === 'object'
-  && !Array.isArray(value)
-);
-
-const hasExactKeys = (value, expectedKeys) => {
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value).sort();
-  return keys.length === expectedKeys.length
-    && keys.every((key, index) => key === expectedKeys[index]);
-};
 
 const isUuidV4 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;

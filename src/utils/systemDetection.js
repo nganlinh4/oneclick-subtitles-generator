@@ -1,3 +1,4 @@
+import { readStoredPreference } from '../platform/preferences/store';
 /**
  * System detection utilities for theme and language
  * Provides cross-platform detection for Windows, macOS, and Linux
@@ -45,17 +46,14 @@ const detectSystemTheme = () => {
 };
 
 /**
- * Get language with fallback chain: localStorage -> system detection -> English
- * @param {string} storageKey - localStorage key to check
+ * Get language with fallback chain: stored preference -> system detection -> English
+ * @param {string} storageKey - the language preference key
  * @returns {string} Language code
  */
 export const getLanguageWithFallback = (storageKey = 'preferred_language') => {
   try {
-    // First try localStorage
-    const savedLanguage = localStorage.getItem(storageKey);
-    if (savedLanguage && ['en', 'vi', 'ko'].includes(savedLanguage)) {
-      return savedLanguage;
-    }
+    const savedLanguage = readStoredPreference(storageKey);
+    if (savedLanguage !== null) return savedLanguage;
     
     // Then try system detection
     return detectSystemLanguage();
@@ -66,17 +64,14 @@ export const getLanguageWithFallback = (storageKey = 'preferred_language') => {
 };
 
 /**
- * Get theme with fallback chain: localStorage -> system detection -> dark
- * @param {string} storageKey - localStorage key to check
+ * Get theme with fallback chain: stored preference -> system detection -> dark
+ * @param {string} storageKey - the theme preference key
  * @returns {string} Theme ('dark' or 'light')
  */
 export const getThemeWithFallback = (storageKey = 'theme') => {
   try {
-    // First try localStorage
-    const savedTheme = localStorage.getItem(storageKey);
-    if (savedTheme && ['dark', 'light'].includes(savedTheme)) {
-      return savedTheme;
-    }
+    const savedTheme = readStoredPreference(storageKey);
+    if (savedTheme !== null) return savedTheme;
     
     // Then try system detection
     return detectSystemTheme();

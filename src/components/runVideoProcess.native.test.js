@@ -51,7 +51,6 @@ it('preserves the selected native audio range and request limit without creating
     isUploading: false,
     videoFile,
     inlineExtraction: false,
-    isVercelMode: false,
     retryLock: false,
     onSelectedSegmentChange,
     useOutsideResultsContext: false,
@@ -88,4 +87,37 @@ it('preserves the selected native audio range and request limit without creating
     videoFile,
   }));
   createObjectUrl.mockRestore();
+});
+
+it('sends the run its own prompt inputs and leaves stored choices untouched', async () => {
+  localStorage.clear();
+  localStorage.setItem('video_processing_use_outside_context', 'true');
+  localStorage.setItem('video_processing_prompt_preset', 'describe-video');
+  const onProcess = vi.fn();
+
+  await runVideoProcess({
+    selectedSegment: { start: 10, end: 20 },
+    videoFile: { __nativeMedia: true, assetId: 'asset', type: 'video/mp4' },
+    useOutsideResultsContext: false,
+    outsideContext: { available: false, before: [], after: [] },
+    selectedPromptPreset: 'timing-generation',
+    customLanguage: '',
+    useTranscriptionRules: false,
+    method: 'old',
+    maxDurationPerRequest: 10,
+    t: (_key, fallback) => fallback,
+    onProcess,
+  });
+
+  expect(onProcess.mock.calls[0][0].promptContext).toEqual(expect.objectContaining({
+    presetId: 'timing-generation',
+    useOutsideResultsContext: false,
+    outsideContextText: '',
+    useTranscriptionRules: false,
+    transcriptionRules: null,
+  }));
+  expect(Object.isFrozen(onProcess.mock.calls[0][0].promptContext)).toBe(true);
+  expect(localStorage.getItem('video_processing_use_outside_context')).toBe('true');
+  expect(localStorage.getItem('video_processing_prompt_preset')).toBe('describe-video');
+  expect(localStorage.getItem('video_processing_outside_context_text')).toBeNull();
 });

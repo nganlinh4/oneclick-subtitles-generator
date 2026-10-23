@@ -1,17 +1,12 @@
 {
   "placeholder": "비디오 URL 입력 (YouTube, Douyin, TikTok 등)",
   "invalidUrl": "URL 형식이 잘못되었습니다. 유효한 URL을 입력해 주세요.",
-  "examplesTitle": "지원되는 URL 형식:",
-  "youtubeTitle": "YouTube:",
-  "douyinTitle": "Douyin:",
-  "otherSitesTitle": "기타 사이트:",
-  "ytDlpNote": "yt-dlp로 구동되며 1000개 이상의 사이트 지원",
   "url": "URL:",
   "videoId": "비디오 ID:",
   "downloadOnly": "다운로드만",
   "hundredsMoreWebsites": "...그리고 수백 개의 웹사이트 더!",
   "viewAllSupportedSites": "지원되는 모든 사이트 보기",
-  "downloadCompleted": "다운로드 완료! 파일이 저장되었습니다: {{file}}",
   "downloadFailed": "다운로드 실패: {{message}}",
-  "downloading": "다운로드 중..."
+  "downloading": "다운로드 중...",
+  "videoFallback": "동영상"
 }

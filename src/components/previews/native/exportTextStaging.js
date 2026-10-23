@@ -37,6 +37,7 @@ import { stageGlyphAtlas } from '../../../platform/glyphAtlasStaging';
 import { systemFontProbe } from '../../../platform/systemFontProbe';
 import { compositionSize } from './nativePreviewGeometry';
 import { atlasBakeRequest, previewFace } from './nativePreviewScene';
+import { isNativeErrorCode, isRecord } from '../../../platform/plainDataRecord';
 
 const { GLYPH_ATLAS_LIMITS } = glyphAtlas;
 
@@ -61,7 +62,6 @@ const EXPORT_TEXT_LIMITS = Object.freeze({
 /** How long the source probe may take before the export refuses instead of waiting forever. */
 const SOURCE_PROBE_TIMEOUT_MS = 15_000;
 
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
 /**
@@ -89,7 +89,7 @@ const refuse = (code, message, reason = null) => {
 const nestedCode = (error) => {
   try {
     const code = error?.code;
-    return typeof code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(code) ? code : null;
+    return isNativeErrorCode(code) ? code : null;
   } catch {
     return null;
   }

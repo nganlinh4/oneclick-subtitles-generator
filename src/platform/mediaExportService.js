@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { snapshotExactRecord, snapshotNativeError, snapshotPlainRecord } from './plainDataRecord';
 
 const MAX_PENDING_EVENTS = 4096;
 const jobStates = new Set([
@@ -31,43 +32,6 @@ const mediaExportCommandCodes = new Set([
 const mediaExportEventCodes = new Set([
   'unsafeExportDestination', 'mediaSourceChanged', 'mediaExportFailed',
 ]);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-);
-
-const snapshotPlainRecord = (value) => {
-  try {
-    if (!isRecord(value)) return null;
-    const prototype = Object.getPrototypeOf(value);
-    if ((prototype !== Object.prototype && prototype !== null)
-        || Object.getOwnPropertySymbols(value).length !== 0) {
-      return null;
-    }
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Object.values(descriptors).some(
-      (descriptor) => !descriptor.enumerable || !('value' in descriptor)
-    )) {
-      return null;
-    }
-    return Object.freeze(Object.fromEntries(
-      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value])
-    ));
-  } catch {
-    return null;
-  }
-};
-
-const snapshotExactRecord = (value, expected) => {
-  const snapshot = snapshotPlainRecord(value);
-  if (snapshot === null) return null;
-  const actual = Object.keys(snapshot).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length
-    && actual.every((key, index) => key === sortedExpected[index])
-    ? snapshot
-    : null;
-};
 
 const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -155,12 +119,8 @@ const normalizeMediaExportJob = (value) => {
 };
 
 const normalizeError = (value) => {
-  const snapshot = snapshotExactRecord(value, ['code', 'message']);
-  if (snapshot === null || typeof snapshot.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(snapshot.code)
-      || typeof snapshot.message !== 'string') {
-    throw invalidResponse();
-  }
+  const snapshot = snapshotNativeError(value);
+  if (snapshot === null) throw invalidResponse();
   const code = mediaExportEventCodes.has(snapshot.code) ? snapshot.code : 'mediaExportFailed';
   return Object.freeze({ code, message: mediaExportFailureMessage(code) });
 };

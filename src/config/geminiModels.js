@@ -21,17 +21,6 @@ export const sortModelsForDisplay = (models) => [...models].sort((left, right) =
   return modelNumberOrder.compare(left.id, right.id);
 });
 
-const UI_ICONS = [
-  { symbol: 'bolt', className: 'model-icon zap-icon' },
-  { symbol: 'auto_awesome', className: 'model-icon activity-icon' },
-  { symbol: 'psychology', className: 'model-icon star-icon' },
-  { symbol: 'memory', className: 'model-icon cpu-icon' },
-  { symbol: 'activity_zone', className: 'model-icon activity-icon' },
-  { symbol: 'trending_up', className: 'model-icon trending-icon' },
-  { symbol: 'precision_manufacturing', className: 'model-icon star-icon' },
-  { symbol: 'center_focus_strong', className: 'model-icon star-icon' }
-];
-
 const toKeySuffix = (id) => `gemini${id
   .replace(/^gemini-/, '')
   .split(/[^a-zA-Z0-9]+/)
@@ -39,24 +28,12 @@ const toKeySuffix = (id) => `gemini${id
   .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
   .join('')}`;
 
-const withUiMetadata = (model, index) => {
-  const quota = model.quota.requestsPerDay;
-  const suffix = toKeySuffix(model.id);
-  return {
-    ...model,
-    nameKey: `models.${suffix}`,
-    nameDefault: model.displayName,
-    descKey: `models.${suffix}Description`,
-    descDefault: `${model.profileLabels.en} · ${model.dailyUse}`,
-    icon: UI_ICONS[index % UI_ICONS.length],
-    color: model.intelligenceTier >= 6 ? 'var(--md-primary)' : 'var(--md-tertiary)',
-    bgColor: model.intelligenceTier >= 6
-      ? 'rgba(var(--md-primary-rgb), 0.1)'
-      : 'rgba(var(--md-tertiary-rgb), 0.1)',
-    freeRPD: quota,
-    maxTokens: model.limits.inputTokens
-  };
-};
+const withUiMetadata = (model) => ({
+  ...model,
+  nameKey: `models.${toKeySuffix(model.id)}`,
+  nameDefault: model.displayName,
+  maxTokens: model.limits.inputTokens
+});
 
 export const GEMINI_MODELS = catalog.models.map(withUiMetadata);
 const GEMINI_MODEL_IDS = GEMINI_MODELS.map(({ id }) => id);

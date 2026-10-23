@@ -1,7 +1,13 @@
 // Local-ASR bridge contract: engine catalog, request normalization, and strict validation of the
 // host's status replies, job snapshots and channel events.
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
-import { hasOnlyKeys, isPlainDataRecord, isRecord, utf8ByteLength } from './plainDataRecord';
+import {
+  hasOnlyKeys,
+  isAbortSignalLike,
+  isNativeErrorCode,
+  isPlainDataRecord,
+  utf8ByteLength,
+} from './plainDataRecord';
 
 export const ASR_ENGINE_CATALOG = Object.freeze([
   Object.freeze({
@@ -68,7 +74,7 @@ const jobStates = new Set([
   'cancelled',
   'interrupted',
 ]);
-const requestKeys = new Set([
+const requestKeys = Object.freeze([
   'engine',
   'strategy',
   'maxCharacters',
@@ -77,7 +83,7 @@ const requestKeys = new Set([
   'language',
   'range',
 ]);
-const handlerKeys = new Set([
+const handlerKeys = Object.freeze([
   'onEvent',
   'onProgress',
   'onCompleted',
@@ -87,7 +93,7 @@ const handlerKeys = new Set([
   'onHandlerError',
   'onCancellationError',
 ]);
-const startOptionKeys = new Set(['signal']);
+const startOptionKeys = Object.freeze(['signal']);
 const qwenLanguages = new Set(['zh', 'en', 'fr', 'de', 'it', 'ja', 'ko', 'pt', 'ru', 'es']);
 
 const characterCountWithin = (value, maximum) => {
@@ -277,10 +283,10 @@ export const normalizeJobSnapshot = (snapshot) => {
   });
 };
 
+// Projects the failure's `{ code, message }` and drops any worker diagnostics riding beside them.
 const normalizeCommandError = (error) => {
   if (!isPlainDataRecord(error)
-      || typeof error.code !== 'string'
-      || !/^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+      || !isNativeErrorCode(error.code)
       || typeof error.message !== 'string'
       || !characterCountWithin(error.message, MAX_ERROR_MESSAGE_CHARACTERS)) {
     throw invalidResponse();
@@ -486,12 +492,7 @@ export const normalizeStartOptions = (options) => {
   if (!hasOnlyKeys(options, startOptionKeys)) throw invalidRequest();
   const signal = options.signal;
   if (signal === undefined || signal === null) return Object.freeze({ signal: null });
-  if (!isRecord(signal)
-      || typeof signal.aborted !== 'boolean'
-      || typeof signal.addEventListener !== 'function'
-      || typeof signal.removeEventListener !== 'function') {
-    throw invalidRequest();
-  }
+  if (!isAbortSignalLike(signal)) throw invalidRequest();
   return Object.freeze({ signal });
 };
 

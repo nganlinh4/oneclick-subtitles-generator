@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { readPreference } from '../../platform/preferences/store';
 
 /**
  * Custom hook encapsulating the autoflow countdown for the transcription rules
@@ -23,7 +24,7 @@ const useCountdownTimer = (isOpen, onSave) => {
       const shouldShowCountdown = sessionStorage.getItem('show_rules_editor_countdown') === 'true';
 
       if (shouldShowCountdown && !userInteracted) {
-        const timeoutSetting = localStorage.getItem('video_analysis_timeout') || '10';
+        const timeoutSetting = readPreference('video_analysis_timeout');
 
         if (timeoutSetting !== 'none') {
           if (timeoutSetting === 'infinite') {

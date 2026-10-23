@@ -6,6 +6,7 @@ import VideoControlButton, {
 } from "./VideoControlButton";
 import { narrationRefreshHandler } from "./narrationRefreshHandler";
 import { extractFrame } from "./FrameExtractionHandler";
+import { readPreference } from '../../platform/preferences/store';
 
 const VideoTopsideButtons = ({
   showCustomControls,
@@ -94,7 +95,7 @@ const VideoTopsideButtons = ({
 
           {/* Gemini FPS Info button - only show when custom controls are available and optimization is enabled */}
           {showCustomControls &&
-            localStorage.getItem("optimize_videos") === "true" && (
+            readPreference('optimize_videos') && (
               <LiquidGlass
                 width="auto"
                 height={50}
@@ -109,7 +110,7 @@ const VideoTopsideButtons = ({
                 animateOnHover={true}
                 hoverScale={1.1}
                 updateOnMouseMove={true}
-                aria-label="Gemini FPS Info"
+                aria-label={t("preview.geminiFpsInfo", "Gemini FPS Info")}
                 style={visibilityStyle}
                 onClick={() => {
                   window.open(

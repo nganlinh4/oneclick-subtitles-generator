@@ -3,12 +3,12 @@
  */
 
 import i18n from '../i18n/i18n';
-import { DEFAULT_ANALYSIS_MODEL_ID, normalizeMediaModelId } from '../config/geminiModels';
 import { resolveActiveNativeMediaAssetId } from '../platform/activeNativeMedia';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { runNativeGeminiMediaAnalysis } from '../platform/nativeGeminiMediaAnalysis';
 import { inspectMediaPipelineAsset } from '../platform/mediaPipelineService';
 import { createVideoAnalysisSchema } from '../utils/videoAnalysisSchema';
+import { isRecord } from '../platform/plainDataRecord';
+import { readPreference } from '../platform/preferences/store';
 
 // Translation function shorthand
 const t = (key, fallback) => i18n.t(key, fallback);
@@ -65,9 +65,6 @@ export const abortVideoAnalysis = () => {
  * @returns {Object} - The sanitized analysis result
  */
 const sanitizeAnalysisResult = (analysisResult) => {
-  const isRecord = (value) => (
-    value !== null && typeof value === 'object' && !Array.isArray(value)
-  );
   const validText = (value) => (
     typeof value === 'string'
     && value.trim().length > 0
@@ -143,8 +140,6 @@ export const analyzeVideoWithGemini = async (
   if (externalSignal?.aborted) analysisController.abort();
   else externalSignal?.addEventListener?.('abort', abortFromOwner, { once: true });
   try {
-    const nativeRuntime = isDesktopRuntime();
-    if (!nativeRuntime) throw new Error('Video analysis requires the desktop runtime');
     if (typeof projectId !== 'string'
         || !Number.isSafeInteger(expectedProjectStateVersion)
         || expectedProjectStateVersion < 0) {
@@ -153,11 +148,7 @@ export const analyzeVideoWithGemini = async (
       throw error;
     }
 
-    // Get the selected model from localStorage or use the default
-    const MODEL = normalizeMediaModelId(
-        localStorage.getItem('video_analysis_model'),
-        DEFAULT_ANALYSIS_MODEL_ID
-    );
+    const MODEL = readPreference('video_analysis_model');
 
     // Get video duration
     onStatusUpdate({ message: t('input.preparingVideoAnalysis', 'Preparing video for analysis...'), type: 'loading' });

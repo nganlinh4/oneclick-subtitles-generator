@@ -6,7 +6,6 @@ import {
     isDurableSubtitleCheckpointReceipt,
 } from '../services/subtitleCache';
 import { DESCRIPTORS } from '../services/engines/transcriptionEngineRegistry';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
     loadExactProjectSubtitles,
     resolveProjectForCache,
@@ -29,7 +28,6 @@ export const getLocalSubtitleRunner = (method) => METHOD_RUNNERS[method];
 export const runLocalSubtitleGeneration = async ({
     localRunner,
     input,
-    inputType,
     options,
     runId,
     autoRunContext,
@@ -59,18 +57,9 @@ export const runLocalSubtitleGeneration = async ({
     }
     // Local ASR used to bypass project resolution, paint streaming rows, and schedule a
     // best-effort event save 500 ms later. Resolve its durable owner before inference.
-    const currentVideoUrl = !isDesktopRuntime() && inputType === 'youtube'
-        ? (typeof input === 'string' ? input : input?.url ?? null)
-        : null;
     let cacheId;
     try {
-        cacheId = await resolveCacheIdForGeneration({
-            input,
-            inputType,
-            currentVideoUrl,
-            t,
-            setStatus: setGenerationStatus,
-        });
+        cacheId = await resolveCacheIdForGeneration({ input });
         if (autoRunContext) {
             assertAutoGenerationContextCurrent(autoRunContext);
             if (cacheId !== autoRunContext.cacheId) {
@@ -86,9 +75,7 @@ export const runLocalSubtitleGeneration = async ({
     try {
         await refreshNativeMedia();
         const resolvedLocalProject = await resolveProjectForCache(cacheId, { create: true });
-        const localProjectId = getNativeMediaCapability()?.projectId
-            ?? resolvedLocalProject?.projectId
-            ?? null;
+        const localProjectId = getNativeMediaCapability().projectId;
         if (!localProjectId
             || resolvedLocalProject?.projectId !== localProjectId
             || (autoRunContext && localProjectId !== autoRunContext.projectId)) {

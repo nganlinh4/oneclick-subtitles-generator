@@ -1,6 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { getAsrStatus } from '../platform/asrService';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { getSpeechStatus } from '../platform/speechService';
 import {
   mapNativeAsrEngines,
@@ -12,9 +11,6 @@ vi.mock('../platform/asrService', () => ({
   getAsrStatus: vi.fn(),
 }));
 
-vi.mock('../platform/desktopRuntime', () => ({
-  isDesktopRuntime: vi.fn(),
-}));
 
 vi.mock('../platform/managedEngineCatalog', () => ({
   MANAGED_SPEECH_ENGINE_BINDINGS: Object.freeze([
@@ -107,7 +103,6 @@ const nativeSpeechStatus = {
 };
 
 beforeEach(() => {
-  isDesktopRuntime.mockReturnValue(true);
   getAsrStatus.mockResolvedValue(nativeAsrStatus);
   getSpeechStatus.mockResolvedValue(nativeSpeechStatus);
 });
@@ -258,21 +253,6 @@ it('merges typed ASR and speech status without contacting the legacy HTTP servic
   expect(result.current.isReady('f5tts')).toBe(true);
   expect(result.current.isInstalled('chatterbox')).toBe(true);
   expect(result.current.isInstalled('qwen3-asr-1.7b')).toBe(false);
-  unmount();
-});
-
-it('fails closed during browser-only inspection without probing native or legacy services', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  global.fetch = vi.fn();
-
-  const { result, unmount } = renderHook(() => useEngineStatus({ poll: false }));
-  await waitFor(() => expect(result.current.loading).toBe(false));
-
-  expect(getAsrStatus).not.toHaveBeenCalled();
-  expect(getSpeechStatus).not.toHaveBeenCalled();
-  expect(global.fetch).not.toHaveBeenCalled();
-  expect(result.current.engines).toEqual({});
-  expect(result.current.isReady('chatterbox')).toBe(false);
   unmount();
 });
 

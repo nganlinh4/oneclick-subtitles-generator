@@ -43,13 +43,12 @@ it('never hydrates native form state or original snapshots from legacy secrets',
 
   const { result, unmount } = renderSettingsState();
 
-  expect(result.current.geminiApiKey).toBe('');
+  expect(result.current).not.toHaveProperty('geminiApiKey');
   expect(result.current.youtubeApiKey).toBe('');
   expect(result.current.geniusApiKey).toBe('');
   expect(result.current.youtubeClientId).toBe('');
   expect(result.current.youtubeClientSecret).toBe('');
   expect(result.current.originalSettings).toEqual(expect.objectContaining({
-    geminiApiKey: '',
     youtubeApiKey: '',
     geniusApiKey: '',
     youtubeClientId: '',

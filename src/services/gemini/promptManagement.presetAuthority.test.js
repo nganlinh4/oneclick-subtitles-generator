@@ -38,3 +38,21 @@ it('normalizes hostile duplicate tokens in a user preset at the action boundary'
     }),
   })).toBe('Before video after ');
 });
+
+it('takes outside-range context only from the run and never from WebView storage', () => {
+  localStorage.setItem('video_processing_use_outside_context', 'true');
+  localStorage.setItem('video_processing_outside_context_text', '\n- stale browser context');
+
+  const withoutContext = getTranscriptionPrompt('video', '[0] line one');
+  const withContext = getTranscriptionPrompt('video', '[0] line one', {
+    promptContext: context({
+      useOutsideResultsContext: true,
+      outsideContextText: '\n- Context before selected range:\n  * [0:00 - 0:01] hello',
+    }),
+  });
+
+  expect(withoutContext).not.toContain('stale browser context');
+  expect(withContext).toContain('Contextual subtitles outside the selected range');
+  expect(withContext).toContain('hello');
+  localStorage.clear();
+});

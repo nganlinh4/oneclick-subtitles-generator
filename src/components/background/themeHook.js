@@ -21,18 +21,7 @@ export const useCurrentTheme = () => {
       attributeFilter: ['data-theme']
     });
 
-    // Also listen for storage events (theme changes from other tabs)
-    const handleStorageChange = () => {
-      const newTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-      setTheme(newTheme);
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('storage', handleStorageChange);
-    };
+    return () => observer.disconnect();
   }, []);
 
   return theme;

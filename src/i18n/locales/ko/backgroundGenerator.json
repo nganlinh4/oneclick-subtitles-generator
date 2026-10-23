@@ -1,6 +1,5 @@
 {
   "title": "배경 이미지 생성기",
-  "lyrics": "가사",
   "lyricsPlaceholder": "여기에 가사를 입력하세요...",
   "songName": "노래 제목",
   "songNamePlaceholder": "노래 제목 입력 (선택사항)",
@@ -20,13 +19,9 @@
   "downloadImage": "다운로드",
   "downloadAllImages": "모두 다운로드",
   "generationFailed": "생성 실패",
-  "images": "이미지",
-  "uniqueImages": "고유 이미지",
   "generateWithNewPrompt": "고유 프롬프트로 생성",
   "generateWithNewPromptTooltip": "각 이미지마다 고유한 프롬프트 생성",
   "generatingWithNewPrompt": "생성 중...",
-  "uniquePromptCountTooltip": "각각 고유한 프롬프트로 생성할 이미지 수",
-  "samePromptCountTooltip": "동일한 프롬프트를 사용하여 생성할 이미지 수",
   "expand": "펼치기",
   "collapse": "접기",
   "clearImages": "지우기",
@@ -39,7 +34,6 @@
     "modelUnavailable": "선택한 이미지 모델을 사용할 수 없습니다. 다른 모델을 선택하고 다시 시도하세요.",
     "requestRejected": "Gemini가 이미지 모델 또는 요청을 거부했습니다. 모델 접근 권한을 확인하고 다시 시도하세요.",
     "quotaExceeded": "할당량을 초과했습니다. 요금제와 결제를 확인하세요.",
-    "rateLimited": "요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.",
     "unauthorized": "인증 실패: API 키가 없거나 올바르지 않습니다.",
     "forbidden": "접근이 거부되었습니다. 결제/쿼터 또는 모델 접근 권한을 확인하세요.",
     "badRequest": "잘못된 요청입니다. 프롬프트나 앨범 아트를 수정한 후 다시 시도하세요.",
@@ -53,5 +47,9 @@
     "noPromptReturned": "프롬프트가 반환되지 않았습니다. 잠시 후 다시 시도하세요.",
     "network": "네트워크 오류입니다. 연결을 확인하고 다시 시도하세요."
   },
-  "errorSavingPrompts": "프롬프트 저장 오류: {{message}}"
+  "errorSavingPrompts": "프롬프트 저장 오류: {{message}}",
+  "lyricsRequired": "프롬프트를 생성하려면 가사를 입력하세요",
+  "promptRequired": "먼저 프롬프트를 생성하세요",
+  "albumArtRequired": "이미지를 생성하려면 앨범 아트를 추가하세요",
+  "generatedImageAlt": "생성된 배경"
 }

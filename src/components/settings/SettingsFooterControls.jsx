@@ -68,12 +68,6 @@ const SettingsFooterControls = ({
     try {
       const committedFont = await APP_FONT_PREFERENCE.commit(nextFont, {
         apply: applyEffectiveAppFont,
-        publish: (publishedFont) => {
-          window.dispatchEvent(new StorageEvent('storage', {
-            key: APP_FONT_PREFERENCE.key,
-            newValue: publishedFont,
-          }));
-        },
         onProjectionWarning: () => showPreferenceProjectionWarning(t),
       });
       // State is a separate projection from CSS and the storage event. Even if either one fails,
@@ -106,10 +100,6 @@ const SettingsFooterControls = ({
     try {
       const committedScale = await APP_UI_SCALE_PREFERENCE.commit(nextScale, {
         apply: applyEffectiveAppUiScale,
-        publish: (publishedScale) => window.dispatchEvent(new StorageEvent('storage', {
-          key: APP_UI_SCALE_PREFERENCE.key,
-          newValue: publishedScale,
-        })),
         onProjectionWarning: () => showPreferenceProjectionWarning(t),
       });
       setAppScale(committedScale);

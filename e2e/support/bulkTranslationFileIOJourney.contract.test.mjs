@@ -10,7 +10,7 @@ const journey = readFileSync(journeyPath, 'utf8');
 const translationActions = read('..', '..', 'src', 'components', 'translation', 'TranslationActions.js');
 const bulkTranslationPool = read('..', '..', 'src', 'components', 'translation', 'BulkTranslationPool.js');
 const translationIndex = read('..', '..', 'src', 'components', 'translation', 'index.js');
-const useTranslationState = read('..', '..', 'src', 'hooks', 'useTranslationState.js');
+const runTranslation = read('..', '..', 'src', 'hooks', 'runTranslation.js');
 const useTranslationBulk = read('..', '..', 'src', 'hooks', 'useTranslationBulk.js');
 const translationJs = read('..', '..', 'src', 'services', 'gemini', 'translation.js');
 const chainFormatter = read('..', '..', 'src', 'services', 'gemini', 'translationChainFormatter.js');
@@ -145,8 +145,8 @@ test('bulk files run concurrently, preserve per-file failures and refuse a total
 test('the bulk-only branch short-circuits a failed bulkOutcome before its blanket "complete" return; TranslationError only ever shows a toast', () => {
   // Pre-existing plumbing (unchanged by this fix): a 'failed' bulk-only outcome already escapes
   // handleTranslate before the unconditional 'complete' fallback below it can override it.
-  assert.match(useTranslationState, /if \(bulkOutcome\?\.status === 'failed' && !hasMainSubtitles\) return bulkOutcome;/u);
-  assert.match(useTranslationState, /if \(!hasMainSubtitles\) return \{ status: 'complete', scope: 'bulk' \};/u);
+  assert.match(runTranslation, /if \(bulkOutcome\?\.status === 'failed' && !hasMainSubtitles\) return bulkOutcome;/u);
+  assert.match(runTranslation, /if \(!hasMainSubtitles\) return \{ status: 'complete', scope: 'bulk' \};/u);
   assert.match(translationErrorComponent, /No longer render inline error/u);
   assert.match(translationErrorComponent, /showErrorToast\(error\.replace/u);
 });
@@ -158,7 +158,7 @@ test('download buttons and the bulk preview are both gated on at least one succe
 test('bulk export writes each file through the same native save boundary the document journeys prove', () => {
   assert.match(downloadUtils, /await downloadJSON\(download\.subtitles, download\.filename\)/u);
   assert.match(downloadUtils, /await downloadSRT\(download\.subtitles, download\.filename\)/u);
-  assert.match(fileUtils, /return exportSubtitleDocument\(\{ suggestedName: filename, format, content \}\);/u);
+  assert.match(fileUtils, /exportSubtitleDocument\(\{ suggestedName: filename, format, content \}\)/u);
   assert.match(subtitleDocumentOracle, /export const waitForNewDocumentExports/u);
 });
 

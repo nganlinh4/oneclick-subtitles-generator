@@ -5,7 +5,6 @@ import {
   LYRICS_EDITOR_ACTIONS,
   registerDurableLyricsHistoryFlusher,
 } from '../platform/durableLyricsHistory';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import {
   subscribeCurrentCacheId,
   subscribeCurrentSubtitleProjectRefresh,
@@ -33,7 +32,6 @@ const notifyEditFailed = (message) => {
 };
 
 const EMPTY_DURABLE_STATUS = Object.freeze({ canUndo: false, canRedo: false });
-const EXTERNAL_MERGE_QUIET_MS = 750;
 const TEXT_EDIT_QUIET_MS = 500;
 
 const pushBounded = (stack, value) => [...stack, value];
@@ -65,7 +63,6 @@ export const useLyricsEditorHistory = ({
   const callbacksRef = useRef({ setLyrics, onUpdateLyrics });
   const durableRef = useRef(null);
   const navigationPendingRef = useRef(false);
-  const externalMergeRef = useRef(null);
   const pendingTextRef = useRef(null);
   const viewGenerationRef = useRef(0);
   // Read live from the durable-history effect's onError, which is created once (see below) and
@@ -138,44 +135,12 @@ export const useLyricsEditorHistory = ({
     pendingTextRef.current = null;
   }, []);
 
-  const cancelExternalMerge = useCallback(() => {
-    const pending = externalMergeRef.current;
-    if (pending?.timer != null) window.clearTimeout(pending.timer);
-    externalMergeRef.current = null;
-  }, []);
-
   const resetToAuthoritativeRows = useCallback((rows) => {
     cancelPendingText();
-    cancelExternalMerge();
     setHistory([]);
     setRedoStack([]);
     replaceLyrics(rows);
-  }, [
-    cancelExternalMerge,
-    cancelPendingText,
-    replaceLyrics,
-    setHistory,
-    setRedoStack,
-  ]);
-
-  const finishExternalMerge = useCallback(() => {
-    const pending = externalMergeRef.current;
-    if (pending === null) return Promise.resolve();
-    if (pending.timer !== null) window.clearTimeout(pending.timer);
-    externalMergeRef.current = null;
-    if (pending.latest !== null && !same(pending.baseline, pending.latest)) {
-      return durableRef.current?.record(
-        pending.baseline,
-        pending.latest,
-        LYRICS_EDITOR_ACTIONS.EXTERNAL_MERGE
-      ) ?? Promise.resolve();
-    }
-    if (pending.captured) {
-      setHistory(pending.historyBefore);
-      setRedoStack(pending.redoBefore);
-    }
-    return Promise.resolve();
-  }, [setHistory, setRedoStack]);
+  }, [cancelPendingText, replaceLyrics, setHistory, setRedoStack]);
 
   useEffect(() => {
     const durable = createDurableLyricsHistory({
@@ -190,36 +155,29 @@ export const useLyricsEditorHistory = ({
       },
     });
     durableRef.current = durable;
-    const unregisterCacheId = isDesktopRuntime()
-      ? subscribeCurrentCacheId((cacheId, previousCacheId) => {
-          cancelPendingText();
-          cancelExternalMerge();
-          navigationPendingRef.current = false;
-          viewGenerationRef.current += 1;
-          applyStacks([], []);
-          setCheckpointHistory([]);
-          onCacheIdChange?.(cacheId, previousCacheId);
-          void durable.refresh();
-        })
-      : () => undefined;
+    const unregisterCacheId = subscribeCurrentCacheId((cacheId, previousCacheId) => {
+      cancelPendingText();
+      navigationPendingRef.current = false;
+      viewGenerationRef.current += 1;
+      applyStacks([], []);
+      setCheckpointHistory([]);
+      onCacheIdChange?.(cacheId, previousCacheId);
+      void durable.refresh();
+    });
     // A replacement download can advance the same project without changing its URL cache alias.
     // Reset the optimistic editor boundary and reload that exact project's authoritative rows;
     // otherwise the next edit can be based on the snapshot from before media activation.
-    const unregisterProjectRefresh = isDesktopRuntime()
-      ? subscribeCurrentSubtitleProjectRefresh((cacheId) => {
-          cancelPendingText();
-          cancelExternalMerge();
-          navigationPendingRef.current = false;
-          viewGenerationRef.current += 1;
-          applyStacks([], []);
-          setCheckpointHistory([]);
-          onCacheIdChange?.(cacheId, cacheId);
-          void durable.refresh();
-        })
-      : () => undefined;
+    const unregisterProjectRefresh = subscribeCurrentSubtitleProjectRefresh((cacheId) => {
+      cancelPendingText();
+      navigationPendingRef.current = false;
+      viewGenerationRef.current += 1;
+      applyStacks([], []);
+      setCheckpointHistory([]);
+      onCacheIdChange?.(cacheId, cacheId);
+      void durable.refresh();
+    });
     const unregisterFlusher = registerDurableLyricsHistoryFlusher(async () => {
       await finishPendingText();
-      await finishExternalMerge();
       await durable.flush();
     });
     void durable.refresh();
@@ -228,15 +186,12 @@ export const useLyricsEditorHistory = ({
       unregisterProjectRefresh();
       unregisterFlusher();
       finishPendingText();
-      finishExternalMerge();
       durable.dispose();
       if (durableRef.current === durable) durableRef.current = null;
     };
   }, [
     applyStacks,
-    cancelExternalMerge,
     cancelPendingText,
-    finishExternalMerge,
     finishPendingText,
     onCacheIdChange,
     publishDurableStatus,
@@ -249,7 +204,6 @@ export const useLyricsEditorHistory = ({
     const baseline = clone(options.baseline ?? lyricsRef.current);
     const next = clone(nextRows);
     if (same(baseline, next)) return false;
-    finishExternalMerge();
 
     if (action === LYRICS_EDITOR_ACTIONS.TEXT) {
       let pending = pendingTextRef.current;
@@ -297,13 +251,7 @@ export const useLyricsEditorHistory = ({
     }
     void durableRef.current?.record(baseline, next, action);
     return true;
-  }, [
-    finishExternalMerge,
-    finishPendingText,
-    replaceLyrics,
-    setHistory,
-    setRedoStack,
-  ]);
+  }, [finishPendingText, replaceLyrics, setHistory, setRedoStack]);
 
   const resolveOptimisticNavigation = useCallback((
     result,
@@ -332,7 +280,6 @@ export const useLyricsEditorHistory = ({
   const handleUndo = useCallback(() => {
     if (navigationPendingRef.current) return;
     finishPendingText();
-    finishExternalMerge();
     const current = clone(lyricsRef.current);
     const localHistory = historyRef.current;
     if (localHistory.length > 0) {
@@ -356,7 +303,6 @@ export const useLyricsEditorHistory = ({
       navigationPendingRef.current = false;
     });
   }, [
-    finishExternalMerge,
     finishPendingText,
     replaceLyrics,
     resolveOptimisticNavigation,
@@ -367,7 +313,6 @@ export const useLyricsEditorHistory = ({
   const handleRedo = useCallback(() => {
     if (navigationPendingRef.current) return;
     finishPendingText();
-    finishExternalMerge();
     const current = clone(lyricsRef.current);
     const localRedo = redoRef.current;
     if (localRedo.length > 0) {
@@ -403,7 +348,6 @@ export const useLyricsEditorHistory = ({
       navigationPendingRef.current = false;
     });
   }, [
-    finishExternalMerge,
     finishPendingText,
     replaceLyrics,
     resetToAuthoritativeRows,
@@ -443,40 +387,14 @@ export const useLyricsEditorHistory = ({
     setCheckpointHistory(checkpointHistory.slice(0, targetIndex));
   }, [checkpointHistory, commitLyricsMutation, setCheckpointHistory]);
 
-  const captureStateBeforeMerge = useCallback(() => {
-    finishPendingText();
-    finishExternalMerge();
-    const baseline = clone(lyricsRef.current);
-    externalMergeRef.current = {
-      baseline,
-      latest: null,
-      timer: null,
-      captured: false,
-      historyBefore: historyRef.current,
-      redoBefore: redoRef.current,
-    };
-  }, [finishExternalMerge, finishPendingText]);
-
   const observeExternalLyrics = useCallback((rows) => {
-    if (!Array.isArray(rows)) return;
-    if (!same(rows, lyricsRef.current)) viewGenerationRef.current += 1;
-    const pending = externalMergeRef.current;
-    if (pending === null) return;
-    pending.latest = clone(rows);
-    if (!pending.captured && !same(pending.baseline, pending.latest)) {
-      pending.captured = true;
-      setRedoStack([]);
-      setHistory(pushBounded(pending.historyBefore, pending.baseline));
-    }
-    if (pending.timer !== null) window.clearTimeout(pending.timer);
-    pending.timer = window.setTimeout(finishExternalMerge, EXTERNAL_MERGE_QUIET_MS);
-  }, [finishExternalMerge, setHistory, setRedoStack]);
+    if (Array.isArray(rows) && !same(rows, lyricsRef.current)) viewGenerationRef.current += 1;
+  }, []);
 
   const refreshDurableHistory = useCallback(() => {
     finishPendingText();
-    finishExternalMerge();
     void durableRef.current?.refresh();
-  }, [finishExternalMerge, finishPendingText]);
+  }, [finishPendingText]);
 
   return {
     history,
@@ -492,9 +410,7 @@ export const useLyricsEditorHistory = ({
     handleReset,
     createCheckpoint,
     handleJumpToCheckpoint,
-    captureStateBeforeMerge,
     observeExternalLyrics,
-    finishExternalMerge,
     refreshDurableHistory,
     commitLyricsMutation,
   };

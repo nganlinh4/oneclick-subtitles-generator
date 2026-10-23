@@ -5,7 +5,6 @@ import {
 } from '../platform/activeNativeMedia';
 import { exportMediaAsset } from '../platform/mediaExportService';
 import { runMediaPipeline } from '../platform/mediaPipelineService';
-import { isDesktopRuntime } from '../platform/runtimeEnvironment';
 import { exportSubtitleDocument } from '../platform/subtitleDocumentExportService';
 
 vi.mock('../platform/activeNativeMedia', () => ({
@@ -17,9 +16,6 @@ vi.mock('../platform/mediaPipelineService', () => ({
 }));
 vi.mock('../platform/mediaExportService', () => ({
   exportMediaAsset: vi.fn(),
-}));
-vi.mock('../platform/runtimeEnvironment', () => ({
-  isDesktopRuntime: vi.fn(() => false),
 }));
 vi.mock('../platform/subtitleDocumentExportService', () => ({
   exportSubtitleDocument: vi.fn(),
@@ -51,8 +47,6 @@ describe('toBase64', () => {
 
 describe('subtitle document downloads', () => {
   beforeEach(() => {
-    isDesktopRuntime.mockReset();
-    isDesktopRuntime.mockReturnValue(true);
     exportSubtitleDocument.mockReset();
     exportSubtitleDocument.mockResolvedValue({ status: 'saved' });
   });

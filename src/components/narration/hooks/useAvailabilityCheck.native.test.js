@@ -6,7 +6,6 @@ import useAvailabilityCheck, {
 } from './useAvailabilityCheck';
 
 const mocks = vi.hoisted(() => ({
-  isDesktopRuntime: vi.fn(),
   getStatus: vi.fn(),
   probe: vi.fn(),
   stopRuntime: vi.fn(),
@@ -16,9 +15,6 @@ const mocks = vi.hoisted(() => ({
   subscribeCredentialState: vi.fn(),
 }));
 
-vi.mock('../../../platform/desktopRuntime', () => ({
-  isDesktopRuntime: mocks.isDesktopRuntime,
-}));
 vi.mock('../../../platform/nativeNarrationAdapter', () => ({
   nativeNarrationAdapter: {
     getStatus: mocks.getStatus,
@@ -89,7 +85,6 @@ const setterHarness = () => ({
 
 beforeEach(() => {
   const credentials = credentialSnapshot();
-  mocks.isDesktopRuntime.mockReturnValue(true);
   mocks.getStatus.mockResolvedValue(status());
   mocks.probe.mockResolvedValue({ status: { ready: true, warm: true } });
   mocks.stopRuntime.mockResolvedValue(undefined);
@@ -337,26 +332,6 @@ it('does not let an in-flight stale status overwrite a newer Stop epoch', async 
   });
 
   expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(true);
-  expect(mocks.probe).not.toHaveBeenCalled();
-  unmount();
-});
-
-it('marks every method unavailable on an unsupported non-desktop platform', async () => {
-  mocks.isDesktopRuntime.mockReturnValue(false);
-  const setters = setterHarness();
-  const { unmount } = renderHook(() => useAvailabilityCheck({
-    narrationMethod: 'edge-tts',
-    ...setters,
-    t: (_key, fallback) => fallback,
-  }));
-
-  await waitFor(() => expect(setters.setIsCheckingAvailability).toHaveBeenLastCalledWith(false));
-  expect(setters.setIsAvailable).toHaveBeenLastCalledWith(false);
-  expect(setters.setIsGeminiAvailable).toHaveBeenLastCalledWith(false);
-  expect(setters.setIsChatterboxAvailable).toHaveBeenLastCalledWith(false);
-  expect(setters.setIsEdgeTTSAvailable).toHaveBeenLastCalledWith(false);
-  expect(setters.setIsGTTSAvailable).toHaveBeenLastCalledWith(false);
-  expect(mocks.getStatus).not.toHaveBeenCalled();
   expect(mocks.probe).not.toHaveBeenCalled();
   unmount();
 });

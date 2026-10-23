@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import useGeniusLyrics from '../hooks/useGeniusLyrics';
 import { showErrorToast, showInfoToast } from '../utils/toastUtils';
+import { readPreference, writePreference } from '../platform/preferences/store';
+import { activateOnKey } from '../utils/a11y/activateOnKey';
 
 /**
  * Component for lyrics input and fetching
@@ -13,22 +15,19 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
   const translationRef = useRef(t);
   translationRef.current = t;
 
-  // Load cached values when component mounts
+  // Load the last search when the component mounts
   useEffect(() => {
-    const cachedArtist = localStorage.getItem('cached_lyrics_artist');
-    const cachedSong = localStorage.getItem('cached_lyrics_song');
-
-    if (cachedArtist) setArtist(cachedArtist);
-    if (cachedSong) setSong(cachedSong);
+    setArtist(readPreference('cached_lyrics_artist'));
+    setSong(readPreference('cached_lyrics_song'));
   }, []);
 
-  // Save values to localStorage when they change
+  // Remember non-empty values for the next search
   useEffect(() => {
-    if (artist) localStorage.setItem('cached_lyrics_artist', artist);
+    if (artist) writePreference('cached_lyrics_artist', artist);
   }, [artist]);
 
   useEffect(() => {
-    if (song) localStorage.setItem('cached_lyrics_song', song);
+    if (song) writePreference('cached_lyrics_song', song);
   }, [song]);
 
   // Use the Genius lyrics hook
@@ -118,6 +117,8 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
             if (!artist || !song || loading) return;
             handleFetchLyrics();
           }}
+          onKeyDown={activateOnKey}
+          aria-disabled={!artist || !song || loading}
           style={{
             cursor: (!artist || !song || loading) ? 'not-allowed' : 'pointer',
             opacity: (!artist || !song || loading) ? 0.6 : 1,
@@ -131,7 +132,7 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
         >
           {loading ? t('subtitlesInput.fetching', 'Fetching...') : (
             <>
-              <span className="material-symbols-rounded">search</span>
+              <span aria-hidden="true" className="material-symbols-rounded">search</span>
               {t('subtitlesInput.fetch', 'Fetch')}
             </>
           )}
@@ -142,7 +143,7 @@ const LyricsInputSection = ({ onLyricsReceived }) => {
         <div className="album-art-container">
           <img
             src={albumArtUrl}
-            alt="Album Art"
+            alt={t('backgroundGenerator.albumArt', 'Album Art')}
             className="album-art"
           />
         </div>

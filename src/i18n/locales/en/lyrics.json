@@ -15,7 +15,6 @@
   "speakerStyle_colon": "Name: subtitle",
   "speakerStyle_brackets": "[Name] subtitle",
   "speakerStyle_newLine": "Name on a separate line",
-  "synchronizedLyrics": "Synchronized Subtitles",
   "stickyTimingsToggle": "Stick",
   "stickyTimingsToggleWithShortcut": "Toggle sticky timings (Ctrl+Shift+T)",
   "splitWithShortcut": "Split subtitles in selected range (Ctrl+Shift+X)",

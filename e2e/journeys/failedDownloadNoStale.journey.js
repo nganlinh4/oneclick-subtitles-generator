@@ -3,7 +3,7 @@
 // then receives HTTP 503 from a launcher-owned exact loopback capability. No command, dialog,
 // React state, browser storage, or database state is changed by this journey.
 
-/* global $, $$, browser, describe, document, getComputedStyle, it, localStorage, process */
+/* global $, $$, browser, describe, document, getComputedStyle, it, process, window */
 
 import { strict as assert } from 'node:assert';
 import { resolve } from 'node:path';
@@ -62,11 +62,9 @@ const visibleDownloadState = () => browser.execute(() => {
       && rect.width > 0 && rect.height > 0;
   };
   const text = (node) => (node?.innerText || node?.textContent || '').trim().replace(/\s+/gu, ' ');
-  const sessionRaw = localStorage.getItem('current_media_session');
-  let session = null;
-  if (sessionRaw !== null) {
-    try { session = JSON.parse(sessionRaw); } catch { session = { malformed: true }; }
-  }
+  // The active media lives in WebView memory; e2e builds expose a read-only snapshot of it.
+  const active = window.__OSG_E2E_ACTIVE_MEDIA__?.() ?? null;
+  const session = active?.session ?? null;
   const mediaElements = [...document.querySelectorAll('video, audio')].map((node) => ({
     currentSrc: node.currentSrc || '',
     src: node.getAttribute('src') || '',
@@ -77,8 +75,8 @@ const visibleDownloadState = () => browser.execute(() => {
     height: node.videoHeight ?? 0,
   }));
   return {
-    sourceUrl: localStorage.getItem('current_video_url'),
-    fileUrl: localStorage.getItem('current_file_url'),
+    sourceUrl: active?.sourceUrl ?? null,
+    fileUrl: active?.playbackUrl ?? null,
     fileName: text(document.querySelector('.file-info-card .file-name')),
     session,
     selectedUrl: text(document.querySelector('.video-url-value')),
@@ -133,7 +131,6 @@ const waitForPlayableA = async () => {
       const video = state.mediaElements.find(({ readyState }) => readyState >= 2);
       return state.sourceUrl === fixture.a.url
         && state.session !== null
-        && state.session.malformed !== true
         && video !== undefined
         && video.width === SOURCE_SWITCH_VIDEO.width
         && video.height === SOURCE_SWITCH_VIDEO.height

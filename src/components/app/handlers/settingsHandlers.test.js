@@ -4,6 +4,7 @@ import {
   initializeCredentialState,
 } from '../../../platform/credentialStateController';
 import { cancelNativeVideoDownload } from '../../../platform/nativeUrlDownloadAdapter';
+import { readActiveMedia, updateActiveMedia } from '../../../platform/activeMediaSource';
 
 vi.mock('../../../platform/nativeUrlDownloadAdapter', () => ({ cancelNativeVideoDownload: vi.fn() }));
 vi.mock('../../../platform/credentialStateController', async () => {
@@ -28,12 +29,6 @@ const createContext = () => ({
   setDownloadProgress: vi.fn(),
   setCurrentDownloadId: vi.fn(),
   setIsSrtOnlyMode: vi.fn(),
-  setTimeFormat: vi.fn(),
-  setShowWaveformLongVideos: vi.fn(),
-  setOptimizedResolution: vi.fn(),
-  setUseOptimizedPreview: vi.fn(),
-  setUseCookiesForDownload: vi.fn(),
-  setEnableYoutubeSearch: vi.fn(),
   setApiKeysSet: vi.fn(),
   t: (_key, fallback) => fallback,
 });
@@ -135,91 +130,46 @@ it('does not make retry available when the adapter cannot detach that native ope
 
 it('changes acquisition tabs without discarding the active media project', () => {
   const context = createContext();
-  localStorage.setItem('current_video_url', 'https://example.test/current');
-  localStorage.setItem('current_file_url', 'http://127.0.0.1:49152/asset/current');
-  localStorage.setItem('current_file_cache_id', 'legacy-browser-id');
+  updateActiveMedia({
+    sourceUrl: 'https://example.test/current',
+    playbackUrl: 'http://127.0.0.1:49152/asset/current',
+  });
 
   createSettingsHandlers(context).handleTabChange('file-upload');
 
   expect(context.setActiveTab).toHaveBeenCalledExactlyOnceWith('file-upload');
   expect(localStorage.getItem('userPreferredTab')).toBe('file-upload');
   expect(localStorage.getItem('lastActiveTab')).toBe('file-upload');
-  expect(localStorage.getItem('current_video_url')).toBe('https://example.test/current');
-  expect(localStorage.getItem('current_file_url')).toBe('http://127.0.0.1:49152/asset/current');
-  expect(localStorage.getItem('current_file_cache_id')).toBe('legacy-browser-id');
+  expect(readActiveMedia()).toMatchObject({
+    sourceUrl: 'https://example.test/current',
+    playbackUrl: 'http://127.0.0.1:49152/asset/current',
+  });
   expect(context.setStatus).toHaveBeenCalledExactlyOnceWith({});
   expect(context.setSelectedVideo).not.toHaveBeenCalled();
   expect(context.setUploadedFile).not.toHaveBeenCalled();
   expect(context.setSubtitlesData).not.toHaveBeenCalled();
 });
 
-it('ignores and purges secret callback arguments in native mode', async () => {
-  localStorage.setItem('gemini_api_key', 'older-secret');
-  localStorage.setItem('youtube_oauth_token', 'oauth-secret');
+it('refreshes credential availability from native status after a save', async () => {
   const context = createContext();
 
-  await createSettingsHandlers(context).saveApiKeys(
-    'stale-gemini-secret',
-    'stale-youtube-secret',
-    'stale-genius-secret',
-    5,
-    'gemini-2.5-flash',
-    'hms'
-  );
+  await createSettingsHandlers(context).saveApiKeys();
 
-  expect(localStorage.getItem('gemini_api_key')).toBeNull();
-  expect(localStorage.getItem('youtube_api_key')).toBeNull();
-  expect(localStorage.getItem('genius_token')).toBeNull();
-  expect(localStorage.getItem('youtube_oauth_token')).toBeNull();
   expect(context.setApiKeysSet).toHaveBeenCalledWith({
     gemini: true,
     youtube: true,
     genius: false,
   });
+  expect(context.setStatus).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
 });
 
 it('fails closed for native OAuth because client metadata is not an access token', async () => {
   localStorage.setItem('use_youtube_oauth', 'true');
   const context = createContext();
 
-  await createSettingsHandlers(context).saveApiKeys('', '', '', 5);
+  await createSettingsHandlers(context).saveApiKeys();
 
   expect(context.setApiKeysSet).toHaveBeenCalledWith(expect.objectContaining({
     youtube: false,
   }));
-});
-
-it('never restores raw-key browser persistence when legacy arguments are supplied', async () => {
-  localStorage.setItem('gemini_api_keys', '["older-secret"]');
-  const context = createContext();
-
-  await createSettingsHandlers(context).saveApiKeys(
-    'browser-gemini',
-    'browser-youtube',
-    'browser-genius',
-    5
-  );
-
-  expect(localStorage.getItem('gemini_api_key')).toBeNull();
-  expect(localStorage.getItem('gemini_api_keys')).toBeNull();
-  expect(localStorage.getItem('youtube_api_key')).toBeNull();
-  expect(localStorage.getItem('genius_token')).toBeNull();
-  expect(context.setApiKeysSet).toHaveBeenCalledWith({
-    gemini: true,
-    youtube: true,
-    genius: false,
-  });
-});
-
-it('keeps the selected cookie browser when the legacy-shaped callback updates the toggle', async () => {
-  localStorage.setItem('download_cookie_source', 'firefox');
-  const context = createContext();
-
-  await createSettingsHandlers(context).saveApiKeys(
-    '', '', '', 5, 'gemini-2.5-flash', 'hms', undefined, '360p', false, true
-  );
-
-  expect(localStorage.getItem('use_cookies_for_download')).toBe('true');
-  expect(localStorage.getItem('download_cookie_source')).toBe('firefox');
-  expect(context.setUseCookiesForDownload).toHaveBeenCalledWith(true);
 });

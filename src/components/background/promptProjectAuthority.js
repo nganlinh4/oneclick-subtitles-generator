@@ -2,11 +2,9 @@
  * Binds a background-prompt request to the active desktop project and its state version, so a
  * prompt generated for project A is never applied after the editor switched to project B.
  */
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
 import { getActiveProjectSnapshot } from '../../platform/projectService';
 
 export const capturePromptProjectAuthority = () => {
-  if (!isDesktopRuntime()) return null;
   const snapshot = getActiveProjectSnapshot();
   const projectId = snapshot?.metadata?.id;
   const expectedProjectStateVersion = snapshot?.stateVersion;
@@ -21,7 +19,6 @@ export const capturePromptProjectAuthority = () => {
 };
 
 export const assertPromptProjectAuthority = (authority) => {
-  if (authority === null) return;
   const current = getActiveProjectSnapshot();
   if (current?.metadata?.id !== authority.projectId
       || current?.stateVersion !== authority.expectedProjectStateVersion) {

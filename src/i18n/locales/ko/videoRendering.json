@@ -228,11 +228,6 @@
   "errorPrefix": "오류: {{message}}",
   "exitCrop": "자르기 종료",
   "gradient": "그라데이션",
-  "hintBlobRevoked": "임시 영상 blob이 해제되었거나 만료되었을 수 있습니다. 영상을 다시 추가해 보세요.",
-  "hintLabel": "힌트",
-  "hintMixedContent": "혼합 콘텐츠가 차단되었습니다. 페이지는 HTTPS이지만 영상/API는 HTTP입니다. API/영상에 HTTPS를 사용하거나 앱을 HTTP로 실행하세요.",
-  "hintNetworkCors": "네트워크/CORS 문제입니다. Network 탭에서 실패한 요청과 서버 로그를 확인하세요.",
-  "hintOffline": "오프라인 상태인 것 같습니다.",
   "noValidNarrationFiles": "사용 가능한 내레이션 파일이 없습니다",
   "selectAlignment": "정렬 선택",
   "selectAnimation": "애니메이션 선택",
@@ -245,5 +240,7 @@
   "validating": "렌더링 필수 조건을 확인하는 중...",
   "queued": "렌더링 대기열에 추가됨",
   "loadingProjectScene": "이 프로젝트의 렌더링 설정을 불러오는 중…",
-  "subtitleFontRepaired": "자막 글꼴을 복구했습니다: {{oldFont}} → {{newFont}}"
+  "subtitleFontRepaired": "자막 글꼴을 복구했습니다: {{oldFont}} → {{newFont}}",
+  "currentVideo": "현재 동영상",
+  "renderFailedToast": "동영상 렌더링 실패: {{error}}"
 }

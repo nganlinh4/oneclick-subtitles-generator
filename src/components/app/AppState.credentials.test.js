@@ -25,8 +25,6 @@ vi.mock('../../hooks/useSubtitles', () => {
     isGenerating: false,
     generateSubtitles: vi.fn(),
     retryGeneration: vi.fn(),
-    retrySegment: vi.fn(),
-    retryingSegments: [],
   };
   return { useSubtitles: () => stableSubtitlesState };
 });
@@ -39,10 +37,8 @@ vi.mock('../../utils/transcriptionRulesStore', () => ({
 vi.mock('../../services/geminiService', () => ({
   PROMPT_PRESETS: [{ id: 'general', prompt: 'default prompt' }],
 }));
-vi.mock('../../utils/videoUtils', () => ({ cleanupInvalidBlobUrls: vi.fn() }));
 vi.mock('../../config/geminiModels', () => ({
   DEFAULT_GEMINI_MODEL_ID: 'gemini-2.5-flash',
-  migrateStoredGeminiModels: vi.fn(),
 }));
 vi.mock('../../platform/credentialStateController', () => ({
   getCredentialAvailability: vi.fn(),

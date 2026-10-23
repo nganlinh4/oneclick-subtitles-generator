@@ -41,15 +41,11 @@ const ChatterboxControls = ({
   const handleExaggerationChange = (e) => {
     const value = parseFloat(e.target.value);
     setExaggeration(value);
-    // Save to localStorage for persistence
-    localStorage.setItem('chatterbox_exaggeration', value.toString());
   };
 
   const handleCfgWeightChange = (e) => {
     const value = parseFloat(e.target.value);
     setCfgWeight(value);
-    // Save to localStorage for persistence
-    localStorage.setItem('chatterbox_cfg_weight', value.toString());
   };
 
   return (

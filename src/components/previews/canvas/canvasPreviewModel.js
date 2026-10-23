@@ -3,6 +3,7 @@
  * output-grid scene clock shared by every draw path.
  */
 import { compositionSize, exactFrameRate } from '../native/nativePreviewGeometry';
+import { isNativeErrorCode } from '../../../platform/plainDataRecord';
 
 const MAX_DEVICE_PIXEL_RATIO = 1.5;
 const MAX_CANVAS_WIDTH = 1_600;
@@ -55,7 +56,7 @@ export const canvasPreviewFailure = (error) => {
     : error?.message === 'canvasPreviewUnavailable'
       ? error.message
       : 'canvasPreviewRejected';
-  const code = /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(candidate)
+  const code = isNativeErrorCode(candidate)
     ? candidate
     : 'canvasPreviewRejected';
   return Object.freeze({ code, retryable: RETRYABLE_PREVIEW_FAILURES.has(code) });

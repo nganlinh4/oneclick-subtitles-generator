@@ -1,13 +1,7 @@
 import {
   useEffect, useLayoutEffect, useRef, useState,
 } from 'react';
-import { isLoopbackServiceUrl } from '../../platform/browserOnlyService';
-import { isNativeMediaPlaybackUrl } from '../../platform/mediaService';
-import { fetchBrowserResource } from '../../platform/browserFetch';
-import {
-  forgetBrowserMediaBlob,
-  registerBrowserMediaBlob,
-} from '../../platform/browserMediaBlobRegistry';
+import { updateActiveMedia } from '../../platform/activeMediaSource';
 
 // Smaller than one 30-fps frame. The seek coordinator is the primary authority for completion;
 // this second check prevents a wrongly wired/mock completion from resuming the replacement source.
@@ -35,7 +29,6 @@ const atRestoreTime = (observed, expected) => (
  */
 const useVideoSourceSwitching = ({
   videoRef,
-  lastBlobUrlRef,
   videoUrl,
   optimizedVideoUrl,
   useOptimizedPreview,
@@ -259,65 +252,13 @@ const useVideoSourceSwitching = ({
     videoUrl,
   ]);
 
-  // Notify downstream consumers only about the source the owner actually committed. The async
-  // mirror is generation-safe, so a slow Blob conversion cannot publish an optimized URL after the
-  // owner has already fallen back to the original.
+  // Notify downstream consumers only about the source the owner actually committed. The player
+  // URL is an opaque native playback capability; it is published as-is, never fetched.
   useEffect(() => {
-    if (!playerUrl) return undefined;
-    let cancelled = false;
-
+    if (!playerUrl) return;
+    updateActiveMedia({ playbackUrl: playerUrl });
     onVideoUrlReady?.(playerUrl);
-
-    (async () => {
-      try {
-        if (playerUrl.startsWith('blob:')) {
-          localStorage.setItem('current_file_url', playerUrl);
-          if (!cancelled) onVideoUrlReady?.(playerUrl);
-          return;
-        }
-
-        if (isNativeMediaPlaybackUrl(playerUrl)) {
-          localStorage.setItem('current_file_url', playerUrl);
-          if (!cancelled) onVideoUrlReady?.(playerUrl);
-          return;
-        }
-
-        const isExternalUrl = (playerUrl.startsWith('http://') || playerUrl.startsWith('https://'))
-          && !isLoopbackServiceUrl(playerUrl);
-        if (isExternalUrl) {
-          localStorage.setItem('current_file_url', playerUrl);
-          if (!cancelled) onVideoUrlReady?.(playerUrl);
-          return;
-        }
-
-        const response = await fetchBrowserResource(playerUrl, { cache: 'no-cache', mode: 'cors' });
-        if (!response.ok) throw new Error(`Failed to fetch video for blob: ${response.status}`);
-        const blob = await response.blob();
-        if (cancelled) return;
-
-        const objectUrl = URL.createObjectURL(blob);
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        localStorage.setItem('current_file_url', objectUrl);
-        registerBrowserMediaBlob(objectUrl, blob);
-        if (lastBlobUrlRef.current?.startsWith('blob:')) {
-          try { URL.revokeObjectURL(lastBlobUrlRef.current); } catch { /* already revoked */ }
-          forgetBrowserMediaBlob(lastBlobUrlRef.current);
-        }
-        lastBlobUrlRef.current = objectUrl;
-        onVideoUrlReady?.(objectUrl);
-        window.dispatchEvent(new CustomEvent('currentFileUrlChanged', { detail: { url: objectUrl } }));
-      } catch {
-        // A source that cannot be prepared leaves the previous URL in place.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [lastBlobUrlRef, onVideoUrlReady, playerUrl]);
+  }, [onVideoUrlReady, playerUrl]);
 };
 
 export default useVideoSourceSwitching;

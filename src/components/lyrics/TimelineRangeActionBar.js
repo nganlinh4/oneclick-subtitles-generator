@@ -194,7 +194,7 @@ const TimelineRangeActionBar = ({
                     }}
                     style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%' }}
                 >
-                    <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>delete</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>delete</span>
                 </button>
                 <button
                     className="btn-base btn-primary btn-small"
@@ -203,7 +203,7 @@ const TimelineRangeActionBar = ({
                     onMouseDown={handleMovePointerDown}
                     style={{ width: 36, height: 36, minWidth: 36, padding: 0, borderRadius: '50%', cursor: 'grab', touchAction: 'none' }}
                 >
-                    <span className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>drag_indicator</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '18px', color: 'var(--md-on-primary)' }}>drag_indicator</span>
                 </button>
             </div>
         </OverlayFollower>

@@ -4,7 +4,6 @@ import {
   generateJsonContent,
   generateSrtContent,
 } from '../../../utils/fileUtils';
-import { isDesktopRuntime } from '../../../platform/runtimeEnvironment';
 import {
   exportSubtitleArchive,
   normalizeSubtitleArchiveEntries,
@@ -189,31 +188,10 @@ export const handleBulkDownloadZip = async (ctx) => {
       : '';
     const zipFilename = `translated_subtitles${targetLanguagesSuffix}_${timestamp}.zip`;
 
-    if (isDesktopRuntime()) {
-      return exportSubtitleArchive(entries, zipFilename);
-    }
-
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-    for (const entry of entries) zip.file(entry.suggestedName, entry.content);
-    const zipPayload = await zip.generateAsync({ type: 'blob' });
-
-    // Create download link
-    const url = URL.createObjectURL(zipPayload);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = zipFilename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    return Object.freeze({ status: 'saved' });
-
+    return exportSubtitleArchive(entries, zipFilename);
   } catch (error) {
     console.error('Error creating ZIP file:', error);
-    if (isDesktopRuntime()) throw error;
-    // Fallback to individual downloads
-    return handleBulkDownloadAll(ctx);
+    throw error;
   }
 };
 

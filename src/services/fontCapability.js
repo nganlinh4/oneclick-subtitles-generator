@@ -26,6 +26,7 @@
  */
 
 import { MANAGED_FONT_PACKAGE } from './fontIdentity';
+import { snapshotExactRecord, snapshotPlainRecord } from '../platform/plainDataRecord';
 
 /** How certain we are about the managed package. `unknown` is a pending state, never a failure. */
 export const MANAGED_PACK_STATE = Object.freeze({
@@ -80,29 +81,11 @@ const REFUSAL_RETRYABILITY = Object.freeze({
   [FONT_READINESS_REFUSAL.cancelled]: false,
 });
 
-const isRecord = (value) => typeof value === 'object' && value !== null;
-
-const plainRecord = (value) => {
-  try {
-    if (!isRecord(value) || Array.isArray(value)) return null;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return null;
-    if (Object.getOwnPropertySymbols(value).length !== 0) return null;
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Object.values(descriptors).some(
-      (descriptor) => !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')
-    )) return null;
-    return Object.fromEntries(
-      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value]),
-    );
-  } catch {
-    return null;
-  }
-};
+const isObject = (value) => typeof value === 'object' && value !== null;
 
 const publishedValue = (globalScope) => {
   try {
-    if (!isRecord(globalScope)
+    if (!isObject(globalScope)
         || !Object.hasOwn(globalScope, '__OSG_FONT_READINESS__')) {
       return Object.freeze({ present: false, value: null });
     }
@@ -129,10 +112,8 @@ const recordStateIsValid = (record) => {
 };
 
 const parseFontReadiness = (value) => {
-  const record = plainRecord(value);
-  if (record === null
-      || Object.keys(record).length !== READINESS_RECORD_KEYS.length
-      || !READINESS_RECORD_KEYS.every((key) => Object.hasOwn(record, key))) return null;
+  const record = snapshotExactRecord(value, READINESS_RECORD_KEYS);
+  if (record === null) return null;
   if (record.schema !== FONT_READINESS_SCHEMA
       || !Number.isSafeInteger(record.epoch)
       || record.epoch < 0
@@ -140,7 +121,7 @@ const parseFontReadiness = (value) => {
       || record.family !== MANAGED_FONT_PACKAGE.family
       || typeof record.retryable !== 'boolean'
       || !recordStateIsValid(record)) return null;
-  return Object.freeze(record);
+  return record;
 };
 
 /**
@@ -170,7 +151,7 @@ export const fontCapabilitySnapshot = (globalScope = typeof window === 'undefine
     : record === null
       ? MANAGED_PACK_STATE.unknown
       : READINESS_TO_PACK_STATE[record.state];
-  const reported = plainRecord(published.value);
+  const reported = snapshotPlainRecord(published.value);
 
   return Object.freeze({
     managedPack,
@@ -232,7 +213,7 @@ export const subscribeToFontReadiness = (
   onChange,
   { globalScope = typeof window === 'undefined' ? null : window, listen = null } = {},
 ) => {
-  if (typeof onChange !== 'function' || !isRecord(globalScope)) return () => {};
+  if (typeof onChange !== 'function' || !isObject(globalScope)) return () => {};
   // Every consumer has its own listener. The first listener to receive epoch N updates the shared
   // record; the others must still re-render once for that same native publication, while a later
   // duplicate event must wake none of them. Track delivery per subscriber as well as authority

@@ -1,15 +1,10 @@
 {
   "remove": "Xóa",
-  "sizeError": "Kích thước tập tin vượt quá giới hạn tối đa {{size}} MB.",
   "formatError": "Định dạng tập tin không được hỗ trợ. Vui lòng tải lên tập tin video hoặc âm thanh được hỗ trợ.",
   "processing": "Đang xử lý phương tiện...",
   "pleaseWait": "Vui lòng đợi trong khi chúng tôi xử lý tập tin của bạn",
-  "converting": "Đang chuyển đổi sang video...",
-  "conversionError": "Không thể chuyển đổi âm thanh sang video. Vui lòng thử lại.",
-  "copying": "Đang sao chép tập tin lớn...",
-  "copyError": "Không thể sao chép tập tin lớn. Vui lòng thử lại.",
-  "copyErrorShort": "Không thể sao chép tập tin lớn.",
-  "retrySkipMulter": "Thử lại bằng cách bỏ qua Multer?",
   "nativeSelectionError": "Không thể mở phương tiện đã chọn.",
-  "releaseError": "Không thể giải phóng phương tiện đã chọn."
+  "releaseError": "Không thể giải phóng phương tiện đã chọn.",
+  "fileFallback": "Tệp",
+  "videoFallback": "Video"
 }

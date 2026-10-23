@@ -1,23 +1,5 @@
 {
-  "aiUsage": "AI 사용량",
-  "appTitle": "원클릭 자막 생성기",
-  "appTitleFull": "OSG (로컬 앱)",
-  "appTitleLite": "OSG (로컬 앱)",
-  "versionFull": "로컬 앱",
-  "versionLite": "로컬 앱",
-  "versionVercel": "Vercel 버전",
-  "vercelLimited": "많은 기능이 제한됩니다",
-  "appLogoAlt": "원클릭 자막 생성기 로고",
   "settings": "설정",
   "settingsAria": "설정 열기",
-  "tagline": "AI로 시간이 표시된 자막 생성하기",
-  "tryNewVersion": "새 버전 체험하기",
-  "oldVersion": "이전 버전 사용",
-  "switching": "전환 중...",
-  "switchError": "버전 전환에 실패했습니다. 다시 시도해주세요.",
-  "tryNewVersionTooltip": "걱정 마세요, 언제든 이전 버전으로 돌아갈 수 있어요",
-  "oldVersionTooltip": "이전 버전으로 돌아가기",
-  "switchingVersions": "버전 전환 중...",
-  "reloadingPage": "애플리케이션 다시 로드 중...",
   "autoGenerateTooltip": "분석과 최적 설정으로 자막을 완전 자동 생성합니다"
 }

@@ -1,6 +1,5 @@
 import { resetGeminiButtonState } from "../../../utils/geminiEffects";
 import { downloadAndPrepareYouTubeVideo } from "../VideoProcessingHandlers";
-import { isDesktopRuntime } from "../../../platform/runtimeEnvironment";
 import {
   assertAutoGenerationContextCurrent,
   isAutoGenerationCompletion,
@@ -35,7 +34,6 @@ export const createProcessingHandlers = ({
   setUploadedFile,
   setUploadedFileData,
   setIsRetrying,
-  setSegmentsStatus,
   setSelectedSegment,
   setShowProcessingModal,
   setIsProcessingSegment,
@@ -74,12 +72,6 @@ export const createProcessingHandlers = ({
       if (options.videoFile) {
         if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
         setUploadedFileData(options.videoFile);
-      }
-
-      if (options.generationScope === 'full-media') {
-        if (autoRunContext) assertAutoGenerationContextCurrent(autoRunContext);
-        localStorage.removeItem('video_processing_outside_context_text');
-        localStorage.setItem('video_processing_use_outside_context', 'false');
       }
 
       // Parakeet processing will be handled by generateSubtitles with method: 'nvidia-parakeet'
@@ -214,38 +206,30 @@ export const createProcessingHandlers = ({
     // Set retrying state to true immediately
     setIsRetrying(true);
 
-    // Clear the segments-status before starting the retry process
-    setSegmentsStatus([]);
-
     let input, inputType;
 
     let activeMediaCapability = null;
-    if (isDesktopRuntime()) {
-      try {
-        activeMediaCapability = await resolveActiveNativeMedia({
-          candidate: isNativeMediaDescriptor(uploadedFile) ? uploadedFile : null,
+    try {
+      activeMediaCapability = await resolveActiveNativeMedia({
+        candidate: isNativeMediaDescriptor(uploadedFile) ? uploadedFile : null,
+      });
+    } catch {
+      // A selected remote URL may legitimately precede its download/activation. Every other
+      // retry needs an exact native media capability and fails closed below.
+      if (!selectedVideo?.url) {
+        setStatus({
+          message: t('errors.noValidInput', 'Select the media again before retrying subtitle generation.'),
+          type: 'error',
         });
-      } catch (error) {
-        // A selected remote URL may legitimately precede its download/activation. Every other
-        // desktop retry needs an exact native media capability and fails closed below.
-        if (!selectedVideo?.url) {
-          setStatus({
-            message: t('errors.noValidInput', 'Select the media again before retrying subtitle generation.'),
-            type: 'error',
-          });
-          setIsRetrying(false);
-          resetGeminiButtonState();
-          return false;
-        }
+        setIsRetrying(false);
+        resetGeminiButtonState();
+        return false;
       }
     }
 
     if (activeMediaCapability) {
       input = activeMediaCapability.media;
       inputType = 'file-upload';
-    } else if (uploadedFile && !isDesktopRuntime()) {
-      input = uploadedFile;
-      inputType = "file-upload";
     } else if (selectedVideo) {
       input = selectedVideo;
       inputType =

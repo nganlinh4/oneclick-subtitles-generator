@@ -162,9 +162,7 @@ describe('Gemini-gated generators refuse safely without a credential, and their 
       oldMethod: document.querySelector('[data-transcription-method="old"]')?.getAttribute('data-method-available') ?? null,
     }));
     assert.equal(methodAvailability.newMethod, 'true', 'the new Gemini transcription method is not offered');
-    // Only Vercel-mode disables the old method (TranscriptionMethodSelectionOverlay.js); the
-    // e2e-automation desktop binary is never Vercel, so it must be offered too.
-    assert.equal(methodAvailability.oldMethod, 'true', 'the old Gemini transcription method is not offered on this non-Vercel build');
+    assert.equal(methodAvailability.oldMethod, 'true', 'the old Gemini transcription method is not offered');
     await captureWorkflowStep({
       workflow: WORKFLOW,
       step: '01-transcription-methods-available',

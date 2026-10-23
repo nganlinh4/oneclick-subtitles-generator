@@ -13,10 +13,9 @@ import {
   requireInteger,
   requireString,
   requireUuid,
-  snapshotExactRecord,
-  snapshotPlainRecord,
   uuidHasVersion,
 } from './renderValidation';
+import { snapshotExactRecord, snapshotPlainRecord } from './plainDataRecord';
 
 /** Mirrors `EXPORT_TEXT_SCHEMA_VERSION` in `apps/desktop/src-tauri/src/render/text.rs`. */
 const EXPORT_TEXT_SCHEMA_VERSION = 2;

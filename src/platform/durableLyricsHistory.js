@@ -7,6 +7,7 @@ import {
   undoSubtitleEditorRevision,
 } from './subtitleProjectStore';
 import { getCurrentCacheId } from '../utils/userSubtitlesStore';
+import { utf8ByteLength } from './plainDataRecord';
 
 export {
   flushDurableLyricsHistory,
@@ -61,22 +62,6 @@ const EMPTY_STATUS = Object.freeze({
   undoReason: null,
   redoReason: null,
 });
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code <= 0x7f) bytes += 1;
-    else if (code <= 0x7ff) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff
-        && value.charCodeAt(index + 1) >= 0xdc00
-        && value.charCodeAt(index + 1) <= 0xdfff) {
-      bytes += 4;
-      index += 1;
-    } else bytes += 3;
-  }
-  return bytes;
-};
 
 const serializeRows = (rows) => {
   if (!Array.isArray(rows)) throw new TypeError('Subtitle history rows must be an array');

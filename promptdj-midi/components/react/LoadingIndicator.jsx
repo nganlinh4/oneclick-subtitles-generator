@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import './LoadingIndicator.css';
-import { createFallbackShape } from './LoadingIndicator/shapeFactory.js';
+// The shape-morph geometry is shared with the main app; PromptDJ keeps only this component.
+import { createFallbackShape } from '../../../src/components/common/LoadingIndicator/shapeFactory.js';
 
 /**
  * Material Design 3 Expressive Loading Indicator
@@ -335,10 +336,10 @@ const LoadingIndicator = ({
     try {
       // Load the REAL modules dynamically
       const [, , { RoundedPolygon }, { Morph }] = await Promise.all([
-        import('./LoadingIndicator/utils.js'),
-        import('./LoadingIndicator/cubic.js'),
-        import('./LoadingIndicator/roundedPolygon.js'),
-        import('./LoadingIndicator/morph-fixed.js')
+        import('../../../src/components/common/LoadingIndicator/utils.js'),
+        import('../../../src/components/common/LoadingIndicator/cubic.js'),
+        import('../../../src/components/common/LoadingIndicator/roundedPolygon.js'),
+        import('../../../src/components/common/LoadingIndicator/morph-fixed.js')
       ]);
 
       // Create refined collection of 38 diverse shapes!

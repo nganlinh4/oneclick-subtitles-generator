@@ -1,5 +1,6 @@
 import { createRoot, Root } from 'react-dom/client';
-import PlayPauseMorphType4 from './react/PlayPauseMorphType4.jsx';
+// The morphing play/pause control is shared with the main app.
+import PlayPauseMorphType4 from '../../src/components/common/PlayPauseMorphType4.jsx';
 import LoadingIndicator from './react/LoadingIndicator.jsx';
 
 class PlayPauseMorphElement extends HTMLElement {

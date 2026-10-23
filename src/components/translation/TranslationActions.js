@@ -4,6 +4,7 @@ import BulkTranslationPool from './BulkTranslationPool';
 import LoadingIndicator from '../common/LoadingIndicator';
 import { parseSrtContent } from '../../utils/srtParser';
 import { showWarningToast } from '../../utils/toastUtils';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 // A drop can reject many files at once (wrong extension, duplicate name, malformed JSON). Report
 // them as one bounded, actionable toast instead of a toast-storm or (the previous behavior) total
@@ -85,12 +86,6 @@ const TranslationActions = ({
     if (!isTranslating && !exportOwnsControls() && fileInputRef.current) {
       fileInputRef.current.click();
     }
-  };
-
-  const handleBrowseKeyDown = (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    e.preventDefault();
-    handleBrowseClick();
   };
 
   const handleFileInputChange = async (e) => {
@@ -246,7 +241,7 @@ const TranslationActions = ({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={handleBrowseClick}
-            onKeyDown={handleBrowseKeyDown}
+            onKeyDown={activateOnKey}
             role="button"
             tabIndex={controlsAreDisabled ? -1 : 0}
             aria-disabled={controlsAreDisabled}

@@ -3,26 +3,23 @@ import { useTranslation } from 'react-i18next';
 import { getThemeWithFallback } from '../../utils/systemDetection';
 import { useSubtitles } from '../../hooks/useSubtitles';
 import { getUserProvidedSubtitlesSync } from '../../utils/userSubtitlesStore';
-import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
-import { cleanupInvalidBlobUrls } from '../../utils/videoUtils';
-import { migrateStoredGeminiModels } from '../../config/geminiModels';
 import {
   getCredentialAvailability,
   initializeCredentialState,
   subscribeCredentialState,
 } from '../../platform/credentialStateController';
 import { useNativeMediaSessionHydration } from '../../hooks/useNativeMediaSessionHydration';
-import { readDownloadCookiePreference } from '../../platform/downloadCookiePreference';
+import { readPreference, usePreference } from '../../platform/preferences/store';
 
 const hasProjectSubtitles = (value) => (
   typeof value === 'string' && value.trim() !== ''
 );
 
 const initialActiveTab = () => {
-  const preferred = localStorage.getItem('userPreferredTab');
+  const preferred = readPreference('userPreferredTab');
   if (preferred) return preferred;
-  const legacy = localStorage.getItem('lastActiveTab');
-  return legacy && legacy !== 'file-upload' ? legacy : 'unified-url';
+  const last = readPreference('lastActiveTab');
+  return last && last !== 'file-upload' ? last : 'unified-url';
 };
 
 /**
@@ -42,24 +39,18 @@ export const useAppState = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [theme, setTheme] = useState(() => getThemeWithFallback());
-  const [timeFormat, setTimeFormat] = useState(localStorage.getItem('time_format') || 'hms');
-  const [showWaveformLongVideos, setShowWaveformLongVideos] = useState(localStorage.getItem('show_waveform_long_videos') === 'true');
+  // Settings-owned values follow the preference store; only the Settings modal changes them.
+  const [timeFormat] = usePreference('time_format');
+  const [showWaveformLongVideos] = usePreference('show_waveform_long_videos');
 
   // Video processing state
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null);
-  // Video optimization setting - default to false (no optimization)
-  const [optimizeVideos, setOptimizeVideos] = useState(() => {
-    const saved = localStorage.getItem('optimize_videos');
-    // Default to false if not set (no optimization by default)
-    return saved === 'true';
-  });
-  const [optimizedResolution, setOptimizedResolution] = useState(localStorage.getItem('optimized_resolution') || '360p');
-  const [useOptimizedPreview, setUseOptimizedPreview] = useState(localStorage.getItem('use_optimized_preview') === 'true');
-  const [useCookiesForDownload, setUseCookiesForDownload] = useState(
-    () => readDownloadCookiePreference().enabled
-  );
-  const [enableYoutubeSearch, setEnableYoutubeSearch] = useState(localStorage.getItem('enable_youtube_search') === 'true'); // Default to false
+  const [optimizeVideos] = usePreference('optimize_videos');
+  const [optimizedResolution] = usePreference('optimized_resolution');
+  const [useOptimizedPreview] = usePreference('use_optimized_preview');
+  const [useCookiesForDownload] = usePreference('use_cookies_for_download');
+  const [enableYoutubeSearch] = usePreference('enable_youtube_search');
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [currentDownloadId, setCurrentDownloadId] = useState(null);
@@ -67,19 +58,12 @@ export const useAppState = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSrtOnlyMode, setIsSrtOnlyMode] = useState(false);
 
-  // Segments state
-  const [segmentsStatus, setSegmentsStatus] = useState([]);
-  const [videoSegments, setVideoSegments] = useState([]);
-
   // Video processing workflow state
   const [isUploading, setIsUploading] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState(null);
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [uploadedFileData, setUploadedFileData] = useState(null);
   const [isProcessingSegment, setIsProcessingSegment] = useState(false);
-
-  // Rules editor state
-  const [showRulesEditor, setShowRulesEditor] = useState(false);
 
   // User-provided subtitles state
   const [userProvidedSubtitles, setUserProvidedSubtitlesState] = useState(() => {
@@ -93,31 +77,17 @@ export const useAppState = () => {
     return hasProjectSubtitles(getUserProvidedSubtitlesSync());
   });
 
-  // Transcription rules state
-  const [transcriptionRules, setTranscriptionRulesState] = useState(() => {
-    // Try to get rules synchronously via the utility function
-    const savedRules = getTranscriptionRulesSync();
-
-    return savedRules;
-  });
-
-  // Native project-backed stores hydrate asynchronously after a media cache alias is resolved.
-  // Keep the existing state contract in sync without changing any rendered structure.
+  // The native project-backed store hydrates asynchronously after a media cache alias resolves.
   useEffect(() => {
     const handleUserSubtitlesUpdate = (event) => {
       const subtitlesText = event.detail?.subtitlesText || '';
       setUserProvidedSubtitlesState(subtitlesText);
       setUseUserProvidedSubtitles(hasProjectSubtitles(subtitlesText));
     };
-    const handleRulesUpdate = (event) => {
-      setTranscriptionRulesState(event.detail?.rules ?? null);
-    };
 
     window.addEventListener('userProvidedSubtitlesUpdated', handleUserSubtitlesUpdate);
-    window.addEventListener('transcriptionRulesUpdated', handleRulesUpdate);
     return () => {
       window.removeEventListener('userProvidedSubtitlesUpdated', handleUserSubtitlesUpdate);
-      window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
     };
   }, []);
 
@@ -130,32 +100,14 @@ export const useAppState = () => {
     setStatus,
     isGenerating,
     generateSubtitles,
-    retryGeneration,
-    retrySegment,
-    retryingSegments
+    retryGeneration
   } = useSubtitles(t);
 
   useNativeMediaSessionHydration({ setUploadedFile, setIsSrtOnlyMode });
 
-  // Initialize default values for settings
+  // Clear any lingering status message on mount
   useEffect(() => {
-    migrateStoredGeminiModels(localStorage);
-
-    // Clear status messages and video analysis state on mount
-    // Clear any lingering status messages on page load
     setStatus({});
-
-    // Clear video processing flag
-    localStorage.removeItem('video_processing_in_progress');
-
-    // Clean up invalid blob URLs from localStorage
-    cleanupInvalidBlobUrls();
-
-    // Purge the retired browser-era analysis modal payload. The active rules editor is opened by
-    // a project-scoped in-memory context and durable rules; no serialized UI result is restorable.
-    localStorage.removeItem('show_video_analysis');
-    localStorage.removeItem('video_analysis_timestamp');
-    localStorage.removeItem('video_analysis_result');
   }, [setStatus]);
 
   // Initialize credential availability from native, non-secret status metadata.
@@ -163,7 +115,7 @@ export const useAppState = () => {
     let alive = true;
     const applySnapshot = (snapshot) => {
       if (!alive || !snapshot.initialized) return;
-      const useOAuth = localStorage.getItem('use_youtube_oauth') === 'true';
+      const useOAuth = readPreference('use_youtube_oauth');
       const availability = getCredentialAvailability(snapshot, { useOAuth });
       setApiKeysSet(availability);
     };
@@ -188,27 +140,23 @@ export const useAppState = () => {
     showSettings, setShowSettings,
     activeTab, setActiveTab,
     theme, setTheme,
-    timeFormat, setTimeFormat,
-    showWaveformLongVideos, setShowWaveformLongVideos,
+    timeFormat,
+    showWaveformLongVideos,
     selectedVideo, setSelectedVideo,
     uploadedFile, setUploadedFile,
-    optimizeVideos, setOptimizeVideos,
-    optimizedResolution, setOptimizedResolution,
-    useOptimizedPreview, setUseOptimizedPreview,
-    useCookiesForDownload, setUseCookiesForDownload,
-    enableYoutubeSearch, setEnableYoutubeSearch,
+    optimizeVideos,
+    optimizedResolution,
+    useOptimizedPreview,
+    useCookiesForDownload,
+    enableYoutubeSearch,
     isDownloading, setIsDownloading,
     downloadProgress, setDownloadProgress,
     currentDownloadId, setCurrentDownloadId,
     isAppReady,
     isRetrying, setIsRetrying,
     isSrtOnlyMode, setIsSrtOnlyMode,
-    segmentsStatus, setSegmentsStatus,
-    videoSegments, setVideoSegments,
-    showRulesEditor, setShowRulesEditor,
     userProvidedSubtitles, setUserProvidedSubtitlesState,
     useUserProvidedSubtitles, setUseUserProvidedSubtitles,
-    transcriptionRules, setTranscriptionRulesState,
 
     // Subtitles hook
     subtitlesData, setSubtitlesData,
@@ -216,8 +164,6 @@ export const useAppState = () => {
     isGenerating,
     generateSubtitles,
     retryGeneration,
-    retrySegment,
-    retryingSegments,
 
     // Video processing workflow
     isUploading, setIsUploading,

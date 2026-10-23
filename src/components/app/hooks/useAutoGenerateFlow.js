@@ -35,7 +35,6 @@ const useAutoGenerateFlow = ({
   t = (_key, fallback) => fallback,
   handleGenerateSubtitles,
   handleProcessWithOptions,
-  isVercelMode = false,
 }) => {
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [autoFlowStep, setAutoFlowStep] = useState('');
@@ -194,7 +193,6 @@ const useAutoGenerateFlow = ({
       const options = buildAutoGenerateOptions({
         videoFile: context.media,
         duration,
-        isVercelMode,
         transcriptionRules: rules,
         userProvidedSubtitles,
         autoRunContext: context,

@@ -1,5 +1,6 @@
 import { validate as validateUuid, v7 as uuidv7, version as uuidVersion } from 'uuid';
 import { normalizeSpeaker } from '../utils/subtitleSpeaker';
+import { isRecord } from './plainDataRecord';
 
 const MAX_LEGACY_SUBTITLE_SECONDS = 31_557_600_000;
 const MAX_PROJECT_CUES = 1_000_000;
@@ -22,10 +23,6 @@ class ProjectSnapshotMappingError extends Error {
 
 const mappingError = (code, message, details) => (
   new ProjectSnapshotMappingError(code, message, details)
-);
-
-const isRecord = (value) => (
-  value !== null && typeof value === 'object' && !Array.isArray(value)
 );
 
 const characterCount = (value) => Array.from(value).length;

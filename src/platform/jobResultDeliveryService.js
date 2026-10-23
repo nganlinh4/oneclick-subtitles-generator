@@ -2,18 +2,13 @@ import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
 import { invokeDesktop } from './desktopRuntime';
 import { normalizeJobSnapshot } from './geminiService';
+import { isRecord } from './plainDataRecord';
 
 const MAX_PENDING_RESULTS = 256;
 const kinds = new Set(['asrTranscription', 'geminiText']);
 
-const isPlainRecord = (value) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
 const exactKeys = (value, keys) => (
-  isPlainRecord(value)
+  isRecord(value)
   && Object.keys(value).length === keys.length
   && keys.every((key) => Object.hasOwn(value, key))
 );
@@ -65,7 +60,7 @@ export const normalizeClaimedJobResult = (value) => {
     'deliveryId', 'jobId', 'kind', 'projectId', 'assetId', 'payload', 'createdAtMs',
   ])
       || !kinds.has(delivery.kind)
-      || !isPlainRecord(delivery.payload)
+      || !isRecord(delivery.payload)
       || !Number.isSafeInteger(delivery.createdAtMs)
       || delivery.createdAtMs < 0
       || (delivery.projectId !== null && !isUuidV7(delivery.projectId))

@@ -1,15 +1,15 @@
-// Utility functions for managing custom subtitle presets
+// Utility functions for managing custom subtitle presets, a per-device preference.
+import { readPreference, writePreference } from '../platform/preferences/store';
 
 const STORAGE_KEY = 'user_subtitle_presets';
 
 /**
- * Get all custom subtitle presets from localStorage
+ * Get all custom subtitle presets
  * @returns {Array} Array of custom preset objects
  */
 export const getCustomSubtitlePresets = () => {
   try {
-    const savedPresets = localStorage.getItem(STORAGE_KEY);
-    const parsed = savedPresets ? JSON.parse(savedPresets) : [];
+    const parsed = readPreference(STORAGE_KEY);
 
     // Normalize any legacy entries and persist back if changes were made
     let changed = false;
@@ -43,12 +43,12 @@ export const getCustomSubtitlePresets = () => {
 };
 
 /**
- * Save custom subtitle presets to localStorage
+ * Save custom subtitle presets
  * @param {Array} presets Array of custom preset objects
  */
 const saveCustomSubtitlePresets = (presets) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    writePreference(STORAGE_KEY, presets);
   } catch (error) {
     console.error('Error saving custom subtitle presets:', error);
   }

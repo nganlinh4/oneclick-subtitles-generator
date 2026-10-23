@@ -13,7 +13,6 @@ vi.mock('../Header', () => ({ default: () => null }));
 vi.mock('../InputMethods', () => ({ default: () => null }));
 vi.mock('./ButtonsContainer', () => ({ default: () => null }));
 vi.mock('../settings/SettingsModal', () => ({ default: () => null }));
-vi.mock('../TranscriptionRulesEditor', () => ({ default: () => null }));
 vi.mock('../BackgroundImageGenerator', () => ({ default: () => null }));
 vi.mock('../VideoRenderingSection', () => ({
   default: (props) => {
@@ -34,7 +33,6 @@ vi.mock('../translation', () => ({
   },
 }));
 vi.mock('../narration', () => ({ UnifiedNarrationSection: () => null }));
-vi.mock('../ParallelProcessingStatus', () => ({ default: () => null }));
 vi.mock('../../hooks/useVideoInfo', () => ({
   useVideoInfo: () => ({
     videoInfo: null,
@@ -86,13 +84,8 @@ const appState = () => ({
   isRetrying: false,
   isSrtOnlyMode: false,
   setIsSrtOnlyMode: fn,
-  segmentsStatus: [],
-  videoSegments: [],
-  showRulesEditor: false,
-  setShowRulesEditor: fn,
   userProvidedSubtitles: '',
   useUserProvidedSubtitles: false,
-  transcriptionRules: null,
   subtitlesData: null,
   setSubtitlesData: fn,
   status: {},
@@ -103,8 +96,6 @@ const appState = () => ({
   enableYoutubeSearch: false,
   optimizeVideos: false,
   optimizedResolution: '720p',
-  retryingSegments: [],
-  retrySegment: vi.fn(),
   isUploading: false,
   selectedSegment: null,
   setSelectedSegment: fn,
@@ -129,18 +120,12 @@ const appHandlers = {
 };
 
 const modalHandlers = {
-  handleUseRecommendedPreset: fn,
-  handleUseDefaultPreset: fn,
-  handleEditRules: fn,
-  handleSaveRules: fn,
-  handleViewRules: fn,
   handleUserSubtitlesAdd: fn,
   handleAbortVideoAnalysis: fn,
 };
 
 test('fresh URL App layout owns a checkpoint listener before conditional output UI exists', async () => {
   localStorage.clear();
-  localStorage.setItem('current_video_url', 'https://example.test/fresh-url');
   mocks.flush.mockResolvedValue(undefined);
   const { container, unmount } = render(<AppLayout
     appState={appState()}

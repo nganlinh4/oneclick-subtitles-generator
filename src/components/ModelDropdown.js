@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import CustomDropdown from './common/CustomDropdown';
 import {
@@ -9,14 +8,8 @@ import {
   normalizeCustomGeminiModels,
   sortModelsForDisplay,
 } from '../config/geminiModels';
+import { usePreference } from '../platform/preferences/store';
 
-const readCustomModels = () => {
-  try {
-    return normalizeCustomGeminiModels(JSON.parse(localStorage.getItem('custom_gemini_models') || '[]'));
-  } catch {
-    return [];
-  }
-};
 
 /** Model data adapter only; all menu layout and interaction belongs to CustomDropdown. */
 const ModelDropdown = ({
@@ -28,13 +21,8 @@ const ModelDropdown = ({
   disabled = false,
 }) => {
   const { t } = useTranslation();
-  const [customModels, setCustomModels] = useState(readCustomModels);
-  useEffect(() => {
-    const refresh = () => setCustomModels(readCustomModels());
-    // Settings Save publishes this after its durable commit, including same-window saves.
-    window.addEventListener('storage', refresh);
-    return () => window.removeEventListener('storage', refresh);
-  }, []);
+  const [storedCustomModels] = usePreference('custom_gemini_models');
+  const customModels = normalizeCustomGeminiModels(storedCustomModels);
 
   const models = isTranslationSection ? TRANSLATION_MODELS : DOCUMENT_MODELS;
   const options = sortModelsForDisplay([...models, ...customModels])

@@ -9,7 +9,8 @@ import {
   operations,
   requireAssetId,
 } from './mediaPipelineContract';
-import { exactRecord, hasSnapshotKeys, snapshotDataRecord } from './nativeDataSnapshot';
+import { exactRecord, snapshotDataRecord } from './nativeDataSnapshot';
+import { hasExactKeys } from './plainDataRecord';
 
 const secondsToMicroseconds = (value) => {
   if (!isFiniteNumber(value) || value < 0 || value > MAX_DURATION_US / 1_000_000) {
@@ -38,10 +39,10 @@ export const normalizeMediaPipelineRequest = (request) => {
   if (!operations.has(data.operation)) throw invalidRequest();
   switch (data.operation) {
     case 'preparePlayback':
-      if (!hasSnapshotKeys(data, ['operation', 'assetId'])) throw invalidRequest();
+      if (!hasExactKeys(data, ['operation', 'assetId'])) throw invalidRequest();
       return Object.freeze({ operation: data.operation, assetId: requireAssetId(data.assetId) });
     case 'analysisClip': {
-      if (!hasSnapshotKeys(data, ['operation', 'assetId', 'range'])) throw invalidRequest();
+      if (!hasExactKeys(data, ['operation', 'assetId', 'range'])) throw invalidRequest();
       const range = normalizeRange(data.range);
       return Object.freeze({
         operation: data.operation,
@@ -51,7 +52,7 @@ export const normalizeMediaPipelineRequest = (request) => {
       });
     }
     case 'extractAudio': {
-      if (!hasSnapshotKeys(data, ['operation', 'assetId', 'format', 'range'])
+      if (!hasExactKeys(data, ['operation', 'assetId', 'format', 'range'])
           || !audioFormats.has(data.format)) {
         throw invalidRequest();
       }
@@ -65,7 +66,7 @@ export const normalizeMediaPipelineRequest = (request) => {
       });
     }
     case 'generateWaveform': {
-      if (!hasSnapshotKeys(data, [
+      if (!hasExactKeys(data, [
         'operation', 'assetId', 'range', 'pointsPerSecond', 'maxPoints',
       ])
           || !isSafeInteger(data.pointsPerSecond, 1, 400)

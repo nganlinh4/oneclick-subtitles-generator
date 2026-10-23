@@ -9,6 +9,7 @@ import {
   fontSelectionModel,
 } from '../../services/selectableFonts';
 import { useFontReadiness } from '../../services/useFontReadiness';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, onFontSelect }) => {
   const { t } = useTranslation();
@@ -207,6 +208,10 @@ const FontSelectionModal = ({ isOpen, onClose, selectedFont, fontWeight = 400, o
                     key={font.value}
                     className={`font-card ${fontChoiceMatchesSelection(font, selection) ? 'selected' : ''}`}
                     onClick={() => handleFontSelect(font)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateOnKey}
+                    aria-pressed={fontChoiceMatchesSelection(font, selection)}
                   >
                     <div className="font-info" style={{ fontFamily: font.value }}>
                       <span className="font-name">{font.label}</span>

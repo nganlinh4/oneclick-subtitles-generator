@@ -1,4 +1,5 @@
 import { subtitleDisplayText } from './subtitleSpeaker';
+import { formatTimecodeMilliseconds } from './timeFormatter';
 
 const MAX_SUBTITLE_ENTRIES = 100_000;
 const MAX_SAFE_MILLISECONDS = Number.MAX_SAFE_INTEGER;
@@ -145,11 +146,7 @@ const parseSeconds = (value) => {
 
 const formatMilliseconds = (milliseconds) => {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) throw invalidDocument();
-  const hours = Math.floor(milliseconds / 3_600_000);
-  const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
-  const seconds = Math.floor((milliseconds % 60_000) / 1_000);
-  const remainder = milliseconds % 1_000;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(remainder).padStart(3, '0')}`;
+  return formatTimecodeMilliseconds(milliseconds, ',');
 };
 
 const formatCanonicalSeconds = (milliseconds) => {

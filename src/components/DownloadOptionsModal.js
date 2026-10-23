@@ -7,7 +7,7 @@ import SliderWithValue from './common/SliderWithValue';
 import '../styles/DownloadOptionsModal.css';
 import '../styles/components/tabs.css';
 import initTabPillAnimation from '../utils/tabPillAnimation';
-import { DEFAULT_GEMINI_MODEL_ID, migrateGeminiModelId } from '../config/geminiModels';
+import { readPreference, writePreference } from '../platform/preferences/store';
 
 /**
  * Modal component for download and processing options
@@ -43,18 +43,13 @@ const DownloadOptionsModal = ({
   const [subtitleSource, setSubtitleSource] = useState('original');
   const [fileFormat, setFileFormat] = useState('srt');
   const [processType, setProcessType] = useState(null); // Initialize to null so only Download Files tab is active
-  const [selectedModel, setSelectedModel] = useState(() => {
-    return migrateGeminiModelId(localStorage.getItem('gemini_model'), DEFAULT_GEMINI_MODEL_ID);
-  });
+  const [selectedModel, setSelectedModel] = useState(() => readPreference('gemini_model'));
   const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
-  const [customPrompts, setCustomPrompts] = useState({
-    consolidate: localStorage.getItem('custom_prompt_consolidate') || null,
-    summarize: localStorage.getItem('custom_prompt_summarize') || null
-  });
-  const [splitDuration, setSplitDuration] = useState(() => {
-    // Get the split duration from localStorage or use default (0 = no split)
-    return parseInt(localStorage.getItem('consolidation_split_duration') || '0');
-  });
+  const [customPrompts, setCustomPrompts] = useState(() => ({
+    consolidate: readPreference('custom_prompt_consolidate') || null,
+    summarize: readPreference('custom_prompt_summarize') || null,
+  }));
+  const [splitDuration, setSplitDuration] = useState(() => readPreference('consolidation_split_duration'));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const closeWhenIdle = useCallback(() => {
@@ -177,7 +172,7 @@ const DownloadOptionsModal = ({
       [processType]: newPrompt
     };
     setCustomPrompts(updatedPrompts);
-    localStorage.setItem(`custom_prompt_${processType}`, newPrompt);
+    writePreference(`custom_prompt_${processType}`, newPrompt);
   };
 
   if (!isOpen) return null;

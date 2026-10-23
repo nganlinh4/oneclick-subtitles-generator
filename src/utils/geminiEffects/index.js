@@ -10,6 +10,7 @@ import { ensureSVGDefs, updateParticleElements } from './rendering';
 import { cleanupParticles } from './particles';
 import { updateParticles } from './physics';
 import { setupButtonObserver, initializeButton, setupButtonEventListeners } from './dom';
+import { readPreference } from '../../platform/preferences/store';
 
 // Collection of all active particles
 let particles = [];
@@ -25,7 +26,7 @@ const cursorPosition = { x: 0, y: 0 };
 const isHovering = { value: false };
 
 const wakeParticles = () => {
-  if (!window.geminiAnimationFrameId && localStorage.getItem('enable_gemini_effects') !== 'false') {
+  if (!window.geminiAnimationFrameId && readPreference('enable_gemini_effects')) {
     window.geminiAnimationFrameId = requestAnimationFrame(animateParticles);
   }
 };
@@ -35,8 +36,7 @@ const wakeParticles = () => {
  */
 export function initGeminiButtonEffects() {
   // Respect user setting to disable Gemini effects entirely
-  const effectsEnabled = localStorage.getItem('enable_gemini_effects') !== 'false';
-  if (!effectsEnabled) {
+  if (!readPreference('enable_gemini_effects')) {
     // If disabled, make sure any previous animation loop is stopped
     if (window.geminiAnimationFrameId) {
       cancelAnimationFrame(window.geminiAnimationFrameId);

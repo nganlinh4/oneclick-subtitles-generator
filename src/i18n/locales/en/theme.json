@@ -1,6 +1,4 @@
 {
-  "themeSelector": "Theme",
   "dark": "Dark Mode",
-  "light": "Light Mode",
-  "system": "Use System Settings"
+  "light": "Light Mode"
 }

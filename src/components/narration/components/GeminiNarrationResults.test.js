@@ -41,7 +41,6 @@ vi.mock('../hooks/useGeminiAudioSpeed', () => ({
     fetchDurationsBatch: vi.fn(),
   }),
 }));
-vi.mock('../../../utils/mediaId', () => ({ getCurrentMediaId: () => null }));
 vi.mock('../../../utils/functionalScrollbar', () => ({}));
 
 const results = [

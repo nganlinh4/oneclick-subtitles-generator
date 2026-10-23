@@ -11,6 +11,7 @@ import VideoProcessingModalGeminiPanel from './VideoProcessingModalGeminiPanel';
 import useVideoProcessingState from './useVideoProcessingState';
 import TranscribeProcessingOptions from './TranscribeProcessingOptions';
 import { readTranscribeOptions, writeTranscribeOptions } from './videoProcessingPreferences';
+import { writePreference } from '../platform/preferences/store';
 
 // Supported languages for Parakeet with alphabetical color groups.
 // Static data — defined at module scope so it isn't re-allocated on every render.
@@ -58,9 +59,7 @@ const VideoProcessingOptionsModal = ({
         modalRef,
         contentRef,
         languagesRef,
-        isVercelMode,
         descriptor,
-        engineAvailable,
         method,
         setMethod,
         showMethodSelection,
@@ -132,9 +131,7 @@ const VideoProcessingOptionsModal = ({
 
     if (!isOpen) return null;
 
-    // For local ASR methods, engine availability gates the options panel and the Start button.
     const isAsrPanel = descriptor.optionsPanel === 'asr';
-    const asrPanelDisabled = !engineAvailable;
     const incompatibleAudioPreset = descriptor.capabilities.tokenCounting
         && (audioOnly || videoFile?.type?.startsWith('audio/'))
         && ['extract-text', 'describe-video'].includes(selectedPromptPreset);
@@ -154,7 +151,7 @@ const VideoProcessingOptionsModal = ({
                 }}
                 onMethodSelect={(method) => {
                     setMethod(method);
-                    localStorage.setItem('has_seen_transcription_method_selection', 'true');
+                    writePreference('has_seen_transcription_method_selection', true);
                     setShowMethodSelection(false);
                 }}
             />
@@ -174,7 +171,6 @@ const VideoProcessingOptionsModal = ({
                                     </span>
                                 </h3>
                                 <VideoProcessingModalMethodSelector
-                                    isVercelMode={isVercelMode}
                                     method={method}
                                     setMethod={setMethod}
                                     retryLock={retryLock}
@@ -206,8 +202,6 @@ const VideoProcessingOptionsModal = ({
                                         supportsLanguage={!!descriptor.capabilities?.language}
                                         supportedLanguageCodes={descriptor.supportedLanguageCodes}
                                         selectedSegment={selectedSegment}
-                                        disabled={asrPanelDisabled}
-                                        engineName={descriptor.labelDefault}
                                     />
                                 ) : (
                                     <VideoProcessingModalGeminiPanel
@@ -225,7 +219,6 @@ const VideoProcessingOptionsModal = ({
                                         maxDurationPerRequest={maxDurationPerRequest}
                                         setMaxDurationPerRequest={setMaxDurationPerRequest}
                                         retryLock={retryLock}
-                                        isVercelMode={isVercelMode}
                                         inlineExtraction={inlineExtraction}
                                         selectedSegment={selectedSegment}
                                         selectedPromptPreset={selectedPromptPreset}
@@ -270,7 +263,7 @@ const VideoProcessingOptionsModal = ({
                                                 }:
                                             </span>
                                             <span className={`token-count ${isWithinLimit ? 'within-limit' : 'exceeds-limit'}`}>
-                                                {displayTokens.toLocaleString()} / {selectedModelData?.maxTokens.toLocaleString()} tokens
+                                                {displayTokens.toLocaleString()} / {selectedModelData?.maxTokens.toLocaleString()} {t('processing.tokensUnit', 'tokens')}
                                             </span>
                                         </div>
                                     </div>
@@ -294,7 +287,7 @@ const VideoProcessingOptionsModal = ({
                                         className="process-btn"
                                         data-osg-action="process-subtitles"
                                         onClick={handleProcess}
-                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || asrPanelDisabled || incompatibleAudioPreset || missingTranslationLanguage}
+                                        disabled={isUploading || (descriptor.capabilities.tokenCounting && !isWithinLimit) || incompatibleAudioPreset || missingTranslationLanguage}
                                         title={missingTranslationLanguage ? t('translation.languageRequired') : incompatibleAudioPreset ? t('processing.audioOnlyHelp') : undefined}
                                     >
                                         {isUploading

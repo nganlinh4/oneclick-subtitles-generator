@@ -27,7 +27,7 @@ test('test-only support modules may hold loopback fixtures, but production may n
   );
 });
 
-test('production rejects unmanaged loopback endpoints but accepts the explicit browser-only guard', (context) => {
+test('production rejects every unmanaged loopback endpoint', (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'osg-render-delivery-'));
   context.after(() => fs.rmSync(root, { force: true, recursive: true }));
   writeFile(
@@ -59,20 +59,9 @@ test('production rejects unmanaged loopback endpoints but accepts the explicit b
   fs.rmSync(path.join(root, 'src/utils/publicRenderer.js'));
   writeFile(
     root,
-    'src/utils/browserCompatibility.js',
+    'src/utils/wrappedOrigin.js',
     [
       "import { guardBrowserOnlyServiceOrigin } from '../platform/browserOnlyService';",
-      "const SERVER = guardBrowserOnlyServiceOrigin('http://localhost:3031');",
-      'export const ping = () => fetch(`${SERVER}/health`);',
-    ].join('\n'),
-  );
-  assert.doesNotThrow(() => assertNoUnmanagedLocalServices(root));
-  fs.rmSync(path.join(root, 'src/utils/browserCompatibility.js'));
-  writeFile(
-    root,
-    'src/utils/fakeGuard.js',
-    [
-      'const guardBrowserOnlyServiceOrigin = (value) => value;',
       "export const SERVER = guardBrowserOnlyServiceOrigin('http://localhost:3031');",
     ].join('\n'),
   );
@@ -80,33 +69,7 @@ test('production rejects unmanaged loopback endpoints but accepts the explicit b
     () => assertNoUnmanagedLocalServices(root),
     /Production frontend still contains unmanaged loopback service endpoints/,
   );
-  fs.rmSync(path.join(root, 'src/utils/fakeGuard.js'));
-  writeFile(
-    root,
-    'src/utils/spoofedGuard.js',
-    [
-      "import { guardBrowserOnlyServiceOrigin } from './fake/browserOnlyService';",
-      "export const SERVER = guardBrowserOnlyServiceOrigin('http://localhost:3031');",
-    ].join('\n'),
-  );
-  assert.throws(
-    () => assertNoUnmanagedLocalServices(root),
-    /Production frontend still contains unmanaged loopback service endpoints/,
-  );
-  fs.rmSync(path.join(root, 'src/utils/spoofedGuard.js'));
-  writeFile(
-    root,
-    'src/utils/forcedBrowserGuard.js',
-    [
-      "import { guardBrowserOnlyServiceOrigin } from '../platform/browserOnlyService';",
-      "export const SERVER = guardBrowserOnlyServiceOrigin('http://localhost:3031', { nativeRuntime: false });",
-    ].join('\n'),
-  );
-  assert.throws(
-    () => assertNoUnmanagedLocalServices(root),
-    /Production frontend still contains unmanaged loopback service endpoints/,
-  );
-  fs.rmSync(path.join(root, 'src/utils/forcedBrowserGuard.js'));
+  fs.rmSync(path.join(root, 'src/utils/wrappedOrigin.js'));
   writeFile(
     root,
     'src/platform/mediaCapability.js',
@@ -130,7 +93,7 @@ test('the deleted browser render path cannot come back through any scanned sourc
   // Assembled from halves so this test file is not itself an offender.
   const token = ['re', 'motion'].join('');
   writeFile(root, 'src/render.js', 'export const renderer = "native";\n');
-  writeFile(root, 'CLAUDE_HANDOFF_TEMP.md', `${token}\n`);
+  writeFile(root, 'docs/history.md', `${token}\n`);
   assert.doesNotThrow(() => assertNoLegacyRendererResidue(root));
 
   writeFile(root, 'scripts/build.js', `require('@${token}/renderer');\n`);

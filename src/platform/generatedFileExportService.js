@@ -1,6 +1,4 @@
 import { invokeDesktopRaw } from './desktopRuntime';
-import { isDesktopRuntime } from './runtimeEnvironment';
-import { fetchBrowserResource } from './browserFetch';
 
 const FORMAT_BY_MIME = Object.freeze({
   'image/png': Object.freeze({ extension: 'png', label: 'generated' }),
@@ -30,17 +28,6 @@ export const exportGeneratedBlob = async (blob, suggestedName) => {
     throw new Error('The generated file is invalid.');
   }
   const fileName = safeFileName(suggestedName, format);
-  if (!isDesktopRuntime()) {
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-    return true;
-  }
   const bytes = new Uint8Array(await blob.arrayBuffer());
   if (bytes.byteLength !== blob.size) throw new Error('The generated file is invalid.');
   const saved = await invokeDesktopRaw('generated_file_export', bytes, {
@@ -51,14 +38,4 @@ export const exportGeneratedBlob = async (blob, suggestedName) => {
     throw new Error('The desktop file exporter returned an invalid response.');
   }
   return saved;
-};
-
-export const exportGeneratedResource = async (resourceUrl, suggestedName) => {
-  if (typeof resourceUrl !== 'string'
-      || (!resourceUrl.startsWith('blob:') && !resourceUrl.startsWith('data:image/'))) {
-    throw new Error('The generated file is invalid.');
-  }
-  const response = await fetchBrowserResource(resourceUrl);
-  if (!response.ok) throw new Error('The generated file is unavailable.');
-  return exportGeneratedBlob(await response.blob(), suggestedName);
 };

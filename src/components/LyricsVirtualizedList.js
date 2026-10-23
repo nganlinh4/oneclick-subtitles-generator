@@ -1,50 +1,40 @@
+import { useMemo, useRef } from 'react';
 import { VariableSizeList as List } from 'react-window';
 import LyricItem from './lyrics/LyricItem';
 
-// Virtualized row renderer for lyrics (simplified for deterministic height)
+const ROW_HANDLER_KEYS = Object.freeze([
+  'onLyricClick',
+  'onMouseDown',
+  'onTouchStart',
+  'getLastDragEnd',
+  'onDelete',
+  'onTextEdit',
+  'onInsert',
+  'onMerge',
+]);
+
+// Rows receive stable proxies that always call the newest handler. A parent re-render with fresh
+// handler identities then neither re-renders every memoized row nor leaves a row holding a stale one.
+const useStableRowHandlers = (handlers) => {
+  const latestRef = useRef(handlers);
+  latestRef.current = handlers;
+  return useMemo(() => Object.freeze(Object.fromEntries(ROW_HANDLER_KEYS.map((key) => [
+    key,
+    (...args) => latestRef.current[key]?.(...args),
+  ]))), []);
+};
+
 const VirtualizedLyricRow = ({ index, style, data }) => {
-  const {
-    lyrics,
-    currentIndex,
-    currentTime,
-    allowEditing,
-    isDragging,
-    onLyricClick,
-    onMouseDown,
-    onTouchStart,
-    getLastDragEnd,
-    onDelete,
-    onTextEdit,
-    onInsert,
-    onMerge,
-    timeFormat
-  } = data;
-
-  const lyric = lyrics[index];
-  const hasNextLyric = index < lyrics.length - 1;
-
-  // The complex height measurement logic has been removed.
-  // The layout is now controlled by getRowHeight and CSS.
+  const { lyrics, currentIndex, handlers, ...rowProps } = data;
   return (
     <div style={style}>
       <LyricItem
-        key={index} // key is appropriate here within the mapping context of the parent
-        lyric={lyric}
+        {...rowProps}
+        {...handlers}
+        lyric={lyrics[index]}
         index={index}
         isCurrentLyric={index === currentIndex}
-        currentTime={currentTime}
-        allowEditing={allowEditing}
-        isDragging={isDragging}
-        onLyricClick={onLyricClick}
-        onMouseDown={onMouseDown}
-        onTouchStart={onTouchStart}
-        getLastDragEnd={getLastDragEnd}
-        onDelete={onDelete}
-        onTextEdit={onTextEdit}
-        onInsert={onInsert}
-        onMerge={onMerge}
-        hasNextLyric={hasNextLyric}
-        timeFormat={timeFormat}
+        hasNextLyric={index < lyrics.length - 1}
       />
     </div>
   );
@@ -59,41 +49,30 @@ const LyricsVirtualizedList = ({
   allowEditing,
   isDragging,
   getRowHeight,
-  onLyricClick,
-  onMouseDown,
-  onTouchStart,
-  getLastDragEnd,
-  onDelete,
-  onTextEdit,
-  onInsert,
-  onMerge,
-  timeFormat
+  timeFormat,
+  ...handlerProps
 }) => {
+  const handlers = useStableRowHandlers(handlerProps);
+  const itemData = useMemo(() => ({
+    lyrics,
+    currentIndex,
+    currentTime,
+    allowEditing,
+    isDragging,
+    timeFormat,
+    handlers,
+  }), [lyrics, currentIndex, currentTime, allowEditing, isDragging, timeFormat, handlers]);
+
   return (
     <List
       ref={listRef}
       className="lyrics-container"
-      height={300} // Reduced height for more compact view
+      height={300}
       width="100%"
       itemCount={lyrics.length}
-      itemSize={getRowHeight} // Dynamic row heights based on content
-      overscanCount={5} // Number of items to render outside of the visible area
-      itemData={{
-        lyrics,
-        currentIndex,
-        currentTime,
-        allowEditing,
-        isDragging,
-        onLyricClick,
-        onMouseDown,
-        onTouchStart,
-        getLastDragEnd,
-        onDelete,
-        onTextEdit,
-        onInsert,
-        onMerge,
-        timeFormat
-      }}
+      itemSize={getRowHeight}
+      overscanCount={5}
+      itemData={itemData}
     >
       {VirtualizedLyricRow}
     </List>

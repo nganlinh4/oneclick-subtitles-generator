@@ -1,15 +1,10 @@
 {
   "remove": "Remove",
-  "sizeError": "File size exceeds the maximum limit of {{size}} MB.",
   "formatError": "Unsupported file format. Please upload a supported video or audio file.",
   "processing": "Processing media...",
   "pleaseWait": "Please wait while we process your file",
-  "converting": "Converting to video...",
-  "conversionError": "Failed to convert audio to video. Please try again.",
-  "copying": "Copying large file...",
-  "copyError": "Failed to copy large file. Please try again.",
-  "copyErrorShort": "Failed to copy large file.",
-  "retrySkipMulter": "Retry by skipping Multer?",
   "nativeSelectionError": "Could not open the selected media.",
-  "releaseError": "Could not release the selected media."
+  "releaseError": "Could not release the selected media.",
+  "fileFallback": "File",
+  "videoFallback": "Video"
 }

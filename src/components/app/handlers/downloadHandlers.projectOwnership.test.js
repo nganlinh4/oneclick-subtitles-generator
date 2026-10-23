@@ -1,17 +1,9 @@
 import { downloadAndPrepareYouTubeVideo } from '../VideoProcessingHandlers';
 import { isNativeMediaDescriptor } from '../../../platform/mediaService';
-import {
-  generateUrlBasedCacheId,
-  getCachedSubtitles,
-} from '../../../services/subtitleCache';
+import { getCachedSubtitles } from '../../../services/subtitleCache';
 import { setCurrentCacheId as setRulesCacheId } from '../../../utils/transcriptionRulesStore';
-import {
-  getCurrentCacheId as getSubtitlesCacheId,
-  refreshCurrentSubtitleProject,
-  setCurrentCacheId as setSubtitlesCacheId,
-} from '../../../utils/userSubtitlesStore';
+import { setCurrentCacheId as setSubtitlesCacheId } from '../../../utils/userSubtitlesStore';
 import { resolveProjectForCache } from '../../../platform/subtitleProjectStore';
-import { activateSubtitleProjectBinding } from '../../../platform/subtitleProjectBinding';
 import {
   assertAutoGenerationContextCurrent,
   createAutoGenerationContext,
@@ -19,9 +11,9 @@ import {
   getAutoGenerationCacheCandidate,
 } from '../../../utils/autoGenerationOwnership';
 import { createDownloadHandlers } from './downloadHandlers';
+import { updateActiveMedia } from '../../../platform/activeMediaSource';
 
 const nativeMocks = vi.hoisted(() => ({
-  desktop: false,
   session: null,
   resolveOwner: vi.fn(),
 }));
@@ -37,17 +29,10 @@ vi.mock('../../../platform/mediaService', () => ({
   isNativeMediaDescriptor: vi.fn(),
 }));
 vi.mock('../../../services/subtitleCache', () => ({
-  generateUrlBasedCacheId: vi.fn(),
   getCachedSubtitles: vi.fn(),
 }));
 vi.mock('../../../platform/subtitleProjectStore', () => ({
-  resolveProjectForCache: vi.fn(async (cacheId) => ({ projectId: `project:${cacheId}` })),
-}));
-vi.mock('../../../platform/subtitleProjectBinding', () => ({
-  activateSubtitleProjectBinding: vi.fn(),
-}));
-vi.mock('../../../platform/desktopRuntime', () => ({
-  isDesktopRuntime: () => nativeMocks.desktop,
+  resolveProjectForCache: vi.fn(),
 }));
 vi.mock('../../../platform/nativeMediaOwnership', () => ({
   readNativeMediaSession: () => nativeMocks.session,
@@ -68,7 +53,6 @@ vi.mock('../../../utils/userSubtitlesStore', () => ({
     let current = null;
     return {
       getCurrentCacheId: vi.fn(() => current),
-      refreshCurrentSubtitleProject: vi.fn(),
       setCurrentCacheId: vi.fn((cacheId) => { current = cacheId; }),
       subscribeCurrentCacheId: vi.fn(() => () => undefined),
     };
@@ -76,10 +60,27 @@ vi.mock('../../../utils/userSubtitlesStore', () => ({
 }));
 
 const t = (_key, fallback) => fallback;
+const URL_CACHE = 'site_media_example_test_clip_mp4';
+const PLAYBACK = 'http://127.0.0.1:1/asset/mock?token=mock';
+
+const nativeMedia = (assetId, name = 'clip.mp4') => ({
+  __nativeMedia: true,
+  assetId,
+  name,
+  type: 'video/mp4',
+  playbackUrl: PLAYBACK,
+});
+
+// The upload input / URL download activation commits the native session and binds the subtitle
+// project before these handlers run; they only adopt that exact authority.
+const ownMedia = (media, cacheId = media.assetId, projectId = `project:${cacheId}`) => {
+  nativeMocks.session = Object.freeze({ assetId: media.assetId, cacheId, projectId });
+  setRulesCacheId(cacheId);
+  setSubtitlesCacheId(cacheId);
+};
 
 const buildHandlers = () => {
   const state = {
-    selectedVideo: { url: 'https://media.example.test/clip.mp4' },
     setStatus: vi.fn(),
     setSubtitlesData: vi.fn(),
     setIsDownloading: vi.fn(),
@@ -92,7 +93,6 @@ const buildHandlers = () => {
     setUploadedFileData: vi.fn(),
     pendingAutoSubtitleRef: { current: null },
     handleSrtUpload: vi.fn(),
-    handleTabChange: vi.fn(),
     t,
   };
   return { state, handlers: createDownloadHandlers(state) };
@@ -100,7 +100,6 @@ const buildHandlers = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  nativeMocks.desktop = false;
   nativeMocks.session = null;
   nativeMocks.resolveOwner.mockReset();
   setRulesCacheId(null);
@@ -111,44 +110,14 @@ beforeEach(() => {
     projectId: `project:${cacheId}`,
   }));
   getCachedSubtitles.mockResolvedValue(null);
-  generateUrlBasedCacheId.mockResolvedValue('site_media_example_test_clip_mp4');
-  isNativeMediaDescriptor.mockReturnValue(true);
-  activateSubtitleProjectBinding.mockImplementation(async (cacheId) => {
-    const wasCurrent = getSubtitlesCacheId() === cacheId;
-    setRulesCacheId(cacheId);
-    setSubtitlesCacheId(cacheId);
-    const resolved = await resolveProjectForCache(cacheId, { create: true });
-    if (wasCurrent) refreshCurrentSubtitleProject(cacheId);
-    return {
-      kind: 'subtitle-project-binding',
-      cacheId,
-      projectId: resolved.projectId,
-    };
-  });
+  isNativeMediaDescriptor.mockImplementation((value) => value?.__nativeMedia === true);
 });
 
-test('native auto preparation ignores forged compatibility asset mirrors', async () => {
-  nativeMocks.desktop = true;
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa3a-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
-  const cacheId = 'site_media_example_test_clip_mp4';
-  nativeMocks.session = Object.freeze({
-    assetId: media.assetId,
-    cacheId,
-    projectId: `project:${cacheId}`,
-  });
-  nativeMocks.resolveOwner.mockResolvedValue({ projectId: `project:${cacheId}` });
-  localStorage.setItem('current_video_url', 'https://media.example.test/clip.mp4');
-  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    localStorage.setItem('current_file_cache_id', 'forged-browser-asset');
-    setRulesCacheId(cacheId);
-    setSubtitlesCacheId(cacheId);
+test('native auto preparation ignores forged compatibility URL mirrors', async () => {
+  const media = nativeMedia('019ffa3a-9a95-7a91-bad8-bd6144abaaeb');
+  nativeMocks.resolveOwner.mockResolvedValue({ projectId: `project:${URL_CACHE}` });
+  downloadAndPrepareYouTubeVideo.mockImplementation(async () => {
+    ownMedia(media, URL_CACHE);
     return media;
   });
   const controller = new AbortController();
@@ -161,44 +130,14 @@ test('native auto preparation ignores forged compatibility asset mirrors', async
     request,
   );
   const context = createAutoGenerationContext(prepared);
-  localStorage.setItem('current_file_cache_id', 'another-forged-browser-asset');
-  localStorage.setItem('current_video_url', 'https://wrong.example.test/video');
+  updateActiveMedia({ sourceUrl: 'https://wrong.example.test/video' });
   expect(assertAutoGenerationContextCurrent(context)).toBe(context);
-  expect(activateSubtitleProjectBinding).not.toHaveBeenCalled();
 });
 
-test('refreshes authoritative subtitle state when a repeated URL keeps the same alias', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa3a-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
-  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    return media;
-  });
-  const { handlers } = buildHandlers();
-  const request = { url: 'https://media.example.test/clip.mp4' };
-
-  await handlers.startBackgroundVideoProcessing(request, 'youtube');
-  await handlers.startBackgroundVideoProcessing(request, 'youtube');
-
-  expect(refreshCurrentSubtitleProject)
-    .toHaveBeenCalledExactlyOnceWith('site_media_example_test_clip_mp4');
-});
-
-test('activates the URL project before reading cache or exposing prepared native media', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa3a-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
-  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
-    localStorage.setItem('current_video_url', selectedVideo.url);
+test('adopts the downloaded media project before reading its cache', async () => {
+  const media = nativeMedia('019ffa3a-9a95-7a91-bad8-bd6144abaaeb');
+  downloadAndPrepareYouTubeVideo.mockImplementation(async () => {
+    ownMedia(media, URL_CACHE);
     return media;
   });
   const { state, handlers } = buildHandlers();
@@ -208,67 +147,74 @@ test('activates the URL project before reading cache or exposing prepared native
     'youtube',
   )).resolves.toBe(media);
 
-  expect(generateUrlBasedCacheId).toHaveBeenCalledWith('https://media.example.test/clip.mp4');
-  expect(activateSubtitleProjectBinding).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
-  expect(setRulesCacheId).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
-  expect(setSubtitlesCacheId).toHaveBeenCalledWith('site_media_example_test_clip_mp4');
   expect(getCachedSubtitles).toHaveBeenCalledWith(
-    'site_media_example_test_clip_mp4',
+    URL_CACHE,
     'https://media.example.test/clip.mp4',
-    { expectedProjectId: 'project:site_media_example_test_clip_mp4' },
+    { expectedProjectId: `project:${URL_CACHE}` },
   );
-  expect(setRulesCacheId.mock.invocationCallOrder[0])
-    .toBeLessThan(getCachedSubtitles.mock.invocationCallOrder[0]);
-  expect(setSubtitlesCacheId.mock.invocationCallOrder[0])
-    .toBeLessThan(state.setUploadedFileData.mock.invocationCallOrder[0]);
+  expect(state.setUploadedFileData).toHaveBeenCalledWith(media);
   expect(state.setStatus).toHaveBeenLastCalledWith({});
 });
 
-test('activates the native asset project before local cache lookup', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa3d-8e35-7f92-b3e3-607dd27bb263',
-    name: 'local.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+test('a download whose native session does not own the media publishes nothing', async () => {
+  const media = nativeMedia('019ffa3a-9a95-7a91-bad8-bd6144abaaeb');
+  downloadAndPrepareYouTubeVideo.mockImplementation(async () => {
+    ownMedia(nativeMedia('019ffa3a-9a95-7a91-bad8-bd6144abaaec'), URL_CACHE);
+    return media;
+  });
+  const { state, handlers } = buildHandlers();
+
+  await expect(handlers.startBackgroundVideoProcessing(
+    { url: 'https://media.example.test/clip.mp4' },
+    'youtube',
+  )).resolves.toBeNull();
+
+  expect(getCachedSubtitles).not.toHaveBeenCalled();
+  expect(state.setUploadedFileData).not.toHaveBeenCalled();
+  expect(toastMocks.showErrorToast).not.toHaveBeenCalled();
+});
+
+test('adopts the native asset project before local cache lookup', async () => {
+  const media = nativeMedia('019ffa3d-8e35-7f92-b3e3-607dd27bb263', 'local.mp4');
+  ownMedia(media);
   const { state, handlers } = buildHandlers();
 
   await expect(handlers.startBackgroundVideoProcessing(media, 'file-upload'))
     .resolves.toBe(media);
 
-  expect(setRulesCacheId).toHaveBeenCalledWith(media.assetId);
-  expect(setSubtitlesCacheId).toHaveBeenCalledWith(media.assetId);
   expect(getCachedSubtitles).toHaveBeenCalledWith(media.assetId, null, {
     expectedProjectId: `project:${media.assetId}`,
   });
-  expect(setRulesCacheId.mock.invocationCallOrder[0])
+  expect(state.setUploadedFile).toHaveBeenCalledWith(media);
+  expect(state.setUploadedFile.mock.invocationCallOrder[0])
     .toBeLessThan(getCachedSubtitles.mock.invocationCallOrder[0]);
-  expect(setSubtitlesCacheId.mock.invocationCallOrder[0])
-    .toBeLessThan(state.setUploadedFileData.mock.invocationCallOrder[0]);
+});
+
+test('refuses an upload that is not a native media capability', async () => {
+  const { state, handlers } = buildHandlers();
+  const browserFile = new File(['x'], 'clip.mp4', { type: 'video/mp4' });
+
+  await expect(handlers.startBackgroundVideoProcessing(browserFile, 'file-upload'))
+    .resolves.toBeNull();
+
+  expect(state.setUploadedFile).not.toHaveBeenCalled();
+  expect(state.setUploadedFileData).not.toHaveBeenCalled();
+  expect(getCachedSubtitles).not.toHaveBeenCalled();
 });
 
 test('rejects a URL auto preparation whose alias remaps while the exact cache read is pending', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa4a-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+  const media = nativeMedia('019ffa4a-9a95-7a91-bad8-bd6144abaaeb');
   let projectId = 'project-a';
   resolveProjectForCache.mockImplementation(async () => ({ projectId }));
   let releaseCache;
   getCachedSubtitles.mockReturnValueOnce(new Promise((resolve) => { releaseCache = resolve; }));
-  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    localStorage.setItem('current_file_cache_id', media.assetId);
+  downloadAndPrepareYouTubeVideo.mockImplementation(async () => {
+    ownMedia(media, URL_CACHE, 'project-a');
     return media;
   });
   const controller = new AbortController();
   const request = createAutoGenerationRequest({ runId: 'url-remap', signal: controller.signal });
   const { state, handlers } = buildHandlers();
-  localStorage.setItem('current_video_url', 'https://media.example.test/clip.mp4');
   const preparation = handlers.startBackgroundVideoProcessing(
     { url: 'https://media.example.test/clip.mp4' },
     'youtube',
@@ -279,7 +225,7 @@ test('rejects a URL auto preparation whose alias remaps while the exact cache re
   });
 
   await vi.waitFor(() => expect(getCachedSubtitles).toHaveBeenCalledWith(
-    'site_media_example_test_clip_mp4',
+    URL_CACHE,
     'https://media.example.test/clip.mp4',
     { expectedProjectId: 'project-a' },
   ));
@@ -293,19 +239,13 @@ test('rejects a URL auto preparation whose alias remaps while the exact cache re
 });
 
 test('a manual cache read cannot publish media after its project alias remaps', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa4b-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+  const media = nativeMedia('019ffa4b-9a95-7a91-bad8-bd6144abaaeb');
   let projectId = 'project-a';
   resolveProjectForCache.mockImplementation(async () => ({ projectId }));
   let releaseCache;
   getCachedSubtitles.mockReturnValueOnce(new Promise((resolve) => { releaseCache = resolve; }));
-  downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo) => {
-    localStorage.setItem('current_video_url', selectedVideo.url);
+  downloadAndPrepareYouTubeVideo.mockImplementation(async () => {
+    ownMedia(media, URL_CACHE, 'project-a');
     return media;
   });
   const { state, handlers } = buildHandlers();
@@ -326,27 +266,18 @@ test('a manual cache read cannot publish media after its project alias remaps', 
 });
 
 test('a superseded preparation cannot clear the newer media status when its cache read settles', async () => {
-  const first = {
-    __nativeMedia: true,
-    assetId: '019ffa4b-8e35-7f92-b3e3-607dd27bb261',
-    name: 'first.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/first?token=mock',
-  };
-  const second = {
-    ...first,
-    assetId: '019ffa4b-8e35-7f92-b3e3-607dd27bb262',
-    name: 'second.mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/second?token=mock',
-  };
+  const first = nativeMedia('019ffa4b-8e35-7f92-b3e3-607dd27bb261', 'first.mp4');
+  const second = nativeMedia('019ffa4b-8e35-7f92-b3e3-607dd27bb262', 'second.mp4');
   let releaseFirstCache;
   getCachedSubtitles
     .mockReturnValueOnce(new Promise((resolve) => { releaseFirstCache = resolve; }))
     .mockResolvedValueOnce(null);
   const { state, handlers } = buildHandlers();
 
+  ownMedia(first);
   const stale = handlers.startBackgroundVideoProcessing(first, 'file-upload');
   await vi.waitFor(() => expect(getCachedSubtitles).toHaveBeenCalledTimes(1));
+  ownMedia(second);
   await expect(handlers.startBackgroundVideoProcessing(second, 'file-upload'))
     .resolves.toBe(second);
   const statusCallsAfterSecond = state.setStatus.mock.calls.length;
@@ -360,13 +291,8 @@ test('a superseded preparation cannot clear the newer media status when its cach
 });
 
 test('an optional cache outage warns but keeps media with verified project authority', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa4c-8e35-7f92-b3e3-607dd27bb263',
-    name: 'local.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+  const media = nativeMedia('019ffa4c-8e35-7f92-b3e3-607dd27bb263', 'local.mp4');
+  ownMedia(media);
   getCachedSubtitles.mockRejectedValueOnce(new Error('read unavailable'));
   const { state, handlers } = buildHandlers();
 
@@ -380,18 +306,8 @@ test('an optional cache outage warns but keeps media with verified project autho
   expect(toastMocks.showErrorToast).not.toHaveBeenCalled();
 });
 
-test('a project activation failure never creates a media-only editor session', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa4e-8e35-7f92-b3e3-607dd27bb263',
-    name: 'local.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
-  activateSubtitleProjectBinding.mockRejectedValueOnce(Object.assign(
-    new Error('sqlite unavailable'),
-    { code: 'subtitleProjectBindingFailed' },
-  ));
+test('an upload without an owning native session never creates a media-only editor session', async () => {
+  const media = nativeMedia('019ffa4e-8e35-7f92-b3e3-607dd27bb263', 'local.mp4');
   const { state, handlers } = buildHandlers();
 
   await expect(handlers.startBackgroundVideoProcessing(media, 'file-upload'))
@@ -400,26 +316,17 @@ test('a project activation failure never creates a media-only editor session', a
   expect(state.setUploadedFile).not.toHaveBeenCalled();
   expect(state.setUploadedFileData).not.toHaveBeenCalled();
   expect(getCachedSubtitles).not.toHaveBeenCalled();
-  expect(toastMocks.showErrorToast).toHaveBeenCalledWith(
-    'Processing failed: sqlite unavailable'
-  );
   expect(state.setStatus).toHaveBeenLastCalledWith({});
 });
 
 test('keeps a local auto cache candidate private and immutable until its owner checkpoints it', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa4d-8e35-7f92-b3e3-607dd27bb263',
-    name: 'local.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+  const media = nativeMedia('019ffa4d-8e35-7f92-b3e3-607dd27bb263', 'local.mp4');
+  ownMedia(media);
   const rows = [{ start: 0, end: 1, text: 'Cached' }];
   getCachedSubtitles.mockResolvedValueOnce(rows);
   const controller = new AbortController();
   const request = createAutoGenerationRequest({ runId: 'local-cache', signal: controller.signal });
   const { state, handlers } = buildHandlers();
-  localStorage.setItem('current_file_cache_id', media.assetId);
 
   const prepared = await handlers.startBackgroundVideoProcessing(media, 'file-upload', request);
   const candidate = getAutoGenerationCacheCandidate(createAutoGenerationContext(prepared));
@@ -437,13 +344,7 @@ test('keeps a local auto cache candidate private and immutable until its owner c
 });
 
 test('keeps downloaded site subtitles private instead of invoking the green upload UI', async () => {
-  const media = {
-    __nativeMedia: true,
-    assetId: '019ffa5a-9a95-7a91-bad8-bd6144abaaeb',
-    name: 'clip.mp4',
-    type: 'video/mp4',
-    playbackUrl: 'http://127.0.0.1:1/asset/mock?token=mock',
-  };
+  const media = nativeMedia('019ffa5a-9a95-7a91-bad8-bd6144abaaeb');
   const url = 'https://media.example.test/clip.mp4';
   downloadAndPrepareYouTubeVideo.mockImplementation(async (selectedVideo, ...args) => {
     const options = args[8];
@@ -452,14 +353,12 @@ test('keeps downloaded site subtitles private instead of invoking the green uplo
       language: 'en',
       content: '1\n00:00:00,000 --> 00:00:01,000\nSite subtitle',
     });
-    localStorage.setItem('current_video_url', selectedVideo.url);
-    localStorage.setItem('current_file_cache_id', media.assetId);
+    ownMedia(media, URL_CACHE);
     return media;
   });
   const controller = new AbortController();
   const request = createAutoGenerationRequest({ runId: 'site-subtitle', signal: controller.signal });
   const { state, handlers } = buildHandlers();
-  localStorage.setItem('current_video_url', url);
 
   const prepared = await handlers.startBackgroundVideoProcessing({ url }, 'youtube', request);
   const candidate = getAutoGenerationCacheCandidate(createAutoGenerationContext(prepared));

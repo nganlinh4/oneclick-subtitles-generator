@@ -13,8 +13,7 @@ import {
   rememberNativeJobId,
   startNativeJobRecovery,
 } from '../../platform/jobRecoveryCoordinator';
-
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+import { isRecord } from '../../platform/plainDataRecord';
 
 export const mergeNativeRenderResult = (item, response) => {
   if (!isRecord(item) || !isRecord(response?.job)) return item;

@@ -6,7 +6,7 @@ import {
   resolveActiveNativeMedia,
   revalidateActiveNativeMedia,
 } from '../platform/activeNativeMedia';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
+import { readPreference } from '../platform/preferences/store';
 
 const mapNativeInspectionToVideoDimensions = (assetId, inspection) => {
   const dimensions = inspection.width !== null && inspection.height !== null
@@ -31,24 +31,6 @@ const mapNativeInspectionToVideoDimensions = (assetId, inspection) => {
   });
 };
 
-const describeSource = (url) => {
-  if (url?.includes('youtube.com') || url?.includes('youtu.be')) {
-    return { source: 'youtube', title: 'YouTube Video' };
-  }
-  if (url?.includes('douyin.com')) return { source: 'douyin', title: 'Douyin Video' };
-  if (url) {
-    try {
-      return {
-        source: 'all-sites',
-        title: `Video from ${new URL(url).hostname.replace(/^www\./, '')}`,
-      };
-    } catch {
-      return { source: 'unknown', title: 'Web Video' };
-    }
-  }
-  return { source: 'upload', title: null };
-};
-
 const nativeInputRequired = () => {
   const error = new Error('Select the media again before choosing a render source.');
   error.name = 'NativeVideoInfoError';
@@ -56,7 +38,7 @@ const nativeInputRequired = () => {
   return error;
 };
 
-export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
+export const useVideoInfo = (selectedVideo, uploadedFile) => {
   const [actualDimensions, setActualDimensions] = useState(null);
 
   useEffect(() => {
@@ -81,9 +63,9 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
   }, [uploadedFile]);
 
   const videoInfo = useMemo(() => {
-    const optimized = localStorage.getItem('optimize_videos') === 'true';
+    const optimized = readPreference('optimize_videos');
     const quality = actualDimensions?.quality
-      ?? (optimized ? localStorage.getItem('optimized_resolution') || '360p' : 'Original');
+      ?? (optimized ? readPreference('optimized_resolution') : 'Original');
 
     // A URL selection is only an acquisition intent. Until its candidate is claimed, an existing
     // native descriptor remains the sole render authority; preferring selectedVideo here labelled
@@ -119,20 +101,9 @@ export const useVideoInfo = (selectedVideo, uploadedFile, actualVideoUrl) => {
       };
     }
 
-    // The browser build has no native project/media authority. Its caller must supply the URL
-    // explicitly; desktop never promotes a playback or remembered source URL into identity.
-    if (!isDesktopRuntime() && actualVideoUrl) {
-      const source = describeSource(actualVideoUrl);
-      return {
-        ...source,
-        title: source.title ?? 'Unknown Video',
-        quality: 'unknown',
-        isOptimized: false,
-        url: actualVideoUrl,
-      };
-    }
+    // A playback or remembered source URL is never promoted into render identity.
     return null;
-  }, [actualDimensions, actualVideoUrl, selectedVideo, uploadedFile]);
+  }, [actualDimensions, selectedVideo, uploadedFile]);
 
   const availableVersions = useMemo(() => [], []);
 

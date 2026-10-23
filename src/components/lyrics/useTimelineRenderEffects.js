@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { clearUnusedChunks } from '../../utils/optimizedVideoStreaming';
+import { subscribePreference } from '../../platform/preferences/store';
 
 // Canvas animation owns its clock. React commits change drawing inputs, not subscriptions or
 // per-frame component state. Resize, playback and streamed cues draw the latest committed data.
@@ -58,11 +59,10 @@ export const useTimelineRenderEffects = ({
         };
     }, [isProcessing, newSegments, setNewSegments, animationTimeRef]);
 
-    useEffect(() => {
-        const draw = () => drawRef.current();
-        window.addEventListener('waveformLongVideosChanged', draw);
-        return () => window.removeEventListener('waveformLongVideosChanged', draw);
-    }, []);
+    useEffect(() => subscribePreference(
+        'show_waveform_long_videos',
+        () => drawRef.current(),
+    ), []);
 
     useEffect(() => {
         const canvas = timelineRef.current;

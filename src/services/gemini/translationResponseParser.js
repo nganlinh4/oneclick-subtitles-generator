@@ -1,3 +1,4 @@
+import { hasExactKeys, isRecord } from '../../platform/plainDataRecord';
 /**
  * Strict response parsing for Gemini translation.
  *
@@ -18,23 +19,9 @@ export class TranslationResponseError extends Error {
 
 const invalidResponse = (reason) => new TranslationResponseError(reason);
 
-const isPlainRecord = (value) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
-const hasExactKeys = (value, keys) => {
-  if (!isPlainRecord(value)) return false;
-  const actual = Object.keys(value);
-  return actual.length === keys.length && keys.every((key) => (
-    Object.prototype.hasOwnProperty.call(value, key)
-  ));
-};
-
 const extractJson = (responseData) => {
   const part = responseData?.candidates?.[0]?.content?.parts?.[0];
-  if (isPlainRecord(part?.structuredJson)) return part.structuredJson;
+  if (isRecord(part?.structuredJson)) return part.structuredJson;
   if (typeof part?.text !== 'string' || part.text.trim().length === 0) {
     throw invalidResponse('missing-json-text');
   }

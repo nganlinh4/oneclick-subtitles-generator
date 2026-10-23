@@ -1,6 +1,7 @@
 // Durable job snapshot validation and the bounded browser-side job-ID memory used by the native
 // job recovery coordinator. Pure helpers: no IPC.
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
+import { hasExactKeys, isRecord } from './plainDataRecord';
 
 export const NATIVE_JOB_IDS_STORAGE_KEY = 'osg.nativeJobIds.v1';
 export const LEGACY_NATIVE_JOB_STORAGE_KEYS = Object.freeze([
@@ -80,18 +81,6 @@ export const unavailableResult = (discarded = 0) => Object.freeze({
   discarded,
   unavailable: true,
 });
-
-const isPlainRecord = (value) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
-const hasExactKeys = (value, keys) => (
-  isPlainRecord(value)
-  && Object.keys(value).length === keys.length
-  && keys.every((key) => Object.hasOwn(value, key))
-);
 
 const isValidGeminiUsage = (value) => value === null || (
   hasExactKeys(value, GEMINI_USAGE_FIELDS)
@@ -236,7 +225,7 @@ export const sameOrNewerJob = (expected, actual) => (
 );
 
 export const responseJob = (value, expected) => {
-  if (!isPlainRecord(value) || !Object.hasOwn(value, 'job')) {
+  if (!isRecord(value) || !Object.hasOwn(value, 'job')) {
     throw new Error('The feature adapter returned an invalid recovery result');
   }
   const job = normalizeJob(value.job);
@@ -247,7 +236,7 @@ export const responseJob = (value, expected) => {
 };
 
 export const matchesPendingDelivery = (value, pending) => (
-  isPlainRecord(value?.delivery)
+  isRecord(value?.delivery)
   && value.delivery.jobId === pending.jobId
   && value.delivery.deliveryId === pending.deliveryId
   && value.delivery.kind === pending.kind

@@ -1,7 +1,4 @@
-import {
-  mergeSegmentSubtitles,
-  mergeStreamingSubtitlesProgressively,
-} from './subtitleMerger';
+import { mergeSegmentSubtitles } from './subtitleMerger';
 
 const freezeTrack = (rows) => Object.freeze(
   rows.map((row) => Object.freeze({ ...row }))
@@ -63,75 +60,6 @@ describe('subtitle segment merging', () => {
       { id: 'crosses', start: 4, end: 5 },
       { id: 'crosses', start: 10, end: 12 },
       { id: 'after', start: 12, end: 14 },
-    ]);
-  });
-
-  test('progressively replaces only the published range without deleting adjacent-segment tails', () => {
-    const existing = freezeTrack([
-      { id: 'before', start: 0, end: 4, text: 'before' },
-      { id: 'starts-before', start: 5, end: 12, text: 'start straddler' },
-      { id: 'whole', start: 6, end: 26, text: 'whole range straddler' },
-      { id: 'progressive-straddler', start: 7, end: 17, text: 'progressive boundary' },
-      { id: 'inside-published', start: 11, end: 14, text: 'replaced' },
-      { id: 'crosses-next-segment', start: 14, end: 24, text: 'must keep the tail' },
-      { id: 'exact-tail', start: 15, end: 16, text: 'not yet replaced' },
-      { id: 'unpublished-tail', start: 17, end: 19, text: 'not yet replaced' },
-      { id: 'after', start: 22, end: 25, text: 'other segment' },
-    ]);
-    const streamed = freezeTrack([
-      { id: 'new-a', start: 10, end: 12, text: 'stream A' },
-      { id: 'new-b', start: 12, end: 15, text: 'stream B' },
-    ]);
-    const existingSnapshot = JSON.stringify(existing);
-    const streamedSnapshot = JSON.stringify(streamed);
-
-    const merged = mergeStreamingSubtitlesProgressively(
-      existing,
-      streamed,
-      { start: 10, end: 20 }
-    );
-
-    expect(intervals(merged)).toEqual([
-      { id: 'before', start: 0, end: 4 },
-      { id: 'starts-before', start: 5, end: 10 },
-      { id: 'whole', start: 6, end: 10 },
-      { id: 'progressive-straddler', start: 7, end: 10 },
-      { id: 'new-a', start: 10, end: 12 },
-      { id: 'new-b', start: 12, end: 15 },
-      { id: 'whole', start: 15, end: 26 },
-      { id: 'progressive-straddler', start: 15, end: 17 },
-      { id: 'crosses-next-segment', start: 15, end: 24 },
-      { id: 'exact-tail', start: 15, end: 16 },
-      { id: 'unpublished-tail', start: 17, end: 19 },
-      { id: 'after', start: 22, end: 25 },
-    ]);
-    const intervalKeys = merged.map(({ id, start, end }) => `${id}:${start}:${end}`);
-    expect(new Set(intervalKeys).size).toBe(intervalKeys.length);
-    expect(merged).toContain(existing.at(-1));
-    expect(JSON.stringify(existing)).toBe(existingSnapshot);
-    expect(JSON.stringify(streamed)).toBe(streamedSnapshot);
-  });
-
-  test('caps progressive clearing at the segment end and preserves every later row', () => {
-    const existing = freezeTrack([
-      { id: 'inside', start: 12, end: 18, text: 'replaced' },
-      { id: 'crosses-end', start: 18, end: 25, text: 'adjacent tail' },
-      { id: 'after', start: 21, end: 23, text: 'next segment' },
-    ]);
-    const streamed = freezeTrack([
-      { id: 'overshoots', start: 10, end: 23, text: 'provider overshoot' },
-    ]);
-
-    const merged = mergeStreamingSubtitlesProgressively(
-      existing,
-      streamed,
-      { start: 10, end: 20 }
-    );
-
-    expect(intervals(merged)).toEqual([
-      { id: 'overshoots', start: 10, end: 23 },
-      { id: 'crosses-end', start: 20, end: 25 },
-      { id: 'after', start: 21, end: 23 },
     ]);
   });
 

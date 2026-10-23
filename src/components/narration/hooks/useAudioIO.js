@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { importAudioBlob, releaseAudioBlob } from '../../../platform/mediaService';
 import { nativeNarrationAdapter } from '../../../platform/nativeNarrationAdapter';
 import { getActiveProjectSnapshot } from '../../../platform/projectService';
@@ -39,7 +38,6 @@ const useAudioIO = ({
   t,
   narrationMethod,
 }) => {
-  const nativeRuntime = isDesktopRuntime();
   const recordingStartTimeRef = useRef(null);
 
   const requireProjectContext = async () => {
@@ -82,16 +80,8 @@ const useAudioIO = ({
     throw error;
   };
 
-  const failClosed = () => {
-    setError(t(
-      'narration.serviceUnavailableMessage',
-      'Narration requires the desktop runtime',
-    ));
-    return null;
-  };
-
   const releaseReferencePlayback = (reference) => {
-    if (!nativeRuntime || !reference?.nativePlaybackId) return;
+    if (!reference?.nativePlaybackId) return;
     nativeNarrationAdapter.releasePlayback(reference).catch(() => undefined);
   };
 
@@ -155,7 +145,6 @@ const useAudioIO = ({
   };
 
   const importReference = async (blob, source) => {
-    if (!nativeRuntime) return failClosed();
     let imported = null;
     let playable = null;
     let context = null;
@@ -290,10 +279,6 @@ const useAudioIO = ({
   };
 
   const startRecording = async () => {
-    if (!nativeRuntime) {
-      failClosed();
-      return;
-    }
     try {
       setError('');
       audioChunksRef.current = [];
@@ -362,10 +347,6 @@ const useAudioIO = ({
   };
 
   const extractSegment = async () => {
-    if (!nativeRuntime) {
-      failClosed();
-      return;
-    }
     if (segmentStartTime === '' || segmentEndTime === '') {
       setError(t('narration.timeRangeError', 'Please specify both start and end times'));
       return;
@@ -445,7 +426,6 @@ const useAudioIO = ({
   };
 
   const handleExampleSelect = async (result) => {
-    if (!nativeRuntime) return failClosed();
     try {
       const context = await requireProjectContext();
       const artifactId = getNativeNarrationArtifactId(result);

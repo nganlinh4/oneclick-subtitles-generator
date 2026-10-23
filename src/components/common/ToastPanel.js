@@ -1,6 +1,12 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './ToastPanel.css';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
+import {
+  readPreference,
+  subscribePreference,
+  writePreference,
+} from '../../platform/preferences/store';
 
 const pendingToasts = [];
 const enqueuePendingToast = (...args) => {
@@ -33,16 +39,7 @@ if (typeof window !== 'undefined' && !window.addToast) {
 const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   const { t } = useTranslation();
   const [toasts, setToasts] = useState([]); // Live, active toasts
-  const [toastHistory, setToastHistory] = useState(() => {
-    try {
-      const raw = localStorage.getItem('toast_history_v1');
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [toastHistory, setToastHistory] = useState(() => readPreference('toast_history_v1'));
   const toastsRef = useRef([]);
   const toastIdRef = useRef(0);
   const historyIdRef = useRef(0);
@@ -89,23 +86,18 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   // Check if onboarding is active
   useEffect(() => {
     const checkOnboardingStatus = () => {
-      const hasVisited = localStorage.getItem('has_visited_site') === 'true';
-      const controlsDismissed = localStorage.getItem('onboarding_controls_dismissed') === 'true';
-      onboardingActiveRef.current = !(hasVisited && controlsDismissed);
+      onboardingActiveRef.current = !(readPreference('has_visited_site')
+        && readPreference('onboarding_controls_dismissed'));
     };
     checkOnboardingStatus();
-    const handleStorageChange = (e) => {
-      if (e.key === 'has_visited_site' || e.key === 'onboarding_controls_dismissed') {
-        checkOnboardingStatus();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    const pollInterval = setInterval(() => {
-      if (onboardingActiveRef.current) checkOnboardingStatus();
-    }, 1000);
+    const unsubscribeVisited = subscribePreference('has_visited_site', checkOnboardingStatus);
+    const unsubscribeDismissed = subscribePreference(
+      'onboarding_controls_dismissed',
+      checkOnboardingStatus,
+    );
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
+      unsubscribeVisited();
+      unsubscribeDismissed();
     };
   }, []);
 
@@ -239,15 +231,10 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
     const [historyLimit, setHistoryLimit] = useState(50);
     const historyContainerRef = useRef(null);
     
-    // Persist history to localStorage
+    // Persist the most recent history entries
     useEffect(() => {
-      try {
-        const MAX_HISTORY = 200; // Limit stored history
-        const toSave = toastHistory.length > MAX_HISTORY
-          ? toastHistory.slice(0, MAX_HISTORY)
-          : toastHistory;
-        localStorage.setItem('toast_history_v1', JSON.stringify(toSave));
-      } catch (e) { /* ignore */ }
+      const MAX_HISTORY = 200;
+      writePreference('toast_history_v1', toastHistory.slice(0, MAX_HISTORY));
     }, [toastHistory]);
     
     // Mouse proximity for floating button (bottom-right)
@@ -372,7 +359,14 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
                   >
                     <div className={`toast toast-${toast.type}`}>
                       {!isHistorical && (
-                        <span className="material-symbols-rounded close-icon" onClick={() => removeToast(toast.id)}>
+                        <span
+                          className="material-symbols-rounded close-icon"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={t('common.close', 'Close')}
+                          onClick={() => removeToast(toast.id)}
+                          onKeyDown={activateOnKey}
+                        >
                           close
                         </span>
                       )}
@@ -417,7 +411,14 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
                 >
                   <div className={`toast toast-${toast.type}`}>
                     {!isHistorical && (
-                      <span className="material-symbols-rounded close-icon" onClick={() => removeToast(toast.id)}>
+                      <span
+                        className="material-symbols-rounded close-icon"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t('common.close', 'Close')}
+                        onClick={() => removeToast(toast.id)}
+                        onKeyDown={activateOnKey}
+                      >
                         close
                       </span>
                     )}

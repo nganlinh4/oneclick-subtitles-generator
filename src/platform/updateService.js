@@ -1,26 +1,12 @@
 import { Channel } from '@tauri-apps/api/core';
 import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { hasExactKeys, hasOnlyKeys, isNativeErrorCode, isRecord } from './plainDataRecord';
 
 const VERSION_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const ERROR_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 const MAX_VERSION_LENGTH = 64;
 const MAX_NOTES_LENGTH = 32 * 1024;
 const MAX_UPDATE_EVENTS = 100_000;
-const handlerKeys = new Set(['onChecking', 'onProgress', 'onInstalling']);
-
-const isPlainRecord = (value) => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
-const hasExactKeys = (value, expected) => {
-  if (!isPlainRecord(value)) return false;
-  const actual = Object.keys(value).sort();
-  const required = [...expected].sort();
-  return actual.length === required.length
-    && actual.every((key, index) => key === required[index]);
-};
+const handlerKeys = Object.freeze(['onChecking', 'onProgress', 'onInstalling']);
 
 const isVersion = (value) => (
   typeof value === 'string'
@@ -61,7 +47,7 @@ const invalidResponse = () => new UpdateServiceError(
 
 const normalizeError = (error) => {
   if (error instanceof UpdateServiceError) return error;
-  const code = typeof error?.code === 'string' && ERROR_CODE_PATTERN.test(error.code)
+  const code = isNativeErrorCode(error?.code)
     ? error.code
     : 'updateCheckFailed';
   return new UpdateServiceError(code, 'The update check could not be completed');
@@ -69,8 +55,7 @@ const normalizeError = (error) => {
 
 const normalizeHandlers = (handlers) => {
   if (handlers === undefined) return Object.freeze({});
-  if (!isPlainRecord(handlers)
-      || Object.keys(handlers).some((key) => !handlerKeys.has(key))
+  if (!hasOnlyKeys(handlers, handlerKeys)
       || Object.values(handlers).some((handler) => typeof handler !== 'function')) {
     throw new UpdateServiceError('invalidUpdateRequest', 'The update request is invalid');
   }
@@ -87,7 +72,7 @@ const safelyCall = (handler, event) => {
 };
 
 const normalizeUpdateEvent = (value, expectedVersion) => {
-  if (!isPlainRecord(value) || typeof value.event !== 'string') throw invalidResponse();
+  if (!isRecord(value) || typeof value.event !== 'string') throw invalidResponse();
   if (value.event === 'checking' || value.event === 'installing') {
     if (!hasExactKeys(value, ['event', 'version']) || value.version !== expectedVersion) {
       throw invalidResponse();

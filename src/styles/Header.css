@@ -52,16 +52,6 @@
   font-weight: 800;
 }
 
-.osg-version {
-  font-size: 0.7em; /* Make version text smaller */
-  font-weight: 500;
-  opacity: 0.8;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 /* Language selector styles removed - now using CustomDropdown component */
 
 /* Material Design 3 theme toggle button */
@@ -188,10 +178,6 @@
     font-size: 1.2em;
   }
 
-  .osg-version {
-    font-size: 0.65em;
-  }
-
 }
 
 /* The original floating Material 3 action remains reachable while the long editor scrolls. */
@@ -265,10 +251,6 @@
     font-size: 1.1em;
   }
 
-  .osg-version {
-    font-size: 0.6em;
-  }
-
   .app-header {
     padding: 0.75rem 1rem;
   }
@@ -283,169 +265,7 @@
     font-size: 1em;
   }
 
-  .osg-version {
-    font-size: 0.55em;
-  }
-
   .app-header {
     padding: 0.75rem 0.75rem;
   }
-}
-
-/* Branch switch button styles - Professional Material Design */
-.branch-switch-button {
-  position: relative;
-  margin-left: 1rem;
-  padding: 8px 16px;
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-shape-pill);
-  font-size: 0.85rem;
-  font-weight: 500;
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: fit-content;
-  text-transform: none;
-  letter-spacing: 0.2px;
-  /* State layer for hover effect */
-  overflow: hidden;
-}
-
-/* State layer for hover effect */
-.branch-switch-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: transparent;
-  transition: background-color var(--md-duration-medium2) var(--md-easing-standard);
-  pointer-events: none;
-  border-radius: var(--md-shape-pill);
-}
-
-.branch-switch-button:hover::before {
-  background-color: color-mix(in srgb, var(--md-on-primary), transparent var(--md-state-hover-opacity));
-}
-
-.branch-switch-button:hover {
-  border-color: var(--md-primary);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  background: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 5%);
-}
-
-.branch-switch-button:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  background: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 10%);
-}
-
-/* Disabled state for branch switch button */
-.branch-switch-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline);
-}
-
-.branch-switch-button:disabled:hover {
-  transform: none;
-  box-shadow: none;
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  border-color: var(--md-outline);
-}
-
-/* Dark mode adjustments for branch switch button */
-[data-theme="dark"] .branch-switch-button {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  border-color: var(--md-outline-variant);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .branch-switch-button:hover {
-  background: color-mix(in srgb, var(--md-primary), white 5%);
-  border-color: var(--md-primary);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-  transform: translateY(-1px);
-}
-
-[data-theme="dark"] .branch-switch-button:active {
-  background: color-mix(in srgb, var(--md-primary), white 10%);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transform: translateY(0);
-}
-
-[data-theme="dark"] .branch-switch-button:disabled {
-  background: var(--md-surface-variant);
-  color: var(--md-on-surface-variant);
-  box-shadow: none;
-  border-color: var(--md-outline);
-}
-
-/* Responsive styles for branch switch button */
-@media (max-width: 768px) {
-  .branch-switch-button {
-    font-size: 0.75rem;
-    padding: 5px 10px;
-    margin-left: 0.5rem;
-  }
-}
-
-@media (max-width: 600px) {
-  .branch-switch-button {
-    font-size: 0.7rem;
-    padding: 4px 8px;
-  }
-}
-
-@media (max-width: 400px) {
-  .branch-switch-button {
-    display: none; /* Hide on very small screens to save space */
-  }
-}
-
-/* Fade-in animations for detection elements */
-@keyframes fadeInOSGVersion {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInBranchSwitch {
-  from {
-    opacity: 0;
-    transform: scale(0.8) translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* Apply fade-in animations to detected elements */
-.osg-version {
-  animation: fadeInOSGVersion 0.6s ease-out;
-}
-
-.branch-switch-button {
-  animation: fadeInBranchSwitch 0.6s ease-out;
 }

@@ -14,11 +14,12 @@ import {
   activateSubtitleProjectBinding,
   rollbackSubtitleProjectBinding,
 } from '../../platform/subtitleProjectBinding';
+import { publishOwnedUrlMedia } from '../../platform/urlMediaPublication';
 import {
-  captureMediaCompatibility,
-  publishOwnedUrlMedia,
-  restoreMediaCompatibility,
-} from '../../platform/urlMediaPublication';
+  captureActiveMediaSource,
+  restoreActiveMediaSource,
+  updateActiveMedia,
+} from '../../platform/activeMediaSource';
 import { generateUrlBasedCacheId } from '../../services/subtitleCache';
 
 const ownershipLost = () => {
@@ -55,7 +56,7 @@ export const createQualityRedownloadActivation = async ({ url, onMediaReplaced }
   let expected = session;
   let publishing = null;
   let previousMedia = null;
-  let previousCompatibility = null;
+  let previousSource = null;
 
   // Until the publication lands the pointer must still name the previous media; while it is being
   // written either pointer is this transaction's own.
@@ -77,7 +78,7 @@ export const createQualityRedownloadActivation = async ({ url, onMediaReplaced }
     await assertOwned();
     if (selected?.assetId !== session.assetId) throw ownershipLost();
     previousMedia = selected;
-    previousCompatibility = captureMediaCompatibility();
+    previousSource = captureActiveMediaSource();
     let binding = null;
     try {
       binding = await activateSubtitleProjectBinding(session.cacheId, {
@@ -123,7 +124,7 @@ export const createQualityRedownloadActivation = async ({ url, onMediaReplaced }
       expectedProjectId: session.projectId,
     });
     expected = session;
-    restoreMediaCompatibility(previousCompatibility);
+    restoreActiveMediaSource(previousSource);
     const current = await getSelectedMedia();
     if (current?.assetId === previousMedia.assetId
         && current.playbackId === previousMedia.playbackId) {
@@ -133,7 +134,7 @@ export const createQualityRedownloadActivation = async ({ url, onMediaReplaced }
     if (reopened?.assetId !== previousMedia.assetId) {
       throw new Error('The previous native media selection could not be restored.');
     }
-    localStorage.setItem('current_file_url', reopened.playbackUrl);
+    updateActiveMedia({ playbackUrl: reopened.playbackUrl });
     onMediaReplaced(reopened);
   };
 

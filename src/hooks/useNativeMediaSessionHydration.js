@@ -19,7 +19,10 @@ import {
   activateSubtitleProjectBinding,
   isSubtitleProjectBindingReceipt,
 } from '../platform/subtitleProjectBinding';
-import { forgetBrowserMediaBlob } from '../platform/browserMediaBlobRegistry';
+import {
+  readActiveMedia,
+  updateActiveMedia,
+} from '../platform/activeMediaSource';
 import { restoreSubtitleDocument } from '../platform/subtitleDocumentProject';
 
 /**
@@ -186,24 +189,13 @@ export const applyNativeMediaSession = ({
       if (validateOwnership() !== true) {
         throw new Error('The restored media session was superseded.');
       }
-      // The URL mirror exists only so old UI teardown can revoke a browser-era object URL. Native
-      // identity remains exclusively in the validated media-session capability above.
-      const previousUrl = localStorage.getItem('current_file_url');
-      localStorage.setItem('current_file_url', media.playbackUrl);
+      const { playbackUrl: previousUrl } = readActiveMedia();
+      updateActiveMedia({ playbackUrl: media.playbackUrl });
       try {
         setUploadedFile(media);
       } catch (error) {
-        if (previousUrl === null) localStorage.removeItem('current_file_url');
-        else localStorage.setItem('current_file_url', previousUrl);
+        updateActiveMedia({ playbackUrl: previousUrl });
         throw error;
-      }
-      if (previousUrl?.startsWith('blob:') && previousUrl !== media.playbackUrl) {
-        try {
-          URL.revokeObjectURL(previousUrl);
-        } catch {
-          // A stale object URL is already inert; the registry must still release its Blob.
-        }
-        forgetBrowserMediaBlob(previousUrl);
       }
       return receipt;
     });
@@ -231,6 +223,8 @@ export const activateOwnedLocalMedia = async ({
 
 export const useNativeMediaSessionHydration = ({ setUploadedFile, setIsSrtOnlyMode }) => {
   useEffect(() => {
+    // Host-absent renders (the Vite dev server in a plain browser, jsdom) skip native hydration
+    // so they never surface a failure toast; inside Tauri this always runs.
     if (!isDesktopRuntime()) return undefined;
     const hydrator = createNativeMediaSessionHydrator({
       loadSession: loadDurableNativeMediaSession,

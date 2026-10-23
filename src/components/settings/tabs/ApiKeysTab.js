@@ -7,14 +7,10 @@ import GeminiKeysManager, { useGeminiKeys } from './GeminiKeysManager';
 import YoutubeAuthSection from './YoutubeAuthSection';
 
 const ApiKeysTab = ({
-  geminiApiKey: _geminiApiKey,
-  setGeminiApiKey,
   youtubeApiKey,
   setYoutubeApiKey,
   geniusApiKey,
   setGeniusApiKey,
-  showGeminiKey: _showGeminiKey,
-  setShowGeminiKey: _setShowGeminiKey,
   showYoutubeKey,
   setShowYoutubeKey,
   showGeniusKey,
@@ -60,7 +56,7 @@ const ApiKeysTab = ({
   });
 
   // Gemini multi-key state + handlers
-  const geminiKeys = useGeminiKeys({ setGeminiApiKey, setApiKeysSet });
+  const geminiKeys = useGeminiKeys({ setApiKeysSet });
 
   // Refs for editable fields
   const geniusKeyRef = useRef(null);

@@ -193,21 +193,25 @@
 }
 
 .segment-retry-btn {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  border: none;
+  background: rgba(var(--md-primary-rgb), 0.1);
+  color: var(--md-primary);
+  border: 1px solid var(--md-primary);
   border-radius: 50%;
   width: 28px;
   height: 28px;
+  padding: 6px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s var(--md-easing-emphasized);
+  transition: none;
   font-size: 0;
-  box-shadow: var(--md-elevation-level2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 100;
+  outline: none;
 }
 
 .segment-retry-btn::before {
@@ -224,30 +228,39 @@
 }
 
 .segment-retry-btn:hover {
-  background: color-mix(in srgb, var(--md-primary), black 10%);
   transform: scale(1.05);
-  box-shadow: var(--md-elevation-level3);
 }
 
 .segment-retry-btn:hover::before {
   transform: scale(1);
 }
 
-.segment-retry-btn:active {
-  transform: scale(0.95);
-  box-shadow: var(--md-elevation-level1);
-}
-
 .segment-retry-btn:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
+  cursor: pointer;
   transform: none;
   box-shadow: none;
 }
 
 .segment-retry-btn.loading {
   background: var(--md-secondary);
-  cursor: wait;
+}
+
+/* Declared after the state rules so they also restyle a loading or disabled button. */
+.segment-retry-btn:hover {
+  background: rgba(var(--md-primary-rgb), 0.2);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.25);
+}
+
+.segment-retry-btn:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
+.segment-retry-btn:active {
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  opacity: 0.9;
 }
 
 .segment-retry-btn .retry-icon {
@@ -269,16 +282,12 @@
 
 /* Segment indicator for non-first rows */
 .segment-indicator {
-  width: 100%;
-  height: 100%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Override margin only in translation preview context */
-.translation-preview .segment-indicator {
-  margin-right: 0;
 }
 
 .segment-line {

@@ -16,6 +16,7 @@ import {
   normalizeImageGenerationModelId
 } from '../../config/geminiModels';
 import { showErrorToast } from '../../utils/toastUtils';
+import { hasStoredPreference, readPreference, writePreference } from '../../platform/preferences/store';
 
 const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
@@ -48,20 +49,22 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
   promptOneRef.current = promptOne;
   promptTwoRef.current = promptTwo;
 
-  // Load the current prompts from localStorage (serverless)
+  // Load the saved prompts and models each time the editor opens
   useEffect(() => {
     if (!isOpen) return;
 
     try {
-      const p1 = localStorage.getItem('background_prompt_one');
-      const p2 = localStorage.getItem('background_prompt_two');
-      const pm = localStorage.getItem('background_prompt_model');
-      const im = localStorage.getItem('background_image_model');
-
-      const nextP1 = p1 ?? promptOneRef.current;
-      const nextP2 = p2 ?? promptTwoRef.current;
-      const nextPM = migrateGeminiModelId(pm, DEFAULT_BACKGROUND_PROMPT_MODEL_ID);
-      const nextIM = normalizeImageGenerationModelId(im);
+      const nextP1 = hasStoredPreference('background_prompt_one')
+        ? readPreference('background_prompt_one')
+        : promptOneRef.current;
+      const nextP2 = hasStoredPreference('background_prompt_two')
+        ? readPreference('background_prompt_two')
+        : promptTwoRef.current;
+      const nextPM = migrateGeminiModelId(
+        readPreference('background_prompt_model'),
+        DEFAULT_BACKGROUND_PROMPT_MODEL_ID
+      );
+      const nextIM = normalizeImageGenerationModelId(readPreference('background_image_model'));
 
       setPromptOne(nextP1);
       setPromptTwo(nextP2);
@@ -74,7 +77,7 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
       setInitialPromptModel(nextPM);
       setInitialImageModel(nextIM);
     } catch (error) {
-      console.error('Error loading prompts from localStorage:', error);
+      console.error('Error loading background prompts:', error);
     }
   }, [isOpen]);
 
@@ -112,14 +115,14 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
     };
   }, [isOpen, onClose]);
 
-  // Handle saving the prompts (serverless -> localStorage)
+  // Handle saving the prompts
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      localStorage.setItem('background_prompt_one', promptOne);
-      localStorage.setItem('background_prompt_two', promptTwo);
-      localStorage.setItem('background_prompt_model', promptModel);
-      localStorage.setItem('background_image_model', imageModel);
+      writePreference('background_prompt_one', promptOne);
+      writePreference('background_prompt_two', promptTwo);
+      writePreference('background_prompt_model', promptModel);
+      writePreference('background_image_model', imageModel);
 
       // Snapshot as new baseline to reset hasChanges
       setInitialPromptOne(promptOne);
@@ -129,7 +132,7 @@ const BackgroundPromptEditor = ({ isOpen, onClose }) => {
 
       onClose();
     } catch (error) {
-      console.error('Error saving prompts to localStorage:', error);
+      console.error('Error saving background prompts:', error);
       showErrorToast(t('backgroundGenerator.errorSavingPrompts', 'Error saving prompts: {{message}}', { message: error.message }));
     } finally {
       setIsSaving(false);

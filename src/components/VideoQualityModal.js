@@ -6,7 +6,7 @@ import LoadingIndicator from './common/LoadingIndicator';
 import WavyProgressIndicator from './common/WavyProgressIndicator';
 import { detectDarkTheme, getThemeColors } from './qualityModal/themeDetection';
 import useQualityProgressTracking from './qualityModal/useQualityProgressTracking';
-import { readDownloadCookiePreference } from '../platform/downloadCookiePreference';
+import { usePreference } from '../platform/preferences/store';
 import { showWarningToast } from '../utils/toastUtils';
 
 const VideoQualityModal = ({
@@ -30,9 +30,7 @@ const VideoQualityModal = ({
   const progressIntervalRef = useRef(null);
 
   // Get current cookie setting as state
-  const [useCookiesEnabled, setUseCookiesEnabled] = useState(
-    readDownloadCookiePreference().enabled
-  );
+  const [useCookiesEnabled] = usePreference('use_cookies_for_download');
 
   // Ref for WavyProgressIndicator animations
   const wavyProgressRef = useRef(null);
@@ -149,32 +147,6 @@ const VideoQualityModal = ({
     };
   }, []);
 
-  // Listen for changes to cookie setting and update when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      // Update cookie setting when modal opens
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    }
-
-    const handleStorageChange = () => {
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    };
-
-    const handleFocus = () => {
-      // Update when window regains focus (e.g., after closing settings modal)
-      setUseCookiesEnabled(readDownloadCookiePreference().enabled);
-    };
-
-    // Listen for storage events (when localStorage changes in other tabs/windows)
-    window.addEventListener('storage', handleStorageChange);
-    // Listen for focus events (when user returns to tab/window)
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 

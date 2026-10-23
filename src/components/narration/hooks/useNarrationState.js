@@ -1,34 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
-
-const NARRATION_METHODS = Object.freeze([
-  'f5tts',
-  'chatterbox',
-  'gemini',
-  'edge-tts',
-  'gtts',
-]);
+import { useState, useCallback } from 'react';
+import { usePreference } from '../../../platform/preferences/store';
+import { NARRATION_METHODS } from '../../../platform/preferences/narrationKeys';
 
 export const normalizeNarrationMethod = (method) => (
   NARRATION_METHODS.includes(method) ? method : 'gemini'
 );
 
 /**
- * Custom hook for managing narration state
+ * Custom hook for managing narration state. Engine choices and tuning are per-device preferences;
+ * everything else is session state.
  * @param {Object} initialReferenceAudio - Initial reference audio
  * @returns {Object} - Narration state and setters
  */
 const useNarrationState = (initialReferenceAudio) => {
-  // Narration Method state - load from localStorage or default to Gemini
-  const [narrationMethod, setNarrationMethodState] = useState(() => {
-    try {
-      return normalizeNarrationMethod(localStorage.getItem('narration_method'));
-    } catch {
-      return 'gemini';
-    }
-  });
+  const [narrationMethod, setStoredNarrationMethod] = usePreference('narration_method');
   const setNarrationMethod = useCallback((method) => {
-    setNarrationMethodState(normalizeNarrationMethod(method));
-  }, []);
+    setStoredNarrationMethod(normalizeNarrationMethod(method));
+  }, [setStoredNarrationMethod]);
   const [isGeminiAvailable, setIsGeminiAvailable] = useState(false);
   // Managed engines are selectable capabilities from the first frame. Their verified package and
   // worker state is resolved on demand when the customer asks to generate.
@@ -37,86 +25,19 @@ const useNarrationState = (initialReferenceAudio) => {
   const [isGTTSAvailable, setIsGTTSAvailable] = useState(true);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
-  // Gemini-specific settings
-  const [selectedVoice, setSelectedVoice] = useState(() => {
-    // Try to load from localStorage
-    const savedVoice = localStorage.getItem('gemini_voice');
-    return savedVoice || 'Aoede'; // Default to Aoede if not set
-  });
-
-  const [concurrentClients, setConcurrentClients] = useState(() => {
-    // Try to load from localStorage
-    const savedConcurrentClients = localStorage.getItem('gemini_concurrent_clients');
-    return savedConcurrentClients ? parseInt(savedConcurrentClients, 10) : 5; // Default to 5 concurrent clients
-  });
-
-  // Chatterbox-specific settings
-  const [exaggeration, setExaggeration] = useState(() => {
-    // Try to load from localStorage
-    const savedExaggeration = localStorage.getItem('chatterbox_exaggeration');
-    // Default to 0.7 for more expressive speech as recommended in Chatterbox README
-    return savedExaggeration ? parseFloat(savedExaggeration) : 0.7;
-  });
-
-  const [cfgWeight, setCfgWeight] = useState(() => {
-    // Try to load from localStorage
-    const savedCfgWeight = localStorage.getItem('chatterbox_cfg_weight');
-    // Default to 0.3 for better pacing with expressive speech as recommended in Chatterbox README
-    return savedCfgWeight ? parseFloat(savedCfgWeight) : 0.3;
-  });
-
-  // Edge TTS-specific settings
-  const [edgeTTSVoice, setEdgeTTSVoice] = useState(() => {
-    // Try to load from localStorage
-    const savedVoice = localStorage.getItem('edge_tts_voice');
-    return savedVoice || 'en-US-AriaNeural'; // Default to Aria Neural voice
-  });
-
-  const [edgeTTSRate, setEdgeTTSRate] = useState(() => {
-    // Try to load from localStorage
-    const savedRate = localStorage.getItem('edge_tts_rate');
-    return savedRate || '+0%'; // Default to normal rate
-  });
-
-  const [edgeTTSVolume, setEdgeTTSVolume] = useState(() => {
-    // Try to load from localStorage
-    const savedVolume = localStorage.getItem('edge_tts_volume');
-    return savedVolume || '+0%'; // Default to normal volume
-  });
-
-  const [edgeTTSPitch, setEdgeTTSPitch] = useState(() => {
-    // Try to load from localStorage
-    const savedPitch = localStorage.getItem('edge_tts_pitch');
-    return savedPitch || '+0Hz'; // Default to normal pitch
-  });
-
-  // gTTS-specific settings
-  const [gttsLanguage, setGttsLanguage] = useState(() => {
-    // Try to load from localStorage
-    const savedLanguage = localStorage.getItem('gtts_language');
-    return savedLanguage || 'en'; // Default to English
-  });
-
-  // Chatterbox-specific: selected language code
-  const [chatterboxLanguage, setChatterboxLanguage] = useState(() => {
-    try {
-      return localStorage.getItem('chatterbox_language') || 'en';
-    } catch {
-      return 'en';
-    }
-  });
-
-  const [gttsTld, setGttsTld] = useState(() => {
-    // Try to load from localStorage
-    const savedTld = localStorage.getItem('gtts_tld');
-    return savedTld || 'com'; // Default to .com
-  });
-
-  const [gttsSlow, setGttsSlow] = useState(() => {
-    // Try to load from localStorage
-    const savedSlow = localStorage.getItem('gtts_slow');
-    return savedSlow === 'true'; // Default to false
-  });
+  // Engine-specific settings
+  const [selectedVoice, setSelectedVoice] = usePreference('gemini_voice');
+  const [concurrentClients, setConcurrentClients] = usePreference('gemini_concurrent_clients');
+  const [exaggeration, setExaggeration] = usePreference('chatterbox_exaggeration');
+  const [cfgWeight, setCfgWeight] = usePreference('chatterbox_cfg_weight');
+  const [chatterboxLanguage, setChatterboxLanguage] = usePreference('chatterbox_language');
+  const [edgeTTSVoice, setEdgeTTSVoice] = usePreference('edge_tts_voice');
+  const [edgeTTSRate, setEdgeTTSRate] = usePreference('edge_tts_rate');
+  const [edgeTTSVolume, setEdgeTTSVolume] = usePreference('edge_tts_volume');
+  const [edgeTTSPitch, setEdgeTTSPitch] = usePreference('edge_tts_pitch');
+  const [gttsLanguage, setGttsLanguage] = usePreference('gtts_language');
+  const [gttsTld, setGttsTld] = usePreference('gtts_tld');
+  const [gttsSlow, setGttsSlow] = usePreference('gtts_slow');
 
   // Narration Settings state (for F5-TTS)
   const [referenceAudio, setReferenceAudio] = useState(initialReferenceAudio);
@@ -148,15 +69,11 @@ const useNarrationState = (initialReferenceAudio) => {
   const [subtitleSource, setSubtitleSource] = useState('original');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [detectedLanguage, setDetectedLanguage] = useState(null);
-  const [selectedNarrationModel, setSelectedNarrationModel] = useState(() => {
-    // Load last used narration model from localStorage
-    try {
-      return localStorage.getItem('last_used_narration_model') || null;
-    } catch (error) {
-      console.error('Error loading last used narration model:', error);
-      return null;
-    }
-  });
+  const [storedNarrationModel, setStoredNarrationModel] = usePreference('last_used_narration_model');
+  const selectedNarrationModel = storedNarrationModel || null;
+  const setSelectedNarrationModel = useCallback((modelId) => {
+    setStoredNarrationModel(modelId || '');
+  }, [setStoredNarrationModel]);
   const [modelAvailabilityError, setModelAvailabilityError] = useState(null);
   const [originalLanguage, setOriginalLanguage] = useState(null);
   const [translatedLanguage, setTranslatedLanguage] = useState(null);
@@ -164,113 +81,8 @@ const useNarrationState = (initialReferenceAudio) => {
   const [useGroupedSubtitles, setUseGroupedSubtitles] = useState(false);
   const [groupedSubtitles, setGroupedSubtitles] = useState(null);
   const [isGroupingSubtitles, setIsGroupingSubtitles] = useState(false);
-  const [groupingIntensity, setGroupingIntensity] = useState(() => {
-    // Try to load from localStorage
-    const savedGroupingIntensity = localStorage.getItem('grouping_intensity');
-    return savedGroupingIntensity || 'moderate'; // Default to 'moderate' if not set
-  });
-  const [advancedSettings, setAdvancedSettings] = useState(() => {
-    // Try to load from localStorage
-    try {
-      const savedSettings = localStorage.getItem('narration_advanced_settings');
-      if (savedSettings) {
-        return JSON.parse(savedSettings);
-      }
-    } catch (error) {
-      // Silently fail if settings can't be loaded
-    }
-
-    // Default settings
-    return {
-      // Voice Style Controls - only speechRate is supported
-      speechRate: 1.1,
-  
-      // Generation Quality Controls
-      nfeStep: '32',  // Number of Function Evaluations (diffusion steps)
-      swayCoef: -1.0, // Sway Sampling Coefficient
-      cfgStrength: 2.0, // Classifier-Free Guidance Strength
-  
-      // Seed Control
-      useRandomSeed: true,
-      seed: 42,
-  
-      // Audio Processing Options - only removeSilence is supported
-      removeSilence: true,
-  
-      // Output Format Options
-      sampleRate: '44100',
-      audioFormat: 'wav',
-  
-      // Batch Processing Options
-      batchSize: '8',
-      mergeOutput: false
-    };
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('narration_method', narrationMethod);
-    } catch {
-      // The in-memory normalized value remains authoritative when storage is unavailable.
-    }
-  }, [narrationMethod]);
-
-  // Save advanced settings to localStorage when they change
-  useEffect(() => {
-    if (advancedSettings) {
-      try {
-        localStorage.setItem('narration_advanced_settings', JSON.stringify(advancedSettings));
-      } catch (error) {
-        console.error('Error saving advanced settings to localStorage:', error);
-      }
-    }
-  }, [advancedSettings]);
-
-  // Save grouping intensity to localStorage when it changes
-  useEffect(() => {
-    if (groupingIntensity) {
-      try {
-        localStorage.setItem('grouping_intensity', groupingIntensity);
-      } catch (error) {
-        console.error('Error saving grouping intensity to localStorage:', error);
-      }
-    }
-  }, [groupingIntensity]);
-
-  // Save Edge TTS settings to localStorage when they change
-  useEffect(() => {
-    localStorage.setItem('edge_tts_voice', edgeTTSVoice);
-  }, [edgeTTSVoice]);
-
-  useEffect(() => {
-    localStorage.setItem('edge_tts_rate', edgeTTSRate);
-  }, [edgeTTSRate]);
-
-  useEffect(() => {
-    localStorage.setItem('edge_tts_volume', edgeTTSVolume);
-  }, [edgeTTSVolume]);
-
-  useEffect(() => {
-    localStorage.setItem('edge_tts_pitch', edgeTTSPitch);
-  }, [edgeTTSPitch]);
-
-  // Save gTTS settings to localStorage when they change
-  useEffect(() => {
-    localStorage.setItem('gtts_language', gttsLanguage);
-  }, [gttsLanguage]);
-
-  // Save Chatterbox language to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('chatterbox_language', chatterboxLanguage);
-  }, [chatterboxLanguage]);
-
-  useEffect(() => {
-    localStorage.setItem('gtts_tld', gttsTld);
-  }, [gttsTld]);
-
-  useEffect(() => {
-    localStorage.setItem('gtts_slow', gttsSlow.toString());
-  }, [gttsSlow]);
+  const [groupingIntensity, setGroupingIntensity] = usePreference('grouping_intensity');
+  const [advancedSettings, setAdvancedSettings] = usePreference('narration_advanced_settings');
 
   // Update local state when initialReferenceAudio changes - memoized to avoid identity changes across renders
   const updateReferenceAudio = useCallback((newReferenceAudio) => {

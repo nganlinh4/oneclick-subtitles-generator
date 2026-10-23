@@ -1,15 +1,9 @@
 {
   "title": "Select Video Source",
   "unifiedUrl": "Video URL",
-  "allSitesUrl": "All Sites URL",
-  "youtubeUrl": "YouTube URL",
   "youtubeSearch": "Search YouTube",
-  "douyinUrl": "Douyin URL",
   "fileUpload": "Upload File",
-  "enterYoutubeUrl": "Enter YouTube URL",
-  "searchForVideos": "Search for videos",
   "dragDropText": "Drag & Drop Video or Audio here",
   "orText": "or",
-  "browse": "Click to browse files",
-  "supportedFormats": "Supported formats: MP4, MOV, AVI, MP3, WAV, AAC, OGG"
+  "browse": "Click to browse files"
 }

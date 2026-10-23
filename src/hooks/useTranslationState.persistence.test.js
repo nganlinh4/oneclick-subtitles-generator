@@ -286,3 +286,13 @@ it('publishes successful chunks from a partial result and can durably fill the m
   expect(view.onComplete).toHaveBeenLastCalledWith(mocks.hydratedRecord.baseSubtitles);
   view.unmount();
 });
+
+it('turns rules off for a run without them but keeps the stored include-rules choice', async () => {
+  localStorage.setItem('translation_include_rules', 'true');
+  const view = await mount();
+
+  await waitFor(() => expect(view.result.current.rulesAvailable).toBe(false));
+  expect(view.result.current.includeRules).toBe(false);
+  expect(localStorage.getItem('translation_include_rules')).toBe('true');
+  localStorage.removeItem('translation_include_rules');
+});

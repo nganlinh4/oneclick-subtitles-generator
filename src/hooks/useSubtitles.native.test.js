@@ -53,11 +53,8 @@ vi.mock('./useQuotaCountdown', () => ({
 vi.mock('./useSubtitlesRetryGeneration', () => ({
   useSubtitlesRetryGeneration: () => ({ retryGeneration: vi.fn() }),
 }));
-vi.mock('./useSubtitlesSegmentRetry', () => ({
-  useSubtitlesSegmentRetry: () => ({ retrySegment: vi.fn() }),
-}));
 vi.mock('../events/bus', () => ({
-  EVENTS: { SEGMENT_STATUS_UPDATE: 'segment-status-update' },
+  EVENTS: { GEMINI_REQUESTS_ABORTED: 'gemini-requests-aborted' },
   subscribe: () => () => undefined,
 }));
 vi.mock('../utils/geminiSubtitleErrors', () => ({

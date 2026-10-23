@@ -15,14 +15,7 @@ vi.mock('../../utils/tabPillAnimation', () => ({ default: vi.fn() }));
 vi.mock('../../utils/systemDetection', () => ({ getThemeWithFallback: () => 'dark' }));
 
 const props = () => ({
-  setSegmentsStatus: vi.fn(),
-  setVideoSegments: vi.fn(),
   setTheme: vi.fn(),
-  setShowWaveformLongVideos: vi.fn(),
-  setTimeFormat: vi.fn(),
-  setOptimizeVideos: vi.fn(),
-  setOptimizedResolution: vi.fn(),
-  setUseOptimizedPreview: vi.fn(),
   subtitlesData: [],
   status: {},
 });

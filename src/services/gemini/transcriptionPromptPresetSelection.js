@@ -1,4 +1,5 @@
 import { normalizeTranscriptionPrompt } from './transcriptionPromptInvariant';
+import { readPreference, writePreference } from '../../platform/preferences/store';
 
 const SETTINGS_PROMPT_PRESET_ID = 'settings';
 const CUSTOM_PROMPT_PRESET_ID = 'custom';
@@ -7,11 +8,6 @@ const invalidPreset = () => {
   const error = new Error('The selected transcription prompt preset is invalid.');
   error.code = 'invalidTranscriptionPromptPreset';
   return error;
-};
-
-const readStorage = (storage, key) => {
-  if (!storage || typeof storage.getItem !== 'function') return null;
-  return storage.getItem(key);
 };
 
 const isUsableTranscriptionPromptPreset = (preset) => (
@@ -85,32 +81,22 @@ export const resolveTranscriptionPromptPresetSelection = ({
 };
 
 /**
- * The sole browser-persistence path for a rules-editor preset change. Persist
- * only source identity: the effective prompt is deterministically resolved at
- * the Gemini action boundary, so it must not be copied into local/session
- * storage where it could become stale or overwrite the Settings-owned prompt.
+ * The sole persistence path for a rules-editor preset change. Persist only
+ * source identity: the effective prompt is deterministically resolved at the
+ * Gemini action boundary, so it must not be copied into a preference where it
+ * could become stale or overwrite the Settings-owned prompt.
  */
 export const applyTranscriptionPromptPresetSelection = ({
   requestedPresetId,
   availablePresets,
   defaultPrompt,
-  persistentStorage = globalThis.localStorage,
 }) => {
   const selection = resolveTranscriptionPromptPresetSelection({
     requestedPresetId,
     availablePresets,
-    settingsPrompt: readStorage(persistentStorage, 'transcription_prompt'),
+    settingsPrompt: readPreference('transcription_prompt'),
     defaultPrompt,
   });
-
-  if (!persistentStorage || typeof persistentStorage.setItem !== 'function') {
-    throw new TypeError('Persistent browser storage is unavailable.');
-  }
-
-  persistentStorage.setItem(
-    'video_processing_prompt_preset',
-    selection.persistedPresetId,
-  );
-
+  writePreference('video_processing_prompt_preset', selection.persistedPresetId);
   return selection;
 };

@@ -9,37 +9,32 @@ import {
   initializeCredentialState,
   subscribeCredentialState,
 } from '../platform/credentialStateController';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
-import {
-  applyLiveMusicControl,
-  closeLiveMusicSession,
-  startLiveMusicSession,
-  updateLiveMusicPrompts,
-} from '../platform/liveMusicService';
 import CustomDropdown from './common/CustomDropdown';
 import MaterialSwitch from './common/MaterialSwitch';
 import HelpIcon from './common/HelpIcon.jsx';
 import AudioPlayer from './common/AudioPlayer';
 import { formatTime } from '../utils/timeFormatter';
-import { trimSilenceFromBlob } from '../utils/audioTrim';
 import { startPromptDjReadinessBridge } from './backgroundMusic/promptDjReadiness';
 import useResizablePanelHeight from './backgroundMusic/useResizablePanelHeight';
-import usePromptDjAppearanceSync, { postCurrentTheme } from './backgroundMusic/usePromptDjAppearanceSync';
+import usePromptDjAppearanceSync, {
+  postCurrentFont,
+  postCurrentTheme,
+} from './backgroundMusic/usePromptDjAppearanceSync';
+import usePromptDjBridge from './backgroundMusic/usePromptDjBridge';
+import useLiveMusicSession from './backgroundMusic/useLiveMusicSession';
+import useBackgroundMusicRecording from './backgroundMusic/useBackgroundMusicRecording';
+import {
+  readPreference,
+  readStoredPreference,
+  writePreference,
+} from '../platform/preferences/store';
 
 // Collapsible section embedding the promptdj-midi app with start/stop recording controls
 const BackgroundMusicSection = () => {
   const { t, i18n } = useTranslation();
   const iframeRef = useRef(null);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingUrl, setRecordingUrl] = useState('');
-  const [recordingBlob, setRecordingBlob] = useState(null);
-  const [recordingStartTime, setRecordingStartTime] = useState(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem('bg_music_collapsed');
-    return saved === 'true';
-  });
+  const [isCollapsed, setIsCollapsed] = useState(() => readPreference('bg_music_collapsed'));
 
   const {
     panelRef,
@@ -54,15 +49,11 @@ const BackgroundMusicSection = () => {
   const [midiInputs, setMidiInputs] = useState([]); // [{id, name}]
   const [activeMidiId, setActiveMidiId] = useState('');
 
-  const nativeRuntime = useMemo(() => isDesktopRuntime(), []);
   const promptDjOrigin = useMemo(() => window.location.origin, []);
   const midiAppUrl = useMemo(
     () => new URL('/promptdj/index.html', window.location.origin).href,
     []
   );
-  const liveSessionRef = useRef(null);
-  const liveStartRef = useRef(null);
-  const closeAfterStartRef = useRef(false);
 
   const getPromptDjWindow = useCallback(() => {
     try {
@@ -81,10 +72,6 @@ const BackgroundMusicSection = () => {
   }, [getPromptDjWindow, promptDjOrigin]);
 
   const postNativeAvailability = useCallback(async () => {
-    if (!nativeRuntime) {
-      postToPromptDj({ type: 'pm-dj-native-init', available: false });
-      return false;
-    }
     try {
       await initializeCredentialState();
       const available = getActiveGeminiCredentialId() !== null;
@@ -94,250 +81,54 @@ const BackgroundMusicSection = () => {
       postToPromptDj({ type: 'pm-dj-native-init', available: false });
       return false;
     }
-  }, [nativeRuntime, postToPromptDj]);
+  }, [postToPromptDj]);
 
   const postResetToIframe = useCallback(() => {
     postToPromptDj({ type: 'pm-dj-reset' });
   }, [postToPromptDj]);
 
-  const startRecording = useCallback(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    if (recordingUrl) {
-      try { URL.revokeObjectURL(recordingUrl); } catch {
-        // Revoking an already-released recording URL is harmless.
-      }
-    }
-    setRecordingUrl('');
-    setRecordingBlob(null);
-    setRecordingStartTime(Date.now());
-    postToPromptDj({ type: 'pm-dj-start-recording' });
-  }, [postToPromptDj, recordingUrl]);
+  const recording = useBackgroundMusicRecording({ getPromptDjWindow, postToPromptDj });
+  const {
+    isRecording,
+    recordingUrl,
+    recordingBlob,
+    elapsed,
+    startRecording,
+    stopRecording,
+    clearRecording: clearReferenceAudio,
+  } = recording;
+  const liveMusic = useLiveMusicSession({ postToPromptDj });
 
-  const stopRecording = useCallback(() => {
-    postToPromptDj({ type: 'pm-dj-stop-recording' });
-  }, [postToPromptDj]);
+  const onMidiInputs = useCallback(({ inputs, activeId, show }) => {
+    setMidiInputs(inputs);
+    if (activeId !== undefined) setActiveMidiId(activeId);
+    if (show !== undefined) setMidiShow(show);
+  }, []);
 
-  const clearReferenceAudio = useCallback(() => {
-    if (recordingUrl) {
-      try { URL.revokeObjectURL(recordingUrl); } catch {
-        // Revoking an already-released recording URL is harmless.
-      }
-    }
-    setRecordingUrl('');
-    setRecordingBlob(null);
-  }, [recordingUrl]);
-
-  // Timer like narration
-  useEffect(() => {
-    if (isRecording && recordingStartTime) {
-      setElapsed((Date.now() - recordingStartTime) / 1000);
-      const id = setInterval(() => {
-        setElapsed((Date.now() - recordingStartTime) / 1000);
-      }, 100);
-      return () => clearInterval(id);
-    } else {
-      setElapsed(0);
-    }
-  }, [isRecording, recordingStartTime]);
-
-  // Cleanup object URL when it changes or on unmount
-  useEffect(() => {
-    return () => {
-      if (recordingUrl) {
-        try { URL.revokeObjectURL(recordingUrl); } catch {
-          // Revoking an already-released recording URL is harmless.
-        }
-      }
-    };
-  }, [recordingUrl]);
+  usePromptDjBridge({
+    getPromptDjWindow,
+    promptDjOrigin,
+    handlers: {
+      ...liveMusic,
+      onRecordingStarted: recording.onRecordingStarted,
+      onRecordingStopped: recording.onRecordingStopped,
+      onRecordingError: recording.onRecordingError,
+      onMidiInputs,
+    },
+  });
 
   // Propagate language changes to iframe
   useEffect(() => {
-    const lang = (typeof i18n?.language === 'string' && i18n.language) ? i18n.language : (localStorage.getItem('preferred_language') || 'en');
+    const lang = (typeof i18n?.language === 'string' && i18n.language) ? i18n.language : (readStoredPreference('preferred_language') || 'en');
     postToPromptDj({ type: 'pm-dj-set-lang', lang });
   }, [i18n?.language, postToPromptDj]);
-
-  // Receive messages from the iframe
-  useEffect(() => {
-    const postFailure = (code, message) => {
-      postToPromptDj({
-        type: 'pm-dj-native-event',
-        payload: { event: 'failed', error: { code, message } },
-      });
-    };
-
-    const handleNativeStart = (weightedPrompts) => {
-      if (!nativeRuntime || liveStartRef.current || liveSessionRef.current) {
-        postFailure('liveMusicUnavailable', 'The native live music service is unavailable.');
-        return;
-      }
-      let terminal = false;
-      const start = (async () => {
-        try {
-          await initializeCredentialState();
-          const credentialId = getActiveGeminiCredentialId();
-          if (!credentialId) {
-            postToPromptDj({ type: 'pm-dj-native-init', available: false });
-            postFailure('liveMusicCredentialUnavailable', 'A Gemini credential is required.');
-            return;
-          }
-          const session = await startLiveMusicSession({ credentialId, weightedPrompts }, {
-            onEvent: (payload) => {
-              if (payload.event === 'closed' || payload.event === 'failed') {
-                terminal = true;
-                liveSessionRef.current = null;
-              }
-              postToPromptDj({ type: 'pm-dj-native-event', payload });
-            },
-            onAudio: (pcm) => {
-              postToPromptDj({ type: 'pm-dj-native-audio', pcm }, [pcm]);
-            },
-            onProtocolError: () => {
-              postFailure('liveMusicProtocolFailed', 'The native live music stream is invalid.');
-            },
-          });
-          if (!terminal) liveSessionRef.current = session;
-          if (closeAfterStartRef.current && !terminal) {
-            closeAfterStartRef.current = false;
-            await closeLiveMusicSession(session.id).catch(() => undefined);
-          }
-        } catch {
-          postFailure('liveMusicUnavailable', 'The native live music service is unavailable.');
-        }
-      })();
-      liveStartRef.current = start;
-      start.finally(() => {
-        if (liveStartRef.current === start) liveStartRef.current = null;
-      });
-    };
-
-    const handleNativeUpdate = (weightedPrompts) => {
-      const session = liveSessionRef.current;
-      if (!session) return;
-      updateLiveMusicPrompts(session.id, weightedPrompts).catch(() => {
-        postFailure('liveMusicUpdateFailed', 'The live music prompts could not be updated.');
-      });
-    };
-
-    const handleNativeControl = (control) => {
-      const session = liveSessionRef.current;
-      if (!session || !['play', 'pause', 'stop', 'resetContext'].includes(control)) return;
-      applyLiveMusicControl(session.id, control).catch(() => {
-        postFailure('liveMusicControlFailed', 'The live music control could not be applied.');
-      });
-    };
-
-    const handleNativeClose = () => {
-      const session = liveSessionRef.current;
-      if (!session) {
-        if (liveStartRef.current) closeAfterStartRef.current = true;
-        return;
-      }
-      closeLiveMusicSession(session.id).catch(() => undefined);
-    };
-
-    function onMessage(event) {
-      if (event.source !== getPromptDjWindow() || event.origin !== promptDjOrigin) return;
-      const data = event.data;
-      if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
-
-      if (data.type === 'pm-dj-toast-history') {
-        const allowedTypes = new Set(['info', 'error', 'success', 'warning']);
-        if (typeof data.message === 'string'
-            && data.message.length > 0
-            && data.message.length <= 4_096
-            && allowedTypes.has(data.toastType)) {
-          window.recordToastHistory?.(data.message, data.toastType);
-        }
-        return;
-      }
-
-      if (data.type === 'pm-dj-native-start') handleNativeStart(data.weightedPrompts);
-      if (data.type === 'pm-dj-native-update') handleNativeUpdate(data.weightedPrompts);
-      if (data.type === 'pm-dj-native-control') handleNativeControl(data.control);
-      if (data.type === 'pm-dj-native-close') handleNativeClose();
-
-      if (data.type === 'pm-dj-recording-started') {
-        setIsRecording(true);
-        setRecordingStartTime((prev) => prev ?? Date.now());
-      }
-      if (data.type === 'pm-dj-recording-stopped') {
-        setIsRecording(false);
-        // Process: trim silence seamlessly and generate new URL
-        (async () => {
-          try {
-            if (data.blob instanceof Blob
-                && data.blob.size > 0
-                && data.blob.size <= 512 * 1024 * 1024
-                && /^audio\/(?:wav|webm)(?:;|$)/i.test(data.blob.type)) {
-              const trimmed = await trimSilenceFromBlob(data.blob, {
-                silenceThreshold: 0.004, // ~ -48 dBFS
-                minSilenceMs: 180,
-                analysisWindowMs: 20,
-              });
-              // Revoke previous URL
-              if (recordingUrl) {
-                try { URL.revokeObjectURL(recordingUrl); } catch {
-                  // Revoking an already-released recording URL is harmless.
-                }
-              }
-              const finalBlob = trimmed || data.blob;
-              const url = URL.createObjectURL(finalBlob);
-              setRecordingBlob(finalBlob);
-              setRecordingUrl(url);
-            }
-          } catch (err) {
-            // Fallback to raw blob
-            try {
-              if (recordingUrl) { URL.revokeObjectURL(recordingUrl); }
-              if (data.blob) {
-                const url = URL.createObjectURL(data.blob);
-                setRecordingBlob(data.blob);
-                setRecordingUrl(url);
-              }
-            } catch {
-              // A failed raw-blob fallback leaves the prior recording unchanged.
-            }
-          }
-        })();
-      }
-      if (data.type === 'pm-dj-recording-error') {
-        setIsRecording(false);
-      }
-
-      // MIDI bridge: receive device list/state
-      if (data.type === 'midi:inputs') {
-        const arr = Array.isArray(data.inputs)
-          ? data.inputs.slice(0, 64).filter((input) => (
-            input
-            && typeof input === 'object'
-            && typeof input.id === 'string'
-            && input.id.length <= 512
-            && typeof input.name === 'string'
-            && input.name.length <= 512
-          )).map(({ id, name }) => ({ id, name }))
-          : [];
-        setMidiInputs(arr);
-        if (typeof data.activeId === 'string' && data.activeId.length <= 512) setActiveMidiId(data.activeId);
-        if (typeof data.show === 'boolean') setMidiShow(data.show);
-      }
-    }
-
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [getPromptDjWindow, nativeRuntime, postToPromptDj, promptDjOrigin, recordingUrl]);
 
   const onIframeLoad = useCallback(() => {
     postNativeAvailability();
     // Sync theme initially
     postCurrentTheme(postToPromptDj);
     // Sync font initially
-    try {
-      const appFont = localStorage.getItem('app_font') || 'google-sans';
-      postToPromptDj({ type: 'pm-dj-set-font', font: appFont });
-    } catch {
-      // Font synchronization is advisory for the isolated iframe.
-    }
+    postCurrentFont(postToPromptDj);
     // Request current MIDI inputs/state
     postToPromptDj({ type: 'midi:getInputs' });
 
@@ -356,16 +147,15 @@ const BackgroundMusicSection = () => {
   usePromptDjAppearanceSync(postToPromptDj);
 
   useEffect(() => {
-    if (!nativeRuntime) return undefined;
     const unsubscribe = subscribeCredentialState(() => {
       postNativeAvailability();
     });
     postNativeAvailability();
     return unsubscribe;
-  }, [nativeRuntime, postNativeAvailability]);
+  }, [postNativeAvailability]);
 
   useEffect(() => {
-    if (!nativeRuntime || isCollapsed) return undefined;
+    if (isCollapsed) return undefined;
     return startPromptDjReadinessBridge({
       isReady: () => {
         try {
@@ -379,13 +169,7 @@ const BackgroundMusicSection = () => {
       },
       publish: postNativeAvailability,
     });
-  }, [getPromptDjWindow, isCollapsed, nativeRuntime, postNativeAvailability]);
-
-  useEffect(() => () => {
-    closeAfterStartRef.current = true;
-    const session = liveSessionRef.current;
-    if (session) closeLiveMusicSession(session.id).catch(() => undefined);
-  }, []);
+  }, [getPromptDjWindow, isCollapsed, postNativeAvailability]);
 
   return (
     <div
@@ -470,7 +254,7 @@ const BackgroundMusicSection = () => {
                     onClick={clearReferenceAudio}
                     title={t('narration.clearReference', 'Clear reference audio')}
                   >
-                    <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
                   </button>
                 </div>
               )}
@@ -490,10 +274,12 @@ const BackgroundMusicSection = () => {
           onClick={() => {
             const next = !isCollapsed;
             setIsCollapsed(next);
-            localStorage.setItem('bg_music_collapsed', next ? 'true' : 'false');
+            writePreference('bg_music_collapsed', next);
           }}
+          aria-label={isCollapsed ? t('common.expand', 'Expand') : t('common.collapse', 'Collapse')}
+          aria-expanded={!isCollapsed}
         >
-          <span className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
+          <span aria-hidden="true" className="material-symbols-rounded">{isCollapsed ? 'expand_more' : 'stat_1'}</span>
         </button>
       </div>
 
@@ -540,7 +326,7 @@ const BackgroundMusicSection = () => {
                 boxShadow: 'var(--md-elevation-level2)'
               }}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: '28px' }}>restart_alt</span>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '28px' }}>restart_alt</span>
             </button>
 
             {/* Floating resizer pill (bottom-right) */}

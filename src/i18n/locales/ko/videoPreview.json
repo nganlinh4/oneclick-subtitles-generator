@@ -1,14 +1,13 @@
 {
-  "noTranslatedSubtitles": "번역된 자막이 없습니다",
   "renderError": "자막 렌더링 오류: {{error}}",
-  "rendering": "자막을 넣어 영상을 렌더링하는 중...",
-  "noSubtitlesToRender": "렌더링할 자막이 없습니다",
   "retrySubtitlePreview": "다시 시도",
   "subtitlePreviewUnavailable": "자막 미리보기가 준비되지 않았습니다. 이 영상을 다시 열어 보세요.",
   "seek": "영상 탐색",
   "subtitleFontPreparing": "자막 글꼴을 준비하는 중입니다. 준비되면 미리보기가 표시됩니다.",
   "subtitleFontUnavailable": "자막 글꼴을 설치하지 못해({{reason}}) 자막을 그릴 수 없습니다.",
   "retrySubtitleFont": "다시 설치",
-  "subtitlePreviewEmpty": "아직 자막이 없습니다. 자막을 추가하거나 생성하면 여기 영상에 표시됩니다.",
-  "projectStyleUnavailable": "자막 스타일을 설정하려면 먼저 영상을 추가하세요."
+  "projectStyleUnavailable": "자막 스타일을 설정하려면 먼저 영상을 추가하세요.",
+  "downloadMedia": "미디어 다운로드",
+  "exportFailed": "미디어 파일을 내보낼 수 없습니다.",
+  "pictureInPicture": "PIP 모드"
 }

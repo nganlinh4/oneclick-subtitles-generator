@@ -5,6 +5,7 @@
 
 import { getTranscriptionRulesSync } from '../../utils/transcriptionRulesStore';
 import { normalizeTranscriptionPrompt } from './transcriptionPromptInvariant';
+import { readPreference, writePreference } from '../../platform/preferences/store';
 
 // Task instructions stay separate from the transport schema and clip-local timestamp contract.
 // Descriptions are UI copy, never truncated fragments of the request prompt.
@@ -63,23 +64,21 @@ const SPEECH_ONLY_PRESET_IDS = new Set([
     'diarize-speakers',
 ]);
 
-// Function declarations first
-const getUserPromptPresetsImpl = () => {
-    try {
-        const savedPresets = localStorage.getItem('user_prompt_presets');
-        return savedPresets ? JSON.parse(savedPresets) : [];
-    } catch (error) {
-        console.error('Error loading user prompt presets:', error);
-        return [];
-    }
+// Outside-range context exists only in a run's promptContext; it is never read from storage.
+const outsideContextSuffix = (promptContext) => {
+    const text = promptContext?.useOutsideResultsContext === true ? promptContext.outsideContextText : '';
+    return typeof text === 'string' && text.trim()
+        ? `
+
+Contextual subtitles outside the selected range (for consistency):${text}`
+        : '';
 };
 
+// Function declarations first
+const getUserPromptPresetsImpl = () => readPreference('user_prompt_presets');
+
 const saveUserPromptPresetsImpl = (presets) => {
-    try {
-        localStorage.setItem('user_prompt_presets', JSON.stringify(presets));
-    } catch (error) {
-        console.error('Error saving user prompt presets:', error);
-    }
+    writePreference('user_prompt_presets', presets);
 };
 
 const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, options = {}) => {
@@ -87,7 +86,7 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
     // Check if a specific preset was selected in the Video Processing Options Modal
     const selectedPresetId = promptContext
         ? promptContext.presetId
-        : localStorage.getItem('video_processing_prompt_preset');
+        : readPreference('video_processing_prompt_preset');
     if (contentType === 'audio' && ['extract-text', 'describe-video'].includes(selectedPresetId)) {
         throw new Error('This preset requires video frames. Disable audio-only or choose a speech preset.');
     }
@@ -95,7 +94,7 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
     // Get the transcription rules if available and enabled (using sync version)
     const useTranscriptionRules = promptContext
         ? promptContext.useTranscriptionRules === true
-        : localStorage.getItem('video_processing_use_transcription_rules') !== 'false';
+        : readPreference('video_processing_use_transcription_rules');
     const transcriptionRules = useTranscriptionRules
         ? (promptContext ? promptContext.transcriptionRules : getTranscriptionRulesSync())
         : null;
@@ -119,7 +118,7 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
             if (selectedPresetId === 'translate-directly') {
                 const customLanguage = promptContext
                     ? promptContext.customLanguage
-                    : localStorage.getItem('video_processing_custom_language');
+                    : readPreference('video_processing_custom_language');
                 if (typeof customLanguage !== 'string' || !customLanguage.trim()) {
                     throw new Error('Please enter a target language');
                 }
@@ -133,7 +132,7 @@ const getTranscriptionPromptImpl = (contentType, userProvidedSubtitles = null, o
         // Use the prompt from settings (either 'settings' was selected or no preset specified)
         const settingsPrompt = promptContext
             ? promptContext.settingsPrompt
-            : localStorage.getItem('transcription_prompt');
+            : readPreference('transcription_prompt');
         if (settingsPrompt && settingsPrompt.trim() !== '') {
             basePrompt = normalizeTranscriptionPrompt(
                 settingsPrompt,
@@ -203,20 +202,7 @@ Rules:
 
 Numbered subtitle list:\n${numberedSubtitles}`;
 
-            // Append outside-range context if the modal requested it (persisted in localStorage)
-            try {
-                const useOutside = promptContext
-                    ? promptContext.useOutsideResultsContext === true
-                    : localStorage.getItem('video_processing_use_outside_context') === 'true';
-                const ocText = promptContext
-                    ? promptContext.outsideContextText
-                    : localStorage.getItem('video_processing_outside_context_text');
-                if (useOutside && ocText && ocText.trim()) {
-                    simplifiedPrompt += `\n\nContextual subtitles outside the selected range (for consistency):${ocText}`;
-                }
-            } catch (e) {
-                // ignore localStorage access issues
-            }
+            simplifiedPrompt += outsideContextSuffix(promptContext);
         } else {
             // For full video processing, use a clean prompt similar to segment processing
             simplifiedPrompt = `Time all ${subtitleCount} provided subtitles for this video. Match each numbered subtitle to when it appears in the video.
@@ -234,20 +220,7 @@ Rules:
 
 Numbered subtitle list (all ${subtitleCount} must be timed):\n${numberedSubtitles}`;
 
-            // Append outside-range context in full-video path as well
-            try {
-                const useOutside = promptContext
-                    ? promptContext.useOutsideResultsContext === true
-                    : localStorage.getItem('video_processing_use_outside_context') === 'true';
-                const ocText = promptContext
-                    ? promptContext.outsideContextText
-                    : localStorage.getItem('video_processing_outside_context_text');
-                if (useOutside && ocText && ocText.trim()) {
-                    simplifiedPrompt += `\n\nContextual subtitles outside the selected range (for consistency):${ocText}`;
-                }
-            } catch (e) {
-                // ignore
-            }
+            simplifiedPrompt += outsideContextSuffix(promptContext);
         }
 
 
@@ -335,14 +308,14 @@ const getEmptySpeechPolicyImpl = (contentType, userProvidedSubtitles = null, pro
 
     const selectedPresetId = promptContext
         ? promptContext.presetId
-        : localStorage.getItem('video_processing_prompt_preset');
+        : readPreference('video_processing_prompt_preset');
     if (selectedPresetId && selectedPresetId !== 'settings') {
         return SPEECH_ONLY_PRESET_IDS.has(selectedPresetId) ? 'provenSilence' : undefined;
     }
 
     const settingsPrompt = promptContext
         ? promptContext.settingsPrompt
-        : localStorage.getItem('transcription_prompt');
+        : readPreference('transcription_prompt');
     if (!settingsPrompt?.trim()) return 'provenSilence';
 
     const normalizedSettingsPrompt = settingsPrompt.trim();
@@ -476,7 +449,7 @@ export const saveUserPromptPresets = saveUserPromptPresetsImpl;
 export const shouldSplitGeneratedSubtitles = (options = {}) => {
     const presetId = options.promptContext
         ? options.promptContext.presetId
-        : localStorage.getItem('video_processing_prompt_preset');
+        : readPreference('video_processing_prompt_preset');
     return options.autoSplitSubtitles === true
         && !options.userProvidedSubtitles?.trim()
         && presetId !== 'chaptering';

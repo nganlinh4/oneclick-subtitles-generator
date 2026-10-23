@@ -76,7 +76,7 @@ export const renderRefreshButton = (source, subtitles, isDetecting, {
       title={t('narration.detectLanguage', 'Detect language')}
       type="button"
     >
-      <span className="material-symbols-rounded" style={{ fontSize: '12px' }}>refresh</span>
+      <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '12px' }}>refresh</span>
     </button>
   );
 };

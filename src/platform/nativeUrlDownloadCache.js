@@ -1,17 +1,6 @@
+import { utf8ByteLength } from './plainDataRecord';
 const MAX_COMPLETED_ASSETS = 32;
 const MAX_COMPLETED_ASSET_BYTES = 16 * 1024 * 1024;
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint <= 0x7f) bytes += 1;
-    else if (codePoint <= 0x7ff) bytes += 2;
-    else if (codePoint <= 0xffff) bytes += 3;
-    else bytes += 4;
-  }
-  return bytes;
-};
 
 // A hostile subtitle is charged more than the whole budget so it can never be cached.
 const subtitleByteLength = (subtitle) => {

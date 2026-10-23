@@ -8,6 +8,7 @@ import {
   TEXT_ALIGNMENTS,
   TEXT_TRANSFORMS,
 } from './glyphAtlas';
+import { hasExactKeys, isRecord } from './plainDataRecord';
 
 export const GLYPH_ATLAS_STAGING_ERROR_CODES = Object.freeze([
   'glyphAtlasStagingInvalidDescriptor',
@@ -26,7 +27,6 @@ export class GlyphAtlasStagingError extends Error {
   }
 }
 
-export const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const isBounded = (value, minimum, maximum) => Number.isInteger(value) && value >= minimum && value <= maximum;
 const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
@@ -44,12 +44,6 @@ const isBoundedMagnitude = (value, maximum) => Number.isInteger(value) && Math.a
 /** The same rule for a fractional quantity: signed, finite, bounded by magnitude rather than range. */
 const isFiniteMagnitude = (value, maximum) => isFiniteNumber(value) && Math.abs(value) <= maximum;
 
-export const hasExactKeys = (value, expectedKeys) => {
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value).sort();
-  return keys.length === expectedKeys.length && keys.every((key, index) => key === expectedKeys[index]);
-};
-
 export const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
   try {
@@ -60,15 +54,12 @@ export const isUuidV7 = (value) => {
 };
 
 const CONTENT_HASH_PATTERN = /^[0-9a-f]{8}$/;
-/** Mirrors the code shape `desktopRuntime` already guarantees for a sanitized bridge error. */
-export const NATIVE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{0,127}$/;
 const DIRECTIONS = new Set(['ltr', 'rtl', 'neutral']);
 /** The generic families the baker probes. Fixed, because the far side re-derives against the count. */
 const FACE_PROBE_COUNT = 3;
 const PROBE_KEYS = ['aloneWidthPx', 'chainedWidthPx', 'participated', 'probeFamily'];
 const STYLES = new Set(['normal', 'italic', 'oblique']);
 const CELL_ADVANCE_VERDICTS = new Set(['reproduces', 'refused']);
-/** Sorted, because `hasExactKeys` compares against a sorted key list. */
 const REFUSAL_KEYS = Object.freeze(['directionNeedsBidi', 'shapingCrossesClusters']);
 
 /**

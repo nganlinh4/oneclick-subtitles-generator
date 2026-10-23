@@ -1,26 +1,10 @@
-import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from "../../../config/geminiModels";
 import { cancelNativeVideoDownload } from "../../../platform/nativeUrlDownloadAdapter";
 import {
   getCredentialAvailability,
   getCredentialStateSnapshot,
   initializeCredentialState,
 } from "../../../platform/credentialStateController";
-import {
-  readDownloadCookiePreference,
-  writeDownloadCookiePreference,
-} from "../../../platform/downloadCookiePreference";
-
-const NATIVE_SECRET_ALIASES = [
-  "gemini_api_key",
-  "gemini_api_keys",
-  "gemini_token",
-  "gemini_blacklisted_keys",
-  "genius_token",
-  "youtube_api_key",
-  "youtube_client_id",
-  "youtube_client_secret",
-  "youtube_oauth_token",
-];
+import { readPreference, writePreference } from "../../../platform/preferences/store";
 
 const getNativeCredentialAvailability = (snapshot, useOAuth = false) => (
   getCredentialAvailability(snapshot, { useOAuth })
@@ -35,12 +19,6 @@ export const createSettingsHandlers = ({
   currentDownloadId,
   setActiveTab,
   setStatus,
-  setTimeFormat,
-  setShowWaveformLongVideos,
-  setOptimizedResolution,
-  setUseOptimizedPreview,
-  setUseCookiesForDownload,
-  setEnableYoutubeSearch,
   setApiKeysSet,
   t,
 }) => {
@@ -66,11 +44,11 @@ export const createSettingsHandlers = ({
   const handleTabChange = (tab, isUserInitiated = true) => {
     // Only update user preference if this is a user-initiated change
     if (isUserInitiated) {
-      localStorage.setItem("userPreferredTab", tab);
+      writePreference("userPreferredTab", tab);
     }
 
     // Always update the current active tab
-    localStorage.setItem("lastActiveTab", tab);
+    writePreference("lastActiveTab", tab);
     setActiveTab(tab);
 
     // Choosing another acquisition surface is navigation, not a media mutation. The currently
@@ -80,99 +58,12 @@ export const createSettingsHandlers = ({
   };
 
   /**
-   * Handle saving API keys and settings
+   * Refresh app state after the Settings modal saved. Preferences have already been committed and
+   * published by the preference store, and credentials by the native vault.
    */
-  const saveApiKeys = async (
-    _geminiKey,
-    _youtubeKey,
-    _geniusKey,
-    segmentDuration = 5,
-    geminiModel,
-    timeFormat,
-    _legacyOptimizeVideos,
-    optimizedResolutionSetting,
-    useOptimizedPreviewSetting,
-    useCookiesForDownloadSetting,
-    enableYoutubeSearchSetting,
-    showWaveformLongVideosSetting
-  ) => {
-    // The desktop settings callback is a compatibility-shaped API. Secret arguments are
-    // intentionally ignored, and legacy aliases are removed before the first async boundary.
-    NATIVE_SECRET_ALIASES.forEach((key) => localStorage.removeItem(key));
-
-    // Save segment duration
-    if (segmentDuration) {
-      localStorage.setItem("segment_duration", segmentDuration.toString());
-    }
-
-    // Save time format
-    if (timeFormat) {
-      localStorage.setItem("time_format", timeFormat);
-      setTimeFormat(timeFormat);
-    }
-
-    // Save waveform for long videos setting
-    if (showWaveformLongVideosSetting !== undefined) {
-      localStorage.setItem("show_waveform_long_videos", showWaveformLongVideosSetting.toString());
-      setShowWaveformLongVideos(showWaveformLongVideosSetting);
-
-      // Dispatch custom event for immediate effect
-      window.dispatchEvent(
-        new CustomEvent("waveformLongVideosChanged", {
-          detail: { value: showWaveformLongVideosSetting },
-        })
-      );
-    }
-
-    // Save Gemini model
-    if (geminiModel) {
-      localStorage.setItem(
-        "gemini_model",
-        normalizeMediaModelId(geminiModel, DEFAULT_GEMINI_MODEL_ID)
-      );
-    }
-
-    // Video optimization is now always enabled - no need to save this setting
-
-    if (optimizedResolutionSetting) {
-      localStorage.setItem("optimized_resolution", optimizedResolutionSetting);
-      setOptimizedResolution(optimizedResolutionSetting);
-    }
-
-    if (useOptimizedPreviewSetting !== undefined) {
-      localStorage.setItem(
-        "use_optimized_preview",
-        useOptimizedPreviewSetting.toString()
-      );
-      setUseOptimizedPreview(useOptimizedPreviewSetting);
-
-      // Trigger a custom event to immediately notify VideoPreview component
-      // This ensures immediate synchronization without waiting for the 500ms interval
-      window.dispatchEvent(
-        new CustomEvent("optimizedPreviewChanged", {
-          detail: { value: useOptimizedPreviewSetting },
-        })
-      );
-    }
-
-    if (useCookiesForDownloadSetting !== undefined) {
-      writeDownloadCookiePreference({
-        enabled: useCookiesForDownloadSetting,
-        selectedSource: readDownloadCookiePreference().selectedSource,
-      });
-      setUseCookiesForDownload(useCookiesForDownloadSetting);
-    }
-
-    if (enableYoutubeSearchSetting !== undefined) {
-      localStorage.setItem(
-        "enable_youtube_search",
-        enableYoutubeSearchSetting.toString()
-      );
-      setEnableYoutubeSearch(enableYoutubeSearchSetting);
-    }
-
+  const saveApiKeys = async () => {
     // Update state based on the selected authentication method
-    const useOAuth = localStorage.getItem("use_youtube_oauth") === "true";
+    const useOAuth = readPreference("use_youtube_oauth");
     try {
       await initializeCredentialState();
       setApiKeysSet(getNativeCredentialAvailability(

@@ -7,7 +7,6 @@
  */
 export {
   callGeminiApi,
-  callGeminiApiWithFilesApi,
   callGeminiApiWithFilesApiForAnalysis,
   streamGeminiApiInline,
   streamGeminiApiWithFilesApi,

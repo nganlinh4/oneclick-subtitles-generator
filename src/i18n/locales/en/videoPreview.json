@@ -1,14 +1,13 @@
 {
-  "noSubtitlesToRender": "No subtitles to render",
   "renderError": "Error rendering subtitles: {{error}}",
-  "noTranslatedSubtitles": "No translated subtitles available",
-  "rendering": "Rendering video with subtitles...",
   "retrySubtitlePreview": "Retry",
   "subtitlePreviewUnavailable": "Subtitle preview is not ready. Try reopening this video.",
   "seek": "Seek video",
   "subtitleFontPreparing": "Preparing the subtitle font. The preview will appear when it is ready.",
   "subtitleFontUnavailable": "The subtitle font could not be installed ({{reason}}), so subtitles cannot be drawn.",
   "retrySubtitleFont": "Install again",
-  "subtitlePreviewEmpty": "No subtitles yet. Add or generate them and they will appear on the video here.",
-  "projectStyleUnavailable": "Add a video before styling subtitles."
+  "projectStyleUnavailable": "Add a video before styling subtitles.",
+  "downloadMedia": "Download media",
+  "exportFailed": "The media file could not be exported.",
+  "pictureInPicture": "Picture-in-picture"
 }

@@ -45,7 +45,7 @@ const getWaveColors = () => {
 
 /**
  * Reactive variant: recomputes the wave colors when the theme flips (data-theme attribute / class
- * mutation, or the `storage` event toggleTheme dispatches), so a long-lived panel like the Tools tab
+ * mutation), so a long-lived panel like the Tools tab
  * doesn't stay stuck on the previous theme's colors while a wavy bar / spinner is on screen.
  */
 export const useWaveColors = () => {
@@ -55,9 +55,8 @@ export const useWaveColors = () => {
     const recompute = () => setColors(getWaveColors());
     const observer = new MutationObserver(recompute);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-    window.addEventListener('storage', recompute);
     recompute(); // catch any change between first render and effect attach
-    return () => { observer.disconnect(); window.removeEventListener('storage', recompute); };
+    return () => observer.disconnect();
   }, []);
   return colors;
 };

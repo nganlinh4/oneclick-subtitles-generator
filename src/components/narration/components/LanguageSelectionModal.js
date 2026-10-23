@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { getName } from 'iso-639-1';
 import CloseButton from '../../common/CloseButton';
 import CustomDropdown from '../../common/CustomDropdown';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 import '../../../styles/narration/VoiceSelectionModal.css'; // Reuse the same CSS
 
 const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, onLanguageSelect, detectedLanguage, t }) => {
@@ -229,6 +230,10 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
                 <div
                   className={`voice-card ${getFilteredRecommendedLanguage().code === selectedLanguage ? 'selected' : ''}`}
                   onClick={() => handleLanguageSelect(getFilteredRecommendedLanguage())}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={activateOnKey}
+                  aria-pressed={getFilteredRecommendedLanguage().code === selectedLanguage}
                 >
                   <div className="voice-info">
                     <span className="voice-name">{getLanguageName(getFilteredRecommendedLanguage().code)}</span>
@@ -251,6 +256,10 @@ const LanguageSelectionModal = ({ isOpen, onClose, languages, selectedLanguage, 
                     key={language.code}
                     className={`voice-card ${language.code === selectedLanguage ? 'selected' : ''}`}
                     onClick={() => handleLanguageSelect(language)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateOnKey}
+                    aria-pressed={language.code === selectedLanguage}
                   >
                     <div className="voice-info">
                       <span className="voice-name">{getLanguageName(language.code)}</span>

@@ -1,79 +1,32 @@
 /**
- * Git version utilities for displaying app version based on commit information
+ * Version utilities for the About tab: the installed package version plus the signed updater's
+ * view of the latest release.
  */
 
-import { fetchBrowserResource } from '../platform/browserFetch';
 import { getDesktopAppVersion } from '../platform/updateService';
 import { startStartupUpdateCheck } from '../platform/startupUpdateCoordinator';
 
 /**
- * Get git commit information from the current repository
- * This function attempts to get git info in multiple ways:
- * 1. From environment variables (set during build)
- * 2. From a generated version file (created during build)
- * 3. From package.json as fallback
- * 
- * @returns {Promise<Object>} Git version information
+ * The installed desktop package version, decorated with the build's generated commit metadata.
+ *
+ * @returns {Promise<Object>} Version information
  */
 export const getGitVersion = async () => {
   try {
-    if (typeof window !== 'undefined' && window.isTauri) {
-      const { default: generatedVersion } = await import('../config/version.js')
-        .catch(() => ({ default: null }));
-      const appVersion = await getDesktopAppVersion();
-      const buildDate = generatedVersion?.date || new Date(0).toISOString();
-      return {
-        ...(generatedVersion || {}),
-        hash: generatedVersion?.hash || 'release',
-        shortHash: generatedVersion?.shortHash || 'release',
-        date: buildDate,
-        timestamp: generatedVersion?.timestamp || 0,
-        branch: 'main',
-        version: appVersion,
-        source: 'tauri-package'
-      };
-    }
-
-    // Try to get from environment variables first (set during build)
-    if (process.env.REACT_APP_GIT_COMMIT_HASH && process.env.REACT_APP_GIT_COMMIT_DATE) {
-      return {
-        hash: process.env.REACT_APP_GIT_COMMIT_HASH,
-        shortHash: process.env.REACT_APP_GIT_COMMIT_HASH.substring(0, 7),
-        date: process.env.REACT_APP_GIT_COMMIT_DATE,
-        timestamp: process.env.REACT_APP_GIT_COMMIT_TIMESTAMP,
-        version: formatGitVersion(
-          process.env.REACT_APP_GIT_COMMIT_DATE,
-          process.env.REACT_APP_GIT_COMMIT_HASH.substring(0, 7)
-        ),
-        source: 'environment'
-      };
-    }
-
-    // Try to load from generated version file
-    try {
-      const versionModule = await import('../config/version.js');
-      if (versionModule.default) {
-        const versionInfo = versionModule.default;
-        return {
-          ...versionInfo,
-          version: formatGitVersion(versionInfo.date, versionInfo.shortHash),
-          source: 'generated'
-        };
-      }
-    } catch (error) {
-      // Version file doesn't exist, continue to fallback
-    }
-
-    // Fallback to package.json version
+    const { default: generatedVersion } = await import('../config/version.js')
+      .catch(() => ({ default: null }));
+    const appVersion = await getDesktopAppVersion();
+    const buildDate = generatedVersion?.date || new Date(0).toISOString();
     return {
-      hash: 'unknown',
-      shortHash: 'unknown',
-      date: new Date().toISOString().split('T')[0],
-      timestamp: Date.now(),
-      version: '1.0.0', // From package.json
-      source: 'fallback'
+      ...(generatedVersion || {}),
+      hash: generatedVersion?.hash || 'release',
+      shortHash: generatedVersion?.shortHash || 'release',
+      date: buildDate,
+      timestamp: generatedVersion?.timestamp || 0,
+      branch: 'main',
+      version: appVersion,
+      source: 'tauri-package'
     };
-
   } catch (error) {
     console.warn('Failed to get git version information:', error);
     return {
@@ -84,48 +37,6 @@ export const getGitVersion = async () => {
       version: '1.0.0',
       source: 'error'
     };
-  }
-};
-
-/**
- * Format git commit date and hash into a version string
- * Format: YYYY.MM.DD-HHMMSS-{shortHash}
- * 
- * @param {string} dateString - ISO date string or date in format YYYY-MM-DD HH:MM:SS
- * @param {string} shortHash - Short git commit hash
- * @returns {string} Formatted version string
- */
-const formatGitVersion = (dateString, shortHash) => {
-  try {
-    let date;
-    
-    // Handle different date formats
-    if (dateString.includes('T')) {
-      // ISO format: 2024-01-15T14:30:45Z
-      date = new Date(dateString);
-    } else if (dateString.includes(' ')) {
-      // Format: 2024-01-15 14:30:45
-      date = new Date(dateString.replace(' ', 'T') + 'Z');
-    } else {
-      // Just date: 2024-01-15
-      date = new Date(dateString + 'T00:00:00Z');
-    }
-
-    if (isNaN(date.getTime())) {
-      throw new Error('Invalid date');
-    }
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-
-    return `${year}.${month}.${day}-${hours}${minutes}${seconds}-${shortHash}`;
-  } catch (error) {
-    console.warn('Failed to format git version:', error);
-    return `unknown-${shortHash}`;
   }
 };
 
@@ -159,78 +70,40 @@ export const getDisplayVersion = (versionInfo) => {
 };
 
 /**
- * Get the latest version information from GitHub repository (latest commit on main branch)
+ * The latest release as reported by the signed desktop updater.
  *
  * @returns {Promise<Object>} Latest version information
  */
 export const getLatestVersion = async () => {
   try {
-    if (typeof window !== 'undefined' && window.isTauri) {
-      const current = await getGitVersion();
-      const status = await startStartupUpdateCheck();
-      if (status === null) {
-        throw new Error('The signed update check failed');
-      }
-      if (!status.configured) {
-        // Local/automation builds intentionally skip update checks. They have no latest-release
-        // result, but that is not a failed request and must not become an error in About.
-        return { configured: false, source: 'tauri-updater-unavailable' };
-      }
-      if (status.update === null) {
-        return {
-          ...current,
-          version: status.currentVersion,
-          source: 'tauri-updater-current'
-        };
-      }
+    const current = await getGitVersion();
+    const status = await startStartupUpdateCheck();
+    if (status === null) {
+      throw new Error('The signed update check failed');
+    }
+    if (!status.configured) {
+      // Local/automation builds intentionally skip update checks. They have no latest-release
+      // result, but that is not a failed request and must not become an error in About.
+      return { configured: false, source: 'tauri-updater-unavailable' };
+    }
+    if (status.update === null) {
       return {
-        hash: 'release',
-        shortHash: 'release',
-        date: status.update.publishedAt || current.date,
-        timestamp: status.update.publishedAt
-          ? Math.floor(Date.parse(status.update.publishedAt) / 1000)
-          : current.timestamp,
-        branch: 'main',
-        message: status.update.notes || '',
-        version: status.update.version,
-        source: 'tauri-updater'
+        ...current,
+        version: status.currentVersion,
+        source: 'tauri-updater-current'
       };
     }
-
-    // Get the latest commit from the main branch
-    const commitsResponse = await fetchBrowserResource('https://api.github.com/repos/nganlinh4/oneclick-subtitles-generator/commits/main', {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'OSG-App'
-      }
-    });
-
-    if (!commitsResponse.ok) {
-      throw new Error(`GitHub API error: ${commitsResponse.status}`);
-    }
-
-    const commitData = await commitsResponse.json();
-    const commitDate = commitData.commit.committer.date;
-    const shortHash = commitData.sha.substring(0, 7);
-    const fullHash = commitData.sha;
-
-    // Format version the same way as current version
-    const version = formatGitVersion(commitDate, shortHash);
-
     return {
-      hash: fullHash,
-      shortHash: shortHash,
-      date: commitDate,
-      timestamp: Math.floor(new Date(commitDate).getTime() / 1000),
+      hash: 'release',
+      shortHash: 'release',
+      date: status.update.publishedAt || current.date,
+      timestamp: status.update.publishedAt
+        ? Math.floor(Date.parse(status.update.publishedAt) / 1000)
+        : current.timestamp,
       branch: 'main',
-      message: commitData.commit.message,
-      author: {
-        name: commitData.commit.author.name,
-        email: commitData.commit.author.email
-      },
-      version: version,
-      url: commitData.html_url,
-      source: 'github-commits'
+      message: status.update.notes || '',
+      version: status.update.version,
+      source: 'tauri-updater'
     };
   } catch (error) {
     console.warn('Failed to fetch latest version information:', error);

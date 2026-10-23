@@ -15,7 +15,6 @@ const historyApi = {
   handleReset: vi.fn(),
   createCheckpoint: vi.fn(),
   handleJumpToCheckpoint: vi.fn(),
-  captureStateBeforeMerge: vi.fn(),
   observeExternalLyrics: vi.fn(),
   commitLyricsMutation,
 };

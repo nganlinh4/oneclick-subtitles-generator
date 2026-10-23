@@ -57,7 +57,7 @@ test('document consolidate/summarize and translation both route through the same
   // The default (No Split) path throws directly rather than catching per-chunk, which is exactly
   // why this journey keeps Split Duration at 0 for its toast-based refusal assertion.
   assert.match(consolidationService, /if \(splitDuration > 0\) \{/u);
-  assert.match(consolidationService, /return requestConsolidation\(subtitlesText, model, customPrompt\);/u);
+  assert.match(consolidationService, /return requestConsolidation\(subtitlesText, model, customPrompt, source\);/u);
   assert.match(journey, /04-document-consolidate-refused/u);
   assert.match(journey, /05-document-summarize-refused/u);
   assert.match(journey, /06-main-track-translation-refused/u);
@@ -67,7 +67,7 @@ test('background image generation maps the missing-credential code to its api-ke
   assert.match(imageGenerationService, /runNativeGeminiText\(\{\s*task: 'analyzeSubtitles'/u);
   // The friendly-message mapper keys on the bounded error CODE the credential wall sets, so the
   // customer copy is the api-key message, not the generic fallback.
-  assert.match(jobLifecycle, /error\.code = typeof code === 'string'/u);
+  assert.match(jobLifecycle, /error\.code = isNativeErrorCode\(code\)/u);
   assert.match(errorMessages, /if \(code === 'geminiCredentialUnavailable'\) \{\s*return t\('backgroundGenerator\.error\.apiKeyMissing', 'Gemini API key not set\. Please set it in settings\.'\);/u);
   assert.match(backgroundImageGenerator, /window\.addToast\(getFriendlyErrorMessage\(t, err(?:\?\.message \|\| String\(err\))?\), 'error', 5000\)/u);
   assert.match(journey, /expectedMessage: 'Gemini API key not set\. Please set it in settings\.'/u);
@@ -91,8 +91,7 @@ test("PromptDJ's refusal never reaches Rust: the embedded app itself gates play/
   assert.match(journey, /PROMPTDJ_MESSAGE = 'Please set your Gemini API key in the main app first\.'/u);
 });
 
-test('both Gemini transcription methods are really offered on a non-Vercel desktop build', () => {
-  assert.match(methodOverlay, /const isOldMethodDisabled = isVercelMode;/u);
+test('both Gemini transcription methods are really offered on the desktop build', () => {
   assert.match(methodOverlay, /data-transcription-method=\{method\.id\}/u);
   assert.match(methodOverlay, /data-method-available=\{method\.disabled \? 'false' : 'true'\}/u);
   assert.match(journey, /methodAvailability\.newMethod, 'true'/u);

@@ -138,14 +138,14 @@ const CustomGeminiModelsCard = ({ customGeminiModels, setCustomGeminiModels }) =
                     onClick={() => handleEditModel(model.id)}
                     title={t('settings.customModels.edit', 'Edit model')}
                   >
-                    <span className="material-symbols-rounded" style={{ fontSize: 14 }}>edit</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 14 }}>edit</span>
                   </button>
                   <button
                     className="delete-model-btn"
                     onClick={() => handleDeleteModel(model.id)}
                     title={t('settings.customModels.delete', 'Delete model')}
                   >
-                    <span className="material-symbols-rounded" style={{ fontSize: 14 }}>delete</span>
+                    <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 14 }}>delete</span>
                   </button>
                 </div>
               </div>

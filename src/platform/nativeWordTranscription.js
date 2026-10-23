@@ -1,5 +1,5 @@
 import { Channel } from '@tauri-apps/api/core';
-import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
+import { invokeDesktop } from './desktopRuntime';
 
 /**
  * Starts native word-native transcription via Tauri command.
@@ -7,8 +7,7 @@ import { invokeDesktop, isDesktopRuntime } from './desktopRuntime';
  * @param {Object} request
  * @param {string} request.projectId
  * @param {number} [request.expectedProjectStateVersion]
- * @param {string} [request.mediaAssetId]
- * @param {string} [request.filePath]
+ * @param {string} request.mediaAssetId Owned media asset ID; native paths never cross the bridge.
  * @param {string} [request.credentialId]
  * @param {number} [request.rangeStartMs]
  * @param {number} [request.rangeEndMs]
@@ -32,14 +31,16 @@ export const startWordNativeTranscription = async (request = {}, handlers = {}) 
   if (!request.projectId || typeof request.projectId !== 'string') {
     throw new Error('Native word transcription requires an established active project ID');
   }
+  if (!request.mediaAssetId || typeof request.mediaAssetId !== 'string') {
+    throw new Error('Native word transcription requires an imported media asset ID');
+  }
 
   const normalizedRequest = {
     projectId: request.projectId,
     ...(request.expectedProjectStateVersion !== undefined
       ? { expectedProjectStateVersion: request.expectedProjectStateVersion }
       : {}),
-    ...(request.mediaAssetId ? { mediaAssetId: request.mediaAssetId } : {}),
-    ...(request.filePath ? { filePath: request.filePath } : {}),
+    mediaAssetId: request.mediaAssetId,
     ...(request.credentialId ? { credentialId: request.credentialId } : {}),
     ...(request.rangeStartMs !== undefined ? { rangeStartMs: request.rangeStartMs } : {}),
     ...(request.rangeEndMs !== undefined ? { rangeEndMs: request.rangeEndMs } : {}),
@@ -107,5 +108,3 @@ export const cancelWordNativeTranscription = async (taskId) => {
 export const getNativeTranscriptionJob = async (taskId) => {
   return await invokeDesktop('job_get', { id: taskId });
 };
-
-export const isNativeWordTranscriptionSupported = () => isDesktopRuntime();

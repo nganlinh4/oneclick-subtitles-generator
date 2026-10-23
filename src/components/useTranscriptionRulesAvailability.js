@@ -18,26 +18,21 @@ const hasMeaningfulTranscriptionRules = (rules) => (
 );
 
 /**
- * Tracks whether saved transcription/analysis rules exist and are non-empty.
+ * Tracks whether saved transcription/analysis rules exist and are non-empty. Callers combine this
+ * with the user's toggle; an unavailable rule set never rewrites that stored choice.
  *
  * The project-backed transcription-rules store is the sole authority. Its event carries
  * the cache/project scope that produced the snapshot, so a late event from another media
  * cannot enable rules for the active project.
  *
- * @param {boolean} useTranscriptionRules current toggle value
- * @param {Function} setUseTranscriptionRules toggle setter (disabled when no rules)
  * @returns {boolean} whether usable rules are available
  */
-const useTranscriptionRulesAvailability = (useTranscriptionRules, setUseTranscriptionRules) => {
+const useTranscriptionRulesAvailability = () => {
     const [transcriptionRulesAvailable, setTranscriptionRulesAvailable] = useState(false);
 
     useEffect(() => {
         const applyAvailability = (rules) => {
-            const hasRules = hasMeaningfulTranscriptionRules(rules);
-            setTranscriptionRulesAvailable(hasRules);
-            if (!hasRules && useTranscriptionRules) {
-                setUseTranscriptionRules(false);
-            }
+            setTranscriptionRulesAvailable(hasMeaningfulTranscriptionRules(rules));
         };
 
         applyAvailability(getTranscriptionRulesSync());
@@ -51,7 +46,7 @@ const useTranscriptionRulesAvailability = (useTranscriptionRules, setUseTranscri
         return () => {
             window.removeEventListener('transcriptionRulesUpdated', handleRulesUpdate);
         };
-    }, [setUseTranscriptionRules, useTranscriptionRules]);
+    }, []);
 
     return transcriptionRulesAvailable;
 };

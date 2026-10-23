@@ -1,13 +1,11 @@
 {
-  "searchLabel": "Tìm kiếm video YouTube:",
   "searchPlaceholder": "Nhập tiêu đề video...",
   "searching": "Đang tìm kiếm...",
   "noResults": "Không tìm thấy kết quả.",
   "searchError": "Lỗi khi tìm kiếm YouTube. Vui lòng thử lại hoặc nhập URL trực tiếp.",
   "noApiKey": "Vui lòng thiết lập khóa API YouTube trong cài đặt trước.",
-  "noOAuth": "Vui lòng xác thực với YouTube trong cài đặt trước.",
   "authError": "Yêu cầu xác thực YouTube. Vui lòng thiết lập OAuth trong cài đặt.",
-  "downloadVideoOnly": "Tải xuống video",
   "recentVideos": "Video gần đây",
-  "recentSearches": "Tìm kiếm gần đây"
+  "recentSearches": "Tìm kiếm gần đây",
+  "clearSearch": "Xóa từ khóa tìm kiếm"
 }

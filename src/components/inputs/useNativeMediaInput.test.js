@@ -5,11 +5,8 @@ import useNativeMediaInput from './useNativeMediaInput';
 import { ensureProjectOwnsNativeMedia } from '../../platform/nativeMediaOwnership';
 import { activateSubtitleProjectBinding } from '../../platform/subtitleProjectBinding';
 import { createNativeMediaDescriptor } from '../../platform/mediaService';
+import { readActiveMedia } from '../../platform/activeMediaSource';
 
-vi.mock('../../platform/desktopRuntime', async (importOriginal) => ({
-  ...(await importOriginal()),
-  isDesktopRuntime: () => false,
-}));
 vi.mock('../../platform/nativeMediaOwnership', async (importOriginal) => ({
   ...(await importOriginal()),
   ensureProjectOwnsNativeMedia: vi.fn(),
@@ -33,7 +30,7 @@ const MEDIA = createNativeMediaDescriptor({
 
 const renderInput = () => {
   const props = {
-    fileInputRef: { current: null },
+    dropZoneRef: { current: null },
     isLoading: false,
     isSrtOnlyMode: false,
     onVideoSelect: vi.fn(),
@@ -74,7 +71,7 @@ it.each([
   expect(props.setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA);
   expect(ensureProjectOwnsNativeMedia.mock.invocationCallOrder[0])
     .toBeLessThan(props.setUploadedFile.mock.invocationCallOrder[0]);
-  expect(localStorage.getItem('current_file_url')).toBe(MEDIA.playbackUrl);
+  expect(readActiveMedia().playbackUrl).toBe(MEDIA.playbackUrl);
 });
 
 it('never shows a file whose project ownership could not be recorded', async () => {

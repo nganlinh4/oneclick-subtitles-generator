@@ -222,10 +222,8 @@ it('refreshes the same media capability after its own durable project revision a
   });
 });
 
-it('never upgrades a bare URL or anything outside the desktop runtime', () => {
+it('never upgrades a bare URL into a native asset', () => {
   const media = descriptor(ASSET_A, PLAYBACK_A);
   expect(resolveActiveNativeMediaAssetId(media.playbackUrl)).toBeNull();
   expect(resolveActiveNativeMediaAssetId(media)).toBe(ASSET_A);
-  isDesktopRuntime.mockReturnValue(false);
-  expect(resolveActiveNativeMediaAssetId(media)).toBeNull();
 });

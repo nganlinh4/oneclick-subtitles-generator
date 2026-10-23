@@ -1,18 +1,27 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import useAsrOptions from './useAsrOptions';
 
 describe('useAsrOptions language ownership', () => {
   beforeEach(() => localStorage.clear());
 
-  it('replaces a persisted unsupported Qwen language with Auto before use or persistence', async () => {
+  it('uses Auto for a persisted unsupported Qwen language without rewriting the stored choice', () => {
     localStorage.setItem('asr_qwen3-asr-0.6b_language', 'vi');
     const { result } = renderHook(() => useAsrOptions('qwen3-asr-0.6b'));
 
     expect(result.current.language).toBe('auto');
-    await waitFor(() => {
-      expect(localStorage.getItem('asr_qwen3-asr-0.6b_language')).toBe('auto');
-    });
+    expect(localStorage.getItem('asr_qwen3-asr-0.6b_language')).toBe('vi');
+  });
+
+  it('stores user changes per engine and seeds Parakeet from its legacy keys', () => {
+    localStorage.setItem('parakeet_max_chars', '42');
+    const { result } = renderHook(() => useAsrOptions('nvidia-parakeet'));
+    expect(result.current.maxChars).toBe(42);
+    expect(localStorage.getItem('asr_nvidia-parakeet_max_chars')).toBeNull();
+
+    act(() => result.current.setMaxWords(9));
+    expect(result.current.maxWords).toBe(9);
+    expect(localStorage.getItem('asr_nvidia-parakeet_max_words')).toBe('9');
   });
 
   it('normalizes setter values against the active engine rather than the previous engine', () => {

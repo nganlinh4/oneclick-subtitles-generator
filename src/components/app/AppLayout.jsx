@@ -3,7 +3,6 @@ import Header from '../Header';
 import InputMethods from '../InputMethods';
 import OutputContainer from '../OutputContainer';
 import ButtonsContainer from './ButtonsContainer';
-import TranscriptionRulesEditor from '../TranscriptionRulesEditor';
 import BackgroundImageGenerator from '../BackgroundImageGenerator';
 import VideoRenderingSection from '../VideoRenderingSection';
 import VideoQualityModal from '../VideoQualityModal';
@@ -13,9 +12,9 @@ import { useVideoInfo } from '../../hooks/useVideoInfo';
 import BackgroundMusicSection from '../BackgroundMusicSection';
 import { hasValidDownloadedVideo } from '../../utils/videoUtils';
 import { initializeMobileZoom } from '../../utils/mobileZoom';
-import { DEFAULT_GEMINI_MODEL_ID, normalizeMediaModelId } from '../../config/geminiModels';
 import { showErrorToast } from '../../utils/toastUtils';
 import { activateOwnedLocalMedia } from '../../hooks/useNativeMediaSessionHydration';
+import { updateActiveMedia } from '../../platform/activeMediaSource';
 import { useProjectNarrationState } from '../../platform/projectNarrationState';
 import SettingsModal from '../settings/SettingsModal';
 
@@ -98,12 +97,8 @@ const AppLayout = ({
     currentDownloadId,
     isRetrying,
     isSrtOnlyMode, setIsSrtOnlyMode,
-    segmentsStatus,
-    videoSegments,
-    showRulesEditor, setShowRulesEditor,
     userProvidedSubtitles,
     useUserProvidedSubtitles,
-    transcriptionRules,
     subtitlesData, setSubtitlesData,
     status, statusEventId, setStatus,
     timeFormat,
@@ -112,8 +107,6 @@ const AppLayout = ({
     enableYoutubeSearch,
     optimizeVideos,
     optimizedResolution,
-    retryingSegments,
-    retrySegment,
     // Video processing workflow
     isUploading,
     selectedSegment, setSelectedSegment,
@@ -155,16 +148,13 @@ const AppLayout = ({
   } = appHandlers;
 
   const {
-    handleSaveRules,
-    handleViewRules,
     handleUserSubtitlesAdd,
     handleAbortVideoAnalysis
   } = modalHandlers;
 
   const handleNativeRenderVideoSelected = useCallback(async (media) => {
     await activateOwnedLocalMedia({ media, setUploadedFile });
-    localStorage.removeItem('current_video_url');
-    localStorage.removeItem('split_result');
+    updateActiveMedia({ sourceUrl: null });
     setSelectedVideo(null);
     setUploadedFileData?.(null);
     setIsSrtOnlyMode(false);
@@ -183,72 +173,13 @@ const AppLayout = ({
     availableVersions,
     getVideoInfoForModal,
     getVideoFileForRendering
-  } = useVideoInfo(selectedVideo, uploadedFile, actualVideoUrl);
+  } = useVideoInfo(selectedVideo, uploadedFile);
 
   // Initialize mobile zoom on component mount
   useEffect(() => {
     initializeMobileZoom(0.5); // Set zoom to 50% for mobile devices
   }, []);
 
-  // Handler for generating a specific segment
-  const handleGenerateSegment = async (segmentIndex, segments) => {
-    if (!segments || !segments[segmentIndex]) {
-      console.error('No segment found at index', segmentIndex);
-      return;
-    }
-
-    // Prepare options for segment generation
-    const segmentOptions = {};
-
-    // Add user-provided subtitles if available and enabled
-    if (useUserProvidedSubtitles && userProvidedSubtitles) {
-      segmentOptions.userProvidedSubtitles = userProvidedSubtitles;
-    }
-
-    // Use the retrySegment function which will properly combine this segment's results
-    // with any previously processed segments
-    await retrySegment(segmentIndex, segments, segmentOptions);
-  };
-
-  // Handler for retrying a segment with a specific model
-  const handleRetryWithModel = async (segmentIndex, modelId, segments) => {
-    if (!segments || !segments[segmentIndex]) {
-      console.error('No segment found at index', segmentIndex);
-      return;
-    }
-
-    // Save the current model
-    const currentModel = normalizeMediaModelId(
-      localStorage.getItem('gemini_model'),
-      DEFAULT_GEMINI_MODEL_ID
-    );
-
-    // Temporarily set the selected model
-    localStorage.setItem(
-      'gemini_model',
-      normalizeMediaModelId(modelId, DEFAULT_GEMINI_MODEL_ID)
-    );
-
-    // Prepare options for segment retry
-    const segmentOptions = {};
-
-    // Add user-provided subtitles if available and enabled
-    if (useUserProvidedSubtitles && userProvidedSubtitles) {
-      segmentOptions.userProvidedSubtitles = userProvidedSubtitles;
-    }
-
-    try {
-      // Use the retrySegment function with the temporarily set model
-      await retrySegment(segmentIndex, segments, segmentOptions);
-    } finally {
-      // Restore the original model
-      if (currentModel) {
-        localStorage.setItem('gemini_model', currentModel);
-      } else {
-        localStorage.removeItem('gemini_model');
-      }
-    }
-  };
   // Handler for render video action
   const handleRenderVideo = () => {
     // If we have video info, decide whether the quality modal would present more than one option
@@ -307,31 +238,8 @@ const AppLayout = ({
       // Proceed with video rendering using the selected video - enable auto-scroll for quality modal
       proceedWithVideoRendering(videoFile, true);
     } catch (error) {
-      const context = {
-        option,
-        data,
-        actualVideoUrl,
-        online: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
-        name: error?.name,
-        message: error?.message,
-        cause: error?.cause,
-        stack: error?.stack
-      };
-      console.error('Error handling video quality selection (with context):', context);
-      const isFailedToFetch = error?.message === 'Failed to fetch' || error?.name === 'TypeError';
-      let hint = '';
-      if (isFailedToFetch) {
-        if (String(actualVideoUrl || '').startsWith('blob:')) {
-          hint = t('videoRendering.hintBlobRevoked', 'The temporary video blob may have been revoked or expired. Try re-adding the video.');
-        } else if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && (String(actualVideoUrl || '').startsWith('http:') || (data?.url && String(data.url).startsWith('http:')))) {
-          hint = t('videoRendering.hintMixedContent', 'Blocked mixed content: page is HTTPS but the video/API is HTTP. Use HTTPS for the API/video or run the app over HTTP.');
-        } else if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-          hint = t('videoRendering.hintOffline', 'You appear to be offline.');
-        } else {
-          hint = t('videoRendering.hintNetworkCors', 'Network/CORS issue. Check the Network tab for the failing request and the server logs.');
-        }
-      }
-      showErrorToast(`${t('videoRendering.errorPrefix', 'Error: {{message}}', { message: error?.message })}${hint ? `\n\n${t('videoRendering.hintLabel', 'Hint')}: ${hint}` : ''}`);
+      console.error('Video quality selection failed:', error);
+      showErrorToast(t('videoRendering.errorPrefix', 'Error: {{message}}', { message: error?.message }));
     }
   };
 
@@ -387,8 +295,6 @@ const AppLayout = ({
             setIsSrtOnlyMode={setIsSrtOnlyMode}
             setStatus={setStatus}
             subtitlesData={subtitlesData}
-            setVideoSegments={appState.setVideoSegments}
-            setSegmentsStatus={appState.setSegmentsStatus}
             enableYoutubeSearch={enableYoutubeSearch}
           />
 
@@ -409,8 +315,6 @@ const AppLayout = ({
               currentDownloadId={currentDownloadId}
               isRetrying={isRetrying}
               setIsRetrying={appState.setIsRetrying}
-              retryingSegments={retryingSegments}
-              segmentsStatus={segmentsStatus}
               subtitlesData={subtitlesData}
               userProvidedSubtitles={userProvidedSubtitles}
               selectedVideo={selectedVideo}
@@ -433,25 +337,10 @@ const AppLayout = ({
               selectedVideo={selectedVideo}
               uploadedFile={uploadedFile}
               isDownloading={isDownloading}
-              segmentsStatus={segmentsStatus}
-              activeTab={activeTab}
-              onRetrySegment={retrySegment}
-              onRetryWithModel={handleRetryWithModel}
-              onGenerateSegment={handleGenerateSegment}
-              videoSegments={videoSegments}
-              retryingSegments={retryingSegments}
               timeFormat={timeFormat}
               showWaveformLongVideos={showWaveformLongVideos}
               useOptimizedPreview={useOptimizedPreview}
               isSrtOnlyMode={isSrtOnlyMode}
-              onViewRules={handleViewRules}
-              userProvidedSubtitles={userProvidedSubtitles}
-              onUserSubtitlesAdd={(text) => {
-                handleUserSubtitlesAdd(text);
-                // Close background generator if open
-                setShowBackgroundGenerator(false);
-              }}
-              onGenerateBackground={handleGenerateBackground}
               onRenderVideo={handleRenderVideo}
               onActualVideoUrlChange={setActualVideoUrl}
               onSegmentSelect={handleSegmentSelect}
@@ -498,16 +387,6 @@ const AppLayout = ({
           optimizeVideos={optimizeVideos}
           optimizedResolution={optimizedResolution}
           useOptimizedPreview={useOptimizedPreview}
-        />
-      )}
-
-      {/* Transcription Rules Editor */}
-      {showRulesEditor && transcriptionRules && (
-        <TranscriptionRulesEditor
-          isOpen={showRulesEditor}
-          onClose={() => setShowRulesEditor(false)}
-          initialRules={transcriptionRules}
-          onSave={handleSaveRules}
         />
       )}
 

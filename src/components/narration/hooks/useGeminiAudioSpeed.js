@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { editNativeNarration } from '../../../platform/nativeNarrationArtifacts';
 import {
   isNativeNarrationResult,
@@ -26,20 +25,18 @@ const useGeminiAudioSpeed = ({
   const fetchDurationsBatch = async (filenames) => {
     if (!Array.isArray(filenames) || filenames.length === 0) return;
     const durations = {};
-    if (isDesktopRuntime()) {
-      (generationResults || []).filter(isNativeNarrationResult).forEach((result) => {
-        const duration = durationSeconds(result);
-        if (result.filename && Number.isFinite(duration) && duration > 0) {
-          durations[result.filename] = duration;
-          durations[getBackupName(result.filename)] = duration;
-        }
-      });
-    }
+    (generationResults || []).filter(isNativeNarrationResult).forEach((result) => {
+      const duration = durationSeconds(result);
+      if (result.filename && Number.isFinite(duration) && duration > 0) {
+        durations[result.filename] = duration;
+        durations[getBackupName(result.filename)] = duration;
+      }
+    });
     setItemDurations((previous) => ({ ...previous, ...durations }));
   };
 
   const editResult = async (result, speed, range) => {
-    if (!isDesktopRuntime() || !isNativeNarrationResult(result)) {
+    if (!isNativeNarrationResult(result)) {
       throw new Error('Native narration audio is unavailable');
     }
     const metadataDuration = durationSeconds(result);

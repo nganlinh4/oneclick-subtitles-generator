@@ -5,6 +5,7 @@ import SubtitleSpeakersModal from './SubtitleSpeakersModal';
 import '../../styles/SubtitleSpeakersModal.css';
 import { cueOverlapsTimelineRange } from './utils/timelineDomain';
 import { hasSpeakerData } from '../../utils/subtitleSpeaker';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 const LyricsHeader = ({
   allowEditing,
@@ -123,14 +124,18 @@ const LyricsHeader = ({
         <div
           className={`auto-scroll-toggle ${autoScrollEnabled ? 'active' : ''}`}
           onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}
+          onKeyDown={activateOnKey}
+          role="button"
+          tabIndex={0}
+          aria-pressed={autoScrollEnabled}
           title={autoScrollEnabled ? t('lyrics.autoScrollDisable', 'Disable auto-scroll') : t('lyrics.autoScrollEnable', 'Enable auto-scroll')}
         >
           {autoScrollEnabled ? (
-            <span className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+            <span aria-hidden="true" className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
               move_selection_down
             </span>
           ) : (
-            <span className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+            <span aria-hidden="true" className="material-symbols-rounded auto-scroll-icon" style={{ fontSize: 16, display: 'inline-block' }}>
               mobiledata_off
             </span>
           )}
@@ -141,14 +146,18 @@ const LyricsHeader = ({
           <div
             className={`sticky-toggle ${isSticky ? 'active' : ''}`}
             onClick={() => setIsSticky(!isSticky)}
+            onKeyDown={activateOnKey}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isSticky}
             title={t('lyrics.stickyTimingsToggleWithShortcut', isSticky ? 'Disable sticky timings (Ctrl+Shift+T)' : 'Enable sticky timings (Ctrl+Shift+T)')}
           >
             {isSticky ? (
-              <span className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
                 link
               </span>
             ) : (
-              <span className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded sticky-icon" style={{ fontSize: 16, display: 'inline-block' }}>
                 link_off
               </span>
             )}
@@ -203,7 +212,7 @@ const LyricsHeader = ({
               disabled={isAtSavedState}
               title={isAtSavedState ? t('common.saveDisabled', 'No changes to save') : t('common.saveWithShortcut', 'Save (Ctrl+S)')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 save
               </span>
             </button>
@@ -214,7 +223,7 @@ const LyricsHeader = ({
               disabled={isAtSavedState}
               title={t('common.resetWithShortcut', 'Reset to saved state')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 refresh
               </span>
             </button>
@@ -234,7 +243,7 @@ const LyricsHeader = ({
             >
               {/* Flag with curved arrow icon - active */}
               {/* Flag with curved arrow icon - active */}
-              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 flag
               </span>
               {/* Clock with reverse arrow icon - alternative (commented out) */}
@@ -247,7 +256,7 @@ const LyricsHeader = ({
               disabled={!canUndo}
               title={t('common.undoWithShortcut', 'Undo (Ctrl+Z)')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 undo
               </span>
             </button>
@@ -258,7 +267,7 @@ const LyricsHeader = ({
               disabled={!canRedo}
               title={t('common.redoWithShortcut', 'Redo (Ctrl+Y or Ctrl+Shift+Z)')}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
+              <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: 16, display: 'inline-block' }}>
                 redo
               </span>
             </button>

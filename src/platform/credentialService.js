@@ -1,5 +1,7 @@
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 import { invokeDesktop } from './desktopRuntime';
+import { utf8ByteLength } from './plainDataRecord';
+import { exactRecord, snapshotDataArray } from './nativeDataSnapshot';
 
 const CREDENTIAL_PURPOSES = Object.freeze([
   'geminiApiKey',
@@ -37,70 +39,6 @@ const providerByPurpose = Object.freeze({
   youtubeOauthClient: 'youtube',
   youtubeOauthToken: 'youtube',
 });
-
-const snapshotDataRecord = (value, expectedKeys, failure) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length !== expectedKeys.length
-        || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
-      throw failure();
-    }
-    const snapshot = {};
-    for (const key of expectedKeys) {
-      const descriptor = descriptors[key];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw failure();
-      }
-      snapshot[key] = descriptor.value;
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw failure();
-  }
-};
-
-const snapshotDataArray = (value, maximum, failure) => {
-  try {
-    if (!Array.isArray(value)) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const lengthDescriptor = descriptors.length;
-    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
-        || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
-        || lengthDescriptor.value > maximum) {
-      throw failure();
-    }
-    const length = lengthDescriptor.value;
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length !== length + 1) throw failure();
-    const snapshot = [];
-    for (let index = 0; index < length; index += 1) {
-      const descriptor = descriptors[String(index)];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw failure();
-      }
-      snapshot.push(descriptor.value);
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw failure();
-  }
-};
-
-const utf8ByteLength = (value) => {
-  let bytes = 0;
-  for (const character of value) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint <= 0x7f) bytes += 1;
-    else if (codePoint <= 0x7ff) bytes += 2;
-    else if (codePoint <= 0xffff) bytes += 3;
-    else bytes += 4;
-  }
-  return bytes;
-};
 
 const isUuidV7 = (value) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;
@@ -170,7 +108,7 @@ const normalizeSafeSuffix = (value) => {
 };
 
 export const normalizeCredentialStatus = (status) => {
-  const snapshot = snapshotDataRecord(
+  const snapshot = exactRecord(
     status,
     ['id', 'purpose', 'provider', 'state', 'last4'],
     invalidCredentialResponse
@@ -195,7 +133,7 @@ export const normalizeCredentialStatus = (status) => {
 };
 
 export const normalizeCredentialStatusReport = (report) => {
-  const snapshot = snapshotDataRecord(
+  const snapshot = exactRecord(
     report,
     ['store', 'credentials'],
     invalidCredentialResponse
@@ -228,7 +166,7 @@ export const normalizeCredentialStatusReport = (report) => {
 };
 
 const normalizeSetRequest = (request) => {
-  const snapshot = snapshotDataRecord(
+  const snapshot = exactRecord(
     request,
     ['purpose', 'secret'],
     invalidCredentialRequest

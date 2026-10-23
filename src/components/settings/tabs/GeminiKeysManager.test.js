@@ -11,15 +11,7 @@ import {
   selectGeminiCredential,
   subscribeCredentialState,
 } from '../../../platform/credentialStateController';
-import { isDesktopRuntime } from '../../../platform/desktopRuntime';
 import { revealCredential } from '../../../platform/credentialService';
-import {
-  addKey,
-  getActiveKeyIndex,
-  getAllKeys,
-  removeKey,
-  setActiveKeyIndex,
-} from '../../../services/gemini/keyManager';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,14 +37,6 @@ const renderHook = (useHook) => {
   };
 };
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-  isTauri: vi.fn(() => false),
-}));
-vi.mock('../../../platform/desktopRuntime', () => ({
-  invokeDesktop: vi.fn(),
-  isDesktopRuntime: vi.fn(),
-}));
 vi.mock('../../../platform/credentialStateController', () => ({
   addGeminiCredential: vi.fn(),
   formatCredentialReference: vi.fn((credential) => (
@@ -70,13 +54,6 @@ vi.mock('../../../platform/credentialStateController', () => ({
   removeGeminiCredential: vi.fn(),
   selectGeminiCredential: vi.fn(),
   subscribeCredentialState: vi.fn(),
-}));
-vi.mock('../../../services/gemini/keyManager', () => ({
-  addKey: vi.fn(),
-  getActiveKeyIndex: vi.fn(),
-  getAllKeys: vi.fn(),
-  removeKey: vi.fn(),
-  setActiveKeyIndex: vi.fn(),
 }));
 vi.mock('../../../platform/credentialService', () => ({
   revealCredential: vi.fn(),
@@ -118,7 +95,6 @@ beforeEach(() => {
 });
 
 it('keeps only unique safe references in native React state and selects by UUID', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   let subscriber;
   subscribeCredentialState.mockImplementation((next) => {
     subscriber = next;
@@ -132,9 +108,8 @@ it('keeps only unique safe references in native React state and selects by UUID'
     id: '01901234-5678-7abc-8def-0123456789ac',
     purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234',
   };
-  const setGeminiApiKey = vi.fn();
   const setApiKeysSet = vi.fn();
-  const { result } = renderHook(() => useGeminiKeys({ setGeminiApiKey, setApiKeysSet }));
+  const { result } = renderHook(() => useGeminiKeys({ setApiKeysSet }));
 
   act(() => subscriber(nativeSnapshot([first, second], 1)));
 
@@ -145,7 +120,6 @@ it('keeps only unique safe references in native React state and selects by UUID'
   ]);
   expect(JSON.stringify(result.current.geminiApiKeys)).not.toContain('full-secret');
   expect(result.current.activeKeyIndex).toBe(1);
-  expect(setGeminiApiKey).not.toHaveBeenCalled();
 
   await act(async () => result.current.handleSetActiveKey(0));
   expect(selectGeminiCredential).toHaveBeenCalledWith(first.id);
@@ -157,9 +131,7 @@ it('keeps only unique safe references in native React state and selects by UUID'
 });
 
 it('uses a write-only native add buffer and clears it after success or failure', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   const { result } = renderHook(() => useGeminiKeys({
-    setGeminiApiKey: vi.fn(),
     setApiKeysSet: vi.fn(),
   }));
 
@@ -179,11 +151,10 @@ it('uses a write-only native add buffer and clears it after success or failure',
 });
 
 it('shows one preference warning per failure and keeps saved keys usable', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   let subscriber;
   subscribeCredentialState.mockImplementation((next) => { subscriber = next; return () => undefined; });
   const credential = { id: uuidv7(), purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234' };
-  const { result, unmount } = renderHook(() => useGeminiKeys({ setGeminiApiKey: vi.fn(), setApiKeysSet: vi.fn() }));
+  const { result, unmount } = renderHook(() => useGeminiKeys({ setApiKeysSet: vi.fn() }));
   const snapshot = { ...nativeSnapshot([credential]), selectionPersistenceFailed: true };
   act(() => { subscriber(snapshot); subscriber(snapshot); });
   expect(result.current.geminiApiKeys).toHaveLength(1);
@@ -195,11 +166,10 @@ it('shows one preference warning per failure and keeps saved keys usable', async
 });
 
 it.each(['select', 'remove'])('reports %s failures through the global toast without exposing errors', async (operation) => {
-  isDesktopRuntime.mockReturnValue(true);
   let subscriber;
   subscribeCredentialState.mockImplementation((next) => { subscriber = next; return () => undefined; });
   const credential = { id: uuidv7(), purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234' };
-  const { result, unmount } = renderHook(() => useGeminiKeys({ setGeminiApiKey: vi.fn(), setApiKeysSet: vi.fn() }));
+  const { result, unmount } = renderHook(() => useGeminiKeys({ setApiKeysSet: vi.fn() }));
   act(() => subscriber(nativeSnapshot([credential])));
   (operation === 'select' ? selectGeminiCredential : removeGeminiCredential)
     .mockRejectedValueOnce(new Error('never echo secret-value'));
@@ -217,7 +187,6 @@ it.each(['select', 'remove'])('reports %s failures through the global toast with
 });
 
 it('reveals a native key only on demand and erases the revealed value when hidden', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   let subscriber;
   subscribeCredentialState.mockImplementation((next) => {
     subscriber = next;
@@ -228,7 +197,6 @@ it('reveals a native key only on demand and erases the revealed value when hidde
     purpose: 'geminiApiKey', provider: 'gemini', state: 'ready', last4: '1234',
   };
   const { result } = renderHook(() => useGeminiKeys({
-    setGeminiApiKey: vi.fn(),
     setApiKeysSet: vi.fn(),
   }));
   act(() => subscriber(nativeSnapshot([credential])));
@@ -245,7 +213,6 @@ it('reveals a native key only on demand and erases the revealed value when hidde
 });
 
 it('does not report a ready key when the native credential store is unavailable', () => {
-  isDesktopRuntime.mockReturnValue(true);
   let subscriber;
   subscribeCredentialState.mockImplementation((next) => {
     subscriber = next;
@@ -253,7 +220,6 @@ it('does not report a ready key when the native credential store is unavailable'
   });
   const setApiKeysSet = vi.fn();
   renderHook(() => useGeminiKeys({
-    setGeminiApiKey: vi.fn(),
     setApiKeysSet,
   }));
   const ready = {
@@ -268,13 +234,11 @@ it('does not report a ready key when the native credential store is unavailable'
 });
 
 it('serializes a native add double-click into one vault submission', async () => {
-  isDesktopRuntime.mockReturnValue(true);
   let finishSubmission;
   addGeminiCredential.mockImplementationOnce(() => new Promise((resolve) => {
     finishSubmission = resolve;
   }));
   const { result } = renderHook(() => useGeminiKeys({
-    setGeminiApiKey: vi.fn(),
     setApiKeysSet: vi.fn(),
   }));
   act(() => result.current.setNewGeminiKey('one-transient-secret'));
@@ -289,26 +253,4 @@ it('serializes a native add double-click into one vault submission', async () =>
 
   expect(addGeminiCredential).toHaveBeenCalledTimes(1);
   expect(result.current.newGeminiKey).toBe('');
-});
-
-it('preserves the synchronous raw-string manager in a browser', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  getAllKeys.mockReturnValue(['browser-key-one']);
-  getActiveKeyIndex.mockReturnValue(0);
-  addKey.mockReturnValue(true);
-  removeKey.mockReturnValue(true);
-  const setGeminiApiKey = vi.fn();
-  const setApiKeysSet = vi.fn();
-  const { result } = renderHook(() => useGeminiKeys({ setGeminiApiKey, setApiKeysSet }));
-  expect(result.current.geminiApiKeys).toEqual(['browser-key-one']);
-
-  await act(async () => result.current.handleSetActiveKey(0));
-  expect(setActiveKeyIndex).toHaveBeenCalledWith(0);
-  expect(setGeminiApiKey).toHaveBeenCalledWith('browser-key-one');
-
-  getAllKeys.mockReturnValue(['browser-key-one', 'browser-key-two']);
-  act(() => result.current.setNewGeminiKey('browser-key-two'));
-  await act(async () => result.current.handleAddGeminiKey());
-  expect(addKey).toHaveBeenCalledWith('browser-key-two');
-  expect(result.current.geminiApiKeys).toEqual(['browser-key-one', 'browser-key-two']);
 });

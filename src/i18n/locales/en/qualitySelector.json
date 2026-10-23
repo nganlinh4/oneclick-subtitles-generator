@@ -1,9 +1,1 @@
-{
-  "videoQuality": "Video Quality",
-  "lowestQuality": "Lowest quality (recommended for videos > 1 hour)",
-  "lowQuality": "Low quality",
-  "mediumQuality": "Medium quality (default)",
-  "highQuality": "High quality",
-  "hdQuality": "HD quality (may cause issues with long videos)",
-  "longVideoWarning": "Choosing quality smaller or larger than 360p will increase download time due to audio stitching process"
-}
+{}

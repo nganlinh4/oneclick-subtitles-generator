@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { clearCurrentProjectNarrationState } from '../../platform/projectNarrationState';
 import { requestAlignedNarrationReset } from '../../platform/alignedNarrationSession';
+import { usePreference } from '../../platform/preferences/store';
 
 const isYoutubeUrl = (value) => value.includes('youtube.com') || value.includes('youtu.be');
 
@@ -13,24 +14,7 @@ const useVideoSourceLoading = ({ videoSource, t }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const loadGenerationRef = useRef(0);
-  const [useOptimizedPreview, setUseOptimizedPreview] = useState(
-    () => localStorage.getItem('use_optimized_preview') === 'true'
-  );
-
-  useEffect(() => {
-    const handleStorageChange = (event) => {
-      if (event.key === 'use_optimized_preview') {
-        setUseOptimizedPreview(event.newValue === 'true');
-      }
-    };
-    const handleCustomEvent = (event) => setUseOptimizedPreview(Boolean(event.detail.value));
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('optimizedPreviewChanged', handleCustomEvent);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('optimizedPreviewChanged', handleCustomEvent);
-    };
-  }, []);
+  const [useOptimizedPreview] = usePreference('use_optimized_preview');
 
   useEffect(() => {
     const generation = loadGenerationRef.current + 1;

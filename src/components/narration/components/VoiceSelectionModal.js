@@ -3,6 +3,7 @@ import { getName } from 'iso-639-1';
 import CloseButton from '../../common/CloseButton';
 import CustomDropdown from '../../common/CustomDropdown';
 import '../../../styles/narration/VoiceSelectionModal.css';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSelect, detectedLanguage, t }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -249,6 +250,10 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
                     key={voice.name}
                     className={`voice-card ${voice.short_name === selectedVoice ? 'selected' : ''}`}
                     onClick={() => handleVoiceSelect(voice)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateOnKey}
+                    aria-pressed={voice.short_name === selectedVoice}
                   >
                     <div className="voice-info">
                       <span className="voice-name">{voice.short_name}</span>
@@ -273,6 +278,10 @@ const VoiceSelectionModal = ({ isOpen, onClose, voices, selectedVoice, onVoiceSe
                     key={voice.name}
                     className={`voice-card ${voice.short_name === selectedVoice ? 'selected' : ''}`}
                     onClick={() => handleVoiceSelect(voice)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateOnKey}
+                    aria-pressed={voice.short_name === selectedVoice}
                   >
                     <div className="voice-info">
                       <span className="voice-name">{voice.short_name}</span>

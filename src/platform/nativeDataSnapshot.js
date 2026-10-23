@@ -1,6 +1,8 @@
 // Accessor-free snapshots of host-returned data, shared by the native service normalizers.
 import { validate as validateUuid, version as uuidVersion } from 'uuid';
 
+import { snapshotPlainRecord } from './plainDataRecord';
+
 /**
  * A frozen copy of a plain data record whose own keys are all in `allowed` and include every key in
  * `required`. Getters, symbols, non-enumerable keys and exotic prototypes all fail with `failure()`.
@@ -10,26 +12,13 @@ export const snapshotDataRecord = (value, {
   allowed = required,
   failure,
 }) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.some((key) => typeof key !== 'string' || !allowed.includes(key))
-        || required.some((key) => !keys.includes(key))) {
-      throw failure();
-    }
-    const snapshot = {};
-    for (const key of keys) {
-      const descriptor = descriptors[key];
-      if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw failure();
-      snapshot[key] = descriptor.value;
-    }
-    return Object.freeze(snapshot);
-  } catch {
+  const snapshot = snapshotPlainRecord(value);
+  if (snapshot === null
+      || Object.keys(snapshot).some((key) => !allowed.includes(key))
+      || required.some((key) => !Object.hasOwn(snapshot, key))) {
     throw failure();
   }
+  return snapshot;
 };
 
 /** A frozen copy of a dense data array of at most `maximum` items, with no extra own keys. */
@@ -63,12 +52,6 @@ export const exactRecord = (value, keys, failure) => snapshotDataRecord(value, {
   required: keys,
   failure,
 });
-
-/** Whether an already-snapshotted record has exactly the `expected` keys. */
-export const hasSnapshotKeys = (value, expected) => {
-  const keys = Object.keys(value);
-  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
-};
 
 export const isUuidVersion = (value, expected) => {
   if (typeof value !== 'string' || !validateUuid(value)) return false;

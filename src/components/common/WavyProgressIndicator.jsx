@@ -7,6 +7,9 @@ import {
     easeOutCubic,
     easeInCubic
 } from './WavyProgressIndicator/reactHelpers';
+import { drawWavyProgress } from './WavyProgressIndicator/drawWavyProgress';
+
+const ENTRANCE_DISAPPEARANCE_DURATION = 500;
 
 /**
  * Pure React Wavy Progress Indicator Component
@@ -15,7 +18,8 @@ import {
  * It defaults to a light theme if no colors are provided.
  *
  * The amplitude/path helper classes and default constants live in
- * ./WavyProgressIndicator/reactHelpers.
+ * ./WavyProgressIndicator/reactHelpers; canvas painting lives in
+ * ./WavyProgressIndicator/drawWavyProgress.
  */
 
 // Pure React Wavy Progress Indicator with all original features
@@ -119,9 +123,6 @@ const WavyProgressIndicator = forwardRef(({
         || getRootCssVar('--figma-track-color')
         || WavyProgressDefaults.trackColor;
     
-
-    // Constants
-    const ENTRANCE_DISAPPEARANCE_DURATION = 500;
 
     // High DPI canvas setup (responsive to width/height props or parent container)
     const setupHighDPICanvas = useCallback(() => {
@@ -344,11 +345,8 @@ const WavyProgressIndicator = forwardRef(({
         }
     }, [scheduleDraw]);
 
-    // Drawing function with proper track receding logic
+    // Resolves this frame's animation state, then paints it with the pure drawWavyProgress.
     const drawProgress = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
         const canvasEl = canvasRef.current;
         const ctx = canvasEl ? canvasEl.getContext('2d') : null;
         if (!canvasEl || !ctx) return;
@@ -357,171 +355,64 @@ const WavyProgressIndicator = forwardRef(({
         const width = (lastWidthRef.current ?? canvasEl.clientWidth ?? 0) || WavyProgressDefaults.containerWidth;
         const totalHeight = (lastHeightRef.current ?? canvasEl.clientHeight ?? 0) || WavyProgressDefaults.containerHeight;
         const bleedTotal = (progressShadow ? progressShadowBleed * 2 : 0);
-        const effectiveHeight = Math.max(1, totalHeight - bleedTotal);
-
-        // Clear canvas in CSS pixel coordinates
-        ctx.clearRect(0, 0, width, totalHeight);
-
-        // Ensure progress is valid
         const validProgress = Math.max(0, Math.min(1, currentProgress || 0));
 
         // Entrance/disappearance height animation
         const now = performance.now();
-        const ENTRANCE_DURATION = ENTRANCE_DISAPPEARANCE_DURATION;
-        let heightFactor = 1;
+        let heightFactor = hasDisappeared ? 0 : 1;
         let keepAnimating = false;
-
-        if (hasDisappeared) {
-            heightFactor = 0;
-        }
         if (isAnimatingEntrance) {
-            const t = Math.min((now - entranceStartTime) / ENTRANCE_DURATION, 1);
+            const t = Math.min((now - entranceStartTime) / ENTRANCE_DISAPPEARANCE_DURATION, 1);
             heightFactor = easeOutCubic(t);
             keepAnimating = t < 1;
             if (t >= 1) {
-                heightFactor = 1; // entrance complete
+                heightFactor = 1;
                 setIsAnimatingEntrance(false);
             }
         } else if (isAnimatingDisappearance) {
-            const t = Math.min((now - disappearanceStartTime) / ENTRANCE_DURATION, 1);
+            const t = Math.min((now - disappearanceStartTime) / ENTRANCE_DISAPPEARANCE_DURATION, 1);
             heightFactor = 1 - easeInCubic(t);
             keepAnimating = true;
             if (t >= 1) {
                 heightFactor = 0;
-                // End disappearance animation and mark as disappeared
                 setIsAnimatingDisappearance(false);
                 setHasDisappeared(true);
             }
         }
 
-        // Track/progress geometry
-        const strokeCapWidth = strokeWidth / 2;
-        const halfHeight = totalHeight / 2;
-        const progressFrontX = strokeCapWidth + validProgress * (width - strokeCapWidth * 2);
-
-        if (heightFactor > 0) {
-            // Draw track and progress scaled vertically around center
-            ctx.save();
-            ctx.translate(0, halfHeight);
-            ctx.scale(1, heightFactor);
-
-            // Track (no shadow)
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            ctx.strokeStyle = effectiveTrackColor;
-            ctx.lineWidth = strokeWidth;
-            ctx.lineCap = 'round';
-
-            if (validProgress > 0) {
-                const trackStart = Math.min(progressFrontX + gapSize + strokeCapWidth, width - strokeCapWidth);
-                const trackEnd = width - strokeCapWidth;
-                if (trackStart < trackEnd) {
-                    ctx.beginPath();
-                    ctx.moveTo(trackStart, 0);
-                    ctx.lineTo(trackEnd, 0);
-                    ctx.stroke();
-                }
-            } else {
-                ctx.beginPath();
-                ctx.moveTo(strokeCapWidth, 0);
-                ctx.lineTo(width - strokeCapWidth, 0);
-                ctx.stroke();
-            }
-
-            // Progress
-            if (validProgress > 0) {
-                const progressWidth = validProgress * (width - strokeCapWidth * 2);
-
-                // Smooth amplitude transition like the Web Component
-                const targetAmplitude = forceFlat ? 0 : WavyProgressDefaults.indicatorAmplitude(validProgress);
-                updateAmplitudeAnimation(targetAmplitude);
-                const animatedAmplitude = amplitudeAnimatableRef.current ? amplitudeAnimatableRef.current.value : 0;
-                const waveHeight = animatedAmplitude * (effectiveHeight * 0.15);
-
-                ctx.strokeStyle = effectiveColor;
-                ctx.lineWidth = strokeWidth;
-                ctx.lineCap = 'round';
-                // Apply shadow only to the progress stroke
-                if (progressShadow) {
-                    ctx.shadowColor = progressShadowColor;
-                    ctx.shadowBlur = progressShadowBlur;
-                    ctx.shadowOffsetX = progressShadowOffsetX;
-                    ctx.shadowOffsetY = progressShadowOffsetY;
-                } else {
-                    ctx.shadowColor = 'transparent';
-                    ctx.shadowBlur = 0;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 0;
-                }
-                ctx.beginPath();
-
-                if (animatedAmplitude === 0) {
-                    ctx.moveTo(strokeCapWidth, 0);
-                    ctx.lineTo(strokeCapWidth + progressWidth, 0);
-                } else {
-                    const steps = Math.max(Math.floor(progressWidth / 2), 10);
-                    let firstPoint = true;
-                    for (let i = 0; i <= steps; i++) {
-                        const x = strokeCapWidth + (i / steps) * progressWidth;
-                        const waveX = ((x + waveOffset * wavelength) / wavelength) * 2 * Math.PI;
-                        const y = Math.sin(waveX) * waveHeight;
-                        if (firstPoint) {
-                            ctx.moveTo(x, y);
-                            firstPoint = false;
-                        } else {
-                            ctx.lineTo(x, y);
-                        }
-                    }
-                }
-                ctx.stroke();
-                // Reset shadow so it doesn't affect other elements
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 0;
-            }
-
-            ctx.restore();
-
-            if (keepAnimating) scheduleDraw();
-        } else if (keepAnimating) {
-            // Nothing to draw but continue the animation loop until finished
-            scheduleDraw();
+        // Smooth amplitude transition like the Web Component
+        if (heightFactor > 0 && validProgress > 0) {
+            updateAmplitudeAnimation(forceFlat ? 0 : WavyProgressDefaults.indicatorAmplitude(validProgress));
         }
 
-        // Draw stop indicator only when visible
-        if (heightFactor > 0 && showStopIndicator && validProgress < 1) {
-            // Make stop indicator size proportional to height for better visibility
-            const stopRadius = Math.max(2, Math.min(effectiveHeight * 0.3, stopSize / 2));
-            const stopX = width - strokeCapWidth;
-            const progressX = strokeCapWidth + validProgress * (width - strokeCapWidth * 2);
+        drawWavyProgress(ctx, {
+            width,
+            totalHeight,
+            effectiveHeight: Math.max(1, totalHeight - bleedTotal),
+            progress: validProgress,
+            heightFactor,
+            amplitude: amplitudeAnimatableRef.current ? amplitudeAnimatableRef.current.value : 0,
+            waveOffset,
+            wavelength,
+            strokeWidth,
+            gapSize,
+            stopSize,
+            showStopIndicator,
+            colors: {
+                indicator: effectiveColor,
+                track: effectiveTrackColor,
+                stop: stopIndicatorColor || effectiveColor,
+            },
+            shadow: {
+                enabled: progressShadow,
+                color: progressShadowColor,
+                blur: progressShadowBlur,
+                offsetX: progressShadowOffsetX,
+                offsetY: progressShadowOffsetY,
+            },
+        });
 
-            if (progressX < stopX - stopRadius) {
-                // Stop indicator should match the progress bar color
-                if (progressShadow) {
-                    ctx.shadowColor = progressShadowColor;
-                    ctx.shadowBlur = progressShadowBlur;
-                    ctx.shadowOffsetX = progressShadowOffsetX;
-                    ctx.shadowOffsetY = progressShadowOffsetY;
-                } else {
-                    ctx.shadowColor = 'transparent';
-                    ctx.shadowBlur = 0;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 0;
-                }
-                ctx.fillStyle = stopIndicatorColor || effectiveColor;
-                ctx.beginPath();
-                ctx.arc(stopX, halfHeight, stopRadius, 0, 2 * Math.PI);
-                ctx.fill();
-                // Reset shadow after drawing stop indicator
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 0;
-            }
-        }
+        if (keepAnimating) scheduleDraw();
     }, [currentProgress, waveOffset, effectiveColor, effectiveTrackColor, stopIndicatorColor, wavelength, showStopIndicator, isAnimatingEntrance, isAnimatingDisappearance, hasDisappeared, entranceStartTime, disappearanceStartTime, progressShadow, progressShadowBleed, progressShadowColor, progressShadowBlur, progressShadowOffsetX, progressShadowOffsetY, forceFlat, gapSize, stopSize, strokeWidth, updateAmplitudeAnimation, scheduleDraw]);
 
     // Keep latest draw function in a ref to avoid TDZ issues in callbacks above

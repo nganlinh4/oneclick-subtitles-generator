@@ -61,7 +61,6 @@ const YoutubeAuthSection = ({
             className={`auth-toggle-btn ${!useOAuth ? 'active' : ''}`}
             onClick={() => {
               setUseOAuth(false);
-              localStorage.setItem('use_youtube_oauth', 'false');
 
               // Update apiKeysSet to reflect the API key method
               setApiKeysSet(prevState => ({
@@ -76,7 +75,6 @@ const YoutubeAuthSection = ({
             className={`auth-toggle-btn ${useOAuth ? 'active' : ''}`}
             onClick={() => {
               setUseOAuth(true);
-              localStorage.setItem('use_youtube_oauth', 'true');
 
               // Update apiKeysSet to reflect the OAuth method
               setApiKeysSet(prevState => ({

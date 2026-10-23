@@ -43,13 +43,11 @@
 import { invokeDesktopRaw } from './desktopRuntime';
 import {
   GlyphAtlasStagingError,
-  NATIVE_CODE_PATTERN,
-  hasExactKeys,
   isBounded,
-  isRecord,
   isUuidV7,
   validateDescriptor,
 } from './glyphAtlasStagingDescriptor';
+import { hasExactKeys, isNativeErrorCode, isRecord } from './plainDataRecord';
 
 export {
   GLYPH_ATLAS_STAGING_ERROR_CODES,
@@ -247,7 +245,7 @@ const rejected = (error) => {
   );
   // Only an already-sanitized code crosses back. The native message, cause and stack are dropped:
   // they are the only fields that could ever carry a path, a process argument or the user's text.
-  if (typeof error?.code === 'string' && NATIVE_CODE_PATTERN.test(error.code)) {
+  if (isNativeErrorCode(error?.code)) {
     failure.nativeCode = error.code;
   }
   return failure;

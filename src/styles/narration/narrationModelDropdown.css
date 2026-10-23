@@ -304,8 +304,19 @@
   height: 32px;
   line-height: 1; /* Avoid baseline offset issues */
   border-radius: 10px;
-  background-color: var(--md-surface-3);
+  background-color: transparent;
+  color: var(--primary-color);
   margin-top: 0; /* Center perfectly for flags or codes */
+}
+
+[data-theme="light"] .model-selection-modal .model-option-icon {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .model-selection-modal .model-option-icon {
+  backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .model-selection-modal .model-option-card.selected .model-option-icon {

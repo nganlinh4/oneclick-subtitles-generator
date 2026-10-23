@@ -4,11 +4,7 @@ import {
   createNativeMediaSessionHydrator,
 } from './useNativeMediaSessionHydration';
 import { createNativeMediaDescriptor } from '../platform/mediaService';
-import {
-  clearBrowserMediaBlobs,
-  getBrowserMediaBlob,
-  registerBrowserMediaBlob,
-} from '../platform/browserMediaBlobRegistry';
+import { readActiveMedia, updateActiveMedia } from '../platform/activeMediaSource';
 
 const deferred = () => {
   let resolve;
@@ -90,7 +86,6 @@ const createHarness = (overrides = {}) => {
 
 beforeEach(() => {
   localStorage.clear();
-  clearBrowserMediaBlobs();
   vi.restoreAllMocks();
 });
 
@@ -119,9 +114,7 @@ it('publishes the owning project and reopens the remembered asset on a fresh pro
 });
 
 it('awaits an exact-project binding receipt before publishing the restored media', async () => {
-  localStorage.setItem('current_file_url', 'blob:obsolete');
-  registerBrowserMediaBlob('blob:obsolete', new Blob(['obsolete']));
-  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  updateActiveMedia({ playbackUrl: 'http://127.0.0.1:49152/asset/obsolete' });
   const setUploadedFile = vi.fn();
   const receipt = Object.freeze({ cacheId: URL_ALIAS, projectId: PROJECT_A });
   const activateBindingImpl = vi.fn(async () => receipt);
@@ -137,11 +130,7 @@ it('awaits an exact-project binding receipt before publishing the restored media
     ),
   });
 
-  expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith('blob:obsolete');
-  expect(getBrowserMediaBlob('blob:obsolete')).toBeNull();
-  expect(localStorage.getItem('current_file_url')).toBe(MEDIA_A.playbackUrl);
-  // Native identity is held only by the validated session tuple, never a browser mirror.
-  expect(localStorage.getItem('current_file_cache_id')).toBeNull();
+  expect(readActiveMedia().playbackUrl).toBe(MEDIA_A.playbackUrl);
   expect(activateBindingImpl).toHaveBeenCalledExactlyOnceWith(URL_ALIAS, {
     expectedProjectId: PROJECT_A,
     create: false,
@@ -149,11 +138,9 @@ it('awaits an exact-project binding receipt before publishing the restored media
   expect(setUploadedFile).toHaveBeenCalledExactlyOnceWith(MEDIA_A);
 });
 
-it('keeps the replaced browser source live when React publication refuses', async () => {
-  const previousBlob = new Blob(['still-current']);
-  localStorage.setItem('current_file_url', 'blob:still-current');
-  registerBrowserMediaBlob('blob:still-current', previousBlob);
-  const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+it('keeps the replaced playback source when React publication refuses', async () => {
+  const previousUrl = 'http://127.0.0.1:49152/asset/still-current';
+  updateActiveMedia({ playbackUrl: previousUrl });
 
   await expect(applyNativeMediaSession({
     media: MEDIA_A,
@@ -164,9 +151,7 @@ it('keeps the replaced browser source live when React publication refuses', asyn
     validateBindingImpl: () => true,
   })).rejects.toThrow('publication refused');
 
-  expect(localStorage.getItem('current_file_url')).toBe('blob:still-current');
-  expect(getBrowserMediaBlob('blob:still-current')).toBe(previousBlob);
-  expect(revokeObjectUrl).not.toHaveBeenCalled();
+  expect(readActiveMedia().playbackUrl).toBe(previousUrl);
 });
 
 it.each([

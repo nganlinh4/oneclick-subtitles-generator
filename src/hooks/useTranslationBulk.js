@@ -100,7 +100,6 @@ export const useTranslationBulk = ({
             bracketStyle,
             chainItems,
             bulkFile.name, // File context for bulk translation
-            false,
             ownership
           ));
           await assertBoundary();

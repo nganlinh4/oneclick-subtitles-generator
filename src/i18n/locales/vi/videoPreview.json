@@ -1,14 +1,13 @@
 {
-  "noSubtitlesToRender": "Không có phụ đề để hiển thị",
-  "noTranslatedSubtitles": "Không có phụ đề đã dịch",
   "renderError": "Lỗi khi hiển thị phụ đề: {{error}}",
-  "rendering": "Đang xử lý video với phụ đề...",
   "retrySubtitlePreview": "Thử lại",
   "subtitlePreviewUnavailable": "Bản xem trước phụ đề chưa sẵn sàng. Hãy thử mở lại video này.",
   "seek": "Tua video",
   "subtitleFontPreparing": "Đang chuẩn bị phông chữ phụ đề. Bản xem trước sẽ hiện khi sẵn sàng.",
   "subtitleFontUnavailable": "Không cài đặt được phông chữ phụ đề ({{reason}}), nên không thể vẽ phụ đề.",
   "retrySubtitleFont": "Cài đặt lại",
-  "subtitlePreviewEmpty": "Chưa có phụ đề. Hãy thêm hoặc tạo phụ đề, chúng sẽ hiện trên video ở đây.",
-  "projectStyleUnavailable": "Hãy thêm video trước khi chỉnh kiểu phụ đề."
+  "projectStyleUnavailable": "Hãy thêm video trước khi chỉnh kiểu phụ đề.",
+  "downloadMedia": "Tải tệp phương tiện xuống",
+  "exportFailed": "Không thể xuất tệp phương tiện.",
+  "pictureInPicture": "Hình trong hình"
 }

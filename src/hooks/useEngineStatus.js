@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAsrStatus } from '../platform/asrService';
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { MANAGED_SPEECH_ENGINE_BINDINGS } from '../platform/managedEngineCatalog';
 import { getSpeechStatus } from '../platform/speechService';
 
@@ -51,8 +50,7 @@ export const mapNativeSpeechEngines = (status) => {
 };
 
 /**
- * Unified per-engine availability from the native ASR and speech catalogs. Browser-only inspection
- * exposes no installable engines: engine state is privileged desktop state with no network fallback.
+ * Unified per-engine availability from the native ASR and speech catalogs.
  *
  * Returns { engines, loading, refresh, isReady(id), isInstalled(id) } where each engine is
  * { id, label, port, installed, running, state: 'not-installed'|'installed-stopped'|'ready' }.
@@ -67,10 +65,6 @@ export const useEngineStatus = ({ poll = true } = {}) => {
     const sequence = refreshSequenceRef.current + 1;
     refreshSequenceRef.current = sequence;
     try {
-      if (!isDesktopRuntime()) {
-        if (mountedRef.current && sequence === refreshSequenceRef.current) setEngines({});
-        return;
-      }
       const [asrResult, speechResult] = await Promise.allSettled([
         getAsrStatus(),
         getSpeechStatus(),

@@ -1,4 +1,5 @@
 import { invokeDesktop } from './desktopRuntime';
+import { exactRecord, snapshotDataArray } from './nativeDataSnapshot';
 
 const MAX_NATIVE_CACHE_CATEGORIES = 100_000;
 const CACHE_CATEGORY_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -42,58 +43,6 @@ const invalidResponse = () => new CacheServiceError(
   'invalidCacheResponse',
   'The desktop host returned invalid cache metadata'
 );
-
-const snapshotDataRecord = (value, expectedKeys, failure) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure();
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length !== expectedKeys.length
-        || keys.some((key) => typeof key !== 'string' || !expectedKeys.includes(key))) {
-      throw failure();
-    }
-    const snapshot = {};
-    for (const key of expectedKeys) {
-      const descriptor = descriptors[key];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw failure();
-      }
-      snapshot[key] = descriptor.value;
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw failure();
-  }
-};
-
-const snapshotDataArray = (value, maximum, failure) => {
-  try {
-    if (!Array.isArray(value)) throw failure();
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const lengthDescriptor = descriptors.length;
-    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
-        || !Number.isSafeInteger(lengthDescriptor.value)
-        || lengthDescriptor.value < 0 || lengthDescriptor.value > maximum) {
-      throw failure();
-    }
-    const length = lengthDescriptor.value;
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.length !== length + 1) throw failure();
-    const snapshot = [];
-    for (let index = 0; index < length; index += 1) {
-      const descriptor = descriptors[String(index)];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) {
-        throw failure();
-      }
-      snapshot.push(descriptor.value);
-    }
-    return Object.freeze(snapshot);
-  } catch {
-    throw failure();
-  }
-};
 
 const normalizeCommandFailure = (error) => {
   let code = 'cacheCommandFailed';
@@ -158,7 +107,7 @@ const categoryFrom = (details, category) => (
 );
 
 const normalizeNativeSnapshot = (snapshot) => {
-  const data = snapshotDataRecord(
+  const data = exactRecord(
     snapshot,
     ['categories', 'totalCount', 'totalSizeBytes'],
     invalidResponse
@@ -179,7 +128,7 @@ const normalizeNativeSnapshot = (snapshot) => {
   let categorySize = 0;
 
   for (const rawEntry of categories) {
-    const entry = snapshotDataRecord(
+    const entry = exactRecord(
       rawEntry,
       ['category', 'count', 'sizeBytes'],
       invalidResponse
@@ -228,7 +177,7 @@ const normalizeInfoResponse = (snapshot) => Object.freeze({
 });
 
 const normalizeClearResponse = (response, requestedCategory) => {
-  const data = snapshotDataRecord(response, [
+  const data = exactRecord(response, [
         'category',
         'removedCount',
         'removedSizeBytes',

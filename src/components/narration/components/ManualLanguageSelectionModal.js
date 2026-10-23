@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom';
 import CloseButton from '../../common/CloseButton';
 import initSettingsTabsDrag from '../../../utils/settingsTabsDrag';
 import '../../../styles/narration/ManualLanguageSelectionModal.css';
+import { readPreference, writePreference } from '../../../platform/preferences/store';
 
 const ManualLanguageSelectionModal = ({
   isOpen,
@@ -18,26 +19,14 @@ const ManualLanguageSelectionModal = ({
   const [recentLanguages, setRecentLanguages] = useState([]);
   const [typingValues, setTypingValues] = useState({});
   const onCloseRef = useRef(onClose);
-  const translationRef = useRef(t);
   onCloseRef.current = onClose;
-  translationRef.current = t;
 
-  // Load recent languages from localStorage and normalize to lowercase valid ISO-639-1 codes
+  // Load recent languages, normalized to lowercase valid ISO-639-1 codes
   useEffect(() => {
-    const stored = localStorage.getItem('recentlyChosenLanguages');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        const allCodes = new Set(ISO6391.getAllCodes());
-        const normalized = (Array.isArray(parsed) ? parsed : [])
-          .map(c => (typeof c === 'string' ? c.toLowerCase() : ''))
-          .filter(c => c && allCodes.has(c));
-        setRecentLanguages(normalized);
-      } catch (error) {
-        console.error(translationRef.current('narration.errorParsingRecentLanguages', 'Error parsing recent languages:'), error);
-        setRecentLanguages([]);
-      }
-    }
+    const allCodes = new Set(ISO6391.getAllCodes());
+    setRecentLanguages(readPreference('recentlyChosenLanguages')
+      .map(c => (typeof c === 'string' ? c.toLowerCase() : ''))
+      .filter(c => c && allCodes.has(c)));
   }, []);
 
   // Initialize languages when modal opens
@@ -136,7 +125,7 @@ const ManualLanguageSelectionModal = ({
       ];
 
       setRecentLanguages(updatedRecent);
-      localStorage.setItem('recentlyChosenLanguages', JSON.stringify(updatedRecent));
+      writePreference('recentlyChosenLanguages', updatedRecent);
     }
 
     onSave(uniqueLanguages);
@@ -199,7 +188,7 @@ const ManualLanguageSelectionModal = ({
                     <div key={language} className="selected-language-badge">
                       <span>{ISO6391.getName(language)}</span>
                       <button onClick={() => handleClearLanguage(index)} className="clear-language-btn" title={t('narration.clearLanguage', 'Clear this language')}>
-                        <span className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
+                        <span aria-hidden="true" className="material-symbols-rounded" style={{ fontSize: '14px' }}>close</span>
                       </button>
                     </div>
                   ))}

@@ -31,6 +31,7 @@ import {
   renderManualButton as renderManualButtonHelper,
   renderModelLanguages
 } from '../utils/subtitleLanguageHelpers';
+import { activateOnKey } from '../../../utils/a11y/activateOnKey';
 
 // The managed F5TTS_v1_Base checkpoint is the upstream bilingual English/Chinese model.
 // Keep this separate from Chatterbox's multilingual inventory so language detection cannot
@@ -267,7 +268,6 @@ const SubtitleSourceSelection = ({
 
     if (next && next !== chatterboxLanguage) {
       setChatterboxLanguage(next);
-      try { localStorage.setItem('chatterbox_language', next); } catch { /* Storage is best-effort. */ }
     }
   }, [narrationMethod, subtitleSource, originalLanguage, translatedLanguage, userHasManuallySelectedChatterboxLanguage, chatterboxLanguage, setChatterboxLanguage]);
 
@@ -288,11 +288,6 @@ const SubtitleSourceSelection = ({
       const lang = (modelId || 'en').toLowerCase();
       setChatterboxLanguage(lang);
       setUserHasManuallySelectedChatterboxLanguage(true);
-      try {
-        localStorage.setItem('chatterbox_language', lang);
-      } catch (error) {
-        console.error('Error saving chatterbox language:', error);
-      }
       return;
     }
 
@@ -452,6 +447,7 @@ const SubtitleSourceSelection = ({
                     e.stopPropagation();
                     if (!isGenerating) openModelModal();
                   }}
+                  onKeyDown={activateOnKey}
                   role="button"
                   tabIndex={0}
                   aria-disabled={isGenerating}
@@ -461,7 +457,7 @@ const SubtitleSourceSelection = ({
                   <span className="model-dropdown-selected">
                     <span className="model-name">{(chatterboxLanguage || 'en').toUpperCase()}</span>
                   </span>
-                  <span className="material-symbols-rounded dropdown-icon" style={{ fontSize: '14px' }}>expand_more</span>
+                  <span aria-hidden="true" className="material-symbols-rounded dropdown-icon" style={{ fontSize: '14px' }}>expand_more</span>
                 </div>
               ) : (
                 <div className="model-dropdown-container narration-model-dropdown-container">

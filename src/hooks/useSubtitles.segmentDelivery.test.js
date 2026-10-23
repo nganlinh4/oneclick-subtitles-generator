@@ -40,9 +40,6 @@ vi.mock('./useQuotaCountdown', async () => (
 vi.mock('./useSubtitlesRetryGeneration', async () => (
   (await import('./useSubtitlesTestFixtures')).subtitlesRetryGenerationMock()
 ));
-vi.mock('./useSubtitlesSegmentRetry', async () => (
-  (await import('./useSubtitlesTestFixtures')).subtitlesSegmentRetryMock()
-));
 vi.mock('../events/bus', async () => (
   (await import('./useSubtitlesTestFixtures')).eventBusMock()
 ));

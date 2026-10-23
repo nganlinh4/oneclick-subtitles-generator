@@ -17,13 +17,13 @@ import {
   credentialAlreadyConfigured,
   defaultSnapshot,
   invalidSelection,
-  isRecord,
   isUuidV7,
   normalizeSelection,
   readLegacyDraftsAndPurge,
   sameSelection,
   selectionValue,
 } from './credentialStateModel';
+import { isRecord } from './plainDataRecord';
 
 export { CredentialStateError };
 

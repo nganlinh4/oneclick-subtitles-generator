@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fetchGeniusLyricsNative } from '../platform/providerService';
+import { errorCodeOf } from '../utils/errorCode';
+
+const isMissingGeniusKey = (error) => errorCodeOf(error) === 'credentialNotFound';
 
 /**
  * Custom hook for fetching lyrics from Genius API
@@ -134,7 +137,7 @@ const useGeniusLyrics = () => {
     } catch (err) {
       // Check for specific server-side errors and translate them
       let translatedMessage = err.message;
-      if (err.message.includes('Genius API key not set')) {
+      if (isMissingGeniusKey(err)) {
         translatedMessage = t('lyrics.genius.apiKeyNotSet');
       } else {
         translatedMessage = `${t('lyrics.genius.lyricsFetchFailed')}: ${err.message}`;

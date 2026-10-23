@@ -26,6 +26,7 @@
 .example-audio-dropdown-container .pill-button.active-dropdown-btn {
   background-color: var(--md-surface-3);
   box-shadow: var(--md-elevation-level2);
+  z-index: 100000;
 }
 
 .example-audio-dropdown-container .dropdown-chevron {

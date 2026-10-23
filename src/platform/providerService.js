@@ -7,6 +7,7 @@ import {
   upsertSingletonCredential,
 } from './credentialStateController';
 import { invokeDesktop } from './desktopRuntime';
+import { isNativeErrorCode, isRecord } from './plainDataRecord';
 
 const MAX_QUERY_CHARACTERS = 500;
 const MAX_LYRICS_CHARACTERS = 1_000_000;
@@ -15,7 +16,6 @@ const MAX_TITLE_CHARACTERS = 1_000;
 const MAX_DESCRIPTION_CHARACTERS = 50_000;
 const MAX_CHANNEL_CHARACTERS = 1_000;
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
-const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exactKeys = (value, keys) => (
   isRecord(value)
   && Object.keys(value).length === keys.length
@@ -40,20 +40,12 @@ const invalidResponse = () => new NativeProviderServiceError(
   'The desktop host returned invalid provider data'
 );
 
-const compatibleFailureMessage = (code) => {
-  if (code === 'youtubeQuotaExceeded') return 'quota exceeded';
-  if (code === 'youtubeApiNotEnabled') return 'api not enabled';
-  if (code === 'youtubeAuthenticationRequired' || code === 'credentialNotFound') {
-    return 'Not authenticated with YouTube';
-  }
-  return 'The native provider operation could not be completed';
-};
-
+// Callers classify failures by `code`; the message is a fixed, content-free description.
 const normalizeFailure = (error) => {
-  const code = typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+  const code = isNativeErrorCode(error?.code)
     ? error.code
     : 'providerCommandFailed';
-  return new NativeProviderServiceError(code, compatibleFailureMessage(code));
+  return new NativeProviderServiceError(code, 'The native provider operation could not be completed');
 };
 
 const isUuidV7 = (value) => {
@@ -85,12 +77,10 @@ const requireReadyCredential = (snapshot, purpose) => {
     && isUuidV7(candidate?.id)
   ));
   if (!credential) {
-    const message = purpose === 'geniusAccessToken'
-      ? 'Genius API key not set. Please provide it through the settings.'
-      : purpose === 'youtubeApiKey'
-        ? 'YouTube API key not found'
-        : 'Not authenticated with YouTube';
-    throw new NativeProviderServiceError('credentialNotFound', message);
+    throw new NativeProviderServiceError(
+      'credentialNotFound',
+      'The provider credential is not set'
+    );
   }
   return credential.id;
 };

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktopRuntime } from './runtimeEnvironment';
+import { isNativeErrorCode } from './plainDataRecord';
 
 export { isDesktopRuntime } from './runtimeEnvironment';
 
@@ -62,7 +63,7 @@ const normalizeCommandError = (command, error) => {
 };
 
 const normalizeRawCommandError = (command, error) => {
-  const code = typeof error?.code === 'string' && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.code)
+  const code = isNativeErrorCode(error?.code)
     ? error.code
     : DESKTOP_COMMAND_FAILED;
   // Raw IPC can contain private media bytes. Never retain a transport error/cause that could have

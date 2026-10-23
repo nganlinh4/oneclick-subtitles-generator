@@ -1,5 +1,6 @@
 import { invokeDesktop } from './desktopRuntime';
 import { runNativeFirstSettingsMutation } from './settingsMutationCoordinator';
+import { notifyPreference } from './preferences/store';
 import { getThemeWithFallback, setupSystemThemeListener } from '../utils/systemDetection';
 
 const THEME_KEY = 'theme';
@@ -44,19 +45,12 @@ export const subscribeToEffectiveSystemTheme = (onTheme = () => undefined, {
   if (applied !== null) onTheme(applied);
 });
 
-const publishThemeMirror = (theme) => {
-  window.dispatchEvent(new StorageEvent('storage', {
-    key: THEME_KEY,
-    newValue: theme,
-  }));
-};
-
 /** Commit explicit user intent to native authority before changing any WebView mirror. */
 export const commitThemePreference = async (theme, {
   invokeCommand = invokeDesktop,
   storage,
   root,
-  publish = publishThemeMirror,
+  publish = () => notifyPreference(THEME_KEY),
   onProjectionWarning = () => undefined,
 } = {}) => {
   const preference = requireTheme(theme);

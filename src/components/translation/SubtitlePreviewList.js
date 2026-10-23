@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { VariableSizeList as List } from 'react-window';
 import LoadingIndicator from '../common/LoadingIndicator';
-import formatTimeString from './utils/formatTimeString';
+import { formatTimecode } from '../../utils/timeFormatter';
 
 /**
  * Calculate segments based on split duration and subtitles
@@ -94,7 +94,7 @@ const SubtitleRow = ({ index, style, data }) => {
   if (subtitle.startTime && typeof subtitle.startTime === 'string') {
     startTimeDisplay = subtitle.startTime;
   } else if (subtitle.start !== undefined) {
-    startTimeDisplay = formatTimeString(subtitle.start);
+    startTimeDisplay = formatTimecode(subtitle.start);
   } else {
     startTimeDisplay = '00:00:00.000';
   }
@@ -102,7 +102,7 @@ const SubtitleRow = ({ index, style, data }) => {
   if (subtitle.endTime && typeof subtitle.endTime === 'string') {
     endTimeDisplay = subtitle.endTime;
   } else if (subtitle.end !== undefined) {
-    endTimeDisplay = formatTimeString(subtitle.end);
+    endTimeDisplay = formatTimecode(subtitle.end);
   } else {
     endTimeDisplay = '00:00:05.000';
   }

@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import SliderWithValue from '../../common/SliderWithValue';
 import HelpIcon from '../../common/HelpIcon';
@@ -19,36 +18,10 @@ const GeminiConcurrentClientsSlider = ({
   isGenerating
 }) => {
   const { t } = useTranslation();
-  const [localConcurrentClients, setLocalConcurrentClients] = useState(concurrentClients || 1);
 
-  // Initialize from localStorage on mount
-  useEffect(() => {
-    const storedValue = localStorage.getItem('gemini_concurrent_clients');
-    if (storedValue) {
-      const parsedValue = parseInt(storedValue, 10);
-      if (!isNaN(parsedValue) && parsedValue >= 1 && parsedValue <= 10) {
-        setLocalConcurrentClients(parsedValue);
-        if (setConcurrentClients) {
-          setConcurrentClients(parsedValue);
-        }
-      }
-    }
-  }, [setConcurrentClients]);
-
+  // The narration state owns and persists the value.
   const handleConcurrentClientsChange = (e) => {
-    const newValue = parseInt(e.target.value, 10);
-    setLocalConcurrentClients(newValue);
-
-    if (setConcurrentClients) {
-      setConcurrentClients(newValue);
-    }
-
-    // Store in localStorage for persistence
-    try {
-      localStorage.setItem('gemini_concurrent_clients', newValue.toString());
-    } catch (e) {
-      console.error('Error storing concurrent clients in localStorage:', e);
-    }
+    setConcurrentClients?.(parseInt(e.target.value, 10));
   };
 
   // No need for percentage calculation - StandardSlider handles this automatically
@@ -61,7 +34,7 @@ const GeminiConcurrentClientsSlider = ({
       <div className="row-content">
         <div className="slider-control-row">
           <SliderWithValue
-            value={localConcurrentClients}
+            value={concurrentClients || 1}
             onChange={(value) => handleConcurrentClientsChange({ target: { value: parseInt(value) } })}
             min={1}
             max={10}

@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../styles/OnboardingBanner.css';
 // Import the animation component from src/assets
 import OnboardingAnimation from '../assets/onboarding-banner';
 import OnboardingCursorInteraction from './OnboardingCursorInteraction';
+import { readPreference, writePreference } from '../platform/preferences/store';
 
 /**
  * Onboarding Banner component that shows for first-time visitors
  * Displays the onboarding banner immediately and allows dismissal after 4 seconds
  */
 const OnboardingBanner = () => {
+  const { t } = useTranslation();
+
   // State for tracking if user can dismiss the banner
   const [canDismiss, setCanDismiss] = useState(false);
 
@@ -23,7 +27,7 @@ const OnboardingBanner = () => {
 
   useEffect(() => {
     // Check if user has visited before
-    const hasVisitedBefore = localStorage.getItem('has_visited_site') === 'true';
+    const hasVisitedBefore = readPreference('has_visited_site');
     setHasVisited(hasVisitedBefore);
 
     // If this is the first visit, start the countdown
@@ -112,12 +116,24 @@ const OnboardingBanner = () => {
       // After animation completes, mark as visited and hide
       setTimeout(() => {
         // Mark that the user has visited the site
-        localStorage.setItem('has_visited_site', 'true');
+        writePreference('has_visited_site', true);
         // Update state to hide the banner
         setHasVisited(true);
       }, 2200); // Wait for animations to complete (up to 1.5s + 0.4s delay + 0.3s buffer)
     }
   };
+
+  // Keyboard users dismiss with Enter, Space or Escape, matching the click-anywhere pointer path.
+  useEffect(() => {
+    if (hasVisited || !canDismiss || isDismissing) return undefined;
+    const dismissOnKey = (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+      event.preventDefault();
+      handleDismiss();
+    };
+    window.addEventListener('keydown', dismissOnKey);
+    return () => window.removeEventListener('keydown', dismissOnKey);
+  });
 
   // Don't render anything if user has visited before
   if (hasVisited) {
@@ -148,11 +164,14 @@ const OnboardingBanner = () => {
         {/* Message that changes based on countdown state */}
         <div className="onboarding-message">
           {canDismiss ? (
-            "Click anywhere to continue"
+            t('onboarding.clickToContinue', 'Click anywhere to continue')
           ) : (
             <span>
-              Please wait <span className="countdown">{countdown}</span>
-              second{countdown !== 1 ? 's' : ''}...
+              {t('onboarding.waitPrefix', 'Please wait ')}
+              <span className="countdown">{countdown}</span>
+              {countdown !== 1
+                ? t('onboarding.waitSeconds', 'seconds...')
+                : t('onboarding.waitSecond', 'second...')}
             </span>
           )}
         </div>

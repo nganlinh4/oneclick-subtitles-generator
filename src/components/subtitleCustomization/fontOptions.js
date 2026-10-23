@@ -161,7 +161,7 @@ export const fontOptions = [
   { value: "'Plus Jakarta Sans', sans-serif", label: 'Plus Jakarta Sans', group: 'Modern', koreanSupport: false, vietnameseSupport: false }
 ];
 
-// Animation types - now using translation keys
+// Animation types
 export const getAnimationTypes = (t) => [
   { value: 'fade', label: t('videoRendering.fade', 'Fade In/Out') },
   { value: 'slide-up', label: t('videoRendering.slideUp', 'Slide Up') },
@@ -175,21 +175,7 @@ export const getAnimationTypes = (t) => [
   { value: 'rotate', label: t('videoRendering.rotateIn', 'Rotate') }
 ];
 
-// Keep the old export for backward compatibility
-export const animationTypes = [
-  { value: 'fade', label: 'Fade In/Out' },
-  { value: 'slide-up', label: 'Slide Up' },
-  { value: 'slide-down', label: 'Slide Down' },
-  { value: 'slide-left', label: 'Slide Left' },
-  { value: 'slide-right', label: 'Slide Right' },
-  { value: 'scale', label: 'Scale' },
-  { value: 'typewriter', label: 'Typewriter' },
-  { value: 'bounce', label: 'Bounce' },
-  { value: 'flip', label: 'Flip' },
-  { value: 'rotate', label: 'Rotate' }
-];
-
-// Animation easing options - now using translation keys
+// Animation easing options
 export const getAnimationEasing = (t) => [
   { value: 'linear', label: t('videoRendering.linear', 'Linear') },
   { value: 'ease', label: t('videoRendering.ease', 'Ease') },
@@ -200,18 +186,7 @@ export const getAnimationEasing = (t) => [
   { value: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)', label: t('videoRendering.bounceEasing', 'Bounce') }
 ];
 
-// Keep the old export for backward compatibility
-export const animationEasing = [
-  { value: 'linear', label: 'Linear' },
-  { value: 'ease', label: 'Ease' },
-  { value: 'ease-in', label: 'Ease In' },
-  { value: 'ease-out', label: 'Ease Out' },
-  { value: 'ease-in-out', label: 'Ease In Out' },
-  { value: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', label: 'Smooth' },
-  { value: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)', label: 'Bounce' }
-];
-
-// Font weight options - now using translation keys
+// Font weight options
 export const getFontWeightOptions = (t) => [
   { value: 100, label: t('videoRendering.thin', 'Thin') },
   { value: 200, label: t('videoRendering.extraLight', 'Extra Light') },
@@ -224,20 +199,7 @@ export const getFontWeightOptions = (t) => [
   { value: 900, label: t('videoRendering.black', 'Black') }
 ];
 
-// Keep the old export for backward compatibility
-export const fontWeightOptions = [
-  { value: 100, label: 'Thin' },
-  { value: 200, label: 'Extra Light' },
-  { value: 300, label: 'Light' },
-  { value: 400, label: 'Normal' },
-  { value: 500, label: 'Medium' },
-  { value: 600, label: 'Semi Bold' },
-  { value: 700, label: 'Bold' },
-  { value: 800, label: 'Extra Bold' },
-  { value: 900, label: 'Black' }
-];
-
-// Text alignment options - now using translation keys
+// Text alignment options
 export const getTextAlignOptions = (t) => [
   { value: 'left', label: t('videoRendering.left', 'Left') },
   { value: 'center', label: t('videoRendering.center', 'Center') },
@@ -245,7 +207,7 @@ export const getTextAlignOptions = (t) => [
   { value: 'justify', label: t('videoRendering.justify', 'Justify') }
 ];
 
-// Text transform options - now using translation keys
+// Text transform options
 export const getTextTransformOptions = (t) => [
   { value: 'none', label: t('videoRendering.none', 'None') },
   { value: 'uppercase', label: t('videoRendering.uppercase', 'UPPERCASE') },
@@ -253,7 +215,7 @@ export const getTextTransformOptions = (t) => [
   { value: 'capitalize', label: t('videoRendering.capitalize', 'Capitalize') }
 ];
 
-// Border style options - now using translation keys
+// Border style options
 export const getBorderStyleOptions = (t) => [
   { value: 'none', label: t('videoRendering.none', 'None') },
   { value: 'solid', label: t('videoRendering.solid', 'Solid') },
@@ -262,42 +224,12 @@ export const getBorderStyleOptions = (t) => [
   { value: 'double', label: t('videoRendering.double', 'Double') }
 ];
 
-// Position options - now using translation keys
+// Position options
 export const getPositionOptions = (t) => [
   { value: 'bottom', label: t('videoRendering.bottom', 'Bottom') },
   { value: 'top', label: t('videoRendering.top', 'Top') },
   { value: 'center', label: t('videoRendering.center', 'Center') },
   { value: 'custom', label: t('videoRendering.custom', 'Custom') }
-];
-
-// Keep the old exports for backward compatibility
-export const textAlignOptions = [
-  { value: 'left', label: 'Left' },
-  { value: 'center', label: 'Center' },
-  { value: 'right', label: 'Right' },
-  { value: 'justify', label: 'Justify' }
-];
-
-export const textTransformOptions = [
-  { value: 'none', label: 'None' },
-  { value: 'uppercase', label: 'UPPERCASE' },
-  { value: 'lowercase', label: 'lowercase' },
-  { value: 'capitalize', label: 'Capitalize' }
-];
-
-export const borderStyleOptions = [
-  { value: 'none', label: 'None' },
-  { value: 'solid', label: 'Solid' },
-  { value: 'dashed', label: 'Dashed' },
-  { value: 'dotted', label: 'Dotted' },
-  { value: 'double', label: 'Double' }
-];
-
-export const positionOptions = [
-  { value: 'bottom', label: 'Bottom' },
-  { value: 'top', label: 'Top' },
-  { value: 'center', label: 'Center' },
-  { value: 'custom', label: 'Custom' }
 ];
 
 /**

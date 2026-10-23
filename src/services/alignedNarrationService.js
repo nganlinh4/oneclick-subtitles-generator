@@ -1,4 +1,3 @@
-import { isDesktopRuntime } from '../platform/desktopRuntime';
 import { flushDurableLyricsHistory } from '../platform/durableLyricsCheckpoint';
 import {
   getActiveProjectSnapshot,
@@ -87,7 +86,7 @@ const discardUnmatchedRecoveredAlignments = async () => {
 };
 
 const releasePlayback = (snapshot = cache) => {
-  if (!snapshot?.nativePlaybackId || !isDesktopRuntime()) return;
+  if (!snapshot?.nativePlaybackId) return;
   nativeNarrationAlignmentService
     .releaseAlignmentPlayback(snapshot.nativePlaybackId)
     .catch(() => undefined);
@@ -319,9 +318,6 @@ const startAlignment = async (request, onProgress, subtitleTimestamps, alignment
 };
 
 const prepareAlignedNarrationPreview = async (plan, onProgress = null) => {
-  if (!isDesktopRuntime()) {
-    throw new Error('Native narration alignment requires the desktop runtime.');
-  }
   if (!plan || !Array.isArray(plan.items) || plan.items.length === 0) {
     throw new Error('A strict native narration alignment plan is required.');
   }

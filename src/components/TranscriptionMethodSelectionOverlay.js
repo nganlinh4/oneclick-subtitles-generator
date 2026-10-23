@@ -11,7 +11,7 @@ import parakeetLightImg from '../assets/transcription-methods/parakeet_light.web
 import whisperDarkImg from '../assets/transcription-methods/whisper_dark.webp';
 import whisperLightImg from '../assets/transcription-methods/whisper_light.webp';
 import { ASR_ENGINES } from '../services/engines/asrEngines';
-import { getEngineDescriptor } from '../services/engines/transcriptionEngineRegistry';
+import { activateOnKey } from '../utils/a11y/activateOnKey';
 
 /**
  * Overlay for first-time transcription method selection
@@ -20,11 +20,6 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
     const { t } = useTranslation();
     const [isDarkTheme, setIsDarkTheme] = useState(() => {
         return document.documentElement.getAttribute('data-theme') === 'dark';
-    });
-
-    // Version detection state
-    const [isVercelMode] = useState(() => {
-        return typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
     });
     // Update theme detection
     useEffect(() => {
@@ -45,10 +40,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
         return () => observer.disconnect();
     }, []);
 
-    const methods = React.useMemo(() => {
-        const isOldMethodDisabled = isVercelMode; // Disabled only in Vercel mode
-
-        return [
+    const methods = React.useMemo(() => [
             {
                 id: 'new',
                 name: t('processing.transcriptionMethodNewName'),
@@ -61,28 +53,28 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 name: t('processing.transcriptionMethodOldName'),
                 desc: t('processing.transcriptionMethodOldDescription'),
                 img: isDarkTheme ? oldDarkImg : oldLightImg,
-                disabled: isOldMethodDisabled
+                disabled: false
             },
             {
                 id: 'nvidia-parakeet',
                 name: t('processing.transcriptionMethodParakeetName'),
                 desc: t('processing.transcriptionMethodParakeetDescription'),
                 img: isDarkTheme ? parakeetDarkImg : parakeetLightImg,
-                disabled: !getEngineDescriptor('nvidia-parakeet').availability()
+                disabled: false
             },
             {
                 id: 'gemini-transcribe',
                 name: t('processing.speechEngineTranscribe'),
                 desc: '',
                 img: isDarkTheme ? newDarkImg : newLightImg,
-                disabled: !getEngineDescriptor('gemini-transcribe').availability()
+                disabled: false
             },
             {
                 id: 'gemini-transcribe-live',
                 name: t('processing.speechEngineTranscribeLive'),
                 desc: '',
                 img: isDarkTheme ? newDarkImg : newLightImg,
-                disabled: !getEngineDescriptor('gemini-transcribe-live').availability()
+                disabled: false
             },
             // Local ASR engines are selectable in desktop mode. Their packages and runtimes are
             // prepared by the generation action itself.
@@ -91,7 +83,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 name: e.name,
                 desc: t('processing.transcriptionMethodLocalAsrDescription', 'Local GPU transcription — prepared automatically on first use, then runs offline.'),
                 img: isDarkTheme ? whisperDarkImg : whisperLightImg,
-                disabled: !getEngineDescriptor(e.id).availability()
+                disabled: false
             })),
             {
                 id: 'groq-whisper',
@@ -100,8 +92,7 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                 img: isDarkTheme ? whisperDarkImg : whisperLightImg,
                 disabled: true
             }
-        ];
-    }, [isDarkTheme, t, isVercelMode]);
+        ], [isDarkTheme, t]);
 
     const handleMethodClick = (method) => {
         if (method.disabled) return; // Prevent clicks on disabled methods
@@ -145,6 +136,10 @@ const TranscriptionMethodSelectionOverlay = ({ isOpen, onMethodSelect, onClose, 
                              data-transcription-method={method.id}
                              data-method-available={method.disabled ? 'false' : 'true'}
                              onClick={() => handleMethodClick(method)}
+                             role="button"
+                             tabIndex={method.disabled ? -1 : 0}
+                             onKeyDown={activateOnKey}
+                             aria-disabled={method.disabled || undefined}
                              style={method.disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                          >
                              <div className="method-name">{method.name}</div>

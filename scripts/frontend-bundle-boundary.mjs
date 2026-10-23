@@ -7,37 +7,18 @@ const FRONTEND_INITIAL_CHUNK_MAX_COUNT = 18;
 export const FRONTEND_CHUNK_WARNING_LIMIT_KB = FRONTEND_ENTRY_CHUNK_MAX_BYTES / 1_000;
 
 export const INTENTIONAL_ASYNC_BOUNDARIES = Object.freeze({
-  'node_modules/jszip/dist/jszip.min.js': Object.freeze({
-    'src/components/translation/utils/downloadUtils.js': 1,
-  }),
   'src/services/alignedNarrationService.js': Object.freeze({
     'src/components/VideoRenderingSection/useNarration.js': 2,
     'src/components/previews/narrationRefreshHandler.js': 1,
   }),
-  'src/services/engines/GeminiAdapter.js': Object.freeze({
-    'src/hooks/useSubtitles.js': 3,
-    'src/hooks/useSubtitlesRetryGeneration.js': 1,
-    'src/hooks/useSubtitlesSegmentRetry.js': 1,
-  }),
-  'src/utils/cacheUtils.js': Object.freeze({
-    'src/components/app/handlers/downloadHandlers.js': 2,
-  }),
   'src/utils/qualityScanner.js': Object.freeze({
     'src/components/VideoQualityModal.js': 1,
   }),
-  'src/utils/subtitle/subtitleMerger.js': Object.freeze({
-    'src/hooks/useSubtitlesSegmentRetry.js': 1,
-  }),
   'src/utils/transcriptionRulesStore.js': Object.freeze({
-    'src/components/ParallelProcessingStatus.js': 1,
     'src/hooks/useTranslationState.js': 1,
   }),
   'src/utils/userSubtitlesStore.js': Object.freeze({
     'src/hooks/useTranslationState.js': 1,
-  }),
-  'src/utils/videoProcessing/index.js': Object.freeze({
-    'src/hooks/useSubtitles.js': 1,
-    'src/hooks/useSubtitlesRetryGeneration.js': 1,
   }),
 });
 
@@ -50,7 +31,6 @@ export const REQUIRED_EFFECTIVE_ASYNC_BOUNDARIES = Object.freeze({
     'src/hooks/runAsrGeneration.js': 1,
     'src/hooks/useSubtitles.js': 1,
     'src/hooks/useSubtitlesRetryGeneration.js': 1,
-    'src/hooks/useSubtitlesSegmentRetry.js': 1,
     'src/hooks/useTranslationState.js': 1,
   }),
 });

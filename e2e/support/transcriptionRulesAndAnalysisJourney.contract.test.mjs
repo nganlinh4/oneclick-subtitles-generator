@@ -109,8 +109,9 @@ test('ground truth: the public ASR splitting controls map exactly onto Segmentat
   assert.match(asrProcessingOptions, /parakeetSplittingMethod', 'Splitting method'/u);
   assert.match(asrProcessingOptions, /wordsSlider\('asr-max-words',/u);
   assert.match(asrProcessingOptions, /id="asr-preserve-sentences"/u);
-  assert.match(useAsrOptions, /asr_\$\{engineId\}_segment_strategy/u);
-  assert.match(useAsrOptions, /asr_\$\{engineId\}_preserve_sentences/u);
+  assert.match(useAsrOptions, /`asr_\$\{engineId\}_\$\{option\}`/u);
+  assert.match(useAsrOptions, /strategy: 'segment_strategy'/u);
+  assert.match(useAsrOptions, /preserveSentences: 'preserve_sentences'/u);
   assert.match(runVideoProcess, /asrMaxWords: asrStrategy === 'sentence' && asrPreserveSentences \? -1 : asrMaxWords/u);
   assert.match(asrAdapter, /strategy: options\.asrStrategy \|\| 'sentence'/u);
   assert.match(asrAdapter, /maxWords: options\.asrMaxWords \?\? 7/u);

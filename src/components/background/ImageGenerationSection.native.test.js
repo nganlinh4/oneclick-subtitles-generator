@@ -5,9 +5,6 @@ import {
   exportNativeGeneratedImage,
   getActiveGeneratedImageProjectId,
 } from '../../platform/nativeGeminiImage';
-import { exportGeneratedResource } from '../../platform/generatedFileExportService';
-import { isDesktopRuntime } from '../../platform/runtimeEnvironment';
-import { clearBackgroundImages } from '../../utils/indexedDBUtils';
 import { showErrorToast } from '../../utils/toastUtils';
 import ImageGenerationSection from './ImageGenerationSection';
 
@@ -16,12 +13,7 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('../common/LoadingIndicator', () => ({ default: () => null }));
 vi.mock('../common/CustomDropdown', () => ({ default: () => null }));
-vi.mock('../../utils/indexedDBUtils', () => ({ clearBackgroundImages: vi.fn() }));
-vi.mock('../../platform/generatedFileExportService', () => ({
-  exportGeneratedResource: vi.fn(),
-}));
 vi.mock('../../utils/toastUtils', () => ({ showErrorToast: vi.fn() }));
-vi.mock('../../platform/runtimeEnvironment', () => ({ isDesktopRuntime: vi.fn() }));
 vi.mock('../../platform/nativeGeminiImage', () => ({
   clearNativeGeneratedImages: vi.fn(),
   exportNativeGeneratedImage: vi.fn(),
@@ -83,7 +75,6 @@ const renderSection = (overrides = {}) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  isDesktopRuntime.mockReturnValue(true);
   exportNativeGeneratedImage.mockResolvedValue(true);
   clearNativeGeneratedImages.mockResolvedValue(1);
   getActiveGeneratedImageProjectId.mockResolvedValue(PROJECT);
@@ -98,23 +89,9 @@ test('exports a native generated image by project and artifact identity without 
     artifactId: ARTIFACT,
     suggestedName: 'background-1.png',
   }));
-  expect(exportGeneratedResource).not.toHaveBeenCalled();
   expect(JSON.stringify(exportNativeGeneratedImage.mock.calls)).not.toMatch(
     /(?:base64|data:image|"bytes"|playbackUrl|token=)/i
   );
-});
-
-test('browser generated-image export retains the lazy legacy exporter', async () => {
-  isDesktopRuntime.mockReturnValue(false);
-  exportGeneratedResource.mockResolvedValueOnce(true);
-  renderSection();
-  fireEvent.click(screen.getByTitle('Download'));
-
-  await waitFor(() => expect(exportGeneratedResource).toHaveBeenCalledWith(
-    playbackUrl,
-    'background-1.png'
-  ));
-  expect(exportNativeGeneratedImage).not.toHaveBeenCalled();
 });
 
 test('never falls back to fetching a capability URL when native artifact metadata is missing', async () => {
@@ -123,7 +100,6 @@ test('never falls back to fetching a capability URL when native artifact metadat
 
   await waitFor(() => expect(showErrorToast).toHaveBeenCalled());
   expect(exportNativeGeneratedImage).not.toHaveBeenCalled();
-  expect(exportGeneratedResource).not.toHaveBeenCalled();
 });
 
 test('clears only the displayed native project and updates the UI after native success', async () => {
@@ -131,7 +107,6 @@ test('clears only the displayed native project and updates the UI after native s
   fireEvent.click(screen.getByTitle('Clear All Images'));
 
   await waitFor(() => expect(clearNativeGeneratedImages).toHaveBeenCalledWith(PROJECT));
-  expect(clearBackgroundImages).not.toHaveBeenCalled();
   expect(props.setGeneratedImages).toHaveBeenCalledWith([]);
   expect(props.setGeneratedImage).toHaveBeenCalledWith('');
 });

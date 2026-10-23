@@ -17,8 +17,6 @@ import {
 } from './renderErrors';
 import {
   hasControlCharacter,
-  hasExactKeys,
-  isPlainRecord,
   isWellFormedUtf16,
   requireBoolean,
   requireColor,
@@ -29,11 +27,14 @@ import {
   requireString,
   requireUuid,
   secondsToMicros,
+  uuidHasVersion,
+} from './renderValidation';
+import {
+  hasExactKeys,
   snapshotExactRecord,
   snapshotPlainRecord,
   utf8ByteLength,
-  uuidHasVersion,
-} from './renderValidation';
+} from './plainDataRecord';
 
 const MAX_RENDER_LYRICS = 100_000;
 const MAX_TOTAL_LYRIC_BYTES = 8 * 1024 * 1024;
@@ -197,8 +198,7 @@ export const createNativeRenderSourceResolver = ({
     const asset = validateRequestPart('source.selectedMedia', () => normalizeSourceAsset(selected));
     if (asset.kind !== 'video') throw invalidRequest('source.kind');
 
-    if (isPlainRecord(value)
-        && hasExactKeys(value, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])) {
+    if (hasExactKeys(value, ['id', 'displayName', 'extension', 'sizeBytes', 'kind'])) {
       const supplied = validateRequestPart('source.asset', () => normalizeSourceAsset(value));
       if (!sameSourceAsset(supplied, asset)) throw invalidRequest('source.identity');
     }

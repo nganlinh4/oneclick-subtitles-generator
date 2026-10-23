@@ -12,6 +12,7 @@ import {
   normalizeNativeRenderSettings,
   normalizeNativeSubtitleCustomization,
 } from './renderRequest';
+import { snapshotExactRecord, snapshotPlainRecord } from './plainDataRecord';
 
 export const PROJECT_RENDER_SCENE_SCHEMA_VERSION = 1;
 export const PROJECT_RENDER_SCENE_DEBOUNCE_MS = 175;
@@ -49,31 +50,6 @@ export const invalidHostScene = () => new ProjectRenderSceneError(
   'The desktop host returned an invalid project render scene',
 );
 
-export const plainSnapshot = (value) => {
-  try {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return null;
-    if (Object.getOwnPropertySymbols(value).length !== 0) return null;
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Object.values(descriptors).some(
-      (descriptor) => !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')
-    )) return null;
-    return Object.fromEntries(
-      Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value]),
-    );
-  } catch {
-    return null;
-  }
-};
-
-export const exactSnapshot = (value, keys) => {
-  const snapshot = plainSnapshot(value);
-  if (snapshot === null || Object.keys(snapshot).length !== keys.length
-      || !keys.every((key) => Object.hasOwn(snapshot, key))) return null;
-  return snapshot;
-};
-
 export const freezeTree = (value) => {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.values(value).forEach(freezeTree);
@@ -110,14 +86,14 @@ export const defaultProjectRenderSceneValues = () => freezeTree({
  * is repaired or defaulted here. Missing, unknown, hostile-accessor and out-of-range values refuse.
  */
 export const normalizeProjectRenderSceneValues = (candidate) => {
-  const scene = exactSnapshot(candidate, SCENE_VALUE_KEYS);
+  const scene = snapshotExactRecord(candidate, SCENE_VALUE_KEYS);
   if (scene === null
       || !SUBTITLE_SOURCES.has(scene.selectedSubtitles)
       || !NARRATION_SOURCES.has(scene.selectedNarration)) throw invalidScene();
 
-  const rawSettings = exactSnapshot(scene.renderSettings, RENDER_SETTING_KEYS);
-  const rawCustomization = exactSnapshot(scene.customization, CUSTOMIZATION_KEYS);
-  const rawCrop = exactSnapshot(scene.crop, CROP_KEYS);
+  const rawSettings = snapshotExactRecord(scene.renderSettings, RENDER_SETTING_KEYS);
+  const rawCustomization = snapshotExactRecord(scene.customization, CUSTOMIZATION_KEYS);
+  const rawCrop = snapshotExactRecord(scene.crop, CROP_KEYS);
   if (rawSettings === null || rawCustomization === null || rawCrop === null
       || rawSettings.videoType !== 'Subtitled Video') throw invalidScene();
 
@@ -154,7 +130,7 @@ export const normalizeProjectRenderSceneValues = (candidate) => {
 };
 
 export const normalizeProjectRenderScene = (candidate) => {
-  const response = exactSnapshot(candidate, SCENE_RESPONSE_KEYS);
+  const response = snapshotExactRecord(candidate, SCENE_RESPONSE_KEYS);
   if (response === null
       || response.schemaVersion !== PROJECT_RENDER_SCENE_SCHEMA_VERSION
       || !isUuidV7(response.projectId)
@@ -177,7 +153,7 @@ export const sceneResponse = (projectId, sceneRevision, values) => freezeTree({
 });
 
 export const activeProjectId = (snapshot) => {
-  const id = plainSnapshot(plainSnapshot(snapshot)?.metadata)?.id;
+  const id = snapshotPlainRecord(snapshotPlainRecord(snapshot)?.metadata)?.id;
   return isUuidV7(id) ? id : null;
 };
 

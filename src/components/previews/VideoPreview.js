@@ -47,7 +47,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   } = useProjectRenderScene();
   const videoRef = useRef(null);
   const videoContainerRef = useRef(null); // Ref for the main video container
-  const lastBlobUrlRef = useRef(null);
 
   const handleSeek = (direction) => {
     setSeekDirection(direction);
@@ -232,7 +231,6 @@ const VideoPreview = ({ currentTime, setCurrentTime, setDuration, videoSource, f
   // src on optimized/original change while preserving playback state.
   useVideoSourceSwitching({
     videoRef,
-    lastBlobUrlRef,
     videoUrl,
     optimizedVideoUrl,
     useOptimizedPreview,

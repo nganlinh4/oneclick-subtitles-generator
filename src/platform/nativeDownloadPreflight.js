@@ -4,6 +4,7 @@ import {
   getNativeToolsStatus,
   installNativeTool,
 } from './nativeToolsService';
+import { hasOnlyKeys, isAbortSignalLike } from './plainDataRecord';
 
 const MANAGED_DOWNLOAD_TOOL_IDS = Object.freeze(['media-tools', 'yt-dlp', 'deno']);
 const TOOL_PROGRESS_TOAST_KEY = 'native-download-tool-preflight';
@@ -11,8 +12,6 @@ const toolProgressToastKey = (toolId) => `${TOOL_PROGRESS_TOAST_KEY}:${toolId}`;
 const PROGRESS_STEP_PERCENT = 5;
 const DEFAULT_INSTALL_TIMEOUT_MS = 60 * 60 * 1_000;
 const AUTO_UPDATE_COOLDOWN_MS = 30 * 60 * 1_000;
-
-const isRecord = (value) => value !== null && typeof value === 'object';
 
 const safeCall = (callback, ...args) => {
   if (typeof callback !== 'function') return;
@@ -48,21 +47,13 @@ const failure = (code, message) => new NativeDownloadPreflightError(code, messag
 
 const validateOptions = (options) => {
   if (options === undefined) return Object.freeze({});
-  if (!isRecord(options) || Array.isArray(options)) {
-    throw failure('invalidNativeToolPreflight', 'The native tool preflight request is invalid');
-  }
-  const keys = Object.keys(options);
-  if (keys.some((key) => !['signal', 'onJobStarted', 'onProgress'].includes(key))
+  if (!hasOnlyKeys(options, ['signal', 'onJobStarted', 'onProgress'])
       || (options.onJobStarted !== undefined && typeof options.onJobStarted !== 'function')
       || (options.onProgress !== undefined && typeof options.onProgress !== 'function')) {
     throw failure('invalidNativeToolPreflight', 'The native tool preflight request is invalid');
   }
   const { signal } = options;
-  if (signal !== undefined
-      && (!isRecord(signal)
-        || typeof signal.aborted !== 'boolean'
-        || typeof signal.addEventListener !== 'function'
-        || typeof signal.removeEventListener !== 'function')) {
+  if (signal !== undefined && !isAbortSignalLike(signal)) {
     throw failure('invalidNativeToolPreflight', 'The native tool preflight request is invalid');
   }
   return options;

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { activateOnKey } from '../../utils/a11y/activateOnKey';
 
 /**
  * PlayPauseMorphType4
@@ -147,11 +149,14 @@ export default function PlayPauseMorphType4({
   onToggle,
   size = 48,
   color = 'currentColor',
-  title = 'Play/Pause',
+  title,
   className,
   style,
   config,
 }) {
+  const { t } = useTranslation();
+  // Without onToggle the glyph is decoration inside a parent control that owns the click.
+  const interactive = typeof onToggle === 'function';
   const isControlled = typeof controlledPlaying === 'boolean';
   const [uncontrolledPlaying, setUncontrolledPlaying] = useState(false);
   const playing = isControlled ? controlledPlaying : uncontrolledPlaying;
@@ -339,12 +344,15 @@ export default function PlayPauseMorphType4({
 
   return (
     <div
-      role="button"
-      aria-label={title}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? (playing ? t('common.pause', 'Pause') : t('common.play', 'Play')) : undefined}
+      aria-hidden={interactive ? undefined : true}
       onClick={handleClick}
+      onKeyDown={interactive ? activateOnKey : undefined}
       style={{ display: 'inline-flex', cursor: 'pointer', lineHeight: 0, position: 'relative', width: size, height: size, ...style }}
       className={className}
-      title={title}
+      title={title ?? t('common.playPause', 'Play/Pause')}
     >
       {hidden}
       
