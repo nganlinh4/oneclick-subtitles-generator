@@ -63,10 +63,11 @@ This is an architecture description, not an independent security audit.
   or network layer.
 - Provider bodies, retry counts, concurrency, timeouts, upload sizes, redirects, and response sizes
   are bounded. Cancellation propagates through waits and managed child processes.
-- The frozen visual shell still loads its existing Google Fonts styles and glyphs through the
-  narrow `style-src`/`font-src` CSP entries. This is the remaining deliberate WebView HTTPS egress;
-  replacing it with reviewed local font files would change the visual asset contract and requires
-  separate visual approval. Provider/API traffic is not permitted through those directives.
+- Every WebView font, including the Material Symbols icon font, ships with the application as a
+  hash-pinned local file (`src/assets/fonts/fonts.manifest.json`,
+  `promptdj-midi/assets/fonts/fonts.manifest.json`). The production `style-src` and `font-src`
+  allow only the application itself (plus inline styles and `data:` fonts), so the WebView makes
+  no font or stylesheet request to Google or any other origin.
 - `app_update_check`, `app_update_install`, and `app_update_cancel` are exposed only behind the
   `check-for-updates` capability and are user-initiated. They use a fixed HTTPS `latest.json`
   endpoint and are gated by strict minisign-compatible public-key format validation against the

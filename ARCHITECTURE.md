@@ -151,7 +151,8 @@ Consequently, source compilation can pass while an unsupported target correctly 
 release-readiness gate. Windows x64 currently passes it.
 
 The repository carries the selected root MIT license and `THIRD_PARTY_NOTICES.md`. PromptDJ uses
-the operating-system UI font stack and packages no separate font payload.
+the operating-system UI font stack; its only font payload is the bundled Open Sans fallback of the
+Noto Sans app-font preference, recorded in `THIRD_PARTY_NOTICES.md`.
 
 ## Visual compatibility
 

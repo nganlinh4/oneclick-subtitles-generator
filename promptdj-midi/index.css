@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+@import url('./styles/fonts.css');
 @import url('./styles/material-tokens.css');
 
 html, body {

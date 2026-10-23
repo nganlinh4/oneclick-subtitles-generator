@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "description": "Fonts the WebView loads from the application bundle instead of Google's CDN. Each file is the exact woff2 the Google Fonts CSS API v2 served for cssRequest to Chromium 141 (Windows x64) on 2026-10-22; sourceUrl is that immutable, versioned fonts.gstatic.com object.",
+  "families": [
+    {
+      "family": "Open Sans",
+      "license": "OFL-1.1",
+      "copyright": "Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)",
+      "upstream": "https://github.com/googlefonts/opensans",
+      "fontVersion": "Version 3.003",
+      "axes": "wght 300..800",
+      "usedBy": "PromptDJ: fallback of the \"Noto Sans\" application-font preference.",
+      "cssRequest": "https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap",
+      "files": [
+        {
+          "path": "open-sans/open-sans-cyrillic-ext.woff2",
+          "subset": "cyrillic-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSKmu1aB.woff2",
+          "sizeBytes": 49268,
+          "sha256": "95dd03b930aca04ab393f625101f7367e3abc83b3b09e6074de1fc081ba6fd1c"
+        },
+        {
+          "path": "open-sans/open-sans-cyrillic.woff2",
+          "subset": "cyrillic",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSumu1aB.woff2",
+          "sizeBytes": 26588,
+          "sha256": "2809606237a64bd9c1461e727f369ddfd77a350e4900fffe64e8bfe16a2b3454"
+        },
+        {
+          "path": "open-sans/open-sans-greek-ext.woff2",
+          "subset": "greek-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSOmu1aB.woff2",
+          "sizeBytes": 4504,
+          "sha256": "197ef1e4874d6f8f59bcb8f303029b7fd40aebd7a23aa96c1b649b3faea5d57c"
+        },
+        {
+          "path": "open-sans/open-sans-greek.woff2",
+          "subset": "greek",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSymu1aB.woff2",
+          "sizeBytes": 21332,
+          "sha256": "08ea4cf0a7c61077656395aa7dc728a6d184ee4bdae03a1bc34c17ee97e8f31c"
+        },
+        {
+          "path": "open-sans/open-sans-hebrew.woff2",
+          "subset": "hebrew",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS2mu1aB.woff2",
+          "sizeBytes": 16920,
+          "sha256": "7abb700b280437b795e68b3a85a1dcbfdf04bb815555762033ade4f7894f2554"
+        },
+        {
+          "path": "open-sans/open-sans-math.woff2",
+          "subset": "math",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTVOmu1aB.woff2",
+          "sizeBytes": 51912,
+          "sha256": "a093b888254afd7deb8e37cccfd434e7d06ed47d22cfed9621631d80e1e81554"
+        },
+        {
+          "path": "open-sans/open-sans-symbols.woff2",
+          "subset": "symbols",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu1aB.woff2",
+          "sizeBytes": 26596,
+          "sha256": "8f80f993e523f2e6c2d097552740fd26331658da23ffad31d26edcdd3aeec370"
+        },
+        {
+          "path": "open-sans/open-sans-vietnamese.woff2",
+          "subset": "vietnamese",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSCmu1aB.woff2",
+          "sizeBytes": 16496,
+          "sha256": "cc762462ea67b7815649ea3cc005699e3b95b3244b59eb2ce2d22e3ad33497c2"
+        },
+        {
+          "path": "open-sans/open-sans-latin-ext.woff2",
+          "subset": "latin-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSGmu1aB.woff2",
+          "sizeBytes": 35156,
+          "sha256": "d5bab8e28732fe3d10dcef4f77b9c248605bbb2a87d289a2539251ceafab536a"
+        },
+        {
+          "path": "open-sans/open-sans-latin.woff2",
+          "subset": "latin",
+          "sourceUrl": "https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-muw.woff2",
+          "sizeBytes": 48320,
+          "sha256": "d8e4fe0452aa2076429a9bb5d8757d00a994dd95986cf950e9a1a371b9a072a0"
+        }
+      ]
+    }
+  ]
+}

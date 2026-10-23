@@ -38,22 +38,22 @@
       "csp": {
         "default-src": "'self'",
         "connect-src": "'self' ipc: http://ipc.localhost",
-        "font-src": "'self' data: https://fonts.gstatic.com",
+        "font-src": "'self' data:",
         "img-src": "'self' data: blob: http://127.0.0.1:*",
         "media-src": "'self' blob: http://127.0.0.1:*",
         "object-src": "'none'",
         "script-src": "'self'",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com"
+        "style-src": "'self' 'unsafe-inline'"
       },
       "devCsp": {
         "default-src": "'self' http://127.0.0.1:3030",
         "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:3030 ws://127.0.0.1:3030",
-        "font-src": "'self' data: https://fonts.gstatic.com http://127.0.0.1:3030",
+        "font-src": "'self' data: http://127.0.0.1:3030",
         "img-src": "'self' data: blob: http://127.0.0.1:*",
         "media-src": "'self' blob: http://127.0.0.1:*",
         "object-src": "'none'",
         "script-src": "'self' http://127.0.0.1:3030",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com http://127.0.0.1:3030"
+        "style-src": "'self' 'unsafe-inline' http://127.0.0.1:3030"
       }
     }
   },

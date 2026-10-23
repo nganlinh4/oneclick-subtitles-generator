@@ -14,7 +14,8 @@ This guide documents the process of replacing static inline SVGs and data:image/
 All Material Symbols Rounded parameters are controlled in `src/styles/index.css`:
 
 ```css
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,GRAD@24,600,0&display=swap');
+/* The variable font itself ships locally: src/styles/fonts.css, src/assets/fonts/. */
+@import url('./fonts.css');
 
 :root {
   --ms-font-family: 'Material Symbols Rounded', 'Material Symbols', 'Material Icons';

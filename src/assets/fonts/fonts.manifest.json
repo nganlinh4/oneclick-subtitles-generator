@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "description": "Fonts the WebView loads from the application bundle instead of Google's CDN. Each file is the exact woff2 the Google Fonts CSS API v2 served for cssRequest to Chromium 141 (Windows x64) on 2026-10-22; sourceUrl is that immutable, versioned fonts.gstatic.com object.",
+  "families": [
+    {
+      "family": "Material Symbols Rounded",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2026 Google LLC.",
+      "upstream": "https://github.com/google/material-design-icons",
+      "fontVersion": "Version 2.978",
+      "axes": "FILL 0..1, GRAD -50..200, opsz 20..48, wght 100..700",
+      "usedBy": "Every UI icon (.material-symbols-rounded ligatures).",
+      "cssRequest": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200",
+      "files": [
+        {
+          "path": "material-symbols-rounded/material-symbols-rounded.woff2",
+          "subset": "fallback",
+          "sourceUrl": "https://fonts.gstatic.com/s/materialsymbolsrounded/v381/sykg-zNym6YjUruM-QrEh7-nyTnjDwKNJ_190Fjzag.woff2",
+          "sizeBytes": 5402952,
+          "sha256": "3a0c75876e6e161f9afc145472130c25f5490c9434c0d5217d8745d155aa6183"
+        }
+      ]
+    },
+    {
+      "family": "JetBrains Mono",
+      "license": "OFL-1.1",
+      "copyright": "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)",
+      "upstream": "https://github.com/JetBrains/JetBrainsMono",
+      "fontVersion": "Version 2.211",
+      "axes": "wght 400..800",
+      "usedBy": "UI code font (--font-code).",
+      "cssRequest": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap",
+      "files": [
+        {
+          "path": "jetbrains-mono/jetbrains-mono-cyrillic-ext.woff2",
+          "subset": "cyrillic-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx3cwhsk.woff2",
+          "sizeBytes": 1640,
+          "sha256": "62213be8a78b42f1e29d1452d91e2f8b3e745572a9dd98d3941e39fa00b37d76"
+        },
+        {
+          "path": "jetbrains-mono/jetbrains-mono-cyrillic.woff2",
+          "subset": "cyrillic",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxTcwhsk.woff2",
+          "sizeBytes": 8872,
+          "sha256": "e17cfd15fb96909d64095015f958207063a0c07191da3512df7d560a781aebdf"
+        },
+        {
+          "path": "jetbrains-mono/jetbrains-mono-greek.woff2",
+          "subset": "greek",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxPcwhsk.woff2",
+          "sizeBytes": 6836,
+          "sha256": "0a557721b1f8b36d3f3f84442689a71ca4a744300abcb46a1953f51bfc663b66"
+        },
+        {
+          "path": "jetbrains-mono/jetbrains-mono-vietnamese.woff2",
+          "subset": "vietnamese",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx_cwhsk.woff2",
+          "sizeBytes": 5888,
+          "sha256": "c89b9cc0bc6262bd4f8d8494b6961601f3aefa829d08c2e3635f4d501d3a47c2"
+        },
+        {
+          "path": "jetbrains-mono/jetbrains-mono-latin-ext.woff2",
+          "subset": "latin-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhsk.woff2",
+          "sizeBytes": 11624,
+          "sha256": "db5ff4db83e580426280e9337a58dc57d3a83784a1b03ad80914651594441d52"
+        },
+        {
+          "path": "jetbrains-mono/jetbrains-mono-latin.woff2",
+          "subset": "latin",
+          "sourceUrl": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+          "sizeBytes": 31432,
+          "sha256": "83c005d49d8a6a50474c73a5a36ac0468076e9c4a29da7bdb14995d80560a5be"
+        }
+      ]
+    },
+    {
+      "family": "Noto Sans",
+      "license": "OFL-1.1",
+      "copyright": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)",
+      "upstream": "https://github.com/notofonts/latin-greek-cyrillic",
+      "fontVersion": "Version 2.015",
+      "axes": "wght 100..900",
+      "usedBy": "The \"Noto Sans\" application-font preference (Settings, app font).",
+      "cssRequest": "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&display=swap",
+      "files": [
+        {
+          "path": "noto-sans/noto-sans-cyrillic-ext.woff2",
+          "subset": "cyrillic-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5aPdu2ui.woff2",
+          "sizeBytes": 70680,
+          "sha256": "82ff72b28e6610f2c62de49d0f295c160a157b2718fa814bb6c512ebfdebb31d"
+        },
+        {
+          "path": "noto-sans/noto-sans-cyrillic.woff2",
+          "subset": "cyrillic",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5ardu2ui.woff2",
+          "sizeBytes": 20080,
+          "sha256": "6ab64433de6077ca5ad31b05420450ce986a616a4ea47b6ad16f3217055dafc3"
+        },
+        {
+          "path": "noto-sans/noto-sans-devanagari.woff2",
+          "subset": "devanagari",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5a_du2ui.woff2",
+          "sizeBytes": 99236,
+          "sha256": "ea6a530b75d93de7dde68b1271c5b67a1af45031810db7cd4883f6620b7b1d3d"
+        },
+        {
+          "path": "noto-sans/noto-sans-greek-ext.woff2",
+          "subset": "greek-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5aLdu2ui.woff2",
+          "sizeBytes": 10760,
+          "sha256": "790b255c10c32e0b10bdcd961abad098c9697b7ffbabc1b09aca0b17af3201fd"
+        },
+        {
+          "path": "noto-sans/noto-sans-greek.woff2",
+          "subset": "greek",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5a3du2ui.woff2",
+          "sizeBytes": 21776,
+          "sha256": "7f655207c2f6c140c327d6bd263bccc7a11833084f4fb0c51d9a24b7cd753651"
+        },
+        {
+          "path": "noto-sans/noto-sans-vietnamese.woff2",
+          "subset": "vietnamese",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5aHdu2ui.woff2",
+          "sizeBytes": 14456,
+          "sha256": "791e3f213c155a5b1f4bbe4cbf8e33f321cfb7f46248a5ed11077dc79209a63c"
+        },
+        {
+          "path": "noto-sans/noto-sans-latin-ext.woff2",
+          "subset": "latin-ext",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5aDdu2ui.woff2",
+          "sizeBytes": 167960,
+          "sha256": "6d5a79315528df191b9d86f97b0c4272a8b588fcb166773fe6588ac795de0613"
+        },
+        {
+          "path": "noto-sans/noto-sans-latin.woff2",
+          "subset": "latin",
+          "sourceUrl": "https://fonts.gstatic.com/s/notosans/v42/o-0bIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjc5a7duw.woff2",
+          "sizeBytes": 35820,
+          "sha256": "51ca196f49a33e79e7870ff88ebd2829a3f627a51e7d690986618f0e7ad2b52d"
+        }
+      ]
+    }
+  ]
+}
