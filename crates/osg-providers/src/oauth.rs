@@ -17,11 +17,14 @@ use zeroize::{Zeroize as _, Zeroizing};
 use crate::bounded::{is_json, read};
 use crate::{ProviderClient, ProviderError, Result};
 
+mod callback;
+
+use callback::{CALLBACK_READ_CHUNK, CallbackValues, MAX_CALLBACK_HEADER_BYTES, parse_callback};
+
 const OAUTH_SCOPE: &str = "https://www.googleapis.com/auth/youtube.readonly";
 const AUTHORIZATION_TIMEOUT: Duration = Duration::from_mins(3);
 const CALLBACK_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CALLBACK_ATTEMPTS: usize = 8;
-const MAX_CALLBACK_HEADER_BYTES: usize = 8 * 1024;
 const MAX_TOKEN_RESPONSE_BYTES: usize = 512 * 1024;
 const TOKEN_REFRESH_BUFFER_MS: u64 = 5 * 60 * 1_000;
 const MAX_TOKEN_CHARACTERS: usize = 16 * 1024;
@@ -386,22 +389,17 @@ async fn wait_for_callback(
     Err(ProviderError::InvalidResponse)
 }
 
-enum CallbackValues {
-    Code(SecretString),
-    Denied,
-}
-
 async fn read_callback(
     stream: &mut TcpStream,
     port: u16,
     expected_state: &str,
 ) -> Result<CallbackValues> {
-    let mut bytes = Zeroizing::new(Vec::with_capacity(1024));
+    let mut bytes = Zeroizing::new(Vec::with_capacity(CALLBACK_READ_CHUNK));
     loop {
         if bytes.len() >= MAX_CALLBACK_HEADER_BYTES {
             return Err(ProviderError::InvalidResponse);
         }
-        let mut buffer = [0_u8; 1024];
+        let mut buffer = [0_u8; CALLBACK_READ_CHUNK];
         let count = timeout(CALLBACK_IO_TIMEOUT, stream.read(&mut buffer))
             .await
             .map_err(|_| ProviderError::Timeout)?
@@ -411,77 +409,9 @@ async fn read_callback(
         }
         bytes.extend_from_slice(&buffer[..count]);
         if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
-            break;
+            return parse_callback(&bytes, port, expected_state);
         }
     }
-    let request =
-        std::str::from_utf8(bytes.as_slice()).map_err(|_| ProviderError::InvalidResponse)?;
-    let mut lines = request.split("\r\n");
-    let mut request_line = lines
-        .next()
-        .ok_or(ProviderError::InvalidResponse)?
-        .split(' ');
-    if request_line.next() != Some("GET") {
-        return Err(ProviderError::InvalidResponse);
-    }
-    let target = request_line.next().ok_or(ProviderError::InvalidResponse)?;
-    if request_line.next() != Some("HTTP/1.1") || request_line.next().is_some() {
-        return Err(ProviderError::InvalidResponse);
-    }
-    let expected_host = format!("127.0.0.1:{port}");
-    let mut host = None;
-    for line in lines.take_while(|line| !line.is_empty()) {
-        let (name, value) = line.split_once(':').ok_or(ProviderError::InvalidResponse)?;
-        if name.eq_ignore_ascii_case("host") && host.replace(value.trim()).is_some() {
-            return Err(ProviderError::InvalidResponse);
-        }
-    }
-    if host != Some(expected_host.as_str()) {
-        return Err(ProviderError::InvalidResponse);
-    }
-    let parsed = Url::parse(&format!("http://{expected_host}{target}"))
-        .map_err(|_| ProviderError::InvalidResponse)?;
-    if parsed.path() != "/oauth2callback" {
-        return Err(ProviderError::InvalidResponse);
-    }
-    let mut state = None;
-    let mut code = None;
-    let mut denied = false;
-    for (key, value) in parsed.query_pairs() {
-        match key.as_ref() {
-            "state" => {
-                if state.replace(value.into_owned()).is_some() {
-                    return Err(ProviderError::InvalidResponse);
-                }
-            }
-            "code" => {
-                if code.replace(value.into_owned()).is_some() {
-                    return Err(ProviderError::InvalidResponse);
-                }
-            }
-            "error" => {
-                if denied || value.is_empty() || value.len() > 256 {
-                    return Err(ProviderError::InvalidResponse);
-                }
-                denied = true;
-            }
-            _ => {}
-        }
-    }
-    if state.as_deref() != Some(expected_state) {
-        return Err(ProviderError::InvalidResponse);
-    }
-    if denied && code.is_some() {
-        return Err(ProviderError::InvalidResponse);
-    }
-    if denied {
-        return Ok(CallbackValues::Denied);
-    }
-    let code = code.ok_or(ProviderError::InvalidResponse)?;
-    if code.is_empty() || code.len() > 4096 || code.chars().any(char::is_control) {
-        return Err(ProviderError::InvalidResponse);
-    }
-    Ok(CallbackValues::Code(SecretString::from(code)))
 }
 
 async fn respond_to_browser(mut stream: TcpStream, success: bool) {

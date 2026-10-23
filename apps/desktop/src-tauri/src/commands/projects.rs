@@ -5,7 +5,7 @@ use osg_application::{
     ProjectTrackSelector, RevisionCommit,
 };
 use osg_domain::{ProjectId, ProjectMetadata, RevisionReason, SubtitleTrack};
-use osg_infrastructure::storage::DatabaseError;
+use osg_infrastructure::storage::{DatabaseError, TranscriptRevisionState};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -69,7 +69,7 @@ pub(crate) async fn project_load_transcript(
         let latest = revisions
             .into_iter()
             .rev()
-            .find(|r| r.state == "completed" || r.state == "partial" || r.state == "in_progress");
+            .find(|r| r.state != TranscriptRevisionState::Failed);
 
         let Some(rev) = latest else {
             return Ok(None);

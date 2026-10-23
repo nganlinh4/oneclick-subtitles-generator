@@ -1,4 +1,5 @@
-//! Native-only, manifest-gated lifecycle for optional ASR and speech packs.
+//! Native-only, manifest-gated lifecycle for optional ASR and speech packs, F5 language
+//! checkpoints, voice samples, and the UI font.
 //!
 //! The `WebView` can select a reviewed typed package ID, but cannot provide a
 //! URL, archive, filesystem path, process argument, or package manifest. A
@@ -16,14 +17,14 @@
 
 mod archive;
 mod asset_catalog;
-mod cancellation;
 mod catalog;
 mod delivery_manifest;
 mod download;
 mod error;
+mod f5_catalog;
+mod f5_models;
 mod manager;
 mod path_security;
-mod progress;
 mod receipt;
 mod speech_catalog;
 mod ui_font_catalog;
@@ -31,9 +32,10 @@ mod upstream_lock;
 mod verified_install;
 
 pub use asset_catalog::{AssetPackageId, AssetPackageInfo, VOICE_SAMPLE_IDS, asset_catalog};
-pub use cancellation::CancellationToken;
 pub use catalog::{EngineId, EnginePackageInfo, EngineRuntimeKind, catalog};
 pub use error::{PackageError, Result};
+pub use f5_catalog::{F5ModelInfo, f5_model_catalog};
+pub use f5_models::F5ModelManager;
 pub use manager::{
     AssetPackageManager, AssetPackageState, AssetPackageStatus, EnginePackageManager,
     EnginePackageState, EnginePackageStatus, InstalledAssetRuntime, InstalledRuntime,
@@ -41,6 +43,6 @@ pub use manager::{
     RuntimeCoordinator, SpeechPackageManager, SpeechPackageState, SpeechPackageStatus,
     SpeechRuntimeCoordinator, UiFontPackageManager, UiFontPackageState, UiFontPackageStatus,
 };
-pub use progress::{OperationPhase, OperationProgress, ProgressSink};
+pub use osg_delivery_core::{CancellationToken, OperationPhase, OperationProgress, ProgressSink};
 pub use speech_catalog::{SpeechPackageId, SpeechPackageInfo, SpeechRuntimeKind, speech_catalog};
 pub use ui_font_catalog::{UI_FONT_SUBSETS, UiFontPackageId, UiFontPackageInfo, ui_font_catalog};

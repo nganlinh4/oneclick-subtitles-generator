@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{
     DeliveryAsset, DeliverySource, DeliverySourceKind, MAX_ARCHIVE_BYTES, PLATFORM_KEYS,
-    PackageCatalog, PackageDelivery, current_platform, valid_asset_name, valid_delivery_url,
+    PackageCatalog, PackageDelivery, current_platform, is_asset_name, valid_delivery_url,
     validate_identifier, validate_sha256,
 };
-use crate::path_security::validate_manifest_path;
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 
 const EMBEDDED_CATALOG: &str = include_str!("../delivery/ui-fonts.delivery.json");
@@ -230,7 +230,7 @@ fn parse_catalog(raw: &str, selected_platform: &str) -> Result<UiFontDeliveryCat
 
 fn validate_release(release: &RawRelease) -> Result<PackageDelivery> {
     validate_identifier(&release.version)?;
-    validate_manifest_path(&release.primary_relative_path)?;
+    validate_relative_path(&release.primary_relative_path)?;
     validate_sha256(&release.sha256)?;
     if release.version != VERSION
         || release.asset != MANIFEST_ASSET.asset
@@ -289,7 +289,7 @@ fn validate_asset(asset: &RawAsset, expected: &ExpectedSource) -> Result<Deliver
         || asset.urls.iter().map(String::as_str).collect::<Vec<_>>() != expected.urls
         || asset.size_bytes != expected.size_bytes
         || asset.sha256 != expected.sha256
-        || !valid_asset_name(&asset.asset)
+        || !is_asset_name(&asset.asset)
         || asset.size_bytes == 0
         || asset.size_bytes > MAX_ARCHIVE_BYTES
     {

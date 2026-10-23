@@ -1,55 +1,18 @@
 use crate::binary::{BinaryKind, ResolvedBinary};
 use crate::progress::{FfmpegProgressParser, ProgressSink};
 use crate::{MediaError, Result};
-use command_group::{CommandGroup, GroupChild};
-use std::collections::VecDeque;
+use osg_process::{
+    CancellationToken, Capture, CaptureMode, ManagedChild, Supervised, capture_stream, environment,
+    supervise,
+};
 use std::ffi::OsString;
 use std::io::Read;
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 const DEFAULT_STDOUT_LIMIT: usize = 8 * 1024 * 1024;
 const STDERR_TAIL_LIMIT: usize = 64 * 1024;
-const PROGRESS_LINE_LIMIT: usize = 4 * 1024;
-const POLL_INTERVAL: Duration = Duration::from_millis(20);
-const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
-    "__WDIO_TAURI_APP_BINARY__",
-    "__WDIO_TAURI_EMBEDDED__",
-    "OSG_E2E_REUSE_ROOT",
-    "OSG_E2E_CACHE_ROOT",
-    "OSG_E2E_CACHE_ROOT_ID",
-    "OSG_E2E_RUN_ROOT_AUTHORIZATION",
-    "OSG_E2E_STAGING_LEASE_ID",
-    "OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC",
-    "OSG_E2E_STAGING_LEASE_OWNER_PID",
-    "OSG_E2E_STAGING_ROOT",
-    "OSG_E2E_WEBDRIVER_AUTHORIZATION",
-    "OSG_E2E_WEBDRIVER_IDENTITY",
-    "OSG_E2E_WEBDRIVER_RUN_ROOT",
-    "REMOTE_WEBDRIVER_URL",
-    "TAURI_WEBDRIVER_PORT",
-    "WDIO_EMBEDDED_SERVER",
-    "WDIO_WORKER_ID",
-];
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-#[derive(Clone, Debug, Default)]
-pub struct CancellationToken(Arc<AtomicBool>);
-
-impl CancellationToken {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct RunControl {
@@ -137,217 +100,83 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
         return Err(MediaError::Cancelled(tool));
     }
 
-    let mut command = Command::new(binary.path());
-    remove_automation_authority_environment(&mut command);
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let child = spawn_group(&mut command, tool)?;
-    let mut child = KillOnDrop::new(child);
+    let mut command = tool_command(binary, args);
+    let mut child =
+        ManagedChild::spawn(&mut command).map_err(|source| MediaError::Spawn { tool, source })?;
     let stdout = child
-        .inner()
-        .stdout
-        .take()
+        .take_stdout()
         .ok_or_else(|| process_io(tool, "stdout pipe unavailable"))?;
     let stderr = child
-        .inner()
-        .stderr
-        .take()
+        .take_stderr()
         .ok_or_else(|| process_io(tool, "stderr pipe unavailable"))?;
 
-    let stdout_thread = std::thread::spawn(move || capture_head(stdout, stdout_limit));
+    let stdout_thread =
+        std::thread::spawn(move || capture_stream(stdout, CaptureMode::Head(stdout_limit), None));
     let progress = control.progress.clone();
     let stderr_thread =
         std::thread::spawn(move || capture_stderr(stderr, progress.as_ref(), expected_duration_us));
 
     let started = Instant::now();
-    let status = loop {
-        // A process that has already completed wins a race with a late cancel.
-        if let Some(status) = child.try_wait().map_err(|error| MediaError::ProcessIo {
+    let outcome = supervise(&mut child, &control.cancellation, control.timeout)
+        .map_err(|source| MediaError::ProcessIo { tool, source })?;
+    let stdout = join(stdout_thread, tool, "stdout reader stopped unexpectedly")?;
+    let stderr = join(stderr_thread, tool, "stderr reader stopped unexpectedly")?;
+    match outcome {
+        Supervised::Exited(status) => Ok(ProcessOutput {
+            status,
+            stdout: stdout.bytes,
+            stdout_truncated: stdout.truncated,
+            stderr_tail: stderr.bytes,
+            elapsed: started.elapsed(),
+        }),
+        Supervised::Cancelled => Err(MediaError::Cancelled(tool)),
+        Supervised::TimedOut => Err(MediaError::TimedOut {
             tool,
-            source: error,
-        })? {
-            break status;
-        }
-        if control.cancellation.is_cancelled() {
-            child.terminate_and_wait(tool)?;
-            join_capture(stdout_thread, tool)?;
-            join_stderr(stderr_thread, tool)?;
-            return Err(MediaError::Cancelled(tool));
-        }
-        if started.elapsed() >= control.timeout {
-            child.terminate_and_wait(tool)?;
-            join_capture(stdout_thread, tool)?;
-            join_stderr(stderr_thread, tool)?;
-            return Err(MediaError::TimedOut {
-                tool,
-                timeout: control.timeout,
-            });
-        }
-        std::thread::sleep(POLL_INTERVAL);
-    };
-
-    child.mark_reaped();
-    let capture = join_capture(stdout_thread, tool)?;
-    let stderr_tail = join_stderr(stderr_thread, tool)?;
-    Ok(ProcessOutput {
-        status,
-        stdout: capture.bytes,
-        stdout_truncated: capture.truncated,
-        stderr_tail,
-        elapsed: started.elapsed(),
-    })
-}
-
-fn remove_automation_authority_environment(command: &mut Command) {
-    for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
-        command.env_remove(variable);
+            timeout: control.timeout,
+        }),
     }
 }
 
-fn spawn_group(command: &mut Command, tool: BinaryKind) -> Result<GroupChild> {
-    #[cfg(windows)]
-    let result = command
-        .group()
-        .kill_on_drop(true)
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn();
-    #[cfg(not(windows))]
-    let result = command.group_spawn();
-    result.map_err(|source| MediaError::Spawn { tool, source })
-}
-
-#[derive(Debug)]
-struct KillOnDrop {
-    child: GroupChild,
-    reaped: bool,
-}
-
-impl KillOnDrop {
-    fn new(child: GroupChild) -> Self {
-        Self {
-            child,
-            reaped: false,
-        }
-    }
-
-    fn inner(&mut self) -> &mut std::process::Child {
-        self.child.inner()
-    }
-
-    fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
-    }
-
-    fn terminate_and_wait(&mut self, tool: BinaryKind) -> Result<()> {
-        if self
-            .child
-            .try_wait()
-            .map_err(|source| MediaError::ProcessIo { tool, source })?
-            .is_none()
-        {
-            let _ = self.child.kill();
-        }
-        self.child
-            .wait()
-            .map_err(|source| MediaError::ProcessIo { tool, source })?;
-        self.reaped = true;
-        Ok(())
-    }
-
-    fn mark_reaped(&mut self) {
-        self.reaped = true;
-    }
-}
-
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        if !self.reaped && self.child.try_wait().is_ok_and(|status| status.is_none()) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Capture {
-    bytes: Vec<u8>,
-    truncated: bool,
-}
-
-fn capture_head(mut reader: impl Read, limit: usize) -> std::io::Result<Capture> {
-    let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
-    let mut truncated = false;
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let remaining = limit.saturating_sub(bytes.len());
-        let retained = read.min(remaining);
-        bytes.extend_from_slice(&buffer[..retained]);
-        truncated |= retained < read;
-    }
-    Ok(Capture { bytes, truncated })
+/// `FFmpeg` and `ffprobe` need nothing beyond the essential environment.
+fn tool_command(binary: &ResolvedBinary, args: Vec<OsString>) -> Command {
+    let mut command = Command::new(binary.path());
+    environment::isolate(&mut command, &[]);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
 }
 
 fn capture_stderr(
-    mut reader: impl Read,
+    reader: impl Read,
     progress: Option<&ProgressSink>,
     expected_duration_us: Option<u64>,
-) -> std::io::Result<Vec<u8>> {
-    let mut tail = VecDeque::with_capacity(STDERR_TAIL_LIMIT);
-    let mut line = Vec::with_capacity(256);
+) -> std::io::Result<Capture> {
     let mut parser = FfmpegProgressParser::new(expected_duration_us);
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
+    let mut emit = |line: &[u8]| {
+        let line = String::from_utf8_lossy(line);
+        if let (Some(sink), Some(update)) =
+            (progress, parser.push_line(line.trim_end_matches('\r')))
+        {
+            sink.emit(update);
         }
-        for byte in &buffer[..read] {
-            if tail.len() == STDERR_TAIL_LIMIT {
-                tail.pop_front();
-            }
-            tail.push_back(*byte);
-            if *byte == b'\n' {
-                emit_progress_line(&mut parser, progress, &line);
-                line.clear();
-            } else if line.len() < PROGRESS_LINE_LIMIT {
-                line.push(*byte);
-            }
-        }
-    }
-    if !line.is_empty() {
-        emit_progress_line(&mut parser, progress, &line);
-    }
-    Ok(tail.into_iter().collect())
-}
-
-fn emit_progress_line(parser: &mut FfmpegProgressParser, sink: Option<&ProgressSink>, line: &[u8]) {
-    let Some(sink) = sink else {
-        return;
     };
-    let line = String::from_utf8_lossy(line);
-    if let Some(progress) = parser.push_line(line.trim_end_matches('\r')) {
-        sink.emit(progress);
-    }
+    let observer = progress
+        .is_some()
+        .then_some(&mut emit as &mut dyn FnMut(&[u8]));
+    capture_stream(reader, CaptureMode::Tail(STDERR_TAIL_LIMIT), observer)
 }
 
-fn join_capture(thread: JoinHandle<std::io::Result<Capture>>, tool: BinaryKind) -> Result<Capture> {
+fn join(
+    thread: JoinHandle<std::io::Result<Capture>>,
+    tool: BinaryKind,
+    message: &'static str,
+) -> Result<Capture> {
     thread
         .join()
-        .map_err(|_| process_io(tool, "stdout reader stopped unexpectedly"))?
-        .map_err(|source| MediaError::ProcessIo { tool, source })
-}
-
-fn join_stderr(thread: JoinHandle<std::io::Result<Vec<u8>>>, tool: BinaryKind) -> Result<Vec<u8>> {
-    thread
-        .join()
-        .map_err(|_| process_io(tool, "stderr reader stopped unexpectedly"))?
+        .map_err(|_| process_io(tool, message))?
         .map_err(|source| MediaError::ProcessIo { tool, source })
 }
 
@@ -362,22 +191,22 @@ fn process_io(tool: BinaryKind, message: &'static str) -> MediaError {
 pub(crate) mod test_support {
     use super::*;
     use crate::binary::BinaryOrigin;
-    use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
 
     static MOCK: OnceLock<PathBuf> = OnceLock::new();
 
     #[test]
-    fn media_tool_process_drops_automation_authority() {
-        let mut command = Command::new("not-started");
-        remove_automation_authority_environment(&mut command);
-        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+    fn media_tools_receive_only_the_essential_environment() {
+        let binary = mock_binary(BinaryKind::Ffprobe);
+        let command = tool_command(&binary, Vec::new());
+        let allowed = environment::allowlist(&[]).collect::<Vec<_>>();
+        for (key, value) in command.get_envs() {
+            let key = key.to_string_lossy();
+            assert!(value.is_some(), "{key} is removed instead of never copied");
             assert!(
-                command
-                    .get_envs()
-                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
-                "{variable} would be inherited by the media tool"
+                allowed.iter().any(|name| name.eq_ignore_ascii_case(&key)),
+                "{key} would reach the media tool"
             );
         }
     }

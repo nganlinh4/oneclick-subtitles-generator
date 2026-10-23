@@ -25,11 +25,11 @@ use osg_decode::{DecodeError, DecoderConfig, SourceBound, SourceInfo, open_decod
 use osg_encode::{FrameBuffer, PixelLayout, VideoEncoder, open_encoder};
 #[cfg(windows)]
 use osg_gpu_video::GpuVideoPipeline;
+use osg_process::CancellationToken;
 use osg_render::RenderRequest;
 use osg_scene::scene::ResolvedFace;
 use osg_scene::{ExactTime, FrameTimeline};
 
-use crate::cancel::ExportCancel;
 use crate::convert::{ExportPlan, check_canvas_background};
 use crate::error::ExportError;
 #[cfg(not(windows))]
@@ -57,8 +57,10 @@ pub struct ExportJob<'paths> {
     pub output: &'paths Path,
     /// The face, atlas and runs the `WebView` staged.
     pub text: StagedText,
-    /// The signal that stops this export.
-    pub cancel: ExportCancel,
+    /// The signal that stops this export. It is checked twice per frame (before the source frame
+    /// is decoded and before the composed frame is encoded), so a cancel takes effect within one
+    /// frame.
+    pub cancel: CancellationToken,
 }
 
 impl fmt::Debug for ExportJob<'_> {

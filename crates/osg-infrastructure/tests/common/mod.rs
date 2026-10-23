@@ -184,7 +184,7 @@ pub(crate) fn create_sample_revision(
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: start_ms,
         source_range_end_ms: end_ms,
-        state: "completed".to_string(),
+        state: osg_infrastructure::storage::TranscriptRevisionState::Completed,
         fingerprint: "test_fingerprint".to_string(),
         word_count: 0,
         metadata_json: "{}".to_string(),

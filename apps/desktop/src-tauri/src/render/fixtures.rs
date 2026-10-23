@@ -51,6 +51,33 @@ pub(super) fn platform() -> MutexGuard<'static, ()> {
     PLATFORM.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Whether this machine has a hardware GPU for the export's video path, or a loud note that the
+/// export was not verified.
+///
+/// Hosted CI runners offer only WARP, which has no Direct3D 11 video support, so the export refuses
+/// there at `D3d11Device` with `DXGI_ERROR_UNSUPPORTED` by design (there is no CPU fallback). Call
+/// it while holding [`platform`], because it acquires an adapter.
+#[cfg(windows)]
+pub(super) fn hardware_gpu() -> bool {
+    use osg_compositor::{Compositor, CompositorError};
+    let adapter = match Compositor::new() {
+        Ok(compositor) => compositor.adapter().clone(),
+        Err(CompositorError::NoAdapter { reason }) => {
+            eprintln!("SKIPPED: no GPU adapter ({reason}). The native export was NOT verified.");
+            return false;
+        }
+        Err(error) => panic!("the adapter was present but the compositor failed: {error}"),
+    };
+    if adapter.kind().is_software() {
+        eprintln!(
+            "SKIPPED: only the software adapter {:?} is available. The native export was NOT verified.",
+            adapter.name()
+        );
+        return false;
+    }
+    true
+}
+
 /// The family the fixture request names and the fixture face resolves.
 pub(super) const FAMILY: &str = "Inter";
 /// The weight the fixture resolves.

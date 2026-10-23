@@ -21,7 +21,7 @@ use crate::processor::VideoProcessor;
 use crate::shared::SharedSurface;
 use crate::{GpuVideoError, InteropStage, WorkerStage};
 
-use super::{sync_error, trace};
+use super::trace;
 
 #[derive(Debug)]
 pub(super) enum DecodedReady {
@@ -197,11 +197,11 @@ fn decode_into_slot(
             (source.grid().numerator(), source.grid().denominator()),
         )?);
     }
-    let target = slots.get(slot).ok_or_else(sync_error)?;
+    let target = slots.get(slot).ok_or_else(GpuVideoError::synchronization)?;
     let _write = target.acquire()?;
     processor
         .as_ref()
-        .ok_or_else(sync_error)?
+        .ok_or_else(GpuVideoError::synchronization)?
         .convert(frame, &target.d3d11)?;
     let fence_value = fence.signal()?;
     device.wait()?;
@@ -259,7 +259,10 @@ pub(super) fn spawn_encoder(
                             slot,
                             render_fence_value,
                         )
-                        .and_then(|()| free.send(slot).map_err(|_| sync_error()))
+                        .and_then(|()| {
+                            free.send(slot)
+                                .map_err(|_| GpuVideoError::synchronization())
+                        })
                     }
                     EncodeCommand::Audio {
                         first_sample,
@@ -308,7 +311,7 @@ fn encode_slot(
     slot: usize,
     render_fence_value: u64,
 ) -> Result<(), GpuVideoError> {
-    let source = slots.get(slot).ok_or_else(sync_error)?;
+    let source = slots.get(slot).ok_or_else(GpuVideoError::synchronization)?;
     let video = encoder.config().video();
     let private = private_bgra(&device.device, video.width(), video.height())?;
     {
@@ -371,7 +374,26 @@ fn worker_start_error(worker: WorkerStage, error: &std::io::Error) -> GpuVideoEr
 
 #[cfg(test)]
 mod tests {
-    use super::{DecodedSampleKey, holds_source_sample};
+    use super::{DecodedSampleKey, holds_source_sample, worker_start_error};
+    use crate::{GpuVideoError, WorkerStage};
+
+    #[test]
+    fn worker_start_failures_keep_only_the_os_error_number() {
+        let error = worker_start_error(WorkerStage::Decode, &std::io::Error::from_raw_os_error(8));
+        assert!(matches!(
+            error,
+            GpuVideoError::WorkerUnavailable {
+                worker: WorkerStage::Decode,
+                code: 8
+            }
+        ));
+        let error = worker_start_error(WorkerStage::Encode, &std::io::Error::other("private"));
+        assert!(matches!(
+            error,
+            GpuVideoError::WorkerUnavailable { code: 0, .. }
+        ));
+        assert!(!error.to_string().contains("private"));
+    }
 
     const SAMPLE: DecodedSampleKey = DecodedSampleKey {
         presentation_100ns: 1_000,

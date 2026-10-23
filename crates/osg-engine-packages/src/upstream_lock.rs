@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use url::Url;
 
 use crate::catalog::{PLATFORM_KEYS, validate_identifier, validate_sha256};
-use crate::path_security::validate_manifest_path;
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 
 const EMBEDDED_LOCK: &str = include_str!("../../osg-speech/delivery/speech-upstreams.lock.json");
@@ -198,7 +198,7 @@ fn validate_models(input: &Value) -> Result<()> {
             let file = object(file)?;
             exact_keys(file, &["path", "sha256", "sizeBytes"])?;
             let path = string(file, "path")?;
-            if validate_manifest_path(path).is_err()
+            if validate_relative_path(path).is_err()
                 || !paths.insert(path)
                 || positive_integer(file, "sizeBytes").is_err()
                 || validate_sha256(string(file, "sha256")?).is_err()

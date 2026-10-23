@@ -1,5 +1,6 @@
 use crate::protocol::{WireArtifact, WireVoice};
 use crate::{AudioFormat, LanguageTag, Result, SpeechError, TimeMicros, VoiceId};
+use osg_formats::wav::{self, WavError, WavFormat};
 use serde::Serialize;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -254,75 +255,42 @@ fn verify_wav(
     expected_channels: u8,
     expected_duration: TimeMicros,
 ) -> Result<()> {
-    let mut file = File::open(path).map_err(|_| SpeechError::MissingArtifact)?;
+    let file = File::open(path).map_err(|_| SpeechError::MissingArtifact)?;
     let file_bytes = file
         .metadata()
         .map_err(|_| SpeechError::InvalidArtifact("WAV metadata is unreadable"))?
         .len();
-    let mut header = vec![0_u8; 64 * 1024];
-    let read = file
-        .read(&mut header)
+    let mut header = Vec::new();
+    file.take(64 * 1024)
+        .read_to_end(&mut header)
         .map_err(|_| SpeechError::InvalidArtifact("WAV header is unreadable"))?;
-    header.truncate(read);
-    if header.len() < 12 || &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
-        return Err(SpeechError::InvalidArtifact("invalid WAV signature"));
-    }
-    let riff_bytes = u64::from(u32::from_le_bytes(header[4..8].try_into().unwrap())) + 8;
-    if riff_bytes != file_bytes {
+    let layout = wav::parse_header(&header, file_bytes).map_err(|error| {
+        SpeechError::InvalidArtifact(match error {
+            WavError::Signature => "invalid WAV signature",
+            WavError::ChunkBounds => "invalid WAV chunk size",
+            WavError::Format | WavError::MissingFormat => "WAV format chunk is missing",
+            WavError::MissingData => "WAV data chunk is missing",
+        })
+    })?;
+    if layout.declared_len != file_bytes {
         return Err(SpeechError::InvalidArtifact("invalid WAV container size"));
     }
-    let mut cursor = 12_usize;
-    let mut stream = None;
-    let mut data = None;
-    while cursor.checked_add(8).is_some_and(|end| end <= header.len()) {
-        let id = &header[cursor..cursor + 4];
-        let size = usize::try_from(u32::from_le_bytes(
-            header[cursor + 4..cursor + 8]
-                .try_into()
-                .map_err(|_| SpeechError::InvalidArtifact("invalid WAV chunk"))?,
-        ))
-        .map_err(|_| SpeechError::InvalidArtifact("invalid WAV chunk size"))?;
-        let body = cursor + 8;
-        if id == b"fmt " && size >= 16 && body + 16 <= header.len() {
-            let codec = u16::from_le_bytes([header[body], header[body + 1]]);
-            let channels = u16::from_le_bytes([header[body + 2], header[body + 3]]);
-            let rate = u32::from_le_bytes(header[body + 4..body + 8].try_into().unwrap());
-            let byte_rate = u32::from_le_bytes(header[body + 8..body + 12].try_into().unwrap());
-            if !matches!(codec, 1 | 3 | 0xfffe) || byte_rate == 0 {
-                return Err(SpeechError::InvalidArtifact("unsupported WAV encoding"));
-            }
-            stream = Some((rate, channels, byte_rate));
-        } else if id == b"data" {
-            data = Some((
-                u64::try_from(body).unwrap_or(u64::MAX),
-                u64::try_from(size).unwrap_or(u64::MAX),
-            ));
-            break;
-        }
-        let padded = size
-            .checked_add(size % 2)
-            .and_then(|value| body.checked_add(value))
-            .ok_or(SpeechError::InvalidArtifact("invalid WAV chunk size"))?;
-        if padded > header.len() {
-            break;
-        }
-        cursor = padded;
-    }
-    let (rate, channels, byte_rate) =
-        stream.ok_or(SpeechError::InvalidArtifact("WAV format chunk is missing"))?;
-    let (data_start, data_bytes) =
-        data.ok_or(SpeechError::InvalidArtifact("WAV data chunk is missing"))?;
-    if data_start
-        .checked_add(data_bytes)
-        .is_none_or(|end| end > file_bytes)
-    {
-        return Err(SpeechError::InvalidArtifact("invalid WAV data size"));
+    let WavFormat {
+        encoding,
+        channels,
+        sample_rate: rate,
+        byte_rate,
+        ..
+    } = layout.format;
+    if !matches!(encoding, 1 | 3 | 0xfffe) || byte_rate == 0 {
+        return Err(SpeechError::InvalidArtifact("unsupported WAV encoding"));
     }
     if rate != expected_rate || channels != u16::from(expected_channels) {
         return Err(SpeechError::InvalidArtifact(
             "WAV metadata does not match worker report",
         ));
     }
+    let data_bytes = layout.data_len;
     let measured = data_bytes.saturating_mul(1_000_000) / u64::from(byte_rate);
     let difference = measured.abs_diff(expected_duration.get());
     let tolerance = 100_000_u64.max(measured / 50);

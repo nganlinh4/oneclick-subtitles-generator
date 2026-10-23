@@ -313,7 +313,9 @@ impl SpeechRuntime {
     }
 
     pub(crate) fn reload_f5_models(&self) -> CommandResult<()> {
-        let (_, detached) = self.begin_shutdown(SpeechBackendRequest::F5Tts)?;
+        let (_, detached) = self
+            .detach_backend_runtime(SpeechBackendRequest::F5Tts, None)
+            .map_err(|_| CommandError::internal("The native speech runtime is unavailable."))?;
         tauri::async_runtime::spawn_blocking(move || {
             for worker in detached {
                 worker.shutdown();
@@ -364,11 +366,10 @@ impl SpeechRuntimeCoordinator for SpeechPackageCoordinator {
 
 impl fmt::Debug for SpeechRuntime {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Status resolves managed runtimes and may invalidate workers; Debug must stay inert.
         formatter
             .debug_struct("SpeechRuntime")
-            .field("paths", &"<redacted>")
-            .field("statuses", &self.statuses())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

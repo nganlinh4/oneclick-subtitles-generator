@@ -11,7 +11,7 @@ license = "MIT"
 osg-media.workspace = true
 osg-runtime-staging.workspace = true
 serde.workspace = true
-tempfile = "3.27.0"
+tempfile.workspace = true
 thiserror.workspace = true
 
 [lints]

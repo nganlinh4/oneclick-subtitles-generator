@@ -30,13 +30,11 @@ pub(crate) async fn register_running(
     kind: JobKind,
 ) -> CommandResult<JobTicket> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking("job start", move || {
         let queued = jobs.register(kind)?;
         jobs.apply(queued.snapshot().id(), JobUpdate::Start)
     })
     .await
-    .map_err(|_| CommandError::internal("the background job could not be started"))?
-    .map_err(Into::into)
 }
 
 pub(crate) async fn apply(
@@ -45,11 +43,9 @@ pub(crate) async fn apply(
     update: JobUpdate,
 ) -> CommandResult<JobSnapshot> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || jobs.apply(id, update))
+    run_blocking("job update", move || jobs.apply(id, update))
         .await
-        .map_err(|_| CommandError::internal("the job update task stopped unexpectedly"))?
         .map(|ticket| ticket.snapshot().clone())
-        .map_err(Into::into)
 }
 
 pub(crate) async fn apply_if_sequence(
@@ -59,13 +55,11 @@ pub(crate) async fn apply_if_sequence(
     update: JobUpdate,
 ) -> CommandResult<JobSnapshot> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking("guarded job update", move || {
         jobs.apply_if_sequence(id, expected_sequence, update)
     })
     .await
-    .map_err(|_| CommandError::internal("the guarded job update task stopped unexpectedly"))?
     .map(|ticket| ticket.snapshot().clone())
-    .map_err(Into::into)
 }
 
 /// Commits a terminal success and its recoverable result payload as one `SQLite` transaction.
@@ -76,23 +70,20 @@ pub(crate) async fn succeed_with_result(
     delivery: JobResultDeliveryDraft,
 ) -> CommandResult<JobSnapshot> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking("durable job result", move || {
         jobs.apply_with_store(id, JobUpdate::Succeed, |database, sequence, snapshot| {
             database.complete_job_with_result(sequence, snapshot, &delivery)
         })
     })
     .await
-    .map_err(|_| CommandError::internal("the durable job result task stopped unexpectedly"))?
     .map(|ticket| ticket.snapshot().clone())
-    .map_err(Into::into)
 }
 
 pub(crate) async fn snapshot(jobs: &DesktopJobs, id: JobId) -> Option<JobSnapshot> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || jobs.get(id))
+    run_blocking("job lookup", move || jobs.get(id))
         .await
         .ok()
-        .and_then(Result::ok)
         .map(|ticket| ticket.snapshot().clone())
 }
 
@@ -101,7 +92,7 @@ pub(crate) async fn finish_cancellation(
     id: JobId,
 ) -> CommandResult<JobSnapshot> {
     let jobs = Arc::clone(jobs);
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking("cancellation", move || {
         let current = jobs.get(id)?;
         match current.snapshot().state() {
             JobState::Queued => jobs.apply(id, JobUpdate::RequestCancellation),
@@ -117,9 +108,7 @@ pub(crate) async fn finish_cancellation(
         }
     })
     .await
-    .map_err(|_| CommandError::internal("the cancellation task stopped unexpectedly"))?
     .map(|ticket| ticket.snapshot().clone())
-    .map_err(Into::into)
 }
 
 /// Settles a package or tool operation's job as cancelled from any pre-terminal state. A job that

@@ -7,10 +7,11 @@ use serde::Deserialize;
 use super::{
     DeliveryAsset, DeliveryCatalog, DeliveryFile, DeliverySource, DeliverySourceKind, EngineId,
     FileRole, MAX_ARCHIVE_BYTES, MAX_FILES, MAX_RELEASES_PER_ENGINE, MAX_TOTAL_INSTALLED_BYTES,
-    MAX_UNPACKED_BYTES, PLATFORM_KEYS, PackageDelivery, RELEASE_BASE, is_below_directory,
-    role_matches_path, valid_asset_name, valid_delivery_url, validate_identifier, validate_sha256,
+    MAX_UNPACKED_BYTES, PLATFORM_KEYS, PackageDelivery, RELEASE_BASE, is_asset_name,
+    is_below_directory, role_matches_path, valid_delivery_url, validate_identifier,
+    validate_sha256,
 };
-use crate::path_security::{validate_directory_path, validate_manifest_path};
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -146,7 +147,7 @@ fn validate_release(
     release: &RawRelease,
 ) -> Result<PackageDelivery> {
     validate_identifier(&release.version)?;
-    validate_manifest_path(&release.version)?;
+    validate_relative_path(&release.version)?;
     validate_sha256(&release.sha256)?;
     let remote_manifest = release.manifest.is_some();
     if release.size_bytes == 0
@@ -166,14 +167,14 @@ fn validate_release(
             release.version,
             &release.sha256[..16]
         );
-        if release.asset != expected_asset || !valid_asset_name(&release.asset) {
+        if release.asset != expected_asset || !is_asset_name(&release.asset) {
             return Err(PackageError::InvalidCatalog);
         }
     }
-    validate_manifest_path(&release.python_relative_path)?;
-    validate_directory_path(&release.model_relative_path)?;
+    validate_relative_path(&release.python_relative_path)?;
+    validate_relative_path(&release.model_relative_path)?;
     if let Some(aligner) = &release.aligner_relative_path {
-        validate_directory_path(aligner)?;
+        validate_relative_path(aligner)?;
     }
     if engine.requires_aligner() != release.aligner_relative_path.is_some() {
         return Err(PackageError::InvalidCatalog);
@@ -250,7 +251,7 @@ fn validate_release_files(release: &RawRelease) -> Result<ValidatedReleaseFiles>
         flags: 0,
     };
     for file in &release.files {
-        validate_manifest_path(&file.path)?;
+        validate_relative_path(&file.path)?;
         validate_sha256(&file.sha256)?;
         if file.size_bytes == 0 || file.size_bytes > MAX_UNPACKED_BYTES || !paths.insert(&file.path)
         {
@@ -305,7 +306,7 @@ fn validate_source(source: &RawSource) -> Result<DeliverySource> {
 }
 
 fn validate_asset(asset: &RawAsset) -> Result<DeliveryAsset> {
-    if !valid_asset_name(&asset.asset)
+    if !is_asset_name(&asset.asset)
         || asset.urls.is_empty()
         || asset.urls.len() > 3
         || asset.size_bytes == 0

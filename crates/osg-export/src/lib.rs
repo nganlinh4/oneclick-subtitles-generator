@@ -66,7 +66,7 @@
 //! The crate contains no `unsafe` code, in line with the workspace's `unsafe_code = "forbid"`.
 //!
 //! ```no_run
-//! use osg_export::{ExportCancel, ExportJob, SilentProgress, run_export};
+//! use osg_export::{CancellationToken, ExportJob, SilentProgress, run_export};
 //! # use std::path::Path;
 //! # fn main() -> Result<(), osg_export::ExportError> {
 //! # fn staged() -> (osg_render::RenderRequest, osg_export::StagedText) { unimplemented!() }
@@ -78,7 +78,7 @@
 //!         narration: None,
 //!         output: Path::new(r"C:\exports\opaque-id.mp4"),
 //!         text,
-//!         cancel: ExportCancel::new(),
+//!         cancel: CancellationToken::new(),
 //!     },
 //!     &mut SilentProgress,
 //! )?;
@@ -87,7 +87,6 @@
 //! # }
 //! ```
 
-mod cancel;
 mod convert;
 mod error;
 mod frames;
@@ -96,13 +95,13 @@ mod progress;
 mod run;
 mod stage;
 
-pub use cancel::ExportCancel;
 pub use convert::{
     AUDIO_BITRATE_KBPS, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ, AudioPlan, EXPORT_CANVAS_GROUND,
     ExportPlan, primary_font_family,
 };
 pub use error::ExportError;
 pub use frames::FrameRenderer;
+pub use osg_process::CancellationToken;
 pub use progress::{
     ExportProgress, ExportStage, MAX_PROGRESS_REPORTS, ProgressFn, ProgressSink, SilentProgress,
 };

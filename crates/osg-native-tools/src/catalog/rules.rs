@@ -1,6 +1,7 @@
 //! Reviewed source-URL, digest, version, and date rules shared by catalog parsing and dynamic
 //! yt-dlp delivery validation.
 
+use osg_delivery_core::identity::{is_git_revision, is_sha256_hex};
 use url::Url;
 
 use super::{
@@ -64,20 +65,6 @@ fn strict_https(value: &str, host: &str) -> bool {
     })
 }
 
-pub(super) fn valid_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-pub(super) fn valid_revision(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
 pub(super) fn valid_version(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 40
@@ -86,14 +73,6 @@ pub(super) fn valid_version(value: &str) -> bool {
         && value.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'_')
         })
-}
-
-pub(super) fn valid_asset_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 200
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'+'))
 }
 
 pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result<()> {
@@ -105,13 +84,13 @@ pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result
     };
     if delivery.tool != NativeToolId::YtDlp
         || !valid_ytdlp_version(&delivery.version)
-        || !valid_revision(&delivery.source_revision)
+        || !is_git_revision(&delivery.source_revision)
         || delivery.asset != asset
         || delivery.format != ArtifactFormat::Raw
         || delivery.selective_extraction
         || delivery.size_bytes == 0
         || delivery.size_bytes > MAX_ARTIFACT_BYTES
-        || !valid_sha256(&delivery.sha256)
+        || !is_sha256_hex(&delivery.sha256)
         || !valid_dynamic_ytdlp_release_url(
             &delivery.version,
             &delivery.asset,
@@ -143,7 +122,7 @@ pub(crate) fn validate_dynamic_ytdlp_delivery(delivery: &ToolDelivery) -> Result
         if notice.install_path != install_path
             || notice.size_bytes == 0
             || notice.size_bytes > 4 * 1024 * 1024
-            || !valid_sha256(&notice.sha256)
+            || !is_sha256_hex(&notice.sha256)
             || !valid_notice_url(
                 NativeToolId::YtDlp,
                 &delivery.source_revision,

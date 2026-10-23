@@ -25,7 +25,8 @@
 //! The default run covers every preset, every field value, every text and every output shape at
 //! least once. `OSG_PARITY_EXHAUSTIVE=1` runs the same tests over the whole cross product. Both
 //! print their case count, composition count and wall clock, so the numbers in any report are
-//! measured rather than estimated.
+//! measured rather than estimated. On a software-only adapter (hosted CI runners) the two sweeps
+//! and every real export skip loudly; they run on any machine with a hardware GPU.
 
 #[path = "parity/mod.rs"]
 mod gate;
@@ -78,6 +79,12 @@ fn bench() -> Bench {
         shapes: probe.composable,
         compositor,
     }
+}
+
+/// [`bench`] on a hardware GPU only: the full sweeps take about an hour on a software rasterizer.
+fn hardware_bench() -> Option<Bench> {
+    support::hardware_compositor("The parity render sweep")?;
+    Some(bench())
 }
 
 #[test]
@@ -328,7 +335,9 @@ fn every_check_this_gate_makes_can_actually_fail() {
 #[test]
 fn every_shipped_preset_renders() {
     let _lock = gate::exclusive();
-    let bench = bench();
+    let Some(bench) = hardware_bench() else {
+        return;
+    };
     let cases = sweep::preset_cases(&bench.matrix, &bench.shapes);
     // The coverage claim, asserted rather than commented: whatever the selection rule is, this run
     // has to have rendered every preset, every text and every shape the adapter admits.
@@ -369,7 +378,9 @@ fn every_shipped_preset_renders() {
 #[test]
 fn every_field_value_renders_and_changes_the_picture_where_it_can() {
     let _lock = gate::exclusive();
-    let bench = bench();
+    let Some(bench) = hardware_bench() else {
+        return;
+    };
     let cases: Vec<FieldCase> = sweep::field_cases(&bench.matrix, &bench.shapes);
     if sweep::exhaustive() {
         assert_eq!(

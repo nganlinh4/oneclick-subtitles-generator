@@ -9,7 +9,8 @@ use super::{Database, Request};
 use crate::storage::error::DatabaseError;
 use crate::storage::transcripts;
 use crate::storage::transcripts::{
-    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptRevisionState, TranscriptTurnRecord,
+    TranscriptWordRecord,
 };
 
 pub(super) enum TranscriptRequest {
@@ -27,7 +28,7 @@ pub(super) enum TranscriptRequest {
     },
     UpdateRevisionState {
         revision_id: TranscriptRevisionId,
-        state: String,
+        state: TranscriptRevisionState,
         reply: SyncSender<Result<(), DatabaseError>>,
     },
     PromoteWindow {
@@ -116,7 +117,7 @@ impl TranscriptRequest {
                 let _ = reply.send(transcripts::update_transcript_revision_state(
                     connection,
                     revision_id,
-                    &state,
+                    state,
                 ));
             }
             Self::PromoteWindow {
@@ -218,9 +219,8 @@ impl Database {
     pub fn transcript_update_revision_state(
         &self,
         revision_id: TranscriptRevisionId,
-        state: &str,
+        state: TranscriptRevisionState,
     ) -> Result<(), DatabaseError> {
-        let state = state.to_owned();
         self.request(|reply| TranscriptRequest::UpdateRevisionState {
             revision_id,
             state,

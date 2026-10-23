@@ -8,20 +8,20 @@ description = "Bounded backend-only Lyria RealTime WebSocket transport"
 license = "MIT"
 
 [dependencies]
-base64 = "=0.22.1"
-futures-util = "=0.3.33"
-rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std"] }
-secrecy = "=0.10.3"
+base64.workspace = true
+futures-util.workspace = true
+rustls.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { version = "=1.53.1", features = ["net", "sync", "time"] }
-tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
-tokio-util = { version = "=0.7.19", features = ["rt"] }
-url = "=2.5.8"
+tokio = { workspace = true, features = ["net", "sync", "time"] }
+tokio-tungstenite.workspace = true
+tokio-util.workspace = true
+url.workspace = true
 
 [dev-dependencies]
-tokio = { version = "=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [lints]
 workspace = true

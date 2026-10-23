@@ -50,6 +50,18 @@ pub(crate) struct TranscriptionErrorDto {
     pub(crate) retryable: bool,
 }
 
+impl TranscriptionErrorDto {
+    /// A terminal, non-retryable failure; `message` must already be path- and secret-free.
+    pub(crate) fn new(code: &str, message: impl Into<String>, window_index: Option<usize>) -> Self {
+        Self {
+            code: code.to_owned(),
+            message: message.into(),
+            window_index,
+            retryable: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub(crate) enum WordNativeTranscriptionEvent {

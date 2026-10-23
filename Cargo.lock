@@ -3482,10 +3482,11 @@ dependencies = [
 
 [[package]]
 name = "osg-asr"
-version = "2.0.0"
+version = "1.0.2"
 dependencies = [
- "command-group",
  "osg-engine-packages",
+ "osg-formats",
+ "osg-process",
  "osg-runtime-staging",
  "serde",
  "serde_json",
@@ -3518,10 +3519,26 @@ name = "osg-decode"
 version = "1.0.2"
 dependencies = [
  "osg-encode",
+ "osg-process",
  "osg-scene",
  "tempfile",
  "thiserror 2.0.20",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "osg-delivery-core"
+version = "1.0.2"
+dependencies = [
+ "fs2",
+ "osg-process",
+ "reqwest",
+ "serde",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.20",
+ "url",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -3543,6 +3560,7 @@ dependencies = [
  "osg-encode",
  "osg-engine-packages",
  "osg-export",
+ "osg-formats",
  "osg-gemini",
  "osg-infrastructure",
  "osg-live-music",
@@ -3592,9 +3610,9 @@ dependencies = [
 
 [[package]]
 name = "osg-download"
-version = "2.0.0"
+version = "1.0.2"
 dependencies = [
- "command-group",
+ "osg-process",
  "serde",
  "serde_json",
  "sha2",
@@ -3608,6 +3626,7 @@ dependencies = [
 name = "osg-encode"
 version = "1.0.2"
 dependencies = [
+ "osg-process",
  "osg-scene",
  "tempfile",
  "thiserror 2.0.20",
@@ -3619,6 +3638,7 @@ name = "osg-engine-packages"
 version = "1.0.2"
 dependencies = [
  "fs2",
+ "osg-delivery-core",
  "osg-runtime-staging",
  "reqwest",
  "serde",
@@ -3641,12 +3661,17 @@ dependencies = [
  "osg-domain",
  "osg-encode",
  "osg-gpu-video",
+ "osg-process",
  "osg-render",
  "osg-scene",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
 ]
+
+[[package]]
+name = "osg-formats"
+version = "1.0.2"
 
 [[package]]
 name = "osg-gemini"
@@ -3658,6 +3683,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "httpdate",
+ "osg-formats",
  "reqwest",
  "rustls",
  "secrecy",
@@ -3730,7 +3756,7 @@ dependencies = [
 name = "osg-media"
 version = "1.0.2"
 dependencies = [
- "command-group",
+ "osg-process",
  "serde",
  "serde_json",
  "tempfile",
@@ -3755,6 +3781,7 @@ dependencies = [
  "blake3",
  "filetime",
  "mime_guess",
+ "osg-formats",
  "serde",
  "tempfile",
  "thiserror 2.0.20",
@@ -3763,9 +3790,9 @@ dependencies = [
 
 [[package]]
 name = "osg-native-tools"
-version = "2.0.0"
+version = "1.0.2"
 dependencies = [
- "fs2",
+ "osg-delivery-core",
  "osg-runtime-staging",
  "reqwest",
  "serde",
@@ -3780,6 +3807,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "osg-process"
+version = "1.0.2"
+dependencies = [
+ "command-group",
+]
+
+[[package]]
 name = "osg-providers"
 version = "1.0.2"
 dependencies = [
@@ -3787,6 +3821,7 @@ dependencies = [
  "dom_query",
  "futures-util",
  "getrandom 0.4.3",
+ "osg-formats",
  "reqwest",
  "secrecy",
  "serde",
@@ -3838,8 +3873,9 @@ dependencies = [
 name = "osg-speech"
 version = "1.0.2"
 dependencies = [
- "command-group",
  "osg-engine-packages",
+ "osg-formats",
+ "osg-process",
  "osg-runtime-staging",
  "serde",
  "serde_json",

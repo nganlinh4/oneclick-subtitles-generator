@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::{
     DeliveryFile, FileRole, MAX_ARCHIVE_BYTES, PLATFORM_KEYS, PackageCatalog, PackageDelivery,
-    current_platform, valid_asset_name, valid_delivery_url, validate_identifier, validate_sha256,
+    current_platform, is_asset_name, valid_delivery_url, validate_identifier, validate_sha256,
 };
-use crate::path_security::validate_manifest_path;
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 
 const EMBEDDED_CATALOG: &str = include_str!("../delivery/voice-samples.delivery.json");
@@ -173,8 +173,8 @@ fn parse_catalog(raw: &str, selected_platform: &str) -> Result<AssetDeliveryCata
 fn validate_release(platform: &str, release: &RawRelease) -> Result<PackageDelivery> {
     validate_identifier(&release.version)?;
     validate_sha256(&release.sha256)?;
-    validate_manifest_path(&release.sample_relative_path)?;
-    if !valid_asset_name(&release.asset)
+    validate_relative_path(&release.sample_relative_path)?;
+    if !is_asset_name(&release.asset)
         || !valid_delivery_url(&release.source_url, &release.asset)
         || release.size_bytes == 0
         || release.size_bytes > MAX_ARCHIVE_BYTES
@@ -191,7 +191,7 @@ fn validate_release(platform: &str, release: &RawRelease) -> Result<PackageDeliv
     let mut seen = HashSet::new();
     let mut total = 0_u64;
     for file in &release.files {
-        validate_manifest_path(&file.path)?;
+        validate_relative_path(&file.path)?;
         validate_sha256(&file.sha256)?;
         if file.executable
             || file.role != FileRole::Runtime

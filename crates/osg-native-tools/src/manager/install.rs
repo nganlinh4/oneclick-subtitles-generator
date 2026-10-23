@@ -1,6 +1,7 @@
 //! Verified installation: download, extraction into authenticated staging, receipt, and
 //! publication of one immutable version directory.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,11 +12,12 @@ use crate::archive::{install_artifact, set_permissions};
 use crate::catalog::{NativeToolId, ToolDelivery};
 use crate::download::RemoteFile;
 use crate::path_security::{
-    cleanup_empty_work_tree, ensure_direct_child, require_directory, resolve_owned,
+    ensure_direct_child, remove_known_tree, require_directory, resolve_owned,
 };
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
-use crate::{CancellationToken, NativeToolError, Result};
+use crate::{
+    CancellationToken, NativeToolError, OperationPhase, OperationProgress, ProgressSink, Result,
+};
 
 impl NativeToolManager {
     pub fn install(
@@ -103,7 +105,7 @@ impl NativeToolManager {
             fs::rename(source, &target).map_err(|_| NativeToolError::StoreUnavailable)?;
             set_permissions(&target, false)?;
         }
-        cleanup_empty_work_tree(downloads)?;
+        remove_known_tree(downloads, &HashSet::from([delivery.asset.clone()]))?;
         receipt::write(staging, &delivery)?;
         let _ = receipt::validate_integrity(staging, &delivery, cancellation)?;
 

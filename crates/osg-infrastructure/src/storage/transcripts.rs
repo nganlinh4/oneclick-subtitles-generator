@@ -11,8 +11,52 @@ pub use queries::{
 };
 pub use writes::{
     insert_transcript_revision, promote_window_results, save_cue_word_mappings,
-    transcript_update_revision_state, update_transcript_revision_state,
+    update_transcript_revision_state,
 };
+
+/// Lifecycle of a transcript revision. The stored strings are the `SQLite` CHECK vocabulary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRevisionState {
+    InProgress,
+    Completed,
+    Partial,
+    Failed,
+}
+
+impl TranscriptRevisionState {
+    pub const ALL: [Self; 4] = [
+        Self::InProgress,
+        Self::Completed,
+        Self::Partial,
+        Self::Failed,
+    ];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+            Self::Partial => "partial",
+            Self::Failed => "failed",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|state| state.as_str() == value)
+    }
+
+    /// The terminal state of an interrupted run: `Partial` once any words were kept.
+    #[must_use]
+    pub const fn interrupted(words_promoted: usize) -> Self {
+        if words_promoted > 0 {
+            Self::Partial
+        } else {
+            Self::Failed
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +68,7 @@ pub struct TranscriptRevisionRecord {
     pub model: String,
     pub source_range_start_ms: i64,
     pub source_range_end_ms: i64,
-    pub state: String,
+    pub state: TranscriptRevisionState,
     pub fingerprint: String,
     pub word_count: u32,
     pub metadata_json: String,

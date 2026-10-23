@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use osg_audio::{AudioDecoder, AudioError};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportProgress, ProgressFn, probe_source, run_export,
+    CancellationToken, ExportError, ExportJob, ExportProgress, ProgressFn, probe_source, run_export,
 };
 use osg_render::RenderRequest;
 use serde_json::{Value, json};
@@ -73,6 +73,7 @@ fn dense_cues(text: &str, step_us: u64) -> Value {
 #[test]
 fn a_dense_cue_list_exports_every_frame_and_decodes_back_inside_the_tolerance() {
     let _lock = super::exclusive();
+    crate::support::require_hardware_gpu!("The hard export case");
     let directory = TempDir::new().expect("a temporary directory");
     let mut dense = case("hard=dense", "dense", "720p", 30);
     dense.lyrics = Some(dense_cues(&dense.text, 8_000));
@@ -100,6 +101,7 @@ fn a_dense_cue_list_exports_every_frame_and_decodes_back_inside_the_tolerance() 
 #[test]
 fn a_high_frame_rate_export_writes_every_frame_the_timeline_names() {
     let _lock = super::exclusive();
+    crate::support::require_hardware_gpu!("The hard export case");
     let directory = TempDir::new().expect("a temporary directory");
     let fast = case("hard=60fps", "latin", "720p", 60);
     let round = roundtrip::measure(&directory, &fast, &[7, 31, 55]);
@@ -153,6 +155,7 @@ fn narration_clip(directory: &TempDir, seconds: u32) -> PathBuf {
 #[test]
 fn a_voiced_export_carries_the_narration_and_a_silent_one_carries_no_stream() {
     let _lock = super::exclusive();
+    crate::support::require_hardware_gpu!("The hard export case");
     let directory = TempDir::new().expect("a temporary directory");
     let source = roundtrip::clip(&directory, "voiced-source.mp4");
     let narration = narration_clip(&directory, 3);
@@ -199,6 +202,7 @@ fn a_voiced_export_carries_the_narration_and_a_silent_one_carries_no_stream() {
 #[test]
 fn a_cancelled_export_leaves_nothing_and_the_restart_after_it_succeeds() {
     let _lock = super::exclusive();
+    crate::support::require_hardware_gpu!("The hard export case");
     let directory = TempDir::new().expect("a temporary directory");
     let source = roundtrip::clip(&directory, "restart-source.mp4");
     let restarted = case("hard=cancel-restart", "korean", "720p", 30);
@@ -206,7 +210,7 @@ fn a_cancelled_export_leaves_nothing_and_the_restart_after_it_succeeds() {
     let output = directory.path().join("restart.mp4");
 
     // Cancelled from the progress callback, which is how a user's cancel button reaches it.
-    let cancel = ExportCancel::new();
+    let cancel = CancellationToken::new();
     let trigger = cancel.clone();
     let mut sink = ProgressFn(move |progress: ExportProgress| {
         if progress.permille() >= 400 {
@@ -271,6 +275,7 @@ fn long_seconds() -> u32 {
 fn a_long_export_runs_end_to_end_and_scales_to_whatever_length_is_asked_for() {
     let seconds = long_seconds();
     let _lock = super::exclusive();
+    crate::support::require_hardware_gpu!("The hard export case");
     let directory = TempDir::new().expect("a temporary directory");
     let source = roundtrip::long_clip(&directory, "long-source.mp4", seconds);
     let mut long = case("hard=long", "vietnamese", "720p", 30);

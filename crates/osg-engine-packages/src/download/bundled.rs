@@ -6,9 +6,8 @@ use std::sync::Arc;
 
 use super::{ArchiveFetcher, FetchRequest};
 use crate::catalog::DeliveryAsset;
-use crate::progress::{OperationPhase, OperationProgress};
 use crate::receipt::hash_file;
-use crate::{PackageError, Result};
+use crate::{OperationPhase, OperationProgress, PackageError, Result};
 /// Serves a delivery asset from bytes shipped inside the application, before any network use.
 ///
 /// WHY THIS EXISTS. The managed UI font is the default subtitle font, and it was delivered purely

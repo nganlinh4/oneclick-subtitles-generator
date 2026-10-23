@@ -124,7 +124,10 @@ unsafe impl Send for DecodeFenceSignal {}
 
 impl DecodeFenceSignal {
     pub(crate) fn signal(&mut self) -> Result<u64, GpuVideoError> {
-        self.value = self.value.checked_add(1).ok_or_else(sync_error)?;
+        self.value = self
+            .value
+            .checked_add(1)
+            .ok_or_else(GpuVideoError::synchronization)?;
         // SAFETY: the fence was opened on this context's device and remains live through the call.
         unsafe { self.context.Signal(&self.fence, self.value) }
             .map_err(|error| GpuVideoError::windows(InteropStage::Synchronization, &error))?;
@@ -150,7 +153,10 @@ pub(crate) struct RenderFenceSignal {
 
 impl RenderFenceSignal {
     pub(crate) fn signal(&mut self, device: &wgpu::Device) -> Result<u64, GpuVideoError> {
-        self.value = self.value.checked_add(1).ok_or_else(sync_error)?;
+        self.value = self
+            .value
+            .checked_add(1)
+            .ok_or_else(GpuVideoError::synchronization)?;
         // SAFETY: the compositor device remains live and gives access to its owned queue. Signal is
         // enqueued after the wgpu submissions already placed on that same D3D12 queue.
         let hal = unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }
@@ -296,10 +302,6 @@ fn open_render_wait(
         context,
         fence: fence.ok_or(GpuVideoError::null(InteropStage::Synchronization))?,
     })
-}
-
-const fn sync_error() -> GpuVideoError {
-    GpuVideoError::null(InteropStage::Synchronization)
 }
 
 #[derive(Debug)]

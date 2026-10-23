@@ -3,12 +3,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use osg_delivery_core::identity::{is_asset_name, is_git_revision, is_sha256_hex};
 use serde::Deserialize;
 
-use super::rules::{
-    valid_asset_name, valid_date, valid_notice_url, valid_release_url, valid_revision,
-    valid_sha256, valid_version,
-};
+use super::rules::{valid_date, valid_notice_url, valid_release_url, valid_version};
 use super::{
     ArtifactFormat, DeliveryCatalog, DeliveryFile, ExecutableRole, MAX_ARTIFACT_BYTES, MAX_FILES,
     MAX_INSTALLED_BYTES, NativeToolId, NoticeFile, PLATFORM_KEYS, PUBLIC_CATALOG, ToolDelivery,
@@ -152,7 +150,7 @@ fn validate_source_and_notices(tool: &RawTool) -> Result<()> {
     let revision = tool
         .source_revision
         .as_deref()
-        .filter(|revision| valid_revision(revision))
+        .filter(|revision| is_git_revision(revision))
         .ok_or(NativeToolError::InvalidCatalog)?;
     let expected_notice_count = match tool.id {
         NativeToolId::YtDlp => 2,
@@ -169,7 +167,7 @@ fn validate_source_and_notices(tool: &RawTool) -> Result<()> {
             || !paths.insert(notice.install_path.as_str())
             || notice.size_bytes == 0
             || notice.size_bytes > 4 * 1024 * 1024
-            || !valid_sha256(&notice.sha256)
+            || !is_sha256_hex(&notice.sha256)
             || !valid_notice_url(tool.id, revision, &notice.source_url)
         {
             return Err(NativeToolError::InvalidCatalog);
@@ -233,8 +231,8 @@ fn validate_release(
         || !valid_version(&release.version)
         || release.artifact.size_bytes == 0
         || release.artifact.size_bytes > MAX_ARTIFACT_BYTES
-        || !valid_sha256(&release.artifact.sha256)
-        || !valid_asset_name(&release.artifact.asset)
+        || !is_sha256_hex(&release.artifact.sha256)
+        || !is_asset_name(&release.artifact.asset)
         || release.files.is_empty()
         || release.files.len() > MAX_FILES
         || !valid_release_url(
@@ -258,7 +256,7 @@ fn validate_release(
         if !(file.install_path.starts_with("bin/") || file.install_path.starts_with("licenses/"))
             || file.size_bytes == 0
             || file.size_bytes > MAX_INSTALLED_BYTES
-            || !valid_sha256(&file.sha256)
+            || !is_sha256_hex(&file.sha256)
             || !installed_paths.insert(file.install_path.as_str())
             || !source_paths.insert(file.source_path.as_str())
             || file

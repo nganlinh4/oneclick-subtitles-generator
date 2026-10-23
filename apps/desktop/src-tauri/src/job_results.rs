@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::background::run_blocking;
 use crate::error::{CommandError, CommandResult};
 use crate::state::DesktopState;
 
@@ -15,16 +16,6 @@ use crate::state::DesktopState;
 pub(crate) struct ClaimedJobResult {
     job: JobSnapshot,
     delivery: JobResultDelivery,
-}
-
-async fn database_task<T: Send + 'static>(
-    task: &'static str,
-    operation: impl FnOnce() -> Result<T, osg_infrastructure::storage::DatabaseError> + Send + 'static,
-) -> CommandResult<T> {
-    tauri::async_runtime::spawn_blocking(operation)
-        .await
-        .map_err(|_| CommandError::internal(format!("the {task} task stopped unexpectedly")))?
-        .map_err(Into::into)
 }
 
 /// Returns only bounded identities. Payload bytes stay in `SQLite` until one result is claimed.
@@ -39,7 +30,7 @@ pub(crate) async fn job_result_pending(
     after_delivery_id: Option<Uuid>,
 ) -> CommandResult<Vec<JobResultDeliveryHeader>> {
     let database = state.database.clone();
-    let pending = database_task("job-result discovery", move || {
+    let pending = run_blocking::<_, DatabaseError>("job-result discovery", move || {
         database.list_pending_job_results_by_kind_after(kind, after_delivery_id)
     })
     .await?;
@@ -61,7 +52,7 @@ pub(crate) async fn job_result_claim(
     job_id: JobId,
 ) -> CommandResult<Option<ClaimedJobResult>> {
     let database = state.database.clone();
-    database_task("job-result claim", move || {
+    run_blocking::<_, DatabaseError>("job-result claim", move || {
         claim_from_database(&database, job_id)
     })
     .await
@@ -95,7 +86,7 @@ pub(crate) async fn job_result_ack(
     delivery_id: Uuid,
 ) -> CommandResult<bool> {
     let database = state.database.clone();
-    database_task("job-result acknowledgement", move || {
+    run_blocking::<_, DatabaseError>("job-result acknowledgement", move || {
         database.acknowledge_job_result(job_id, delivery_id)
     })
     .await

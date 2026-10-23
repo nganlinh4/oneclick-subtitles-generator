@@ -81,7 +81,7 @@ pub use colorimetry::{
     VIDEO_PRIMARIES_BT709, full_range_bt709, studio_range_bt709,
 };
 pub use config::{AudioBitrate, AudioConfig, ChannelCount, EncoderConfig, SampleRate, VideoConfig};
-pub use encoder::{CancelToken, EncodeOutcome, VideoEncoder, open_encoder};
+pub use encoder::{EncodeOutcome, VideoEncoder, open_encoder};
 pub use error::{ConfigField, EncodeError, MfStage, OutputRejection};
 #[cfg(windows)]
 pub use gpu::{GpuVideoEncoder, open_gpu_encoder};
@@ -89,6 +89,7 @@ pub use gpu::{GpuVideoEncoder, open_gpu_encoder};
 pub use mf::{
     VideoMediaTypeReadback, read_back_gpu_video_media_types, read_back_video_media_types,
 };
+pub use osg_process::CancellationToken;
 pub use output::check_output_path;
 pub use pixels::{FrameBuffer, PixelLayout};
 pub use timing::{FrameClock, HUNDRED_NANOS_PER_SECOND, MAX_ENCODE_FRAME_COUNT};

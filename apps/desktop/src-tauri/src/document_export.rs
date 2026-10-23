@@ -3,6 +3,8 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use osg_formats::image::ImageKind;
+use osg_formats::wav;
 use osg_runtime_staging::RuntimeStagingAuthority;
 use serde::Deserialize;
 use tauri::ipc::{InvokeBody, Request};
@@ -84,15 +86,12 @@ impl GeneratedFileFormat {
 
     fn has_valid_signature(self, bytes: &[u8]) -> bool {
         match self {
-            Self::Png => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-            Self::Jpeg => bytes.starts_with(&[0xff, 0xd8, 0xff]) && bytes.ends_with(&[0xff, 0xd9]),
-            Self::Webp => {
-                bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP"
-            }
-            Self::Gif => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
-            Self::Wav => {
-                bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE"
-            }
+            Self::Png => ImageKind::Png.matches(bytes),
+            // A whole file is exported, so its end-of-image marker must be present too.
+            Self::Jpeg => ImageKind::Jpeg.matches(bytes) && bytes.ends_with(&[0xff, 0xd9]),
+            Self::Webp => ImageKind::Webp.matches(bytes),
+            Self::Gif => ImageKind::Gif.matches(bytes),
+            Self::Wav => wav::has_signature(bytes),
             Self::Webm => {
                 bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3])
                     && bytes

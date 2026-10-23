@@ -6,11 +6,13 @@ members = [
   "crates/osg-audio",
   "crates/osg-compositor",
   "crates/osg-decode",
+  "crates/osg-delivery-core",
   "crates/osg-domain",
   "crates/osg-download",
   "crates/osg-encode",
   "crates/osg-engine-packages",
   "crates/osg-export",
+  "crates/osg-formats",
   "crates/osg-gemini",
   "crates/osg-gpu-video",
   "crates/osg-infrastructure",
@@ -19,6 +21,7 @@ members = [
   "crates/osg-media-pipeline",
   "crates/osg-media-server",
   "crates/osg-native-tools",
+  "crates/osg-process",
   "crates/osg-providers",
   "crates/osg-render",
   "crates/osg-runtime-staging",
@@ -39,27 +42,62 @@ osg-asr = { path = "crates/osg-asr" }
 osg-audio = { path = "crates/osg-audio" }
 osg-compositor = { path = "crates/osg-compositor" }
 osg-decode = { path = "crates/osg-decode" }
+osg-delivery-core = { path = "crates/osg-delivery-core" }
 osg-domain = { path = "crates/osg-domain" }
 osg-download = { path = "crates/osg-download" }
 osg-encode = { path = "crates/osg-encode" }
 osg-engine-packages = { path = "crates/osg-engine-packages" }
 osg-export = { path = "crates/osg-export" }
+osg-formats = { path = "crates/osg-formats" }
 osg-gemini = { path = "crates/osg-gemini" }
 osg-gpu-video = { path = "crates/osg-gpu-video" }
+osg-infrastructure = { path = "crates/osg-infrastructure" }
 osg-live-music = { path = "crates/osg-live-music" }
 osg-media = { path = "crates/osg-media" }
 osg-media-pipeline = { path = "crates/osg-media-pipeline" }
+osg-media-server = { path = "crates/osg-media-server" }
 osg-native-tools = { path = "crates/osg-native-tools" }
+osg-process = { path = "crates/osg-process" }
 osg-providers = { path = "crates/osg-providers" }
 osg-render = { path = "crates/osg-render" }
 osg-runtime-staging = { path = "crates/osg-runtime-staging" }
 osg-scene = { path = "crates/osg-scene" }
 osg-speech = { path = "crates/osg-speech" }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "2.0.20"
+
+# Third-party crates used by more than one member, pinned exactly to the reviewed Cargo.lock
+# versions. Members add features; a crate used by one member pins it in its own manifest.
+atomicwrites = "=0.4.4"
+base64 = "=0.22.1"
+blake3 = "=1.8.6"
+filetime = "=0.2.29"
+fs2 = "=0.4.3"
+futures-util = "=0.3.33"
+reqwest = { version = "=0.13.4", default-features = false }
+rustls = { version = "=0.23.43", default-features = false, features = ["ring", "std"] }
+same-file = "=1.0.6"
+secrecy = "=0.10.3"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+tempfile = "=3.27.0"
+thiserror = "=2.0.20"
 time = { version = "=0.3.55", features = ["formatting", "macros"] }
-uuid = { version = "1.24.0", features = ["serde", "v4", "v7"] }
+tokio = "=1.53.1"
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = [
+  "connect",
+  "rustls-tls-webpki-roots",
+] }
+tokio-util = { version = "=0.7.19", features = ["rt"] }
+url = "=2.5.8"
+uuid = { version = "=1.24.0", features = ["serde", "v4", "v7"] }
+wgpu = { version = "=30.0.0", default-features = false }
+winapi-util = "=0.1.11"
+# 0.62 is what wgpu-hal's D3D12 backend exposes; osg-gpu-video hands those COM objects to its own
+# D3D11/Media Foundation calls, so the media crates cannot move to Tauri's 0.61.
+windows = "=0.62.2"
+wiremock = "=0.6.5"
+zeroize = "=1.9.0"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

@@ -5,40 +5,13 @@
 //! something else, and it never reports success for a file it did not write.
 
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+
+use osg_process::CancellationToken;
 
 use crate::audio::AudioBlock;
 use crate::config::EncoderConfig;
 use crate::error::EncodeError;
 use crate::pixels::FrameBuffer;
-
-/// A shared stop signal for an encode in progress.
-///
-/// Cloneable and thread-safe, so a long export can be abandoned from the UI thread while the encode
-/// loop is inside a frame. The encoder checks it on entry to every write, so cancellation takes
-/// effect within one frame rather than at the end of the run.
-#[derive(Debug, Clone, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
-
-impl CancelToken {
-    /// A token that has not been signalled.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Signals every holder of this token to stop.
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
-
-    /// Whether the token has been signalled.
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-}
 
 /// What a finished encode produced.
 ///
@@ -106,7 +79,7 @@ pub trait VideoEncoder: core::fmt::Debug {
     fn config(&self) -> EncoderConfig;
 
     /// A handle that can stop this encode from another thread.
-    fn cancel_token(&self) -> CancelToken;
+    fn cancel_token(&self) -> CancellationToken;
 
     /// Encodes one composed frame.
     ///

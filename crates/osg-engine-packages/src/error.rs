@@ -49,14 +49,31 @@ impl From<std::io::Error> for PackageError {
     }
 }
 
-impl From<serde_json::Error> for PackageError {
-    fn from(_: serde_json::Error) -> Self {
-        Self::InvalidCatalog
+impl From<osg_delivery_core::Cancelled> for PackageError {
+    fn from(_: osg_delivery_core::Cancelled) -> Self {
+        Self::Cancelled
     }
 }
 
-impl From<zip::result::ZipError> for PackageError {
-    fn from(_: zip::result::ZipError) -> Self {
-        Self::UnsafeArchive
+impl From<osg_delivery_core::DeliveryError> for PackageError {
+    fn from(error: osg_delivery_core::DeliveryError) -> Self {
+        use osg_delivery_core::DeliveryError;
+        match error {
+            DeliveryError::Cancelled => Self::Cancelled,
+            DeliveryError::InvalidCatalog => Self::InvalidCatalog,
+            DeliveryError::StoreUnavailable => Self::StoreUnavailable,
+            DeliveryError::InvalidInstall => Self::InvalidInstall,
+            DeliveryError::UnsafeArchive => Self::UnsafeArchive,
+            DeliveryError::Integrity => Self::ArchiveIntegrity,
+            DeliveryError::StorageLimit => Self::StorageLimit,
+            DeliveryError::Network => Self::Network,
+            DeliveryError::IncompleteDownload => Self::IncompleteDownload,
+        }
+    }
+}
+
+impl From<serde_json::Error> for PackageError {
+    fn from(_: serde_json::Error) -> Self {
+        Self::InvalidCatalog
     }
 }

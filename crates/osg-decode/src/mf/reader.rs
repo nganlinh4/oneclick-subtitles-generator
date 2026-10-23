@@ -23,7 +23,7 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::core::PCWSTR;
 
-use crate::cancel::CancelToken;
+use crate::CancellationToken;
 use crate::colorimetry::SourceColorimetry;
 use crate::decoder::{DecodeStats, DecoderConfig, VideoDecoder};
 use crate::error::{DecodeError, MfStage, SourceRejection};
@@ -58,7 +58,7 @@ pub(crate) struct MediaFoundationDecoder {
     pending: Option<SourceSample>,
     at_end: bool,
     stats: DecodeStats,
-    cancel: CancelToken,
+    cancel: CancellationToken,
 }
 
 impl fmt::Debug for MediaFoundationDecoder {
@@ -161,7 +161,7 @@ impl MediaFoundationDecoder {
             pending: None,
             at_end: false,
             stats: DecodeStats::default(),
-            cancel: CancelToken::new(),
+            cancel: CancellationToken::new(),
         })
     }
 
@@ -328,7 +328,7 @@ impl MediaFoundationDecoder {
         self.config
     }
 
-    pub(crate) fn decoder_cancel_token(&self) -> CancelToken {
+    pub(crate) fn decoder_cancel_token(&self) -> CancellationToken {
         self.cancel.clone()
     }
 
@@ -364,7 +364,7 @@ impl VideoDecoder for MediaFoundationDecoder {
         self.config
     }
 
-    fn cancel_token(&self) -> CancelToken {
+    fn cancel_token(&self) -> CancellationToken {
         self.cancel.clone()
     }
 

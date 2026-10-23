@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-use std::fs;
-use std::io::Read as _;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -9,7 +7,7 @@ use crate::catalog::{
     DeliveryFile, DeliverySourceKind, FileRole, MAX_FILES, PackageDelivery, is_below_directory,
     role_matches_path, validate_sha256,
 };
-use crate::path_security::{require_regular_file, validate_directory_path, validate_manifest_path};
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 
 const MAX_DELIVERY_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
@@ -53,20 +51,8 @@ struct RawManifestFile {
 }
 
 pub(crate) fn read(path: &Path, delivery: &PackageDelivery) -> Result<ValidatedManifest> {
-    let metadata = require_regular_file(path).map_err(|_| PackageError::InvalidCatalog)?;
-    if metadata.len() == 0 || metadata.len() > MAX_DELIVERY_MANIFEST_BYTES {
-        return Err(PackageError::InvalidCatalog);
-    }
-    let capacity = usize::try_from(metadata.len()).map_err(|_| PackageError::InvalidCatalog)?;
-    let mut encoded = Vec::with_capacity(capacity);
-    fs::File::open(path)
-        .map_err(|_| PackageError::InvalidCatalog)?
-        .take(MAX_DELIVERY_MANIFEST_BYTES + 1)
-        .read_to_end(&mut encoded)
+    let encoded = osg_delivery_core::files::read_bounded(path, MAX_DELIVERY_MANIFEST_BYTES)
         .map_err(|_| PackageError::InvalidCatalog)?;
-    if encoded.len() as u64 != metadata.len() {
-        return Err(PackageError::InvalidCatalog);
-    }
     let raw: RawManifest =
         serde_json::from_slice(&encoded).map_err(|_| PackageError::InvalidCatalog)?;
     validate(raw, delivery)
@@ -87,12 +73,12 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
     {
         return Err(PackageError::InvalidCatalog);
     }
-    validate_manifest_path(&raw.python_relative_path)?;
+    validate_relative_path(&raw.python_relative_path)?;
     if let Some(model) = &raw.model_relative_path {
-        validate_directory_path(model)?;
+        validate_relative_path(model)?;
     }
     if let Some(aligner) = &raw.aligner_relative_path {
-        validate_directory_path(aligner)?;
+        validate_relative_path(aligner)?;
     }
 
     let mut paths = HashSet::with_capacity(raw.files.len());
@@ -103,7 +89,7 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
     let mut has_license = false;
     let mut files = Vec::with_capacity(raw.files.len());
     for raw_file in raw.files {
-        validate_manifest_path(&raw_file.path)?;
+        validate_relative_path(&raw_file.path)?;
         validate_sha256(&raw_file.sha256)?;
         if !paths.insert(raw_file.path.clone()) || !role_matches_path(raw_file.role, &raw_file.path)
         {
@@ -114,7 +100,7 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
             .get(raw_file.source_index)
             .ok_or(PackageError::InvalidCatalog)?;
         match (source.kind, &raw_file.archive_path) {
-            (DeliverySourceKind::Zip, Some(path)) => validate_manifest_path(path)?,
+            (DeliverySourceKind::Zip, Some(path)) => validate_relative_path(path)?,
             (DeliverySourceKind::Raw, None) => {}
             _ => return Err(PackageError::InvalidCatalog),
         }
@@ -157,6 +143,8 @@ fn validate(raw: RawManifest, delivery: &PackageDelivery) -> Result<ValidatedMan
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use crate::catalog::{DeliveryCatalog, EngineId};
     use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId};

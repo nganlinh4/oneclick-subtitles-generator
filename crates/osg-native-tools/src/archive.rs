@@ -1,14 +1,18 @@
-use std::collections::{HashMap, HashSet};
+//! Installs a verified tool artifact (a raw executable or a reviewed ZIP) into staging.
+
+use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write as _};
 use std::path::Path;
 
-use sha2::{Digest as _, Sha256};
+use osg_delivery_core::archive::{EntryTarget, ExtractProgress, ZipLimits, extract_zip};
+use osg_delivery_core::files::{CopyProgress, ExpectedContent, copy_verified};
+use osg_delivery_core::paths::PathPolicy;
+
+pub(crate) use osg_delivery_core::files::set_permissions;
 
 use crate::catalog::{ArtifactFormat, DeliveryFile, MAX_FILES, ToolDelivery};
-use crate::path_security::{prepare_target, require_regular_file, validate_relative_path};
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
-use crate::{CancellationToken, NativeToolError, Result};
+use crate::path_security::prepare_target;
+use crate::{CancellationToken, NativeToolError, OperationPhase, ProgressSink, Result};
 
 const MAX_ARCHIVE_ENTRIES: usize = 256;
 const MAX_ARCHIVE_EXPANDED_BYTES: u64 = 1024 * 1024 * 1024;
@@ -28,7 +32,7 @@ pub(crate) fn install_artifact(
             cancellation,
             progress,
         ),
-        ArtifactFormat::Zip => extract_zip(
+        ArtifactFormat::Zip => extract(
             artifact_path,
             staging_root,
             delivery,
@@ -52,173 +56,68 @@ fn install_raw(
         .write(true)
         .open(&target)
         .map_err(|_| NativeToolError::UnsafeArchive)?;
-    copy_and_verify(
+    copy_verified(
         &mut input,
         &mut output,
-        expected,
-        cancellation,
-        progress,
-        0,
-        expected.size_bytes,
+        ExpectedContent {
+            size_bytes: expected.size_bytes,
+            sha256: &expected.sha256,
+        },
+        CopyProgress {
+            cancellation,
+            sink: progress,
+            phase: OperationPhase::Extracting,
+            completed_before: 0,
+            total: expected.size_bytes,
+        },
     )?;
-    output
-        .sync_all()
-        .map_err(|_| NativeToolError::StoreUnavailable)?;
-    set_permissions(&target, true)
+    drop(output);
+    Ok(set_permissions(&target, true)?)
 }
 
-fn extract_zip(
+fn extract(
     artifact_path: &Path,
     staging_root: &Path,
     delivery: &ToolDelivery,
     cancellation: &CancellationToken,
     progress: &dyn ProgressSink,
 ) -> Result<()> {
-    let archive_file = fs::File::open(artifact_path).map_err(|_| NativeToolError::UnsafeArchive)?;
-    let mut archive =
-        zip::ZipArchive::new(archive_file).map_err(|_| NativeToolError::UnsafeArchive)?;
-    if archive.len() > MAX_ARCHIVE_ENTRIES
-        || (!delivery.selective_extraction && archive.len() != delivery.files.len())
-        || delivery.files.len() > MAX_FILES
-    {
+    if delivery.files.len() > MAX_FILES {
         return Err(NativeToolError::UnsafeArchive);
     }
-    let expected_by_source = delivery
+    let expected = delivery
         .files
         .iter()
-        .map(|file| (file.source_path.as_str(), file))
+        .map(|file| {
+            (
+                file.source_path.as_str(),
+                EntryTarget {
+                    install_path: &file.install_path,
+                    size_bytes: file.size_bytes,
+                    sha256: &file.sha256,
+                    executable: file.role.is_some(),
+                },
+            )
+        })
         .collect::<HashMap<_, _>>();
     let total = delivery.files.iter().map(|file| file.size_bytes).sum();
-    let mut expanded = 0_u64;
-    let mut seen = HashSet::new();
-    let mut seen_expected = HashSet::new();
-    let mut archive_expanded = 0_u64;
-    for index in 0..archive.len() {
-        cancellation.check()?;
-        let mut entry = archive
-            .by_index(index)
-            .map_err(|_| NativeToolError::UnsafeArchive)?;
-        let name = entry.name().to_string();
-        let canonical_name = name.trim_end_matches('/');
-        validate_relative_path(canonical_name).map_err(|_| NativeToolError::UnsafeArchive)?;
-        let enclosed = entry
-            .enclosed_name()
-            .ok_or(NativeToolError::UnsafeArchive)?;
-        archive_expanded = archive_expanded
-            .checked_add(entry.size())
-            .filter(|bytes| *bytes <= MAX_ARCHIVE_EXPANDED_BYTES)
-            .ok_or(NativeToolError::StorageLimit)?;
-        if !safe_unix_mode(entry.unix_mode(), entry.is_dir())
-            || enclosed.to_string_lossy().replace('\\', "/") != canonical_name
-            || !seen.insert(canonical_name.to_string())
-        {
-            return Err(NativeToolError::UnsafeArchive);
-        }
-        let Some(expected) = expected_by_source.get(canonical_name).copied() else {
-            if delivery.selective_extraction {
-                continue;
-            }
-            return Err(NativeToolError::UnsafeArchive);
-        };
-        if entry.is_dir() || !seen_expected.insert(canonical_name.to_string()) {
-            return Err(NativeToolError::UnsafeArchive);
-        }
-        if entry.size() != expected.size_bytes {
-            return Err(NativeToolError::UnsafeArchive);
-        }
-        let target = prepare_target(staging_root, &expected.install_path)?;
-        let mut output = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&target)
-            .map_err(|_| NativeToolError::UnsafeArchive)?;
-        copy_and_verify(
-            &mut entry,
-            &mut output,
-            expected,
+    extract_zip(
+        artifact_path,
+        staging_root,
+        &expected,
+        ZipLimits {
+            policy: PathPolicy::TOOL,
+            max_entries: MAX_ARCHIVE_ENTRIES,
+            max_declared_bytes: MAX_ARCHIVE_EXPANDED_BYTES,
+            selective: delivery.selective_extraction,
+        },
+        ExtractProgress {
             cancellation,
-            progress,
-            expanded,
+            sink: progress,
+            completed_before: 0,
             total,
-        )?;
-        expanded = expanded
-            .checked_add(expected.size_bytes)
-            .ok_or(NativeToolError::StorageLimit)?;
-        output
-            .sync_all()
-            .map_err(|_| NativeToolError::StoreUnavailable)?;
-        set_permissions(&target, expected.role.is_some())?;
-    }
-    if seen_expected.len() != delivery.files.len() || expanded != total {
-        return Err(NativeToolError::UnsafeArchive);
-    }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn copy_and_verify(
-    input: &mut impl Read,
-    output: &mut fs::File,
-    expected: &DeliveryFile,
-    cancellation: &CancellationToken,
-    progress: &dyn ProgressSink,
-    base_bytes: u64,
-    total_bytes: u64,
-) -> Result<()> {
-    let mut hasher = Sha256::new();
-    let mut written = 0_u64;
-    let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
-    loop {
-        cancellation.check()?;
-        let read = input
-            .read(&mut buffer)
-            .map_err(|_| NativeToolError::UnsafeArchive)?;
-        if read == 0 {
-            break;
-        }
-        written = written
-            .checked_add(read as u64)
-            .filter(|bytes| *bytes <= expected.size_bytes)
-            .ok_or(NativeToolError::StorageLimit)?;
-        output
-            .write_all(&buffer[..read])
-            .map_err(|_| NativeToolError::StoreUnavailable)?;
-        hasher.update(&buffer[..read]);
-        progress.on_progress(OperationProgress::new(
-            OperationPhase::Extracting,
-            base_bytes.saturating_add(written),
-            total_bytes,
-        ));
-    }
-    if written != expected.size_bytes || format!("{:x}", hasher.finalize()) != expected.sha256 {
-        return Err(NativeToolError::Integrity);
-    }
-    Ok(())
-}
-
-fn safe_unix_mode(mode: Option<u32>, directory: bool) -> bool {
-    mode.is_none_or(|mode| {
-        let file_type = mode & 0o170_000;
-        file_type == 0 || file_type == if directory { 0o040_000 } else { 0o100_000 }
-    })
-}
-
-pub(crate) fn set_permissions(path: &Path, executable: bool) -> Result<()> {
-    require_regular_file(path).map_err(|_| NativeToolError::StoreUnavailable)?;
-    set_platform_permissions(path, executable)
-}
-
-#[cfg(unix)]
-fn set_platform_permissions(path: &Path, executable: bool) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt as _;
-    let mode = if executable { 0o755 } else { 0o644 };
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-        .map_err(|_| NativeToolError::StoreUnavailable)
-}
-
-#[cfg(windows)]
-#[allow(clippy::unnecessary_wraps)]
-fn set_platform_permissions(_: &Path, _: bool) -> Result<()> {
+        },
+    )?;
     Ok(())
 }
 
@@ -320,6 +219,27 @@ mod tests {
     }
 
     #[test]
+    fn raw_artifacts_larger_than_declared_never_publish() {
+        let temp = tempfile::tempdir().unwrap();
+        let artifact = temp.path().join("deno.exe");
+        let staging = temp.path().join("staging");
+        fs::write(&artifact, b"xx").unwrap();
+        fs::create_dir(&staging).unwrap();
+        let mut delivery = fixture_delivery();
+        delivery.format = ArtifactFormat::Raw;
+        assert_eq!(
+            install_artifact(
+                &artifact,
+                &staging,
+                &delivery,
+                &CancellationToken::default(),
+                &|_| {},
+            ),
+            Err(NativeToolError::UnsafeArchive)
+        );
+    }
+
+    #[test]
     #[ignore = "requires OSG_FFMPEG_AUDIT_ZIP pointing at the reviewed vendor archive"]
     fn reviewed_windows_ffmpeg_archive_matches_the_selective_inventory() {
         let archive_path = std::env::var_os("OSG_FFMPEG_AUDIT_ZIP")
@@ -348,13 +268,5 @@ mod tests {
                 .join("licenses/FFmpeg-BUILD-README.txt")
                 .is_file()
         );
-    }
-
-    #[test]
-    fn link_and_device_modes_are_rejected() {
-        assert!(safe_unix_mode(Some(0o100_755), false));
-        assert!(safe_unix_mode(Some(0o040_755), true));
-        assert!(!safe_unix_mode(Some(0o120_777), false));
-        assert!(!safe_unix_mode(Some(0o060_644), false));
     }
 }

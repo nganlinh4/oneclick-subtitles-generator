@@ -373,20 +373,8 @@ pub(crate) fn copy_registered_file(
     Ok(bytes)
 }
 
-pub(crate) fn canonical_image_mime_type<'a>(value: &'a str, bytes: &[u8]) -> Option<&'a str> {
-    match value {
-        "image/jpeg" if bytes.starts_with(&[0xff, 0xd8, 0xff]) => Some(value),
-        "image/png" if bytes.starts_with(b"\x89PNG\r\n\x1a\n") => Some(value),
-        "image/webp"
-            if bytes.len() >= 12
-                && bytes.starts_with(b"RIFF")
-                && bytes.get(8..12) == Some(b"WEBP") =>
-        {
-            Some(value)
-        }
-        "image/gif" if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") => Some(value),
-        _ => None,
-    }
+pub(crate) fn canonical_image_mime_type(value: &str, bytes: &[u8]) -> Option<&'static str> {
+    osg_formats::image::verified_mime_type(value, bytes)
 }
 
 pub(crate) fn purge_expired_images(assets: &mut HashMap<Uuid, MediaEntry>, now: Instant) {

@@ -2,6 +2,7 @@
 use crate::{CancellationToken, Error, GeminiClient, Result, TransportKind};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
+use osg_formats::wav;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -179,40 +180,22 @@ fn ensure_tls_provider() -> Result<()> {
         .ok_or(Error::Transport(TransportKind::Connect))
 }
 
+/// The samples of a bounded 16 kHz mono PCM16 WAV, without its header.
 fn wav_pcm(bytes: &[u8]) -> Result<&[u8]> {
-    if bytes.len() > MAX_PCM_BYTES + 4_096
-        || bytes.get(..4) != Some(b"RIFF")
-        || bytes.get(8..12) != Some(b"WAVE")
-    {
+    if bytes.len() > MAX_PCM_BYTES + 4_096 {
         return Err(invalid());
     }
-    let mut position = 12usize;
-    let mut format_ok = false;
-    while position + 8 <= bytes.len() {
-        let size = u32::from_le_bytes(
-            bytes[position + 4..position + 8]
-                .try_into()
-                .map_err(|_| invalid())?,
-        ) as usize;
-        let start = position + 8;
-        let end = start
-            .checked_add(size)
-            .filter(|end| *end <= bytes.len())
-            .ok_or_else(invalid)?;
-        let chunk = &bytes[start..end];
-        match &bytes[position..position + 4] {
-            b"fmt " => {
-                format_ok = chunk.len() >= 16
-                    && chunk[..4] == [1, 0, 1, 0]
-                    && chunk[4..8] == 16000u32.to_le_bytes()
-                    && chunk[14..16] == [16, 0];
-            }
-            b"data" if format_ok && size > 0 && size.is_multiple_of(2) => return Ok(chunk),
-            _ => {}
-        }
-        position = end + size % 2;
+    let file_len = u64::try_from(bytes.len()).map_err(|_| invalid())?;
+    let layout = wav::parse_header(bytes, file_len).map_err(|_| invalid())?;
+    let format = layout.format;
+    let mono_pcm16 = format.encoding == wav::WAVE_FORMAT_PCM
+        && format.channels == 1
+        && format.sample_rate == 16_000
+        && format.bits_per_sample == 16;
+    if !mono_pcm16 || layout.data_len == 0 || !layout.data_len.is_multiple_of(2) {
+        return Err(invalid());
     }
-    Err(invalid())
+    layout.samples(bytes).ok_or_else(invalid)
 }
 
 // Session setup, its concurrent producer/consumer pair, and terminal handshake remain together so
@@ -392,7 +375,9 @@ impl GeminiClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{LiveEventAccumulator, LiveTranscriptionKind, setup_message, source_ms, wav_pcm};
+    use super::{
+        LiveEventAccumulator, LiveTranscriptionKind, setup_message, source_ms, wav, wav_pcm,
+    };
     use crate::{ApiKey, Error, GeminiClient};
     use serde_json::json;
     use std::sync::atomic::AtomicU64;
@@ -400,19 +385,7 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     fn one_sample_wav() -> Vec<u8> {
-        let mut wav = Vec::new();
-        wav.extend_from_slice(b"RIFF");
-        wav.extend_from_slice(&38u32.to_le_bytes());
-        wav.extend_from_slice(b"WAVEfmt ");
-        wav.extend_from_slice(&16u32.to_le_bytes());
-        wav.extend_from_slice(&[1, 0, 1, 0]);
-        wav.extend_from_slice(&16000u32.to_le_bytes());
-        wav.extend_from_slice(&32000u32.to_le_bytes());
-        wav.extend_from_slice(&[2, 0, 16, 0]);
-        wav.extend_from_slice(b"data");
-        wav.extend_from_slice(&2u32.to_le_bytes());
-        wav.extend_from_slice(&[42, 0]);
-        wav
+        wav::encode(wav::WavFormat::pcm16(16_000, 1), &[42, 0]).unwrap()
     }
 
     #[test]

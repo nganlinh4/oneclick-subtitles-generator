@@ -5,10 +5,11 @@ use std::fs;
 use uuid::Uuid;
 
 use crate::path_security::{cleanup_known_tree, require_store, scrub_generated_python_cache};
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
 use crate::verified_install;
-use crate::{CancellationToken, PackageError, Result};
+use crate::{
+    CancellationToken, OperationPhase, OperationProgress, PackageError, ProgressSink, Result,
+};
 
 use super::RemovalOutcome;
 use super::files::sync_directory;

@@ -68,6 +68,7 @@ fn padded_request() -> Value {
 #[test]
 fn a_crop_that_does_not_fill_the_frame_is_decoded_at_the_size_the_conversion_derived() {
     let _platform = platform();
+    support::require_hardware_gpu!("The cropped export");
     // The ledger's `aspectRatio`, `resolution` and `trimEnd` entries at the far end of the pipeline.
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "cropped-source.mp4");
@@ -117,6 +118,7 @@ fn a_crop_that_does_not_fill_the_frame_is_decoded_at_the_size_the_conversion_der
 #[test]
 fn the_uncovered_area_reaches_the_encoder_already_opaque_and_comes_back_the_colour_it_previewed() {
     let _platform = platform();
+    support::require_hardware_gpu!("The cropped export");
     // The ledger's open question on `canvasBgColor`, closed. This request selects no canvas mode at
     // all, which is the shipped renderer's empty backdrop; the conversion composites it onto one
     // explicit opaque ground before a frame is composed, rather than handing the encoder an alpha it

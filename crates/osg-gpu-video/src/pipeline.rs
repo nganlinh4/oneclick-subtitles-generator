@@ -19,8 +19,9 @@ use osg_encode::{AudioBlock, AudioConfig, EncodeOutcome, EncoderConfig};
 use crate::d3d::{
     DecodeFenceWait, RenderFenceSignal, VideoDevice, compositor_luid, decode_fence, render_fence,
 };
+use crate::processor::edge;
 use crate::shared::{SharedSurface, wait_submission};
-use crate::{GpuVideoError, InteropStage, WorkerStage};
+use crate::{GpuVideoError, WorkerStage};
 
 use rings::{DECODE_RING_MAX, ENCODE_RING_MAX, ring_size, shared_ring};
 use workers::{DecodedReady, EncodeCommand, ReusableDecoded, spawn_decoder, spawn_encoder};
@@ -138,11 +139,13 @@ impl GpuVideoPipeline {
                     slot,
                     render_fence_value: 0,
                 })
-                .map_err(|_| sync_error())?;
+                .map_err(|_| GpuVideoError::synchronization())?;
         }
         let (encoded_free_tx, encoded_free_rx) = mpsc::sync_channel(encode_ring_size);
         for slot in 0..encode_ring_size {
-            encoded_free_tx.send(slot).map_err(|_| sync_error())?;
+            encoded_free_tx
+                .send(slot)
+                .map_err(|_| GpuVideoError::synchronization())?;
         }
         // Video slots already cap in-flight frames. Bound commands independently so audio blocks
         // cannot accumulate with media duration if the hardware encoder slows or stalls.
@@ -237,12 +240,14 @@ impl GpuVideoPipeline {
             match self.decoded_ready.recv_timeout(Duration::from_millis(100)) {
                 Ok(result) => break result?,
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => return Err(sync_error()),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(GpuVideoError::synchronization());
+                }
             }
         };
         if decoded.frame_index() != index {
             trace(index, "render.decode-index-mismatch");
-            return Err(sync_error());
+            return Err(GpuVideoError::synchronization());
         }
         // Reserve the output slot before submitting any work which reads the decoded slot. If the
         // encoder is applying backpressure this leaves no un-waited GPU submission behind an early
@@ -280,7 +285,7 @@ impl GpuVideoPipeline {
         let encoded_slot = self
             .encoded_slots
             .get(encoded_slot_index)
-            .ok_or_else(sync_error)?;
+            .ok_or_else(GpuVideoError::synchronization)?;
         // CPU ownership covers command publication. GPU ownership continues through the fence
         // value carried to both workers: their D3D11 queues wait for this frame's last D3D12
         // submission before either shared surface is touched.
@@ -289,7 +294,10 @@ impl GpuVideoPipeline {
             DecodedReady::Frame {
                 slot, fence_value, ..
             } => {
-                let decoded_slot = self.decoded_slots.get(*slot).ok_or_else(sync_error)?;
+                let decoded_slot = self
+                    .decoded_slots
+                    .get(*slot)
+                    .ok_or_else(GpuVideoError::synchronization)?;
                 let _read = decoded_slot.acquire()?;
                 self.decode_fence
                     .wait(self.compositor.device(), *fence_value)?;
@@ -469,7 +477,7 @@ impl GpuVideoPipeline {
     fn take_encode_failure(&self) -> GpuVideoError {
         self.encode_failures
             .try_recv()
-            .unwrap_or_else(|_| sync_error())
+            .unwrap_or_else(|_| GpuVideoError::synchronization())
     }
 
     fn wake_decoder(&self) {
@@ -527,10 +535,6 @@ fn texture_copy(texture: &wgpu::Texture) -> wgpu::TexelCopyTextureInfo<'_> {
     }
 }
 
-fn edge(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
-}
-
 fn trace(index: u32, stage: &str) {
     if std::env::var_os("OSG_GPU_TRACE").is_some() {
         static START: OnceLock<Instant> = OnceLock::new();
@@ -540,8 +544,4 @@ fn trace(index: u32, stage: &str) {
             std::thread::current().id()
         );
     }
-}
-
-const fn sync_error() -> GpuVideoError {
-    GpuVideoError::null(InteropStage::Synchronization)
 }

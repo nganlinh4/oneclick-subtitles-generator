@@ -287,7 +287,7 @@ fn test_remediated_cue_word_mappings_foreign_key_and_storage_integrity() {
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 2000,
-        state: "completed".to_string(),
+        state: osg_infrastructure::storage::TranscriptRevisionState::Completed,
         fingerprint: "fp".to_string(),
         word_count: 0,
         metadata_json: "{}".to_string(),

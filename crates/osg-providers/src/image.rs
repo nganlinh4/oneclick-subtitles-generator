@@ -110,21 +110,7 @@ impl ProviderClient {
 
 fn canonical_image_mime(content_type: Option<&str>, bytes: &[u8]) -> Option<&'static str> {
     let content_type = content_type?.split(';').next()?.trim();
-    match content_type {
-        "image/jpeg" if bytes.starts_with(&[0xff, 0xd8, 0xff]) => Some("image/jpeg"),
-        "image/png" if bytes.starts_with(b"\x89PNG\r\n\x1a\n") => Some("image/png"),
-        "image/webp"
-            if bytes.len() >= 12
-                && bytes.starts_with(b"RIFF")
-                && bytes.get(8..12) == Some(b"WEBP") =>
-        {
-            Some("image/webp")
-        }
-        "image/gif" if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") => {
-            Some("image/gif")
-        }
-        _ => None,
-    }
+    osg_formats::image::verified_mime_type(content_type, bytes)
 }
 
 #[cfg(test)]

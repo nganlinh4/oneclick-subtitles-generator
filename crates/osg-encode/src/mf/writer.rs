@@ -18,9 +18,10 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::core::PCWSTR;
 
+use crate::CancellationToken;
 use crate::audio::AudioBlock;
 use crate::config::EncoderConfig;
-use crate::encoder::{CancelToken, EncodeOutcome, VideoEncoder};
+use crate::encoder::{EncodeOutcome, VideoEncoder};
 use crate::error::{EncodeError, MfStage, OutputRejection};
 use crate::mf::media_type;
 use crate::mf::platform::{ensure_media_foundation, platform_error, wide_path};
@@ -51,7 +52,7 @@ pub(crate) struct MediaFoundationEncoder {
     pub(crate) next_frame: u32,
     next_audio_sample: u64,
     state: State,
-    cancel: CancelToken,
+    cancel: CancellationToken,
 }
 
 impl fmt::Debug for MediaFoundationEncoder {
@@ -131,7 +132,7 @@ impl MediaFoundationEncoder {
             next_frame: 0,
             next_audio_sample: 0,
             state: State::Open,
-            cancel: CancelToken::new(),
+            cancel: CancellationToken::new(),
         };
 
         // From here on every failure path goes through `Drop`, which removes the partial file.
@@ -250,7 +251,7 @@ impl VideoEncoder for MediaFoundationEncoder {
         self.config
     }
 
-    fn cancel_token(&self) -> CancelToken {
+    fn cancel_token(&self) -> CancellationToken {
         self.cancel.clone()
     }
 

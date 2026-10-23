@@ -4,7 +4,8 @@ use osg_domain::{AssetId, TranscriptRevisionId, TurnId};
 use rusqlite::{Connection, Transaction, params};
 
 use super::{
-    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptRevisionState, TranscriptTurnRecord,
+    TranscriptWordRecord,
 };
 use crate::storage::error::DatabaseError;
 
@@ -27,7 +28,7 @@ pub fn insert_transcript_revision(
             revision.model,
             revision.source_range_start_ms,
             revision.source_range_end_ms,
-            revision.state,
+            revision.state.as_str(),
             revision.fingerprint,
             i64::from(revision.word_count),
             revision.metadata_json,
@@ -111,26 +112,17 @@ pub fn promote_window_results(
 }
 
 /// Updates the state of a transcript revision record.
-///
-/// Valid states are: `"in_progress"`, `"completed"`, `"partial"`, `"failed"`.
 pub fn update_transcript_revision_state(
     connection: &Connection,
     revision_id: TranscriptRevisionId,
-    state: &str,
+    state: TranscriptRevisionState,
 ) -> Result<(), DatabaseError> {
-    let valid_states = ["in_progress", "completed", "partial", "failed"];
-    if !valid_states.contains(&state) {
-        return Err(DatabaseError::Integrity(format!(
-            "invalid transcript revision state: '{state}', expected one of: {valid_states:?}"
-        )));
-    }
-
     let rows_affected = connection.execute(
         "UPDATE transcript_revisions
          SET state = ?1, updated_at_ms = ?2
          WHERE id = ?3",
         params![
-            state,
+            state.as_str(),
             crate::storage::actor::now_ms(),
             revision_id.as_uuid(),
         ],
@@ -141,15 +133,6 @@ pub fn update_transcript_revision_state(
     }
 
     Ok(())
-}
-
-/// Alias for `update_transcript_revision_state` matching the requested API naming convention.
-pub fn transcript_update_revision_state(
-    connection: &Connection,
-    revision_id: TranscriptRevisionId,
-    state: &str,
-) -> Result<(), DatabaseError> {
-    update_transcript_revision_state(connection, revision_id, state)
 }
 
 /// Atomically persists cue word mappings.

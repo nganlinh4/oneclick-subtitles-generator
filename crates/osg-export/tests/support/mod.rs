@@ -12,7 +12,7 @@
 #[cfg(windows)]
 pub(crate) mod media;
 
-use osg_compositor::{CueLine, CueRun};
+use osg_compositor::{Compositor, CompositorError, CueLine, CueRun};
 use osg_domain::{AssetId, ProjectId};
 use osg_export::StagedText;
 use osg_render::{RenderPlan, RenderRequest};
@@ -23,6 +23,43 @@ use osg_scene::glyph::{
 };
 use osg_scene::scene::ResolvedFace;
 use serde_json::{Value, json};
+
+/// A compositor on a hardware GPU, or `None` after saying loudly what this run did not verify.
+///
+/// Hosted CI runners offer only a software adapter. WARP has no Direct3D 11 video support, so the
+/// GPU export path refuses there by design (there is no CPU fallback), and the parity render sweeps
+/// take about an hour on a CPU rasterizer. Both run on any machine with a real GPU.
+pub(crate) fn hardware_compositor(unverified: &str) -> Option<Compositor> {
+    let compositor = match Compositor::new() {
+        Ok(compositor) => compositor,
+        Err(CompositorError::NoAdapter { reason }) => {
+            eprintln!("SKIPPED: no GPU adapter ({reason}). {unverified} was NOT verified.");
+            return None;
+        }
+        Err(error) => panic!("the adapter was present but the compositor failed: {error}"),
+    };
+    if compositor.adapter().kind().is_software() {
+        eprintln!(
+            "SKIPPED: only the software adapter {:?} is available. {unverified} was NOT verified.",
+            compositor.adapter().name()
+        );
+        return None;
+    }
+    Some(compositor)
+}
+
+/// Leaves the calling test when [`hardware_compositor`] finds no hardware GPU. Take the test's
+/// platform lock first: this acquires an adapter.
+#[allow(unused_macros)]
+macro_rules! require_hardware_gpu {
+    ($unverified:expr) => {
+        if $crate::support::hardware_compositor($unverified).is_none() {
+            return;
+        }
+    };
+}
+#[allow(unused_imports)]
+pub(crate) use require_hardware_gpu;
 
 /// The family the fixture request names and the fixture face resolves.
 pub(crate) const FAMILY: &str = "Inter";

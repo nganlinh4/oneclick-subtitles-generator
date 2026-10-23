@@ -6,6 +6,7 @@ use std::io::{BufReader, Read, Write};
 use std::path::Path;
 
 use osg_domain::ProjectId;
+use osg_formats::image::ImageKind;
 use osg_infrastructure::storage::{
     ArtifactId, ArtifactKind, ArtifactRecord, ArtifactState, ContentHash, Database,
 };
@@ -111,12 +112,9 @@ fn canonical_image_mime(value: &str) -> Option<&'static str> {
 }
 
 fn matches_image_signature(mime_type: &str, bytes: &[u8]) -> bool {
-    match mime_type {
-        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
-        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
-        _ => false,
-    }
+    canonical_image_mime(mime_type)
+        .and_then(ImageKind::from_mime_type)
+        .is_some_and(|kind| kind.matches(bytes))
 }
 
 #[derive(Debug, Clone, Copy)]

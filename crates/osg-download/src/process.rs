@@ -1,56 +1,20 @@
 use crate::progress::parse_progress;
 use crate::{DownloadError, ProgressSink, Result};
-use command_group::{CommandGroup, GroupChild};
-use std::collections::VecDeque;
+use osg_process::{
+    CancellationToken, Capture, CaptureMode, ManagedChild, Supervised, capture_stream, environment,
+    supervise,
+};
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub(crate) const INVENTORY_STDOUT_LIMIT: usize = 32 * 1024 * 1024;
 pub(crate) const DOWNLOAD_STDOUT_LIMIT: usize = 1024 * 1024;
 const STDERR_TAIL_LIMIT: usize = 64 * 1024;
-const PROGRESS_LINE_LIMIT: usize = 4 * 1024;
-const POLL_INTERVAL: Duration = Duration::from_millis(20);
-const AUTOMATION_AUTHORITY_ENVIRONMENT: [&str; 17] = [
-    "__WDIO_TAURI_APP_BINARY__",
-    "__WDIO_TAURI_EMBEDDED__",
-    "OSG_E2E_REUSE_ROOT",
-    "OSG_E2E_CACHE_ROOT",
-    "OSG_E2E_CACHE_ROOT_ID",
-    "OSG_E2E_RUN_ROOT_AUTHORIZATION",
-    "OSG_E2E_STAGING_LEASE_ID",
-    "OSG_E2E_STAGING_LEASE_OWNER_CREATED_UTC",
-    "OSG_E2E_STAGING_LEASE_OWNER_PID",
-    "OSG_E2E_STAGING_ROOT",
-    "OSG_E2E_WEBDRIVER_AUTHORIZATION",
-    "OSG_E2E_WEBDRIVER_IDENTITY",
-    "OSG_E2E_WEBDRIVER_RUN_ROOT",
-    "REMOTE_WEBDRIVER_URL",
-    "TAURI_WEBDRIVER_PORT",
-    "WDIO_EMBEDDED_SERVER",
-    "WDIO_WORKER_ID",
-];
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-#[derive(Clone, Debug, Default)]
-pub struct CancellationToken(Arc<AtomicBool>);
-
-impl CancellationToken {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-}
 
 #[derive(Clone)]
 pub struct RunControl {
@@ -132,74 +96,46 @@ impl std::fmt::Debug for ProcessOutput {
 }
 
 pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
-    if request.control.cancellation.is_cancelled() {
+    let control = request.control;
+    if control.cancellation.is_cancelled() {
         return Err(DownloadError::Cancelled);
     }
 
-    let mut command = Command::new(request.binary);
-    remove_automation_authority_environment(&mut command);
-    command
-        .args(request.arguments)
-        .env("PYTHONUTF8", "1")
-        .env("PYTHONUNBUFFERED", "1")
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let child = spawn_group(&mut command)?;
-    let mut child = KillOnDrop::new(child);
+    let mut command = tool_command(request.binary, request.arguments);
+    let mut child = ManagedChild::spawn(&mut command).map_err(DownloadError::Spawn)?;
     let stdout = child
-        .inner()
-        .stdout
-        .take()
+        .take_stdout()
         .ok_or_else(|| process_io("stdout pipe unavailable"))?;
     let stderr = child
-        .inner()
-        .stderr
-        .take()
+        .take_stderr()
         .ok_or_else(|| process_io("stderr pipe unavailable"))?;
 
-    let stdout_progress = request.control.progress.clone();
-    let stdout_limit = request.stdout_limit;
-    let stdout_thread = std::thread::spawn(move || {
-        capture_stream(
-            stdout,
-            CaptureMode::Head(stdout_limit),
-            stdout_progress.as_deref(),
-        )
-    });
-    let stderr_progress = request.control.progress.clone();
+    let stdout_progress = control.progress.clone();
+    let stdout_mode = CaptureMode::Head(request.stdout_limit);
+    let stdout_thread =
+        std::thread::spawn(move || capture(stdout, stdout_mode, stdout_progress.as_deref()));
+    let stderr_progress = control.progress.clone();
     let stderr_thread = std::thread::spawn(move || {
-        capture_stream(
+        capture(
             stderr,
             CaptureMode::Tail(STDERR_TAIL_LIMIT),
             stderr_progress.as_deref(),
         )
     });
 
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(DownloadError::ProcessIo)? {
-            break status;
-        }
-        if request.control.cancellation.is_cancelled() {
-            child.terminate_and_wait()?;
-            let _ = join_capture(stdout_thread);
-            let _ = join_capture(stderr_thread);
-            return Err(DownloadError::Cancelled);
-        }
-        if started.elapsed() >= request.control.timeout {
-            child.terminate_and_wait()?;
-            let _ = join_capture(stdout_thread);
-            let _ = join_capture(stderr_thread);
-            return Err(DownloadError::TimedOut {
-                timeout: request.control.timeout,
-            });
-        }
-        std::thread::sleep(POLL_INTERVAL);
+    let outcome = supervise(&mut child, &control.cancellation, control.timeout)
+        .map_err(DownloadError::ProcessIo)?;
+    let Supervised::Exited(status) = outcome else {
+        let _ = join_capture(stdout_thread);
+        let _ = join_capture(stderr_thread);
+        return Err(if outcome == Supervised::Cancelled {
+            DownloadError::Cancelled
+        } else {
+            DownloadError::TimedOut {
+                timeout: control.timeout,
+            }
+        });
     };
-
-    child.mark_reaped();
     let stdout = join_capture(stdout_thread)?;
     let stderr = join_capture(stderr_thread)?;
     Ok(ProcessOutput {
@@ -210,145 +146,37 @@ pub(crate) fn run(request: ProcessRequest<'_>) -> Result<ProcessOutput> {
     })
 }
 
-fn remove_automation_authority_environment(command: &mut Command) {
-    for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
-        command.env_remove(variable);
-    }
+/// yt-dlp and Deno reach the network, so they also see the user's proxy configuration.
+fn tool_command(binary: &Path, arguments: Vec<OsString>) -> Command {
+    let mut command = Command::new(binary);
+    environment::isolate(&mut command, &[environment::NETWORK]);
+    command
+        .args(arguments)
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONUNBUFFERED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
 }
 
-fn spawn_group(command: &mut Command) -> Result<GroupChild> {
-    #[cfg(windows)]
-    let result = command
-        .group()
-        .kill_on_drop(true)
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn();
-    #[cfg(not(windows))]
-    let result = command.group_spawn();
-    result.map_err(DownloadError::Spawn)
-}
-
-#[derive(Debug)]
-struct KillOnDrop {
-    child: GroupChild,
-    reaped: bool,
-}
-
-impl KillOnDrop {
-    fn new(child: GroupChild) -> Self {
-        Self {
-            child,
-            reaped: false,
-        }
-    }
-
-    fn inner(&mut self) -> &mut std::process::Child {
-        self.child.inner()
-    }
-
-    fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
-    }
-
-    fn terminate_and_wait(&mut self) -> Result<()> {
-        if self
-            .child
-            .try_wait()
-            .map_err(DownloadError::ProcessIo)?
-            .is_none()
-        {
-            let _ = self.child.kill();
-        }
-        self.child.wait().map_err(DownloadError::ProcessIo)?;
-        self.reaped = true;
-        Ok(())
-    }
-
-    fn mark_reaped(&mut self) {
-        self.reaped = true;
-    }
-}
-
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        if !self.reaped && self.child.try_wait().is_ok_and(|status| status.is_none()) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-enum CaptureMode {
-    Head(usize),
-    Tail(usize),
-}
-
-#[derive(Debug)]
-struct Capture {
-    bytes: Vec<u8>,
-    truncated: bool,
-}
-
-fn capture_stream(
-    mut reader: impl Read,
+fn capture(
+    reader: impl Read,
     mode: CaptureMode,
     progress: Option<&dyn ProgressSink>,
 ) -> std::io::Result<Capture> {
-    let limit = match mode {
-        CaptureMode::Head(limit) | CaptureMode::Tail(limit) => limit,
+    let mut emit = |line: &[u8]| {
+        let line = String::from_utf8_lossy(line);
+        if let (Some(sink), Some(update)) = (progress, parse_progress(line.trim_end_matches('\r')))
+        {
+            sink.on_progress(&update);
+        }
     };
-    let mut retained = VecDeque::with_capacity(limit.min(64 * 1024));
-    let mut truncated = false;
-    let mut line = Vec::with_capacity(256);
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        for byte in &buffer[..read] {
-            match mode {
-                CaptureMode::Head(_) => {
-                    if retained.len() < limit {
-                        retained.push_back(*byte);
-                    } else {
-                        truncated = true;
-                    }
-                }
-                CaptureMode::Tail(_) => {
-                    if retained.len() == limit {
-                        retained.pop_front();
-                        truncated = true;
-                    }
-                    if limit > 0 {
-                        retained.push_back(*byte);
-                    }
-                }
-            }
-            if *byte == b'\n' {
-                emit_progress(progress, &line);
-                line.clear();
-            } else if line.len() < PROGRESS_LINE_LIMIT {
-                line.push(*byte);
-            }
-        }
-    }
-    if !line.is_empty() {
-        emit_progress(progress, &line);
-    }
-    Ok(Capture {
-        bytes: retained.into_iter().collect(),
-        truncated,
-    })
-}
-
-fn emit_progress(sink: Option<&dyn ProgressSink>, line: &[u8]) {
-    let Some(sink) = sink else { return };
-    let line = String::from_utf8_lossy(line);
-    if let Some(progress) = parse_progress(line.trim_end_matches('\r')) {
-        sink.on_progress(&progress);
-    }
+    let observer = progress
+        .is_some()
+        .then_some(&mut emit as &mut dyn FnMut(&[u8]));
+    capture_stream(reader, mode, observer)
 }
 
 fn join_capture(thread: JoinHandle<std::io::Result<Capture>>) -> Result<Capture> {
@@ -366,24 +194,30 @@ fn process_io(message: &'static str) -> DownloadError {
 pub(crate) mod test_support {
     use super::*;
     use crate::{ResolvedYtDlp, YtDlpResolver, YtDlpSearch};
-    use std::ffi::OsStr;
-    use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
-    use std::sync::OnceLock;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::Instant;
 
     static MOCK: OnceLock<PathBuf> = OnceLock::new();
 
     #[test]
-    fn downloader_process_drops_automation_authority() {
-        let mut command = Command::new("not-started");
-        remove_automation_authority_environment(&mut command);
-        for variable in AUTOMATION_AUTHORITY_ENVIRONMENT {
+    fn downloader_receives_only_allowlisted_and_fixed_environment() {
+        let command = tool_command(Path::new("not-started"), Vec::new());
+        let allowed = environment::allowlist(&[environment::NETWORK]).collect::<Vec<_>>();
+        let fixed = ["PYTHONUTF8", "PYTHONUNBUFFERED", "NO_COLOR"];
+        for (key, value) in command.get_envs() {
+            let key = key.to_string_lossy();
+            assert!(value.is_some(), "{key} is removed instead of never copied");
             assert!(
-                command
-                    .get_envs()
-                    .any(|(key, value)| { key == OsStr::new(variable) && value.is_none() }),
-                "{variable} would be inherited by the downloader"
+                allowed
+                    .iter()
+                    .chain(&fixed)
+                    .any(|name| name.eq_ignore_ascii_case(&key)),
+                "{key} would reach the downloader"
             );
+        }
+        for name in fixed {
+            assert!(command.get_envs().any(|(key, _)| key == name));
         }
     }
 

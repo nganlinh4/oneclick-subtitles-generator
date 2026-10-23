@@ -1,9 +1,10 @@
-use crate::{AudioFormat, Result, SpeechBackend, SpeechError};
+use crate::{AudioFormat, Result, SecretValue, SpeechBackend, SpeechError};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use zeroize::Zeroizing;
 
 pub(crate) const PROTOCOL_VERSION: u16 = 1;
 pub(crate) const MAX_FRAME_BYTES: usize = 1024 * 1024;
@@ -27,6 +28,9 @@ pub(crate) enum WorkerCommand {
         reference_path: Option<PathBuf>,
         output_path: PathBuf,
         output_format: AudioFormat,
+        /// Present only for the backend that calls a provider; never placed in the environment.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        provider_secret: Option<WireSecret>,
     },
     ConvertVoice {
         backend: SpeechBackend,
@@ -46,6 +50,16 @@ pub(crate) enum WorkerCommand {
         backend: SpeechBackend,
     },
     Shutdown,
+}
+
+/// A provider credential on its way into a command frame. The frame buffer is zeroized after it
+/// is written, so the plain value exists only for the duration of one write.
+pub(crate) struct WireSecret(pub(crate) SecretValue);
+
+impl Serialize for WireSecret {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0.expose())
+    }
 }
 
 #[derive(Deserialize)]
@@ -106,8 +120,9 @@ pub(crate) struct WireVoice {
 }
 
 pub(crate) fn write_frame<T: Serialize>(writer: &mut impl Write, value: &T) -> Result<()> {
-    let payload =
-        serde_json::to_vec(value).map_err(|_| SpeechError::Protocol("failed to encode command"))?;
+    let payload = Zeroizing::new(
+        serde_json::to_vec(value).map_err(|_| SpeechError::Protocol("failed to encode command"))?,
+    );
     if payload.is_empty() || payload.len() > MAX_FRAME_BYTES {
         return Err(SpeechError::FrameLimit);
     }

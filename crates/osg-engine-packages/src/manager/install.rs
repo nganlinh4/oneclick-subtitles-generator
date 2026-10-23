@@ -1,18 +1,20 @@
 //! Download, staging population, and atomic publication of one catalog release.
 
+use osg_delivery_core::archive::ExtractProgress;
 use osg_runtime_staging::{OwnedStagingDirectory, StagingKind};
 
 use crate::archive;
 use crate::catalog::DeliverySourceKind;
 use crate::delivery_manifest;
-use crate::download::{obtain, obtain_asset};
+use crate::download::{obtain, obtain_asset, report_asset_download_progress};
 use crate::path_security::{cleanup_known_tree, require_directory, require_store};
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
-use crate::{CancellationToken, PackageError, Result};
+use crate::{
+    CancellationToken, OperationPhase, OperationProgress, PackageError, ProgressSink, Result,
+};
 
 use super::PackageStatus;
-use super::files::{CopyProgress, copy_verified_legacy_file, report_asset_download_progress};
+use super::files::{CopyProgress, copy_verified_legacy_file};
 use super::key::ManagedPackageKey;
 use super::state::{InstallStaging, ManagedPackageManager, PreparedDelivery};
 impl<K> ManagedPackageManager<K>
@@ -60,7 +62,7 @@ where
             let downloaded = obtain_asset(
                 self.0.fetcher.as_ref(),
                 &self.download_root()?,
-                delivery,
+                delivery.download_owner(),
                 manifest_asset,
                 cancellation,
                 &manifest_progress,
@@ -186,7 +188,7 @@ where
             let downloaded = obtain_asset(
                 self.0.fetcher.as_ref(),
                 &self.download_root()?,
-                install.delivery,
+                install.delivery.download_owner(),
                 &source.asset,
                 install.cancellation,
                 &source_progress,
@@ -236,10 +238,12 @@ where
                     &downloaded.path,
                     install.staging,
                     &expected,
-                    install.cancellation,
-                    install.progress,
-                    expanded,
-                    install.effective.unpacked_size_bytes,
+                    ExtractProgress {
+                        cancellation: install.cancellation,
+                        sink: install.progress,
+                        completed_before: expanded,
+                        total: install.effective.unpacked_size_bytes,
+                    },
                 )?,
                 DeliverySourceKind::Raw => {
                     if expected.len() != 1 {
@@ -256,7 +260,7 @@ where
                             cancellation: install.cancellation,
                             completed_before: expanded,
                             total: install.effective.unpacked_size_bytes,
-                            progress: install.progress,
+                            sink: install.progress,
                             phase: OperationPhase::Extracting,
                         },
                     )?;

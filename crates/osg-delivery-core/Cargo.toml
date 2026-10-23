@@ -1,0 +1,24 @@
+[package]
+name = "osg-delivery-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared path, archive, hashing, and download safety primitives for OSG delivery stores"
+license = "MIT"
+
+[dependencies]
+fs2.workspace = true
+osg-process.workspace = true
+reqwest = { workspace = true, features = ["blocking", "rustls"] }
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

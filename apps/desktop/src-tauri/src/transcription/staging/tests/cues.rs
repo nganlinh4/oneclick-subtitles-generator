@@ -109,7 +109,7 @@ fn thousands_of_live_interpolated_words_promote_into_sqlite() {
             model: "gemini-3.5-transcribe-live".to_owned(),
             source_range_start_ms: 0,
             source_range_end_ms: 600_000,
-            state: "in_progress".to_owned(),
+            state: osg_infrastructure::storage::TranscriptRevisionState::InProgress,
             fingerprint: "live-promotion".to_owned(),
             word_count: 0,
             metadata_json: "{}".to_owned(),

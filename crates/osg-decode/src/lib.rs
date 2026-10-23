@@ -86,7 +86,6 @@
 //! # }
 //! ```
 
-pub mod cancel;
 pub mod colorimetry;
 pub mod decoder;
 pub mod error;
@@ -105,7 +104,6 @@ pub mod mf;
 #[cfg(windows)]
 pub mod gpu;
 
-pub use cancel::CancelToken;
 pub use colorimetry::{NominalRange, SourceColorimetry, YuvMatrix, YuvToRgb};
 pub use decoder::{DecodeStats, DecoderConfig, VideoDecoder, open_decoder};
 pub use error::{DecodeError, MfStage, SourceBound, SourceRejection};
@@ -114,6 +112,7 @@ pub use frame::DecodedFrame;
 pub use gpu::{GpuDecodedFrame, GpuVideoDecoder, open_gpu_decoder};
 pub use input::check_source_path;
 pub use limits::{DecodeLimits, HUNDRED_NANOS_PER_SECOND};
+pub use osg_process::CancellationToken;
 pub use planes::{FrameGeometry, NvPlanes};
 pub use presentation::{DisplaySize, PixelAspect, Rotation, SourcePresentation};
 pub use sampling::{OutputSampler, SourceGrid, exact_time_to_100ns};

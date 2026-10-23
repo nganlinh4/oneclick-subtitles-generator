@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "status": "f5_models_status",
+    "install": "f5_model_install",
+    "cancel": "f5_model_cancel",
+    "remove": "f5_model_remove"
+  },
+  "models": [
+    {
+      "id": "f5tts-spanish",
+      "name": "F5 Spanish",
+      "author": "jpgallegoar",
+      "language": "es",
+      "license": "CC-BY-NC-4.0",
+      "revision": "4765c14ffd01075479c2fde8615831acc0adca9a",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "model_1250000.safetensors",
+        "urls": [
+          "https://huggingface.co/jpgallegoar/F5-Spanish/resolve/4765c14ffd01075479c2fde8615831acc0adca9a/model_1250000.safetensors"
+        ],
+        "sizeBytes": 1348435761,
+        "sha256": "9cd5757a92c0b979e9769558fea922243c4916090ad93dd2c595b73e6f05a3b2"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/jpgallegoar/F5-Spanish/resolve/4765c14ffd01075479c2fde8615831acc0adca9a/vocab.txt"
+        ],
+        "sizeBytes": 13800,
+        "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+      }
+    },
+    {
+      "id": "f5tts-russian",
+      "name": "F5 Russian",
+      "author": "Misha24-10",
+      "language": "ru",
+      "license": "CC-BY-NC-4.0",
+      "revision": "ea166adeae4c80ec5ee423a671e2bdb83906cf84",
+      "architecture": "F5TTS_v1_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "model_240000_inference.safetensors",
+        "urls": [
+          "https://huggingface.co/Misha24-10/F5-TTS_RUSSIAN/resolve/ea166adeae4c80ec5ee423a671e2bdb83906cf84/F5TTS_v1_Base/model_240000_inference.safetensors"
+        ],
+        "sizeBytes": 1348435761,
+        "sha256": "376c29a569c691375a4cd19b8254497204fcd2127ca7168b12cb2b78fa8f54e3"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt"
+        ],
+        "sizeBytes": 13800,
+        "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+      }
+    },
+    {
+      "id": "f5tts-portuguese-br",
+      "name": "F5 Portuguese (Brazil)",
+      "author": "firstpixel",
+      "language": "pt",
+      "license": "CC-BY-NC-4.0",
+      "revision": "5ebc6913f2d92e4c0cb5396a9867aa1c0c1c4281",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "model_last.safetensors",
+        "urls": [
+          "https://huggingface.co/firstpixel/F5-TTS-pt-br/resolve/5ebc6913f2d92e4c0cb5396a9867aa1c0c1c4281/pt-br/model_last.safetensors"
+        ],
+        "sizeBytes": 1348431976,
+        "sha256": "c25e2678bdd4304071e3d0e39a283a7d23ffbc23678080c5b0b741dda2e07f0f"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt"
+        ],
+        "sizeBytes": 13800,
+        "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+      }
+    },
+    {
+      "id": "f5tts-italian",
+      "name": "F5 Italian",
+      "author": "alien79",
+      "language": "it",
+      "license": "CC-BY-4.0",
+      "revision": "6582a16ac03894f0ddae21e3e9b013ef5e33577e",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "model_159600.safetensors",
+        "urls": [
+          "https://huggingface.co/alien79/F5-TTS-italian/resolve/6582a16ac03894f0ddae21e3e9b013ef5e33577e/model_159600.safetensors"
+        ],
+        "sizeBytes": 1348435761,
+        "sha256": "c92b19a07843bda8bf55c8b525e67051ef4f95d3bd28cec2d330a45a48a1ac91"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt"
+        ],
+        "sizeBytes": 13800,
+        "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+      }
+    },
+    {
+      "id": "f5tts-vietnamese-vivoice",
+      "name": "F5 Vietnamese ViVoice",
+      "author": "hynt",
+      "language": "vi",
+      "license": "CC-BY-NC-SA-4.0",
+      "revision": "50228ccc563853f0ac628f49ed99a11f653d9ebe",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.pt",
+        "asset": "model_last.pt",
+        "urls": [
+          "https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice/resolve/50228ccc563853f0ac628f49ed99a11f653d9ebe/model_last.pt"
+        ],
+        "sizeBytes": 5394362124,
+        "sha256": "5ae8293dd09868d5758cd1edc6b74f53bd0200652d907bd43724a69c7b82ea1f"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "config.json",
+        "urls": [
+          "https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice/resolve/50228ccc563853f0ac628f49ed99a11f653d9ebe/config.json"
+        ],
+        "sizeBytes": 11337,
+        "sha256": "031ab4b5cab593dfba597551159b7d6594f2cb6acf2fabf5897d56c3e695d2ea"
+      }
+    },
+    {
+      "id": "f5tts-german",
+      "name": "F5 German",
+      "author": "marduk-ra",
+      "language": "de",
+      "license": "CC-BY-NC-4.0",
+      "revision": "0205060ea71ff8cfc100eb3b662e87581b2fc01e",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "f5_tts_german_1010000.safetensors",
+        "urls": [
+          "https://huggingface.co/marduk-ra/F5-TTS-German/resolve/0205060ea71ff8cfc100eb3b662e87581b2fc01e/f5_tts_german_1010000.safetensors"
+        ],
+        "sizeBytes": 1349621553,
+        "sha256": "7f052b7f3f807e788e8c8cb56e4f2d3929123ea4536acba96d8354f9cb5c09cf"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/marduk-ra/F5-TTS-German/resolve/0205060ea71ff8cfc100eb3b662e87581b2fc01e/vocab.txt"
+        ],
+        "sizeBytes": 13571,
+        "sha256": "c573548344b36a456bdf88e1fab154be2825b385ce5d88d5255792a1ed8c33d4"
+      }
+    },
+    {
+      "id": "f5tts-finnish",
+      "name": "F5 Finnish",
+      "author": "AsmoKoskinen",
+      "language": "fi",
+      "license": "CC-BY-NC-4.0",
+      "revision": "cba9413e3c8ebe3e8f89513ad43510f97decac29",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.safetensors",
+        "asset": "model_last_20250323.safetensors",
+        "urls": [
+          "https://huggingface.co/AsmoKoskinen/F5-TTS_Finnish_Model/resolve/cba9413e3c8ebe3e8f89513ad43510f97decac29/model_commonvoice_fi_librivox_fi_vox_populi_fi_20250323/model_last_20250323.safetensors"
+        ],
+        "sizeBytes": 1348439857,
+        "sha256": "b3a7c67a9aac0f73f64299654fa658632a569b85e489fe31421ff71ea2e9b89e"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/AsmoKoskinen/F5-TTS_Finnish_Model/resolve/cba9413e3c8ebe3e8f89513ad43510f97decac29/model_commonvoice_fi_librivox_fi_vox_populi_fi_20250323/vocab.txt"
+        ],
+        "sizeBytes": 11261,
+        "sha256": "4436601e07d6e601bc37182b94237bd48d7330fdb62f44192c63619ae91014fa"
+      }
+    },
+    {
+      "id": "f5tts-polish",
+      "name": "F5 Polish Marek",
+      "author": "Sticzu",
+      "language": "pl",
+      "license": "MIT fine-tune; base CC-BY-NC-4.0",
+      "revision": "18a6ff36748c1d4c91fdf39a2cdd7e202adfe324",
+      "architecture": "F5TTS_Base",
+      "checkpoint": {
+        "path": "model.pt",
+        "asset": "model_205500.pt",
+        "urls": [
+          "https://huggingface.co/Sticzu/marek-f5tts-polish/resolve/18a6ff36748c1d4c91fdf39a2cdd7e202adfe324/model_205500.pt"
+        ],
+        "sizeBytes": 3383863925,
+        "sha256": "c4a4038cb97ec25d69b78977a6a678707794db663894d64fc4007bd1200b3544"
+      },
+      "vocabulary": {
+        "path": "vocab.txt",
+        "asset": "vocab.txt",
+        "urls": [
+          "https://huggingface.co/SWivid/F5-TTS/resolve/84e5a410d9cead4de2f847e7c9369a6440bdfaca/F5TTS_v1_Base/vocab.txt"
+        ],
+        "sizeBytes": 13800,
+        "sha256": "2a05f992e00af9b0bd3800a8d23e78d520dbd705284ed2eedb5f4bd29398fa3c"
+      }
+    }
+  ]
+}

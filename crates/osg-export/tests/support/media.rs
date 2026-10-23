@@ -17,8 +17,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use osg_decode::{DecoderConfig, open_decoder};
 use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportPlan, ExportSummary, FrameRenderer, SilentProgress,
-    probe_source, run_export,
+    CancellationToken, ExportError, ExportJob, ExportPlan, ExportSummary, FrameRenderer,
+    SilentProgress, probe_source, run_export,
 };
 use osg_render::RenderRequest;
 use osg_scene::{ExactTime, FrameTimeline};
@@ -140,7 +140,7 @@ pub(crate) fn export(
             narration,
             output,
             text: staged_text(1),
-            cancel: ExportCancel::new(),
+            cancel: CancellationToken::new(),
         },
         &mut SilentProgress,
     )

@@ -12,7 +12,7 @@ use osg_audio::{AccessFailure, AudioError};
 use osg_compositor::{CompositorError, Rejection};
 use osg_decode::{DecodeError, SourceRejection};
 use osg_encode::{EncodeError, MfStage, OutputRejection};
-use osg_export::{ExportCancel, ExportError, ExportJob, ExportPlan, StagedText};
+use osg_export::{CancellationToken, ExportError, ExportJob, ExportPlan, StagedText};
 use osg_render::RenderError;
 use osg_scene::TimelineError;
 use osg_scene::glyph::LayoutRefusal;
@@ -124,7 +124,7 @@ fn the_debug_view_of_a_job_carries_no_path_and_no_subtitle_text() {
         narration: Some(Path::new(SECRET_PATH)),
         output: Path::new(SECRET_PATH),
         text: staged_text(1),
-        cancel: ExportCancel::new(),
+        cancel: CancellationToken::new(),
     };
     let rendered = format!("{job:?}");
     assert!(!rendered.contains("C:"), "{rendered}");

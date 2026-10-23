@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use futures_util::future::BoxFuture;
+use osg_formats::wav;
 use osg_gemini::{
     AudioTranscriptionConfig, GeminiClient, InlineMedia, MediaInput as GeminiMediaInput,
     TranscribeRequest, TranscriptionStreamCompletion,
@@ -22,6 +23,7 @@ use self::live::execute_live_window;
 use super::planner::WindowRange;
 use super::projection::{ProjectionError, project_window_word};
 use super::staging::StagedWindowResult;
+use crate::error::CommandError;
 
 #[derive(Debug, Error)]
 pub(crate) enum WorkerError {
@@ -38,7 +40,7 @@ pub(crate) enum WorkerError {
     #[error("word projection error: {0}")]
     Projection(#[from] ProjectionError),
     #[error("internal worker error: {0}")]
-    Internal(String),
+    Internal(&'static str),
 }
 
 impl WorkerError {
@@ -51,6 +53,25 @@ impl WorkerError {
             Self::Gemini(_) => "gemini",
             Self::Projection(_) => "projection",
             Self::Internal(_) => "internal",
+        }
+    }
+
+    /// Maps a window failure to the app's fixed, path-safe command vocabulary.
+    pub(crate) fn into_command_error(self) -> CommandError {
+        match self {
+            Self::Cancelled => CommandError::internal("The transcription was cancelled."),
+            Self::Pipeline(error) => error.into(),
+            Self::Media(error) => error.into(),
+            Self::Gemini(error) => error.into(),
+            Self::Io(_) => {
+                CommandError::internal("The extracted transcription audio could not be read.")
+            }
+            Self::Projection(_) => {
+                CommandError::internal("Gemini returned word timings that could not be placed.")
+            }
+            Self::Internal(_) => {
+                CommandError::internal("The transcription worker failed unexpectedly.")
+            }
         }
     }
 
@@ -85,6 +106,7 @@ impl<T> Drop for AbortOnDrop<T> {
     }
 }
 
+/// A cancellation-aware admission bound: local extraction slots and provider sessions.
 #[derive(Clone)]
 pub(crate) struct WorkerPool {
     semaphore: Arc<Semaphore>,
@@ -111,7 +133,7 @@ impl WorkerPool {
             biased;
             () = cancellation.cancelled() => Err(WorkerError::Cancelled),
             permit = self.semaphore.clone().acquire_owned() => {
-                permit.map_err(|_| WorkerError::Internal("worker pool semaphore closed".to_owned()))
+                permit.map_err(|_| WorkerError::Internal("worker pool semaphore closed"))
             }
         }
     }
@@ -121,7 +143,7 @@ pub(crate) type TimedWindowCallback = Arc<dyn Fn(StagedWindowResult) + Send + Sy
 
 /// Extracts 16kHz mono WAV, streams provider-timed words, and projects their coordinates.
 /// Temporary audio is removed after reading; transport retries stop once a stream is accepted.
-// The explicit extraction permit ties admission to this worker's audio preparation lifetime.
+/// The extraction permit bounds local ffmpeg work only and is released before the provider call.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_transcription_window(
     client: &GeminiClient,
@@ -159,19 +181,16 @@ pub(crate) async fn execute_transcription_window(
         .map_err(WorkerError::Media)?
         .with_cancellation(media_cancel);
 
+    // 2. Read the WAV off the async runtime; dropping `prepared` unlinks the temporary file.
     let pipeline = pipeline.clone();
     let input = input.clone();
-    let prepared = tauri::async_runtime::spawn_blocking(move || {
-        pipeline.extract_audio(input, format, range, &run_control)
+    let wav_bytes = tauri::async_runtime::spawn_blocking(move || {
+        let prepared = pipeline.extract_audio(input, format, range, &run_control)?;
+        Ok::<_, WorkerError>(std::fs::read(prepared.path())?)
     })
     .await
-    .map_err(|error| WorkerError::Internal(error.to_string()))??;
+    .map_err(|_| WorkerError::Internal("audio extraction task stopped unexpectedly"))??;
 
-    // 2. Read bytes into memory
-    let wav_bytes = std::fs::read(prepared.path()).map_err(WorkerError::Io)?;
-
-    // 3. Explicit RAII cleanup: drop PreparedMedia immediately so temporary WAV is unlinked from disk
-    drop(prepared);
     // Network sessions do not consume a local extraction slot. Otherwise two source-paced Live
     // sessions hold the slots for minutes and prevent the other requested windows from starting.
     drop(extraction_permit);
@@ -325,62 +344,26 @@ fn execute_standard_window_resilient<'a>(
     })
 }
 
+/// Halves a PCM WAV on a block boundary, keeping the original header chunks in both halves.
 fn split_pcm_wav(bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>), WorkerError> {
-    if bytes.len() < 44 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+    const MALFORMED: WorkerError =
+        WorkerError::Internal("transcription retry received a malformed WAV");
+    let file_len = u64::try_from(bytes.len()).map_err(|_| MALFORMED)?;
+    let layout = wav::parse_header(bytes, file_len).map_err(|_| MALFORMED)?;
+    let samples = layout.samples(bytes).ok_or(MALFORMED)?;
+    let align = usize::from(layout.format.block_align);
+    if align == 0 {
         return Err(WorkerError::Internal(
-            "transcription retry received a malformed WAV".to_owned(),
+            "WAV has no valid PCM block alignment",
         ));
     }
-    let mut cursor = 12_usize;
-    let mut data = None;
-    let mut block_align = None;
-    while cursor.checked_add(8).is_some_and(|end| end <= bytes.len()) {
-        let size = u32::from_le_bytes(bytes[cursor + 4..cursor + 8].try_into().unwrap()) as usize;
-        let payload = cursor + 8;
-        let end = payload
-            .checked_add(size)
-            .ok_or_else(|| WorkerError::Internal("WAV chunk size overflow".to_owned()))?;
-        if end > bytes.len() {
-            return Err(WorkerError::Internal(
-                "WAV chunk exceeds payload".to_owned(),
-            ));
-        }
-        if &bytes[cursor..cursor + 4] == b"fmt " && size >= 16 {
-            block_align = Some(u16::from_le_bytes(
-                bytes[payload + 12..payload + 14].try_into().unwrap(),
-            ) as usize);
-        }
-        if &bytes[cursor..cursor + 4] == b"data" {
-            data = Some((cursor, payload, end));
-            break;
-        }
-        cursor = end + (size & 1);
+    let midpoint = (samples.len() / 2 / align) * align;
+    if midpoint == 0 || midpoint == samples.len() {
+        return Err(WorkerError::Internal("WAV is too short to subdivide"));
     }
-    let (data_header, data_start, data_end) =
-        data.ok_or_else(|| WorkerError::Internal("WAV has no data chunk".to_owned()))?;
-    let align = block_align
-        .filter(|value| *value > 0)
-        .ok_or_else(|| WorkerError::Internal("WAV has no valid PCM block alignment".to_owned()))?;
-    let data_len = data_end - data_start;
-    let midpoint = (data_len / 2 / align) * align;
-    if midpoint == 0 || midpoint == data_len {
-        return Err(WorkerError::Internal(
-            "WAV is too short to subdivide".to_owned(),
-        ));
-    }
-    let build = |samples: &[u8]| {
-        let mut wav = bytes[..data_start].to_vec();
-        wav.extend_from_slice(samples);
-        let riff_size = u32::try_from(wav.len() - 8).unwrap();
-        let sample_size = u32::try_from(samples.len()).unwrap();
-        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
-        wav[data_header + 4..data_header + 8].copy_from_slice(&sample_size.to_le_bytes());
-        wav
-    };
-    Ok((
-        build(&bytes[data_start..data_start + midpoint]),
-        build(&bytes[data_start + midpoint..data_end]),
-    ))
+    let (left, right) = samples.split_at(midpoint);
+    let rewrap = |half: &[u8]| layout.with_samples(bytes, half).ok_or(MALFORMED);
+    Ok((rewrap(left)?, rewrap(right)?))
 }
 
 async fn execute_standard_window(

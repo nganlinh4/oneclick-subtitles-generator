@@ -5,6 +5,9 @@
 //! already describes: everything here encodes a source clip, exports it through the export runner,
 //! and reads the result back through the platform decoder, so every stage is proven against the
 //! others rather than against a file somebody generated once.
+//!
+//! The two export tests skip loudly where only a software adapter exists (hosted CI runners), since
+//! the export has no CPU fallback there; they run on any machine with a real GPU.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -87,6 +90,9 @@ fn staged_text() -> StagedText {
 #[test]
 fn a_staged_request_exports_a_playable_file_of_the_length_the_timeline_names() {
     let _platform = fixtures::platform();
+    if !fixtures::hardware_gpu() {
+        return;
+    }
     let media = TempDir::new().expect("a media directory");
     let staging = TempDir::new().expect("a staging root");
     let authority = TempDir::new().expect("an authority root");
@@ -175,6 +181,9 @@ fn assert_progress_stream(reports: &[ExportProgress]) {
 #[test]
 fn a_cancelled_export_leaves_no_file_that_could_be_mistaken_for_a_finished_one() {
     let _platform = fixtures::platform();
+    if !fixtures::hardware_gpu() {
+        return;
+    }
     let media = TempDir::new().expect("a media directory");
     let staging = TempDir::new().expect("a staging root");
     let authority = TempDir::new().expect("an authority root");

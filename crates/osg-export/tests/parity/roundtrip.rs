@@ -26,8 +26,8 @@ use std::path::{Path, PathBuf};
 use osg_decode::{DecoderConfig, open_decoder};
 use osg_encode::{EncoderConfig, FrameBuffer, PixelLayout, VideoConfig, open_encoder};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportSummary, FrameRenderer, SilentProgress, StagedText,
-    probe_source, run_export,
+    CancellationToken, ExportError, ExportJob, ExportSummary, FrameRenderer, SilentProgress,
+    StagedText, probe_source, run_export,
 };
 use osg_render::RenderRequest;
 use osg_scene::{ExactTime, FrameTimeline};
@@ -221,7 +221,7 @@ pub(crate) fn export_text(
             narration,
             output,
             text,
-            cancel: ExportCancel::new(),
+            cancel: CancellationToken::new(),
         },
         &mut SilentProgress,
     )
@@ -303,6 +303,7 @@ mod tests {
         // composed — with a frame taken from each page, so a page that was never bound, uploaded or
         // sampled would show up as a wrong picture rather than as a smaller file.
         let _lock = exclusive();
+        crate::support::require_hardware_gpu!("The encode round trip");
         let directory = TempDir::new().expect("a temporary directory");
         let loaded = matrix::load();
         let document = documents::all(&loaded)
@@ -402,6 +403,7 @@ mod tests {
     #[test]
     fn a_composed_frame_and_the_same_frame_decoded_back_agree_inside_a_measured_tolerance() {
         let _lock = exclusive();
+        crate::support::require_hardware_gpu!("The encode round trip");
         let directory = TempDir::new().expect("a temporary directory");
         let loaded = matrix::load();
         let case = Case::new(

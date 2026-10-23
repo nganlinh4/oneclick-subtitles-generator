@@ -14,7 +14,8 @@ mod track_history;
 pub mod transcripts;
 
 pub use transcripts::{
-    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptRevisionState, TranscriptTurnRecord,
+    TranscriptWordRecord,
 };
 
 pub use active_workspace::{

@@ -16,25 +16,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::time::{Duration, Instant};
 
+pub use osg_process::CancellationToken;
+
 use output::build_transcription;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const MAX_TIMEOUT: Duration = Duration::from_hours(24);
 const MAX_EVENTS_PER_JOB: usize = 8;
-
-#[derive(Clone, Debug, Default)]
-pub struct CancellationToken(Arc<AtomicBool>);
-
-impl CancellationToken {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-}
 
 pub trait ProgressSink: Send + Sync {
     fn on_progress(&self, progress: &AsrProgress);
@@ -277,7 +265,12 @@ impl AsrService {
         state.next_request_id = state.next_request_id.wrapping_add(1).max(1);
         let request_id = state.next_request_id;
         let request = WireRequest::warm_up(request_id, &self.0.assets)?;
-        if let Err(error) = state.session.as_mut().unwrap().send(&request) {
+        let sent = state
+            .session
+            .as_mut()
+            .ok_or(AsrError::Synchronization)
+            .and_then(|session| session.send(&request));
+        if let Err(error) = sent {
             invalidate_session(&self.0, &mut state);
             return Err(error);
         }
@@ -320,7 +313,12 @@ impl AsrService {
             &request.audio,
             request.options.language(),
         )?;
-        if let Err(error) = state.session.as_mut().unwrap().send(&wire_request) {
+        let sent = state
+            .session
+            .as_mut()
+            .ok_or(AsrError::Synchronization)
+            .and_then(|session| session.send(&wire_request));
+        if let Err(error) = sent {
             invalidate_session(&self.0, &mut state);
             return Err(error);
         }

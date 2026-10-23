@@ -8,11 +8,12 @@ description = "Frame-exact source video decoding for the OSG native renderer ove
 license = "MIT"
 
 [dependencies]
-osg-scene = { workspace = true }
+osg-process.workspace = true
+osg-scene.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "=0.62.2", features = [
+windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Direct3D11",
   "Win32_Media_MediaFoundation",
@@ -22,13 +23,13 @@ windows = { version = "=0.62.2", features = [
 ] }
 
 [dev-dependencies]
-tempfile = "=3.27.0"
+tempfile.workspace = true
 
 # The round-trip test encodes a synthetic clip with the workspace encoder and decodes it back, so
 # the two Media Foundation halves are proven against each other rather than against a fixture
 # committed by hand. Dev-only: nothing in the decoder's public surface mentions the encoder.
 [target.'cfg(windows)'.dev-dependencies]
-osg-encode = { workspace = true }
+osg-encode.workspace = true
 
 # Deliberately NOT `workspace = true`. The workspace forbids `unsafe_code`; `osg-encode` is the
 # existing audited exception and this crate is the second, for the same reason: Media Foundation is

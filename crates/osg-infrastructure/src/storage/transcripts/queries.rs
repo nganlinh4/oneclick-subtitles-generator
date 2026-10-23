@@ -1,68 +1,57 @@
 //! Transcript reads: revisions, mappings, and indexed time-range lookups.
 
 use osg_domain::{AssetId, CueId, ProjectId, TranscriptRevisionId, TurnId, WordId};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Row, params};
 use uuid::Uuid;
 
 use super::{
-    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptTurnRecord, TranscriptWordRecord,
+    CueWordMappingRecord, TranscriptRevisionRecord, TranscriptRevisionState, TranscriptTurnRecord,
+    TranscriptWordRecord,
 };
 use crate::storage::error::DatabaseError;
+
+const REVISION_COLUMNS: &str = "SELECT id, project_id, media_id, provider, model,
+        source_range_start_ms, source_range_end_ms, state,
+        fingerprint, word_count, metadata_json, created_at_ms, updated_at_ms
+ FROM transcript_revisions";
+
+#[allow(clippy::needless_pass_by_value, reason = "used as a map_err adapter")]
+fn integrity(error: impl ToString) -> DatabaseError {
+    DatabaseError::Integrity(error.to_string())
+}
+
+fn revision_from_row(row: &Row<'_>) -> Result<TranscriptRevisionRecord, DatabaseError> {
+    let state: String = row.get(7)?;
+    let word_count: i64 = row.get(9)?;
+    Ok(TranscriptRevisionRecord {
+        id: TranscriptRevisionId::from_uuid(row.get::<_, Uuid>(0)?).map_err(integrity)?,
+        project_id: ProjectId::from_uuid(row.get::<_, Uuid>(1)?).map_err(integrity)?,
+        media_id: row
+            .get::<_, Option<Uuid>>(2)?
+            .map(|uuid| AssetId::from_uuid(uuid).map_err(integrity))
+            .transpose()?,
+        provider: row.get(3)?,
+        model: row.get(4)?,
+        source_range_start_ms: row.get(5)?,
+        source_range_end_ms: row.get(6)?,
+        state: TranscriptRevisionState::parse(&state)
+            .ok_or_else(|| integrity("unknown transcript revision state"))?,
+        fingerprint: row.get(8)?,
+        word_count: u32::try_from(word_count).map_err(|_| integrity("word_count out of range"))?,
+        metadata_json: row.get(10)?,
+        created_at_ms: row.get(11)?,
+        updated_at_ms: row.get(12)?,
+    })
+}
 
 /// Retrieves a transcript revision record by its ID.
 pub fn get_transcript_revision(
     connection: &Connection,
     id: TranscriptRevisionId,
 ) -> Result<Option<TranscriptRevisionRecord>, DatabaseError> {
-    let mut stmt = connection.prepare(
-        "SELECT id, project_id, media_id, provider, model,
-                source_range_start_ms, source_range_end_ms, state,
-                fingerprint, word_count, metadata_json, created_at_ms, updated_at_ms
-         FROM transcript_revisions WHERE id = ?1",
-    )?;
-
+    let mut stmt = connection.prepare(&format!("{REVISION_COLUMNS} WHERE id = ?1"))?;
     let mut rows = stmt.query([id.as_uuid()])?;
-    if let Some(row) = rows.next()? {
-        let id = TranscriptRevisionId::from_uuid(row.get::<_, Uuid>(0)?)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let project_id = ProjectId::from_uuid(row.get::<_, Uuid>(1)?)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let media_id = row
-            .get::<_, Option<Uuid>>(2)?
-            .map(|u| AssetId::from_uuid(u).map_err(|e| DatabaseError::Integrity(e.to_string())))
-            .transpose()?;
-        let provider: String = row.get(3)?;
-        let model: String = row.get(4)?;
-        let source_range_start_ms: i64 = row.get(5)?;
-        let source_range_end_ms: i64 = row.get(6)?;
-        let state: String = row.get(7)?;
-        let fingerprint: String = row.get(8)?;
-        let word_count: i64 = row.get(9)?;
-        let metadata_json: String = row.get(10)?;
-        let created_at_ms: i64 = row.get(11)?;
-        let updated_at_ms: i64 = row.get(12)?;
-
-        let word_count = u32::try_from(word_count)
-            .map_err(|_| DatabaseError::Integrity("word_count out of range".into()))?;
-
-        Ok(Some(TranscriptRevisionRecord {
-            id,
-            project_id,
-            media_id,
-            provider,
-            model,
-            source_range_start_ms,
-            source_range_end_ms,
-            state,
-            fingerprint,
-            word_count,
-            metadata_json,
-            created_at_ms,
-            updated_at_ms,
-        }))
-    } else {
-        Ok(None)
-    }
+    rows.next()?.map(revision_from_row).transpose()
 }
 
 /// Lists all transcript revisions for a given project.
@@ -70,91 +59,14 @@ pub fn list_transcript_revisions_for_project(
     connection: &Connection,
     project_id: ProjectId,
 ) -> Result<Vec<TranscriptRevisionRecord>, DatabaseError> {
-    let mut stmt = connection.prepare(
-        "SELECT id, project_id, media_id, provider, model,
-                source_range_start_ms, source_range_end_ms, state,
-                fingerprint, word_count, metadata_json, created_at_ms, updated_at_ms
-         FROM transcript_revisions WHERE project_id = ?1
-         ORDER BY created_at_ms ASC",
-    )?;
-
-    let rows = stmt.query_map([project_id.as_uuid()], |row| {
-        let id_uuid: Uuid = row.get(0)?;
-        let proj_uuid: Uuid = row.get(1)?;
-        let media_uuid: Option<Uuid> = row.get(2)?;
-        let provider: String = row.get(3)?;
-        let model: String = row.get(4)?;
-        let source_range_start_ms: i64 = row.get(5)?;
-        let source_range_end_ms: i64 = row.get(6)?;
-        let state: String = row.get(7)?;
-        let fingerprint: String = row.get(8)?;
-        let word_count: i64 = row.get(9)?;
-        let metadata_json: String = row.get(10)?;
-        let created_at_ms: i64 = row.get(11)?;
-        let updated_at_ms: i64 = row.get(12)?;
-
-        Ok((
-            id_uuid,
-            proj_uuid,
-            media_uuid,
-            provider,
-            model,
-            source_range_start_ms,
-            source_range_end_ms,
-            state,
-            fingerprint,
-            word_count,
-            metadata_json,
-            created_at_ms,
-            updated_at_ms,
-        ))
-    })?;
-
+    let mut stmt = connection.prepare(&format!(
+        "{REVISION_COLUMNS} WHERE project_id = ?1 ORDER BY created_at_ms ASC"
+    ))?;
+    let mut rows = stmt.query([project_id.as_uuid()])?;
     let mut records = Vec::new();
-    for row in rows {
-        let (
-            id_uuid,
-            proj_uuid,
-            media_uuid,
-            provider,
-            model,
-            source_range_start_ms,
-            source_range_end_ms,
-            state,
-            fingerprint,
-            word_count,
-            metadata_json,
-            created_at_ms,
-            updated_at_ms,
-        ) = row?;
-
-        let id = TranscriptRevisionId::from_uuid(id_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let project_id =
-            ProjectId::from_uuid(proj_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let media_id = media_uuid
-            .map(|u| AssetId::from_uuid(u).map_err(|e| DatabaseError::Integrity(e.to_string())))
-            .transpose()?;
-        let word_count = u32::try_from(word_count)
-            .map_err(|_| DatabaseError::Integrity("word_count out of range".into()))?;
-
-        records.push(TranscriptRevisionRecord {
-            id,
-            project_id,
-            media_id,
-            provider,
-            model,
-            source_range_start_ms,
-            source_range_end_ms,
-            state,
-            fingerprint,
-            word_count,
-            metadata_json,
-            created_at_ms,
-            updated_at_ms,
-        });
+    while let Some(row) = rows.next()? {
+        records.push(revision_from_row(row)?);
     }
-
     Ok(records)
 }
 
@@ -183,10 +95,8 @@ pub fn load_cue_word_mappings_for_project(
     let mut records = Vec::new();
     for row in rows {
         let (cue_uuid, word_uuid, word_ordinal, metadata_json) = row?;
-        let cue_id =
-            CueId::from_uuid(cue_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let word_id =
-            WordId::from_uuid(word_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let cue_id = CueId::from_uuid(cue_uuid).map_err(integrity)?;
+        let word_id = WordId::from_uuid(word_uuid).map_err(integrity)?;
         let word_ordinal = u32::try_from(word_ordinal)
             .map_err(|_| DatabaseError::Integrity("word_ordinal out of range".into()))?;
 
@@ -305,9 +215,8 @@ pub fn query_turns_in_range(
             metadata_json,
         ) = row?;
 
-        let id = TurnId::from_uuid(id_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-        let revision_id = TranscriptRevisionId::from_uuid(rev_uuid)
-            .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+        let id = TurnId::from_uuid(id_uuid).map_err(integrity)?;
+        let revision_id = TranscriptRevisionId::from_uuid(rev_uuid).map_err(integrity)?;
         let ordinal = u32::try_from(ordinal)
             .map_err(|_| DatabaseError::Integrity("turn ordinal out of range".into()))?;
         let start_word_ordinal = u32::try_from(start_word_ordinal)
@@ -354,11 +263,10 @@ fn extract_word_record_from_rusqlite(
     let provenance: String = row.get(13)?;
     let metadata_json: String = row.get(14)?;
 
-    let id = WordId::from_uuid(id_uuid).map_err(|e| DatabaseError::Integrity(e.to_string()))?;
-    let revision_id = TranscriptRevisionId::from_uuid(rev_uuid)
-        .map_err(|e| DatabaseError::Integrity(e.to_string()))?;
+    let id = WordId::from_uuid(id_uuid).map_err(integrity)?;
+    let revision_id = TranscriptRevisionId::from_uuid(rev_uuid).map_err(integrity)?;
     let turn_id = turn_uuid
-        .map(|u| TurnId::from_uuid(u).map_err(|e| DatabaseError::Integrity(e.to_string())))
+        .map(|u| TurnId::from_uuid(u).map_err(integrity))
         .transpose()?;
     let ordinal = u32::try_from(ordinal)
         .map_err(|_| DatabaseError::Integrity("word ordinal out of range".into()))?;

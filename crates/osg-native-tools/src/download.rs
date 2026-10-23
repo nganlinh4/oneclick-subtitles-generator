@@ -1,20 +1,23 @@
+//! Single-request tool downloads from reviewed upstream release URLs.
+
 use std::fs;
-use std::io::{Read as _, Write as _};
+use std::io::Write as _;
 use std::path::Path;
 use std::time::Duration;
 
+use osg_delivery_core::http::{self, CancellableBody, USER_AGENT as USER_AGENT_VALUE};
+use osg_delivery_core::url_policy::is_immutable_https;
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{CONTENT_LENGTH, RETRY_AFTER, USER_AGENT};
 use url::Url;
 
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt::hash_file;
-use crate::{CancellationToken, NativeToolError, Result};
+use crate::{
+    CancellationToken, NativeToolError, OperationPhase, OperationProgress, ProgressSink, Result,
+};
 
-const MAX_REDIRECTS: usize = 5;
-const USER_AGENT_VALUE: &str = "OneClickSubtitlesGenerator/2";
 const HEADER_ATTEMPTS: u32 = 4;
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(15);
+const MAX_SERVER_DELAY_SECONDS: u64 = 30;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RemoteFile<'a> {
@@ -40,38 +43,20 @@ pub(crate) struct HttpFileFetcher {
 
 impl HttpFileFetcher {
     pub(crate) fn new() -> Result<Self> {
-        let redirect = reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() >= MAX_REDIRECTS
-                || !trusted_redirect(attempt.url(), attempt.previous())
-            {
-                return attempt.error("untrusted native-tool redirect");
-            }
-            attempt.follow()
-        });
-        let client = Client::builder()
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(DOWNLOAD_TIMEOUT)
-            .https_only(true)
-            .no_proxy()
-            .redirect(redirect)
-            .build()
-            .map_err(|_| NativeToolError::Network)?;
-        Ok(Self { client })
+        Ok(Self {
+            client: http::client(redirect_target_allowed)?,
+        })
     }
 
+    /// Each attempt is bounded by the client's I/O timeout and each wait by
+    /// `MAX_SERVER_DELAY_SECONDS`, so the whole header phase is bounded too.
     fn response(&self, url: &Url, cancellation: &CancellationToken) -> Result<Response> {
-        let deadline = std::time::Instant::now() + DOWNLOAD_TIMEOUT;
         for attempt in 0..HEADER_ATTEMPTS {
             cancellation.check()?;
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(NativeToolError::Network);
-            }
             let (error, retry, server_delay) = match self
                 .client
                 .get(url.clone())
                 .header(USER_AGENT, USER_AGENT_VALUE)
-                .timeout(remaining)
                 .send()
             {
                 Ok(response) if response.status().is_success() => return Ok(response),
@@ -106,14 +91,11 @@ impl HttpFileFetcher {
             // alternate source, or integrity bypass. Long provider cooldowns remain explicit.
             if !retry
                 || attempt + 1 == HEADER_ATTEMPTS
-                || server_delay.is_some_and(|secs| secs > 30)
+                || server_delay.is_some_and(|secs| secs > MAX_SERVER_DELAY_SECONDS)
             {
                 return Err(error);
             }
             let delay = Duration::from_secs(server_delay.unwrap_or(1 << attempt));
-            if delay >= deadline.saturating_duration_since(std::time::Instant::now()) {
-                return Err(error);
-            }
             wait_before_retry(delay, cancellation)?;
         }
         unreachable!("every final attempt returns its response or error")
@@ -145,7 +127,7 @@ impl FileFetcher for HttpFileFetcher {
         if !trusted_initial_url(&url, remote.url) {
             return Err(NativeToolError::InvalidCatalog);
         }
-        let mut response = self.response(&url, cancellation)?;
+        let response = self.response(&url, cancellation)?;
         let content_length = response
             .headers()
             .get(CONTENT_LENGTH)
@@ -159,22 +141,15 @@ impl FileFetcher for HttpFileFetcher {
             .write(true)
             .open(target)
             .map_err(|_| NativeToolError::StoreUnavailable)?;
+        let mut body = CancellableBody::spawn(response)?;
         let mut written = 0_u64;
-        let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
-        loop {
-            cancellation.check()?;
-            let read = response
-                .read(&mut buffer)
-                .map_err(|_| NativeToolError::Network)?;
-            if read == 0 {
-                break;
-            }
+        while let Some(chunk) = body.next_chunk(cancellation)? {
             written = written
-                .checked_add(read as u64)
+                .checked_add(chunk.len() as u64)
                 .filter(|bytes| *bytes <= remote.size_bytes)
                 .ok_or(NativeToolError::StorageLimit)?;
             output
-                .write_all(&buffer[..read])
+                .write_all(&chunk)
                 .map_err(|_| NativeToolError::StoreUnavailable)?;
             progress.on_progress(OperationProgress::new(
                 OperationPhase::Downloading,
@@ -206,48 +181,31 @@ impl FileFetcher for HttpFileFetcher {
 }
 
 fn trusted_initial_url(url: &Url, declared: &str) -> bool {
-    url.as_str() == declared
-        && url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443)
-        && url.query().is_none()
-        && url.fragment().is_none()
-        && match url.host_str() {
-            Some("github.com") => valid_github_release_path(url.path()),
-            Some("raw.githubusercontent.com") => valid_raw_path(url.path()),
-            Some("www.gyan.dev") => valid_gyan_release_path(url.path()),
-            _ => false,
-        }
+    is_immutable_https(url, declared) && trusted_origin(url)
 }
 
-fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
-    let Some(first) = previous.first() else {
-        return false;
-    };
-    let first_ok = match first.host_str() {
-        Some("github.com") => valid_github_release_path(first.path()),
-        Some("raw.githubusercontent.com") => valid_raw_path(first.path()),
-        Some("www.gyan.dev") => valid_gyan_release_path(first.path()),
+fn trusted_origin(url: &Url) -> bool {
+    match url.host_str() {
+        Some("github.com") => valid_github_release_path(url.path()),
+        Some("raw.githubusercontent.com") => valid_raw_path(url.path()),
+        Some("www.gyan.dev") => valid_gyan_release_path(url.path()),
         _ => false,
-    };
-    let target_ok = matches!(
-        (first.host_str(), url.host_str()),
-        (
-            Some("github.com"),
-            Some("github.com" | "release-assets.githubusercontent.com")
-        ) | (
-            Some("raw.githubusercontent.com"),
-            Some("raw.githubusercontent.com")
-        ) | (Some("www.gyan.dev"), Some("www.gyan.dev"))
-    );
-    first_ok
-        && target_ok
-        && url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443)
-        && url.fragment().is_none()
+    }
+}
+
+/// GitHub release downloads may hop to its asset CDN; the other origins serve directly.
+fn redirect_target_allowed(first: &Url, target: &Url) -> bool {
+    trusted_origin(first)
+        && matches!(
+            (first.host_str(), target.host_str()),
+            (
+                Some("github.com"),
+                Some("github.com" | "release-assets.githubusercontent.com")
+            ) | (
+                Some("raw.githubusercontent.com"),
+                Some("raw.githubusercontent.com")
+            ) | (Some("www.gyan.dev"), Some("www.gyan.dev"))
+        )
 }
 
 fn valid_github_release_path(path: &str) -> bool {
@@ -296,6 +254,8 @@ fn valid_raw_path(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read as _;
+
     use super::*;
 
     fn request_statuses(statuses: &[u16], retry_after: &str) -> Result<Response> {
@@ -436,16 +396,28 @@ mod tests {
 
     #[test]
     fn only_release_asset_redirects_are_accepted() {
+        use osg_delivery_core::url_policy::redirect_allowed;
         let initial =
             Url::parse("https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe")
                 .unwrap();
-        assert!(trusted_redirect(
+        assert!(redirect_allowed(
             &Url::parse("https://release-assets.githubusercontent.com/object?token=x").unwrap(),
             std::slice::from_ref(&initial),
+            redirect_target_allowed,
         ));
-        assert!(!trusted_redirect(
+        assert!(!redirect_allowed(
             &Url::parse("https://example.com/object").unwrap(),
-            &[initial],
+            std::slice::from_ref(&initial),
+            redirect_target_allowed,
+        ));
+        let gyan = Url::parse(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip",
+        )
+        .unwrap();
+        assert!(!redirect_allowed(
+            &Url::parse("https://release-assets.githubusercontent.com/object").unwrap(),
+            &[gyan],
+            redirect_target_allowed,
         ));
     }
 }

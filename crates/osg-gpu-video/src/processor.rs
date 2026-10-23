@@ -292,6 +292,75 @@ const fn legacy_output_color() -> D3D11_VIDEO_PROCESSOR_COLOR_SPACE {
     }
 }
 
-fn edge(value: usize) -> u32 {
+/// A texture edge or coordinate for D3D11, saturating instead of wrapping.
+pub(crate) fn edge(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const fn colorimetry(range: NominalRange, matrix: YuvMatrix) -> SourceColorimetry {
+        SourceColorimetry { range, matrix }
+    }
+
+    #[test]
+    fn each_source_colorimetry_selects_its_own_dxgi_colour_space() {
+        let cases = [
+            (
+                NominalRange::Studio,
+                YuvMatrix::Bt601,
+                DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P601,
+            ),
+            (
+                NominalRange::Studio,
+                YuvMatrix::Bt709,
+                DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709,
+            ),
+            (
+                NominalRange::Full,
+                YuvMatrix::Bt601,
+                DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601,
+            ),
+            (
+                NominalRange::Full,
+                YuvMatrix::Bt709,
+                DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P709,
+            ),
+        ];
+        for (range, matrix, expected) in cases {
+            assert_eq!(
+                input_color(colorimetry(range, matrix)),
+                expected,
+                "{range:?} {matrix:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_colour_spaces_set_usage_matrix_and_nominal_range_bits() {
+        let cases = [
+            (NominalRange::Studio, YuvMatrix::Bt601, 0b01_0001),
+            (NominalRange::Studio, YuvMatrix::Bt709, 0b01_0101),
+            (NominalRange::Full, YuvMatrix::Bt601, 0b10_0001),
+            (NominalRange::Full, YuvMatrix::Bt709, 0b10_0101),
+        ];
+        for (range, matrix, expected) in cases {
+            assert_eq!(
+                legacy_input_color(colorimetry(range, matrix))._bitfield,
+                expected,
+                "{range:?} {matrix:?}"
+            );
+        }
+        // Full-range RGB output: processing usage, BT.709, full nominal range, RGB_Range=0.
+        assert_eq!(legacy_output_color()._bitfield, 0b10_0101);
+    }
+
+    #[test]
+    fn edges_saturate_instead_of_wrapping() {
+        assert_eq!(edge(0), 0);
+        assert_eq!(edge(1_920), 1_920);
+        assert_eq!(edge(usize::MAX), u32::MAX);
+    }
 }

@@ -1,6 +1,16 @@
 use std::sync::Arc;
 
+use osg_delivery_core::url_policy::redirect_allowed;
+use url::Url;
+
+use super::http::{redirect_target_allowed, valid_content_range};
 use super::*;
+
+mod transfer;
+
+fn trusted_redirect(url: &Url, previous: &[Url]) -> bool {
+    redirect_allowed(url, previous, redirect_target_allowed)
+}
 
 /// An inner fetcher that fails the test if the bundle did not serve the asset.
 ///
@@ -175,6 +185,38 @@ fn redirect_policy_rejects_http_credentials_and_foreign_hosts() {
     ));
     assert!(!trusted_redirect(
         &Url::parse("https://cdn.hf.co.example.com/model").unwrap(),
+        std::slice::from_ref(&hugging_face)
+    ));
+    // Origins are paired with their own CDNs: a release download cannot hop to Hugging Face.
+    assert!(!trusted_redirect(
+        &Url::parse("https://huggingface.co/x/resolve/r/model.bin").unwrap(),
+        &[Url::parse(
+            "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/asr-engine-packs-v1/pack.zip",
+        )
+        .unwrap()]
+    ));
+    assert!(!trusted_redirect(
+        &Url::parse("https://release-assets.githubusercontent.com/asset").unwrap(),
         &[hugging_face]
     ));
+}
+
+#[test]
+fn engine_release_urls_must_be_immutable_https() {
+    let base = "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/asr-engine-packs-v1/pack.zip";
+    assert!(http::trusted_initial_url(
+        &Url::parse(base).unwrap(),
+        base,
+        "pack.zip"
+    ));
+    for invalid in [
+        format!("{base}?token=x"),
+        base.replace("https://", "https://user@"),
+        base.replace("github.com", "github.com:8443"),
+    ] {
+        assert!(
+            !http::trusted_initial_url(&Url::parse(&invalid).unwrap(), &invalid, "pack.zip"),
+            "{invalid}"
+        );
+    }
 }

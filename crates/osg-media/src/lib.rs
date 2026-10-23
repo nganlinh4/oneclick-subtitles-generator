@@ -28,6 +28,7 @@ pub use metadata::{
     AudioMetadata, Disposition, FormatMetadata, FrameRate, MediaMetadata, MediaStream, StreamKind,
     VideoMetadata, parse_ffprobe_json,
 };
+pub use osg_process::CancellationToken;
 pub use path::{MediaInput, MediaOutput};
 pub use plan::{
     AudioBitrate, AudioExtractionPlan, AudioOutput, AudioSampleRate, AudioVisualizationPlan,
@@ -36,6 +37,6 @@ pub use plan::{
     NarrationAudioEditPlan, NarrationMixClip, NarrationMixPlan, ThumbnailFormat, ThumbnailPlan,
     VideoClipPlan, WaveformPlan,
 };
-pub use process::{CancellationToken, RunControl};
+pub use process::RunControl;
 pub use progress::{FfmpegProgress, ProgressSink};
 pub use waveform::{WaveformLevel, WaveformPoint, WaveformPyramid};

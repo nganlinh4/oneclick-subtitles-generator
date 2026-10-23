@@ -18,6 +18,10 @@ impl CommandError {
         self.code
     }
 
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+
     fn fixed(code: &'static str, message: &'static str) -> Self {
         Self {
             code,

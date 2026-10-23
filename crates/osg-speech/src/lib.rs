@@ -29,12 +29,13 @@ pub use edit::{
     SpeedFactor,
 };
 pub use error::{Result, SpeechError};
+pub use osg_process::CancellationToken;
 pub use program::{WorkerOrigin, WorkerProgram, WorkerResolver, WorkerSearch};
 pub use request::{
     ChatterboxSettings, EdgeSettings, F5Settings, GeminiSettings, GttsDomain, GttsSettings,
     NarrationBatch, SynthesisRequest, SynthesisSettings, VoiceConversionRequest,
 };
-pub use runtime::{CancellationToken, RunControl, SpeechPhase, SpeechProgress, SpeechProgressSink};
+pub use runtime::{RunControl, SpeechPhase, SpeechProgress, SpeechProgressSink};
 pub use secret::SecretValue;
 pub use types::{
     AudioFormat, LanguageTag, ModelId, SegmentId, SpeechBackend, SpeechText, TimeMicros, VoiceId,

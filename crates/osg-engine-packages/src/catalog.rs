@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::LazyLock;
 
+use osg_delivery_core::identity::is_git_revision;
+pub(crate) use osg_delivery_core::identity::{PLATFORM_KEYS, current_platform, is_asset_name};
 use serde::{Deserialize, Serialize};
 
 use crate::{PackageError, Result};
@@ -17,12 +19,6 @@ pub(crate) const MAX_FILES: usize = 100_000;
 const MAX_RELEASES_PER_ENGINE: usize = 2;
 const RELEASE_BASE: &str = "https://github.com/nganlinh4/oneclick-subtitles-generator/releases/download/asr-engine-packs-v1/";
 const EMBEDDED_CATALOG: &str = include_str!("../delivery/engine-packages.delivery.json");
-pub(crate) const PLATFORM_KEYS: &[&str] = &[
-    "linux-x86_64",
-    "macos-aarch64",
-    "macos-x86_64",
-    "windows-x86_64",
-];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum EngineId {
@@ -265,12 +261,7 @@ pub(crate) fn valid_delivery_url(value: &str, asset: &str) -> bool {
                 .position(|segment| *segment == "resolve")
                 .and_then(|index| segments.get(index + 1));
             url.path().ends_with(&format!("/{asset}"))
-                && revision.is_some_and(|revision| {
-                    revision.len() == 40
-                        && revision
-                            .bytes()
-                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-                })
+                && revision.is_some_and(|revision| is_git_revision(revision))
         }
         Some("files.pythonhosted.org" | "download.pytorch.org") => {
             url.path().ends_with(&format!("/{asset}"))
@@ -312,32 +303,10 @@ pub(crate) fn validate_identifier(value: &str) -> Result<()> {
 }
 
 pub(crate) fn validate_sha256(value: &str) -> Result<()> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if !osg_delivery_core::identity::is_sha256_hex(value) {
         return Err(PackageError::InvalidCatalog);
     }
     Ok(())
-}
-
-pub(crate) fn valid_asset_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 240
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
-}
-
-pub(crate) fn current_platform() -> &'static str {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("windows", "x86_64") => "windows-x86_64",
-        ("linux", "x86_64") => "linux-x86_64",
-        ("macos", "x86_64") => "macos-x86_64",
-        ("macos", "aarch64") => "macos-aarch64",
-        _ => "unsupported",
-    }
 }
 
 #[cfg(test)]

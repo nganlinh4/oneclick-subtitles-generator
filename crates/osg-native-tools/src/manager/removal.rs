@@ -13,9 +13,10 @@ use crate::catalog::{NativeToolId, ToolDelivery};
 use crate::path_security::{
     ensure_direct_child, remove_empty_directory, remove_owned_tree_subset, require_directory,
 };
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
-use crate::{CancellationToken, NativeToolError, Result};
+use crate::{
+    CancellationToken, NativeToolError, OperationPhase, OperationProgress, ProgressSink, Result,
+};
 
 #[derive(Debug, Default)]
 pub(super) struct TrashCleanupReport {

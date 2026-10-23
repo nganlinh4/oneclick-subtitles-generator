@@ -2,7 +2,7 @@
 """Supervised stdio adapters for OSG speech backends.
 
 Stdout is reserved for the length-delimited protocol.  The host supplies all
-paths and the only provider credential through a fixed environment variable.
+paths, and the Gemini credential arrives only inside its framed synthesize request.
 The worker never starts a server, accepts a URL, or writes a caller-selected
 log message.
 """
@@ -74,7 +74,6 @@ _F5_MODEL: tuple[str, Any] | None = None
 _CHATTERBOX_EN: Any = None
 _CHATTERBOX_MULTI: Any = None
 _CHATTERBOX_VC: Any = None
-_PROVIDER_SECRET = os.environ.pop("OSG_SPEECH_PROVIDER_SECRET", "")
 _MODEL_ROOT_VALUE = os.environ.pop("OSG_SPEECH_MODEL_ROOT", "")
 _MODEL_ROOT: Path | None = None
 _F5_MODEL_STORE_VALUE = os.environ.pop("OSG_F5_MODEL_STORE", "")
@@ -1001,15 +1000,19 @@ def _synthesize_gtts(text: str, settings: dict[str, Any], output: Path) -> None:
         raise WorkerFailure("provider_unavailable", retryable=True) from None
 
 
-def _synthesize_gemini(text: str, settings: dict[str, Any], output: Path) -> None:
+def _synthesize_gemini(text: str, settings: dict[str, Any], output: Path, secret: Any) -> None:
     _require_keys(settings, {"model", "voice", "language"})
     model = _require_string(settings["model"], maximum_bytes=160)
     voice = _require_identifier(settings["voice"], 128)
     language = _require_language(settings["language"])
     if model not in GEMINI_MODELS or voice not in GEMINI_VOICES:
         raise WorkerFailure("model_unavailable")
-    secret = _PROVIDER_SECRET
-    if not secret or len(secret) > 4096:
+    if (
+        not isinstance(secret, str)
+        or not secret
+        or len(secret) > 4096
+        or any(ord(char) < 32 or ord(char) == 127 for char in secret)
+    ):
         raise WorkerFailure("authentication_failed")
     try:
         from google import genai
@@ -1060,7 +1063,10 @@ def _synthesize_gemini(text: str, settings: dict[str, Any], output: Path) -> Non
     except (OSError, wave.Error):
         raise WorkerFailure("encoding_failed") from None
 def _synthesize(request_id: int, request: dict[str, Any], backend: str) -> None:
-    _require_keys(request, {"protocol", "request_id", "command", "backend", "segment_id", "text", "settings", "reference_path", "output_path", "output_format"})
+    keys = {"protocol", "request_id", "command", "backend", "segment_id", "text", "settings", "reference_path", "output_path", "output_format"}
+    if backend == "gemini_live":
+        keys.add("provider_secret")
+    _require_keys(request, keys)
     if request["command"] != "synthesize" or request["backend"] != backend:
         raise WorkerFailure("invalid_request")
     _require_identifier(request["segment_id"], 96)
@@ -1093,7 +1099,7 @@ def _synthesize(request_id: int, request: dict[str, Any], backend: str) -> None:
     elif backend == "gtts":
         _synthesize_gtts(text, settings, output)
     elif backend == "gemini_live":
-        _synthesize_gemini(text, settings, output)
+        _synthesize_gemini(text, settings, output, request["provider_secret"])
     else:
         raise WorkerFailure("invalid_request")
     _emit_progress(request_id, "synthesizing", 1_000_000)

@@ -1,4 +1,5 @@
 use crate::{AsrEngineId, AsrError, Result};
+use osg_process::environment;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -46,10 +47,12 @@ impl WorkerProgram {
             // disabled because managed runtimes are integrity-checked, immutable package trees.
             command.args(["-I", "-B", "-u"]).arg(script);
         }
+        // Worker diagnostics are never surfaced (they can echo private content), so stderr is
+        // discarded rather than drained into a buffer nobody reads.
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
         command.current_dir(
             self.script
                 .as_deref()
@@ -157,28 +160,7 @@ fn resolve_executable(path: &Path) -> Result<PathBuf> {
 }
 
 pub(crate) fn native_process_path(path: &Path) -> Result<PathBuf> {
-    if path.as_os_str().is_empty() || !path.is_absolute() {
-        return Err(AsrError::InvalidRuntime);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::{OsStrExt, OsStringExt};
-
-        const DEVICE_PREFIX: &[u16] = &[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
-        const UNC_PREFIX: &[u16] = &[b'U' as u16, b'N' as u16, b'C' as u16, b'\\' as u16];
-        let encoded = path.as_os_str().encode_wide().collect::<Vec<_>>();
-        if let Some(remainder) = encoded.strip_prefix(DEVICE_PREFIX) {
-            let normalized = if let Some(unc) = remainder.strip_prefix(UNC_PREFIX) {
-                let mut value = vec![u16::from(b'\\'), u16::from(b'\\')];
-                value.extend_from_slice(unc);
-                value
-            } else {
-                remainder.to_vec()
-            };
-            return Ok(PathBuf::from(std::ffi::OsString::from_wide(&normalized)));
-        }
-    }
-    Ok(path.to_path_buf())
+    osg_process::native_process_path(path).ok_or(AsrError::InvalidRuntime)
 }
 
 #[cfg(unix)]
@@ -194,34 +176,20 @@ fn is_executable(path: &Path) -> bool {
     })
 }
 
+/// Fixed values every ASR worker runs with, on top of the essential and GPU allowlists.
+const WORKER_ENVIRONMENT: [(&str, &str); 7] = [
+    ("PYTHONUTF8", "1"),
+    ("PYTHONIOENCODING", "utf-8"),
+    ("PYTHONNOUSERSITE", "1"),
+    ("PYTHONDONTWRITEBYTECODE", "1"),
+    ("HF_HUB_OFFLINE", "1"),
+    ("TRANSFORMERS_OFFLINE", "1"),
+    ("TOKENIZERS_PARALLELISM", "false"),
+];
+
 fn apply_sanitized_environment(command: &mut Command) {
-    command.env_clear();
-    for key in [
-        "SystemRoot",
-        "WINDIR",
-        "PATH",
-        "PATHEXT",
-        "TEMP",
-        "TMP",
-        "TMPDIR",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "CUDA_VISIBLE_DEVICES",
-        "PYTORCH_CUDA_ALLOC_CONF",
-    ] {
-        if let Some(value) = std::env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-    command.envs([
-        ("PYTHONUTF8", "1"),
-        ("PYTHONIOENCODING", "utf-8"),
-        ("PYTHONNOUSERSITE", "1"),
-        ("PYTHONDONTWRITEBYTECODE", "1"),
-        ("HF_HUB_OFFLINE", "1"),
-        ("TRANSFORMERS_OFFLINE", "1"),
-        ("TOKENIZERS_PARALLELISM", "false"),
-    ]);
+    environment::isolate(command, &[environment::GPU]);
+    command.envs(WORKER_ENVIRONMENT);
 }
 
 #[cfg(test)]
@@ -250,21 +218,25 @@ mod tests {
         }));
     }
 
-    #[cfg(windows)]
     #[test]
-    fn python_library_paths_drop_only_the_windows_extended_length_prefix() {
-        assert_eq!(
-            native_process_path(Path::new(r"\\?\C:\managed\model")).unwrap(),
-            PathBuf::from(r"C:\managed\model")
-        );
-        assert_eq!(
-            native_process_path(Path::new(r"\\?\UNC\server\share\model")).unwrap(),
-            PathBuf::from(r"\\server\share\model")
-        );
-        assert_eq!(
-            native_process_path(Path::new(r"C:\managed\model")).unwrap(),
-            PathBuf::from(r"C:\managed\model")
-        );
+    fn worker_environment_is_the_allowlist_plus_fixed_values() {
+        let runtime = tempfile::tempdir().unwrap();
+        let worker = runtime.path().join("worker.py");
+        std::fs::write(&worker, b"# managed worker\n").unwrap();
+        let program = WorkerProgram::python(std::env::current_exe().unwrap(), &worker).unwrap();
+        let command = program.command();
+        let allowed = environment::allowlist(&[environment::GPU]).collect::<Vec<_>>();
+        for (key, value) in command.get_envs() {
+            let key = key.to_string_lossy();
+            assert!(value.is_some(), "{key} is removed instead of never copied");
+            assert!(
+                allowed
+                    .iter()
+                    .chain(WORKER_ENVIRONMENT.iter().map(|(name, _)| name))
+                    .any(|name| name.eq_ignore_ascii_case(&key)),
+                "{key} would reach the ASR worker"
+            );
+        }
         assert!(native_process_path(Path::new("relative")).is_err());
     }
 

@@ -22,11 +22,13 @@ use super::*;
 use crate::catalog::{DeliveryCatalog, EngineId, PackageDelivery, parse_for_test};
 use crate::download::{ArchiveFetcher, FetchRequest};
 use crate::path_security::{acquire_store_lock, initialize_store};
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::speech_catalog::{
     SpeechDeliveryCatalog, SpeechPackageId, parse_for_test as parse_speech_for_test,
 };
-use crate::{CancellationToken, PackageError, Result, receipt, verified_install};
+use crate::{
+    CancellationToken, OperationPhase, OperationProgress, PackageError, ProgressSink, Result,
+    receipt, verified_install,
+};
 
 const PLATFORM: &str = "windows-x86_64";
 const TEST_PLATFORMS: [&str; 4] = [

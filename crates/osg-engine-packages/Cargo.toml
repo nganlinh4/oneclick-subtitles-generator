@@ -4,23 +4,24 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Manifest-gated optional ASR and speech package management for OSG"
+description = "Manifest-gated optional ASR, speech, F5 model, and asset package management for OSG"
 license = "MIT"
 
 [dependencies]
-fs2 = "=0.4.3"
+fs2.workspace = true
+osg-delivery-core.workspace = true
 osg-runtime-staging.workspace = true
-reqwest = { version = "=0.13.4", default-features = false, features = ["blocking", "rustls"] }
+reqwest = { workspace = true, features = ["blocking", "rustls"] }
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "=0.10.9"
+sha2.workspace = true
 thiserror.workspace = true
-url = "=2.5.8"
+url.workspace = true
 uuid.workspace = true
-zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-tempfile = "=3.27.0"
+tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

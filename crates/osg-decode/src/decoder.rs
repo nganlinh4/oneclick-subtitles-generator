@@ -8,7 +8,7 @@ use std::path::Path;
 
 use osg_scene::{ExactTime, FrameTimeline};
 
-use crate::cancel::CancelToken;
+use crate::CancellationToken;
 use crate::colorimetry::SourceColorimetry;
 use crate::error::DecodeError;
 use crate::frame::DecodedFrame;
@@ -135,7 +135,7 @@ pub trait VideoDecoder: core::fmt::Debug {
     fn config(&self) -> DecoderConfig;
 
     /// A handle that can stop this decode from another thread.
-    fn cancel_token(&self) -> CancelToken;
+    fn cancel_token(&self) -> CancellationToken;
 
     /// What the decoder has had to do so far.
     fn stats(&self) -> DecodeStats;

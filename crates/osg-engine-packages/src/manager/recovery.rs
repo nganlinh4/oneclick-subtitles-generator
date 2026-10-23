@@ -6,7 +6,8 @@ use std::path::Path;
 
 use uuid::Uuid;
 
-use crate::catalog::{PackageCatalog, valid_asset_name};
+use crate::catalog::PackageCatalog;
+use crate::download::prune_downloads;
 use crate::path_security::{
     cleanup_known_tree, ensure_direct_child, is_link_or_reparse, scrub_generated_python_cache,
 };
@@ -58,41 +59,7 @@ where
             ));
         }
     }
-    let mut obsolete = Vec::new();
-    for entry in fs::read_dir(&downloads).map_err(|_| PackageError::StoreUnavailable)? {
-        let entry = entry.map_err(|_| PackageError::StoreUnavailable)?;
-        let metadata =
-            fs::symlink_metadata(entry.path()).map_err(|_| PackageError::StoreUnavailable)?;
-        let name = entry
-            .file_name()
-            .to_str()
-            .map(str::to_owned)
-            .ok_or(PackageError::StoreUnavailable)?;
-        if !metadata.is_file() || is_link_or_reparse(&metadata) {
-            return Err(PackageError::StoreUnavailable);
-        }
-        let cache_key = name
-            .strip_suffix(".partial")
-            .or_else(|| name.strip_suffix(".resume.json"))
-            .ok_or(PackageError::StoreUnavailable)?;
-        let (digest, asset) = cache_key
-            .split_once('-')
-            .ok_or(PackageError::StoreUnavailable)?;
-        if digest.len() != 16
-            || !digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            || !valid_asset_name(asset)
-        {
-            return Err(PackageError::StoreUnavailable);
-        }
-        if !allowed.contains(cache_key) {
-            obsolete.push(entry.path());
-        }
-    }
-    for path in obsolete {
-        fs::remove_file(path).map_err(|_| PackageError::StoreUnavailable)?;
-    }
+    prune_downloads(&downloads, &allowed)?;
     sync_directory(&downloads)
 }
 

@@ -2,6 +2,7 @@ use osg_asr::{
     AsrError, AsrProgress, AsrService, CancellationToken, ModelAssets, NormalizedAudio,
     ProgressPhase, RunControl, TranscriptionOptions, TranscriptionRequest, WorkerProgram,
 };
+use osg_formats::wav::{self, WavFormat};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -392,20 +393,7 @@ fn mock_worker() -> &'static Path {
 }
 
 fn write_wav(path: &Path, milliseconds: u32) {
-    let data_len = 32_000_u32 * milliseconds / 1_000;
-    let mut bytes = Vec::with_capacity((44 + data_len) as usize);
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16_u32.to_le_bytes());
-    bytes.extend_from_slice(&1_u16.to_le_bytes());
-    bytes.extend_from_slice(&1_u16.to_le_bytes());
-    bytes.extend_from_slice(&16_000_u32.to_le_bytes());
-    bytes.extend_from_slice(&32_000_u32.to_le_bytes());
-    bytes.extend_from_slice(&2_u16.to_le_bytes());
-    bytes.extend_from_slice(&16_u16.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&data_len.to_le_bytes());
-    bytes.resize((44 + data_len) as usize, 0);
+    let samples = vec![0; usize::try_from(32_000 * milliseconds / 1_000).unwrap()];
+    let bytes = wav::encode(WavFormat::pcm16(16_000, 1), &samples).unwrap();
     std::fs::write(path, bytes).unwrap();
 }

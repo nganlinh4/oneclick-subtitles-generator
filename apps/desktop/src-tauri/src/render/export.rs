@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::error::{CommandError, CommandResult};
-use osg_export::{ExportCancel, ExportJob, ProgressSink, StagedText, run_export};
+use osg_export::{CancellationToken, ExportJob, ProgressSink, StagedText, run_export};
 use osg_infrastructure::storage::ContentHash;
 use osg_render::RenderRequest;
 use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
@@ -50,7 +50,7 @@ pub(crate) const RENDER_TIMEOUT: Duration = Duration::from_hours(24);
 /// failure the user did not ask for. The second flag is what keeps them apart.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ExportControl {
-    cancel: ExportCancel,
+    cancel: CancellationToken,
     timed_out: Arc<AtomicBool>,
 }
 
@@ -82,7 +82,7 @@ impl ExportControl {
     }
 
     /// The signal the export loop itself polls.
-    fn token(&self) -> ExportCancel {
+    fn token(&self) -> CancellationToken {
         self.cancel.clone()
     }
 }

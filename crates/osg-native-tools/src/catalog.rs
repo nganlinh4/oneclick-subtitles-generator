@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::LazyLock;
 
+pub(crate) use osg_delivery_core::identity::{PLATFORM_KEYS, current_platform};
 use serde::{Deserialize, Serialize};
 
 use crate::{NativeToolError, Result};
@@ -13,12 +14,6 @@ use parse::parse_catalog;
 pub(crate) use rules::{valid_ytdlp_version, validate_dynamic_ytdlp_delivery};
 
 const EMBEDDED_CATALOG: &str = include_str!("../delivery/native-tools.delivery.json");
-pub(crate) const PLATFORM_KEYS: &[&str] = &[
-    "linux-x86_64",
-    "macos-aarch64",
-    "macos-x86_64",
-    "windows-x86_64",
-];
 pub(crate) const MAX_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_INSTALLED_BYTES: u64 = 1024 * 1024 * 1024;
 pub(crate) const MAX_FILES: usize = 32;
@@ -182,16 +177,6 @@ impl DeliveryCatalog {
 
     pub(crate) fn current(&self, tool: NativeToolId) -> Option<&ToolDelivery> {
         self.releases(tool).first()
-    }
-}
-
-pub(crate) fn current_platform() -> &'static str {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("windows", "x86_64") => "windows-x86_64",
-        ("linux", "x86_64") => "linux-x86_64",
-        ("macos", "aarch64") => "macos-aarch64",
-        ("macos", "x86_64") => "macos-x86_64",
-        _ => "unsupported",
     }
 }
 

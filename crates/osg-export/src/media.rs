@@ -21,9 +21,9 @@ use osg_encode::VideoEncoder;
 use osg_encode::{AudioBlock, AudioConfig, ChannelCount, SampleRate};
 #[cfg(windows)]
 use osg_gpu_video::GpuVideoPipeline;
-
 #[cfg(windows)]
-use crate::cancel::ExportCancel;
+use osg_process::CancellationToken;
+
 use crate::convert::ExportPlan;
 use crate::error::ExportError;
 
@@ -117,7 +117,7 @@ impl AudioRuntime {
         &mut self,
         pipeline: &GpuVideoPipeline,
         through: u64,
-        cancel: &ExportCancel,
+        cancel: &CancellationToken,
     ) -> Result<(), ExportError> {
         while self.written < through {
             let Some(block) = self.mixer.next_block()? else {

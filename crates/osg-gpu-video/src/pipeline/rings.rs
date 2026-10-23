@@ -57,6 +57,13 @@ mod tests {
     }
 
     #[test]
+    fn small_frames_are_capped_at_the_ring_maximum() {
+        let size = FrameSize::new(64, 64).expect("small");
+        assert_eq!(ring_size(size, ENCODE_RING_MAX), ENCODE_RING_MAX);
+        assert_eq!(ring_size(size, DECODE_RING_MAX), DECODE_RING_MAX);
+    }
+
+    #[test]
     fn extreme_frames_keep_only_the_two_slots_needed_for_overlap() {
         let size = FrameSize::new(7_680, 4_320).expect("8K");
         assert_eq!(ring_size(size, ENCODE_RING_MAX), 2);

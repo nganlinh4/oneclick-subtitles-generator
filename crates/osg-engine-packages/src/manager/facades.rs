@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use osg_runtime_staging::RuntimeStagingAuthority;
 
+use crate::ProgressSink;
 use crate::asset_catalog::{AssetDeliveryCatalog, AssetPackageId};
 use crate::catalog::{DeliveryCatalog, EngineId, catalog};
-use crate::progress::ProgressSink;
 use crate::speech_catalog::{SpeechDeliveryCatalog, SpeechPackageId, speech_catalog};
 use crate::ui_font_catalog::{UiFontDeliveryCatalog, UiFontPackageId};
 use crate::{CancellationToken, Result};

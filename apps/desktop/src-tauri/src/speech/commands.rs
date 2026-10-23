@@ -44,12 +44,19 @@ use crate::state::DesktopState;
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
-pub(crate) fn speech_status(runtime: State<'_, SpeechRuntime>) -> SpeechStatusResponse {
-    SpeechStatusResponse {
-        backends: runtime.statuses(),
-        max_segments_per_job: MAX_SEGMENTS,
-        max_batch_text_bytes: MAX_BATCH_TEXT_BYTES,
-    }
+pub(crate) async fn speech_status(
+    runtime: State<'_, SpeechRuntime>,
+) -> CommandResult<SpeechStatusResponse> {
+    // Status resolves every backend's managed runtime, which can hash multi-GB package trees.
+    let runtime = runtime.inner().clone();
+    background::run_blocking("speech status", move || {
+        Ok::<_, CommandError>(SpeechStatusResponse {
+            backends: runtime.statuses(),
+            max_segments_per_job: MAX_SEGMENTS,
+            max_batch_text_bytes: MAX_BATCH_TEXT_BYTES,
+        })
+    })
+    .await
 }
 
 #[derive(Clone)]
@@ -134,7 +141,11 @@ pub(crate) async fn speech_probe(
             if !runtime.commit_voice_inventory_for_epoch(backend, actual_epoch, voices.clone()) {
                 return Err(speech_command_error(&SpeechError::Cancelled));
             }
-            let status = runtime.status(backend);
+            let status_runtime = runtime.clone();
+            let status = background::run_blocking("speech status", move || {
+                Ok::<_, CommandError>(status_runtime.status(backend))
+            })
+            .await?;
             if status.epoch != actual_epoch || !status.enabled || !status.warm {
                 let _ = runtime.invalidate_backend_runtime(backend, Some(actual_epoch));
                 return Err(speech_command_error(&SpeechError::StateUnavailable));
@@ -150,14 +161,18 @@ pub(crate) async fn speech_probe(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
-pub(crate) fn speech_voice_inventory(
+pub(crate) async fn speech_voice_inventory(
     runtime: State<'_, SpeechRuntime>,
     backend: SpeechBackendRequest,
     epoch: u64,
 ) -> CommandResult<SpeechInventoryResponse> {
-    runtime
-        .voice_inventory(backend, epoch)
-        .map_err(|error| speech_command_error(&error))
+    let runtime = runtime.inner().clone();
+    background::run_blocking("speech voice inventory", move || {
+        runtime
+            .voice_inventory(backend, epoch)
+            .map_err(|error| speech_command_error(&error))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -165,11 +180,15 @@ pub(crate) fn speech_voice_inventory(
     clippy::needless_pass_by_value,
     reason = "Tauri injects State as an owned command extractor"
 )]
-pub(crate) fn speech_runtime_stop(
+pub(crate) async fn speech_runtime_stop(
     runtime: State<'_, SpeechRuntime>,
     backend: SpeechBackendRequest,
 ) -> CommandResult<SpeechBackendStatus> {
-    let (status, detached) = runtime.begin_shutdown(backend)?;
+    let runtime = runtime.inner().clone();
+    let (status, detached) = background::run_blocking("speech runtime stop", move || {
+        runtime.begin_shutdown(backend)
+    })
+    .await?;
     tauri::async_runtime::spawn_blocking(move || {
         for worker in detached {
             worker.shutdown();

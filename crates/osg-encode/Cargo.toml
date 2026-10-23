@@ -8,11 +8,12 @@ description = "H.264/AAC MP4 encoding for the OSG native renderer over the opera
 license = "MIT"
 
 [dependencies]
-osg-scene = { workspace = true }
+osg-process.workspace = true
+osg-scene.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "=0.62.2", features = [
+windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Direct3D11",
   "Win32_Graphics_Dxgi_Common",
@@ -21,12 +22,12 @@ windows = { version = "=0.62.2", features = [
 ] }
 
 [dev-dependencies]
-tempfile = "=3.27.0"
+tempfile.workspace = true
 
 # Only so a test can assert that our spelled-out Media Foundation enumerants still match the
 # platform bindings'. No test drives the API through this dependency.
 [target.'cfg(windows)'.dev-dependencies]
-windows = { version = "=0.62.2", features = ["Win32_Media_MediaFoundation"] }
+windows = { workspace = true, features = ["Win32_Media_MediaFoundation"] }
 
 # Deliberately NOT `workspace = true`. The workspace forbids `unsafe_code`, and this crate is the
 # single audited exception: Media Foundation is a COM API and cannot be driven from safe Rust. Every

@@ -21,7 +21,8 @@ pub struct OperationProgress {
 }
 
 impl OperationProgress {
-    pub(crate) fn new(phase: OperationPhase, bytes_done: u64, total_bytes: u64) -> Self {
+    #[must_use]
+    pub fn new(phase: OperationPhase, bytes_done: u64, total_bytes: u64) -> Self {
         let basis_points = u16::try_from(
             bytes_done
                 .min(total_bytes)

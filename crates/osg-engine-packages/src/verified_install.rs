@@ -49,7 +49,7 @@ use sha2::{Digest as _, Sha256};
 use crate::catalog::{MAX_FILES, PackageDelivery};
 use crate::path_security::{
     collect_regular_file_metadata, ensure_direct_child, is_link_or_reparse, require_regular_file,
-    resolve_owned, validate_manifest_path,
+    resolve_owned, validate_relative_path,
 };
 use crate::receipt;
 use crate::{PackageError, Result};
@@ -337,7 +337,7 @@ fn read_matching(
     // filesystem walk.
     let mut paths = HashSet::with_capacity(document.files.len());
     for file in &document.files {
-        if validate_manifest_path(&file.path).is_err() || !paths.insert(file.path.as_str()) {
+        if validate_relative_path(&file.path).is_err() || !paths.insert(file.path.as_str()) {
             return None;
         }
     }

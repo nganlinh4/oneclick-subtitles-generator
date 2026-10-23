@@ -121,13 +121,13 @@ class WorkerContractTests(unittest.TestCase):
         google.genai = SimpleNamespace(Client=mock.Mock(return_value=client))
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
             sys.modules, {"google": google},
-        ), mock.patch.object(worker, "_PROVIDER_SECRET", "secret"):
+        ):
             output = Path(directory) / "speech.wav"
             worker._synthesize_gemini("Hello", {
                 "model": "gemini-3.1-flash-tts-preview",
                 "voice": "Kore",
                 "language": "en-US",
-            }, output)
+            }, output, "secret")
             self.assertTrue(output.is_file())
         arguments = create.call_args.kwargs
         self.assertEqual(arguments["model"], "gemini-3.1-flash-tts-preview")
@@ -136,6 +136,34 @@ class WorkerContractTests(unittest.TestCase):
             "speech_config": [{"voice": "Kore", "language": "en-US"}],
         })
         self.assertFalse(arguments["store"])
+
+    def test_gemini_secret_travels_only_inside_the_synthesize_frame(self):
+        worker = load_worker()
+        settings = {
+            "model": "gemini-3.1-flash-tts-preview",
+            "voice": "Kore",
+            "language": "en-US",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            request = {
+                "protocol": 1,
+                "request_id": 1,
+                "command": "synthesize",
+                "backend": "gemini_live",
+                "segment_id": "segment-1",
+                "text": "Hello",
+                "settings": {"backend": "gemini_live", "settings": settings},
+                "reference_path": None,
+                "output_path": str(Path(directory) / "output.wav"),
+                "output_format": "wav",
+            }
+            with mock.patch.object(worker, "_emit_progress"):
+                with self.assertRaisesRegex(worker.WorkerFailure, "invalid_request"):
+                    worker._synthesize(1, request, "gemini_live")
+            for secret in (None, "", "line\nbreak", "x" * 4097):
+                with self.assertRaisesRegex(worker.WorkerFailure, "authentication_failed"):
+                    worker._synthesize_gemini("Hello", settings, Path(directory) / "s.wav", secret)
+        self.assertFalse(hasattr(worker, "_PROVIDER_SECRET"))
 
     def test_multilingual_chatterbox_resolves_cangjie_only_from_managed_root(self):
         worker = load_worker()

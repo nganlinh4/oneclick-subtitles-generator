@@ -78,9 +78,7 @@ impl AudioBlobFormat {
             Self::M4a => is_iso_base_media(bytes),
             Self::Mp3 => is_mp3(bytes),
             Self::Ogg => bytes.len() >= 27 && bytes.starts_with(b"OggS\0"),
-            Self::Wav => {
-                bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE"
-            }
+            Self::Wav => osg_formats::wav::has_signature(bytes),
             Self::Webm => is_webm(bytes),
         }
     }

@@ -11,7 +11,7 @@ use crate::CancellationToken;
 use crate::archive::set_permissions;
 use crate::catalog::{ExecutableRole, parse_for_test};
 use crate::download::RemoteFile;
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
+use crate::{OperationPhase, OperationProgress, ProgressSink};
 
 mod lifecycle;
 mod live;

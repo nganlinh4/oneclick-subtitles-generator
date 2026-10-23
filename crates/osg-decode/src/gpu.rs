@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Media::MediaFoundation::{IMFDXGIBuffer, IMFDXGIDeviceManager, IMFSample};
 use windows::core::Interface;
 
-use crate::cancel::CancelToken;
+use crate::CancellationToken;
 use crate::decoder::{DecodeStats, DecoderConfig};
 use crate::error::{DecodeError, MfStage};
 use crate::mf::MediaFoundationDecoder;
@@ -114,7 +114,7 @@ impl GpuDecodedFrame {
 pub trait GpuVideoDecoder: fmt::Debug {
     fn source(&self) -> SourceInfo;
     fn config(&self) -> DecoderConfig;
-    fn cancel_token(&self) -> CancelToken;
+    fn cancel_token(&self) -> CancellationToken;
     fn stats(&self) -> DecodeStats;
     fn frame_for_output(&mut self, index: u32) -> Result<GpuDecodedFrame, DecodeError>;
     fn close(&mut self);
@@ -129,7 +129,7 @@ impl GpuVideoDecoder for MediaFoundationDecoder {
         self.decoder_config()
     }
 
-    fn cancel_token(&self) -> CancelToken {
+    fn cancel_token(&self) -> CancellationToken {
         self.decoder_cancel_token()
     }
 

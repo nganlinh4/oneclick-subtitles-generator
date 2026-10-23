@@ -8,24 +8,25 @@ license = "MIT"
 description = "Bounded backend-only Genius and YouTube provider clients for OSG"
 
 [dependencies]
-base64 = "=0.22.1"
+base64.workspace = true
 dom_query = "=0.27.0"
-futures-util = "=0.3.33"
+futures-util.workspace = true
 getrandom = "=0.4.3"
-reqwest = { version = "=0.13.4", default-features = false, features = ["form", "http2", "json", "rustls", "stream"] }
-secrecy = "=0.10.3"
+osg-formats.workspace = true
+reqwest = { workspace = true, features = ["form", "http2", "json", "rustls", "stream"] }
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "=0.10.9"
+sha2.workspace = true
 thiserror.workspace = true
-tokio = { version = "=1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
-tokio-util = { version = "=0.7.19", features = ["rt"] }
-url = "=2.5.8"
-zeroize = "=1.9.0"
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util.workspace = true
+url.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 static_assertions = "=1.1.0"
-wiremock = "=0.6.5"
+wiremock.workspace = true
 
 [lints]
 workspace = true

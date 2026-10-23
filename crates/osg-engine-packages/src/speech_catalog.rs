@@ -8,10 +8,10 @@ use url::Url;
 use crate::catalog::{
     DeliveryAsset, DeliveryFile, DeliverySource, DeliverySourceKind, FileRole, MAX_ARCHIVE_BYTES,
     MAX_FILES, MAX_TOTAL_INSTALLED_BYTES, MAX_UNPACKED_BYTES, PLATFORM_KEYS, PackageCatalog,
-    PackageDelivery, current_platform, is_below_directory, role_matches_path, valid_asset_name,
+    PackageDelivery, current_platform, is_asset_name, is_below_directory, role_matches_path,
     valid_delivery_url, validate_identifier, validate_sha256,
 };
-use crate::path_security::{validate_directory_path, validate_manifest_path};
+use crate::path_security::validate_relative_path;
 use crate::{PackageError, Result};
 
 const MAX_RELEASES_PER_BACKEND: usize = 2;
@@ -297,7 +297,7 @@ fn validate_release(
     release: &RawRelease,
 ) -> Result<PackageDelivery> {
     validate_identifier(&release.version)?;
-    validate_manifest_path(&release.version)?;
+    validate_relative_path(&release.version)?;
     validate_sha256(&release.sha256)?;
     let remote_manifest = release.manifest.is_some();
     if release.size_bytes == 0
@@ -318,16 +318,16 @@ fn validate_release(
             &release.sha256[..16]
         );
         if release.asset != expected_asset
-            || !valid_asset_name(&release.asset)
+            || !is_asset_name(&release.asset)
             || release.source_url != format!("{RELEASE_BASE}{}", release.asset)
             || !valid_source_url(&release.source_url, &release.asset)
         {
             return Err(PackageError::InvalidCatalog);
         }
     }
-    validate_manifest_path(&release.python_relative_path)?;
+    validate_relative_path(&release.python_relative_path)?;
     match &release.model_relative_path {
-        Some(model) if backend.requires_model() => validate_directory_path(model)?,
+        Some(model) if backend.requires_model() => validate_relative_path(model)?,
         None if !backend.requires_model() => {}
         _ => return Err(PackageError::InvalidCatalog),
     }
@@ -340,7 +340,7 @@ fn validate_release(
     let mut python_matches = false;
     let mut files = Vec::with_capacity(release.files.len());
     for file in &release.files {
-        validate_manifest_path(&file.path)?;
+        validate_relative_path(&file.path)?;
         validate_sha256(&file.sha256)?;
         if file.size_bytes == 0
             || file.size_bytes > MAX_UNPACKED_BYTES
@@ -426,7 +426,7 @@ fn validate_source(source: &RawSource) -> Result<DeliverySource> {
 }
 
 fn validate_asset(asset: &RawAsset) -> Result<DeliveryAsset> {
-    if !valid_asset_name(&asset.asset)
+    if !is_asset_name(&asset.asset)
         || asset.urls.is_empty()
         || asset.urls.len() > 3
         || asset.size_bytes == 0

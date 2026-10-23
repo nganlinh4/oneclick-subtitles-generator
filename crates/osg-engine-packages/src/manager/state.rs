@@ -10,11 +10,11 @@ use std::time::Duration;
 
 use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority};
 
+use crate::ProgressSink;
 use crate::catalog::{PackageCatalog, PackageDelivery};
 use crate::delivery_manifest;
 use crate::download::{ArchiveFetcher, BundledArchiveFetcher, HttpArchiveFetcher};
 use crate::path_security::{acquire_store_lock, initialize_store};
-use crate::progress::ProgressSink;
 use crate::receipt;
 use crate::verified_install;
 use crate::{CancellationToken, PackageError, Result};

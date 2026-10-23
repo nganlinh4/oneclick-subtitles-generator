@@ -6,9 +6,8 @@ use std::path::{Path, PathBuf};
 use osg_runtime_staging::{OwnedStagingDirectory, StagingKind};
 
 use crate::path_security::{cleanup_known_tree, require_directory, require_store, resolve_owned};
-use crate::progress::{OperationPhase, ProgressSink};
 use crate::receipt;
-use crate::{CancellationToken, PackageError, Result};
+use crate::{CancellationToken, OperationPhase, PackageError, ProgressSink, Result};
 
 use super::PackageStatus;
 use super::files::{CopyProgress, canonical_regular_directory, copy_verified_legacy_file};
@@ -81,7 +80,7 @@ where
                         cancellation,
                         completed_before: copied,
                         total,
-                        progress,
+                        sink: progress,
                         phase: OperationPhase::Verifying,
                     },
                 )?;

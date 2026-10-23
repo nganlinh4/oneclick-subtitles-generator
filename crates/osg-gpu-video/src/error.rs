@@ -85,4 +85,92 @@ impl GpuVideoError {
     pub(crate) const fn null(stage: InteropStage) -> Self {
         Self::Interop { stage, code: 0 }
     }
+
+    /// A fence or keyed-mutex handshake failed without an HRESULT of its own.
+    pub(crate) const fn synchronization() -> Self {
+        Self::null(InteropStage::Synchronization)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const STAGES: [InteropStage; 9] = [
+        InteropStage::AdapterIdentity,
+        InteropStage::D3d11Device,
+        InteropStage::DeviceManager,
+        InteropStage::VideoProcessor,
+        InteropStage::SharedTexture,
+        InteropStage::SharedHandle,
+        InteropStage::WgpuImport,
+        InteropStage::Synchronization,
+        InteropStage::GpuCopy,
+    ];
+
+    #[test]
+    fn every_interop_stage_has_its_own_plain_description() {
+        let descriptions = STAGES.map(|stage| stage.to_string());
+        for (index, description) in descriptions.iter().enumerate() {
+            assert!(!description.is_empty());
+            assert!(
+                description
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == ' ')
+            );
+            assert!(
+                !descriptions[..index].contains(description),
+                "{description}"
+            );
+        }
+    }
+
+    #[test]
+    fn failures_render_only_closed_stages_and_numeric_codes() {
+        let interop = GpuVideoError::Interop {
+            stage: InteropStage::SharedHandle,
+            code: 0x8007_0005,
+        };
+        assert_eq!(
+            interop.to_string(),
+            "the GPU video path failed while opening a shared video handle: 0x80070005"
+        );
+        let worker = GpuVideoError::WorkerUnavailable {
+            worker: WorkerStage::Encode,
+            code: 8,
+        };
+        assert_eq!(
+            worker.to_string(),
+            "the encode worker could not start: OS error 8"
+        );
+        assert_eq!(
+            GpuVideoError::WorkerPanicked {
+                worker: WorkerStage::Decode
+            }
+            .to_string(),
+            "the decode worker stopped unexpectedly"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failing_hresults_keep_their_unsigned_bit_pattern() {
+        let error = windows::core::Error::from_hresult(windows::core::HRESULT(
+            0x8000_4005_u32.cast_signed(),
+        ));
+        assert!(matches!(
+            GpuVideoError::windows(InteropStage::GpuCopy, &error),
+            GpuVideoError::Interop {
+                stage: InteropStage::GpuCopy,
+                code: 0x8000_4005
+            }
+        ));
+        assert!(matches!(
+            GpuVideoError::synchronization(),
+            GpuVideoError::Interop {
+                stage: InteropStage::Synchronization,
+                code: 0
+            }
+        ));
+    }
 }

@@ -2,10 +2,12 @@
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read as _, Write as _};
 use std::path::Path;
 use std::time::SystemTime;
 
+use osg_delivery_core::DeliveryError;
+use osg_delivery_core::files::{is_executable, read_bounded, write_new_synced};
+use osg_delivery_core::identity::is_sha256_hex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -83,17 +85,7 @@ pub(crate) fn write(root: &Path, delivery: &ToolDelivery) -> Result<()> {
     if encoded.is_empty() || encoded.len() as u64 > MAX_RECEIPT_BYTES {
         return Err(NativeToolError::InvalidInstall);
     }
-    let mut output = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(root.join(RECEIPT_NAME))
-        .map_err(|_| NativeToolError::StoreUnavailable)?;
-    output
-        .write_all(&encoded)
-        .map_err(|_| NativeToolError::StoreUnavailable)?;
-    output
-        .sync_all()
-        .map_err(|_| NativeToolError::StoreUnavailable)
+    Ok(write_new_synced(&root.join(RECEIPT_NAME), &encoded)?)
 }
 
 pub(crate) fn validate_integrity(
@@ -209,24 +201,22 @@ fn file_identity(path: &Path, metadata: &fs::Metadata) -> Result<FileIdentity> {
     }
 }
 
+/// A tool file's digest; any failure other than cancellation is an integrity failure.
 pub(crate) fn hash_file(path: &Path, cancellation: &CancellationToken) -> Result<String> {
-    require_regular_file(path).map_err(|_| NativeToolError::Integrity)?;
-    let mut input = fs::File::open(path).map_err(|_| NativeToolError::Integrity)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; 256 * 1024].into_boxed_slice();
-    loop {
-        cancellation.check()?;
-        let read = input
-            .read(&mut buffer)
-            .map_err(|_| NativeToolError::Integrity)?;
-        if read == 0 {
-            break;
-        }
-        #[cfg(test)]
-        HASHED_BYTES.with(|total| total.set(total.get().saturating_add(read as u64)));
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    let digest =
+        osg_delivery_core::files::hash_file(path, cancellation).map_err(|error| match error {
+            DeliveryError::Cancelled => NativeToolError::Cancelled,
+            _ => NativeToolError::Integrity,
+        })?;
+    #[cfg(test)]
+    HASHED_BYTES.with(|total| {
+        total.set(
+            total
+                .get()
+                .saturating_add(fs::metadata(path).map_or(0, |metadata| metadata.len())),
+        );
+    });
+    Ok(digest)
 }
 
 #[cfg(test)]
@@ -249,21 +239,7 @@ pub(crate) fn allowed_tree(delivery: &ToolDelivery) -> HashSet<String> {
 
 fn read(root: &Path) -> Result<ToolReceipt> {
     let path = resolve_owned(root, RECEIPT_NAME)?;
-    let metadata = require_regular_file(&path)?;
-    if metadata.len() == 0 || metadata.len() > MAX_RECEIPT_BYTES {
-        return Err(NativeToolError::InvalidInstall);
-    }
-    let mut encoded = Vec::with_capacity(
-        usize::try_from(metadata.len()).map_err(|_| NativeToolError::InvalidInstall)?,
-    );
-    fs::File::open(path)
-        .map_err(|_| NativeToolError::InvalidInstall)?
-        .take(MAX_RECEIPT_BYTES + 1)
-        .read_to_end(&mut encoded)
-        .map_err(|_| NativeToolError::InvalidInstall)?;
-    if encoded.len() as u64 != metadata.len() {
-        return Err(NativeToolError::InvalidInstall);
-    }
+    let encoded = read_bounded(&path, MAX_RECEIPT_BYTES)?;
     let receipt: ToolReceipt =
         serde_json::from_slice(&encoded).map_err(|_| NativeToolError::InvalidInstall)?;
     receipt.validate()?;
@@ -312,11 +288,7 @@ impl ToolReceipt {
         for file in &self.files {
             validate_relative_path(&file.path).map_err(|_| NativeToolError::InvalidInstall)?;
             if file.size_bytes == 0
-                || file.sha256.len() != 64
-                || !file
-                    .sha256
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                || !is_sha256_hex(&file.sha256)
                 || !paths.insert(file.path.as_str())
             {
                 return Err(NativeToolError::InvalidInstall);
@@ -324,16 +296,4 @@ impl ToolReceipt {
         }
         Ok(())
     }
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt as _;
-    fs::metadata(path).is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
-}
-
-#[cfg(windows)]
-fn is_executable(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
 }

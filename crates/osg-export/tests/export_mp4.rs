@@ -6,10 +6,9 @@
 //! `osg-encode` through Media Foundation, exported through the whole native pipeline, and read back
 //! through `osg-decode`, so every stage is proven against the others rather than against a file.
 //!
-//! These tests deliberately do **not** skip when Media Foundation or a GPU adapter is unavailable.
-//! A silent skip would leave a green suite that has never exported anything, which is precisely the
-//! state this crate exists to make impossible: every `expect` below turns a missing platform codec
-//! or adapter into a failed test.
+//! The exports need a hardware GPU: they skip, printing `SKIPPED ... NOT verified`, where only a
+//! software adapter exists (hosted CI runners), because the export has no CPU fallback. Anywhere
+//! else every `expect` below turns a missing platform codec or adapter into a failed test.
 
 #![cfg(windows)]
 
@@ -19,8 +18,8 @@ use std::path::PathBuf;
 
 use osg_audio::{AudioDecoder, AudioError};
 use osg_export::{
-    ExportCancel, ExportError, ExportJob, ExportProgress, ProgressFn, SilentProgress, probe_source,
-    run_export,
+    CancellationToken, ExportError, ExportJob, ExportProgress, ProgressFn, SilentProgress,
+    probe_source, run_export,
 };
 use support::media::{
     SOURCE_FPS, export, export_request, platform, renderer_for, request_of, source_clip,
@@ -68,6 +67,7 @@ fn narration_clip(directory: &TempDir, name: &str) -> PathBuf {
 #[test]
 fn an_export_produces_a_playable_mp4_with_the_frames_and_duration_the_timeline_names() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "source.mp4");
     let output = directory.path().join("export.mp4");
@@ -183,6 +183,7 @@ fn composing_a_frame_directly_and_reaching_it_by_walking_produce_the_same_bytes(
 #[test]
 fn an_export_with_a_narration_track_carries_audio_and_one_without_carries_none() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "audio-source.mp4");
     let narration = narration_clip(&directory, "narration.wav");
@@ -217,12 +218,13 @@ fn an_export_with_a_narration_track_carries_audio_and_one_without_carries_none()
 #[test]
 fn a_cancelled_export_leaves_nothing_behind() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "cancel-source.mp4");
 
     // Cancelled before the first frame.
     let early_output = directory.path().join("early.mp4");
-    let cancel = ExportCancel::new();
+    let cancel = CancellationToken::new();
     cancel.cancel();
     let error = run_export(
         ExportJob {
@@ -244,7 +246,7 @@ fn a_cancelled_export_leaves_nothing_behind() {
 
     // Cancelled part way through, from the progress callback, which is how a UI would do it.
     let late_output = directory.path().join("late.mp4");
-    let cancel = ExportCancel::new();
+    let cancel = CancellationToken::new();
     let trigger = cancel.clone();
     let mut sink = ProgressFn(move |progress: ExportProgress| {
         if progress.permille() >= 500 {
@@ -273,6 +275,7 @@ fn a_cancelled_export_leaves_nothing_behind() {
 #[test]
 fn an_export_never_clobbers_a_file_that_is_already_there() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "clobber-source.mp4");
     let output = directory.path().join("existing.mp4");
@@ -294,6 +297,7 @@ fn an_export_never_clobbers_a_file_that_is_already_there() {
 #[test]
 fn progress_reaches_full_and_stays_bounded_over_a_real_export() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let source = source_clip(&directory, "progress-source.mp4");
     let output = directory.path().join("progress.mp4");
@@ -306,7 +310,7 @@ fn progress_reaches_full_and_stays_bounded_over_a_real_export() {
             narration: None,
             output: &output,
             text: staged_text(1),
-            cancel: ExportCancel::new(),
+            cancel: CancellationToken::new(),
         },
         &mut ProgressFn(|progress: ExportProgress| reports.push(progress)),
     )
@@ -334,6 +338,7 @@ fn progress_reaches_full_and_stays_bounded_over_a_real_export() {
 #[test]
 fn a_source_that_is_not_media_is_refused_without_naming_itself() {
     let _platform = platform();
+    support::require_hardware_gpu!("The native export");
     let directory = TempDir::new().expect("a temporary directory");
     let hostile = directory.path().join("hostile.mp4");
     let mut bytes = b"\x00\x00\x00\x18ftypmp42".to_vec();

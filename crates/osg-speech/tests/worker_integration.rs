@@ -342,20 +342,19 @@ fn timeout_kills_descendant_process_tree() {
 }
 
 #[test]
-fn provider_secret_uses_fixed_environment_and_debug_is_redacted() {
+fn provider_secret_never_reaches_the_environment_and_debug_is_redacted() {
     let directory = tempfile::tempdir().unwrap();
     let worker = LazySpeechWorker::new(mock_program(), SpeechBackend::GeminiLive)
         .with_provider_secret(SecretValue::new("super-secret").unwrap());
     let debug = format!("{worker:?}");
     assert!(!debug.contains("super-secret"));
 
-    // Gemini settings are intentionally exercised by its central provider
-    // crate; the mock environment contract is verified by launching the same
-    // worker as Edge with a secret, which uses identical supervision code.
+    // The Gemini frame itself is exercised below; a backend that calls no credentialed provider
+    // receives the secret nowhere, neither in its frames nor in its environment.
     let edge = LazySpeechWorker::new(mock_program(), SpeechBackend::EdgeTts)
         .with_provider_secret(SecretValue::new("super-secret").unwrap());
     edge.synthesize(
-        &edge_request("MOCK_SECRET_OK"),
+        &edge_request("MOCK_SECRET_ABSENT"),
         &output(directory.path(), "secret"),
         &control(),
     )

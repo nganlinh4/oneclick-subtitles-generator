@@ -3,6 +3,8 @@ use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use osg_delivery_core::http::USER_AGENT as USER_AGENT_VALUE;
+use osg_delivery_core::identity::{is_git_revision, is_sha256_hex};
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
@@ -21,7 +23,6 @@ const RELEASE_API: &str =
     "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest";
 const COMMITS_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/commits/";
 const GENERATED_FROM_PREFIX: &str = "Generated from: https://github.com/yt-dlp/yt-dlp/commit/";
-const USER_AGENT_VALUE: &str = "OneClickSubtitlesGenerator/2";
 const MAX_API_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_NOTICE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_RECORD_BYTES: u64 = 1024 * 1024;
@@ -104,7 +105,7 @@ impl GitHubYtDlpReleaseResolver {
         let sha256 = asset
             .digest
             .strip_prefix("sha256:")
-            .filter(|value| valid_sha256(value))
+            .filter(|value| is_sha256_hex(value))
             .ok_or(NativeToolError::InvalidCatalog)?;
         if asset.browser_download_url != url {
             return Err(NativeToolError::InvalidCatalog);
@@ -114,7 +115,7 @@ impl GitHubYtDlpReleaseResolver {
             .lines()
             .next()
             .and_then(|line| line.strip_prefix(GENERATED_FROM_PREFIX))
-            .filter(|revision| valid_revision(revision))
+            .filter(|revision| is_git_revision(revision))
             .ok_or(NativeToolError::InvalidCatalog)?;
         self.verify_commit(source_revision)?;
         Ok(ResolvedAsset {
@@ -365,20 +366,6 @@ fn asset_name(platform: &str) -> Result<&'static str> {
 
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
-}
-
-fn valid_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn valid_revision(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[cfg(test)]

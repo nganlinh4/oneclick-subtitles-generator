@@ -1,27 +1,21 @@
 use crate::protocol::{ReaderMessage, WireRequest, read_event, write_request};
 use crate::{AsrError, Result, WorkerProgram};
-use command_group::{CommandGroup, GroupChild};
+use osg_process::ManagedChild;
 use osg_runtime_staging::{OwnedStagingDirectory, RuntimeStagingAuthority, StagingKind};
-use std::collections::VecDeque;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const EVENT_QUEUE_CAPACITY: usize = 4;
-const STDERR_TAIL_BYTES: usize = 64 * 1024;
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) struct WorkerSession {
-    child: GroupChild,
+    // Declared first so the process tree is gone before its cache directory is removed.
+    child: ManagedChild,
     _cache_directory: WorkerCacheDirectory,
     stdin: ChildStdin,
     receiver: Receiver<ReaderMessage>,
-    _stderr_tail: Arc<Mutex<VecDeque<u8>>>,
-    reaped: bool,
 }
 
 #[derive(Clone)]
@@ -89,44 +83,22 @@ impl WorkerSession {
             ("USER", std::ffi::OsStr::new("osg-worker")),
             ("LOGNAME", std::ffi::OsStr::new("osg-worker")),
         ]);
-        #[cfg(windows)]
-        let child = command
-            .group()
-            .kill_on_drop(true)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-        #[cfg(not(windows))]
-        let child = command.group_spawn();
-        let mut child = child.map_err(AsrError::Spawn)?;
+        let mut child = ManagedChild::spawn(&mut command).map_err(AsrError::Spawn)?;
         let stdin = child
-            .inner()
-            .stdin
-            .take()
+            .take_stdin()
             .ok_or_else(|| process_io("stdin unavailable"))?;
         let stdout = child
-            .inner()
-            .stdout
-            .take()
+            .take_stdout()
             .ok_or_else(|| process_io("stdout unavailable"))?;
-        let stderr = child
-            .inner()
-            .stderr
-            .take()
-            .ok_or_else(|| process_io("stderr unavailable"))?;
 
         let (sender, receiver) = sync_channel(EVENT_QUEUE_CAPACITY);
         std::thread::spawn(move || read_stdout(stdout, &sender));
-        let stderr_tail = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_TAIL_BYTES)));
-        let capture = stderr_tail.clone();
-        std::thread::spawn(move || drain_stderr(stderr, &capture));
 
         Ok(Self {
             child,
             _cache_directory: cache_directory,
             stdin,
             receiver,
-            _stderr_tail: stderr_tail,
-            reaped: false,
         })
     }
 
@@ -150,14 +122,7 @@ impl WorkerSession {
     }
 
     pub(crate) fn terminate(&mut self) {
-        if self.reaped {
-            return;
-        }
-        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
-            let _ = self.child.kill();
-        }
-        let _ = self.child.wait();
-        self.reaped = true;
+        let _ = self.child.terminate();
     }
 }
 
@@ -166,14 +131,7 @@ impl std::fmt::Debug for WorkerSession {
         formatter
             .debug_struct("WorkerSession")
             .field("process", &"<managed>")
-            .field("reaped", &self.reaped)
             .finish_non_exhaustive()
-    }
-}
-
-impl Drop for WorkerSession {
-    fn drop(&mut self) {
-        self.terminate();
     }
 }
 
@@ -188,27 +146,6 @@ fn read_stdout(stdout: impl Read, sender: &SyncSender<ReaderMessage>) {
         match sender.try_send(message) {
             Ok(()) => {}
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => return,
-        }
-    }
-}
-
-fn drain_stderr(mut stderr: impl Read, tail: &Mutex<VecDeque<u8>>) {
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let Ok(read) = stderr.read(&mut buffer) else {
-            return;
-        };
-        if read == 0 {
-            return;
-        }
-        let Ok(mut tail) = tail.lock() else {
-            return;
-        };
-        for byte in &buffer[..read] {
-            if tail.len() == STDERR_TAIL_BYTES {
-                tail.pop_front();
-            }
-            tail.push_back(*byte);
         }
     }
 }

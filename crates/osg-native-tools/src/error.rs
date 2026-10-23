@@ -41,6 +41,29 @@ impl From<std::io::Error> for NativeToolError {
     }
 }
 
+impl From<osg_delivery_core::Cancelled> for NativeToolError {
+    fn from(_: osg_delivery_core::Cancelled) -> Self {
+        Self::Cancelled
+    }
+}
+
+impl From<osg_delivery_core::DeliveryError> for NativeToolError {
+    fn from(error: osg_delivery_core::DeliveryError) -> Self {
+        use osg_delivery_core::DeliveryError;
+        match error {
+            DeliveryError::Cancelled => Self::Cancelled,
+            DeliveryError::InvalidCatalog => Self::InvalidCatalog,
+            DeliveryError::StoreUnavailable => Self::StoreUnavailable,
+            DeliveryError::InvalidInstall => Self::InvalidInstall,
+            DeliveryError::UnsafeArchive => Self::UnsafeArchive,
+            DeliveryError::Integrity => Self::Integrity,
+            DeliveryError::StorageLimit => Self::StorageLimit,
+            DeliveryError::Network => Self::Network,
+            DeliveryError::IncompleteDownload => Self::IncompleteDownload,
+        }
+    }
+}
+
 impl From<serde_json::Error> for NativeToolError {
     fn from(_: serde_json::Error) -> Self {
         Self::InvalidCatalog

@@ -5,9 +5,10 @@ use rusqlite::{Connection, params};
 use tempfile::tempdir;
 
 use super::*;
-use crate::storage::DatabaseError;
 use crate::storage::actor::Database;
 use crate::storage::migrations::migrations;
+
+mod states;
 
 fn setup_test_db() -> (Connection, ProjectId) {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -36,7 +37,7 @@ fn test_transcript_revision_insert_get_and_list() {
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 60000,
-        state: "completed".to_string(),
+        state: TranscriptRevisionState::Completed,
         fingerprint: "fp1".to_string(),
         word_count: 10,
         metadata_json: "{}".to_string(),
@@ -56,7 +57,7 @@ fn test_transcript_revision_insert_get_and_list() {
     assert_eq!(fetched.provider, "gemini");
     assert_eq!(fetched.model, "gemini-3.5-transcribe");
     assert_eq!(fetched.word_count, 10);
-    assert_eq!(fetched.state, "completed");
+    assert_eq!(fetched.state, TranscriptRevisionState::Completed);
 
     let rev2 = TranscriptRevisionRecord {
         id: TranscriptRevisionId::new(),
@@ -66,7 +67,7 @@ fn test_transcript_revision_insert_get_and_list() {
         model: "large-v3".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 60000,
-        state: "completed".to_string(),
+        state: TranscriptRevisionState::Completed,
         fingerprint: "fp2".to_string(),
         word_count: 12,
         metadata_json: "{}".to_string(),
@@ -95,7 +96,7 @@ fn test_promote_window_and_spatial_queries() {
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 10000,
-        state: "completed".to_string(),
+        state: TranscriptRevisionState::Completed,
         fingerprint: "fp".to_string(),
         word_count: 4,
         metadata_json: "{}".to_string(),
@@ -274,7 +275,7 @@ fn test_cue_word_mappings_and_cascading_deletes() {
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 10000,
-        state: "completed".to_string(),
+        state: TranscriptRevisionState::Completed,
         fingerprint: "fp".to_string(),
         word_count: 4,
         metadata_json: "{}".to_string(),
@@ -449,7 +450,7 @@ fn test_actor_database_transcript_pipeline() {
         model: "gemini-3.5-transcribe".to_string(),
         source_range_start_ms: 0,
         source_range_end_ms: 5000,
-        state: "completed".to_string(),
+        state: TranscriptRevisionState::Completed,
         fingerprint: "actor_fp".to_string(),
         word_count: 2,
         metadata_json: "{}".to_string(),
@@ -518,57 +519,4 @@ fn test_actor_database_transcript_pipeline() {
         .transcript_query_words_in_range(rev_id, 300, 600)
         .unwrap();
     assert_eq!(in_range.len(), 2);
-}
-
-#[test]
-fn test_update_transcript_revision_state() {
-    let (mut conn, project_id) = setup_test_db();
-    let rev_id = TranscriptRevisionId::new();
-    let rev = TranscriptRevisionRecord {
-        id: rev_id,
-        project_id,
-        media_id: None,
-        provider: "gemini".to_string(),
-        model: "gemini-3.5-transcribe".to_string(),
-        source_range_start_ms: 0,
-        source_range_end_ms: 60000,
-        state: "in_progress".to_string(),
-        fingerprint: "fp_test".to_string(),
-        word_count: 0,
-        metadata_json: "{}".to_string(),
-        created_at_ms: 1000,
-        updated_at_ms: 1000,
-    };
-    let tx = conn.transaction().unwrap();
-    insert_transcript_revision(&tx, &rev).unwrap();
-    tx.commit().unwrap();
-
-    // 1. Update to completed
-    update_transcript_revision_state(&conn, rev_id, "completed").unwrap();
-    let fetched = get_transcript_revision(&conn, rev_id).unwrap().unwrap();
-    assert_eq!(fetched.state, "completed");
-    assert!(fetched.updated_at_ms >= 1000);
-
-    // 2. Update to partial
-    update_transcript_revision_state(&conn, rev_id, "partial").unwrap();
-    let fetched = get_transcript_revision(&conn, rev_id).unwrap().unwrap();
-    assert_eq!(fetched.state, "partial");
-
-    // 3. Update to failed
-    update_transcript_revision_state(&conn, rev_id, "failed").unwrap();
-    let fetched = get_transcript_revision(&conn, rev_id).unwrap().unwrap();
-    assert_eq!(fetched.state, "failed");
-
-    // 4. Invalid state fails
-    let invalid_err = update_transcript_revision_state(&conn, rev_id, "bogus_state").unwrap_err();
-    assert!(matches!(invalid_err, DatabaseError::Integrity(_)));
-
-    // 5. Nonexistent revision fails with TranscriptRevisionNotFound
-    let missing_id = TranscriptRevisionId::new();
-    let not_found_err =
-        update_transcript_revision_state(&conn, missing_id, "completed").unwrap_err();
-    assert!(matches!(
-        not_found_err,
-        DatabaseError::TranscriptRevisionNotFound(id) if id == missing_id
-    ));
 }

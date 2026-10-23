@@ -26,6 +26,7 @@ pub use inventory::{
     SelectedFormat, SelectedSubtitle, SubtitleFormat, SubtitleSource, SubtitleTrackOption,
     VideoFormatOption,
 };
+pub use osg_process::CancellationToken;
 pub use path::{DownloadDestination, FfmpegDirectory, SafeFileStem};
 pub use plan::{
     AudioDownloadFormat, AudioQuality, BrowserCookieSource, DownloadCookies, DownloadPlan,
@@ -33,7 +34,7 @@ pub use plan::{
 };
 #[cfg(feature = "e2e-automation")]
 pub use plan::{AutomationBrowserProfile, AutomationCookieFile};
-pub use process::{CancellationToken, RunControl};
+pub use process::RunControl;
 pub use progress::{DownloadPhase, DownloadProgress, ProgressSink};
 pub use registry::{
     InventoryCapability, InventoryId, InventoryRegistration, InventoryRegistry,

@@ -392,3 +392,19 @@ fn cached_worker_replacement_invalidates_the_owned_epoch() {
     assert!(lifecycle_cancellation.is_cancelled());
     assert!(runtime.0.workers.lock().unwrap().is_empty());
 }
+
+#[test]
+fn debug_formatting_never_resolves_or_invalidates_runtimes() {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = standalone_runtime(&directory);
+    let backend = SpeechBackendRequest::EdgeTts;
+    let epoch = runtime.lifecycle_epoch(backend).unwrap();
+    // Enabled without a cached worker: a status read would treat this backend as dead.
+    assert!(runtime.commit_voice_inventory_for_epoch(backend, epoch, Vec::new()));
+
+    let rendered = format!("{runtime:?}");
+
+    assert_eq!(rendered, "SpeechRuntime { .. }");
+    assert_eq!(runtime.lifecycle_epoch(backend).unwrap(), epoch);
+    assert!(runtime.require_enabled_lifecycle(backend, epoch).is_ok());
+}

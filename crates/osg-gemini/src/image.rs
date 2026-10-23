@@ -2,6 +2,7 @@ use std::fmt;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use bytes::Bytes;
+use osg_formats::image::ImageKind;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -321,6 +322,7 @@ fn decode_response(body: &[u8]) -> Result<GeneratedImage> {
     })
 }
 
+/// Gemini returns PNG, JPEG, or WebP; GIF is not an image generation format.
 fn canonical_image_mime(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "image/jpeg" | "image/jpg" => Some("image/jpeg"),
@@ -331,12 +333,7 @@ fn canonical_image_mime(value: &str) -> Option<&'static str> {
 }
 
 fn matches_signature(mime_type: &str, bytes: &[u8]) -> bool {
-    match mime_type {
-        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
-        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
-        _ => false,
-    }
+    ImageKind::from_mime_type(mime_type).is_some_and(|kind| kind.matches(bytes))
 }
 
 #[cfg(test)]

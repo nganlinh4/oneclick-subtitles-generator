@@ -2,8 +2,6 @@ use crate::{Result, SpeechError};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::env;
-#[cfg(windows)]
-use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -309,28 +307,9 @@ fn canonical_bootstrap(path: &Path) -> Result<PathBuf> {
 }
 
 pub(crate) fn native_process_path(path: &Path) -> Result<PathBuf> {
-    if path.as_os_str().is_empty() || !path.is_absolute() {
-        return Err(SpeechError::InvalidWorker(
-            "native worker path must be absolute",
-        ));
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
-
-        let encoded = path.as_os_str().encode_wide().collect::<Vec<_>>();
-        let unc_prefix = r"\\?\UNC\".encode_utf16().collect::<Vec<_>>();
-        if let Some(relative) = encoded.strip_prefix(unc_prefix.as_slice()) {
-            let mut normalized = r"\\".encode_utf16().collect::<Vec<_>>();
-            normalized.extend_from_slice(relative);
-            return Ok(PathBuf::from(OsString::from_wide(&normalized)));
-        }
-        let extended_prefix = r"\\?\".encode_utf16().collect::<Vec<_>>();
-        if let Some(relative) = encoded.strip_prefix(extended_prefix.as_slice()) {
-            return Ok(PathBuf::from(OsString::from_wide(relative)));
-        }
-    }
-    Ok(path.to_owned())
+    osg_process::native_process_path(path).ok_or(SpeechError::InvalidWorker(
+        "native worker path must be absolute",
+    ))
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf> {
@@ -468,24 +447,6 @@ mod tests {
                 "model root path must be absolute"
             ))
         ));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn python_library_paths_drop_only_the_windows_extended_length_prefix() {
-        assert_eq!(
-            native_process_path(Path::new(r"\\?\C:\managed\model")).unwrap(),
-            PathBuf::from(r"C:\managed\model")
-        );
-        assert_eq!(
-            native_process_path(Path::new(r"\\?\UNC\server\share\model")).unwrap(),
-            PathBuf::from(r"\\server\share\model")
-        );
-        assert_eq!(
-            native_process_path(Path::new(r"C:\managed\model")).unwrap(),
-            PathBuf::from(r"C:\managed\model")
-        );
-        assert!(native_process_path(Path::new("relative")).is_err());
     }
 
     #[cfg(unix)]

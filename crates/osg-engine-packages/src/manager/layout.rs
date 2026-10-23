@@ -9,9 +9,10 @@ use osg_runtime_staging::{OwnedStagingDirectory, StagingKind};
 
 use crate::catalog::PackageDelivery;
 use crate::path_security::{ensure_direct_child, is_link_or_reparse, require_directory};
-use crate::progress::{OperationPhase, OperationProgress, ProgressSink};
 use crate::receipt;
-use crate::{CancellationToken, PackageError, Result};
+use crate::{
+    CancellationToken, OperationPhase, OperationProgress, PackageError, ProgressSink, Result,
+};
 
 use super::MIN_FREE_RESERVE_BYTES;
 use super::files::sync_directory;

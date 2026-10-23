@@ -62,19 +62,54 @@ impl WindowRange {
     }
 }
 
-/// Partitions a time range `[range_start_ms, range_end_ms]` into bounded, non-overlapping windows.
+/// Long media grows its windows instead of fanning out: a plan stays within this many windows
+/// whenever the ten-minute ceiling allows it.
+pub(crate) const MAX_PLANNED_WINDOWS: i64 = 120;
+
+/// Partitions `[range_start_ms, range_end_ms]` into balanced, non-overlapping windows.
 ///
-/// Constraints:
-/// - Windows are bounded between 30,000ms and 600,000ms.
-/// - Default target window duration is 600,000ms.
-/// - If the total duration is less than or equal to the target, a single window is returned.
-/// - The selected maximum is strict.
-/// - Multi-window ranges are balanced to within one millisecond; there is no undersized tail.
+/// The preferred length is clamped to 30 s..=10 min (default 10 min) and grown for long media so
+/// the plan stays within [`MAX_PLANNED_WINDOWS`]. Windows differ by at most one millisecond;
+/// there is no undersized tail.
 pub(crate) fn plan_windows(
     range_start_ms: i64,
     range_end_ms: i64,
     preferred_window_duration_ms: Option<u64>,
 ) -> Result<Vec<WindowRange>, PlannerError> {
+    let total_duration = validated_duration(range_start_ms, range_end_ms)?;
+    let target = effective_window_ms(total_duration, preferred_window_duration_ms, 0);
+    Ok(partition(range_start_ms, range_end_ms, target))
+}
+
+/// Plans Live requests with bounded prefix context while retaining non-overlapping ownership.
+/// Balancing against `maximum - context` keeps every physical request within the effective
+/// maximum and avoids a tiny final request.
+pub(crate) fn plan_live_windows(
+    range_start_ms: i64,
+    range_end_ms: i64,
+    preferred_window_duration_ms: Option<u64>,
+) -> Result<Vec<WindowRange>, PlannerError> {
+    let total_duration = validated_duration(range_start_ms, range_end_ms)?;
+    let maximum = effective_window_ms(
+        total_duration,
+        preferred_window_duration_ms,
+        LIVE_PREFIX_CONTEXT_MS,
+    );
+    let mut windows = partition(
+        range_start_ms,
+        range_end_ms,
+        maximum - LIVE_PREFIX_CONTEXT_MS,
+    );
+    for window in windows.iter_mut().skip(1) {
+        window.context_start_ms = window
+            .start_ms
+            .saturating_sub(LIVE_PREFIX_CONTEXT_MS)
+            .max(range_start_ms);
+    }
+    Ok(windows)
+}
+
+fn validated_duration(range_start_ms: i64, range_end_ms: i64) -> Result<i64, PlannerError> {
     if range_start_ms < 0 {
         return Err(PlannerError::NegativeStart(range_start_ms));
     }
@@ -84,73 +119,50 @@ pub(crate) fn plan_windows(
             end_ms: range_end_ms,
         });
     }
+    Ok(range_end_ms - range_start_ms)
+}
 
-    let target_w = preferred_window_duration_ms
-        .unwrap_or(DEFAULT_WINDOW_DURATION_MS as u64)
-        .clamp(MIN_WINDOW_DURATION_MS as u64, MAX_WINDOW_DURATION_MS as u64)
+/// The physical request length: the clamped preference, grown so the owned part of each window
+/// (`length - reserved_context_ms`) keeps the plan within [`MAX_PLANNED_WINDOWS`].
+fn effective_window_ms(
+    total_duration: i64,
+    preferred_window_duration_ms: Option<u64>,
+    reserved_context_ms: i64,
+) -> i64 {
+    let requested = preferred_window_duration_ms
+        .unwrap_or(DEFAULT_WINDOW_DURATION_MS.cast_unsigned())
+        .clamp(
+            MIN_WINDOW_DURATION_MS.cast_unsigned(),
+            MAX_WINDOW_DURATION_MS.cast_unsigned(),
+        )
         .cast_signed();
+    let owned_for_cap = (total_duration + MAX_PLANNED_WINDOWS - 1) / MAX_PLANNED_WINDOWS;
+    requested
+        .max(owned_for_cap + reserved_context_ms)
+        .min(MAX_WINDOW_DURATION_MS)
+}
+
+fn partition(range_start_ms: i64, range_end_ms: i64, target_ms: i64) -> Vec<WindowRange> {
     let total_duration = range_end_ms - range_start_ms;
-
-    if total_duration <= target_w {
-        return Ok(vec![WindowRange {
-            index: 0,
-            start_ms: range_start_ms,
-            end_ms: range_end_ms,
-            context_start_ms: range_start_ms,
-        }]);
-    }
-
-    let window_count = total_duration / target_w + i64::from(total_duration % target_w != 0);
-    let window_count_usize = usize::try_from(window_count)
-        .expect("a positive millisecond range has a representable window count");
+    let window_count = (total_duration + target_ms - 1) / target_ms;
     let base_duration = total_duration / window_count;
     let remainder = total_duration % window_count;
-    let mut windows = Vec::with_capacity(window_count_usize);
+    let mut windows = Vec::with_capacity(usize::try_from(window_count).unwrap_or_default());
     let mut current_start = range_start_ms;
     for index in 0..window_count {
-        let duration = base_duration + i64::from(index < remainder);
         let end_ms = if index + 1 == window_count {
             range_end_ms
         } else {
-            current_start + duration
+            current_start + base_duration + i64::from(index < remainder)
         };
-        windows.push(WindowRange {
-            index: usize::try_from(index).expect("bounded window index fits usize"),
-            start_ms: current_start,
+        windows.push(WindowRange::new(
+            usize::try_from(index).expect("bounded window index fits usize"),
+            current_start,
             end_ms,
-            context_start_ms: current_start,
-        });
+        ));
         current_start = end_ms;
     }
-
-    Ok(windows)
-}
-
-/// Plans Live requests with bounded prefix context while retaining non-overlapping ownership.
-/// Balancing against `maximum - context` keeps every physical request within the user's selected
-/// maximum and avoids a tiny final request.
-pub(crate) fn plan_live_windows(
-    range_start_ms: i64,
-    range_end_ms: i64,
-    preferred_window_duration_ms: Option<u64>,
-) -> Result<Vec<WindowRange>, PlannerError> {
-    let maximum = preferred_window_duration_ms
-        .unwrap_or(DEFAULT_WINDOW_DURATION_MS as u64)
-        .clamp(MIN_WINDOW_DURATION_MS as u64, MAX_WINDOW_DURATION_MS as u64)
-        .cast_signed();
-    let core_target = maximum.saturating_sub(LIVE_PREFIX_CONTEXT_MS);
-    let mut windows = plan_windows(
-        range_start_ms,
-        range_end_ms,
-        Some(core_target.cast_unsigned()),
-    )?;
-    for window in windows.iter_mut().skip(1) {
-        window.context_start_ms = window
-            .start_ms
-            .saturating_sub(LIVE_PREFIX_CONTEXT_MS)
-            .max(range_start_ms);
-    }
-    Ok(windows)
+    windows
 }
 
 #[cfg(test)]
@@ -251,5 +263,40 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[0].end_ms == pair[1].start_ms)
         );
+    }
+
+    #[test]
+    fn long_media_grows_windows_instead_of_exceeding_the_window_cap() {
+        let ten_hours = 36_000_000;
+        // A 30 s preference on ten hours would be 1,200 windows; the plan grows to 300 s.
+        let windows = plan_windows(0, ten_hours, Some(30_000)).unwrap();
+        assert_eq!(windows.len(), 120);
+        assert!(windows.iter().all(|window| window.duration_ms() == 300_000));
+        assert_eq!(windows.last().unwrap().end_ms, ten_hours);
+
+        let live = plan_live_windows(0, ten_hours, Some(30_000)).unwrap();
+        assert!(live.len() <= 120);
+        assert!(
+            live.iter()
+                .all(|window| window.duration_us() <= 303_000_000)
+        );
+        assert!(
+            live.windows(2)
+                .all(|pair| pair[0].end_ms == pair[1].start_ms)
+        );
+
+        // Beyond 120 x 10 min the ten-minute ceiling wins; the count grows but stays bounded.
+        let day = 86_400_000;
+        let windows = plan_windows(0, day, Some(60_000)).unwrap();
+        assert_eq!(windows.len(), 144);
+        assert!(windows.iter().all(|window| window.duration_ms() <= 600_000));
+    }
+
+    #[test]
+    fn short_media_keeps_the_requested_window_length() {
+        let windows = plan_windows(0, 3_600_000, Some(60_000)).unwrap();
+        assert_eq!(windows.len(), 60);
+        let live = plan_live_windows(0, 240_000, Some(60_000)).unwrap();
+        assert_eq!(live.len(), 5);
     }
 }

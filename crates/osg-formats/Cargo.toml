@@ -1,0 +1,11 @@
+[package]
+name = "osg-formats"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Bounds-checked WAV and image signature parsing shared across OSG"
+license = "MIT"
+
+[lints]
+workspace = true

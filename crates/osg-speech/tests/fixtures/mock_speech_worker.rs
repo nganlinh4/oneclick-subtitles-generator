@@ -68,8 +68,12 @@ fn main() {
             ));
             continue;
         }
-        if text == "MOCK_SECRET_OK"
-            && std::env::var("OSG_SPEECH_PROVIDER_SECRET").as_deref() != Ok("super-secret")
+        let secret_misplaced = std::env::vars_os()
+            .any(|(_, value)| value.to_string_lossy().contains("super-secret"));
+        let secret_in_frame = json_string(&request, "provider_secret");
+        if (text == "MOCK_SECRET_OK"
+            && (secret_misplaced || secret_in_frame.as_deref() != Some("super-secret")))
+            || (text == "MOCK_SECRET_ABSENT" && (secret_misplaced || secret_in_frame.is_some()))
         {
             send(&format!(
                 r#"{{"type":"error","protocol":1,"request_id":{request_id},"code":"authentication_failed","retryable":false}}"#

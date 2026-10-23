@@ -1,7 +1,8 @@
 use crate::{AsrError, Result};
+use osg_formats::wav::{self, WavFormat};
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_AUDIO_BYTES: u64 = 16 * 1024 * 1024 * 1024;
@@ -73,84 +74,25 @@ impl fmt::Debug for NormalizedAudio {
     }
 }
 
+/// Returns the sample byte count of a 16 kHz mono PCM16 WAV. Only the first MiB is scanned for the
+/// `data` chunk; the samples themselves may extend to the end of the file.
 fn validate_pcm16_wav(file: &mut File, file_len: u64) -> Result<u64> {
-    let mut riff = [0_u8; 12];
-    file.read_exact(&mut riff)
+    let mut header = Vec::new();
+    file.take(MAX_HEADER_SCAN_BYTES + 8)
+        .read_to_end(&mut header)
         .map_err(|_| AsrError::InvalidAudio)?;
-    if &riff[..4] != b"RIFF" || &riff[8..] != b"WAVE" {
+    let layout = wav::parse_header(&header, file_len).map_err(|_| AsrError::InvalidAudio)?;
+    let declared_len = layout.declared_len;
+    if declared_len > file_len || declared_len < 44 || layout.data_end() > declared_len {
         return Err(AsrError::InvalidAudio);
     }
-
-    let declared_len = u64::from(u32::from_le_bytes(riff[4..8].try_into().unwrap())) + 8;
-    if declared_len > file_len || declared_len < 44 {
+    if layout.format != WavFormat::pcm16(EXPECTED_SAMPLE_RATE, 1)
+        || layout.data_len == 0
+        || !layout.data_len.is_multiple_of(2)
+    {
         return Err(AsrError::InvalidAudio);
     }
-
-    let mut format_valid = false;
-    let mut data_bytes = None;
-    while file.stream_position().map_err(|_| AsrError::InvalidAudio)? + 8 <= file_len {
-        let chunk_start = file.stream_position().map_err(|_| AsrError::InvalidAudio)?;
-        if chunk_start > MAX_HEADER_SCAN_BYTES && data_bytes.is_none() {
-            return Err(AsrError::InvalidAudio);
-        }
-        let mut header = [0_u8; 8];
-        file.read_exact(&mut header)
-            .map_err(|_| AsrError::InvalidAudio)?;
-        let size = u64::from(u32::from_le_bytes(header[4..].try_into().unwrap()));
-        let payload_start = file.stream_position().map_err(|_| AsrError::InvalidAudio)?;
-        let payload_end = payload_start
-            .checked_add(size)
-            .ok_or(AsrError::InvalidAudio)?;
-        if payload_end > file_len || payload_end > declared_len {
-            return Err(AsrError::InvalidAudio);
-        }
-
-        match &header[..4] {
-            b"fmt " => {
-                if !(16..=4_096).contains(&size) {
-                    return Err(AsrError::InvalidAudio);
-                }
-                let mut format = [0_u8; 16];
-                file.read_exact(&mut format)
-                    .map_err(|_| AsrError::InvalidAudio)?;
-                let encoding = u16::from_le_bytes(format[0..2].try_into().unwrap());
-                let channels = u16::from_le_bytes(format[2..4].try_into().unwrap());
-                let sample_rate = u32::from_le_bytes(format[4..8].try_into().unwrap());
-                let byte_rate = u32::from_le_bytes(format[8..12].try_into().unwrap());
-                let block_align = u16::from_le_bytes(format[12..14].try_into().unwrap());
-                let bits = u16::from_le_bytes(format[14..16].try_into().unwrap());
-                format_valid = encoding == 1
-                    && channels == 1
-                    && sample_rate == EXPECTED_SAMPLE_RATE
-                    && byte_rate == EXPECTED_BYTES_PER_SECOND
-                    && block_align == 2
-                    && bits == 16;
-            }
-            b"data" => {
-                if size == 0 || size % 2 != 0 {
-                    return Err(AsrError::InvalidAudio);
-                }
-                data_bytes = Some(size);
-            }
-            _ => {}
-        }
-
-        let padded_end = payload_end
-            .checked_add(size % 2)
-            .ok_or(AsrError::InvalidAudio)?;
-        if padded_end > file_len || padded_end > declared_len {
-            return Err(AsrError::InvalidAudio);
-        }
-        file.seek(SeekFrom::Start(padded_end))
-            .map_err(|_| AsrError::InvalidAudio)?;
-        if format_valid && data_bytes.is_some() {
-            break;
-        }
-    }
-    if !format_valid {
-        return Err(AsrError::InvalidAudio);
-    }
-    data_bytes.ok_or(AsrError::InvalidAudio)
+    Ok(layout.data_len)
 }
 
 #[cfg(test)]
@@ -159,21 +101,8 @@ pub(crate) mod test_support {
 
     pub(crate) fn write_wav(path: &Path, milliseconds: u32) {
         let data_len = EXPECTED_BYTES_PER_SECOND * milliseconds / 1_000;
-        let riff_len = 36 + data_len;
-        let mut bytes = Vec::with_capacity((44 + data_len) as usize);
-        bytes.extend_from_slice(b"RIFF");
-        bytes.extend_from_slice(&riff_len.to_le_bytes());
-        bytes.extend_from_slice(b"WAVEfmt ");
-        bytes.extend_from_slice(&16_u32.to_le_bytes());
-        bytes.extend_from_slice(&1_u16.to_le_bytes());
-        bytes.extend_from_slice(&1_u16.to_le_bytes());
-        bytes.extend_from_slice(&EXPECTED_SAMPLE_RATE.to_le_bytes());
-        bytes.extend_from_slice(&EXPECTED_BYTES_PER_SECOND.to_le_bytes());
-        bytes.extend_from_slice(&2_u16.to_le_bytes());
-        bytes.extend_from_slice(&16_u16.to_le_bytes());
-        bytes.extend_from_slice(b"data");
-        bytes.extend_from_slice(&data_len.to_le_bytes());
-        bytes.resize((44 + data_len) as usize, 0);
+        let samples = vec![0; usize::try_from(data_len).unwrap()];
+        let bytes = wav::encode(WavFormat::pcm16(EXPECTED_SAMPLE_RATE, 1), &samples).unwrap();
         std::fs::write(path, bytes).unwrap();
     }
 }
@@ -217,5 +146,12 @@ mod tests {
         bytes[22..24].copy_from_slice(&2_u16.to_le_bytes());
         std::fs::write(&stereo, bytes).unwrap();
         assert!(NormalizedAudio::open(&stereo).is_err());
+
+        let short_riff = directory.path().join("short-riff.wav");
+        write_wav(&short_riff, 100);
+        let mut bytes = std::fs::read(&short_riff).unwrap();
+        bytes[4..8].copy_from_slice(&36_u32.to_le_bytes());
+        std::fs::write(&short_riff, bytes).unwrap();
+        assert!(NormalizedAudio::open(&short_riff).is_err());
     }
 }
