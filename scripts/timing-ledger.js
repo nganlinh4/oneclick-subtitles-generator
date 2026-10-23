@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Wall-clock ledger for managed commands and e2e journeys: timings.jsonl in the managed dev cache.
+// Wall-clock ledger for managed commands and e2e journeys: timings.jsonl beside the managed dev
+// cache. Never inside it: the cache refuses unmanaged bytes at its boundary.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,7 +17,7 @@ const defaultLedgerPath = (environment = process.env) => {
   const root = typeof explicit === 'string' && explicit.trim() !== ''
     ? explicit
     : path.join(environment.LOCALAPPDATA ?? '', 'OSG-Development', 'cache');
-  return path.join(path.resolve(root), LEDGER_FILE);
+  return path.join(path.dirname(path.resolve(root)), LEDGER_FILE);
 };
 
 const currentCommit = (cwd = path.resolve(__dirname, '..')) => {

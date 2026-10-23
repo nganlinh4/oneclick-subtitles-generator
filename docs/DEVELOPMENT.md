@@ -54,8 +54,8 @@ until the cache is under 28 GiB. Leased or in-use lanes are never touched. Delet
 killed prune resumes safely. The wrapper prunes after every command and, at most every 15 minutes,
 before one too.
 
-Every managed command, journey and scenario appends its wall time to `timings.jsonl` in the cache
-root and prints it against the median of earlier passing runs, flagging a slowdown of 20% or more.
+Every managed command, journey and scenario appends its wall time to `timings.jsonl` beside the
+cache root (never inside it) and prints it against the median of earlier passing runs, flagging a slowdown of 20% or more.
 `npm run timings` lists the slowest items and current regressions.
 
 ```powershell

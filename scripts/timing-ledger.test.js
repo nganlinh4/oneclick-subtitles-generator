@@ -18,15 +18,17 @@ const record = (ledgerPath, name, seconds, outcome = 'pass', lines = []) => reco
   name, seconds, outcome, ledgerPath, commit: 'abc1234', write: (line) => lines.push(line),
 });
 
-test('the ledger lives in the managed cache root the scripts already resolve', () => {
+test('the ledger sits beside the managed cache root, never inside it', () => {
   assert.equal(
     defaultLedgerPath({ OSG_DEV_CACHE_ROOT: path.resolve('/x/cache') }),
-    path.join(path.resolve('/x/cache'), 'timings.jsonl'),
+    path.join(path.resolve('/x'), 'timings.jsonl'),
   );
   assert.equal(
     defaultLedgerPath({ LOCALAPPDATA: path.resolve('/l') }),
-    path.join(path.resolve('/l'), 'OSG-Development', 'cache', 'timings.jsonl'),
+    path.join(path.resolve('/l'), 'OSG-Development', 'timings.jsonl'),
   );
+  const cacheRoot = path.resolve('/l', 'OSG-Development', 'cache');
+  assert.ok(!defaultLedgerPath({ LOCALAPPDATA: path.resolve('/l') }).startsWith(`${cacheRoot}${path.sep}`));
 });
 
 test('each run appends one record and is compared with the median of earlier passes', (t) => {
