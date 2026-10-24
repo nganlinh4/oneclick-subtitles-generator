@@ -22,7 +22,7 @@ use osg_domain::{
 };
 use osg_infrastructure::storage::{Database, DatabaseError};
 use rusqlite::{Connection, params};
-use tempfile::NamedTempFile;
+use tempfile::tempdir;
 use uuid::Uuid;
 
 use common::{seed_legacy_project_in_db, test_migrations};
@@ -34,8 +34,8 @@ use common::{seed_legacy_project_in_db, test_migrations};
 #[test]
 fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
     for prior_version in 1..=14 {
-        let db_file = NamedTempFile::new().expect("temp db file");
-        let db_path = db_file.path().to_owned();
+        let db_dir = tempdir().expect("temp db dir");
+        let db_path = db_dir.path().join("osg.sqlite3");
         let project_id = ProjectId::new();
 
         // 1. Seed database at prior version with real project and cues
@@ -143,8 +143,8 @@ fn test_idempotent_migration_v1_to_v14_repeated_reopens() {
 
 #[test]
 fn test_migration_aborted_transaction_simulation() {
-    let db_file = NamedTempFile::new().expect("temp db file");
-    let db_path = db_file.path().to_owned();
+    let db_dir = tempdir().expect("temp db dir");
+    let db_path = db_dir.path().join("osg.sqlite3");
     let project_id = ProjectId::new();
 
     // Setup database at v14
@@ -210,8 +210,8 @@ fn test_migration_aborted_transaction_simulation() {
 
 #[test]
 fn test_migration_refuses_corrupted_foreign_key_legacy_state() {
-    let db_file = NamedTempFile::new().expect("temp db file");
-    let db_path = db_file.path().to_owned();
+    let db_dir = tempdir().expect("temp db dir");
+    let db_path = db_dir.path().join("osg.sqlite3");
 
     // Create v14 database with deliberate foreign key violation (inserted with foreign_keys=OFF)
     {
@@ -251,8 +251,8 @@ fn test_migration_refuses_corrupted_foreign_key_legacy_state() {
 #[test]
 fn test_all_v1_to_v14_projects_load_without_synthetic_words_or_errors() {
     for prior_version in 1..=14 {
-        let db_file = NamedTempFile::new().expect("temp db file");
-        let db_path = db_file.path().to_owned();
+        let db_dir = tempdir().expect("temp db dir");
+        let db_path = db_dir.path().join("osg.sqlite3");
         let project_id = ProjectId::new();
 
         // Seed legacy project at prior version
@@ -348,8 +348,8 @@ fn test_all_v1_to_v14_projects_load_without_synthetic_words_or_errors() {
 
 #[test]
 fn test_legacy_project_mutation_with_remediated_domain_in_v15_runtime() {
-    let db_file = NamedTempFile::new().expect("temp db file");
-    let db_path = db_file.path().to_owned();
+    let db_dir = tempdir().expect("temp db dir");
+    let db_path = db_dir.path().join("osg.sqlite3");
     let project_id = ProjectId::new();
 
     // 1. Seed legacy project at v14
