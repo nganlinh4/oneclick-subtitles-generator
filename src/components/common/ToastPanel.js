@@ -43,6 +43,8 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
   const toastsRef = useRef([]);
   const toastIdRef = useRef(0);
   const historyIdRef = useRef(0);
+  // key -> history entry of the live keyed toast, so progress updates rewrite one entry.
+  const keyedHistoryIdsRef = useRef(new Map());
   const toastSessionIdRef = useRef(
     `${Date.now().toString(36)}-${(++toastSessionSequence).toString(36)}`
   );
@@ -60,19 +62,22 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
     return next;
   }, []);
 
-  const recordToastHistory = useCallback(({ message, type, timestamp }) => {
-    // History is an event log. Live toasts may reuse an ID so progress can update in place, but
-    // every accepted notification needs its own immutable history identity.
-    const historyToast = {
-      id: `${toastSessionIdRef.current}-history-${(++historyIdRef.current).toString(36)}`,
-      message,
-      type,
-      timestamp,
-    };
-    setToastHistory((previous) => [historyToast, ...previous]);
+  const recordToastHistory = useCallback(({ message, type, timestamp, key }) => {
+    // History is an event log: one entry per notification. A keyed toast (progress) is one
+    // notification while it stays live, so its updates replace its entry and move it to the top.
+    const keyedHistoryIds = keyedHistoryIdsRef.current;
+    const id = (key && keyedHistoryIds.get(key))
+      || `${toastSessionIdRef.current}-history-${(++historyIdRef.current).toString(36)}`;
+    if (key) keyedHistoryIds.set(key, id);
+    setToastHistory((previous) => [
+      { id, message, type, timestamp },
+      ...previous.filter((entry) => entry.id !== id),
+    ]);
   }, []);
 
   const removeToast = useCallback((id) => {
+    const removed = toastsRef.current.find((toast) => toast.id === id);
+    if (removed?.key) keyedHistoryIdsRef.current.delete(removed.key);
     publishToasts((previous) => previous.map((toast) => (
       toast.id === id ? { ...toast, dismissing: true } : toast
     )));
@@ -110,7 +115,7 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
     };
     window.addToast = (message, type = 'info', duration = 6000, key, button) => {
       const now = Date.now();
-      recordToastHistory({ message, type, timestamp: now });
+      recordToastHistory({ message, type, timestamp: now, key });
       // Onboarding may suppress routine progress noise, but never a failure, warning, or action
       // the user must see. Suppressed display noise still belongs in the history event log.
       if (onboardingActiveRef.current
@@ -157,6 +162,7 @@ const ToastPanel = ({ backgroundControlsBlocked = false }) => {
     const queued = pendingToasts.splice(0);
     queued.forEach((args) => window.addToast(...args));
     window.removeToastByKey = (key) => {
+      keyedHistoryIdsRef.current.delete(key);
       publishToasts((previous) => {
         const toRemove = previous.find((toast) => toast.key === key);
         if (toRemove) {

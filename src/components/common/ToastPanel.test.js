@@ -112,23 +112,30 @@ test('coalesces only recent identical non-actionable successes', () => {
   expect(screen.getAllByText('Progress saved successfully')).toHaveLength(2);
 });
 
-test('records every keyed update while updating one live toast in place', async () => {
+test('a keyed progress toast keeps one history entry while it is live', () => {
+  vi.useFakeTimers();
   localStorage.setItem('has_visited_site', 'true');
   localStorage.setItem('onboarding_controls_dismissed', 'true');
   render(<ToastPanel />);
+  const historyMessages = () => JSON.parse(localStorage.getItem('toast_history_v1'))
+    .map((toast) => toast.message);
 
   act(() => {
-    window.addToast('Downloading', 'info', 60_000, 'output-status');
-    window.addToast('Transcribing', 'info', 60_000, 'output-status');
-    window.addToast('Finished', 'success', 60_000, 'output-status');
+    window.addToast('Downloading… 96%', 'info', 60_000, 'update');
+    window.addToast('Unrelated', 'info', 60_000);
+    window.addToast('Downloading… 96%', 'info', 60_000, 'update');
+    window.addToast('Downloading… 97%', 'info', 60_000, 'update');
   });
 
-  expect(screen.queryByText('Downloading')).not.toBeInTheDocument();
-  expect(screen.queryByText('Transcribing')).not.toBeInTheDocument();
-  expect(screen.getByText('Finished')).toBeInTheDocument();
-  await waitFor(() => expect(
-    JSON.parse(localStorage.getItem('toast_history_v1')).map((toast) => toast.message)
-  ).toEqual(['Finished', 'Transcribing', 'Downloading']));
+  expect(screen.queryByText('Downloading… 96%')).not.toBeInTheDocument();
+  expect(screen.getByText('Downloading… 97%')).toBeInTheDocument();
+  expect(historyMessages()).toEqual(['Downloading… 97%', 'Unrelated']);
+
+  // Once the toast is gone, the next use of the key is a new notification with its own entry.
+  act(() => vi.advanceTimersByTime(60_500));
+  act(() => { window.addToast('Downloading… 3%', 'info', 60_000, 'update'); });
+  expect(historyMessages()).toEqual(['Downloading… 3%', 'Downloading… 97%', 'Unrelated']);
+  vi.useRealTimers();
 });
 
 test('records suppressed onboarding notifications without displaying them', async () => {
