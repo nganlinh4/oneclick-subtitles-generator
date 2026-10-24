@@ -25,12 +25,6 @@ const RELEASE_MATRIX = Object.freeze([
     bundles: 'app,dmg',
   }),
   Object.freeze({
-    platform: 'macOS x64',
-    os: 'macos-15-intel',
-    target: 'x86_64-apple-darwin',
-    bundles: 'app,dmg',
-  }),
-  Object.freeze({
     platform: 'Windows x64',
     os: 'windows-2022',
     target: 'x86_64-pc-windows-msvc',

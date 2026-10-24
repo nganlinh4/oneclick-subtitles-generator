@@ -47,7 +47,7 @@ test('accepts only reviewed full-SHA GitHub Action pins', () => {
   }
 });
 
-test('requires all four immutable host/target/package matrix entries', () => {
+test('requires every immutable host/target/package matrix entry', () => {
   const entries = RELEASE_MATRIX.map(
     ({ platform, os: runner, target, bundles }) =>
       `          - platform: ${platform}\n            os: ${runner}\n            rust-target: ${target}\n            bundles: ${bundles}`,
@@ -55,7 +55,7 @@ test('requires all four immutable host/target/package matrix entries', () => {
   const workflow = `      matrix:\n        include:\n${entries}\n\n    steps:\n`;
   assert.doesNotThrow(() => assertWorkflowMatrix(workflow));
   assert.throws(
-    () => assertWorkflowMatrix(weaken(workflow, 'macos-15-intel', 'macos-latest')),
+    () => assertWorkflowMatrix(weaken(workflow, 'os: macos-15', 'os: macos-latest')),
     /mutable \*-latest aliases/,
   );
 });

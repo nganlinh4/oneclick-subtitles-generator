@@ -75,6 +75,6 @@ The desktop executable itself carries no executables, interpreters or models; th
 
 ## Platforms
 
-CI builds Windows x64, Linux x64 and macOS (Intel and Apple Silicon). Only Windows has complete
+CI builds Windows x64, Linux x64 and macOS arm64. Only Windows has complete
 delivery catalogs and passes the `runtime-package` readiness profile; the other targets compile
 but are not released.
